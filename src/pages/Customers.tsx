@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 import { Search, Plus, Upload, MoreHorizontal, Edit, Trash2, Users, Loader2 } from 'lucide-react'
 import { CsvImportDialog } from '@/components/customers/CsvImportDialog'
 import { LeadDialog } from '@/components/customers/LeadDialog'
@@ -187,101 +188,105 @@ export default function Customers() {
         </Select>
       </div>
 
-      <div className="border rounded-xl bg-card shadow-sm flex-1 overflow-auto">
-        <Table>
-          <TableHeader className="bg-muted sticky top-0 z-10 shadow-sm">
-            <TableRow>
-              <TableHead>Nome</TableHead>
-              <TableHead>E-mail</TableHead>
-              <TableHead>Telefone</TableHead>
-              <TableHead>Fase/Status</TableHead>
-              <TableHead>Tags</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
+      <Card className="flex-1 flex flex-col overflow-hidden shadow-sm">
+        <CardContent className="p-0 flex-1 overflow-auto">
+          <Table>
+            <TableHeader className="bg-muted sticky top-0 z-10 shadow-sm">
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                </TableCell>
+                <TableHead>Nome</TableHead>
+                <TableHead>E-mail</TableHead>
+                <TableHead>Telefone</TableHead>
+                <TableHead>Fase/Status</TableHead>
+                <TableHead>Tags</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
-            ) : filteredLeads.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                  Nenhum cliente encontrado.
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredLeads.map((lead) => {
-                const phase = PHASES.find((p) => p.id.toString() === lead.status)
-                return (
-                  <TableRow key={lead.id} className="group">
-                    <TableCell className="font-medium text-secondary">{lead.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {lead.email || '—'}
-                    </TableCell>
-                    <TableCell className="text-sm">{formatPhone(lead.phone)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          'text-white hover:opacity-90',
-                          phase?.color || 'bg-slate-500',
-                        )}
-                      >
-                        {phase?.title || 'Desconhecido'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {(lead.tags || []).map((tag, idx) => (
-                          <Badge
-                            key={idx}
-                            variant="secondary"
-                            className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20 border-primary/20"
-                          >
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setEditingLead(lead)
-                              setLeadOpen(true)
-                            }}
-                          >
-                            <Edit className="h-4 w-4 mr-2" /> Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(lead.id)}
-                            className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" /> Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                )
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-32 text-center">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : filteredLeads.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                    Nenhum cliente encontrado.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredLeads.map((lead) => {
+                  const phase = PHASES.find((p) => p.id.toString() === lead.status)
+                  return (
+                    <TableRow key={lead.id} className="group">
+                      <TableCell className="font-medium text-secondary">{lead.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {lead.email || '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatPhone(lead.phone)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            'text-white hover:opacity-90',
+                            phase?.color || 'bg-slate-500',
+                          )}
+                        >
+                          {phase?.title || 'Desconhecido'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {(lead.tags || []).map((tag, idx) => (
+                            <Badge
+                              key={idx}
+                              variant="secondary"
+                              className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20 border-primary/20"
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setEditingLead(lead)
+                                setLeadOpen(true)
+                              }}
+                            >
+                              <Edit className="h-4 w-4 mr-2" /> Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(lead.id)}
+                              className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" /> Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} onImport={handleImport} />
       <LeadDialog open={leadOpen} onOpenChange={setLeadOpen} defaultValues={editingLead} />
