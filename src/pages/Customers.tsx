@@ -44,10 +44,19 @@ const PHASES = [
   { id: 10, title: 'Fechamento', color: 'bg-green-500' },
 ]
 
-const formatDate = (dateStr: string) => {
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return '—'
-  return date.toLocaleDateString('pt-BR')
+const formatPhone = (phone?: string) => {
+  if (!phone) return '—'
+  let cleaned = phone.replace(/\D/g, '')
+  if (cleaned.startsWith('55') && cleaned.length > 11) {
+    cleaned = cleaned.substring(2)
+  }
+  if (cleaned.length === 11) {
+    return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 7)}-${cleaned.substring(7, 11)}`
+  }
+  if (cleaned.length === 10) {
+    return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 6)}-${cleaned.substring(6, 10)}`
+  }
+  return phone
 }
 
 export default function Customers() {
@@ -187,21 +196,20 @@ export default function Customers() {
               <TableHead>Telefone</TableHead>
               <TableHead>Fase/Status</TableHead>
               <TableHead>Tags</TableHead>
-              <TableHead className="text-center">Data de Cadastro</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center">
+                <TableCell colSpan={6} className="h-32 text-center">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : filteredLeads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
-                  Nenhum lead encontrado.
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  Nenhum cliente encontrado.
                 </TableCell>
               </TableRow>
             ) : (
@@ -213,19 +221,17 @@ export default function Customers() {
                     <TableCell className="text-sm text-muted-foreground">
                       {lead.email || '—'}
                     </TableCell>
-                    <TableCell className="text-sm">{lead.phone || '—'}</TableCell>
+                    <TableCell className="text-sm">{formatPhone(lead.phone)}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={cn(
-                            'h-2.5 w-2.5 rounded-full shadow-sm shrink-0',
-                            phase?.color || 'bg-slate-300',
-                          )}
-                        />
-                        <span className="text-sm font-medium">
-                          {phase?.title || 'Desconhecido'}
-                        </span>
-                      </div>
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          'text-white hover:opacity-90',
+                          phase?.color || 'bg-slate-500',
+                        )}
+                      >
+                        {phase?.title || 'Desconhecido'}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1.5 flex-wrap">
@@ -239,9 +245,6 @@ export default function Customers() {
                           </Badge>
                         ))}
                       </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground text-center">
-                      {formatDate(lead.created)}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
