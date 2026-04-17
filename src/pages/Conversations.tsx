@@ -1,0 +1,372 @@
+import { useState, useEffect, useRef } from 'react'
+import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Switch } from '@/components/ui/switch'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Search, Send, Bot, User, ArrowLeft, CheckCircle2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+const initialContacts = [
+  {
+    id: 1,
+    name: 'João Silva',
+    number: '+55 11 98765-4321',
+    lastMessage: 'Sim, gostaria de saber mais.',
+    time: '10:42',
+    unread: 2,
+    aiPaused: false,
+  },
+  {
+    id: 2,
+    name: 'Maria Oliveira',
+    number: '+55 21 91234-5678',
+    lastMessage: 'Qual o valor do plano premium?',
+    time: '09:15',
+    unread: 0,
+    aiPaused: true,
+  },
+  {
+    id: 3,
+    name: 'Carlos Santos',
+    number: '+55 31 99876-5432',
+    lastMessage: 'Obrigado pela ajuda!',
+    time: 'Ontem',
+    unread: 0,
+    aiPaused: false,
+  },
+  {
+    id: 4,
+    name: 'Ana Costa',
+    number: '+55 41 98888-7777',
+    lastMessage: 'Vou analisar e retorno.',
+    time: 'Ontem',
+    unread: 0,
+    aiPaused: false,
+  },
+  {
+    id: 5,
+    name: 'Pedro Mendes',
+    number: '+55 51 97777-6666',
+    lastMessage: 'Tem algum desconto para pagamento anual?',
+    time: 'Ontem',
+    unread: 0,
+    aiPaused: false,
+  },
+]
+
+const initialMessages = [
+  { id: 1, sender: 'user', text: 'Olá, bom dia!', time: '10:30' },
+  {
+    id: 2,
+    sender: 'ai',
+    text: 'Olá! Sou a assistente virtual da empresa. Como posso te ajudar hoje?',
+    time: '10:30',
+  },
+  { id: 3, sender: 'user', text: 'Gostaria de saber sobre os planos disponíveis.', time: '10:35' },
+  {
+    id: 4,
+    sender: 'ai',
+    text: 'Temos três planos principais: Básico, Pro e Enterprise. O plano Básico começa em R$99/mês. Quer que eu envie o PDF com todos os detalhes?',
+    time: '10:35',
+  },
+  { id: 5, sender: 'user', text: 'Sim, gostaria de saber mais.', time: '10:42' },
+]
+
+export default function Conversations() {
+  const [contacts, setContacts] = useState(initialContacts)
+  const [activeContactId, setActiveContactId] = useState<number | null>(1)
+  const [messages, setMessages] = useState(initialMessages)
+  const [inputValue, setInputValue] = useState('')
+  const [showMobileChat, setShowMobileChat] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const activeContact = contacts.find((c) => c.id === activeContactId)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, activeContactId])
+
+  const handleSelectContact = (id: number) => {
+    setActiveContactId(id)
+    setShowMobileChat(true)
+    setContacts(contacts.map((c) => (c.id === id ? { ...c, unread: 0 } : c)))
+    // Reset mock messages when switching contacts for demonstration
+    setMessages(initialMessages.map((m) => ({ ...m, id: Math.random() })))
+  }
+
+  const handleToggleAi = (checked: boolean) => {
+    if (!activeContact) return
+    setContacts(contacts.map((c) => (c.id === activeContact.id ? { ...c, aiPaused: checked } : c)))
+  }
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!inputValue.trim()) return
+
+    const messageToSend = {
+      id: Math.random(),
+      sender: 'agent',
+      text: inputValue,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }
+    setMessages([...messages, messageToSend])
+    setInputValue('')
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto h-[calc(100vh-6rem)] md:h-[calc(100vh-8rem)]">
+      <div className="flex h-full overflow-hidden rounded-xl border bg-card shadow-elevation relative">
+        {/* Left Panel - Contacts List */}
+        <div
+          className={cn(
+            'w-full md:w-80 lg:w-96 border-r flex flex-col absolute md:relative inset-0 z-10 bg-card transition-transform duration-300 ease-apple',
+            showMobileChat ? '-translate-x-full md:translate-x-0' : 'translate-x-0',
+          )}
+        >
+          <div className="p-4 border-b">
+            <h2 className="font-bold text-xl text-secondary mb-4">Conversas</h2>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar contatos..."
+                className="pl-9 bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary rounded-full h-9"
+              />
+            </div>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-2 space-y-1">
+              {contacts.map((contact) => (
+                <button
+                  key={contact.id}
+                  onClick={() => handleSelectContact(contact.id)}
+                  className={cn(
+                    'w-full flex items-start gap-3 p-3 rounded-lg text-left transition-all hover:bg-accent focus:outline-none',
+                    activeContactId === contact.id ? 'bg-accent shadow-subtle' : 'bg-transparent',
+                  )}
+                >
+                  <Avatar className="h-12 w-12 border-2 border-background shadow-sm shrink-0">
+                    <AvatarImage
+                      src={`https://img.usecurling.com/ppl/thumbnail?seed=${contact.id}`}
+                    />
+                    <AvatarFallback>{contact.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm text-secondary truncate pr-2">
+                        {contact.name}
+                      </span>
+                      <span
+                        className={cn(
+                          'text-xs whitespace-nowrap',
+                          contact.unread > 0 ? 'text-primary font-medium' : 'text-muted-foreground',
+                        )}
+                      >
+                        {contact.time}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1 gap-2">
+                      <span
+                        className={cn(
+                          'text-xs truncate',
+                          contact.unread > 0
+                            ? 'font-medium text-foreground'
+                            : 'text-muted-foreground',
+                        )}
+                      >
+                        {contact.lastMessage}
+                      </span>
+                      {contact.unread > 0 && (
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shrink-0 shadow-sm animate-pulse">
+                          {contact.unread}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+
+        {/* Right Panel - Chat Window */}
+        <div
+          className={cn(
+            'flex-1 flex flex-col absolute md:relative inset-0 z-20 bg-[#F0F2F5] dark:bg-card transition-transform duration-300 ease-apple',
+            showMobileChat ? 'translate-x-0' : 'translate-x-full md:translate-x-0',
+          )}
+        >
+          {activeContact ? (
+            <>
+              {/* Chat Header */}
+              <div className="h-16 px-4 flex items-center justify-between border-b bg-card shrink-0 shadow-sm z-10">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden -ml-2 hover:bg-accent"
+                    onClick={() => setShowMobileChat(false)}
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                  <Avatar className="h-10 w-10 border shadow-sm">
+                    <AvatarImage
+                      src={`https://img.usecurling.com/ppl/thumbnail?seed=${activeContact.id}`}
+                    />
+                    <AvatarFallback>{activeContact.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="font-semibold text-sm text-secondary leading-tight">
+                      {activeContact.name}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">{activeContact.number}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 border rounded-full px-3 py-1.5 bg-background shadow-sm hover:shadow-md transition-shadow">
+                  <Label
+                    htmlFor="pause-ai"
+                    className="text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                  >
+                    {activeContact.aiPaused ? (
+                      <span className="text-amber-600 flex items-center gap-1">
+                        <User className="h-3.5 w-3.5" /> Atendimento Humano
+                      </span>
+                    ) : (
+                      <span className="text-primary flex items-center gap-1">
+                        <Bot className="h-3.5 w-3.5" /> IA Ativa
+                      </span>
+                    )}
+                  </Label>
+                  <Switch
+                    id="pause-ai"
+                    checked={activeContact.aiPaused}
+                    onCheckedChange={handleToggleAi}
+                    className="data-[state=checked]:bg-amber-500 ml-1"
+                  />
+                </div>
+              </div>
+
+              {/* Messages Area */}
+              <ScrollArea className="flex-1 p-4 relative bg-[#e5ddd5] dark:bg-[#0b141a]">
+                <div
+                  className="absolute inset-0 opacity-[0.06] dark:opacity-[0.03] pointer-events-none"
+                  style={{
+                    backgroundImage:
+                      'url("https://img.usecurling.com/p/800/600?q=texture&color=gray&dpr=1")',
+                    backgroundSize: 'cover',
+                  }}
+                ></div>
+                <div className="space-y-3 max-w-3xl mx-auto pb-4 relative z-10">
+                  {/* Date badge */}
+                  <div className="flex justify-center mb-6">
+                    <span className="bg-background/80 dark:bg-card/80 backdrop-blur text-xs px-3 py-1 rounded-lg text-muted-foreground shadow-sm">
+                      Hoje
+                    </span>
+                  </div>
+
+                  {messages.map((msg) => {
+                    const isClient = msg.sender === 'user'
+                    return (
+                      <div
+                        key={msg.id}
+                        className={cn('flex', isClient ? 'justify-start' : 'justify-end')}
+                      >
+                        <div
+                          className={cn(
+                            'max-w-[85%] sm:max-w-[75%] rounded-2xl px-3.5 py-2 shadow-sm relative group',
+                            isClient
+                              ? 'bg-card text-foreground rounded-tl-sm'
+                              : 'bg-[#d9fdd3] dark:bg-[#005c4b] text-foreground rounded-tr-sm',
+                          )}
+                        >
+                          {!isClient && msg.sender === 'ai' && (
+                            <div className="flex items-center gap-1 mb-1 opacity-70">
+                              <Bot className="h-3 w-3 text-primary dark:text-green-400" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-primary dark:text-green-400">
+                                Assistente IA
+                              </span>
+                            </div>
+                          )}
+                          {!isClient && msg.sender === 'agent' && (
+                            <div className="flex items-center gap-1 mb-1 opacity-70">
+                              <User className="h-3 w-3 text-amber-600" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                                Atendente Humano
+                              </span>
+                            </div>
+                          )}
+                          <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+                            {msg.text}
+                          </p>
+                          <div className="flex items-center justify-end gap-1 mt-1 -mb-1">
+                            <span className="text-[10px] text-muted-foreground opacity-80">
+                              {msg.time}
+                            </span>
+                            {!isClient && (
+                              <CheckCircle2 className="h-3 w-3 text-primary/80 dark:text-green-400" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
+
+              {/* Input Area */}
+              <div className="p-3 sm:p-4 bg-card border-t shrink-0">
+                <form
+                  onSubmit={handleSendMessage}
+                  className="flex items-end gap-2 max-w-3xl mx-auto"
+                >
+                  <div className="flex-1 relative">
+                    <Input
+                      placeholder={
+                        activeContact.aiPaused
+                          ? 'Digite sua mensagem...'
+                          : 'Pause a IA no topo para enviar mensagens manualmente.'
+                      }
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      disabled={!activeContact.aiPaused}
+                      className={cn(
+                        'w-full bg-muted/50 border-none rounded-2xl px-5 py-3 h-auto min-h-[48px] shadow-inner',
+                        !activeContact.aiPaused && 'opacity-60 cursor-not-allowed',
+                      )}
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!activeContact.aiPaused || !inputValue.trim()}
+                    className="h-12 w-12 rounded-full shrink-0 shadow-md hover:scale-105 transition-transform"
+                  >
+                    <Send className="h-5 w-5 ml-1" />
+                  </Button>
+                </form>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-card">
+              <div className="h-24 w-24 bg-primary/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                <MessageSquare className="h-12 w-12 text-primary" />
+              </div>
+              <h3 className="text-2xl font-bold text-secondary">Uazapi AI Manager</h3>
+              <p className="text-muted-foreground mt-2 max-w-md">
+                Selecione uma conversa ao lado para visualizar o histórico de interações e gerenciar
+                o comportamento da inteligência artificial.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
