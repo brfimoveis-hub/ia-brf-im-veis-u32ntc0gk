@@ -4,6 +4,7 @@ import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import Index from './pages/Index'
 import CRM from './pages/CRM'
+import Customers from './pages/Customers'
 import Conversations from './pages/Conversations'
 import Settings from './pages/Settings'
 import KnowledgeBase from './pages/KnowledgeBase'
@@ -19,6 +20,7 @@ const App = () => (
         <Route element={<Layout />}>
           <Route path="/" element={<Index />} />
           <Route path="/crm" element={<CRM />} />
+          <Route path="/clientes" element={<Customers />} />
           <Route path="/conversas" element={<Conversations />} />
           <Route path="/conhecimento" element={<KnowledgeBase />} />
           <Route path="/configuracoes" element={<Settings />} />
