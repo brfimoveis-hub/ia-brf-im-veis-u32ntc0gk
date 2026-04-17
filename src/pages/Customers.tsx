@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Table,
   TableBody,
@@ -23,11 +23,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { Search, Plus, Upload, MoreHorizontal, Edit, Trash2, Users } from 'lucide-react'
+import { Search, Plus, Upload, MoreHorizontal, Edit, Trash2, Users, Loader2 } from 'lucide-react'
 import { CsvImportDialog } from '@/components/customers/CsvImportDialog'
 import { LeadDialog } from '@/components/customers/LeadDialog'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { getCustomers, deleteCustomer, createCustomer, Customer } from '@/services/customers'
+import { useRealtime } from '@/hooks/use-realtime'
 
 const PHASES = [
   { id: 1, title: 'Lead Novo', color: 'bg-slate-500' },
@@ -42,92 +44,89 @@ const PHASES = [
   { id: 10, title: 'Fechamento', color: 'bg-green-500' },
 ]
 
-const INITIAL_LEADS = [
-  {
-    id: '1',
-    name: 'João Silva',
-    phone: '+55 11 98765-4321',
-    email: 'joao@example.com',
-    phaseId: 1,
-    tags: ['B2B'],
-    lastInteraction: 'Há 10 min',
-  },
-  {
-    id: '2',
-    name: 'Maria Oliveira',
-    phone: '+55 21 91234-5678',
-    email: 'maria@example.com',
-    phaseId: 4,
-    tags: ['Importante'],
-    lastInteraction: 'Há 2h',
-  },
-  {
-    id: '3',
-    name: 'Carlos Santos',
-    phone: '+55 31 99876-5432',
-    email: 'carlos@example.com',
-    phaseId: 6,
-    tags: ['Varejo'],
-    lastInteraction: 'Ontem',
-  },
-  {
-    id: '4',
-    name: 'Ana Costa',
-    phone: '+55 41 98888-7777',
-    email: 'ana@example.com',
-    phaseId: 8,
-    tags: ['Enterprise'],
-    lastInteraction: 'Ontem',
-  },
-  {
-    id: '5',
-    name: 'Pedro Mendes',
-    phone: '+55 51 97777-6666',
-    email: 'pedro@example.com',
-    phaseId: 2,
-    tags: ['B2B'],
-    lastInteraction: 'Há 1 dia',
-  },
-]
+const getTimeAgo = (dateStr: string) => {
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return 'Desconhecido'
+  const diff = Date.now() - date.getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 60) return `Há ${minutes || 1} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `Há ${hours}h`
+  const days = Math.floor(hours / 24)
+  return `Há ${days} dia${days > 1 ? 's' : ''}`
+}
 
 export default function Customers() {
-  const [leads, setLeads] = useState(INITIAL_LEADS)
+  const [leads, setLeads] = useState<Customer[]>([])
   const [search, setSearch] = useState('')
   const [phaseFilter, setPhaseFilter] = useState('all')
+  const [loading, setLoading] = useState(true)
 
   const [csvOpen, setCsvOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
-  const [editingLead, setEditingLead] = useState<any>(null)
+  const [editingLead, setEditingLead] = useState<Customer | null>(null)
   const { toast } = useToast()
+
+  const loadData = async () => {
+    try {
+      const data = await getCustomers()
+      setLeads(data)
+    } catch (err) {
+      toast({ title: 'Erro ao carregar clientes', variant: 'destructive' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  useRealtime('customers', () => {
+    loadData()
+  })
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
       const matchesSearch =
         lead.name.toLowerCase().includes(search.toLowerCase()) ||
-        lead.phone.includes(search) ||
-        lead.email.toLowerCase().includes(search.toLowerCase())
-      const matchesPhase = phaseFilter === 'all' || lead.phaseId.toString() === phaseFilter
+        (lead.phone && lead.phone.includes(search)) ||
+        (lead.email && lead.email.toLowerCase().includes(search.toLowerCase()))
+      const matchesPhase = phaseFilter === 'all' || lead.status === phaseFilter
       return matchesSearch && matchesPhase
     })
   }, [leads, search, phaseFilter])
 
-  const handleSaveLead = (lead: any) => {
-    setLeads((prev) => {
-      const exists = prev.find((l) => l.id === lead.id)
-      if (exists) return prev.map((l) => (l.id === lead.id ? lead : l))
-      return [lead, ...prev]
-    })
-    toast({ title: 'Lead salvo com sucesso!' })
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteCustomer(id)
+      toast({ title: 'Lead removido' })
+    } catch (err) {
+      toast({ title: 'Erro ao remover lead', variant: 'destructive' })
+    }
   }
 
-  const handleDelete = (id: string) => {
-    setLeads((prev) => prev.filter((l) => l.id !== id))
-    toast({ title: 'Lead removido' })
-  }
-
-  const handleImport = (newLeads: any[]) => {
-    setLeads((prev) => [...newLeads, ...prev])
-    toast({ title: `${newLeads.length} leads importados com sucesso!` })
+  const handleImport = async (newLeads: any[]) => {
+    let successCount = 0
+    for (const lead of newLeads) {
+      try {
+        await createCustomer({
+          name: lead.name,
+          email: lead.email,
+          phone: lead.phone,
+          status: '1',
+          tags: ['Importado'],
+        })
+        successCount++
+      } catch (err) {
+        console.error('Error importing lead', err)
+      }
+    }
+    if (successCount > 0) {
+      toast({ title: `${successCount} leads importados com sucesso!` })
+    } else {
+      toast({ title: 'Nenhum lead importado', variant: 'destructive' })
+    }
   }
 
   return (
@@ -198,7 +197,13 @@ export default function Customers() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredLeads.length === 0 ? (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                </TableCell>
+              </TableRow>
+            ) : filteredLeads.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                   Nenhum lead encontrado.
@@ -206,13 +211,13 @@ export default function Customers() {
               </TableRow>
             ) : (
               filteredLeads.map((lead) => {
-                const phase = PHASES.find((p) => p.id === lead.phaseId)
+                const phase = PHASES.find((p) => p.id.toString() === lead.status)
                 return (
                   <TableRow key={lead.id} className="group">
                     <TableCell className="font-medium text-secondary">{lead.name}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-sm">{lead.phone}</span>
+                        <span className="text-sm">{lead.phone || '—'}</span>
                         <span className="text-xs text-muted-foreground">{lead.email || '—'}</span>
                       </div>
                     </TableCell>
@@ -221,17 +226,19 @@ export default function Customers() {
                         <div
                           className={cn(
                             'h-2.5 w-2.5 rounded-full shadow-sm shrink-0',
-                            phase?.color,
+                            phase?.color || 'bg-slate-300',
                           )}
                         />
-                        <span className="text-sm font-medium">{phase?.title}</span>
+                        <span className="text-sm font-medium">
+                          {phase?.title || 'Desconhecido'}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1.5 flex-wrap">
-                        {lead.tags.map((tag) => (
+                        {(lead.tags || []).map((tag, idx) => (
                           <Badge
-                            key={tag}
+                            key={idx}
                             variant="secondary"
                             className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20 border-primary/20"
                           >
@@ -241,7 +248,7 @@ export default function Customers() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {lead.lastInteraction}
+                      {getTimeAgo(lead.updated)}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -281,12 +288,7 @@ export default function Customers() {
       </div>
 
       <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} onImport={handleImport} />
-      <LeadDialog
-        open={leadOpen}
-        onOpenChange={setLeadOpen}
-        onSave={handleSaveLead}
-        defaultValues={editingLead}
-      />
+      <LeadDialog open={leadOpen} onOpenChange={setLeadOpen} defaultValues={editingLead} />
     </div>
   )
 }

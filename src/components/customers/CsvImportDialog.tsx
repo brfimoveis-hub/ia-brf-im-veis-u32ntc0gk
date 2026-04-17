@@ -49,14 +49,10 @@ export function CsvImportDialog({
     if (!data.length) return
     const rows = data.slice(1)
 
-    const mappedData = rows.map((row, i) => ({
-      id: `imported-${Date.now()}-${i}`,
+    const mappedData = rows.map((row) => ({
       name: mapping.name !== undefined ? row[mapping.name] : 'Desconhecido',
       phone: mapping.phone !== undefined ? row[mapping.phone] : '',
       email: mapping.email !== undefined ? row[mapping.email] : '',
-      phaseId: 1,
-      tags: ['Importado'],
-      lastInteraction: 'Nunca',
     }))
 
     onImport(mappedData)
@@ -85,14 +81,6 @@ export function CsvImportDialog({
             Faça upload do seu arquivo CSV e mapeie as colunas para importar os leads.
           </DialogDescription>
         </DialogHeader>
-
-        <Alert variant="destructive" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
-          <AlertCircle className="h-4 w-4" color="currentColor" />
-          <AlertDescription>
-            Como não há banco de dados conectado, os dados importados serão perdidos ao recarregar a
-            página.
-          </AlertDescription>
-        </Alert>
 
         {!file ? (
           <div

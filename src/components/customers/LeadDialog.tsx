@@ -10,48 +10,68 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { createCustomer, updateCustomer, Customer } from '@/services/customers'
+import { extractFieldErrors } from '@/lib/pocketbase/errors'
+import { useToast } from '@/hooks/use-toast'
+import { Loader2 } from 'lucide-react'
 
 export function LeadDialog({
   open,
   onOpenChange,
-  onSave,
   defaultValues,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
-  onSave: (data: any) => void
-  defaultValues?: any
+  defaultValues?: Customer | null
 }) {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
     email: '',
+    status: '1',
   })
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     if (open) {
+      setErrors({})
       if (defaultValues) {
         setFormData({
           name: defaultValues.name || '',
           phone: defaultValues.phone || '',
           email: defaultValues.email || '',
+          status: defaultValues.status || '1',
         })
       } else {
-        setFormData({ name: '', phone: '', email: '' })
+        setFormData({ name: '', phone: '', email: '', status: '1' })
       }
     }
   }, [defaultValues, open])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onSave({
-      id: defaultValues?.id || `lead-${Date.now()}`,
-      ...formData,
-      phaseId: defaultValues?.phaseId || 1,
-      tags: defaultValues?.tags || ['Manual'],
-      lastInteraction: defaultValues?.lastInteraction || 'Agora',
-    })
-    onOpenChange(false)
+    setLoading(true)
+    setErrors({})
+    try {
+      if (defaultValues?.id) {
+        await updateCustomer(defaultValues.id, formData)
+        toast({ title: 'Lead atualizado com sucesso!' })
+      } else {
+        await createCustomer({ ...formData, tags: ['Manual'] })
+        toast({ title: 'Lead adicionado com sucesso!' })
+      }
+      onOpenChange(false)
+    } catch (err) {
+      const fieldErrors = extractFieldErrors(err)
+      setErrors(fieldErrors)
+      if (Object.keys(fieldErrors).length === 0) {
+        toast({ title: 'Erro ao salvar', variant: 'destructive' })
+      }
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -74,17 +94,20 @@ export function LeadDialog({
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Ex: João da Silva"
+              className={errors.name ? 'border-red-500' : ''}
             />
+            {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="phone">Telefone</Label>
             <Input
               id="phone"
-              required
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               placeholder="Ex: +55 11 99999-9999"
+              className={errors.phone ? 'border-red-500' : ''}
             />
+            {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
@@ -94,13 +117,18 @@ export function LeadDialog({
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="Ex: joao@email.com"
+              className={errors.email ? 'border-red-500' : ''}
             />
+            {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
           </div>
           <DialogFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit">Salvar</Button>
+            <Button type="submit" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
