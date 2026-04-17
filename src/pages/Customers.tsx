@@ -44,16 +44,10 @@ const PHASES = [
   { id: 10, title: 'Fechamento', color: 'bg-green-500' },
 ]
 
-const getTimeAgo = (dateStr: string) => {
+const formatDate = (dateStr: string) => {
   const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return 'Desconhecido'
-  const diff = Date.now() - date.getTime()
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 60) return `Há ${minutes || 1} min`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `Há ${hours}h`
-  const days = Math.floor(hours / 24)
-  return `Há ${days} dia${days > 1 ? 's' : ''}`
+  if (isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('pt-BR')
 }
 
 export default function Customers() {
@@ -189,23 +183,24 @@ export default function Customers() {
           <TableHeader className="bg-muted sticky top-0 z-10 shadow-sm">
             <TableRow>
               <TableHead>Nome</TableHead>
-              <TableHead>Contato</TableHead>
-              <TableHead>Status da Cadência</TableHead>
+              <TableHead>E-mail</TableHead>
+              <TableHead>Telefone</TableHead>
+              <TableHead>Fase/Status</TableHead>
               <TableHead>Tags</TableHead>
-              <TableHead>Última Interação</TableHead>
+              <TableHead className="text-center">Data de Cadastro</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center">
+                <TableCell colSpan={7} className="h-32 text-center">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : filteredLeads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                   Nenhum lead encontrado.
                 </TableCell>
               </TableRow>
@@ -215,12 +210,10 @@ export default function Customers() {
                 return (
                   <TableRow key={lead.id} className="group">
                     <TableCell className="font-medium text-secondary">{lead.name}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-sm">{lead.phone || '—'}</span>
-                        <span className="text-xs text-muted-foreground">{lead.email || '—'}</span>
-                      </div>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {lead.email || '—'}
                     </TableCell>
+                    <TableCell className="text-sm">{lead.phone || '—'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div
@@ -247,8 +240,8 @@ export default function Customers() {
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {getTimeAgo(lead.updated)}
+                    <TableCell className="text-sm text-muted-foreground text-center">
+                      {formatDate(lead.created)}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
