@@ -19,6 +19,7 @@ import {
   Bot,
   Kanban,
   AlertTriangle,
+  BookOpen,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -27,6 +28,7 @@ const menuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'CRM Pipeline', url: '/crm', icon: Kanban },
   { title: 'Conversas', url: '/conversas', icon: MessageSquare },
+  { title: 'Base de Conhecimento', url: '/conhecimento', icon: BookOpen },
   { title: 'Configurações', url: '/configuracoes', icon: SettingsIcon },
   { title: 'Logs', url: '#', icon: Activity },
 ]

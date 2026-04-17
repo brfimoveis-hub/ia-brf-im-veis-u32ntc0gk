@@ -6,6 +6,7 @@ import Index from './pages/Index'
 import CRM from './pages/CRM'
 import Conversations from './pages/Conversations'
 import Settings from './pages/Settings'
+import KnowledgeBase from './pages/KnowledgeBase'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -19,6 +20,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/crm" element={<CRM />} />
           <Route path="/conversas" element={<Conversations />} />
+          <Route path="/conhecimento" element={<KnowledgeBase />} />
           <Route path="/configuracoes" element={<Settings />} />
         </Route>
         <Route path="*" element={<NotFound />} />
