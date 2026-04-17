@@ -17,11 +17,15 @@ import {
   Settings as SettingsIcon,
   Activity,
   Bot,
+  Kanban,
+  AlertTriangle,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 const menuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+  { title: 'CRM Pipeline', url: '/crm', icon: Kanban },
   { title: 'Conversas', url: '/conversas', icon: MessageSquare },
   { title: 'Configurações', url: '/configuracoes', icon: SettingsIcon },
   { title: 'Logs', url: '#', icon: Activity },
@@ -92,8 +96,24 @@ export default function Layout() {
             </Avatar>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 animate-fade-in">
-          <Outlet />
+        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 animate-fade-in flex flex-col relative">
+          <Alert
+            variant="destructive"
+            className="mb-6 bg-amber-500/10 text-amber-600 border-amber-500/20 shadow-sm shrink-0"
+          >
+            <AlertTriangle className="h-4 w-4" color="currentColor" />
+            <AlertTitle className="text-amber-800 font-semibold">
+              Aviso de Volatilidade de Dados
+            </AlertTitle>
+            <AlertDescription className="text-amber-700/90 mt-1 text-sm">
+              Nenhuma conexão com banco de dados estabelecida. Os dados exibidos (pipeline e
+              conversas) são locais e serão redefinidos ao recarregar a página. Conecte ao Supabase
+              ou Skip Cloud para salvar o progresso dos leads de forma permanente.
+            </AlertDescription>
+          </Alert>
+          <div className="flex-1 relative min-h-0">
+            <Outlet />
+          </div>
         </main>
       </div>
     </SidebarProvider>

@@ -5,7 +5,18 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Search, Send, Bot, User, ArrowLeft, CheckCircle2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import {
+  Search,
+  Send,
+  Bot,
+  User,
+  ArrowLeft,
+  CheckCircle2,
+  Sparkles,
+  TrendingUp,
+  Info,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const initialContacts = [
@@ -17,6 +28,8 @@ const initialContacts = [
     time: '10:42',
     unread: 2,
     aiPaused: false,
+    phase: 'Lead Novo',
+    sentiment: 'Curioso',
   },
   {
     id: 2,
@@ -26,6 +39,8 @@ const initialContacts = [
     time: '09:15',
     unread: 0,
     aiPaused: true,
+    phase: 'Qualificação',
+    sentiment: 'Engajado',
   },
   {
     id: 3,
@@ -35,49 +50,57 @@ const initialContacts = [
     time: 'Ontem',
     unread: 0,
     aiPaused: false,
-  },
-  {
-    id: 4,
-    name: 'Ana Costa',
-    number: '+55 41 98888-7777',
-    lastMessage: 'Vou analisar e retorno.',
-    time: 'Ontem',
-    unread: 0,
-    aiPaused: false,
-  },
-  {
-    id: 5,
-    name: 'Pedro Mendes',
-    number: '+55 51 97777-6666',
-    lastMessage: 'Tem algum desconto para pagamento anual?',
-    time: 'Ontem',
-    unread: 0,
-    aiPaused: false,
+    phase: 'Demo Agendada',
+    sentiment: 'Muito Interessado',
   },
 ]
 
-const initialMessages = [
-  { id: 1, sender: 'user', text: 'Olá, bom dia!', time: '10:30' },
+const getMockMessages = () => [
+  { id: 1, sender: 'user', text: 'Olá, bom dia!', time: '10:30', isLog: false },
   {
     id: 2,
     sender: 'ai',
     text: 'Olá! Sou a assistente virtual da empresa. Como posso te ajudar hoje?',
     time: '10:30',
+    isLog: false,
   },
-  { id: 3, sender: 'user', text: 'Gostaria de saber sobre os planos disponíveis.', time: '10:35' },
+  {
+    id: 3,
+    sender: 'user',
+    text: 'Gostaria de saber sobre os planos disponíveis.',
+    time: '10:35',
+    isLog: false,
+  },
+  {
+    id: 100,
+    sender: 'system',
+    text: 'IA analisou a intenção e moveu o lead para "Qualificação".',
+    time: '10:35',
+    isLog: true,
+    type: 'phase_change',
+  },
   {
     id: 4,
     sender: 'ai',
     text: 'Temos três planos principais: Básico, Pro e Enterprise. O plano Básico começa em R$99/mês. Quer que eu envie o PDF com todos os detalhes?',
-    time: '10:35',
+    time: '10:36',
+    isLog: false,
   },
-  { id: 5, sender: 'user', text: 'Sim, gostaria de saber mais.', time: '10:42' },
+  { id: 5, sender: 'user', text: 'Sim, gostaria de saber mais.', time: '10:42', isLog: false },
+  {
+    id: 101,
+    sender: 'system',
+    text: 'Sentimento atualizado para "Curioso". Próximo passo sugerido: Enviar material.',
+    time: '10:42',
+    isLog: true,
+    type: 'sentiment_change',
+  },
 ]
 
 export default function Conversations() {
   const [contacts, setContacts] = useState(initialContacts)
   const [activeContactId, setActiveContactId] = useState<number | null>(1)
-  const [messages, setMessages] = useState(initialMessages)
+  const [messages, setMessages] = useState(getMockMessages())
   const [inputValue, setInputValue] = useState('')
   const [showMobileChat, setShowMobileChat] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -92,12 +115,29 @@ export default function Conversations() {
     scrollToBottom()
   }, [messages, activeContactId])
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!activeContactId || activeContact?.aiPaused) return
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Math.random(),
+          sender: 'ai',
+          text: 'Entendi! Vou separar o material e te envio em instantes. Há algo mais que eu possa adiantar para você?',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isLog: false,
+        },
+      ])
+    }, 45000)
+    return () => clearInterval(timer)
+  }, [activeContactId, activeContact?.aiPaused])
+
   const handleSelectContact = (id: number) => {
     setActiveContactId(id)
     setShowMobileChat(true)
     setContacts(contacts.map((c) => (c.id === id ? { ...c, unread: 0 } : c)))
-    // Reset mock messages when switching contacts for demonstration
-    setMessages(initialMessages.map((m) => ({ ...m, id: Math.random() })))
+    setMessages(getMockMessages().map((m) => ({ ...m, id: Math.random() })))
   }
 
   const handleToggleAi = (checked: boolean) => {
@@ -114,15 +154,15 @@ export default function Conversations() {
       sender: 'agent',
       text: inputValue,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isLog: false,
     }
     setMessages([...messages, messageToSend])
     setInputValue('')
   }
 
   return (
-    <div className="max-w-6xl mx-auto h-[calc(100vh-6rem)] md:h-[calc(100vh-8rem)]">
+    <div className="max-w-6xl mx-auto h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)]">
       <div className="flex h-full overflow-hidden rounded-xl border bg-card shadow-elevation relative">
-        {/* Left Panel - Contacts List */}
         <div
           className={cn(
             'w-full md:w-80 lg:w-96 border-r flex flex-col absolute md:relative inset-0 z-10 bg-card transition-transform duration-300 ease-apple',
@@ -187,6 +227,21 @@ export default function Conversations() {
                         </span>
                       )}
                     </div>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] h-4 px-1.5 bg-muted/50 font-normal"
+                      >
+                        {contact.phase}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] h-4 px-1.5 border-primary/20 text-primary bg-primary/5 font-normal"
+                      >
+                        <Sparkles className="h-2 w-2 mr-1" />
+                        {contact.sentiment}
+                      </Badge>
+                    </div>
                   </div>
                 </button>
               ))}
@@ -194,7 +249,6 @@ export default function Conversations() {
           </ScrollArea>
         </div>
 
-        {/* Right Panel - Chat Window */}
         <div
           className={cn(
             'flex-1 flex flex-col absolute md:relative inset-0 z-20 bg-[#F0F2F5] dark:bg-card transition-transform duration-300 ease-apple',
@@ -203,7 +257,6 @@ export default function Conversations() {
         >
           {activeContact ? (
             <>
-              {/* Chat Header */}
               <div className="h-16 px-4 flex items-center justify-between border-b bg-card shrink-0 shadow-sm z-10">
                 <div className="flex items-center gap-3">
                   <Button
@@ -228,31 +281,39 @@ export default function Conversations() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 border rounded-full px-3 py-1.5 bg-background shadow-sm hover:shadow-md transition-shadow">
-                  <Label
-                    htmlFor="pause-ai"
-                    className="text-xs font-semibold cursor-pointer flex items-center gap-1.5"
-                  >
-                    {activeContact.aiPaused ? (
-                      <span className="text-amber-600 flex items-center gap-1">
-                        <User className="h-3.5 w-3.5" /> Atendimento Humano
-                      </span>
-                    ) : (
-                      <span className="text-primary flex items-center gap-1">
-                        <Bot className="h-3.5 w-3.5" /> IA Ativa
-                      </span>
-                    )}
-                  </Label>
-                  <Switch
-                    id="pause-ai"
-                    checked={activeContact.aiPaused}
-                    onCheckedChange={handleToggleAi}
-                    className="data-[state=checked]:bg-amber-500 ml-1"
-                  />
+                <div className="flex items-center gap-4">
+                  <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-muted/30 rounded-full border border-border/50">
+                    <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">Fase Atual:</span>
+                    <Badge variant="secondary" className="h-5 text-[10px]">
+                      {activeContact.phase}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2 border rounded-full px-3 py-1.5 bg-background shadow-sm hover:shadow-md transition-shadow">
+                    <Label
+                      htmlFor="pause-ai"
+                      className="text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                    >
+                      {activeContact.aiPaused ? (
+                        <span className="text-amber-600 flex items-center gap-1">
+                          <User className="h-3.5 w-3.5" /> Atendimento Humano
+                        </span>
+                      ) : (
+                        <span className="text-primary flex items-center gap-1">
+                          <Bot className="h-3.5 w-3.5" /> IA Ativa
+                        </span>
+                      )}
+                    </Label>
+                    <Switch
+                      id="pause-ai"
+                      checked={activeContact.aiPaused}
+                      onCheckedChange={handleToggleAi}
+                      className="data-[state=checked]:bg-amber-500 ml-1"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Messages Area */}
               <ScrollArea className="flex-1 p-4 relative bg-[#e5ddd5] dark:bg-[#0b141a]">
                 <div
                   className="absolute inset-0 opacity-[0.06] dark:opacity-[0.03] pointer-events-none"
@@ -263,7 +324,6 @@ export default function Conversations() {
                   }}
                 ></div>
                 <div className="space-y-3 max-w-3xl mx-auto pb-4 relative z-10">
-                  {/* Date badge */}
                   <div className="flex justify-center mb-6">
                     <span className="bg-background/80 dark:bg-card/80 backdrop-blur text-xs px-3 py-1 rounded-lg text-muted-foreground shadow-sm">
                       Hoje
@@ -271,11 +331,29 @@ export default function Conversations() {
                   </div>
 
                   {messages.map((msg) => {
+                    if (msg.isLog) {
+                      return (
+                        <div key={msg.id} className="flex justify-center my-4 animate-fade-in-up">
+                          <div className="bg-primary/10 border border-primary/20 text-primary text-[11px] font-medium px-4 py-2 rounded-xl flex items-center gap-2 max-w-[80%] text-center shadow-sm">
+                            {msg.type === 'phase_change' ? (
+                              <TrendingUp className="h-3.5 w-3.5 shrink-0" />
+                            ) : (
+                              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <span className="leading-relaxed">{msg.text}</span>
+                          </div>
+                        </div>
+                      )
+                    }
+
                     const isClient = msg.sender === 'user'
                     return (
                       <div
                         key={msg.id}
-                        className={cn('flex', isClient ? 'justify-start' : 'justify-end')}
+                        className={cn(
+                          'flex animate-fade-in-up',
+                          isClient ? 'justify-start' : 'justify-end',
+                        )}
                       >
                         <div
                           className={cn(
@@ -320,7 +398,6 @@ export default function Conversations() {
                 </div>
               </ScrollArea>
 
-              {/* Input Area */}
               <div className="p-3 sm:p-4 bg-card border-t shrink-0">
                 <form
                   onSubmit={handleSendMessage}
@@ -356,7 +433,7 @@ export default function Conversations() {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-card">
               <div className="h-24 w-24 bg-primary/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                <MessageSquare className="h-12 w-12 text-primary" />
+                <Info className="h-12 w-12 text-primary" />
               </div>
               <h3 className="text-2xl font-bold text-secondary">Uazapi AI Manager</h3>
               <p className="text-muted-foreground mt-2 max-w-md">

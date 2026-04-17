@@ -44,6 +44,50 @@ export default function Settings() {
       </div>
 
       <div className="grid gap-8">
+        {/* Cadence Management */}
+        <Card className="border-border shadow-elevation overflow-hidden">
+          <div className="h-1 bg-purple-500 w-full"></div>
+          <CardHeader className="bg-muted/10 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-purple-500/10 rounded-xl">
+                <SettingsIcon className="h-6 w-6 text-purple-500" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Gerenciamento de Cadências (Pipeline CRM)</CardTitle>
+                <CardDescription>
+                  Configure os gatilhos e objetivos para as 10 fases do seu processo comercial
+                  automático.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-3 p-4 border rounded-xl bg-muted/20">
+                <Label className="text-sm font-semibold text-secondary">
+                  Gatilho Fase 1 para 2 (Contato Inicial)
+                </Label>
+                <Input defaultValue="Cliente enviou a primeira mensagem (Lead Novo)" />
+                <p className="text-xs text-muted-foreground">
+                  Regra avaliada pela IA para iniciar a primeira tentativa de contato.
+                </p>
+              </div>
+              <div className="space-y-3 p-4 border rounded-xl bg-muted/20">
+                <Label className="text-sm font-semibold text-secondary">
+                  Gatilho Fase 4 para 5 (Qualificação)
+                </Label>
+                <Input defaultValue="IA identificou dor de negócio e confirmou budget" />
+                <p className="text-xs text-muted-foreground">
+                  Critério de sucesso estabelecido para marcar como Qualificado.
+                </p>
+              </div>
+            </div>
+            <Button variant="outline" className="w-full mt-2 font-medium">
+              Ver e editar todas as 10 configurações de cadência
+            </Button>
+          </CardContent>
+        </Card>
+
         {/* AI Personality */}
         <Card className="border-border shadow-elevation overflow-hidden">
           <div className="h-1 bg-primary w-full"></div>
