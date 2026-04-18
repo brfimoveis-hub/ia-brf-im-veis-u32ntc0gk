@@ -245,12 +245,12 @@ export default function Customers() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            variant="destructive"
+            variant="default"
             onClick={() => setZapVivaOpen(true)}
             disabled={importing}
             className="gap-2"
           >
-            <RefreshCw className="h-4 w-4" /> Reset & Import Zap/Viva Leads
+            <Upload className="h-4 w-4" /> Importar Leads (CSV/JSON)
           </Button>
           <Button
             variant="outline"
@@ -263,7 +263,7 @@ export default function Customers() {
             ) : (
               <Upload className="h-4 w-4" />
             )}
-            {importing ? 'Importando...' : 'Importar Contatos'}
+            {importing ? 'Importando...' : 'Importar Google Contacts'}
           </Button>
           <Button
             onClick={() => {

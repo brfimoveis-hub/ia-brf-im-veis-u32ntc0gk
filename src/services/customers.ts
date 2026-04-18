@@ -78,5 +78,9 @@ export const deleteCustomer = async (id: string): Promise<void> => {
 
 export const deleteAllCustomers = async (): Promise<void> => {
   const customers = await getCustomers()
-  await Promise.all(customers.map((c) => pb.collection('customers').delete(c.id)))
+  const batchSize = 50
+  for (let i = 0; i < customers.length; i += batchSize) {
+    const batch = customers.slice(i, i + batchSize)
+    await Promise.all(batch.map((c) => pb.collection('customers').delete(c.id)))
+  }
 }
