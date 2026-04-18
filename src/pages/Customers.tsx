@@ -46,6 +46,11 @@ const PHASES = [
 ]
 
 const COLUMNS = [
+  { key: 'name', label: 'Nome Completo' },
+  { key: 'email_1_value', label: 'E-mail Principal' },
+  { key: 'phone_1_value', label: 'Telefone Principal' },
+  { key: 'org_name', label: 'Organização' },
+  { key: 'tags', label: 'Labels/Tags' },
   { key: 'first_name', label: 'First Name' },
   { key: 'middle_name', label: 'Middle Name' },
   { key: 'last_name', label: 'Last Name' },
@@ -56,19 +61,15 @@ const COLUMNS = [
   { key: 'name_suffix', label: 'Name Suffix' },
   { key: 'nickname', label: 'Nickname' },
   { key: 'file_as', label: 'File As' },
-  { key: 'org_name', label: 'Organization Name' },
   { key: 'org_title', label: 'Organization Title' },
   { key: 'org_dept', label: 'Organization Department' },
   { key: 'birthday', label: 'Birthday' },
   { key: 'notes', label: 'Notes' },
   { key: 'photo', label: 'Photo' },
-  { key: 'tags', label: 'Labels' },
   { key: 'email_1_label', label: 'E-mail 1 - Label' },
-  { key: 'email_1_value', label: 'E-mail 1 - Value' },
   { key: 'email_2_label', label: 'E-mail 2 - Label' },
   { key: 'email_2_value', label: 'E-mail 2 - Value' },
   { key: 'phone_1_label', label: 'Phone 1 - Label' },
-  { key: 'phone_1_value', label: 'Phone 1 - Value' },
   { key: 'phone_2_label', label: 'Phone 2 - Label' },
   { key: 'phone_2_value', label: 'Phone 2 - Value' },
   { key: 'phone_3_label', label: 'Phone 3 - Label' },
@@ -96,6 +97,7 @@ export default function Customers() {
 
   const [csvOpen, setCsvOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
   const { toast } = useToast()
 
@@ -139,19 +141,52 @@ export default function Customers() {
   }
 
   const handleImport = async (newLeads: any[]) => {
+    setImporting(true)
     let successCount = 0
     for (const lead of newLeads) {
       try {
-        await createCustomer({ ...lead, status: '1', tags: ['Importado'] })
+        const nameParts = [lead.first_name, lead.middle_name, lead.last_name].filter(Boolean)
+        const fullName = nameParts.length > 0 ? nameParts.join(' ') : lead.name || 'Desconhecido'
+
+        let tags: string[] = []
+        if (lead.tags) {
+          tags =
+            typeof lead.tags === 'string' ? lead.tags.split(' ::: ').filter(Boolean) : lead.tags
+        } else {
+          tags = ['Importado']
+        }
+
+        let status = '1'
+        const possiblePhaseTitle = tags.find((t: string) =>
+          PHASES.some((p) => p.title.toLowerCase() === t.toLowerCase()),
+        )
+        if (possiblePhaseTitle) {
+          const matchedPhase = PHASES.find(
+            (p) => p.title.toLowerCase() === possiblePhaseTitle.toLowerCase(),
+          )
+          if (matchedPhase) status = matchedPhase.id.toString()
+        }
+
+        const payload = {
+          ...lead,
+          name: fullName,
+          email: lead.email_1_value || lead.email,
+          phone: lead.phone_1_value || lead.phone,
+          status,
+          tags,
+        }
+        await createCustomer(payload)
         successCount++
       } catch (error) {
         console.error('Erro ao importar lead', error)
       }
     }
+    setImporting(false)
     toast({
       title: successCount > 0 ? `${successCount} leads importados!` : 'Nenhum lead importado',
       variant: successCount > 0 ? 'default' : 'destructive',
     })
+    loadData()
   }
 
   return (
@@ -166,8 +201,18 @@ export default function Customers() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" /> Importar CSV
+          <Button
+            variant="outline"
+            onClick={() => setCsvOpen(true)}
+            disabled={importing}
+            className="gap-2"
+          >
+            {importing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+            {importing ? 'Importando...' : 'Importar CSV'}
           </Button>
           <Button
             onClick={() => {
@@ -263,15 +308,23 @@ export default function Customers() {
                             </TableCell>
                           )
                         }
+                        let val = (lead as any)[col.key]
+                        if (col.key === 'name' && !val) {
+                          val =
+                            [lead.first_name, lead.middle_name, lead.last_name]
+                              .filter(Boolean)
+                              .join(' ') || '—'
+                        }
+
                         return (
                           <TableCell
                             key={col.key}
                             className={cn(
                               'whitespace-nowrap text-sm text-muted-foreground',
-                              col.key === 'first_name' && 'font-medium text-foreground',
+                              col.key === 'name' && 'font-medium text-foreground',
                             )}
                           >
-                            {(lead as any)[col.key] || '—'}
+                            {val || '—'}
                           </TableCell>
                         )
                       })}
