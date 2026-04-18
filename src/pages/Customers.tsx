@@ -143,47 +143,60 @@ export default function Customers() {
   const handleImport = async (newLeads: any[]) => {
     setImporting(true)
     let successCount = 0
-    for (const lead of newLeads) {
-      try {
-        const nameParts = [lead.first_name, lead.middle_name, lead.last_name].filter(Boolean)
-        const fullName = nameParts.length > 0 ? nameParts.join(' ') : lead.name || 'Desconhecido'
 
-        let tags: string[] = []
-        if (lead.tags) {
-          tags =
-            typeof lead.tags === 'string' ? lead.tags.split(' ::: ').filter(Boolean) : lead.tags
-        } else {
-          tags = ['Importado']
-        }
+    const batchSize = 50
+    for (let i = 0; i < newLeads.length; i += batchSize) {
+      const batch = newLeads.slice(i, i + batchSize)
+      await Promise.all(
+        batch.map(async (lead) => {
+          try {
+            const nameParts = [lead.first_name, lead.middle_name, lead.last_name].filter(Boolean)
+            const fullName = nameParts.length > 0 ? nameParts.join(' ') : 'Contato Sem Nome'
 
-        let status = '1'
-        const possiblePhaseTitle = tags.find((t: string) =>
-          PHASES.some((p) => p.title.toLowerCase() === t.toLowerCase()),
-        )
-        if (possiblePhaseTitle) {
-          const matchedPhase = PHASES.find(
-            (p) => p.title.toLowerCase() === possiblePhaseTitle.toLowerCase(),
-          )
-          if (matchedPhase) status = matchedPhase.id.toString()
-        }
+            let tags: string[] = []
+            if (lead.tags) {
+              tags =
+                typeof lead.tags === 'string' ? lead.tags.split(' ::: ').filter(Boolean) : lead.tags
+            } else {
+              tags = ['Importado']
+            }
 
-        const payload = {
-          ...lead,
-          name: fullName,
-          email: lead.email_1_value || lead.email,
-          phone: lead.phone_1_value || lead.phone,
-          status,
-          tags,
-        }
-        await createCustomer(payload)
-        successCount++
-      } catch (error) {
-        console.error('Erro ao importar lead', error)
-      }
+            let status = '1'
+            const possiblePhaseTitle = tags.find((t: string) =>
+              PHASES.some((p) => p.title.toLowerCase() === t.toLowerCase()),
+            )
+            if (possiblePhaseTitle) {
+              const matchedPhase = PHASES.find(
+                (p) => p.title.toLowerCase() === possiblePhaseTitle.toLowerCase(),
+              )
+              if (matchedPhase) status = matchedPhase.id.toString()
+            }
+
+            const payload = {
+              ...lead,
+              name: fullName,
+              email: lead.email_1_value || lead.email,
+              phone: lead.phone_1_value || lead.phone,
+              status,
+              tags,
+            }
+            await createCustomer(payload)
+            successCount++
+          } catch (error) {
+            console.error('Erro ao importar lead', error)
+          }
+        }),
+      )
     }
+
     setImporting(false)
     toast({
-      title: successCount > 0 ? `${successCount} leads importados!` : 'Nenhum lead importado',
+      title:
+        successCount > 0
+          ? `${successCount} contatos importados com sucesso!`
+          : 'Falha na importação',
+      description:
+        successCount === 0 ? 'Nenhum contato foi importado devido a um erro.' : undefined,
       variant: successCount > 0 ? 'default' : 'destructive',
     })
     loadData()
@@ -212,7 +225,7 @@ export default function Customers() {
             ) : (
               <Upload className="h-4 w-4" />
             )}
-            {importing ? 'Importando...' : 'Importar CSV'}
+            {importing ? 'Importando...' : 'Importar'}
           </Button>
           <Button
             onClick={() => {
@@ -221,7 +234,7 @@ export default function Customers() {
             }}
             className="gap-2"
           >
-            <Plus className="h-4 w-4" /> Adicionar Lead
+            <Plus className="h-4 w-4" /> Novo Cliente
           </Button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useToast } from '@/hooks/use-toast'
 import {
   Dialog,
   DialogContent,
@@ -116,6 +117,7 @@ export function CsvImportDialog({
   onOpenChange: (o: boolean) => void
   onImport: (data: any[]) => void
 }) {
+  const { toast } = useToast()
   const [file, setFile] = useState<File | null>(null)
   const [data, setData] = useState<string[][]>([])
   const [mapping, setMapping] = useState<Record<string, number>>({})
@@ -124,20 +126,42 @@ export function CsvImportDialog({
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0]
     if (!selected) return
-    setFile(selected)
-    const text = await selected.text()
-    const rows = parseCSV(text)
-    setData(rows)
 
-    const headers = rows[0] || []
-    const newMapping: Record<string, number> = {}
-    headers.forEach((header, index) => {
-      const cleanHeader = header.trim().replace(/^"|"$/g, '')
-      if (GOOGLE_CONTACTS_MAPPING[cleanHeader]) {
-        newMapping[GOOGLE_CONTACTS_MAPPING[cleanHeader]] = index
+    try {
+      const text = await selected.text()
+      const rows = parseCSV(text)
+
+      const headers = rows[0] || []
+      const newMapping: Record<string, number> = {}
+      headers.forEach((header, index) => {
+        const cleanHeader = header.trim().replace(/^"|"$/g, '')
+        if (GOOGLE_CONTACTS_MAPPING[cleanHeader]) {
+          newMapping[GOOGLE_CONTACTS_MAPPING[cleanHeader]] = index
+        }
+      })
+
+      if (Object.keys(newMapping).length === 0) {
+        toast({
+          title: 'Arquivo inválido',
+          description:
+            'Nenhum cabeçalho compatível com o Google Contacts foi encontrado no arquivo CSV.',
+          variant: 'destructive',
+        })
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
       }
-    })
-    setMapping(newMapping)
+
+      setFile(selected)
+      setData(rows)
+      setMapping(newMapping)
+    } catch (error) {
+      toast({
+        title: 'Erro ao ler arquivo',
+        description: 'Verifique se o arquivo está no formato CSV válido com codificação UTF-8.',
+        variant: 'destructive',
+      })
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   const handleImport = () => {
