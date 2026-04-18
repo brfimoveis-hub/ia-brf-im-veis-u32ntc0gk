@@ -144,7 +144,9 @@ export default function Customers() {
       try {
         await createCustomer({ ...lead, status: '1', tags: ['Importado'] })
         successCount++
-      } catch {}
+      } catch (error) {
+        console.error('Erro ao importar lead', error)
+      }
     }
     toast({
       title: successCount > 0 ? `${successCount} leads importados!` : 'Nenhum lead importado',
