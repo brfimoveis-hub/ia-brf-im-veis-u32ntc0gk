@@ -18,147 +18,118 @@ import {
   Info,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-const initialContacts = [
-  {
-    id: 1,
-    name: 'João Silva',
-    number: '+55 11 98765-4321',
-    lastMessage: 'Sim, gostaria de saber mais.',
-    time: '10:42',
-    unread: 2,
-    aiPaused: false,
-    phase: 'Lead Novo',
-    sentiment: 'Curioso',
-  },
-  {
-    id: 2,
-    name: 'Maria Oliveira',
-    number: '+55 21 91234-5678',
-    lastMessage: 'Qual o valor do plano premium?',
-    time: '09:15',
-    unread: 0,
-    aiPaused: true,
-    phase: 'Qualificação',
-    sentiment: 'Engajado',
-  },
-  {
-    id: 3,
-    name: 'Carlos Santos',
-    number: '+55 31 99876-5432',
-    lastMessage: 'Obrigado pela ajuda!',
-    time: 'Ontem',
-    unread: 0,
-    aiPaused: false,
-    phase: 'Demo Agendada',
-    sentiment: 'Muito Interessado',
-  },
-]
-
-const getMockMessages = () => [
-  { id: 1, sender: 'user', text: 'Olá, bom dia!', time: '10:30', isLog: false },
-  {
-    id: 2,
-    sender: 'ai',
-    text: 'Olá! Sou a assistente virtual da empresa. Como posso te ajudar hoje?',
-    time: '10:30',
-    isLog: false,
-  },
-  {
-    id: 3,
-    sender: 'user',
-    text: 'Gostaria de saber sobre os planos disponíveis.',
-    time: '10:35',
-    isLog: false,
-  },
-  {
-    id: 100,
-    sender: 'system',
-    text: 'IA analisou a intenção e moveu o lead para "Qualificação".',
-    time: '10:35',
-    isLog: true,
-    type: 'phase_change',
-  },
-  {
-    id: 4,
-    sender: 'ai',
-    text: 'Temos três planos principais: Básico, Pro e Enterprise. O plano Básico começa em R$99/mês. Quer que eu envie o PDF com todos os detalhes?',
-    time: '10:36',
-    isLog: false,
-  },
-  { id: 5, sender: 'user', text: 'Sim, gostaria de saber mais.', time: '10:42', isLog: false },
-  {
-    id: 101,
-    sender: 'system',
-    text: 'Sentimento atualizado para "Curioso". Próximo passo sugerido: Enviar material.',
-    time: '10:42',
-    isLog: true,
-    type: 'sentiment_change',
-  },
-]
+import { useRealtime } from '@/hooks/use-realtime'
+import { getCustomers, updateCustomer, type Customer } from '@/services/customers'
+import { createConversation, getConversations, type Conversation } from '@/services/conversations'
 
 export default function Conversations() {
-  const [contacts, setContacts] = useState(initialContacts)
-  const [activeContactId, setActiveContactId] = useState<number | null>(1)
-  const [messages, setMessages] = useState(getMockMessages())
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeContactId, setActiveContactId] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [showMobileChat, setShowMobileChat] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  const activeContact = contacts.find((c) => c.id === activeContactId)
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  const customersRef = useRef(customers)
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, activeContactId])
+    customersRef.current = customers
+  }, [customers])
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (!activeContactId || activeContact?.aiPaused) return
+    const loadAll = async () => {
+      const [custs, convs] = await Promise.all([getCustomers(), getConversations()])
+      setCustomers(custs)
+      setConversations(convs)
+      if (custs.length > 0 && !activeContactId) {
+        setActiveContactId(custs[0].id)
+      }
+    }
+    loadAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Math.random(),
+  useRealtime('customers', (e) => {
+    if (e.action === 'create') setCustomers((prev) => [e.record as unknown as Customer, ...prev])
+    else if (e.action === 'update')
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === e.record.id ? (e.record as unknown as Customer) : c)),
+      )
+    else if (e.action === 'delete') setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
+  })
+
+  useRealtime('conversations', (e) => {
+    if (e.action === 'create')
+      setConversations((prev) => [...prev, e.record as unknown as Conversation])
+    else if (e.action === 'delete')
+      setConversations((prev) => prev.filter((c) => c.id !== e.record.id))
+  })
+
+  const activeContact = customers.find((c) => c.id === activeContactId)
+  const activeMessages = conversations.filter((c) => c.customer_id === activeContactId)
+
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      if (!activeContactId) return
+      const currentCustomer = customersRef.current.find((c) => c.id === activeContactId)
+      if (!currentCustomer || currentCustomer.tags?.includes('ai_paused')) return
+
+      try {
+        await createConversation({
+          customer_id: activeContactId,
+          content:
+            'Entendi! Vou separar o material e te envio em instantes. Há algo mais que eu possa adiantar para você?',
           sender: 'ai',
-          text: 'Entendi! Vou separar o material e te envio em instantes. Há algo mais que eu possa adiantar para você?',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isLog: false,
-        },
-      ])
+        })
+      } catch (e) {
+        console.error(e)
+      }
     }, 45000)
     return () => clearInterval(timer)
-  }, [activeContactId, activeContact?.aiPaused])
+  }, [activeContactId])
 
-  const handleSelectContact = (id: number) => {
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [activeMessages])
+
+  const handleSelectContact = (id: string) => {
     setActiveContactId(id)
     setShowMobileChat(true)
-    setContacts(contacts.map((c) => (c.id === id ? { ...c, unread: 0 } : c)))
-    setMessages(getMockMessages().map((m) => ({ ...m, id: Math.random() })))
   }
 
-  const handleToggleAi = (checked: boolean) => {
+  const handleToggleAi = async (checked: boolean) => {
     if (!activeContact) return
-    setContacts(contacts.map((c) => (c.id === activeContact.id ? { ...c, aiPaused: checked } : c)))
+    const tags = activeContact.tags || []
+    const newTags = checked ? [...tags, 'ai_paused'] : tags.filter((t) => t !== 'ai_paused')
+    await updateCustomer(activeContact.id, { tags: newTags })
   }
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputValue.trim()) return
-
-    const messageToSend = {
-      id: Math.random(),
-      sender: 'agent',
-      text: inputValue,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isLog: false,
-    }
-    setMessages([...messages, messageToSend])
+    if (!inputValue.trim() || !activeContactId) return
+    const text = inputValue
     setInputValue('')
+    await createConversation({
+      customer_id: activeContactId,
+      content: text,
+      sender: 'agent',
+    })
   }
+
+  const contacts = customers.map((c) => {
+    const msgs = conversations.filter((m) => m.customer_id === c.id)
+    const lastMsg = msgs[msgs.length - 1]
+    return {
+      ...c,
+      lastMessage: lastMsg?.content || 'Sem mensagens',
+      time: lastMsg
+        ? new Date(lastMsg.created).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '',
+      aiPaused: c.tags?.includes('ai_paused') || false,
+      phase: c.status || 'Lead Novo',
+      sentiment: 'Curioso',
+      unread: 0,
+    }
+  })
 
   return (
     <div className="max-w-6xl mx-auto h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)]">
@@ -201,31 +172,14 @@ export default function Conversations() {
                       <span className="font-semibold text-sm text-secondary truncate pr-2">
                         {contact.name}
                       </span>
-                      <span
-                        className={cn(
-                          'text-xs whitespace-nowrap',
-                          contact.unread > 0 ? 'text-primary font-medium' : 'text-muted-foreground',
-                        )}
-                      >
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
                         {contact.time}
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-1 gap-2">
-                      <span
-                        className={cn(
-                          'text-xs truncate',
-                          contact.unread > 0
-                            ? 'font-medium text-foreground'
-                            : 'text-muted-foreground',
-                        )}
-                      >
+                      <span className="text-xs truncate text-muted-foreground">
                         {contact.lastMessage}
                       </span>
-                      {contact.unread > 0 && (
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shrink-0 shadow-sm animate-pulse">
-                          {contact.unread}
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-center gap-1.5 mt-2">
                       <Badge
@@ -277,7 +231,9 @@ export default function Conversations() {
                     <h3 className="font-semibold text-sm text-secondary leading-tight">
                       {activeContact.name}
                     </h3>
-                    <p className="text-xs text-muted-foreground">{activeContact.number}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {activeContact.phone || activeContact.email}
+                    </p>
                   </div>
                 </div>
 
@@ -286,7 +242,7 @@ export default function Conversations() {
                     <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="text-xs font-medium text-muted-foreground">Fase Atual:</span>
                     <Badge variant="secondary" className="h-5 text-[10px]">
-                      {activeContact.phase}
+                      {activeContact.status || 'Lead Novo'}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-2 border rounded-full px-3 py-1.5 bg-background shadow-sm hover:shadow-md transition-shadow">
@@ -294,7 +250,7 @@ export default function Conversations() {
                       htmlFor="pause-ai"
                       className="text-xs font-semibold cursor-pointer flex items-center gap-1.5"
                     >
-                      {activeContact.aiPaused ? (
+                      {activeContact.tags?.includes('ai_paused') ? (
                         <span className="text-amber-600 flex items-center gap-1">
                           <User className="h-3.5 w-3.5" /> Atendimento Humano
                         </span>
@@ -306,7 +262,7 @@ export default function Conversations() {
                     </Label>
                     <Switch
                       id="pause-ai"
-                      checked={activeContact.aiPaused}
+                      checked={activeContact.tags?.includes('ai_paused')}
                       onCheckedChange={handleToggleAi}
                       className="data-[state=checked]:bg-amber-500 ml-1"
                     />
@@ -330,23 +286,25 @@ export default function Conversations() {
                     </span>
                   </div>
 
-                  {messages.map((msg) => {
-                    if (msg.isLog) {
+                  {activeMessages.map((msg) => {
+                    const isSystem = msg.sender === 'system'
+                    if (isSystem) {
                       return (
                         <div key={msg.id} className="flex justify-center my-4 animate-fade-in-up">
                           <div className="bg-primary/10 border border-primary/20 text-primary text-[11px] font-medium px-4 py-2 rounded-xl flex items-center gap-2 max-w-[80%] text-center shadow-sm">
-                            {msg.type === 'phase_change' ? (
-                              <TrendingUp className="h-3.5 w-3.5 shrink-0" />
-                            ) : (
-                              <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <span className="leading-relaxed">{msg.text}</span>
+                            <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                            <span className="leading-relaxed">{msg.content}</span>
                           </div>
                         </div>
                       )
                     }
 
-                    const isClient = msg.sender === 'user'
+                    const isClient = msg.sender === 'user' || msg.sender === 'customer'
+                    const displayTime = new Date(msg.created).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+
                     return (
                       <div
                         key={msg.id}
@@ -380,11 +338,11 @@ export default function Conversations() {
                             </div>
                           )}
                           <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
-                            {msg.text}
+                            {msg.content}
                           </p>
                           <div className="flex items-center justify-end gap-1 mt-1 -mb-1">
                             <span className="text-[10px] text-muted-foreground opacity-80">
-                              {msg.time}
+                              {displayTime}
                             </span>
                             {!isClient && (
                               <CheckCircle2 className="h-3 w-3 text-primary/80 dark:text-green-400" />
@@ -406,23 +364,24 @@ export default function Conversations() {
                   <div className="flex-1 relative">
                     <Input
                       placeholder={
-                        activeContact.aiPaused
+                        activeContact.tags?.includes('ai_paused')
                           ? 'Digite sua mensagem...'
                           : 'Pause a IA no topo para enviar mensagens manualmente.'
                       }
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
-                      disabled={!activeContact.aiPaused}
+                      disabled={!activeContact.tags?.includes('ai_paused')}
                       className={cn(
                         'w-full bg-muted/50 border-none rounded-2xl px-5 py-3 h-auto min-h-[48px] shadow-inner',
-                        !activeContact.aiPaused && 'opacity-60 cursor-not-allowed',
+                        !activeContact.tags?.includes('ai_paused') &&
+                          'opacity-60 cursor-not-allowed',
                       )}
                     />
                   </div>
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={!activeContact.aiPaused || !inputValue.trim()}
+                    disabled={!activeContact.tags?.includes('ai_paused') || !inputValue.trim()}
                     className="h-12 w-12 rounded-full shrink-0 shadow-md hover:scale-105 transition-transform"
                   >
                     <Send className="h-5 w-5 ml-1" />

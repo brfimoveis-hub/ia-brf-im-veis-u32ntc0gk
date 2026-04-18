@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-18T00:55:24.669Z",
+  "generatedAt": "2026-04-18T01:21:44.664Z",
   "collections": [
     {
       "name": "users",
@@ -350,6 +350,63 @@
       "indexes": [
         "CREATE INDEX idx_customers_user_id ON customers (user_id)",
         "CREATE INDEX idx_customers_status ON customers (status)"
+      ]
+    },
+    {
+      "name": "conversations",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "customer_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "customers"
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "sender",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_conversations_user_id ON conversations (user_id)",
+        "CREATE INDEX idx_conversations_customer_id ON conversations (customer_id)"
       ]
     }
   ]

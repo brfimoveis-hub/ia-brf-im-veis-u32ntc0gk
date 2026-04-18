@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
@@ -7,6 +7,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Clock, TrendingUp, Sparkles, Bot } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { useRealtime } from '@/hooks/use-realtime'
+import { getCustomers, updateCustomer, type Customer } from '@/services/customers'
+import { createConversation } from '@/services/conversations'
 
 const PHASES = [
   { id: 1, title: 'Lead Novo', color: 'bg-slate-500' },
@@ -21,77 +24,59 @@ const PHASES = [
   { id: 10, title: 'Fechamento', color: 'bg-green-500' },
 ]
 
-const INITIAL_LEADS = [
-  {
-    id: 1,
-    name: 'João Silva',
-    number: '+55 11 98765-4321',
-    phaseId: 1,
-    lastInteraction: 'Há 10 min',
-    sentiment: 'Curioso',
-    nextStep: 'Enviar material introdutório',
-  },
-  {
-    id: 2,
-    name: 'Maria Oliveira',
-    number: '+55 21 91234-5678',
-    phaseId: 4,
-    lastInteraction: 'Há 2h',
-    sentiment: 'Engajado',
-    nextStep: 'Confirmar dores do negócio',
-  },
-  {
-    id: 3,
-    name: 'Carlos Santos',
-    number: '+55 31 99876-5432',
-    phaseId: 6,
-    lastInteraction: 'Ontem',
-    sentiment: 'Muito Interessado',
-    nextStep: 'Preparar ambiente de demo',
-  },
-  {
-    id: 4,
-    name: 'Ana Costa',
-    number: '+55 41 98888-7777',
-    phaseId: 8,
-    lastInteraction: 'Ontem',
-    sentiment: 'Avaliando preços',
-    nextStep: 'Follow-up sobre proposta comercial',
-  },
-  {
-    id: 5,
-    name: 'Pedro Mendes',
-    number: '+55 51 97777-6666',
-    phaseId: 2,
-    lastInteraction: 'Há 1 dia',
-    sentiment: 'Frio',
-    nextStep: 'Tentar nova abordagem',
-  },
-]
-
 export default function CRM() {
-  const [leads, setLeads] = useState(INITIAL_LEADS)
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const customersRef = useRef(customers)
   const { toast } = useToast()
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setLeads((currentLeads) => {
-        const movableLeads = currentLeads.filter((l) => l.phaseId < 10)
-        if (movableLeads.length === 0) return currentLeads
+    customersRef.current = customers
+  }, [customers])
 
-        const leadToMove = movableLeads[Math.floor(Math.random() * movableLeads.length)]
-        const nextPhase = leadToMove.phaseId + 1
-        const phaseName = PHASES.find((p) => p.id === nextPhase)?.title
+  useEffect(() => {
+    getCustomers().then(setCustomers).catch(console.error)
+  }, [])
 
+  useRealtime('customers', (e) => {
+    if (e.action === 'create') setCustomers((prev) => [e.record as unknown as Customer, ...prev])
+    else if (e.action === 'update')
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === e.record.id ? (e.record as unknown as Customer) : c)),
+      )
+    else if (e.action === 'delete') setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
+  })
+
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      const currentCustomers = customersRef.current
+      if (currentCustomers.length === 0) return
+
+      const movableLeads = currentCustomers.filter((c) => {
+        const currentPhaseIndex = PHASES.findIndex((p) => p.title === (c.status || 'Lead Novo'))
+        return currentPhaseIndex >= 0 && currentPhaseIndex < PHASES.length - 1
+      })
+      if (movableLeads.length === 0) return
+
+      const leadToMove = movableLeads[Math.floor(Math.random() * movableLeads.length)]
+      const currentPhaseIndex = PHASES.findIndex(
+        (p) => p.title === (leadToMove.status || 'Lead Novo'),
+      )
+      const nextPhase = PHASES[currentPhaseIndex + 1]
+
+      try {
+        await updateCustomer(leadToMove.id, { status: nextPhase.title })
+        await createConversation({
+          customer_id: leadToMove.id,
+          content: `IA analisou a intenção e moveu o lead para "${nextPhase.title}".`,
+          sender: 'system',
+        })
         toast({
           title: 'Transição Automática (IA)',
-          description: `A IA processou o lead ${leadToMove.name} e moveu para: ${phaseName}`,
+          description: `A IA processou o lead ${leadToMove.name} e moveu para: ${nextPhase.title}`,
         })
-
-        return currentLeads.map((l) =>
-          l.id === leadToMove.id ? { ...l, phaseId: nextPhase, lastInteraction: 'Agora mesmo' } : l,
-        )
-      })
+      } catch (error) {
+        console.error('Failed to transition lead', error)
+      }
     }, 15000)
 
     return () => clearInterval(timer)
@@ -113,7 +98,7 @@ export default function CRM() {
       <ScrollArea className="flex-1 border rounded-xl bg-muted/10 shadow-inner">
         <div className="flex h-full p-4 gap-4 w-max min-w-full">
           {PHASES.map((phase) => {
-            const phaseLeads = leads.filter((l) => l.phaseId === phase.id)
+            const phaseLeads = customers.filter((l) => (l.status || 'Lead Novo') === phase.title)
 
             return (
               <div
@@ -160,7 +145,7 @@ export default function CRM() {
                                   {lead.name}
                                 </h4>
                                 <span className="text-[10px] text-muted-foreground">
-                                  {lead.number}
+                                  {lead.phone || lead.email}
                                 </span>
                               </div>
                             </div>
@@ -169,7 +154,7 @@ export default function CRM() {
                           <div className="space-y-2 mt-3">
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               <Clock className="h-3 w-3" />
-                              <span>{lead.lastInteraction}</span>
+                              <span>{new Date(lead.updated).toLocaleDateString()}</span>
                             </div>
 
                             <div className="flex items-center gap-2 flex-wrap">
@@ -180,7 +165,7 @@ export default function CRM() {
                                     className="bg-primary/5 text-primary border-primary/20 text-[10px] gap-1 cursor-help"
                                   >
                                     <Sparkles className="h-2.5 w-2.5" />
-                                    {lead.sentiment}
+                                    Curioso
                                   </Badge>
                                 </TooltipTrigger>
                                 <TooltipContent>Sentimento detectado pela IA</TooltipContent>
@@ -193,11 +178,11 @@ export default function CRM() {
                                     className="bg-amber-500/5 text-amber-600 border-amber-500/20 text-[10px] gap-1 cursor-help truncate max-w-[140px]"
                                   >
                                     <Bot className="h-2.5 w-2.5" />
-                                    {lead.nextStep}
+                                    Avançar no pipeline
                                   </Badge>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  Próxima ação sugerida: {lead.nextStep}
+                                  Próxima ação sugerida: Avançar no pipeline
                                 </TooltipContent>
                               </Tooltip>
                             </div>
