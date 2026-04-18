@@ -24,8 +24,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Search, Plus, Upload, MoreHorizontal, Edit, Trash2, Users, Loader2 } from 'lucide-react'
+import {
+  Search,
+  Plus,
+  Upload,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+  Users,
+  Loader2,
+  RefreshCw,
+} from 'lucide-react'
 import { CsvImportDialog } from '@/components/customers/CsvImportDialog'
+import { ZapVivaImportDialog } from '@/components/customers/ZapVivaImportDialog'
 import { LeadDialog } from '@/components/customers/LeadDialog'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -49,6 +60,8 @@ const COLUMNS = [
   { key: 'name', label: 'Nome Completo' },
   { key: 'email_1_value', label: 'E-mail Principal' },
   { key: 'phone_1_value', label: 'Telefone Principal' },
+  { key: 'source', label: 'Origem (Source)' },
+  { key: 'address_1_formatted', label: 'Endereço Formato' },
   { key: 'org_name', label: 'Organização' },
   { key: 'tags', label: 'Labels/Tags' },
   { key: 'first_name', label: 'First Name' },
@@ -77,7 +90,6 @@ const COLUMNS = [
   { key: 'phone_4_label', label: 'Phone 4 - Label' },
   { key: 'phone_4_value', label: 'Phone 4 - Value' },
   { key: 'address_1_label', label: 'Address 1 - Label' },
-  { key: 'address_1_formatted', label: 'Address 1 - Formatted' },
   { key: 'address_1_street', label: 'Address 1 - Street' },
   { key: 'address_1_city', label: 'Address 1 - City' },
   { key: 'address_1_po_box', label: 'Address 1 - PO Box' },
@@ -93,9 +105,11 @@ export default function Customers() {
   const [leads, setLeads] = useState<Customer[]>([])
   const [search, setSearch] = useState('')
   const [phaseFilter, setPhaseFilter] = useState('all')
+  const [sourceFilter, setSourceFilter] = useState('all')
   const [loading, setLoading] = useState(true)
 
   const [csvOpen, setCsvOpen] = useState(false)
+  const [zapVivaOpen, setZapVivaOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
@@ -120,6 +134,14 @@ export default function Customers() {
     loadData()
   })
 
+  const sources = useMemo(() => {
+    const s = new Set<string>()
+    leads.forEach((l) => {
+      if (l.source) s.add(l.source)
+    })
+    return Array.from(s)
+  }, [leads])
+
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
       const matchSearch =
@@ -128,9 +150,10 @@ export default function Customers() {
         (lead.phone_1_value || '').includes(search) ||
         (lead.email_1_value || '').toLowerCase().includes(search.toLowerCase())
       const matchPhase = phaseFilter === 'all' || lead.status === phaseFilter
-      return matchSearch && matchPhase
+      const matchSource = sourceFilter === 'all' || lead.source === sourceFilter
+      return matchSearch && matchPhase && matchSource
     })
-  }, [leads, search, phaseFilter])
+  }, [leads, search, phaseFilter, sourceFilter])
 
   const handleDelete = async (id: string) => {
     try {
@@ -220,7 +243,15 @@ export default function Customers() {
             Gerencie seus leads e contatos importados do Google Contacts.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="destructive"
+            onClick={() => setZapVivaOpen(true)}
+            disabled={importing}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" /> Reset & Import Zap/Viva Leads
+          </Button>
           <Button
             variant="outline"
             onClick={() => setCsvOpen(true)}
@@ -257,7 +288,7 @@ export default function Customers() {
           />
         </div>
         <Select value={phaseFilter} onValueChange={setPhaseFilter}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Fase" />
           </SelectTrigger>
           <SelectContent>
@@ -265,6 +296,19 @@ export default function Customers() {
             {PHASES.map((p) => (
               <SelectItem key={p.id} value={p.id.toString()}>
                 {p.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={sourceFilter} onValueChange={setSourceFilter}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Origem" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas Origens</SelectItem>
+            {sources.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
               </SelectItem>
             ))}
           </SelectContent>
@@ -389,6 +433,13 @@ export default function Customers() {
           onImport={handleImport}
           isImporting={importing}
           progress={importProgress}
+        />
+      )}
+      {zapVivaOpen && (
+        <ZapVivaImportDialog
+          open={zapVivaOpen}
+          onOpenChange={setZapVivaOpen}
+          onSuccess={loadData}
         />
       )}
       {leadOpen && (

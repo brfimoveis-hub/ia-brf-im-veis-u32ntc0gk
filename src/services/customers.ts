@@ -27,6 +27,7 @@ export interface Customer {
   org_dept?: string
   birthday?: string
   photo?: string
+  source?: string
   email_1_label?: string
   email_1_value?: string
   email_2_label?: string
@@ -73,4 +74,9 @@ export const updateCustomer = async (id: string, data: Partial<Customer>): Promi
 
 export const deleteCustomer = async (id: string): Promise<void> => {
   await pb.collection('customers').delete(id)
+}
+
+export const deleteAllCustomers = async (): Promise<void> => {
+  const customers = await getCustomers()
+  await Promise.all(customers.map((c) => pb.collection('customers').delete(c.id)))
 }
