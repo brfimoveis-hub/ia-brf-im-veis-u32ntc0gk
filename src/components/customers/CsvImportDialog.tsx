@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Progress } from '@/components/ui/progress'
 import { Upload, CheckCircle2 } from 'lucide-react'
 
 const GOOGLE_CONTACTS_MAPPING: Record<string, string> = {
@@ -112,10 +113,14 @@ export function CsvImportDialog({
   open,
   onOpenChange,
   onImport,
+  isImporting,
+  progress,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
-  onImport: (data: any[]) => void
+  onImport: (data: any[]) => Promise<void>
+  isImporting?: boolean
+  progress?: { current: number; total: number }
 }) {
   const { toast } = useToast()
   const [file, setFile] = useState<File | null>(null)
@@ -164,7 +169,7 @@ export function CsvImportDialog({
     }
   }
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!data.length) return
     const rows = data.slice(1)
 
@@ -180,11 +185,8 @@ export function CsvImportDialog({
       })
       .filter((obj) => Object.keys(obj).length > 0 && Object.values(obj).some((v) => v !== ''))
 
-    onImport(mappedData)
-    onOpenChange(false)
-    setFile(null)
-    setData([])
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    await onImport(mappedData)
+    reset()
   }
 
   const reset = () => {
@@ -198,6 +200,7 @@ export function CsvImportDialog({
     <Dialog
       open={open}
       onOpenChange={(val) => {
+        if (isImporting) return
         onOpenChange(val)
         if (!val) reset()
       }}
@@ -271,12 +274,27 @@ export function CsvImportDialog({
           </div>
         )}
 
+        {isImporting && progress && (
+          <div className="space-y-2 py-4">
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Importando contatos...</span>
+              <span>
+                {progress.current} / {progress.total}
+              </span>
+            </div>
+            <Progress
+              value={progress.total > 0 ? (progress.current / progress.total) * 100 : 0}
+              className="h-2"
+            />
+          </div>
+        )}
+
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isImporting}>
             Cancelar
           </Button>
-          <Button onClick={handleImport} disabled={!file || data.length < 2}>
-            Confirmar Importação
+          <Button onClick={handleImport} disabled={!file || data.length < 2 || isImporting}>
+            {isImporting ? 'Importando...' : 'Importar Contatos'}
           </Button>
         </DialogFooter>
       </DialogContent>

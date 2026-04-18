@@ -98,6 +98,7 @@ export default function Customers() {
   const [csvOpen, setCsvOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
   const { toast } = useToast()
 
@@ -142,7 +143,9 @@ export default function Customers() {
 
   const handleImport = async (newLeads: any[]) => {
     setImporting(true)
+    setImportProgress({ current: 0, total: newLeads.length })
     let successCount = 0
+    let processedCount = 0
 
     const batchSize = 50
     for (let i = 0; i < newLeads.length; i += batchSize) {
@@ -184,12 +187,16 @@ export default function Customers() {
             successCount++
           } catch (error) {
             console.error('Erro ao importar lead', error)
+          } finally {
+            processedCount++
           }
         }),
       )
+      setImportProgress({ current: processedCount, total: newLeads.length })
     }
 
     setImporting(false)
+    setCsvOpen(false)
     toast({
       title:
         successCount > 0
@@ -376,7 +383,13 @@ export default function Customers() {
       </Card>
 
       {csvOpen && (
-        <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} onImport={handleImport} />
+        <CsvImportDialog
+          open={csvOpen}
+          onOpenChange={setCsvOpen}
+          onImport={handleImport}
+          isImporting={importing}
+          progress={importProgress}
+        />
       )}
       {leadOpen && (
         <LeadDialog open={leadOpen} onOpenChange={setLeadOpen} defaultValues={editingLead} />
