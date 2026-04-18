@@ -232,7 +232,7 @@ export default function Customers() {
             ) : (
               <Upload className="h-4 w-4" />
             )}
-            {importing ? 'Importando...' : 'Importar'}
+            {importing ? 'Importando...' : 'Importar Contatos'}
           </Button>
           <Button
             onClick={() => {

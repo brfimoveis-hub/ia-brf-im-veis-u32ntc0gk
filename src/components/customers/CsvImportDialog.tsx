@@ -277,7 +277,7 @@ export function CsvImportDialog({
         {isImporting && progress && (
           <div className="space-y-2 py-4">
             <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Importando contatos...</span>
+              <span>Processando contatos...</span>
               <span>
                 {progress.current} / {progress.total}
               </span>
@@ -294,7 +294,7 @@ export function CsvImportDialog({
             Cancelar
           </Button>
           <Button onClick={handleImport} disabled={!file || data.length < 2 || isImporting}>
-            {isImporting ? 'Importando...' : 'Importar Contatos'}
+            {isImporting ? 'Processando...' : 'Confirmar Importação'}
           </Button>
         </DialogFooter>
       </DialogContent>
