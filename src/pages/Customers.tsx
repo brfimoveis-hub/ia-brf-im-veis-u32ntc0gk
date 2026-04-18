@@ -45,20 +45,48 @@ const PHASES = [
   { id: 10, title: 'Fechamento', color: 'bg-green-500' },
 ]
 
-const formatPhone = (phone?: string) => {
-  if (!phone) return '—'
-  let cleaned = phone.replace(/\D/g, '')
-  if (cleaned.startsWith('55') && cleaned.length > 11) {
-    cleaned = cleaned.substring(2)
-  }
-  if (cleaned.length === 11) {
-    return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 7)}-${cleaned.substring(7, 11)}`
-  }
-  if (cleaned.length === 10) {
-    return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 6)}-${cleaned.substring(6, 10)}`
-  }
-  return phone
-}
+const COLUMNS = [
+  { key: 'first_name', label: 'First Name' },
+  { key: 'middle_name', label: 'Middle Name' },
+  { key: 'last_name', label: 'Last Name' },
+  { key: 'phonetic_first_name', label: 'Phonetic First Name' },
+  { key: 'phonetic_middle_name', label: 'Phonetic Middle Name' },
+  { key: 'phonetic_last_name', label: 'Phonetic Last Name' },
+  { key: 'name_prefix', label: 'Name Prefix' },
+  { key: 'name_suffix', label: 'Name Suffix' },
+  { key: 'nickname', label: 'Nickname' },
+  { key: 'file_as', label: 'File As' },
+  { key: 'org_name', label: 'Organization Name' },
+  { key: 'org_title', label: 'Organization Title' },
+  { key: 'org_dept', label: 'Organization Department' },
+  { key: 'birthday', label: 'Birthday' },
+  { key: 'notes', label: 'Notes' },
+  { key: 'photo', label: 'Photo' },
+  { key: 'tags', label: 'Labels' },
+  { key: 'email_1_label', label: 'E-mail 1 - Label' },
+  { key: 'email_1_value', label: 'E-mail 1 - Value' },
+  { key: 'email_2_label', label: 'E-mail 2 - Label' },
+  { key: 'email_2_value', label: 'E-mail 2 - Value' },
+  { key: 'phone_1_label', label: 'Phone 1 - Label' },
+  { key: 'phone_1_value', label: 'Phone 1 - Value' },
+  { key: 'phone_2_label', label: 'Phone 2 - Label' },
+  { key: 'phone_2_value', label: 'Phone 2 - Value' },
+  { key: 'phone_3_label', label: 'Phone 3 - Label' },
+  { key: 'phone_3_value', label: 'Phone 3 - Value' },
+  { key: 'phone_4_label', label: 'Phone 4 - Label' },
+  { key: 'phone_4_value', label: 'Phone 4 - Value' },
+  { key: 'address_1_label', label: 'Address 1 - Label' },
+  { key: 'address_1_formatted', label: 'Address 1 - Formatted' },
+  { key: 'address_1_street', label: 'Address 1 - Street' },
+  { key: 'address_1_city', label: 'Address 1 - City' },
+  { key: 'address_1_po_box', label: 'Address 1 - PO Box' },
+  { key: 'address_1_region', label: 'Address 1 - Region' },
+  { key: 'address_1_postal_code', label: 'Address 1 - Postal Code' },
+  { key: 'address_1_country', label: 'Address 1 - Country' },
+  { key: 'address_1_extended', label: 'Address 1 - Extended Address' },
+  { key: 'website_1_label', label: 'Website 1 - Label' },
+  { key: 'website_1_value', label: 'Website 1 - Value' },
+]
 
 export default function Customers() {
   const [leads, setLeads] = useState<Customer[]>([])
@@ -75,7 +103,7 @@ export default function Customers() {
     try {
       const data = await getCustomers()
       setLeads(data)
-    } catch (err) {
+    } catch {
       toast({ title: 'Erro ao carregar clientes', variant: 'destructive' })
     } finally {
       setLoading(false)
@@ -85,19 +113,19 @@ export default function Customers() {
   useEffect(() => {
     loadData()
   }, [])
-
   useRealtime('customers', () => {
     loadData()
   })
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
-      const matchesSearch =
-        lead.name.toLowerCase().includes(search.toLowerCase()) ||
-        (lead.phone && lead.phone.includes(search)) ||
-        (lead.email && lead.email.toLowerCase().includes(search.toLowerCase()))
-      const matchesPhase = phaseFilter === 'all' || lead.status === phaseFilter
-      return matchesSearch && matchesPhase
+      const matchSearch =
+        (lead.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (lead.first_name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (lead.phone_1_value || '').includes(search) ||
+        (lead.email_1_value || '').toLowerCase().includes(search.toLowerCase())
+      const matchPhase = phaseFilter === 'all' || lead.status === phaseFilter
+      return matchSearch && matchPhase
     })
   }, [leads, search, phaseFilter])
 
@@ -105,8 +133,8 @@ export default function Customers() {
     try {
       await deleteCustomer(id)
       toast({ title: 'Lead removido' })
-    } catch (err) {
-      toast({ title: 'Erro ao remover lead', variant: 'destructive' })
+    } catch {
+      toast({ title: 'Erro', variant: 'destructive' })
     }
   }
 
@@ -114,23 +142,14 @@ export default function Customers() {
     let successCount = 0
     for (const lead of newLeads) {
       try {
-        await createCustomer({
-          name: lead.name,
-          email: lead.email,
-          phone: lead.phone,
-          status: '1',
-          tags: ['Importado'],
-        })
+        await createCustomer({ ...lead, status: '1', tags: ['Importado'] })
         successCount++
-      } catch (err) {
-        console.error('Error importing lead', err)
-      }
+      } catch {}
     }
-    if (successCount > 0) {
-      toast({ title: `${successCount} leads importados com sucesso!` })
-    } else {
-      toast({ title: 'Nenhum lead importado', variant: 'destructive' })
-    }
+    toast({
+      title: successCount > 0 ? `${successCount} leads importados!` : 'Nenhum lead importado',
+      variant: successCount > 0 ? 'default' : 'destructive',
+    })
   }
 
   return (
@@ -138,17 +157,15 @@ export default function Customers() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between shrink-0 gap-4">
         <div>
           <h2 className="text-2xl font-bold text-secondary flex items-center gap-2">
-            <Users className="h-6 w-6 text-primary" />
-            Base de Clientes
+            <Users className="h-6 w-6 text-primary" /> Base de Clientes
           </h2>
           <p className="text-muted-foreground text-sm mt-1">
-            Gerencie seus leads, importe listas e acompanhe o status nas cadências.
+            Gerencie seus leads e contatos importados do Google Contacts.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-2">
           <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" />
-            Importar CSV
+            <Upload className="h-4 w-4" /> Importar CSV
           </Button>
           <Button
             onClick={() => {
@@ -157,25 +174,24 @@ export default function Customers() {
             }}
             className="gap-2"
           >
-            <Plus className="h-4 w-4" />
-            Adicionar Lead
+            <Plus className="h-4 w-4" /> Adicionar Lead
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 shrink-0">
+      <div className="flex flex-col sm:flex-row gap-4 shrink-0">
         <div className="relative flex-1 w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome, telefone ou email..."
+            placeholder="Buscar contatos..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 w-full"
           />
         </div>
         <Select value={phaseFilter} onValueChange={setPhaseFilter}>
-          <SelectTrigger className="w-full sm:w-[200px]">
-            <SelectValue placeholder="Filtrar por fase" />
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Fase" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as fases</SelectItem>
@@ -189,28 +205,32 @@ export default function Customers() {
       </div>
 
       <Card className="flex-1 flex flex-col overflow-hidden shadow-sm">
-        <CardContent className="p-0 flex-1 overflow-auto">
-          <Table>
+        <CardContent className="p-0 flex-1 overflow-x-auto">
+          <Table className="w-full">
             <TableHeader className="bg-muted sticky top-0 z-10 shadow-sm">
               <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>E-mail</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>Fase/Status</TableHead>
-                <TableHead>Tags</TableHead>
-                <TableHead className="w-[50px]"></TableHead>
+                <TableHead className="whitespace-nowrap font-semibold">Fase/Status</TableHead>
+                {COLUMNS.map((col) => (
+                  <TableHead key={col.key} className="whitespace-nowrap">
+                    {col.label}
+                  </TableHead>
+                ))}
+                <TableHead className="w-[50px] sticky right-0 bg-muted"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center">
+                  <TableCell colSpan={COLUMNS.length + 2} className="h-32 text-center">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : filteredLeads.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  <TableCell
+                    colSpan={COLUMNS.length + 2}
+                    className="h-32 text-center text-muted-foreground"
+                  >
                     Nenhum cliente encontrado.
                   </TableCell>
                 </TableRow>
@@ -218,46 +238,45 @@ export default function Customers() {
                 filteredLeads.map((lead) => {
                   const phase = PHASES.find((p) => p.id.toString() === lead.status)
                   return (
-                    <TableRow key={lead.id} className="group">
-                      <TableCell className="font-medium text-secondary">{lead.name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {lead.email || '—'}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatPhone(lead.phone)}
-                      </TableCell>
-                      <TableCell>
+                    <TableRow key={lead.id} className="group hover:bg-muted/50">
+                      <TableCell className="whitespace-nowrap">
                         <Badge
                           variant="secondary"
-                          className={cn(
-                            'text-white hover:opacity-90',
-                            phase?.color || 'bg-slate-500',
-                          )}
+                          className={cn('text-white', phase?.color || 'bg-slate-500')}
                         >
                           {phase?.title || 'Desconhecido'}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1.5 flex-wrap">
-                          {(lead.tags || []).map((tag, idx) => (
-                            <Badge
-                              key={idx}
-                              variant="secondary"
-                              className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20 border-primary/20"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
+                      {COLUMNS.map((col) => {
+                        if (col.key === 'tags') {
+                          return (
+                            <TableCell key={col.key} className="whitespace-nowrap">
+                              <div className="flex gap-1">
+                                {(lead.tags || []).map((t, i) => (
+                                  <Badge key={i} variant="outline" className="text-xs">
+                                    {t}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </TableCell>
+                          )
+                        }
+                        return (
+                          <TableCell
+                            key={col.key}
+                            className={cn(
+                              'whitespace-nowrap text-sm text-muted-foreground',
+                              col.key === 'first_name' && 'font-medium text-foreground',
+                            )}
+                          >
+                            {(lead as any)[col.key] || '—'}
+                          </TableCell>
+                        )
+                      })}
+                      <TableCell className="sticky right-0 bg-background group-hover:bg-muted/50 border-l">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -272,7 +291,7 @@ export default function Customers() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleDelete(lead.id)}
-                              className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
+                              className="text-destructive"
                             >
                               <Trash2 className="h-4 w-4 mr-2" /> Excluir
                             </DropdownMenuItem>
@@ -288,8 +307,12 @@ export default function Customers() {
         </CardContent>
       </Card>
 
-      <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} onImport={handleImport} />
-      <LeadDialog open={leadOpen} onOpenChange={setLeadOpen} defaultValues={editingLead} />
+      {csvOpen && (
+        <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} onImport={handleImport} />
+      )}
+      {leadOpen && (
+        <LeadDialog open={leadOpen} onOpenChange={setLeadOpen} defaultValues={editingLead} />
+      )}
     </div>
   )
 }

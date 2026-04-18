@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-17T23:44:33.994Z",
+  "generatedAt": "2026-04-18T00:05:10.898Z",
   "collections": [
     {
       "name": "users",
@@ -111,6 +111,234 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "first_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "middle_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phonetic_first_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phonetic_middle_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phonetic_last_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "name_prefix",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "name_suffix",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nickname",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "file_as",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "org_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "org_title",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "org_dept",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "birthday",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "photo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_1_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_1_value",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_2_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_2_value",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_1_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_1_value",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_2_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_2_value",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_3_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_3_value",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_4_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_4_value",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "address_1_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "address_1_formatted",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "address_1_street",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "address_1_city",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "address_1_po_box",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "address_1_region",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "address_1_postal_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "address_1_country",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "address_1_extended",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "website_1_label",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "website_1_value",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
