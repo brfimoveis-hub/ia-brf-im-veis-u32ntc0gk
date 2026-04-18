@@ -1,4 +1,5 @@
 import pb from '@/lib/pocketbase/client'
+import type { ListResult } from 'pocketbase'
 
 export interface Customer {
   id: string
@@ -57,6 +58,37 @@ export const getCustomers = async (): Promise<Customer[]> => {
   return pb.collection('customers').getFullList<Customer>({ sort: '-created' })
 }
 
+export const getPaginatedCustomers = async (
+  page: number = 1,
+  perPage: number = 50,
+  search: string = '',
+  phaseFilter: string = 'all',
+  sourceFilter: string = '',
+): Promise<ListResult<Customer>> => {
+  const filters: string[] = []
+  if (search) {
+    const safeSearch = search.replace(/"/g, '\\"')
+    filters.push(
+      `(name ~ "${safeSearch}" || email ~ "${safeSearch}" || phone ~ "${safeSearch}" || first_name ~ "${safeSearch}" || email_1_value ~ "${safeSearch}" || phone_1_value ~ "${safeSearch}")`,
+    )
+  }
+  if (phaseFilter !== 'all') {
+    const safePhase = phaseFilter.replace(/"/g, '\\"')
+    filters.push(`status = "${safePhase}"`)
+  }
+  if (sourceFilter) {
+    const safeSource = sourceFilter.replace(/"/g, '\\"')
+    filters.push(`source ~ "${safeSource}"`)
+  }
+
+  const filterString = filters.join(' && ')
+
+  return pb.collection('customers').getList<Customer>(page, perPage, {
+    sort: '-created',
+    filter: filterString,
+  })
+}
+
 export const getCustomer = async (id: string): Promise<Customer> => {
   return pb.collection('customers').getOne<Customer>(id)
 }
@@ -77,10 +109,17 @@ export const deleteCustomer = async (id: string): Promise<void> => {
 }
 
 export const deleteAllCustomers = async (): Promise<void> => {
-  const customers = await getCustomers()
-  const batchSize = 50
-  for (let i = 0; i < customers.length; i += batchSize) {
-    const batch = customers.slice(i, i + batchSize)
-    await Promise.all(batch.map((c) => pb.collection('customers').delete(c.id)))
+  let hasMore = true
+  while (hasMore) {
+    const page = await pb.collection('customers').getList<Customer>(1, 500, { fields: 'id' })
+    if (page.items.length === 0) {
+      hasMore = false
+      break
+    }
+    const batchSize = 50
+    for (let i = 0; i < page.items.length; i += batchSize) {
+      const batch = page.items.slice(i, i + batchSize)
+      await Promise.all(batch.map((c) => pb.collection('customers').delete(c.id)))
+    }
   }
 }

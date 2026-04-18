@@ -171,6 +171,12 @@ export function ZapVivaImportDialog({
             const phone = formatPhone(rawPhone)
             const address = item['Endereço'] || item['endereco'] || item['address'] || ''
             const source = item['Lead Source'] || item['source'] || item['Origem'] || 'Zap/Viva'
+            const orgName =
+              item['Empresa'] ||
+              item['empresa'] ||
+              item['org_name'] ||
+              item['Organization Name'] ||
+              ''
 
             if (email && uniqueEmails.has(email)) return
             if (phone && uniquePhones.has(phone)) return
@@ -187,6 +193,7 @@ export function ZapVivaImportDialog({
                 phone_1_value: phone,
                 address_1_formatted: address,
                 source,
+                org_name: orgName,
                 status: '1', // Lead Novo
                 tags: ['Importado', source],
               })

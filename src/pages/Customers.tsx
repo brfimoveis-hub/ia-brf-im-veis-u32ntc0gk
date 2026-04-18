@@ -1,12 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { useState, useEffect, useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,97 +8,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import {
-  Search,
-  Plus,
-  Upload,
-  MoreHorizontal,
-  Edit,
-  Trash2,
-  Users,
-  Loader2,
-  RefreshCw,
-} from 'lucide-react'
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import { Search, Plus, Upload, Users, Loader2, Filter } from 'lucide-react'
 import { CsvImportDialog } from '@/components/customers/CsvImportDialog'
 import { ZapVivaImportDialog } from '@/components/customers/ZapVivaImportDialog'
 import { LeadDialog } from '@/components/customers/LeadDialog'
-import { cn } from '@/lib/utils'
+import { CustomerTable } from '@/components/customers/CustomerTable'
 import { useToast } from '@/hooks/use-toast'
-import { getCustomers, deleteCustomer, createCustomer, Customer } from '@/services/customers'
+import {
+  getPaginatedCustomers,
+  deleteCustomer,
+  createCustomer,
+  Customer,
+} from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
-
-const PHASES = [
-  { id: 1, title: 'Lead Novo', color: 'bg-slate-500' },
-  { id: 2, title: 'Contato 1', color: 'bg-blue-400' },
-  { id: 3, title: 'Contato 2', color: 'bg-blue-500' },
-  { id: 4, title: 'Qualificação', color: 'bg-indigo-400' },
-  { id: 5, title: 'Qualificado', color: 'bg-indigo-500' },
-  { id: 6, title: 'Demo Agend.', color: 'bg-purple-500' },
-  { id: 7, title: 'Demo Realiz.', color: 'bg-purple-600' },
-  { id: 8, title: 'Proposta', color: 'bg-amber-500' },
-  { id: 9, title: 'Negociação', color: 'bg-orange-500' },
-  { id: 10, title: 'Fechamento', color: 'bg-green-500' },
-]
-
-const COLUMNS = [
-  { key: 'name', label: 'Nome Completo' },
-  { key: 'email_1_value', label: 'E-mail Principal' },
-  { key: 'phone_1_value', label: 'Telefone Principal' },
-  { key: 'source', label: 'Origem (Source)' },
-  { key: 'address_1_formatted', label: 'Endereço Formato' },
-  { key: 'org_name', label: 'Organização' },
-  { key: 'tags', label: 'Labels/Tags' },
-  { key: 'first_name', label: 'First Name' },
-  { key: 'middle_name', label: 'Middle Name' },
-  { key: 'last_name', label: 'Last Name' },
-  { key: 'phonetic_first_name', label: 'Phonetic First Name' },
-  { key: 'phonetic_middle_name', label: 'Phonetic Middle Name' },
-  { key: 'phonetic_last_name', label: 'Phonetic Last Name' },
-  { key: 'name_prefix', label: 'Name Prefix' },
-  { key: 'name_suffix', label: 'Name Suffix' },
-  { key: 'nickname', label: 'Nickname' },
-  { key: 'file_as', label: 'File As' },
-  { key: 'org_title', label: 'Organization Title' },
-  { key: 'org_dept', label: 'Organization Department' },
-  { key: 'birthday', label: 'Birthday' },
-  { key: 'notes', label: 'Notes' },
-  { key: 'photo', label: 'Photo' },
-  { key: 'email_1_label', label: 'E-mail 1 - Label' },
-  { key: 'email_2_label', label: 'E-mail 2 - Label' },
-  { key: 'email_2_value', label: 'E-mail 2 - Value' },
-  { key: 'phone_1_label', label: 'Phone 1 - Label' },
-  { key: 'phone_2_label', label: 'Phone 2 - Label' },
-  { key: 'phone_2_value', label: 'Phone 2 - Value' },
-  { key: 'phone_3_label', label: 'Phone 3 - Label' },
-  { key: 'phone_3_value', label: 'Phone 3 - Value' },
-  { key: 'phone_4_label', label: 'Phone 4 - Label' },
-  { key: 'phone_4_value', label: 'Phone 4 - Value' },
-  { key: 'address_1_label', label: 'Address 1 - Label' },
-  { key: 'address_1_street', label: 'Address 1 - Street' },
-  { key: 'address_1_city', label: 'Address 1 - City' },
-  { key: 'address_1_po_box', label: 'Address 1 - PO Box' },
-  { key: 'address_1_region', label: 'Address 1 - Region' },
-  { key: 'address_1_postal_code', label: 'Address 1 - Postal Code' },
-  { key: 'address_1_country', label: 'Address 1 - Country' },
-  { key: 'address_1_extended', label: 'Address 1 - Extended Address' },
-  { key: 'website_1_label', label: 'Website 1 - Label' },
-  { key: 'website_1_value', label: 'Website 1 - Value' },
-]
+import { PHASES } from '@/components/customers/constants'
 
 export default function Customers() {
   const [leads, setLeads] = useState<Customer[]>([])
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [phaseFilter, setPhaseFilter] = useState('all')
-  const [sourceFilter, setSourceFilter] = useState('all')
+  const [sourceFilter, setSourceFilter] = useState('')
+  const [debouncedSourceFilter, setDebouncedSourceFilter] = useState('')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   const [csvOpen, setCsvOpen] = useState(false)
   const [zapVivaOpen, setZapVivaOpen] = useState(false)
@@ -116,11 +52,35 @@ export default function Customers() {
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
   const { toast } = useToast()
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setDebouncedSourceFilter(sourceFilter)
+      setPage(1)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [search, sourceFilter])
+
+  useEffect(() => {
+    setPage(1)
+  }, [phaseFilter])
+
   const loadData = async () => {
     try {
-      const data = await getCustomers()
-      setLeads(data)
+      setLoading(true)
+      setError(false)
+      const data = await getPaginatedCustomers(
+        page,
+        50,
+        debouncedSearch,
+        phaseFilter,
+        debouncedSourceFilter,
+      )
+      setLeads(data.items)
+      setTotalPages(data.totalPages)
+      setTotalItems(data.totalItems)
     } catch {
+      setError(true)
       toast({ title: 'Erro ao carregar clientes', variant: 'destructive' })
     } finally {
       setLoading(false)
@@ -129,36 +89,21 @@ export default function Customers() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [page, debouncedSearch, phaseFilter, debouncedSourceFilter])
+
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   useRealtime('customers', () => {
-    loadData()
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    timeoutRef.current = setTimeout(() => {
+      loadData()
+    }, 1000)
   })
-
-  const sources = useMemo(() => {
-    const s = new Set<string>()
-    leads.forEach((l) => {
-      if (l.source) s.add(l.source)
-    })
-    return Array.from(s)
-  }, [leads])
-
-  const filteredLeads = useMemo(() => {
-    return leads.filter((lead) => {
-      const matchSearch =
-        (lead.name || '').toLowerCase().includes(search.toLowerCase()) ||
-        (lead.first_name || '').toLowerCase().includes(search.toLowerCase()) ||
-        (lead.phone_1_value || '').includes(search) ||
-        (lead.email_1_value || '').toLowerCase().includes(search.toLowerCase())
-      const matchPhase = phaseFilter === 'all' || lead.status === phaseFilter
-      const matchSource = sourceFilter === 'all' || lead.source === sourceFilter
-      return matchSearch && matchPhase && matchSource
-    })
-  }, [leads, search, phaseFilter, sourceFilter])
 
   const handleDelete = async (id: string) => {
     try {
       await deleteCustomer(id)
       toast({ title: 'Lead removido' })
+      loadData()
     } catch {
       toast({ title: 'Erro', variant: 'destructive' })
     }
@@ -169,7 +114,6 @@ export default function Customers() {
     setImportProgress({ current: 0, total: newLeads.length })
     let successCount = 0
     let processedCount = 0
-
     const batchSize = 50
     for (let i = 0; i < newLeads.length; i += batchSize) {
       const batch = newLeads.slice(i, i + batchSize)
@@ -178,7 +122,6 @@ export default function Customers() {
           try {
             const nameParts = [lead.first_name, lead.middle_name, lead.last_name].filter(Boolean)
             const fullName = nameParts.length > 0 ? nameParts.join(' ') : 'Contato Sem Nome'
-
             let tags: string[] = []
             if (lead.tags) {
               tags =
@@ -186,7 +129,6 @@ export default function Customers() {
             } else {
               tags = ['Importado']
             }
-
             let status = '1'
             const possiblePhaseTitle = tags.find((t: string) =>
               PHASES.some((p) => p.title.toLowerCase() === t.toLowerCase()),
@@ -197,19 +139,17 @@ export default function Customers() {
               )
               if (matchedPhase) status = matchedPhase.id.toString()
             }
-
-            const payload = {
+            await createCustomer({
               ...lead,
-              name: fullName,
+              name: lead.name || fullName,
               email: lead.email_1_value || lead.email,
               phone: lead.phone_1_value || lead.phone,
               status,
               tags,
-            }
-            await createCustomer(payload)
+            })
             successCount++
-          } catch (error) {
-            console.error('Erro ao importar lead', error)
+          } catch {
+            // silent fail
           } finally {
             processedCount++
           }
@@ -217,16 +157,10 @@ export default function Customers() {
       )
       setImportProgress({ current: processedCount, total: newLeads.length })
     }
-
     setImporting(false)
     setCsvOpen(false)
     toast({
-      title:
-        successCount > 0
-          ? `${successCount} contatos importados com sucesso!`
-          : 'Falha na importação',
-      description:
-        successCount === 0 ? 'Nenhum contato foi importado devido a um erro.' : undefined,
+      title: successCount > 0 ? `${successCount} contatos importados!` : 'Falha na importação',
       variant: successCount > 0 ? 'default' : 'destructive',
     })
     loadData()
@@ -240,7 +174,7 @@ export default function Customers() {
             <Users className="h-6 w-6 text-primary" /> Base de Clientes
           </h2>
           <p className="text-muted-foreground text-sm mt-1">
-            Gerencie seus leads e contatos importados do Google Contacts.
+            Gerencie seus leads e contatos importados de forma otimizada.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -281,7 +215,7 @@ export default function Customers() {
         <div className="relative flex-1 w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar contatos..."
+            placeholder="Buscar por nome, email ou telefone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 w-full"
@@ -300,130 +234,55 @@ export default function Customers() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Origem" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas Origens</SelectItem>
-            {sources.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="relative w-full max-w-[200px]">
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Origem (ex: Zap/Viva)"
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className="pl-9 w-full"
+          />
+        </div>
       </div>
 
       <Card className="flex-1 flex flex-col overflow-hidden shadow-sm">
-        <CardContent className="p-0 flex-1 overflow-x-auto">
-          <Table className="w-full">
-            <TableHeader className="bg-muted sticky top-0 z-10 shadow-sm">
-              <TableRow>
-                <TableHead className="whitespace-nowrap font-semibold">Fase/Status</TableHead>
-                {COLUMNS.map((col) => (
-                  <TableHead key={col.key} className="whitespace-nowrap">
-                    {col.label}
-                  </TableHead>
-                ))}
-                <TableHead className="w-[50px] sticky right-0 bg-muted"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={COLUMNS.length + 2} className="h-32 text-center">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
-              ) : filteredLeads.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={COLUMNS.length + 2}
-                    className="h-32 text-center text-muted-foreground"
-                  >
-                    Nenhum cliente encontrado.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredLeads.map((lead) => {
-                  const phase = PHASES.find((p) => p.id.toString() === lead.status)
-                  return (
-                    <TableRow key={lead.id} className="group hover:bg-muted/50">
-                      <TableCell className="whitespace-nowrap">
-                        <Badge
-                          variant="secondary"
-                          className={cn('text-white', phase?.color || 'bg-slate-500')}
-                        >
-                          {phase?.title || 'Desconhecido'}
-                        </Badge>
-                      </TableCell>
-                      {COLUMNS.map((col) => {
-                        if (col.key === 'tags') {
-                          return (
-                            <TableCell key={col.key} className="whitespace-nowrap">
-                              <div className="flex gap-1">
-                                {(lead.tags || []).map((t, i) => (
-                                  <Badge key={i} variant="outline" className="text-xs">
-                                    {t}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </TableCell>
-                          )
-                        }
-                        let val = (lead as any)[col.key]
-                        if (col.key === 'name' && !val) {
-                          val =
-                            [lead.first_name, lead.middle_name, lead.last_name]
-                              .filter(Boolean)
-                              .join(' ') || '—'
-                        }
-
-                        return (
-                          <TableCell
-                            key={col.key}
-                            className={cn(
-                              'whitespace-nowrap text-sm text-muted-foreground',
-                              col.key === 'name' && 'font-medium text-foreground',
-                            )}
-                          >
-                            {val || '—'}
-                          </TableCell>
-                        )
-                      })}
-                      <TableCell className="sticky right-0 bg-background group-hover:bg-muted/50 border-l">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setEditingLead(lead)
-                                setLeadOpen(true)
-                              }}
-                            >
-                              <Edit className="h-4 w-4 mr-2" /> Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(lead.id)}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" /> Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
+        <CardContent className="p-0 flex-1 overflow-x-auto relative">
+          <CustomerTable
+            leads={leads}
+            loading={loading}
+            error={error}
+            onEdit={(lead) => {
+              setEditingLead(lead)
+              setLeadOpen(true)
+            }}
+            onDelete={handleDelete}
+          />
         </CardContent>
+        <div className="border-t p-3 flex items-center justify-between bg-muted/20 shrink-0">
+          <div className="text-sm text-muted-foreground">
+            Mostrando página {page} de {totalPages || 1} ({totalItems} total)
+          </div>
+          <Pagination className="w-auto mx-0">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                />
+              </PaginationItem>
+              <PaginationItem>
+                <PaginationNext
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className={
+                    page === totalPages || totalPages === 0
+                      ? 'pointer-events-none opacity-50'
+                      : 'cursor-pointer'
+                  }
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        </div>
       </Card>
 
       {csvOpen && (
