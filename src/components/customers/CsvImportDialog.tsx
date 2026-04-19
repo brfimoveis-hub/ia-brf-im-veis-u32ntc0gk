@@ -37,6 +37,8 @@ const GENERIC_MAPPING: Record<string, string[]> = {
     'razao social',
     'cliente',
     'first_name',
+    'contact name',
+    'display name',
   ],
   phone: [
     'phone',
@@ -196,12 +198,25 @@ export function CsvImportDialog({
           const phoneIndex = mapping['Telefone']
           const emailIndex = mapping['Email']
 
-          const name = nameIndex !== undefined ? row[nameIndex]?.trim() : ''
+          const rawName = nameIndex !== undefined ? row[nameIndex]?.trim() : ''
           const phone = phoneIndex !== undefined ? row[phoneIndex]?.trim() : ''
           const email = emailIndex !== undefined ? row[emailIndex]?.trim() : ''
 
+          const name = rawName || ''
+
+          let first_name = ''
+          let last_name = ''
+
+          if (name) {
+            const parts = name.split(/\s+/)
+            first_name = parts[0] || ''
+            last_name = parts.slice(1).join(' ') || ''
+          }
+
           return {
             name,
+            first_name,
+            last_name,
             phone,
             email,
             phone_1_value: phone,
@@ -221,7 +236,7 @@ export function CsvImportDialog({
         setDeleteProgress({ current: 0, total: totalToDelete })
 
         if (totalToDelete > 0) {
-          const deleteBatchSize = 100
+          const deleteBatchSize = 500
           for (let i = 0; i < totalToDelete; i += deleteBatchSize) {
             const batch = allCustomers.slice(i, i + deleteBatchSize).map((c) => c.id)
             await bulkDeleteCustomers(batch)
@@ -229,7 +244,7 @@ export function CsvImportDialog({
               current: Math.min(i + batch.length, totalToDelete),
               total: totalToDelete,
             })
-            await new Promise((r) => setTimeout(r, 300)) // 300ms delay to prevent rate-limiting
+            await new Promise((r) => setTimeout(r, 100)) // 100ms delay to prevent rate-limiting
           }
         }
       } catch (error) {
@@ -249,7 +264,7 @@ export function CsvImportDialog({
 
     let successCount = 0
     let newFailed: any[] = []
-    const insertBatchSize = 25 // Small chunk for better concurrency control
+    const insertBatchSize = 50 // Increased for faster import while avoiding timeouts
 
     for (let i = 0; i < targetData.length; i += insertBatchSize) {
       const batch = targetData.slice(i, i + insertBatchSize)
@@ -278,7 +293,7 @@ export function CsvImportDialog({
         current: Math.min(i + batch.length, targetData.length),
         total: targetData.length,
       })
-      await new Promise((r) => setTimeout(r, 300)) // 300ms strategic delay to respect rate limits
+      await new Promise((r) => setTimeout(r, 100)) // 100ms strategic delay to respect rate limits
     }
 
     if (successCount > 0) {
