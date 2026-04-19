@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -9,13 +9,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
 import { Search, Plus, Upload, Users, Loader2, Filter } from 'lucide-react'
 import { CsvImportDialog } from '@/components/customers/CsvImportDialog'
 import { ZapVivaImportDialog } from '@/components/customers/ZapVivaImportDialog'
@@ -38,10 +31,12 @@ export default function Customers() {
   const [phaseFilter, setPhaseFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('')
   const [debouncedSourceFilter, setDebouncedSourceFilter] = useState('')
+
   const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
   const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(false)
 
   const [csvOpen, setCsvOpen] = useState(false)
@@ -50,52 +45,91 @@ export default function Customers() {
   const [importing, setImporting] = useState(false)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
+
   const { toast } = useToast()
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
       setDebouncedSourceFilter(sourceFilter)
-      setPage(1)
     }, 500)
     return () => clearTimeout(timer)
   }, [search, sourceFilter])
 
+  const loadData = useCallback(
+    async (currentPage: number, isLoadMore = false) => {
+      try {
+        if (isLoadMore) {
+          setLoadingMore(true)
+        } else {
+          setLoading(true)
+        }
+        setError(false)
+        const data = await getPaginatedCustomers(
+          currentPage,
+          50,
+          debouncedSearch,
+          phaseFilter,
+          debouncedSourceFilter,
+        )
+
+        if (isLoadMore) {
+          setLeads((prev) => {
+            const existingIds = new Set(prev.map((l) => l.id))
+            const newItems = data.items.filter((l) => !existingIds.has(l.id))
+            return [...prev, ...newItems]
+          })
+        } else {
+          setLeads(data.items)
+        }
+
+        setHasMore(data.page < data.totalPages)
+        setTotalItems(data.totalItems)
+      } catch {
+        setError(true)
+        toast({ title: 'Erro ao carregar clientes', variant: 'destructive' })
+      } finally {
+        if (isLoadMore) {
+          setLoadingMore(false)
+        } else {
+          setLoading(false)
+        }
+      }
+    },
+    [debouncedSearch, phaseFilter, debouncedSourceFilter, toast],
+  )
+
   useEffect(() => {
     setPage(1)
-  }, [phaseFilter])
+    loadData(1, false)
+  }, [debouncedSearch, phaseFilter, debouncedSourceFilter, loadData])
 
-  const loadData = async () => {
-    try {
-      setLoading(true)
-      setError(false)
-      const data = await getPaginatedCustomers(
-        page,
-        50,
-        debouncedSearch,
-        phaseFilter,
-        debouncedSourceFilter,
-      )
-      setLeads(data.items)
-      setTotalPages(data.totalPages)
-      setTotalItems(data.totalItems)
-    } catch {
-      setError(true)
-      toast({ title: 'Erro ao carregar clientes', variant: 'destructive' })
-    } finally {
-      setLoading(false)
+  const handleLoadMore = useCallback(() => {
+    if (!loading && !loadingMore && hasMore) {
+      const nextPage = page + 1
+      setPage(nextPage)
+      loadData(nextPage, true)
     }
-  }
-
-  useEffect(() => {
-    loadData()
-  }, [page, debouncedSearch, phaseFilter, debouncedSourceFilter])
+  }, [loading, loadingMore, hasMore, page, loadData])
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   useRealtime('customers', () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    timeoutRef.current = setTimeout(() => {
-      loadData()
+    timeoutRef.current = setTimeout(async () => {
+      try {
+        const data = await getPaginatedCustomers(
+          1,
+          page * 50,
+          debouncedSearch,
+          phaseFilter,
+          debouncedSourceFilter,
+        )
+        setLeads(data.items)
+        setTotalItems(data.totalItems)
+        setHasMore(data.items.length < data.totalItems)
+      } catch {
+        // silent background refresh fail
+      }
     }, 1000)
   })
 
@@ -103,7 +137,7 @@ export default function Customers() {
     try {
       await deleteCustomer(id)
       toast({ title: 'Lead removido' })
-      loadData()
+      // The realtime hook will refresh the list automatically
     } catch {
       toast({ title: 'Erro', variant: 'destructive' })
     }
@@ -163,7 +197,8 @@ export default function Customers() {
       title: successCount > 0 ? `${successCount} contatos importados!` : 'Falha na importação',
       variant: successCount > 0 ? 'default' : 'destructive',
     })
-    loadData()
+    setPage(1)
+    loadData(1, false)
   }
 
   return (
@@ -246,42 +281,25 @@ export default function Customers() {
       </div>
 
       <Card className="flex-1 flex flex-col overflow-hidden shadow-sm">
-        <CardContent className="p-0 flex-1 overflow-x-auto relative">
+        <CardContent className="p-0 flex-1 overflow-x-auto relative scroll-smooth">
           <CustomerTable
             leads={leads}
             loading={loading}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
             error={error}
             onEdit={(lead) => {
               setEditingLead(lead)
               setLeadOpen(true)
             }}
             onDelete={handleDelete}
+            onLoadMore={handleLoadMore}
           />
         </CardContent>
         <div className="border-t p-3 flex items-center justify-between bg-muted/20 shrink-0">
           <div className="text-sm text-muted-foreground">
-            Mostrando página {page} de {totalPages || 1} ({totalItems} total)
+            Mostrando {leads.length} de {totalItems} clientes
           </div>
-          <Pagination className="w-auto mx-0">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                />
-              </PaginationItem>
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className={
-                    page === totalPages || totalPages === 0
-                      ? 'pointer-events-none opacity-50'
-                      : 'cursor-pointer'
-                  }
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
         </div>
       </Card>
 
@@ -298,7 +316,10 @@ export default function Customers() {
         <ZapVivaImportDialog
           open={zapVivaOpen}
           onOpenChange={setZapVivaOpen}
-          onSuccess={loadData}
+          onSuccess={() => {
+            setPage(1)
+            loadData(1, false)
+          }}
         />
       )}
       {leadOpen && (
