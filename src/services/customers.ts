@@ -143,6 +143,10 @@ export const deleteAllCustomers = async (): Promise<void> => {
   await bulkDeleteCustomers()
 }
 
-export const bulkDeleteCustomers = async (): Promise<void> => {
-  await pb.send('/backend/v1/customers/bulk-delete', { method: 'POST' })
+export const bulkDeleteCustomers = async (ids?: string[]): Promise<void> => {
+  await pb.send('/backend/v1/customers/bulk-delete', {
+    method: 'POST',
+    body: ids ? JSON.stringify({ ids }) : undefined,
+    headers: { 'Content-Type': 'application/json' },
+  })
 }

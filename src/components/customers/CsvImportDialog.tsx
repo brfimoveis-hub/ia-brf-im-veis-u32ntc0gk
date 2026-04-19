@@ -25,61 +25,34 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { bulkDeleteCustomers, createCustomerWithRetry } from '@/services/customers'
+import pb from '@/lib/pocketbase/client'
 
-const GOOGLE_CONTACTS_MAPPING: Record<string, string> = {
-  'First Name': 'first_name',
-  'Given Name': 'first_name',
-  'Middle Name': 'middle_name',
-  'Additional Name': 'middle_name',
-  'Last Name': 'last_name',
-  'Family Name': 'last_name',
-  'Phonetic First Name': 'phonetic_first_name',
-  'Phonetic Middle Name': 'phonetic_middle_name',
-  'Phonetic Last Name': 'phonetic_last_name',
-  'Name Prefix': 'name_prefix',
-  'Name Suffix': 'name_suffix',
-  Nickname: 'nickname',
-  'File As': 'file_as',
-  'Organization Name': 'org_name',
-  'Organization Title': 'org_title',
-  'Organization Department': 'org_dept',
-  Birthday: 'birthday',
-  Notes: 'notes',
-  Photo: 'photo',
-  Labels: 'tags',
-  'Group Membership': 'tags',
-  'E-mail 1 - Label': 'email_1_label',
-  'E-mail 1 - Type': 'email_1_label',
-  'E-mail 1 - Value': 'email_1_value',
-  'E-mail 2 - Label': 'email_2_label',
-  'E-mail 2 - Type': 'email_2_label',
-  'E-mail 2 - Value': 'email_2_value',
-  'Phone 1 - Label': 'phone_1_label',
-  'Phone 1 - Type': 'phone_1_label',
-  'Phone 1 - Value': 'phone_1_value',
-  'Phone 2 - Label': 'phone_2_label',
-  'Phone 2 - Type': 'phone_2_label',
-  'Phone 2 - Value': 'phone_2_value',
-  'Phone 3 - Label': 'phone_3_label',
-  'Phone 3 - Type': 'phone_3_label',
-  'Phone 3 - Value': 'phone_3_value',
-  'Phone 4 - Label': 'phone_4_label',
-  'Phone 4 - Type': 'phone_4_label',
-  'Phone 4 - Value': 'phone_4_value',
-  'Address 1 - Label': 'address_1_label',
-  'Address 1 - Type': 'address_1_label',
-  'Address 1 - Formatted': 'address_1_formatted',
-  'Address 1 - Street': 'address_1_street',
-  'Address 1 - City': 'address_1_city',
-  'Address 1 - PO Box': 'address_1_po_box',
-  'Address 1 - Region': 'address_1_region',
-  'Address 1 - Postal Code': 'address_1_postal_code',
-  'Address 1 - Country': 'address_1_country',
-  'Address 1 - Extended Address': 'address_1_extended',
-  'Website 1 - Label': 'website_1_label',
-  'Website 1 - Type': 'website_1_label',
-  'Website 1 - Value': 'website_1_value',
+const GENERIC_MAPPING: Record<string, string[]> = {
+  name: [
+    'name',
+    'nome',
+    'first name',
+    'given name',
+    'full name',
+    'razao social',
+    'cliente',
+    'first_name',
+  ],
+  phone: [
+    'phone',
+    'telefone',
+    'mobile',
+    'celular',
+    'whatsapp',
+    'cel',
+    'tel',
+    'phone 1 - value',
+    'phone_1_value',
+  ],
+  email: ['email', 'e-mail', 'e-mail 1 - value', 'mail', 'correio eletrônico', 'email_1_value'],
 }
+
+const normalizeHeader = (h: string) => h.trim().toLowerCase().replace(/^"|"$/g, '')
 
 function parseCSV(text: string): string[][] {
   const result: string[][] = []
@@ -127,13 +100,11 @@ export function CsvImportDialog({
   onOpenChange,
   onImport,
   isImporting,
-  progress,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
   onImport: (data: any[], replaceData: boolean) => Promise<void>
   isImporting?: boolean
-  progress?: { current: number; total: number }
 }) {
   const { toast } = useToast()
   const [file, setFile] = useState<File | null>(null)
@@ -142,16 +113,16 @@ export function CsvImportDialog({
   const [replaceData, setReplaceData] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
-  // Internal state for resilient batch imports
   const [internalImporting, setInternalImporting] = useState(false)
   const [internalProgress, setInternalProgress] = useState({ current: 0, total: 0 })
   const [internalDeleting, setInternalDeleting] = useState(false)
+  const [deleteProgress, setDeleteProgress] = useState({ current: 0, total: 0 })
   const [failedRecords, setFailedRecords] = useState<any[]>([])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isBusy = internalImporting || isImporting || internalDeleting
-  const displayProgress = internalImporting ? internalProgress : progress
+  const displayProgress = internalDeleting ? deleteProgress : internalProgress
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0]
@@ -163,18 +134,29 @@ export function CsvImportDialog({
 
       const headers = rows[0] || []
       const newMapping: Record<string, number> = {}
+
+      let mappedNameIndex = -1
+      let mappedPhoneIndex = -1
+      let mappedEmailIndex = -1
+
       headers.forEach((header, index) => {
-        const cleanHeader = header.trim().replace(/^"|"$/g, '')
-        if (GOOGLE_CONTACTS_MAPPING[cleanHeader]) {
-          newMapping[GOOGLE_CONTACTS_MAPPING[cleanHeader]] = index
-        }
+        const cleanHeader = normalizeHeader(header)
+        if (mappedNameIndex === -1 && GENERIC_MAPPING.name.includes(cleanHeader))
+          mappedNameIndex = index
+        if (mappedPhoneIndex === -1 && GENERIC_MAPPING.phone.includes(cleanHeader))
+          mappedPhoneIndex = index
+        if (mappedEmailIndex === -1 && GENERIC_MAPPING.email.includes(cleanHeader))
+          mappedEmailIndex = index
       })
 
-      if (Object.keys(newMapping).length === 0) {
+      if (mappedNameIndex !== -1) newMapping['Nome'] = mappedNameIndex
+      if (mappedPhoneIndex !== -1) newMapping['Telefone'] = mappedPhoneIndex
+      if (mappedEmailIndex !== -1) newMapping['Email'] = mappedEmailIndex
+
+      if (mappedNameIndex === -1 && mappedPhoneIndex === -1) {
         toast({
-          title: 'Arquivo inválido',
-          description:
-            'Nenhum cabeçalho compatível com o Google Contacts foi encontrado no arquivo CSV.',
+          title: 'Erro de validação',
+          description: 'Não foi possível encontrar as colunas de Nome ou Telefone.',
           variant: 'destructive',
         })
         if (fileInputRef.current) fileInputRef.current.value = ''
@@ -212,58 +194,69 @@ export function CsvImportDialog({
       const rows = data.slice(1)
       targetData = rows
         .map((row) => {
-          const obj: any = {}
-          Object.entries(mapping).forEach(([targetKey, colIndex]) => {
-            if (row[colIndex]) {
-              obj[targetKey] = row[colIndex].trim()
-            }
-          })
-          return obj
+          const nameIndex = mapping['Nome']
+          const phoneIndex = mapping['Telefone']
+          const emailIndex = mapping['Email']
+
+          const name = nameIndex !== undefined ? row[nameIndex]?.trim() : ''
+          const phone = phoneIndex !== undefined ? row[phoneIndex]?.trim() : ''
+          const email = emailIndex !== undefined ? row[emailIndex]?.trim() : ''
+
+          return { name, phone, email }
         })
-        .filter((obj) => Object.keys(obj).length > 0 && Object.values(obj).some((v) => v !== ''))
+        .filter((obj) => obj.name || obj.phone) // Only keep valid records
     }
 
     if (!targetData || targetData.length === 0) return
 
-    setInternalImporting(true)
-    setInternalProgress({ current: 0, total: targetData.length })
-
     if (replaceData && !recordsToProcess) {
       setInternalDeleting(true)
       try {
-        await bulkDeleteCustomers()
+        const allCustomers = await pb.collection('customers').getFullList({ fields: 'id' })
+        const totalToDelete = allCustomers.length
+        setDeleteProgress({ current: 0, total: totalToDelete })
+
+        if (totalToDelete > 0) {
+          const deleteBatchSize = 200
+          for (let i = 0; i < totalToDelete; i += deleteBatchSize) {
+            const batch = allCustomers.slice(i, i + deleteBatchSize).map((c) => c.id)
+            await bulkDeleteCustomers(batch)
+            setDeleteProgress({
+              current: Math.min(i + batch.length, totalToDelete),
+              total: totalToDelete,
+            })
+            await new Promise((r) => setTimeout(r, 200)) // 200ms delay to respect limits
+          }
+        }
       } catch (error) {
         toast({
           title: 'Erro na exclusão',
-          description:
-            'Erro ao limpar a base. A importação foi interrompida para evitar duplicidade.',
+          description: 'Erro ao limpar a base. A importação foi interrompida.',
           variant: 'destructive',
         })
         setInternalDeleting(false)
-        setInternalImporting(false)
         return
       }
       setInternalDeleting(false)
     }
 
+    setInternalImporting(true)
+    setInternalProgress({ current: 0, total: targetData.length })
+
     let successCount = 0
     let newFailed: any[] = []
-    const batchSize = 50
+    const insertBatchSize = 50
 
-    for (let i = 0; i < targetData.length; i += batchSize) {
-      const batch = targetData.slice(i, i + batchSize)
+    for (let i = 0; i < targetData.length; i += insertBatchSize) {
+      const batch = targetData.slice(i, i + insertBatchSize)
       setInternalProgress({ current: i, total: targetData.length })
 
       const results = await Promise.allSettled(
         batch.map(async (item) => {
           const customerData = {
             ...item,
-            status: item.status || '1',
-            tags: Array.isArray(item.tags)
-              ? item.tags
-              : item.tags
-                ? [item.tags, 'CSV']
-                : ['Importado', 'CSV'],
+            status: item.status || 'Novo',
+            tags: item.tags || ['Importado', 'CSV'],
           }
           await createCustomerWithRetry(customerData)
         }),
@@ -277,14 +270,15 @@ export function CsvImportDialog({
         }
       })
 
-      setInternalProgress({ current: i + batch.length, total: targetData.length })
-      // Small throttle to be gentle with the API during large chunking
-      await new Promise((r) => setTimeout(r, 200))
+      setInternalProgress({
+        current: Math.min(i + batch.length, targetData.length),
+        total: targetData.length,
+      })
+      await new Promise((r) => setTimeout(r, 200)) // 200ms delay to respect limits
     }
 
     if (successCount > 0) {
-      // Pass empty array so parent fetches new records without doing work itself
-      onImport([], false).catch(() => {})
+      await onImport([], false)
     }
 
     if (newFailed.length > 0) {
@@ -326,10 +320,10 @@ export function CsvImportDialog({
       >
         <DialogContent className="max-w-2xl w-[95vw] sm:w-full">
           <DialogHeader>
-            <DialogTitle>Importar Google Contacts (CSV)</DialogTitle>
+            <DialogTitle>Importar Contatos (CSV)</DialogTitle>
             <DialogDescription>
-              Faça upload do seu arquivo CSV exportado do Google Contacts. O mapeamento dos campos
-              será feito automaticamente.
+              Faça upload do seu arquivo CSV. O mapeamento de Nome, Email e Telefone será feito
+              automaticamente.
             </DialogDescription>
           </DialogHeader>
 
@@ -359,9 +353,6 @@ export function CsvImportDialog({
             >
               <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-4" />
               <p className="text-sm font-medium">Clique para selecionar um arquivo .csv</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Exportado diretamente do Google Contacts
-              </p>
               <input
                 type="file"
                 accept=".csv"
@@ -375,7 +366,8 @@ export function CsvImportDialog({
               <Alert className="bg-primary/5 border-primary/20">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
                 <AlertDescription className="text-primary font-medium">
-                  {Object.keys(mapping).length} colunas mapeadas automaticamente.
+                  {Object.keys(mapping).length} colunas mapeadas automaticamente:{' '}
+                  {Object.keys(mapping).join(', ')}.
                   {data.length > 1 && ` ${data.length - 1} contatos encontrados.`}
                 </AlertDescription>
               </Alert>
@@ -433,7 +425,8 @@ export function CsvImportDialog({
                 <Alert variant="destructive" className="bg-destructive/10">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription className="font-semibold">
-                    ⚠️ Atenção: Todos os clientes atuais serão apagados antes da importação.
+                    ⚠️ Atenção: Todos os clientes atuais serão apagados permanentemente antes da
+                    importação.
                   </AlertDescription>
                 </Alert>
               )}
@@ -445,18 +438,16 @@ export function CsvImportDialog({
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>
                   {internalDeleting
-                    ? 'Limpando base de dados atual...'
-                    : displayProgress?.total && displayProgress.total > 0
-                      ? `Processando... (${displayProgress.current} de ${displayProgress.total})`
-                      : 'Preparando importação...'}
+                    ? `Limpando base: ${displayProgress.current} de ${displayProgress.total} registros...`
+                    : `Importando: ${displayProgress.current} de ${displayProgress.total} novos clientes...`}
                 </span>
-                {!internalDeleting && displayProgress && displayProgress.total > 0 && (
+                {displayProgress.total > 0 && (
                   <span>
                     {Math.round((displayProgress.current / displayProgress.total) * 100)}%
                   </span>
                 )}
               </div>
-              {!internalDeleting && displayProgress && displayProgress.total > 0 ? (
+              {displayProgress.total > 0 ? (
                 <Progress
                   value={(displayProgress.current / displayProgress.total) * 100}
                   className="h-2"
@@ -482,7 +473,7 @@ export function CsvImportDialog({
                 {isBusy
                   ? 'Processando...'
                   : replaceData
-                    ? 'Confirmar e Importar'
+                    ? 'Substituir Base'
                     : 'Confirmar Importação'}
               </Button>
             )}
