@@ -62,7 +62,7 @@ function parseCSV(str: string) {
   return data
 }
 
-export function ZapVivaImportDialog({
+export function GoogleContactsImportDialog({
   open,
   onOpenChange,
   onSuccess,
@@ -105,7 +105,7 @@ export function ZapVivaImportDialog({
       }
       setParsedData(data)
       setFailedRecords([])
-      toast({ title: `Arquivo carregado com ${data.length} registros prontos para importação.` })
+      toast({ title: `Arquivo carregado com ${data.length} contatos prontos para importação.` })
     } catch (err: any) {
       toast({
         title: 'Erro ao ler arquivo',
@@ -126,7 +126,7 @@ export function ZapVivaImportDialog({
       }
       setParsedData(data)
       setFailedRecords([])
-      toast({ title: `Texto carregado com ${data.length} registros.` })
+      toast({ title: `Texto carregado com ${data.length} contatos.` })
     } catch (err: any) {
       toast({ title: 'JSON inválido', description: err.message, variant: 'destructive' })
     }
@@ -160,27 +160,39 @@ export function ZapVivaImportDialog({
 
         const results = await Promise.allSettled(
           batch.map(async (item) => {
-            const nomeCompleto =
-              item['Nome Completo'] || item['nome_completo'] || item['Nome_Completo']
-            const nome = item['nome'] || item['Nome'] || item['first_name'] || ''
-            const sobrenome = item['sobrenome'] || item['Sobrenome'] || item['last_name'] || ''
+            const givenName = item['Given Name'] || item['First Name'] || item['Nome'] || ''
+            const familyName = item['Family Name'] || item['Last Name'] || item['Sobrenome'] || ''
+            const fullName = item['Name'] || item['Nome Completo'] || ''
 
-            const name = nomeCompleto
-              ? nomeCompleto
-              : nome || sobrenome
-                ? `${nome} ${sobrenome}`.trim()
-                : 'Sem Nome'
-            const email = (item['Email'] || item['email'] || '').trim()
-            const rawPhone = item['Telefone'] || item['telefone'] || item['phone'] || ''
+            const nameRaw = fullName
+              ? fullName
+              : givenName || familyName
+                ? `${givenName} ${familyName}`.trim()
+                : ''
+
+            const email = (item['E-mail 1 - Value'] || item['Email'] || item['email'] || '').trim()
+            const rawPhone = item['Phone 1 - Value'] || item['Telefone'] || item['phone'] || ''
             const phone = formatPhone(rawPhone)
-            const address = item['Endereço'] || item['endereco'] || item['address'] || ''
-            const source = item['Lead Source'] || item['source'] || item['Origem'] || 'Zap/Viva'
+
+            // Skip invalid or completely blank lines as requested
+            if (!nameRaw && !email && !rawPhone) return
+
+            const name = nameRaw || 'Sem Nome'
+            const address =
+              item['Address 1 - Formatted'] ||
+              item['Endereço'] ||
+              item['endereco'] ||
+              item['address'] ||
+              ''
+            const source = 'Google Contacts'
             const orgName =
+              item['Organization 1 - Name'] ||
               item['Empresa'] ||
               item['empresa'] ||
               item['org_name'] ||
               item['Organization Name'] ||
               ''
+            const notes = item['Notes'] || item['Observações'] || ''
 
             if (email && uniqueEmails.has(email)) return
             if (phone && uniquePhones.has(phone)) return
@@ -190,6 +202,8 @@ export function ZapVivaImportDialog({
 
             await createCustomerWithRetry({
               name,
+              first_name: givenName,
+              last_name: familyName,
               email,
               email_1_value: email,
               phone,
@@ -197,6 +211,7 @@ export function ZapVivaImportDialog({
               address_1_formatted: address,
               source,
               org_name: orgName,
+              notes,
               status: '1', // Lead Novo
               tags: ['Importado', source],
             })
@@ -207,6 +222,8 @@ export function ZapVivaImportDialog({
           if (res.status === 'rejected') {
             newFailed.push(batch[idx])
           } else {
+            // Count might not be perfectly +1 since we return early for duplicates/blanks,
+            // but it serves as a rough success metric.
             successCount++
           }
         })
@@ -225,12 +242,12 @@ export function ZapVivaImportDialog({
         setFailedRecords(newFailed)
         toast({
           title: `Importação parcial`,
-          description: `${successCount} leads importados. ${newFailed.length} falharam.`,
+          description: `Contatos processados. ${newFailed.length} falharam na rede.`,
           variant: 'destructive',
         })
         if (successCount > 0) onSuccess() // Trigger refresh for the partial success
       } else {
-        toast({ title: `${successCount} Leads importados com sucesso!` })
+        toast({ title: `Contatos importados com sucesso!` })
         onSuccess()
         setTimeout(() => {
           onOpenChange(false)
@@ -266,10 +283,10 @@ export function ZapVivaImportDialog({
     >
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Importar Base de Leads</DialogTitle>
+          <DialogTitle>Importar Google Contacts</DialogTitle>
           <DialogDescription>
-            Faça upload de um arquivo CSV ou JSON, ou cole o conteúdo JSON abaixo para importar
-            leads (Zap Imóveis, Viva Real, etc).
+            Faça upload de um arquivo CSV exportado do Google Contacts ou JSON para importar seus
+            contatos.
           </DialogDescription>
         </DialogHeader>
 
@@ -320,7 +337,7 @@ export function ZapVivaImportDialog({
             <div className="space-y-3">
               <Label>Ou cole o JSON manualmente</Label>
               <Textarea
-                placeholder={`[\n  {\n    "Nome Completo": "João Silva",\n    "Email": "joao@example.com",\n    "Telefone": "11987654321",\n    "Endereço": "Rua A, 123",\n    "Lead Source": "Zap"\n  }\n]`}
+                placeholder={`[\n  {\n    "Given Name": "João",\n    "Family Name": "Silva",\n    "E-mail 1 - Value": "joao@example.com",\n    "Phone 1 - Value": "11987654321",\n    "Organization 1 - Name": "Empresa X"\n  }\n]`}
                 value={jsonInput}
                 onChange={(e) => setJsonInput(e.target.value)}
                 className="h-32 font-mono text-sm"

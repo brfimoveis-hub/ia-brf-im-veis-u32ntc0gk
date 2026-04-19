@@ -11,7 +11,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card'
 import { Search, Plus, Upload, Users, Loader2, Filter } from 'lucide-react'
 import { CsvImportDialog } from '@/components/customers/CsvImportDialog'
-import { ZapVivaImportDialog } from '@/components/customers/ZapVivaImportDialog'
+import { GoogleContactsImportDialog } from '@/components/customers/GoogleContactsImportDialog'
 import { LeadDialog } from '@/components/customers/LeadDialog'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { useToast } from '@/hooks/use-toast'
@@ -35,7 +35,7 @@ export default function Customers() {
   const [error, setError] = useState(false)
 
   const [csvOpen, setCsvOpen] = useState(false)
-  const [zapVivaOpen, setZapVivaOpen] = useState(false)
+  const [googleContactsOpen, setGoogleContactsOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
 
@@ -148,11 +148,11 @@ export default function Customers() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="default" onClick={() => setZapVivaOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" /> Importar Leads (CSV/JSON)
+          <Button variant="default" onClick={() => setGoogleContactsOpen(true)} className="gap-2">
+            <Upload className="h-4 w-4" /> Importar Google Contacts
           </Button>
           <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" /> Importar Contatos (CSV)
+            <Upload className="h-4 w-4" /> Importar CSV Genérico
           </Button>
           <Button
             onClick={() => {
@@ -192,7 +192,7 @@ export default function Customers() {
         <div className="relative w-full max-w-[200px]">
           <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Origem (ex: Zap/Viva)"
+            placeholder="Origem (ex: Google Contacts)"
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
             className="pl-9 w-full"
@@ -233,10 +233,10 @@ export default function Customers() {
           }}
         />
       )}
-      {zapVivaOpen && (
-        <ZapVivaImportDialog
-          open={zapVivaOpen}
-          onOpenChange={setZapVivaOpen}
+      {googleContactsOpen && (
+        <GoogleContactsImportDialog
+          open={googleContactsOpen}
+          onOpenChange={setGoogleContactsOpen}
           onSuccess={() => {
             setPage(1)
             loadData(1, false)
