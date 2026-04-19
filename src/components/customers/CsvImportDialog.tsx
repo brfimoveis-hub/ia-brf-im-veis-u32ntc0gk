@@ -200,7 +200,13 @@ export function CsvImportDialog({
           const phone = phoneIndex !== undefined ? row[phoneIndex]?.trim() : ''
           const email = emailIndex !== undefined ? row[emailIndex]?.trim() : ''
 
-          return { name, phone, email }
+          return {
+            name,
+            phone,
+            email,
+            phone_1_value: phone,
+            email_1_value: email,
+          }
         })
         .filter((obj) => obj.name && obj.name.trim() !== '') // Only keep valid records with name
     }
@@ -215,7 +221,7 @@ export function CsvImportDialog({
         setDeleteProgress({ current: 0, total: totalToDelete })
 
         if (totalToDelete > 0) {
-          const deleteBatchSize = 200
+          const deleteBatchSize = 100
           for (let i = 0; i < totalToDelete; i += deleteBatchSize) {
             const batch = allCustomers.slice(i, i + deleteBatchSize).map((c) => c.id)
             await bulkDeleteCustomers(batch)
@@ -223,7 +229,7 @@ export function CsvImportDialog({
               current: Math.min(i + batch.length, totalToDelete),
               total: totalToDelete,
             })
-            await new Promise((r) => setTimeout(r, 200)) // 200ms delay to respect limits
+            await new Promise((r) => setTimeout(r, 300)) // 300ms delay to prevent rate-limiting
           }
         }
       } catch (error) {
@@ -243,7 +249,7 @@ export function CsvImportDialog({
 
     let successCount = 0
     let newFailed: any[] = []
-    const insertBatchSize = 50
+    const insertBatchSize = 25 // Small chunk for better concurrency control
 
     for (let i = 0; i < targetData.length; i += insertBatchSize) {
       const batch = targetData.slice(i, i + insertBatchSize)
@@ -272,7 +278,7 @@ export function CsvImportDialog({
         current: Math.min(i + batch.length, targetData.length),
         total: targetData.length,
       })
-      await new Promise((r) => setTimeout(r, 200)) // 200ms delay to respect limits
+      await new Promise((r) => setTimeout(r, 300)) // 300ms strategic delay to respect rate limits
     }
 
     if (successCount > 0) {
@@ -433,13 +439,13 @@ export function CsvImportDialog({
 
           {isBusy && (
             <div className="space-y-2 py-4">
-              <div className="flex justify-between text-sm text-muted-foreground">
+              <div className="flex justify-between text-sm text-muted-foreground mb-1">
                 <span>
                   {internalDeleting
                     ? displayProgress.total === 0 && displayProgress.current === 0
                       ? 'Iniciando limpeza da base...'
-                      : `Limpando: ${displayProgress.current} de ${displayProgress.total} contatos...`
-                    : `Processando importação: ${displayProgress.current} de ${displayProgress.total}...`}
+                      : `Limpando: ${displayProgress.current}/${displayProgress.total}`
+                    : `Importando: ${displayProgress.current}/${displayProgress.total}`}
                 </span>
                 {displayProgress.total > 0 && (
                   <span>
