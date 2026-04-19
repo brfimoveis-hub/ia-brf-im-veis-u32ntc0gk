@@ -112,6 +112,17 @@ function parseCSV(text: string): string[][] {
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { AlertTriangle } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { bulkDeleteCustomers } from '@/services/customers'
 
 export function CsvImportDialog({
   open,
@@ -131,6 +142,8 @@ export function CsvImportDialog({
   const [data, setData] = useState<string[][]>([])
   const [mapping, setMapping] = useState<Record<string, number>>({})
   const [replaceData, setReplaceData] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [internalDeleting, setInternalDeleting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -174,7 +187,16 @@ export function CsvImportDialog({
     }
   }
 
-  const handleImport = async () => {
+  const handleImportClick = () => {
+    if (replaceData) {
+      setShowConfirm(true)
+    } else {
+      executeImport()
+    }
+  }
+
+  const executeImport = async () => {
+    setShowConfirm(false)
     if (!data.length) return
     const rows = data.slice(1)
 
@@ -190,7 +212,25 @@ export function CsvImportDialog({
       })
       .filter((obj) => Object.keys(obj).length > 0 && Object.values(obj).some((v) => v !== ''))
 
-    await onImport(mappedData, replaceData)
+    if (replaceData) {
+      setInternalDeleting(true)
+      try {
+        await bulkDeleteCustomers()
+      } catch (error) {
+        console.error('Bulk delete failed:', error)
+        toast({
+          title: 'Erro na exclusão',
+          description:
+            'Erro ao limpar a base. A importação foi interrompida para evitar duplicidade.',
+          variant: 'destructive',
+        })
+        setInternalDeleting(false)
+        return
+      }
+      setInternalDeleting(false)
+    }
+
+    await onImport(mappedData, false)
     reset()
   }
 
@@ -199,155 +239,191 @@ export function CsvImportDialog({
     setData([])
     setMapping({})
     setReplaceData(false)
+    setShowConfirm(false)
+    setInternalDeleting(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(val) => {
-        if (isImporting) return
-        onOpenChange(val)
-        if (!val) reset()
-      }}
-    >
-      <DialogContent className="max-w-2xl w-[95vw] sm:w-full">
-        <DialogHeader>
-          <DialogTitle>Importar Google Contacts (CSV)</DialogTitle>
-          <DialogDescription>
-            Faça upload do seu arquivo CSV exportado do Google Contacts. O mapeamento dos campos
-            será feito automaticamente.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(val) => {
+          if (isImporting) return
+          onOpenChange(val)
+          if (!val) reset()
+        }}
+      >
+        <DialogContent className="max-w-2xl w-[95vw] sm:w-full">
+          <DialogHeader>
+            <DialogTitle>Importar Google Contacts (CSV)</DialogTitle>
+            <DialogDescription>
+              Faça upload do seu arquivo CSV exportado do Google Contacts. O mapeamento dos campos
+              será feito automaticamente.
+            </DialogDescription>
+          </DialogHeader>
 
-        {!file ? (
-          <div
-            className="border-2 border-dashed rounded-lg p-8 sm:p-12 text-center hover:bg-muted/50 cursor-pointer transition-colors"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-4" />
-            <p className="text-sm font-medium">Clique para selecionar um arquivo .csv</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Exportado diretamente do Google Contacts
-            </p>
-            <input
-              type="file"
-              accept=".csv"
-              className="hidden"
-              ref={fileInputRef}
-              onChange={handleFile}
-            />
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <Alert className="bg-primary/5 border-primary/20">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              <AlertDescription className="text-primary font-medium">
-                {Object.keys(mapping).length} colunas mapeadas automaticamente.
-                {data.length > 1 && ` ${data.length - 1} contatos encontrados.`}
-              </AlertDescription>
-            </Alert>
+          {!file ? (
+            <div
+              className="border-2 border-dashed rounded-lg p-8 sm:p-12 text-center hover:bg-muted/50 cursor-pointer transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-4" />
+              <p className="text-sm font-medium">Clique para selecionar um arquivo .csv</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Exportado diretamente do Google Contacts
+              </p>
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                ref={fileInputRef}
+                onChange={handleFile}
+              />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <Alert className="bg-primary/5 border-primary/20">
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+                <AlertDescription className="text-primary font-medium">
+                  {Object.keys(mapping).length} colunas mapeadas automaticamente.
+                  {data.length > 1 && ` ${data.length - 1} contatos encontrados.`}
+                </AlertDescription>
+              </Alert>
 
-            <div className="border rounded-md overflow-x-auto max-h-[40vh]">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-muted text-muted-foreground sticky top-0">
-                  <tr>
-                    {Object.keys(mapping).map((targetKey, i) => (
-                      <th key={i} className="px-4 py-2 font-medium whitespace-nowrap border-b">
-                        {targetKey}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.slice(1, 10).map((row, i) => (
-                    <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
-                      {Object.values(mapping).map((colIndex, j) => (
-                        <td key={j} className="px-4 py-2 whitespace-nowrap truncate max-w-[200px]">
-                          {row[colIndex] || <span className="text-muted-foreground/40">—</span>}
-                        </td>
+              <div className="border rounded-md overflow-x-auto max-h-[40vh]">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-muted text-muted-foreground sticky top-0">
+                    <tr>
+                      {Object.keys(mapping).map((targetKey, i) => (
+                        <th key={i} className="px-4 py-2 font-medium whitespace-nowrap border-b">
+                          {targetKey}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {data.length > 10 && (
-                <div className="text-center p-3 text-xs text-muted-foreground border-t bg-muted/20 sticky bottom-0">
-                  Mostrando 9 de {data.length - 1} contatos
+                  </thead>
+                  <tbody>
+                    {data.slice(1, 10).map((row, i) => (
+                      <tr key={i} className="border-b last:border-0 hover:bg-muted/30">
+                        {Object.values(mapping).map((colIndex, j) => (
+                          <td
+                            key={j}
+                            className="px-4 py-2 whitespace-nowrap truncate max-w-[200px]"
+                          >
+                            {row[colIndex] || <span className="text-muted-foreground/40">—</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {data.length > 10 && (
+                  <div className="text-center p-3 text-xs text-muted-foreground border-t bg-muted/20 sticky bottom-0">
+                    Mostrando 9 de {data.length - 1} contatos
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {file && (
+            <div className="space-y-4 py-4 border-t mt-4">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="replace-data"
+                  checked={replaceData}
+                  onCheckedChange={setReplaceData}
+                  disabled={isImporting}
+                />
+                <Label htmlFor="replace-data" className="cursor-pointer">
+                  Apagar todos os clientes atuais antes da importação
+                </Label>
+              </div>
+
+              {replaceData && (
+                <Alert variant="destructive" className="bg-destructive/10">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription className="font-semibold">
+                    ⚠️ Atenção: Todos os clientes atuais serão apagados antes da importação.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
+
+          {(isImporting || internalDeleting) && (
+            <div className="space-y-2 py-4">
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>
+                  {internalDeleting
+                    ? 'Limpando base de dados atual...'
+                    : progress?.total && progress.total > 0
+                      ? 'Importando novos contatos...'
+                      : 'Preparando importação...'}
+                </span>
+                {!internalDeleting && progress && progress.total > 0 && (
+                  <span>
+                    {progress.current} / {progress.total}
+                  </span>
+                )}
+              </div>
+              {!internalDeleting && progress && progress.total > 0 ? (
+                <Progress value={(progress.current / progress.total) * 100} className="h-2" />
+              ) : (
+                <div className="h-2 w-full bg-muted overflow-hidden rounded-full">
+                  <div className="h-full bg-primary w-1/2 animate-pulse rounded-full" />
                 </div>
               )}
             </div>
-          </div>
-        )}
+          )}
 
-        {file && (
-          <div className="space-y-4 py-4 border-t mt-4">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="replace-data"
-                checked={replaceData}
-                onCheckedChange={setReplaceData}
-                disabled={isImporting}
-              />
-              <Label htmlFor="replace-data" className="cursor-pointer">
-                Apagar todos os clientes atuais antes da importação
-              </Label>
-            </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isImporting || internalDeleting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleImportClick}
+              disabled={!file || data.length < 2 || isImporting || internalDeleting}
+              variant={replaceData ? 'destructive' : 'default'}
+            >
+              {isImporting || internalDeleting
+                ? 'Processando...'
+                : replaceData
+                  ? 'Confirmar e Importar'
+                  : 'Confirmar Importação'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            {replaceData && (
-              <Alert variant="destructive" className="bg-destructive/10">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription className="font-semibold">
-                  ⚠️ Atenção: Todos os clientes atuais serão apagados antes da importação.
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-        )}
-
-        {isImporting && progress && (
-          <div className="space-y-2 py-4">
-            <div className="flex justify-between text-sm text-muted-foreground">
-              <span>
-                {progress.total > 0
-                  ? 'Processando contatos...'
-                  : replaceData
-                    ? 'Apagando clientes atuais...'
-                    : 'Preparando importação...'}
-              </span>
-              {progress.total > 0 && (
-                <span>
-                  {progress.current} / {progress.total}
-                </span>
-              )}
-            </div>
-            {progress.total > 0 ? (
-              <Progress value={(progress.current / progress.total) * 100} className="h-2" />
-            ) : (
-              <div className="h-2 w-full bg-muted overflow-hidden rounded-full">
-                <div className="h-full bg-primary w-1/2 animate-pulse rounded-full" />
-              </div>
-            )}
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isImporting}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={handleImport}
-            disabled={!file || data.length < 2 || isImporting}
-            variant={replaceData ? 'destructive' : 'default'}
-          >
-            {isImporting
-              ? 'Processando...'
-              : replaceData
-                ? 'Confirmar e Importar'
-                : 'Confirmar Importação'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar substituição</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action will permanently delete all your current customers. Are you sure you want
+              to proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={internalDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                executeImport()
+              }}
+              disabled={internalDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Sim, substituir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
