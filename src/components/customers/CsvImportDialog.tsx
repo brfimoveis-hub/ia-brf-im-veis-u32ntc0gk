@@ -98,13 +98,11 @@ function parseCSV(text: string): string[][] {
 export function CsvImportDialog({
   open,
   onOpenChange,
-  onImport,
-  isImporting,
+  onSuccess,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
-  onImport: (data: any[], replaceData: boolean) => Promise<void>
-  isImporting?: boolean
+  onSuccess: () => void
 }) {
   const { toast } = useToast()
   const [file, setFile] = useState<File | null>(null)
@@ -121,7 +119,7 @@ export function CsvImportDialog({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const isBusy = internalImporting || isImporting || internalDeleting
+  const isBusy = internalImporting || internalDeleting
   const displayProgress = internalDeleting ? deleteProgress : internalProgress
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -204,7 +202,7 @@ export function CsvImportDialog({
 
           return { name, phone, email }
         })
-        .filter((obj) => obj.name || obj.phone) // Only keep valid records
+        .filter((obj) => obj.name && obj.name.trim() !== '') // Only keep valid records with name
     }
 
     if (!targetData || targetData.length === 0) return
@@ -255,7 +253,7 @@ export function CsvImportDialog({
         batch.map(async (item) => {
           const customerData = {
             ...item,
-            status: item.status || 'Novo',
+            status: item.status || '1',
             tags: item.tags || ['Importado', 'CSV'],
           }
           await createCustomerWithRetry(customerData)
@@ -278,7 +276,7 @@ export function CsvImportDialog({
     }
 
     if (successCount > 0) {
-      await onImport([], false)
+      onSuccess()
     }
 
     if (newFailed.length > 0) {
@@ -438,8 +436,10 @@ export function CsvImportDialog({
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>
                   {internalDeleting
-                    ? `Limpando base: ${displayProgress.current} de ${displayProgress.total} registros...`
-                    : `Importando: ${displayProgress.current} de ${displayProgress.total} novos clientes...`}
+                    ? displayProgress.total === 0 && displayProgress.current === 0
+                      ? 'Iniciando limpeza da base...'
+                      : `Limpando: ${displayProgress.current} de ${displayProgress.total} contatos...`
+                    : `Processando importação: ${displayProgress.current} de ${displayProgress.total}...`}
                 </span>
                 {displayProgress.total > 0 && (
                   <span>

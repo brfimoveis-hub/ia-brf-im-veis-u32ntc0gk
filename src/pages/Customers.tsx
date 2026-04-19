@@ -15,13 +15,7 @@ import { ZapVivaImportDialog } from '@/components/customers/ZapVivaImportDialog'
 import { LeadDialog } from '@/components/customers/LeadDialog'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { useToast } from '@/hooks/use-toast'
-import {
-  getPaginatedCustomers,
-  deleteCustomer,
-  createCustomer,
-  bulkDeleteCustomers,
-  Customer,
-} from '@/services/customers'
+import { getPaginatedCustomers, deleteCustomer, Customer } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
 import { PHASES } from '@/components/customers/constants'
 
@@ -43,8 +37,6 @@ export default function Customers() {
   const [csvOpen, setCsvOpen] = useState(false)
   const [zapVivaOpen, setZapVivaOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
 
   const { toast } = useToast()
@@ -144,80 +136,6 @@ export default function Customers() {
     }
   }
 
-  const handleImport = async (newLeads: any[], replaceData: boolean = false) => {
-    setImporting(true)
-    setImportProgress({ current: 0, total: 0 })
-
-    if (replaceData) {
-      try {
-        await bulkDeleteCustomers()
-      } catch (err) {
-        toast({
-          title: 'Erro ao apagar clientes',
-          description: 'Não foi possível apagar os clientes atuais. A importação foi cancelada.',
-          variant: 'destructive',
-        })
-        setImporting(false)
-        return
-      }
-    }
-
-    setImportProgress({ current: 0, total: newLeads.length })
-    let successCount = 0
-    let processedCount = 0
-    const batchSize = 50
-    for (let i = 0; i < newLeads.length; i += batchSize) {
-      const batch = newLeads.slice(i, i + batchSize)
-      await Promise.all(
-        batch.map(async (lead) => {
-          try {
-            const nameParts = [lead.first_name, lead.middle_name, lead.last_name].filter(Boolean)
-            const fullName = nameParts.length > 0 ? nameParts.join(' ') : 'Contato Sem Nome'
-            let tags: string[] = []
-            if (lead.tags) {
-              tags =
-                typeof lead.tags === 'string' ? lead.tags.split(' ::: ').filter(Boolean) : lead.tags
-            } else {
-              tags = ['Importado']
-            }
-            let status = '1'
-            const possiblePhaseTitle = tags.find((t: string) =>
-              PHASES.some((p) => p.title.toLowerCase() === t.toLowerCase()),
-            )
-            if (possiblePhaseTitle) {
-              const matchedPhase = PHASES.find(
-                (p) => p.title.toLowerCase() === possiblePhaseTitle.toLowerCase(),
-              )
-              if (matchedPhase) status = matchedPhase.id.toString()
-            }
-            await createCustomer({
-              ...lead,
-              name: lead.name || fullName,
-              email: lead.email_1_value || lead.email,
-              phone: lead.phone_1_value || lead.phone,
-              status,
-              tags,
-            })
-            successCount++
-          } catch {
-            // silent fail
-          } finally {
-            processedCount++
-          }
-        }),
-      )
-      setImportProgress({ current: processedCount, total: newLeads.length })
-    }
-    setImporting(false)
-    setCsvOpen(false)
-    toast({
-      title: successCount > 0 ? `${successCount} contatos importados!` : 'Falha na importação',
-      variant: successCount > 0 ? 'default' : 'destructive',
-    })
-    setPage(1)
-    loadData(1, false)
-  }
-
   return (
     <div className="flex flex-col h-[calc(100vh-10rem)] gap-6 animate-fade-in-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between shrink-0 gap-4">
@@ -230,26 +148,11 @@ export default function Customers() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="default"
-            onClick={() => setZapVivaOpen(true)}
-            disabled={importing}
-            className="gap-2"
-          >
+          <Button variant="default" onClick={() => setZapVivaOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" /> Importar Leads (CSV/JSON)
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => setCsvOpen(true)}
-            disabled={importing}
-            className="gap-2"
-          >
-            {importing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            {importing ? 'Importando...' : 'Importar Google Contacts'}
+          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2">
+            <Upload className="h-4 w-4" /> Importar Contatos (CSV)
           </Button>
           <Button
             onClick={() => {
@@ -324,9 +227,10 @@ export default function Customers() {
         <CsvImportDialog
           open={csvOpen}
           onOpenChange={setCsvOpen}
-          onImport={handleImport}
-          isImporting={importing}
-          progress={importProgress}
+          onSuccess={() => {
+            setPage(1)
+            loadData(1, false)
+          }}
         />
       )}
       {zapVivaOpen && (
