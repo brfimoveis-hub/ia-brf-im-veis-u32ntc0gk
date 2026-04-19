@@ -100,6 +100,36 @@ export const createCustomer = async (data: Partial<Customer>): Promise<Customer>
   return pb.collection('customers').create<Customer>(data)
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export const createCustomerWithRetry = async (
+  data: Partial<Customer>,
+  maxRetries = 5,
+): Promise<Customer> => {
+  let attempt = 0
+  while (attempt < maxRetries) {
+    try {
+      if (!data.user_id && pb.authStore.record) {
+        data.user_id = pb.authStore.record.id
+      }
+      return await pb.collection('customers').create<Customer>(data)
+    } catch (error: any) {
+      if (error?.status === 429 || error?.status === 0 || error?.status >= 500) {
+        attempt++
+        if (attempt >= maxRetries) throw error
+        const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000
+        console.warn(
+          `Rate limited or network error. Retrying in ${Math.round(delay)}ms... (Attempt ${attempt}/${maxRetries})`,
+        )
+        await sleep(delay)
+      } else {
+        throw error
+      }
+    }
+  }
+  throw new Error('Failed to create customer after retries.')
+}
+
 export const updateCustomer = async (id: string, data: Partial<Customer>): Promise<Customer> => {
   return pb.collection('customers').update<Customer>(id, data)
 }
@@ -109,19 +139,8 @@ export const deleteCustomer = async (id: string): Promise<void> => {
 }
 
 export const deleteAllCustomers = async (): Promise<void> => {
-  let hasMore = true
-  while (hasMore) {
-    const page = await pb.collection('customers').getList<Customer>(1, 500, { fields: 'id' })
-    if (page.items.length === 0) {
-      hasMore = false
-      break
-    }
-    const batchSize = 50
-    for (let i = 0; i < page.items.length; i += batchSize) {
-      const batch = page.items.slice(i, i + batchSize)
-      await Promise.all(batch.map((c) => pb.collection('customers').delete(c.id)))
-    }
-  }
+  // Uses the atomic bulk-delete server endpoint to avoid 429 errors and slow loops
+  await bulkDeleteCustomers()
 }
 
 export const bulkDeleteCustomers = async (): Promise<void> => {

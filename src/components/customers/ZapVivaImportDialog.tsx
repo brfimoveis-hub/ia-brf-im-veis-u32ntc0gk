@@ -13,10 +13,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
-import { deleteAllCustomers, createCustomer } from '@/services/customers'
-import { Loader2, UploadCloud, CheckCircle2 } from 'lucide-react'
+import { deleteAllCustomers, createCustomerWithRetry } from '@/services/customers'
+import { Loader2, UploadCloud, CheckCircle2, AlertTriangle } from 'lucide-react'
 
-// Simple robust CSV Parser
 function parseCSV(str: string) {
   const result = []
   let row = []
@@ -77,6 +76,8 @@ export function ZapVivaImportDialog({
   const [parsedData, setParsedData] = useState<any[] | null>(null)
   const [importing, setImporting] = useState(false)
   const [progress, setProgress] = useState({ current: 0, total: 0, message: '' })
+  const [failedRecords, setFailedRecords] = useState<any[]>([])
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
@@ -103,6 +104,7 @@ export function ZapVivaImportDialog({
         throw new Error('O arquivo deve conter um array de registros.')
       }
       setParsedData(data)
+      setFailedRecords([])
       toast({ title: `Arquivo carregado com ${data.length} registros prontos para importação.` })
     } catch (err: any) {
       toast({
@@ -123,20 +125,21 @@ export function ZapVivaImportDialog({
         throw new Error('O JSON deve ser um array de objetos.')
       }
       setParsedData(data)
+      setFailedRecords([])
       toast({ title: `Texto carregado com ${data.length} registros.` })
     } catch (err: any) {
       toast({ title: 'JSON inválido', description: err.message, variant: 'destructive' })
     }
   }
 
-  const handleImport = async () => {
-    if (!parsedData) return
+  const handleImport = async (recordsToProcess = parsedData) => {
+    if (!recordsToProcess) return
 
     try {
       setImporting(true)
-      setProgress({ current: 0, total: parsedData.length, message: 'Iniciando...' })
+      setProgress({ current: 0, total: recordsToProcess.length, message: 'Iniciando...' })
 
-      if (mode === 'replace') {
+      if (mode === 'replace' && recordsToProcess === parsedData) {
         setProgress((p) => ({ ...p, message: 'Limpando base atual...' }))
         await deleteAllCustomers()
       }
@@ -144,17 +147,18 @@ export function ZapVivaImportDialog({
       const uniqueEmails = new Set()
       const uniquePhones = new Set()
       let successCount = 0
+      let newFailed: any[] = []
 
-      const batchSize = 50
-      for (let i = 0; i < parsedData.length; i += batchSize) {
-        const batch = parsedData.slice(i, i + batchSize)
+      const batchSize = 50 // controlled chunking size
+      for (let i = 0; i < recordsToProcess.length; i += batchSize) {
+        const batch = recordsToProcess.slice(i, i + batchSize)
         setProgress({
           current: i,
-          total: parsedData.length,
-          message: `Importando ${i} de ${parsedData.length}...`,
+          total: recordsToProcess.length,
+          message: `Processando lote (${i} de ${recordsToProcess.length})...`,
         })
 
-        await Promise.all(
+        const results = await Promise.allSettled(
           batch.map(async (item) => {
             const nomeCompleto =
               item['Nome Completo'] || item['nome_completo'] || item['Nome_Completo']
@@ -184,47 +188,65 @@ export function ZapVivaImportDialog({
             if (email) uniqueEmails.add(email)
             if (phone) uniquePhones.add(phone)
 
-            try {
-              await createCustomer({
-                name,
-                email,
-                email_1_value: email,
-                phone,
-                phone_1_value: phone,
-                address_1_formatted: address,
-                source,
-                org_name: orgName,
-                status: '1', // Lead Novo
-                tags: ['Importado', source],
-              })
-              successCount++
-            } catch (e) {
-              console.error('Failed to create customer', e)
-            }
+            await createCustomerWithRetry({
+              name,
+              email,
+              email_1_value: email,
+              phone,
+              phone_1_value: phone,
+              address_1_formatted: address,
+              source,
+              org_name: orgName,
+              status: '1', // Lead Novo
+              tags: ['Importado', source],
+            })
           }),
         )
+
+        results.forEach((res, idx) => {
+          if (res.status === 'rejected') {
+            newFailed.push(batch[idx])
+          } else {
+            successCount++
+          }
+        })
+
+        setProgress({
+          current: i + batch.length,
+          total: recordsToProcess.length,
+          message: `Processados ${i + batch.length} de ${recordsToProcess.length}...`,
+        })
+
+        // Small delay to be polite to the server
+        await new Promise((r) => setTimeout(r, 200))
       }
 
-      setProgress({
-        current: parsedData.length,
-        total: parsedData.length,
-        message: 'Concluído!',
-      })
-      toast({ title: `${successCount} Leads importados com sucesso!` })
-      onSuccess()
-
-      setTimeout(() => {
-        onOpenChange(false)
-        setParsedData(null)
-        setJsonInput('')
-        setMode('append')
-      }, 1000)
+      if (newFailed.length > 0) {
+        setFailedRecords(newFailed)
+        toast({
+          title: `Importação parcial`,
+          description: `${successCount} leads importados. ${newFailed.length} falharam.`,
+          variant: 'destructive',
+        })
+        if (successCount > 0) onSuccess() // Trigger refresh for the partial success
+      } else {
+        toast({ title: `${successCount} Leads importados com sucesso!` })
+        onSuccess()
+        setTimeout(() => {
+          onOpenChange(false)
+          setParsedData(null)
+          setJsonInput('')
+          setMode('append')
+          setFailedRecords([])
+        }, 1000)
+      }
     } catch (err: any) {
       toast({
         title: 'Erro na importação',
         description: err.message || 'Erro de servidor.',
         variant: 'destructive',
       })
+    } finally {
       setImporting(false)
     }
   }
@@ -232,6 +254,7 @@ export function ZapVivaImportDialog({
   const resetData = () => {
     setParsedData(null)
     setJsonInput('')
+    setFailedRecords([])
   }
 
   return (
@@ -312,13 +335,47 @@ export function ZapVivaImportDialog({
               </Button>
             </div>
           </div>
+        ) : failedRecords.length > 0 ? (
+          <div className="py-4 space-y-6">
+            <div className="flex flex-col items-center justify-center p-6 bg-destructive/10 rounded-lg border border-destructive/20">
+              <AlertTriangle className="h-10 w-10 text-destructive mb-2" />
+              <h3 className="font-semibold text-lg">{failedRecords.length} registros falharam</h3>
+              <p className="text-sm text-muted-foreground text-center">
+                A importação sofreu instabilidades. Você pode tentar importar apenas as falhas
+                novamente.
+              </p>
+              <Button
+                className="mt-4"
+                onClick={() => handleImport(failedRecords)}
+                disabled={importing}
+              >
+                {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Tentar novamente falhas
+              </Button>
+            </div>
+
+            {importing && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>{progress.message}</span>
+                  <span>
+                    {progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0}
+                    %
+                  </span>
+                </div>
+                <Progress
+                  value={progress.total > 0 ? (progress.current / progress.total) * 100 : 0}
+                />
+              </div>
+            )}
+          </div>
         ) : (
           <div className="py-4 space-y-6">
             <div className="flex flex-col items-center justify-center p-6 bg-muted/50 rounded-lg border border-dashed">
               <CheckCircle2 className="h-10 w-10 text-green-500 mb-2" />
               <h3 className="font-semibold text-lg">{parsedData.length} registros prontos!</h3>
               <p className="text-sm text-muted-foreground text-center">
-                O sistema identificou as colunas e processará as formatações necessárias.
+                O sistema identificou as colunas e processará as formatações necessárias em lotes.
               </p>
 
               {mode === 'replace' && (
@@ -330,11 +387,16 @@ export function ZapVivaImportDialog({
 
             {importing && (
               <div className="space-y-2">
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-sm text-muted-foreground">
                   <span>{progress.message}</span>
-                  <span>{Math.round((progress.current / progress.total) * 100) || 0}%</span>
+                  <span>
+                    {progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0}
+                    %
+                  </span>
                 </div>
-                <Progress value={(progress.current / progress.total) * 100} />
+                <Progress
+                  value={progress.total > 0 ? (progress.current / progress.total) * 100 : 0}
+                />
               </div>
             )}
           </div>
@@ -352,10 +414,10 @@ export function ZapVivaImportDialog({
             {parsedData && !importing ? 'Voltar' : 'Cancelar'}
           </Button>
 
-          {parsedData && (
+          {parsedData && failedRecords.length === 0 && (
             <Button
               variant={mode === 'replace' ? 'destructive' : 'default'}
-              onClick={handleImport}
+              onClick={() => handleImport()}
               disabled={importing}
             >
               {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

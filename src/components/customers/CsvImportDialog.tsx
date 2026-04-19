@@ -11,7 +11,20 @@ import {
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
-import { Upload, CheckCircle2 } from 'lucide-react'
+import { Upload, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { bulkDeleteCustomers, createCustomerWithRetry } from '@/services/customers'
 
 const GOOGLE_CONTACTS_MAPPING: Record<string, string> = {
   'First Name': 'first_name',
@@ -109,21 +122,6 @@ function parseCSV(text: string): string[][] {
   return result
 }
 
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { AlertTriangle } from 'lucide-react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { bulkDeleteCustomers } from '@/services/customers'
-
 export function CsvImportDialog({
   open,
   onOpenChange,
@@ -143,8 +141,17 @@ export function CsvImportDialog({
   const [mapping, setMapping] = useState<Record<string, number>>({})
   const [replaceData, setReplaceData] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+
+  // Internal state for resilient batch imports
+  const [internalImporting, setInternalImporting] = useState(false)
+  const [internalProgress, setInternalProgress] = useState({ current: 0, total: 0 })
   const [internalDeleting, setInternalDeleting] = useState(false)
+  const [failedRecords, setFailedRecords] = useState<any[]>([])
+
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const isBusy = internalImporting || isImporting || internalDeleting
+  const displayProgress = internalImporting ? internalProgress : progress
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0]
@@ -177,6 +184,7 @@ export function CsvImportDialog({
       setFile(selected)
       setData(rows)
       setMapping(newMapping)
+      setFailedRecords([])
     } catch (error) {
       toast({
         title: 'Erro ao ler arquivo',
@@ -195,29 +203,36 @@ export function CsvImportDialog({
     }
   }
 
-  const executeImport = async () => {
+  const executeImport = async (recordsToProcess?: any[]) => {
     setShowConfirm(false)
-    if (!data.length) return
-    const rows = data.slice(1)
 
-    const mappedData = rows
-      .map((row) => {
-        const obj: any = {}
-        Object.entries(mapping).forEach(([targetKey, colIndex]) => {
-          if (row[colIndex]) {
-            obj[targetKey] = row[colIndex].trim()
-          }
+    let targetData = recordsToProcess
+    if (!targetData) {
+      if (!data.length) return
+      const rows = data.slice(1)
+      targetData = rows
+        .map((row) => {
+          const obj: any = {}
+          Object.entries(mapping).forEach(([targetKey, colIndex]) => {
+            if (row[colIndex]) {
+              obj[targetKey] = row[colIndex].trim()
+            }
+          })
+          return obj
         })
-        return obj
-      })
-      .filter((obj) => Object.keys(obj).length > 0 && Object.values(obj).some((v) => v !== ''))
+        .filter((obj) => Object.keys(obj).length > 0 && Object.values(obj).some((v) => v !== ''))
+    }
 
-    if (replaceData) {
+    if (!targetData || targetData.length === 0) return
+
+    setInternalImporting(true)
+    setInternalProgress({ current: 0, total: targetData.length })
+
+    if (replaceData && !recordsToProcess) {
       setInternalDeleting(true)
       try {
         await bulkDeleteCustomers()
       } catch (error) {
-        console.error('Bulk delete failed:', error)
         toast({
           title: 'Erro na exclusão',
           description:
@@ -225,13 +240,67 @@ export function CsvImportDialog({
           variant: 'destructive',
         })
         setInternalDeleting(false)
+        setInternalImporting(false)
         return
       }
       setInternalDeleting(false)
     }
 
-    await onImport(mappedData, false)
-    reset()
+    let successCount = 0
+    let newFailed: any[] = []
+    const batchSize = 50
+
+    for (let i = 0; i < targetData.length; i += batchSize) {
+      const batch = targetData.slice(i, i + batchSize)
+      setInternalProgress({ current: i, total: targetData.length })
+
+      const results = await Promise.allSettled(
+        batch.map(async (item) => {
+          const customerData = {
+            ...item,
+            status: item.status || '1',
+            tags: Array.isArray(item.tags)
+              ? item.tags
+              : item.tags
+                ? [item.tags, 'CSV']
+                : ['Importado', 'CSV'],
+          }
+          await createCustomerWithRetry(customerData)
+        }),
+      )
+
+      results.forEach((res, idx) => {
+        if (res.status === 'rejected') {
+          newFailed.push(batch[idx])
+        } else {
+          successCount++
+        }
+      })
+
+      setInternalProgress({ current: i + batch.length, total: targetData.length })
+      // Small throttle to be gentle with the API during large chunking
+      await new Promise((r) => setTimeout(r, 200))
+    }
+
+    if (successCount > 0) {
+      // Pass empty array so parent fetches new records without doing work itself
+      onImport([], false).catch(() => {})
+    }
+
+    if (newFailed.length > 0) {
+      setFailedRecords(newFailed)
+      toast({
+        title: 'Importação parcial',
+        description: `${successCount} contatos importados. ${newFailed.length} falharam.`,
+        variant: 'destructive',
+      })
+    } else {
+      toast({ title: `Todos os contatos foram importados com sucesso!` })
+      reset()
+      onOpenChange(false)
+    }
+
+    setInternalImporting(false)
   }
 
   const reset = () => {
@@ -241,6 +310,7 @@ export function CsvImportDialog({
     setReplaceData(false)
     setShowConfirm(false)
     setInternalDeleting(false)
+    setFailedRecords([])
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -249,7 +319,7 @@ export function CsvImportDialog({
       <Dialog
         open={open}
         onOpenChange={(val) => {
-          if (isImporting) return
+          if (isBusy) return
           onOpenChange(val)
           if (!val) reset()
         }}
@@ -263,7 +333,26 @@ export function CsvImportDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {!file ? (
+          {failedRecords.length > 0 ? (
+            <div className="py-4 space-y-6">
+              <div className="flex flex-col items-center justify-center p-6 bg-destructive/10 rounded-lg border border-destructive/20">
+                <AlertTriangle className="h-10 w-10 text-destructive mb-2" />
+                <h3 className="font-semibold text-lg">{failedRecords.length} registros falharam</h3>
+                <p className="text-sm text-muted-foreground text-center">
+                  Alguns registros falharam na importação. Isso pode ocorrer devido a instabilidades
+                  de rede temporárias.
+                </p>
+                <Button
+                  className="mt-4"
+                  onClick={() => executeImport(failedRecords)}
+                  disabled={isBusy}
+                >
+                  {internalImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Tentar Novamente Falhas
+                </Button>
+              </div>
+            </div>
+          ) : !file ? (
             <div
               className="border-2 border-dashed rounded-lg p-8 sm:p-12 text-center hover:bg-muted/50 cursor-pointer transition-colors"
               onClick={() => fileInputRef.current?.click()}
@@ -326,14 +415,14 @@ export function CsvImportDialog({
             </div>
           )}
 
-          {file && (
+          {file && failedRecords.length === 0 && (
             <div className="space-y-4 py-4 border-t mt-4">
               <div className="flex items-center space-x-2">
                 <Switch
                   id="replace-data"
                   checked={replaceData}
                   onCheckedChange={setReplaceData}
-                  disabled={isImporting}
+                  disabled={isBusy}
                 />
                 <Label htmlFor="replace-data" className="cursor-pointer">
                   Apagar todos os clientes atuais antes da importação
@@ -351,24 +440,27 @@ export function CsvImportDialog({
             </div>
           )}
 
-          {(isImporting || internalDeleting) && (
+          {isBusy && (
             <div className="space-y-2 py-4">
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>
                   {internalDeleting
                     ? 'Limpando base de dados atual...'
-                    : progress?.total && progress.total > 0
-                      ? 'Importando novos contatos...'
+                    : displayProgress?.total && displayProgress.total > 0
+                      ? `Processando... (${displayProgress.current} de ${displayProgress.total})`
                       : 'Preparando importação...'}
                 </span>
-                {!internalDeleting && progress && progress.total > 0 && (
+                {!internalDeleting && displayProgress && displayProgress.total > 0 && (
                   <span>
-                    {progress.current} / {progress.total}
+                    {Math.round((displayProgress.current / displayProgress.total) * 100)}%
                   </span>
                 )}
               </div>
-              {!internalDeleting && progress && progress.total > 0 ? (
-                <Progress value={(progress.current / progress.total) * 100} className="h-2" />
+              {!internalDeleting && displayProgress && displayProgress.total > 0 ? (
+                <Progress
+                  value={(displayProgress.current / displayProgress.total) * 100}
+                  className="h-2"
+                />
               ) : (
                 <div className="h-2 w-full bg-muted overflow-hidden rounded-full">
                   <div className="h-full bg-primary w-1/2 animate-pulse rounded-full" />
@@ -378,24 +470,22 @@ export function CsvImportDialog({
           )}
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isImporting || internalDeleting}
-            >
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isBusy}>
               Cancelar
             </Button>
-            <Button
-              onClick={handleImportClick}
-              disabled={!file || data.length < 2 || isImporting || internalDeleting}
-              variant={replaceData ? 'destructive' : 'default'}
-            >
-              {isImporting || internalDeleting
-                ? 'Processando...'
-                : replaceData
-                  ? 'Confirmar e Importar'
-                  : 'Confirmar Importação'}
-            </Button>
+            {failedRecords.length === 0 && (
+              <Button
+                onClick={handleImportClick}
+                disabled={!file || data.length < 2 || isBusy}
+                variant={replaceData ? 'destructive' : 'default'}
+              >
+                {isBusy
+                  ? 'Processando...'
+                  : replaceData
+                    ? 'Confirmar e Importar'
+                    : 'Confirmar Importação'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -405,8 +495,8 @@ export function CsvImportDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar substituição</AlertDialogTitle>
             <AlertDialogDescription>
-              This action will permanently delete all your current customers. Are you sure you want
-              to proceed?
+              Esta ação apagará permanentemente todos os clientes atuais da sua base. Você tem
+              certeza que deseja continuar?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
