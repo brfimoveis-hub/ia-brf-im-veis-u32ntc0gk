@@ -24,7 +24,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { bulkDeleteCustomers, createCustomerWithRetry } from '@/services/customers'
+import {
+  bulkDeleteCustomers,
+  deleteAllCustomers,
+  createCustomerWithRetry,
+} from '@/services/customers'
 import pb from '@/lib/pocketbase/client'
 
 const GENERIC_MAPPING: Record<string, string[]> = {
@@ -39,6 +43,7 @@ const GENERIC_MAPPING: Record<string, string[]> = {
     'first_name',
     'contact name',
     'display name',
+    'nome do contato',
   ],
   phone: [
     'phone',
@@ -50,8 +55,18 @@ const GENERIC_MAPPING: Record<string, string[]> = {
     'tel',
     'phone 1 - value',
     'phone_1_value',
+    'telefone 1',
+    'número',
   ],
-  email: ['email', 'e-mail', 'e-mail 1 - value', 'mail', 'correio eletrônico', 'email_1_value'],
+  email: [
+    'email',
+    'e-mail',
+    'e-mail 1 - value',
+    'mail',
+    'correio eletrônico',
+    'email_1_value',
+    'email 1',
+  ],
 }
 
 const normalizeHeader = (h: string) => h.trim().toLowerCase().replace(/^"|"$/g, '')
@@ -223,7 +238,12 @@ export function CsvImportDialog({
             email_1_value: email,
           }
         })
-        .filter((obj) => obj.name && obj.name.trim() !== '') // Only keep valid records with name
+        .filter((obj) => {
+          const hasName = obj.name && obj.name.trim() !== ''
+          const hasContact =
+            (obj.phone && obj.phone.trim() !== '') || (obj.email && obj.email.trim() !== '')
+          return hasName && hasContact
+        }) // Prevent ghost records with no name or contact info
     }
 
     if (!targetData || targetData.length === 0) return
@@ -231,22 +251,7 @@ export function CsvImportDialog({
     if (replaceData && !recordsToProcess) {
       setInternalDeleting(true)
       try {
-        const allCustomers = await pb.collection('customers').getFullList({ fields: 'id' })
-        const totalToDelete = allCustomers.length
-        setDeleteProgress({ current: 0, total: totalToDelete })
-
-        if (totalToDelete > 0) {
-          const deleteBatchSize = 500
-          for (let i = 0; i < totalToDelete; i += deleteBatchSize) {
-            const batch = allCustomers.slice(i, i + deleteBatchSize).map((c) => c.id)
-            await bulkDeleteCustomers(batch)
-            setDeleteProgress({
-              current: Math.min(i + batch.length, totalToDelete),
-              total: totalToDelete,
-            })
-            await new Promise((r) => setTimeout(r, 100)) // 100ms delay to prevent rate-limiting
-          }
-        }
+        await deleteAllCustomers()
       } catch (error) {
         toast({
           title: 'Erro na exclusão',
@@ -264,8 +269,7 @@ export function CsvImportDialog({
 
     let successCount = 0
     let newFailed: any[] = []
-    const insertBatchSize = 50 // Increased for faster import while avoiding timeouts
-
+    const insertBatchSize = 100 // Optimized for larger datasets (~6600+ records)
     for (let i = 0; i < targetData.length; i += insertBatchSize) {
       const batch = targetData.slice(i, i + insertBatchSize)
       setInternalProgress({ current: i, total: targetData.length })
@@ -457,18 +461,16 @@ export function CsvImportDialog({
               <div className="flex justify-between text-sm text-muted-foreground mb-1">
                 <span>
                   {internalDeleting
-                    ? displayProgress.total === 0 && displayProgress.current === 0
-                      ? 'Iniciando limpeza da base...'
-                      : `Limpando: ${displayProgress.current}/${displayProgress.total}`
+                    ? 'Limpando base de dados atual...'
                     : `Importando: ${displayProgress.current}/${displayProgress.total}`}
                 </span>
-                {displayProgress.total > 0 && (
+                {!internalDeleting && displayProgress.total > 0 && (
                   <span>
                     {Math.round((displayProgress.current / displayProgress.total) * 100)}%
                   </span>
                 )}
               </div>
-              {displayProgress.total > 0 ? (
+              {!internalDeleting && displayProgress.total > 0 ? (
                 <Progress
                   value={(displayProgress.current / displayProgress.total) * 100}
                   className="h-2"
