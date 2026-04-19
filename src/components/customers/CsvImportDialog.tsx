@@ -109,6 +109,10 @@ function parseCSV(text: string): string[][] {
   return result
 }
 
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { AlertTriangle } from 'lucide-react'
+
 export function CsvImportDialog({
   open,
   onOpenChange,
@@ -118,7 +122,7 @@ export function CsvImportDialog({
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
-  onImport: (data: any[]) => Promise<void>
+  onImport: (data: any[], replaceData: boolean) => Promise<void>
   isImporting?: boolean
   progress?: { current: number; total: number }
 }) {
@@ -126,6 +130,7 @@ export function CsvImportDialog({
   const [file, setFile] = useState<File | null>(null)
   const [data, setData] = useState<string[][]>([])
   const [mapping, setMapping] = useState<Record<string, number>>({})
+  const [replaceData, setReplaceData] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,7 +190,7 @@ export function CsvImportDialog({
       })
       .filter((obj) => Object.keys(obj).length > 0 && Object.values(obj).some((v) => v !== ''))
 
-    await onImport(mappedData)
+    await onImport(mappedData, replaceData)
     reset()
   }
 
@@ -193,6 +198,7 @@ export function CsvImportDialog({
     setFile(null)
     setData([])
     setMapping({})
+    setReplaceData(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -274,18 +280,54 @@ export function CsvImportDialog({
           </div>
         )}
 
+        {file && (
+          <div className="space-y-4 py-4 border-t mt-4">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="replace-data"
+                checked={replaceData}
+                onCheckedChange={setReplaceData}
+                disabled={isImporting}
+              />
+              <Label htmlFor="replace-data" className="cursor-pointer">
+                Apagar todos os clientes atuais antes da importação
+              </Label>
+            </div>
+
+            {replaceData && (
+              <Alert variant="destructive" className="bg-destructive/10">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="font-semibold">
+                  ⚠️ Atenção: Todos os clientes atuais serão apagados antes da importação.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        )}
+
         {isImporting && progress && (
           <div className="space-y-2 py-4">
             <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Processando contatos...</span>
               <span>
-                {progress.current} / {progress.total}
+                {progress.total > 0
+                  ? 'Processando contatos...'
+                  : replaceData
+                    ? 'Apagando clientes atuais...'
+                    : 'Preparando importação...'}
               </span>
+              {progress.total > 0 && (
+                <span>
+                  {progress.current} / {progress.total}
+                </span>
+              )}
             </div>
-            <Progress
-              value={progress.total > 0 ? (progress.current / progress.total) * 100 : 0}
-              className="h-2"
-            />
+            {progress.total > 0 ? (
+              <Progress value={(progress.current / progress.total) * 100} className="h-2" />
+            ) : (
+              <div className="h-2 w-full bg-muted overflow-hidden rounded-full">
+                <div className="h-full bg-primary w-1/2 animate-pulse rounded-full" />
+              </div>
+            )}
           </div>
         )}
 
@@ -293,8 +335,16 @@ export function CsvImportDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isImporting}>
             Cancelar
           </Button>
-          <Button onClick={handleImport} disabled={!file || data.length < 2 || isImporting}>
-            {isImporting ? 'Processando...' : 'Confirmar Importação'}
+          <Button
+            onClick={handleImport}
+            disabled={!file || data.length < 2 || isImporting}
+            variant={replaceData ? 'destructive' : 'default'}
+          >
+            {isImporting
+              ? 'Processando...'
+              : replaceData
+                ? 'Confirmar e Importar'
+                : 'Confirmar Importação'}
           </Button>
         </DialogFooter>
       </DialogContent>

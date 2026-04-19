@@ -19,6 +19,7 @@ import {
   getPaginatedCustomers,
   deleteCustomer,
   createCustomer,
+  bulkDeleteCustomers,
   Customer,
 } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -143,8 +144,24 @@ export default function Customers() {
     }
   }
 
-  const handleImport = async (newLeads: any[]) => {
+  const handleImport = async (newLeads: any[], replaceData: boolean = false) => {
     setImporting(true)
+    setImportProgress({ current: 0, total: 0 })
+
+    if (replaceData) {
+      try {
+        await bulkDeleteCustomers()
+      } catch (err) {
+        toast({
+          title: 'Erro ao apagar clientes',
+          description: 'Não foi possível apagar os clientes atuais. A importação foi cancelada.',
+          variant: 'destructive',
+        })
+        setImporting(false)
+        return
+      }
+    }
+
     setImportProgress({ current: 0, total: newLeads.length })
     let successCount = 0
     let processedCount = 0

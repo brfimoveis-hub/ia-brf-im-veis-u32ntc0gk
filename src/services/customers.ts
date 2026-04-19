@@ -123,3 +123,7 @@ export const deleteAllCustomers = async (): Promise<void> => {
     }
   }
 }
+
+export const bulkDeleteCustomers = async (): Promise<void> => {
+  await pb.send('/backend/v1/customers/bulk-delete', { method: 'POST' })
+}
