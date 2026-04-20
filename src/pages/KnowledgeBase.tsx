@@ -24,6 +24,7 @@ import pb from '@/lib/pocketbase/client'
 import { extractFieldErrors, getErrorMessage } from '@/lib/pocketbase/errors'
 import { Loader2, Save, Globe, Tags, Bot, Paperclip, Upload, FileText, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useBlocker } from 'react-router-dom'
 
 export default function KnowledgeBase() {
   const { user } = useAuth()
@@ -37,6 +38,7 @@ export default function KnowledgeBase() {
 
   const [entry, setEntry] = useState<KnowledgeBaseEntry | null>(null)
   const [form, setForm] = useState({ site: '', tags: '', ai_instructions: '' })
+  const [initialForm, setInitialForm] = useState({ site: '', tags: '', ai_instructions: '' })
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const loadEntry = useCallback(
@@ -48,11 +50,13 @@ export default function KnowledgeBase() {
           const loadedEntry = entries[0]
           setEntry(loadedEntry)
           if (resetForm) {
-            setForm({
+            const formData = {
               site: loadedEntry.site || '',
               tags: loadedEntry.tags || '',
               ai_instructions: loadedEntry.ai_instructions || '',
-            })
+            }
+            setForm(formData)
+            setInitialForm(formData)
           }
         }
       } catch (err) {
@@ -76,6 +80,40 @@ export default function KnowledgeBase() {
     }
   })
 
+  const isDirty =
+    form.site !== initialForm.site ||
+    form.tags !== initialForm.tags ||
+    form.ai_instructions !== initialForm.ai_instructions
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isDirty && currentLocation.pathname !== nextLocation.pathname,
+  )
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      const confirmLeave = window.confirm(
+        'Você tem informações de texto não salvas. Deseja sair sem salvar?',
+      )
+      if (confirmLeave) {
+        blocker.proceed()
+      } else {
+        blocker.reset()
+      }
+    }
+  }, [blocker])
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isDirty])
+
   const handleSave = async () => {
     if (!user) return
     setSaving(true)
@@ -89,6 +127,7 @@ export default function KnowledgeBase() {
         setEntry(newEntry)
         toast({ title: 'Configurações salvas com sucesso!' })
       }
+      setInitialForm(form)
       loadEntry(false)
     } catch (err) {
       setFieldErrors(extractFieldErrors(err))
@@ -110,21 +149,18 @@ export default function KnowledgeBase() {
     try {
       const formData = new FormData()
 
-      if (entry?.attachments) {
-        entry.attachments.forEach((att) => formData.append('attachments', att))
-      }
-
-      Array.from(files).forEach((file) => formData.append('attachments', file))
-
       if (entry?.id) {
+        Array.from(files).forEach((file) => formData.append('attachments+', file))
         await pb.collection('knowledge_base').update(entry.id, formData)
       } else {
         formData.append('user_id', user.id)
         formData.append('site', form.site)
         formData.append('tags', form.tags)
         formData.append('ai_instructions', form.ai_instructions)
+        Array.from(files).forEach((file) => formData.append('attachments', file))
         const newEntry = await pb.collection('knowledge_base').create<KnowledgeBaseEntry>(formData)
         setEntry(newEntry)
+        setInitialForm(form)
       }
 
       toast({ title: 'Arquivo enviado com sucesso e integrado à base de conhecimento' })
@@ -145,13 +181,7 @@ export default function KnowledgeBase() {
     if (!entry?.id || !user) return
     try {
       const formData = new FormData()
-      const filesToKeep = (entry.attachments || []).filter((f) => f !== filenameToDelete)
-
-      if (filesToKeep.length > 0) {
-        filesToKeep.forEach((att) => formData.append('attachments', att))
-      } else {
-        formData.append('attachments', '')
-      }
+      formData.append('attachments-', filenameToDelete)
 
       await pb.collection('knowledge_base').update(entry.id, formData)
       toast({ title: 'Arquivo removido com sucesso' })

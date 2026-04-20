@@ -19,6 +19,8 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
+import { useBlocker } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 
 export default function Settings() {
   const { toast } = useToast()
@@ -32,22 +34,66 @@ export default function Settings() {
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [metaTestEventCode, setMetaTestEventCode] = useState('')
 
+  const [initialMeta, setInitialMeta] = useState({ pixel: '', capi: '', test: '' })
+
   useEffect(() => {
-    if (user) {
+    if (user && !initialMeta.pixel && !initialMeta.capi && !initialMeta.test) {
       setMetaPixelId(user.meta_pixel_id || '')
       setMetaCapiToken(user.meta_capi_token || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
+      setInitialMeta({
+        pixel: user.meta_pixel_id || '',
+        capi: user.meta_capi_token || '',
+        test: user.meta_test_event_code || '',
+      })
     }
-  }, [user])
+  }, [user, initialMeta])
+
+  const isDirty =
+    metaPixelId !== initialMeta.pixel ||
+    metaCapiToken !== initialMeta.capi ||
+    metaTestEventCode !== initialMeta.test
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isDirty && currentLocation.pathname !== nextLocation.pathname,
+  )
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      const confirmLeave = window.confirm('Você tem alterações não salvas. Deseja sair sem salvar?')
+      if (confirmLeave) {
+        blocker.proceed()
+      } else {
+        blocker.reset()
+      }
+    }
+  }, [blocker])
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isDirty])
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
       if (user?.id) {
-        await pb.collection('users').update(user.id, {
+        const updatedUser = await pb.collection('users').update(user.id, {
           meta_pixel_id: metaPixelId,
           meta_capi_token: metaCapiToken,
           meta_test_event_code: metaTestEventCode,
+        })
+        setInitialMeta({
+          pixel: updatedUser.meta_pixel_id || '',
+          capi: updatedUser.meta_capi_token || '',
+          test: updatedUser.meta_test_event_code || '',
         })
       }
 
@@ -65,6 +111,38 @@ export default function Settings() {
         description: 'Verifique os dados e tente novamente.',
         variant: 'destructive',
       })
+    }
+  }
+
+  const [isSavingMeta, setIsSavingMeta] = useState(false)
+
+  const handleSaveMeta = async () => {
+    setIsSavingMeta(true)
+    try {
+      if (user?.id) {
+        const updatedUser = await pb.collection('users').update(user.id, {
+          meta_pixel_id: metaPixelId,
+          meta_capi_token: metaCapiToken,
+          meta_test_event_code: metaTestEventCode,
+        })
+        setInitialMeta({
+          pixel: updatedUser.meta_pixel_id || '',
+          capi: updatedUser.meta_capi_token || '',
+          test: updatedUser.meta_test_event_code || '',
+        })
+      }
+      toast({
+        title: 'Configurações do Meta salvas!',
+        description: 'As alterações foram aplicadas com sucesso.',
+      })
+    } catch (error) {
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Verifique os dados e tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingMeta(false)
     }
   }
 
@@ -309,6 +387,20 @@ export default function Settings() {
                 Copie e cole esta URL no Gerenciador de Eventos do Meta para envios server-side.
               </p>
             </div>
+            <div className="flex justify-end pt-4 border-t mt-4">
+              <Button
+                onClick={handleSaveMeta}
+                disabled={isSavingMeta}
+                className="gap-2 bg-blue-600 hover:bg-blue-700"
+              >
+                {isSavingMeta ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Salvar Configurações do Meta
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -367,9 +459,11 @@ export default function Settings() {
       {/* Floating Save Button */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-xl border-t border-border flex justify-end md:pl-[var(--sidebar-width)] z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
         <div className="max-w-4xl w-full mx-auto flex justify-end items-center gap-4 px-4 md:px-0">
-          <span className="text-sm text-muted-foreground hidden sm:inline-block">
-            Modificações não salvas
-          </span>
+          {isDirty && (
+            <span className="text-sm text-amber-500 font-medium hidden sm:inline-block">
+              Alterações não salvas
+            </span>
+          )}
           <Button
             onClick={handleSave}
             disabled={isSaving}
