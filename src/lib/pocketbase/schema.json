@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-20T01:08:34.146Z",
+  "generatedAt": "2026-04-20T02:01:02.163Z",
   "collections": [
     {
       "name": "users",
@@ -408,6 +408,59 @@
         "CREATE INDEX idx_conversations_user_id ON conversations (user_id)",
         "CREATE INDEX idx_conversations_customer_id ON conversations (customer_id)"
       ]
+    },
+    {
+      "name": "knowledge_base",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_knowledge_base_user_id ON knowledge_base (user_id)"]
     }
   ]
 }
