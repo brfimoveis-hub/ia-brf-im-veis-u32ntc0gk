@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { Search, Plus, Upload, Users, Loader2, Filter } from 'lucide-react'
-import { CsvImportDialog } from '@/components/customers/CsvImportDialog'
 import { GoogleContactsImportDialog } from '@/components/customers/GoogleContactsImportDialog'
 import { LeadDialog } from '@/components/customers/LeadDialog'
 import { CustomerTable } from '@/components/customers/CustomerTable'
@@ -34,7 +33,6 @@ export default function Customers() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(false)
 
-  const [csvOpen, setCsvOpen] = useState(false)
   const [googleContactsOpen, setGoogleContactsOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
@@ -144,15 +142,12 @@ export default function Customers() {
             <Users className="h-6 w-6 text-primary" /> Base de Clientes
           </h2>
           <p className="text-muted-foreground text-sm mt-1">
-            Gerencie seus leads e contatos importados de forma otimizada.
+            Gerencie seus leads e contatos importados do Google Contacts de forma otimizada.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="default" onClick={() => setGoogleContactsOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" /> Importar Google Contacts
-          </Button>
-          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" /> Importar CSV Genérico
           </Button>
           <Button
             onClick={() => {
@@ -223,16 +218,6 @@ export default function Customers() {
         </div>
       </Card>
 
-      {csvOpen && (
-        <CsvImportDialog
-          open={csvOpen}
-          onOpenChange={setCsvOpen}
-          onSuccess={() => {
-            setPage(1)
-            loadData(1, false)
-          }}
-        />
-      )}
       {googleContactsOpen && (
         <GoogleContactsImportDialog
           open={googleContactsOpen}

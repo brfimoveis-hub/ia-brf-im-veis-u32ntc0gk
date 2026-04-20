@@ -138,11 +138,11 @@ export function CustomerTable({
                       )
                     }
                     let val = (lead as any)[col.key]
-                    if (col.key === 'name' && !val) {
-                      val =
-                        [lead.first_name, lead.middle_name, lead.last_name]
-                          .filter(Boolean)
-                          .join(' ') || '—'
+                    if (col.key === 'name') {
+                      const concatenatedName = [lead.first_name, lead.middle_name, lead.last_name]
+                        .filter(Boolean)
+                        .join(' ')
+                      val = concatenatedName || (val !== 'Sem Nome' ? val : '') || '—'
                     }
 
                     return (

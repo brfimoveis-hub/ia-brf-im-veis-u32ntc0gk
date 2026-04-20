@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
 import { deleteAllCustomers, createCustomerWithRetry } from '@/services/customers'
+import pb from '@/lib/pocketbase/client'
 import { Loader2, UploadCloud, CheckCircle2, AlertTriangle } from 'lucide-react'
 
 function parseCSV(str: string) {
@@ -49,7 +50,7 @@ function parseCSV(str: string) {
     result.push(row)
   }
 
-  const headers = result[0]
+  const headers = result[0] || []
   const data = []
   for (let i = 1; i < result.length; i++) {
     if (result[i].length === 1 && result[i][0] === '') continue
@@ -60,6 +61,15 @@ function parseCSV(str: string) {
     data.push(obj)
   }
   return data
+}
+
+const formatPhone = (phone: string) => {
+  if (!phone) return ''
+  const digits = phone.toString().replace(/\D/g, '')
+  if (digits.length >= 10 && digits.length <= 11) {
+    return digits.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+  }
+  return phone.trim()
 }
 
 export function GoogleContactsImportDialog({
@@ -80,12 +90,6 @@ export function GoogleContactsImportDialog({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
-
-  const formatPhone = (phone: string) => {
-    if (!phone) return ''
-    const digits = phone.toString().replace(/\D/g, '')
-    return digits.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
-  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -144,110 +148,116 @@ export function GoogleContactsImportDialog({
         await deleteAllCustomers()
       }
 
-      const uniqueEmails = new Set()
-      const uniquePhones = new Set()
+      setProgress((p) => ({ ...p, message: 'Verificando contatos existentes (Idempotência)...' }))
+
+      const existing = await pb.collection('customers').getFullList({
+        fields: 'email_1_value,phone_1_value,email,phone',
+      })
+
+      const uniqueEmails = new Set(
+        existing.flatMap((c) => [c.email_1_value, c.email]).filter(Boolean),
+      )
+      const uniquePhones = new Set(
+        existing.flatMap((c) => [c.phone_1_value, c.phone]).filter(Boolean),
+      )
+
       let successCount = 0
       let newFailed: any[] = []
 
-      const batchSize = 50 // controlled chunking size
+      const batchSize = 50
       for (let i = 0; i < recordsToProcess.length; i += batchSize) {
         const batch = recordsToProcess.slice(i, i + batchSize)
         setProgress({
           current: i,
           total: recordsToProcess.length,
-          message: `Processando lote (${i} de ${recordsToProcess.length})...`,
+          message: `Importando lote (${i} de ${recordsToProcess.length})...`,
         })
 
-        const results = await Promise.allSettled(
-          batch.map(async (item) => {
-            const givenName = item['Given Name'] || item['First Name'] || item['Nome'] || ''
-            const familyName = item['Family Name'] || item['Last Name'] || item['Sobrenome'] || ''
-            const fullName = item['Name'] || item['Nome Completo'] || ''
+        const promises = batch.map(async (item) => {
+          const givenName = (item['Given Name'] || '').trim()
+          const middleName = (item['Additional Name'] || '').trim()
+          const familyName = (item['Family Name'] || '').trim()
 
-            const nameRaw = fullName
-              ? fullName
-              : givenName || familyName
-                ? `${givenName} ${familyName}`.trim()
-                : ''
+          const fullName = (item['Name'] || '').trim()
+          const nameRaw = fullName || [givenName, middleName, familyName].filter(Boolean).join(' ')
+          const name = nameRaw || 'Sem Nome'
 
-            const email = (item['E-mail 1 - Value'] || item['Email'] || item['email'] || '').trim()
-            const rawPhone = item['Phone 1 - Value'] || item['Telefone'] || item['phone'] || ''
-            const phone = formatPhone(rawPhone)
+          const emailLabel = (item['E-mail 1 - Type'] || '').trim()
+          const emailValue = (item['E-mail 1 - Value'] || '').trim()
 
-            // Skip invalid or completely blank lines as requested
-            if (!nameRaw && !email && !rawPhone) return
+          const phoneLabel = (item['Phone 1 - Type'] || '').trim()
+          const rawPhone = item['Phone 1 - Value'] || ''
+          const phoneValue = formatPhone(rawPhone)
 
-            const name = nameRaw || 'Sem Nome'
-            const address =
-              item['Address 1 - Formatted'] ||
-              item['Endereço'] ||
-              item['endereco'] ||
-              item['address'] ||
-              ''
-            const source = 'Google Contacts'
-            const orgName =
-              item['Organization 1 - Name'] ||
-              item['Empresa'] ||
-              item['empresa'] ||
-              item['org_name'] ||
-              item['Organization Name'] ||
-              ''
-            const notes = item['Notes'] || item['Observações'] || ''
+          const orgName = (item['Organization 1 - Name'] || '').trim()
+          const orgTitle = (item['Organization 1 - Title'] || '').trim()
+          const birthday = (item['Birthday'] || '').trim()
+          const notes = (item['Notes'] || '').trim()
 
-            if (email && uniqueEmails.has(email)) return
-            if (phone && uniquePhones.has(phone)) return
+          // Skip completely blank lines
+          if (!nameRaw && !emailValue && !phoneValue) return Promise.resolve('skipped')
 
-            if (email) uniqueEmails.add(email)
-            if (phone) uniquePhones.add(phone)
+          // Prevent Duplicates based on email/phone matching existing DB records
+          if (emailValue && uniqueEmails.has(emailValue)) return Promise.resolve('skipped')
+          if (phoneValue && uniquePhones.has(phoneValue)) return Promise.resolve('skipped')
 
-            await createCustomerWithRetry({
-              name,
-              first_name: givenName,
-              last_name: familyName,
-              email,
-              email_1_value: email,
-              phone,
-              phone_1_value: phone,
-              address_1_formatted: address,
-              source,
-              org_name: orgName,
-              notes,
-              status: '1', // Lead Novo
-              tags: ['Importado', source],
-            })
-          }),
-        )
+          if (emailValue) uniqueEmails.add(emailValue)
+          if (phoneValue) uniquePhones.add(phoneValue)
+
+          return createCustomerWithRetry({
+            name,
+            first_name: givenName,
+            middle_name: middleName,
+            last_name: familyName,
+            email: emailValue,
+            email_1_label: emailLabel,
+            email_1_value: emailValue,
+            phone: phoneValue,
+            phone_1_label: phoneLabel,
+            phone_1_value: phoneValue,
+            org_name: orgName,
+            org_title: orgTitle,
+            birthday,
+            notes,
+            source: 'Google Contacts',
+            status: '1', // Lead
+            tags: ['Importado', 'Google Contacts'],
+          })
+        })
+
+        const results = await Promise.allSettled(promises)
 
         results.forEach((res, idx) => {
           if (res.status === 'rejected') {
             newFailed.push(batch[idx])
-          } else {
-            // Count might not be perfectly +1 since we return early for duplicates/blanks,
-            // but it serves as a rough success metric.
+          } else if (res.value !== 'skipped') {
             successCount++
           }
         })
 
         setProgress({
-          current: i + batch.length,
+          current: Math.min(i + batch.length, recordsToProcess.length),
           total: recordsToProcess.length,
-          message: `Processados ${i + batch.length} de ${recordsToProcess.length}...`,
+          message: `Processados ${Math.min(i + batch.length, recordsToProcess.length)} de ${recordsToProcess.length}...`,
         })
 
-        // Small delay to be polite to the server
-        await new Promise((r) => setTimeout(r, 200))
+        // Avoid hammering Pocketbase too hard and keep UI responsive
+        await new Promise((r) => setTimeout(r, 100))
       }
 
       if (newFailed.length > 0) {
         setFailedRecords(newFailed)
         toast({
           title: `Importação parcial`,
-          description: `Contatos processados. ${newFailed.length} falharam na rede.`,
+          description: `${successCount} contatos importados. ${newFailed.length} falharam na rede.`,
           variant: 'destructive',
         })
-        if (successCount > 0) onSuccess() // Trigger refresh for the partial success
+        if (successCount > 0) onSuccess()
       } else {
-        toast({ title: `Contatos importados com sucesso!` })
+        toast({
+          title: `Contatos importados com sucesso!`,
+          description: `${successCount} novos contatos adicionados.`,
+        })
         onSuccess()
         setTimeout(() => {
           onOpenChange(false)
@@ -255,7 +265,7 @@ export function GoogleContactsImportDialog({
           setJsonInput('')
           setMode('append')
           setFailedRecords([])
-        }, 1000)
+        }, 1500)
       }
     } catch (err: any) {
       toast({
@@ -286,7 +296,7 @@ export function GoogleContactsImportDialog({
           <DialogTitle>Importar Google Contacts</DialogTitle>
           <DialogDescription>
             Faça upload de um arquivo CSV exportado do Google Contacts ou JSON para importar seus
-            contatos.
+            contatos. O sistema ignorará contatos duplicados automaticamente.
           </DialogDescription>
         </DialogHeader>
 
@@ -302,7 +312,7 @@ export function GoogleContactsImportDialog({
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="append" id="r1" />
                   <Label htmlFor="r1" className="cursor-pointer">
-                    Adicionar (Manter base atual)
+                    Adicionar (Manter base atual e ignorar duplicados)
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -315,7 +325,7 @@ export function GoogleContactsImportDialog({
             </div>
 
             <div className="space-y-3">
-              <Label>Upload de Arquivo (CSV ou JSON)</Label>
+              <Label>Upload de Arquivo (CSV Google Contacts)</Label>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -358,8 +368,8 @@ export function GoogleContactsImportDialog({
               <AlertTriangle className="h-10 w-10 text-destructive mb-2" />
               <h3 className="font-semibold text-lg">{failedRecords.length} registros falharam</h3>
               <p className="text-sm text-muted-foreground text-center">
-                A importação sofreu instabilidades. Você pode tentar importar apenas as falhas
-                novamente.
+                A importação sofreu instabilidades de rede. Você pode tentar importar apenas as
+                falhas novamente.
               </p>
               <Button
                 className="mt-4"
@@ -392,7 +402,7 @@ export function GoogleContactsImportDialog({
               <CheckCircle2 className="h-10 w-10 text-green-500 mb-2" />
               <h3 className="font-semibold text-lg">{parsedData.length} registros prontos!</h3>
               <p className="text-sm text-muted-foreground text-center">
-                O sistema identificou as colunas e processará as formatações necessárias em lotes.
+                As colunas do Google Contacts foram identificadas e mapeadas com sucesso.
               </p>
 
               {mode === 'replace' && (
