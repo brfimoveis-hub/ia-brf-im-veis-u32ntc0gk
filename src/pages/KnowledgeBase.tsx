@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Card,
   CardContent,
@@ -18,51 +18,61 @@ import {
   getKnowledgeBaseEntries,
   createKnowledgeBaseEntry,
   updateKnowledgeBaseEntry,
+  KnowledgeBaseEntry,
 } from '@/services/knowledge_base'
+import pb from '@/lib/pocketbase/client'
 import { extractFieldErrors, getErrorMessage } from '@/lib/pocketbase/errors'
-import { Loader2, Save, Globe, Tags, Bot } from 'lucide-react'
+import { Loader2, Save, Globe, Tags, Bot, Paperclip, Upload, FileText, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function KnowledgeBase() {
   const { user } = useAuth()
   const { toast } = useToast()
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
-  const [entryId, setEntryId] = useState<string | null>(null)
+  const [entry, setEntry] = useState<KnowledgeBaseEntry | null>(null)
   const [form, setForm] = useState({ site: '', tags: '', ai_instructions: '' })
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const loadEntry = useCallback(async () => {
-    if (!user) return
-    try {
-      const entries = await getKnowledgeBaseEntries()
-      if (entries.length > 0) {
-        const entry = entries[0]
-        setEntryId(entry.id)
-        setForm({
-          site: entry.site || '',
-          tags: entry.tags || '',
-          ai_instructions: entry.ai_instructions || '',
-        })
+  const loadEntry = useCallback(
+    async (resetForm: boolean = true) => {
+      if (!user) return
+      try {
+        const entries = await getKnowledgeBaseEntries()
+        if (entries.length > 0) {
+          const loadedEntry = entries[0]
+          setEntry(loadedEntry)
+          if (resetForm) {
+            setForm({
+              site: loadedEntry.site || '',
+              tags: loadedEntry.tags || '',
+              ai_instructions: loadedEntry.ai_instructions || '',
+            })
+          }
+        }
+      } catch (err) {
+        toast({ title: 'Erro ao carregar configurações', variant: 'destructive' })
+      } finally {
+        setLoading(false)
       }
-    } catch (err) {
-      toast({ title: 'Erro ao carregar configurações', variant: 'destructive' })
-    } finally {
-      setLoading(false)
-    }
-  }, [user, toast])
+    },
+    [user, toast],
+  )
 
   useEffect(() => {
-    loadEntry()
+    loadEntry(true)
   }, [loadEntry])
 
   useRealtime('knowledge_base', (e) => {
-    if (e.action === 'update' && e.record.id === entryId) {
-      loadEntry()
+    if (e.action === 'update' && e.record.id === entry?.id) {
+      loadEntry(false)
     } else if (e.action === 'create' && e.record.user_id === user?.id) {
-      loadEntry()
+      loadEntry(false)
     }
   })
 
@@ -71,14 +81,15 @@ export default function KnowledgeBase() {
     setSaving(true)
     setFieldErrors({})
     try {
-      if (entryId) {
-        await updateKnowledgeBaseEntry(entryId, form)
+      if (entry?.id) {
+        await updateKnowledgeBaseEntry(entry.id, form)
         toast({ title: 'Configurações salvas com sucesso!' })
       } else {
         const newEntry = await createKnowledgeBaseEntry({ user_id: user.id, ...form })
-        setEntryId(newEntry.id)
+        setEntry(newEntry)
         toast({ title: 'Configurações salvas com sucesso!' })
       }
+      loadEntry(false)
     } catch (err) {
       setFieldErrors(extractFieldErrors(err))
       toast({
@@ -88,6 +99,69 @@ export default function KnowledgeBase() {
       })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0 || !user) return
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+
+      if (entry?.attachments) {
+        entry.attachments.forEach((att) => formData.append('attachments', att))
+      }
+
+      Array.from(files).forEach((file) => formData.append('attachments', file))
+
+      if (entry?.id) {
+        await pb.collection('knowledge_base').update(entry.id, formData)
+      } else {
+        formData.append('user_id', user.id)
+        formData.append('site', form.site)
+        formData.append('tags', form.tags)
+        formData.append('ai_instructions', form.ai_instructions)
+        const newEntry = await pb.collection('knowledge_base').create<KnowledgeBaseEntry>(formData)
+        setEntry(newEntry)
+      }
+
+      toast({ title: 'Arquivo enviado com sucesso e integrado à base de conhecimento' })
+      loadEntry(false)
+    } catch (err) {
+      toast({
+        title: 'Erro ao enviar arquivo',
+        description: getErrorMessage(err),
+        variant: 'destructive',
+      })
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleDeleteFile = async (filenameToDelete: string) => {
+    if (!entry?.id || !user) return
+    try {
+      const formData = new FormData()
+      const filesToKeep = (entry.attachments || []).filter((f) => f !== filenameToDelete)
+
+      if (filesToKeep.length > 0) {
+        filesToKeep.forEach((att) => formData.append('attachments', att))
+      } else {
+        formData.append('attachments', '')
+      }
+
+      await pb.collection('knowledge_base').update(entry.id, formData)
+      toast({ title: 'Arquivo removido com sucesso' })
+      loadEntry(false)
+    } catch (err) {
+      toast({
+        title: 'Erro ao remover arquivo',
+        description: getErrorMessage(err),
+        variant: 'destructive',
+      })
     }
   }
 
@@ -193,9 +267,78 @@ export default function KnowledgeBase() {
               <p className="text-sm text-destructive">{fieldErrors.ai_instructions}</p>
             )}
           </div>
+
+          <div className="space-y-4 pt-6 border-t mt-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <Label className="flex items-center gap-2 text-base font-semibold">
+                  <Paperclip className="h-4 w-4" />
+                  Arquivos Anexos
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Faça upload de documentos (PDF, TXT, DOCX) para a IA usar como contexto.
+                </p>
+              </div>
+              <div>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept=".pdf,.txt,.doc,.docx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-2" />
+                  )}
+                  {uploading ? 'Enviando...' : 'Subir Arquivos'}
+                </Button>
+              </div>
+            </div>
+
+            {entry?.attachments && entry.attachments.length > 0 && (
+              <ul className="space-y-2 mt-4">
+                {entry.attachments.map((filename, i) => (
+                  <li
+                    key={i}
+                    className="flex items-center justify-between p-3 bg-muted/20 rounded-md border text-sm"
+                  >
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                      <a
+                        href={pb.files.getURL(entry, filename)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:underline text-foreground truncate font-medium"
+                      >
+                        {filename}
+                      </a>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => handleDeleteFile(filename)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </CardContent>
 
-        <CardFooter className="border-t p-4 bg-muted/10 flex justify-end">
+        <CardFooter className="border-t p-4 bg-muted/10 flex justify-end gap-2">
           <Button size="lg" onClick={handleSave} disabled={saving}>
             {saving ? (
               <Loader2 className="h-5 w-5 mr-2 animate-spin" />

@@ -2,6 +2,8 @@ import pb from '@/lib/pocketbase/client'
 
 export interface KnowledgeBaseEntry {
   id: string
+  collectionId: string
+  collectionName: string
   user_id: string
   title?: string
   content?: string
@@ -9,6 +11,7 @@ export interface KnowledgeBaseEntry {
   site?: string
   tags?: string
   ai_instructions?: string
+  attachments?: string[]
   created: string
   updated: string
 }

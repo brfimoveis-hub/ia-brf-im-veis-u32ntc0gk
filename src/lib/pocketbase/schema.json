@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-20T02:36:04.357Z",
+  "generatedAt": "2026-04-20T02:44:18.667Z",
   "collections": [
     {
       "name": "users",
@@ -492,6 +492,12 @@
         {
           "name": "ai_instructions",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "attachments",
+          "type": "file",
           "required": false,
           "system": false
         }
