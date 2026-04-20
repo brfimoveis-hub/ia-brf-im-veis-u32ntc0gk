@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-20T02:15:22.357Z",
+  "generatedAt": "2026-04-20T02:24:41.827Z",
   "collections": [
     {
       "name": "users",
@@ -430,13 +430,13 @@
         {
           "name": "title",
           "type": "text",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
           "name": "content",
           "type": "text",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -458,6 +458,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "site",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tags",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_instructions",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_knowledge_base_user_id ON knowledge_base (user_id)"]

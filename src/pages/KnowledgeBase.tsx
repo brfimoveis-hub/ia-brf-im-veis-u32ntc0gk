@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Card,
   CardContent,
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
+import { useRealtime } from '@/hooks/use-realtime'
 import {
   getKnowledgeBaseEntries,
   createKnowledgeBaseEntry,
@@ -30,32 +31,40 @@ export default function KnowledgeBase() {
   const [saving, setSaving] = useState(false)
 
   const [entryId, setEntryId] = useState<string | null>(null)
-  const [form, setForm] = useState({ title: '', content: '', category: '' })
+  const [form, setForm] = useState({ site: '', tags: '', ai_instructions: '' })
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    const loadEntry = async () => {
-      if (!user) return
-      try {
-        setLoading(true)
-        const entries = await getKnowledgeBaseEntries()
-        if (entries.length > 0) {
-          const entry = entries[0]
-          setEntryId(entry.id)
-          setForm({
-            title: entry.title || '',
-            content: entry.content || '',
-            category: entry.category || '',
-          })
-        }
-      } catch (err) {
-        toast({ title: 'Erro ao carregar configurações', variant: 'destructive' })
-      } finally {
-        setLoading(false)
+  const loadEntry = useCallback(async () => {
+    if (!user) return
+    try {
+      const entries = await getKnowledgeBaseEntries()
+      if (entries.length > 0) {
+        const entry = entries[0]
+        setEntryId(entry.id)
+        setForm({
+          site: entry.site || '',
+          tags: entry.tags || '',
+          ai_instructions: entry.ai_instructions || '',
+        })
       }
+    } catch (err) {
+      toast({ title: 'Erro ao carregar configurações', variant: 'destructive' })
+    } finally {
+      setLoading(false)
     }
-    loadEntry()
   }, [user, toast])
+
+  useEffect(() => {
+    loadEntry()
+  }, [loadEntry])
+
+  useRealtime('knowledge_base', (e) => {
+    if (e.action === 'update' && e.record.id === entryId) {
+      loadEntry()
+    } else if (e.action === 'create' && e.record.user_id === user?.id) {
+      loadEntry()
+    }
+  })
 
   const handleSave = async () => {
     if (!user) return
@@ -64,7 +73,7 @@ export default function KnowledgeBase() {
     try {
       if (entryId) {
         await updateKnowledgeBaseEntry(entryId, form)
-        toast({ title: 'Configurações atualizadas com sucesso!' })
+        toast({ title: 'Configurações salvas com sucesso!' })
       } else {
         const newEntry = await createKnowledgeBaseEntry({ user_id: user.id, ...form })
         setEntryId(newEntry.id)
@@ -72,7 +81,11 @@ export default function KnowledgeBase() {
       }
     } catch (err) {
       setFieldErrors(extractFieldErrors(err))
-      toast({ title: 'Erro ao salvar', description: getErrorMessage(err), variant: 'destructive' })
+      toast({
+        title: 'Erro ao salvar as configurações. Tente novamente.',
+        description: getErrorMessage(err),
+        variant: 'destructive',
+      })
     } finally {
       setSaving(false)
     }
@@ -108,94 +121,88 @@ export default function KnowledgeBase() {
         <CardContent className="flex-1 overflow-y-auto p-6 space-y-6">
           <div className="space-y-2">
             <Label
-              htmlFor="title"
+              htmlFor="site"
               className={cn(
                 'flex items-center gap-2 text-base font-semibold',
-                fieldErrors.title && 'text-destructive',
+                fieldErrors.site && 'text-destructive',
               )}
             >
               <Globe className="h-4 w-4" />
-              Informações do Site *
+              Site
             </Label>
             <p className="text-sm text-muted-foreground">
               URL do seu site ou detalhes sobre o seu negócio online.
             </p>
             <Input
-              id="title"
+              id="site"
               placeholder="Ex: https://meusite.com.br - Venda de produtos eletrônicos"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              value={form.site}
+              onChange={(e) => setForm({ ...form, site: e.target.value })}
               className="max-w-xl"
             />
-            {fieldErrors.title && <p className="text-sm text-destructive">{fieldErrors.title}</p>}
+            {fieldErrors.site && <p className="text-sm text-destructive">{fieldErrors.site}</p>}
           </div>
 
           <div className="space-y-2">
             <Label
-              htmlFor="category"
+              htmlFor="tags"
               className={cn(
                 'flex items-center gap-2 text-base font-semibold',
-                fieldErrors.category && 'text-destructive',
+                fieldErrors.tags && 'text-destructive',
               )}
             >
               <Tags className="h-4 w-4" />
               Tags
             </Label>
             <p className="text-sm text-muted-foreground">
-              Palavras-chave que definem seu negócio ou categorização da base.
+              Palavras-chave que definem seu negócio ou configurações de Facebook Ads.
             </p>
             <Input
-              id="category"
-              placeholder="Ex: eletrônicos, suporte técnico, vendas"
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              id="tags"
+              placeholder="Ex: Facebook Ads, eletrônicos, suporte técnico"
+              value={form.tags}
+              onChange={(e) => setForm({ ...form, tags: e.target.value })}
               className="max-w-xl"
             />
-            {fieldErrors.category && (
-              <p className="text-sm text-destructive">{fieldErrors.category}</p>
-            )}
+            {fieldErrors.tags && <p className="text-sm text-destructive">{fieldErrors.tags}</p>}
           </div>
 
           <div className="space-y-2 flex flex-col flex-1 min-h-[250px]">
             <Label
-              htmlFor="content"
+              htmlFor="ai_instructions"
               className={cn(
                 'flex items-center gap-2 text-base font-semibold',
-                fieldErrors.content && 'text-destructive',
+                fieldErrors.ai_instructions && 'text-destructive',
               )}
             >
               <Bot className="h-4 w-4" />
-              Orientações de como a IA deve proceder *
+              Orientações de como a IA deve proceder
             </Label>
             <p className="text-sm text-muted-foreground">
               Instruções detalhadas, regras de atendimento e como a IA deve interagir com os
               clientes.
             </p>
             <Textarea
-              id="content"
+              id="ai_instructions"
               placeholder="Ex: A IA deve ser educada e prestativa. Sempre perguntar o nome do cliente no início..."
-              value={form.content}
-              onChange={(e) => setForm({ ...form, content: e.target.value })}
+              value={form.ai_instructions}
+              onChange={(e) => setForm({ ...form, ai_instructions: e.target.value })}
               className="flex-1 resize-none text-base"
             />
-            {fieldErrors.content && (
-              <p className="text-sm text-destructive">{fieldErrors.content}</p>
+            {fieldErrors.ai_instructions && (
+              <p className="text-sm text-destructive">{fieldErrors.ai_instructions}</p>
             )}
           </div>
         </CardContent>
 
         <CardFooter className="border-t p-4 bg-muted/10 flex justify-end">
-          <Button
-            size="lg"
-            onClick={handleSave}
-            disabled={saving || !form.title.trim() || !form.content.trim()}
-          >
+          <Button size="lg" onClick={handleSave} disabled={saving}>
             {saving ? (
               <Loader2 className="h-5 w-5 mr-2 animate-spin" />
             ) : (
               <Save className="h-5 w-5 mr-2" />
             )}
-            Salvar Configurações
+            Salvar
           </Button>
         </CardFooter>
       </Card>
