@@ -248,68 +248,6 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* Knowledge Base */}
-        <Card className="border-border shadow-elevation">
-          <CardHeader className="bg-muted/10 pb-4 border-b">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-500/10 rounded-xl">
-                <FileText className="h-6 w-6 text-blue-500" />
-              </div>
-              <div>
-                <CardTitle className="text-xl">Base de Conhecimento</CardTitle>
-                <CardDescription>
-                  Faça upload de documentos para dar contexto especializado à IA.
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="border-2 border-dashed border-muted-foreground/30 rounded-2xl p-10 text-center bg-muted/10 hover:bg-muted/30 transition-colors cursor-pointer group">
-              <div className="mx-auto w-16 h-16 bg-background shadow-sm border rounded-full flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-300">
-                <UploadCloud className="h-8 w-8 text-muted-foreground group-hover:text-primary transition-colors" />
-              </div>
-              <h4 className="text-base font-semibold text-secondary">
-                Clique ou arraste arquivos aqui
-              </h4>
-              <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
-                A IA lerá estes documentos para responder perguntas dos clientes. Suporta PDF, TXT e
-                CSV. Max 10MB.
-              </p>
-            </div>
-
-            <div className="mt-8 space-y-3">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                Arquivos Ativos{' '}
-                <span className="bg-primary/20 text-primary px-2 py-0.5 rounded-full text-[10px]">
-                  1 arquivo
-                </span>
-              </Label>
-              <div className="flex items-center justify-between p-4 border rounded-xl bg-card shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-blue-500/10 rounded-lg">
-                    <FileText className="h-6 w-6 text-blue-500" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm text-secondary">
-                      catalogo_produtos_2026.pdf
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      2.4 MB • Adicionado em 10/04/2026
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-destructive border-destructive/30 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                >
-                  Remover
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Meta Event Manager */}
         <Card className="border-border shadow-elevation">
           <div className="h-1 bg-blue-600 w-full"></div>

@@ -204,25 +204,33 @@ export default function KnowledgeBase() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto h-[calc(100vh-6rem)] flex flex-col p-4 md:p-6">
-      <div className="mb-6 flex-none">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">
+    <div className="max-w-4xl mx-auto space-y-6 pb-24 p-4 md:p-6">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight text-secondary">
           Base de Conhecimento e IA
         </h2>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground mt-2 text-lg">
           Forneça o contexto necessário para a Inteligência Artificial operar corretamente.
         </p>
       </div>
 
-      <Card className="flex-1 flex flex-col shadow-sm border overflow-hidden">
-        <CardHeader className="border-b bg-muted/10">
-          <CardTitle className="text-xl">Instruções de Comportamento</CardTitle>
-          <CardDescription>
-            Preencha os dados abaixo para guiar o atendimento da IA.
-          </CardDescription>
+      <Card className="border-border shadow-elevation overflow-hidden">
+        <div className="h-1 bg-blue-500 w-full"></div>
+        <CardHeader className="bg-muted/10 pb-4 border-b">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-500/10 rounded-xl">
+              <Bot className="h-6 w-6 text-blue-500" />
+            </div>
+            <div>
+              <CardTitle className="text-xl">Instruções de Comportamento</CardTitle>
+              <CardDescription>
+                Preencha os dados abaixo para guiar o atendimento da IA.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
 
-        <CardContent className="flex-1 overflow-y-auto p-6 space-y-6">
+        <CardContent className="pt-6 space-y-6">
           <div className="space-y-2">
             <Label
               htmlFor="site"
@@ -367,18 +375,35 @@ export default function KnowledgeBase() {
             )}
           </div>
         </CardContent>
-
-        <CardFooter className="border-t p-4 bg-muted/10 flex justify-end gap-2">
-          <Button size="lg" onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-            ) : (
-              <Save className="h-5 w-5 mr-2" />
-            )}
-            Salvar
-          </Button>
-        </CardFooter>
       </Card>
+
+      {/* Floating Save Button */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-xl border-t border-border flex justify-end md:pl-[var(--sidebar-width)] z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        <div className="max-w-4xl w-full mx-auto flex justify-end items-center gap-4 px-4 md:px-0">
+          {isDirty && (
+            <span className="text-sm text-amber-500 font-medium hidden sm:inline-block">
+              Alterações não salvas
+            </span>
+          )}
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="shadow-md px-8 h-11 hover:scale-105 transition-transform"
+          >
+            {saving ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Salvando...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2 font-medium">
+                <Save className="h-5 w-5" />
+                Salvar Alterações
+              </span>
+            )}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
