@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-20T02:24:41.827Z",
+  "generatedAt": "2026-04-20T02:36:04.357Z",
   "collections": [
     {
       "name": "users",
@@ -37,6 +37,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "meta_pixel_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_capi_token",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_test_event_code",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

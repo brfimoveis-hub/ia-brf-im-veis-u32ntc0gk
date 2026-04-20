@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -13,25 +13,67 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   CheckCircle2,
+  Facebook,
+  Copy,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/hooks/use-auth'
+import pb from '@/lib/pocketbase/client'
 
 export default function Settings() {
   const { toast } = useToast()
+  const { user } = useAuth()
   const [isSaving, setIsSaving] = useState(false)
   const [prompt, setPrompt] = useState(
     'Você é um assistente virtual de vendas especializado em produtos SaaS. Seja sempre educado, objetivo e utilize emojis ocasionalmente.',
   )
 
-  const handleSave = () => {
+  const [metaPixelId, setMetaPixelId] = useState('')
+  const [metaCapiToken, setMetaCapiToken] = useState('')
+  const [metaTestEventCode, setMetaTestEventCode] = useState('')
+
+  useEffect(() => {
+    if (user) {
+      setMetaPixelId(user.meta_pixel_id || '')
+      setMetaCapiToken(user.meta_capi_token || '')
+      setMetaTestEventCode(user.meta_test_event_code || '')
+    }
+  }, [user])
+
+  const handleSave = async () => {
     setIsSaving(true)
-    setTimeout(() => {
+    try {
+      if (user?.id) {
+        await pb.collection('users').update(user.id, {
+          meta_pixel_id: metaPixelId,
+          meta_capi_token: metaCapiToken,
+          meta_test_event_code: metaTestEventCode,
+        })
+      }
+
+      setTimeout(() => {
+        setIsSaving(false)
+        toast({
+          title: 'Configurações salvas!',
+          description: 'As alterações foram aplicadas com sucesso.',
+        })
+      }, 500)
+    } catch (error) {
       setIsSaving(false)
       toast({
-        title: 'Configurações salvas!',
-        description: 'As alterações foram aplicadas com sucesso na instância 55 48 992098050.',
+        title: 'Erro ao salvar',
+        description: 'Verifique os dados e tente novamente.',
+        variant: 'destructive',
       })
-    }, 1500)
+    }
+  }
+
+  const copyWebhookUrl = () => {
+    navigator.clipboard.writeText('https://ia-uazapi-6d79e.goskip.app/backend/v1/meta-webhook')
+    toast({
+      title: 'URL Copiada',
+      description: 'A URL do Webhook foi copiada para a área de transferência.',
+    })
   }
 
   return (
@@ -186,6 +228,86 @@ export default function Settings() {
                   Remover
                 </Button>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Meta Event Manager */}
+        <Card className="border-border shadow-elevation">
+          <div className="h-1 bg-blue-600 w-full"></div>
+          <CardHeader className="bg-muted/10 pb-4 border-b">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-600/10 rounded-xl">
+                <Facebook className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Gerenciador de Eventos do Meta</CardTitle>
+                <CardDescription>
+                  Configure o Pixel e a API de Conversões para rastreamento de eventos.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-6">
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-3">
+                <Label htmlFor="meta-pixel-id" className="font-semibold text-secondary">
+                  ID do Pixel do Meta
+                </Label>
+                <Input
+                  id="meta-pixel-id"
+                  placeholder="Ex: 1234567890"
+                  value={metaPixelId}
+                  onChange={(e) => setMetaPixelId(e.target.value)}
+                  className="bg-muted/30 focus-visible:ring-blue-600"
+                />
+              </div>
+              <div className="space-y-3">
+                <Label htmlFor="meta-test-code" className="font-semibold text-secondary">
+                  Código de Teste
+                </Label>
+                <Input
+                  id="meta-test-code"
+                  placeholder="Ex: TEST12345"
+                  value={metaTestEventCode}
+                  onChange={(e) => setMetaTestEventCode(e.target.value)}
+                  className="bg-muted/30 focus-visible:ring-blue-600"
+                />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <Label htmlFor="meta-capi-token" className="font-semibold text-secondary">
+                Token de Acesso (CAPI)
+              </Label>
+              <div className="relative">
+                <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="meta-capi-token"
+                  type="password"
+                  placeholder="Insira seu token de acesso permanente"
+                  value={metaCapiToken}
+                  onChange={(e) => setMetaCapiToken(e.target.value)}
+                  className="pl-10 h-11 bg-muted/30 focus-visible:ring-blue-600"
+                />
+              </div>
+            </div>
+            <div className="space-y-3 pt-2">
+              <Label className="font-semibold text-secondary">
+                URL do Webhook (API de Conversões)
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  readOnly
+                  value="https://ia-uazapi-6d79e.goskip.app/backend/v1/meta-webhook"
+                  className="bg-muted/50 text-muted-foreground font-mono text-sm"
+                />
+                <Button variant="secondary" onClick={copyWebhookUrl} className="shrink-0 gap-2">
+                  <Copy className="h-4 w-4" /> Copiar
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Copie e cole esta URL no Gerenciador de Eventos do Meta para envios server-side.
+              </p>
             </div>
           </CardContent>
         </Card>
