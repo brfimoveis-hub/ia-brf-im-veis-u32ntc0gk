@@ -36,16 +36,21 @@ export function CadenceRoulette({
   externalCustomers,
   externalIsLoading,
   onCustomerUpdated,
+  onNextPage,
+  onPrevPage,
 }: {
   externalCustomers?: Customer[]
   externalIsLoading?: boolean
   onCustomerUpdated?: (c: Customer) => void
+  onNextPage?: () => void
+  onPrevPage?: () => void
 } = {}) {
   const [internalCustomers, setInternalCustomers] = useState<Customer[]>([])
   const [cadences, setCadences] = useState<Cadence[]>([])
 
   const [customerIndex, setCustomerIndex] = useState(0)
   const [cadenceIndex, setCadenceIndex] = useState(0)
+  const [rotationKey, setRotationKey] = useState(0)
 
   const [isEditingCadence, setIsEditingCadence] = useState(false)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
@@ -133,13 +138,46 @@ export function CadenceRoulette({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalCustomers])
 
+  const nextCustomer = () => {
+    if (customerIndex >= customers.length - 1) {
+      if (onNextPage) onNextPage()
+      setCustomerIndex(0)
+    } else {
+      setCustomerIndex(customerIndex + 1)
+    }
+    setRotationKey((k) => k + 1)
+  }
+
+  const prevCustomer = () => {
+    if (customerIndex === 0) {
+      if (onPrevPage) onPrevPage()
+      setCustomerIndex(0)
+    } else {
+      setCustomerIndex(customerIndex - 1)
+    }
+    setRotationKey((k) => k + 1)
+  }
+
   useEffect(() => {
-    if (customers.length <= 1 || isPaused || isEditingCadence || isEditingNotes) return
-    const timer = setInterval(() => {
-      setCustomerIndex((prev) => (prev + 1) % customers.length)
-    }, 15000) // Rotate every 15 seconds to give time to read
+    if (
+      isLoading ||
+      (customers.length <= 1 && !onNextPage) ||
+      isPaused ||
+      isEditingCadence ||
+      isEditingNotes
+    )
+      return
+    const timer = setInterval(nextCustomer, 15000)
     return () => clearInterval(timer)
-  }, [customers.length, isPaused, isEditingCadence, isEditingNotes])
+  }, [
+    isLoading,
+    customers.length,
+    isPaused,
+    isEditingCadence,
+    isEditingNotes,
+    customerIndex,
+    onNextPage,
+  ])
 
   const currentCadence = cadences[cadenceIndex]
   const currentCustomer = customers[customerIndex]
@@ -211,9 +249,6 @@ export function CadenceRoulette({
     if (blocker.state === 'blocked' && !isEditingCadence) blocker.proceed?.()
   }
 
-  const nextCustomer = () => setCustomerIndex((p) => (p + 1) % customers.length)
-  const prevCustomer = () => setCustomerIndex((p) => (p - 1 + customers.length) % customers.length)
-
   const nextCadence = () => setCadenceIndex((p) => (p + 1) % cadences.length)
   const prevCadence = () => setCadenceIndex((p) => (p - 1 + cadences.length) % cadences.length)
 
@@ -254,13 +289,17 @@ export function CadenceRoulette({
         </div>
       )}
       <div className="absolute top-0 left-0 w-full h-1 bg-muted">
-        {!isPaused && !isEditingCadence && !isEditingNotes && customers.length > 1 && (
-          <div
-            key={customerIndex}
-            className="h-full bg-primary animate-[progress_15s_linear]"
-            style={{ width: '100%', animationFillMode: 'forwards' }}
-          />
-        )}
+        {!isLoading &&
+          !isPaused &&
+          !isEditingCadence &&
+          !isEditingNotes &&
+          (customers.length > 1 || onNextPage) && (
+            <div
+              key={rotationKey}
+              className="h-full bg-primary animate-[progress_15s_linear]"
+              style={{ width: '100%', animationFillMode: 'forwards' }}
+            />
+          )}
       </div>
 
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-2 gap-4">
@@ -281,7 +320,9 @@ export function CadenceRoulette({
               size="icon"
               className="h-7 w-7"
               onClick={() => setIsPaused(!isPaused)}
-              disabled={isEditingCadence || isEditingNotes || customers.length <= 1}
+              disabled={
+                isEditingCadence || isEditingNotes || (customers.length <= 1 && !onNextPage)
+              }
               title={isPaused ? 'Retomar Rotação' : 'Pausar Rotação'}
             >
               {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
@@ -292,7 +333,9 @@ export function CadenceRoulette({
               size="icon"
               className="h-7 w-7"
               onClick={prevCustomer}
-              disabled={isEditingCadence || isEditingNotes || customers.length <= 1}
+              disabled={
+                isEditingCadence || isEditingNotes || (customers.length <= 1 && !onPrevPage)
+              }
               title="Cliente Anterior"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -302,7 +345,9 @@ export function CadenceRoulette({
               size="icon"
               className="h-7 w-7"
               onClick={nextCustomer}
-              disabled={isEditingCadence || isEditingNotes || customers.length <= 1}
+              disabled={
+                isEditingCadence || isEditingNotes || (customers.length <= 1 && !onNextPage)
+              }
               title="Próximo Cliente"
             >
               <ChevronRight className="h-4 w-4" />

@@ -51,6 +51,14 @@ export default function Customers() {
 
   const { toast } = useToast()
 
+  const handleNextPage = useCallback(() => {
+    setPage((p) => (p < totalPages ? p + 1 : 1))
+  }, [totalPages])
+
+  const handlePrevPage = useCallback(() => {
+    setPage((p) => (p > 1 ? p - 1 : totalPages))
+  }, [totalPages])
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
@@ -104,17 +112,6 @@ export default function Customers() {
   }, [page, perPage, loadData])
 
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
-
-  useEffect(() => {
-    const handleNext = (e: Event) => {
-      if (page < totalPages) {
-        e.preventDefault()
-        setPage((p) => p + 1)
-      }
-    }
-    window.addEventListener('roulette-next', handleNext)
-    return () => window.removeEventListener('roulette-next', handleNext)
-  }, [page, totalPages])
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   useRealtime('customers', () => {
@@ -402,6 +399,8 @@ export default function Customers() {
             onCustomerUpdated={(updated) => {
               setLeads((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
             }}
+            onNextPage={totalPages > 1 ? handleNextPage : undefined}
+            onPrevPage={totalPages > 1 ? handlePrevPage : undefined}
           />
         </DialogContent>
       </Dialog>
