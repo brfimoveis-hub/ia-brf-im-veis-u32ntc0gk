@@ -85,25 +85,51 @@ export function GoogleContactsImportDialog({
     const file = e.target.files?.[0]
     if (!file) return
 
+    toast({ title: 'Processando...', description: 'Lendo o arquivo, aguarde.' })
+
     const text = await file.text()
     try {
       let data: any[]
       if (file.name.toLowerCase().endsWith('.csv')) {
         data = parseCSV(text)
       } else {
-        data = JSON.parse(text)
+        try {
+          data = JSON.parse(text)
+        } catch {
+          throw new Error('Invalid file format')
+        }
       }
 
       if (!Array.isArray(data)) {
-        throw new Error('O arquivo deve conter um array de registros.')
+        throw new Error('Invalid file format')
       }
-      setParsedData(data)
+
+      const validData = data.filter((item) => {
+        return (
+          item['Name'] || item['Given Name'] || item['E-mail 1 - Value'] || item['Phone 1 - Value']
+        )
+      })
+
+      if (validData.length === 0) {
+        toast({
+          title: 'Warning',
+          description: 'No valid data rows found in the file.',
+          variant: 'destructive',
+        })
+        setParsedData(null)
+        return
+      }
+
+      setParsedData(validData)
       setFailedRecords([])
-      toast({ title: `Arquivo carregado com ${data.length} contatos prontos para importação.` })
+      toast({
+        title: 'Success',
+        description: `Arquivo carregado com ${validData.length} contatos prontos para importação.`,
+      })
     } catch (err: any) {
       toast({
-        title: 'Erro ao ler arquivo',
-        description: err.message,
+        title: 'Error',
+        description: err.message === 'Invalid file format' ? err.message : 'Invalid file format',
         variant: 'destructive',
       })
       setParsedData(null)
@@ -116,13 +142,29 @@ export function GoogleContactsImportDialog({
     try {
       const data = JSON.parse(jsonInput)
       if (!Array.isArray(data)) {
-        throw new Error('O JSON deve ser um array de objetos.')
+        throw new Error('Invalid file format')
       }
-      setParsedData(data)
+      const validData = data.filter((item) => {
+        return (
+          item['Name'] || item['Given Name'] || item['E-mail 1 - Value'] || item['Phone 1 - Value']
+        )
+      })
+
+      if (validData.length === 0) {
+        toast({
+          title: 'Warning',
+          description: 'No valid data rows found in the file.',
+          variant: 'destructive',
+        })
+        setParsedData(null)
+        return
+      }
+
+      setParsedData(validData)
       setFailedRecords([])
-      toast({ title: `Texto carregado com ${data.length} contatos.` })
+      toast({ title: 'Success', description: `Texto carregado com ${validData.length} contatos.` })
     } catch (err: any) {
-      toast({ title: 'JSON inválido', description: err.message, variant: 'destructive' })
+      toast({ title: 'Error', description: 'Invalid file format', variant: 'destructive' })
     }
   }
 
@@ -163,11 +205,18 @@ export function GoogleContactsImportDialog({
         })
 
         const promises = batch.map(async (item) => {
-          const givenName = (item['Given Name'] || '').trim()
+          let givenName = (item['Given Name'] || '').trim()
           const middleName = (item['Additional Name'] || '').trim()
-          const familyName = (item['Family Name'] || '').trim()
+          let familyName = (item['Family Name'] || '').trim()
 
           const fullName = (item['Name'] || '').trim()
+
+          if (fullName && !givenName && !familyName) {
+            const parts = fullName.split(' ')
+            givenName = parts[0] || ''
+            familyName = parts.length > 1 ? parts.slice(1).join(' ') : ''
+          }
+
           const nameRaw = fullName || [givenName, middleName, familyName].filter(Boolean).join(' ')
           const name = nameRaw || 'Sem nome'
 
@@ -256,14 +305,14 @@ export function GoogleContactsImportDialog({
         setFailedRecords(newFailed)
         toast({
           title: `Importação parcial`,
-          description: `${successCount} contatos processados. ${newFailed.length} falharam.`,
+          description: `Import completed: ${successCount} contacts added/updated. ${newFailed.length} failed.`,
           variant: 'destructive',
         })
         if (successCount > 0) onSuccess()
       } else {
         toast({
-          title: `Importação concluída com sucesso!`,
-          description: `${successCount} contatos atualizados ou inseridos de forma segura.`,
+          title: `Success`,
+          description: `Import completed: ${successCount} contacts added/updated.`,
         })
         onSuccess()
         setTimeout(() => {
@@ -275,8 +324,8 @@ export function GoogleContactsImportDialog({
       }
     } catch (err: any) {
       toast({
-        title: 'Erro na importação',
-        description: err.message || 'Ocorreu um erro ao processar os contatos.',
+        title: 'Error',
+        description: 'Error connecting to the database',
         variant: 'destructive',
       })
     } finally {
