@@ -1,19 +1,29 @@
+import { Suspense, lazy } from 'react'
 import { createBrowserRouter, RouterProvider, Navigate, Outlet } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import Index from './pages/Index'
-import CRM from './pages/CRM'
-import Customers from './pages/Customers'
-import Conversations from './pages/Conversations'
-import Settings from './pages/Settings'
-import KnowledgeBase from './pages/KnowledgeBase'
-import Cadences from './pages/Cadences'
-import NotFound from './pages/NotFound'
-import Login from './pages/Login'
 import Layout from './components/Layout'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
 import { MetaPixel } from '@/components/MetaPixel'
+import { Loader2 } from 'lucide-react'
+
+// Break circular dependencies completely by using lazy-loaded routes
+const Index = lazy(() => import('./pages/Index'))
+const CRM = lazy(() => import('./pages/CRM'))
+const Customers = lazy(() => import('./pages/Customers'))
+const Conversations = lazy(() => import('./pages/Conversations'))
+const Settings = lazy(() => import('./pages/Settings'))
+const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'))
+const Cadences = lazy(() => import('./pages/Cadences'))
+const NotFound = lazy(() => import('./pages/NotFound'))
+const Login = lazy(() => import('./pages/Login'))
+
+const PageLoader = () => (
+  <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+)
 
 const ProtectedRoute = () => {
   const { user, loading } = useAuth()
@@ -34,25 +44,88 @@ const router = createBrowserRouter(
     {
       element: <Root />,
       children: [
-        { path: '/login', element: <Login /> },
+        {
+          path: '/login',
+          element: (
+            <Suspense fallback={<PageLoader />}>
+              <Login />
+            </Suspense>
+          ),
+        },
         {
           element: <ProtectedRoute />,
           children: [
             {
               element: <Layout />,
               children: [
-                { path: '/', element: <Index /> },
-                { path: '/crm', element: <CRM /> },
-                { path: '/clientes', element: <Customers /> },
-                { path: '/conversas', element: <Conversations /> },
-                { path: '/conhecimento', element: <KnowledgeBase /> },
-                { path: '/cadencias', element: <Cadences /> },
-                { path: '/configuracoes', element: <Settings /> },
+                {
+                  path: '/',
+                  element: (
+                    <Suspense fallback={<PageLoader />}>
+                      <Index />
+                    </Suspense>
+                  ),
+                },
+                {
+                  path: '/crm',
+                  element: (
+                    <Suspense fallback={<PageLoader />}>
+                      <CRM />
+                    </Suspense>
+                  ),
+                },
+                {
+                  path: '/clientes',
+                  element: (
+                    <Suspense fallback={<PageLoader />}>
+                      <Customers />
+                    </Suspense>
+                  ),
+                },
+                {
+                  path: '/conversas',
+                  element: (
+                    <Suspense fallback={<PageLoader />}>
+                      <Conversations />
+                    </Suspense>
+                  ),
+                },
+                {
+                  path: '/conhecimento',
+                  element: (
+                    <Suspense fallback={<PageLoader />}>
+                      <KnowledgeBase />
+                    </Suspense>
+                  ),
+                },
+                {
+                  path: '/cadencias',
+                  element: (
+                    <Suspense fallback={<PageLoader />}>
+                      <Cadences />
+                    </Suspense>
+                  ),
+                },
+                {
+                  path: '/configuracoes',
+                  element: (
+                    <Suspense fallback={<PageLoader />}>
+                      <Settings />
+                    </Suspense>
+                  ),
+                },
               ],
             },
           ],
         },
-        { path: '*', element: <NotFound /> },
+        {
+          path: '*',
+          element: (
+            <Suspense fallback={<PageLoader />}>
+              <NotFound />
+            </Suspense>
+          ),
+        },
       ],
     },
   ],

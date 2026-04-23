@@ -25,6 +25,7 @@ import { extractFieldErrors, getErrorMessage } from '@/lib/pocketbase/errors'
 import { Loader2, Save, Globe, Tags, Bot, Paperclip, Upload, FileText, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBlocker } from 'react-router-dom'
+import { CadenceRoulette } from '@/components/CadenceRoulette'
 
 export default function KnowledgeBase() {
   const { user } = useAuth()
@@ -214,14 +215,24 @@ export default function KnowledgeBase() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-24 p-4 md:p-6">
-      <div>
+    <div className="max-w-5xl mx-auto space-y-8 pb-24 p-4 md:p-6">
+      <div className="space-y-2">
         <h2 className="text-3xl font-bold tracking-tight text-secondary">
-          Base de Conhecimento e IA
+          Roleta Mágica & Conhecimento
         </h2>
         <p className="text-muted-foreground mt-2 text-lg">
-          Forneça o contexto necessário para a Inteligência Artificial operar corretamente.
+          Acompanhe seu funil de clientes na Roleta Mágica e forneça o contexto para a IA.
         </p>
+      </div>
+
+      <div className="mb-8">
+        <CadenceRoulette />
+      </div>
+
+      <div>
+        <h3 className="text-2xl font-semibold tracking-tight text-secondary mb-4">
+          Base de Conhecimento
+        </h3>
       </div>
 
       <Card className="border-border shadow-elevation overflow-hidden">
