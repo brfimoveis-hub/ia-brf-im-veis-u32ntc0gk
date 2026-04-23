@@ -89,8 +89,8 @@ export function CadenceRoulette() {
       setCadences(cadData)
       setCustomers(custData.items)
       // Reset indexes if out of bounds
-      setCustomerIndex(0)
-      setCadenceIndex(0)
+      setCustomerIndex((prev) => (prev >= custData.items.length ? 0 : prev))
+      setCadenceIndex((prev) => (prev >= cadData.length ? 0 : prev))
     } catch (err) {
       toast({
         title: 'Erro',
@@ -196,7 +196,7 @@ export function CadenceRoulette() {
     )
   }
 
-  if (customers.length === 0) {
+  if (!isLoading && customers.length === 0) {
     return (
       <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <Layers className="h-8 w-8 mb-4 text-primary/50" />
@@ -211,7 +211,18 @@ export function CadenceRoulette() {
   const channel = parts[2] || ''
 
   return (
-    <Card className="shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative">
+    <Card
+      className={cn(
+        'shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative transition-opacity duration-200',
+        isLoading && 'opacity-70 pointer-events-none',
+      )}
+    >
+      {isLoading && customers.length > 0 && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-[1px]">
+          <RefreshCw className="h-8 w-8 animate-spin text-primary mb-2" />
+          <p className="text-sm font-medium text-primary">Carregando nova lista...</p>
+        </div>
+      )}
       <div className="absolute top-0 left-0 w-full h-1 bg-muted">
         {!isPaused && !isEditingCadence && !isEditingNotes && customers.length > 1 && (
           <div
@@ -237,7 +248,7 @@ export function CadenceRoulette() {
           <Select
             value={limit.toString()}
             onValueChange={(v) => setLimit(Number(v))}
-            disabled={isEditingCadence || isEditingNotes}
+            disabled={isEditingCadence || isEditingNotes || isLoading}
           >
             <SelectTrigger className="h-8 w-[120px] text-xs bg-background/50 backdrop-blur-sm">
               <SelectValue placeholder="Limite" />
