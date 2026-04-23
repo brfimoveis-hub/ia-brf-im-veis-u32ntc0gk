@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-23T20:00:36.137Z",
+  "generatedAt": "2026-04-23T20:10:02.949Z",
   "collections": [
     {
       "name": "users",
@@ -505,6 +505,65 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_knowledge_base_user_id ON knowledge_base (user_id)"]
+    },
+    {
+      "name": "cadences",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "order",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_cadences_user_id ON cadences (user_id)"]
     }
   ]
 }

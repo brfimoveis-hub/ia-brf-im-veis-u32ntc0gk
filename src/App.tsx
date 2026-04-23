@@ -8,6 +8,7 @@ import Customers from './pages/Customers'
 import Conversations from './pages/Conversations'
 import Settings from './pages/Settings'
 import KnowledgeBase from './pages/KnowledgeBase'
+import Cadences from './pages/Cadences'
 import NotFound from './pages/NotFound'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -45,6 +46,7 @@ const router = createBrowserRouter(
                 { path: '/clientes', element: <Customers /> },
                 { path: '/conversas', element: <Conversations /> },
                 { path: '/conhecimento', element: <KnowledgeBase /> },
+                { path: '/cadencias', element: <Cadences /> },
                 { path: '/configuracoes', element: <Settings /> },
               ],
             },

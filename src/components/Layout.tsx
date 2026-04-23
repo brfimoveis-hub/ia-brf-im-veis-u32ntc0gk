@@ -21,6 +21,7 @@ import {
   Kanban,
   BookOpen,
   Users,
+  ListOrdered,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Switch } from '@/components/ui/switch'
@@ -34,11 +35,12 @@ const menuItems = [
   { title: 'Base de Clientes', url: '/clientes', icon: Users },
   { title: 'Conversas', url: '/conversas', icon: MessageSquare },
   { title: 'Base de Conhecimento', url: '/conhecimento', icon: BookOpen },
+  { title: 'Cadências', url: '/cadencias', icon: ListOrdered },
   { title: 'Configurações', url: '/configuracoes', icon: SettingsIcon },
   { title: 'Logs', url: '#', icon: Activity },
 ]
 
-const ROULETTE_ROUTES = ['/', '/crm', '/clientes', '/conversas', '/conhecimento']
+const ROULETTE_ROUTES = ['/', '/crm', '/clientes', '/conversas', '/conhecimento', '/cadencias']
 const ROULETTE_INTERVAL = 30000 // 30 seconds
 
 export default function Layout() {
@@ -195,7 +197,7 @@ export default function Layout() {
         </header>
         <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 animate-fade-in flex flex-col relative">
           <div className="flex-1 relative min-h-0">
-            <Outlet />
+            <Outlet context={{ rouletteEnabled }} />
           </div>
         </main>
       </div>
