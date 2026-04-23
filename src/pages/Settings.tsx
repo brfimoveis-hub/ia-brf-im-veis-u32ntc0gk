@@ -81,6 +81,16 @@ export default function Settings() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isDirty])
 
+  useEffect(() => {
+    const handleNext = (e: Event) => {
+      if (isDirty) {
+        e.preventDefault() // Pause roulette se houver alterações não salvas
+      }
+    }
+    window.addEventListener('roulette-next', handleNext)
+    return () => window.removeEventListener('roulette-next', handleNext)
+  }, [isDirty])
+
   const handleSave = async () => {
     setIsSaving(true)
     try {
