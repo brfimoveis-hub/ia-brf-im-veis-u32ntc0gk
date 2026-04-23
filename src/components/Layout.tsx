@@ -1,4 +1,5 @@
-import { Outlet, Link, useLocation } from 'react-router-dom'
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +23,10 @@ import {
   Users,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
+import { Badge } from '@/components/ui/badge'
 
 const menuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
@@ -33,8 +38,41 @@ const menuItems = [
   { title: 'Logs', url: '#', icon: Activity },
 ]
 
+const ROULETTE_ROUTES = ['/', '/clientes', '/conhecimento', '/conversas']
+const ROULETTE_INTERVAL = 30000 // 30 seconds
+
 export default function Layout() {
   const location = useLocation()
+  const navigate = useNavigate()
+
+  const [rouletteEnabled, setRouletteEnabled] = useState(false)
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    if (!rouletteEnabled) {
+      setProgress(0)
+      return
+    }
+
+    const startTime = Date.now()
+    const endTime = startTime + ROULETTE_INTERVAL
+
+    const intervalId = setInterval(() => {
+      const now = Date.now()
+      const remaining = endTime - now
+
+      if (remaining <= 0) {
+        const currentIndex = ROULETTE_ROUTES.indexOf(location.pathname)
+        // If current route is not in the list, start from 0
+        const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % ROULETTE_ROUTES.length : 0
+        navigate(ROULETTE_ROUTES[nextIndex])
+      } else {
+        setProgress(((ROULETTE_INTERVAL - remaining) / ROULETTE_INTERVAL) * 100)
+      }
+    }, 100)
+
+    return () => clearInterval(intervalId)
+  }, [rouletteEnabled, location.pathname, navigate])
 
   return (
     <SidebarProvider>
@@ -72,7 +110,12 @@ export default function Layout() {
       </Sidebar>
 
       <div className="flex flex-1 flex-col min-h-screen overflow-hidden bg-background">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-4 shadow-sm md:px-6 z-10">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-4 shadow-sm md:px-6 z-10 relative">
+          {rouletteEnabled && (
+            <div className="absolute top-0 left-0 right-0 h-1">
+              <Progress value={progress} className="h-full rounded-none bg-primary/20" />
+            </div>
+          )}
           <div className="flex items-center gap-4">
             <SidebarTrigger className="-ml-2 text-secondary" />
             <h1 className="text-lg font-semibold text-secondary hidden sm:block">
@@ -80,7 +123,29 @@ export default function Layout() {
             </h1>
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
-            <div className="flex items-center gap-1.5 sm:gap-2 rounded-full border bg-background px-2 py-1 sm:px-3 sm:py-1.5 shadow-sm">
+            <div className="flex items-center gap-2 mr-1 sm:mr-2">
+              <Switch
+                id="roulette-mode"
+                checked={rouletteEnabled}
+                onCheckedChange={setRouletteEnabled}
+              />
+              <Label
+                htmlFor="roulette-mode"
+                className="text-xs sm:text-sm whitespace-nowrap hidden sm:block cursor-pointer"
+              >
+                Modo Roleta
+              </Label>
+              {rouletteEnabled && (
+                <Badge
+                  variant="secondary"
+                  className="hidden lg:inline-flex animate-pulse text-[10px] px-1.5 py-0 h-5"
+                >
+                  Ativo
+                </Badge>
+              )}
+            </div>
+
+            <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 rounded-full border bg-background px-2 py-1 sm:px-3 sm:py-1.5 shadow-sm">
               <span className="relative flex h-2 w-2 sm:h-2.5 sm:w-2.5 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 sm:h-2.5 sm:w-2.5 bg-primary"></span>
