@@ -142,7 +142,14 @@ export function CustomerTable({
                       const concatenatedName = [lead.first_name, lead.middle_name, lead.last_name]
                         .filter(Boolean)
                         .join(' ')
-                      val = concatenatedName || (val !== 'Sem Nome' ? val : '') || '—'
+
+                      if (val && val !== 'Sem Nome' && val !== 'Sem nome' && val.trim() !== '') {
+                        val = val
+                      } else if (concatenatedName.trim() !== '') {
+                        val = concatenatedName
+                      } else {
+                        val = 'Sem nome'
+                      }
                     }
 
                     return (

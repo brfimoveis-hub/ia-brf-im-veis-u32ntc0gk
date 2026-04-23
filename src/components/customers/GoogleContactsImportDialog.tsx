@@ -180,7 +180,7 @@ export function GoogleContactsImportDialog({
 
           const fullName = (item['Name'] || '').trim()
           const nameRaw = fullName || [givenName, middleName, familyName].filter(Boolean).join(' ')
-          const name = nameRaw || 'Sem Nome'
+          const name = nameRaw || 'Sem nome'
 
           const emailLabel = (item['E-mail 1 - Type'] || '').trim()
           const emailValue = (item['E-mail 1 - Value'] || '').trim()
