@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast'
 import { createCustomerWithRetry, updateCustomer } from '@/services/customers'
 import pb from '@/lib/pocketbase/client'
 import { Loader2, UploadCloud, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { formatPhone } from '@/lib/utils'
 
 function parseCSV(str: string) {
   const result = []
@@ -60,15 +61,6 @@ function parseCSV(str: string) {
     data.push(obj)
   }
   return data
-}
-
-const formatPhone = (phone: string) => {
-  if (!phone) return ''
-  const digits = phone.toString().replace(/\D/g, '')
-  if (digits.length >= 10 && digits.length <= 11) {
-    return digits.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
-  }
-  return phone.trim()
 }
 
 export function GoogleContactsImportDialog({
@@ -182,9 +174,16 @@ export function GoogleContactsImportDialog({
           const emailLabel = (item['E-mail 1 - Type'] || '').trim()
           const emailValue = (item['E-mail 1 - Value'] || '').trim()
 
-          const phoneLabel = (item['Phone 1 - Type'] || '').trim()
-          const rawPhone = item['Phone 1 - Value'] || ''
-          const phoneValue = formatPhone(rawPhone)
+          const phone1Label = (item['Phone 1 - Type'] || '').trim()
+          const phone1Value = formatPhone(item['Phone 1 - Value'] || '')
+          const phone2Label = (item['Phone 2 - Type'] || '').trim()
+          const phone2Value = formatPhone(item['Phone 2 - Value'] || '')
+          const phone3Label = (item['Phone 3 - Type'] || '').trim()
+          const phone3Value = formatPhone(item['Phone 3 - Value'] || '')
+          const phone4Label = (item['Phone 4 - Type'] || '').trim()
+          const phone4Value = formatPhone(item['Phone 4 - Value'] || '')
+
+          const phoneValue = phone1Value || phone2Value || phone3Value || phone4Value
 
           const orgName = (item['Organization 1 - Name'] || '').trim()
           const orgTitle = (item['Organization 1 - Title'] || '').trim()
@@ -206,8 +205,14 @@ export function GoogleContactsImportDialog({
             email_1_label: emailLabel,
             email_1_value: emailValue,
             phone: phoneValue,
-            phone_1_label: phoneLabel,
-            phone_1_value: phoneValue,
+            phone_1_label: phone1Label,
+            phone_1_value: phone1Value,
+            phone_2_label: phone2Label,
+            phone_2_value: phone2Value,
+            phone_3_label: phone3Label,
+            phone_3_value: phone3Value,
+            phone_4_label: phone4Label,
+            phone_4_value: phone4Value,
             org_name: orgName,
             org_title: orgTitle,
             birthday,

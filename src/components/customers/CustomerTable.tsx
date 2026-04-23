@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { MoreHorizontal, Edit, Trash2, AlertCircle, Loader2 } from 'lucide-react'
 import { Customer } from '@/services/customers'
 import { PHASES, COLUMNS } from './constants'
-import { cn } from '@/lib/utils'
+import { cn, formatPhone } from '@/lib/utils'
 
 interface CustomerTableProps {
   leads: Customer[]
@@ -138,6 +138,18 @@ export function CustomerTable({
                       )
                     }
                     let val = (lead as any)[col.key]
+
+                    if (col.key === 'phone') {
+                      const rawPhone =
+                        lead.phone ||
+                        lead.phone_1_value ||
+                        lead.phone_2_value ||
+                        lead.phone_3_value ||
+                        lead.phone_4_value ||
+                        ''
+                      val = formatPhone(rawPhone)
+                    }
+
                     if (col.key === 'name') {
                       const concatenatedName = [lead.first_name, lead.middle_name, lead.last_name]
                         .filter(Boolean)
