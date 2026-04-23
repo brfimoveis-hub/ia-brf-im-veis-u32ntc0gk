@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useBlocker } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { getActiveCadences, updateCadence, type Cadence } from '@/services/cadences'
 import {
@@ -16,6 +17,7 @@ import {
   Play,
   RefreshCw,
   Layers,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -26,8 +28,35 @@ export function CadenceRoulette() {
   const [isPaused, setIsPaused] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [editForm, setEditForm] = useState({ title: '', content: '' })
+  const [editContent, setEditContent] = useState('')
   const { toast } = useToast()
+
+  // Prevent navigation when editing
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isEditing && currentLocation.pathname !== nextLocation.pathname,
+  )
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      toast({
+        title: 'Edição em andamento',
+        description: 'Salve ou cancele as alterações antes de sair da página.',
+        variant: 'destructive',
+      })
+    }
+  }, [blocker.state, toast])
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isEditing) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isEditing])
 
   const loadCadences = async () => {
     try {
@@ -55,16 +84,16 @@ export function CadenceRoulette() {
   const current = cadences[currentIndex]
 
   const handleEdit = () => {
-    setEditForm({ title: current.title, content: current.content })
+    setEditContent(current.content)
     setIsEditing(true)
   }
 
   const handleSave = async () => {
     if (!current) return
-    if (!editForm.title.trim() || !editForm.content.trim()) {
+    if (!editContent.trim()) {
       toast({
         title: 'Aviso',
-        description: 'Título e conteúdo são obrigatórios.',
+        description: 'O conteúdo da mensagem é obrigatório.',
         variant: 'destructive',
       })
       return
@@ -72,10 +101,13 @@ export function CadenceRoulette() {
 
     setIsSaving(true)
     try {
-      const updated = await updateCadence(current.id, editForm)
+      const updated = await updateCadence(current.id, { content: editContent })
       setCadences((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       setIsEditing(false)
-      toast({ title: 'Sucesso', description: 'Cadência atualizada com sucesso.' })
+      toast({ title: 'Sucesso', description: 'Mensagem sugerida atualizada com sucesso.' })
+      if (blocker.state === 'blocked') {
+        blocker.proceed?.()
+      }
     } catch (err) {
       toast({ title: 'Erro', description: 'Falha ao atualizar cadência.', variant: 'destructive' })
     } finally {
@@ -85,6 +117,9 @@ export function CadenceRoulette() {
 
   const handleCancel = () => {
     setIsEditing(false)
+    if (blocker.state === 'blocked') {
+      blocker.proceed?.()
+    }
   }
 
   const next = () => setCurrentIndex((p) => (p + 1) % cadences.length)
@@ -108,6 +143,11 @@ export function CadenceRoulette() {
     )
   }
 
+  const parts = current.title.split('|').map((s) => s.trim())
+  const step = parts[0] || current.title
+  const trigger = parts[1] || ''
+  const channel = parts[2] || ''
+
   return (
     <Card className="shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative">
       <div className="absolute top-0 left-0 w-full h-1 bg-muted">
@@ -123,17 +163,15 @@ export function CadenceRoulette() {
       <CardHeader className="flex flex-row items-start sm:items-center justify-between pb-2 gap-4">
         <div>
           <CardTitle className="text-secondary flex items-center gap-2 text-xl">
-            Roleta Inteligente
+            Roleta Inteligente: Villa dos Açores
             <span className="text-xs bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-medium border border-primary/20">
               {currentIndex + 1} / {cadences.length}
             </span>
           </CardTitle>
-          <CardDescription>
-            Visualizando e otimizando seus fluxos ativos em tempo real
-          </CardDescription>
+          <CardDescription>Pipeline da Bia - Ciclo de Cadência</CardDescription>
         </div>
 
-        <div className="flex items-center gap-1 bg-background/50 backdrop-blur-sm rounded-md p-1 border shadow-sm">
+        <div className="flex items-center gap-1 bg-background/50 backdrop-blur-sm rounded-md p-1 border shadow-sm z-10">
           <Button
             variant={isPaused ? 'secondary' : 'ghost'}
             size="icon"
@@ -167,20 +205,43 @@ export function CadenceRoulette() {
       </CardHeader>
 
       <CardContent>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Badge
+            variant="outline"
+            className="bg-primary/5 text-primary border-primary/20 shadow-sm"
+          >
+            {step}
+          </Badge>
+          {trigger && (
+            <Badge
+              variant="outline"
+              className="bg-primary/5 text-primary border-primary/20 shadow-sm"
+            >
+              Gatilho: {trigger}
+            </Badge>
+          )}
+          {channel && (
+            <Badge
+              variant="outline"
+              className="bg-primary/5 text-primary border-primary/20 shadow-sm"
+            >
+              Canal: {channel}
+            </Badge>
+          )}
+        </div>
+
         {isEditing ? (
           <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <Input
-              value={editForm.title}
-              onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
-              placeholder="Título da Cadência"
-              className="font-medium text-secondary bg-background/80"
-              disabled={isSaving}
-            />
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-secondary flex items-center gap-1.5">
+                <MessageSquare className="w-4 h-4" /> ÁREA EDITÁVEL - Mensagem Sugerida
+              </span>
+            </div>
             <Textarea
-              className="min-h-[140px] resize-none bg-background/80"
-              value={editForm.content}
-              onChange={(e) => setEditForm((p) => ({ ...p, content: e.target.value }))}
-              placeholder="Conteúdo da mensagem..."
+              className="min-h-[120px] resize-none bg-background/80 shadow-inner border-primary/30 focus-visible:ring-primary/50"
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              placeholder="Conteúdo da mensagem sugerida..."
               disabled={isSaving}
             />
             <div className="flex justify-end gap-2 pt-2">
@@ -200,18 +261,26 @@ export function CadenceRoulette() {
         ) : (
           <div className="group relative animate-in fade-in duration-300">
             <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-              <Button variant="secondary" size="sm" onClick={handleEdit} className="shadow-sm">
-                <Edit2 className="w-3.5 h-3.5 mr-2" /> Editar Conteúdo
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleEdit}
+                className="shadow-sm border border-border/50"
+              >
+                <Edit2 className="w-3.5 h-3.5 mr-2" /> Editar Mensagem
               </Button>
             </div>
 
             <div
-              className="bg-background/60 backdrop-blur-sm border rounded-lg p-5 cursor-text hover:border-primary/50 transition-colors"
+              className="bg-background/60 backdrop-blur-sm border border-border/50 rounded-lg p-5 cursor-text hover:border-primary/40 transition-colors shadow-sm group-hover:shadow relative"
               onClick={handleEdit}
             >
-              <h3 className="font-semibold text-lg text-secondary mb-3 pr-28">{current.title}</h3>
-              <ScrollArea className="h-[120px] w-full pr-4">
-                <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+              <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 rounded-l-lg" />
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5" /> Mensagem Sugerida
+              </h4>
+              <ScrollArea className="h-[100px] w-full pr-4">
+                <div className="text-sm text-secondary/90 font-medium whitespace-pre-wrap leading-relaxed">
                   {current.content}
                 </div>
               </ScrollArea>
