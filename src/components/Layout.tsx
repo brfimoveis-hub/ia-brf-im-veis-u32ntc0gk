@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Sidebar,
   SidebarContent,
@@ -38,12 +38,17 @@ const menuItems = [
   { title: 'Logs', url: '#', icon: Activity },
 ]
 
-const ROULETTE_ROUTES = ['/', '/clientes', '/conhecimento', '/conversas']
+const ROULETTE_ROUTES = ['/', '/crm', '/clientes', '/conversas', '/conhecimento']
 const ROULETTE_INTERVAL = 30000 // 30 seconds
 
 export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
+  const locationRef = useRef(location.pathname)
+
+  useEffect(() => {
+    locationRef.current = location.pathname
+  }, [location.pathname])
 
   const [rouletteEnabled, setRouletteEnabled] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -54,25 +59,47 @@ export default function Layout() {
       return
     }
 
-    const startTime = Date.now()
-    const endTime = startTime + ROULETTE_INTERVAL
+    let endTime = Date.now() + ROULETTE_INTERVAL
+
+    const handleInteraction = () => {
+      endTime = Date.now() + ROULETTE_INTERVAL
+      setProgress(0)
+    }
+
+    const events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'wheel']
+    events.forEach((event) =>
+      window.addEventListener(event, handleInteraction, { capture: true, passive: true }),
+    )
 
     const intervalId = setInterval(() => {
       const now = Date.now()
       const remaining = endTime - now
 
       if (remaining <= 0) {
-        const currentIndex = ROULETTE_ROUTES.indexOf(location.pathname)
-        // If current route is not in the list, start from 0
-        const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % ROULETTE_ROUTES.length : 0
-        navigate(ROULETTE_ROUTES[nextIndex])
+        const event = new CustomEvent('roulette-next', { cancelable: true })
+        const canceled = !window.dispatchEvent(event)
+
+        if (!canceled) {
+          const currentPath = locationRef.current
+          const currentIndex = ROULETTE_ROUTES.indexOf(currentPath)
+          const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % ROULETTE_ROUTES.length : 0
+          navigate(ROULETTE_ROUTES[nextIndex])
+        }
+
+        endTime = Date.now() + ROULETTE_INTERVAL
+        setProgress(0)
       } else {
         setProgress(((ROULETTE_INTERVAL - remaining) / ROULETTE_INTERVAL) * 100)
       }
     }, 100)
 
-    return () => clearInterval(intervalId)
-  }, [rouletteEnabled, location.pathname, navigate])
+    return () => {
+      clearInterval(intervalId)
+      events.forEach((event) =>
+        window.removeEventListener(event, handleInteraction, { capture: true }),
+      )
+    }
+  }, [rouletteEnabled, navigate])
 
   return (
     <SidebarProvider>
@@ -112,8 +139,11 @@ export default function Layout() {
       <div className="flex flex-1 flex-col min-h-screen overflow-hidden bg-background">
         <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-4 shadow-sm md:px-6 z-10 relative">
           {rouletteEnabled && (
-            <div className="absolute top-0 left-0 right-0 h-1">
-              <Progress value={progress} className="h-full rounded-none bg-primary/20" />
+            <div className="absolute top-0 left-0 right-0 h-1 bg-primary/10 z-50">
+              <div
+                className="h-full bg-primary transition-all ease-linear"
+                style={{ width: `${progress}%`, transitionDuration: '100ms' }}
+              />
             </div>
           )}
           <div className="flex items-center gap-4">

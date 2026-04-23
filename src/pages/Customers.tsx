@@ -99,6 +99,19 @@ export default function Customers() {
     loadData(page, perPage)
   }, [page, perPage, loadData])
 
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
+
+  useEffect(() => {
+    const handleNext = (e: Event) => {
+      if (page < totalPages) {
+        e.preventDefault()
+        setPage((p) => p + 1)
+      }
+    }
+    window.addEventListener('roulette-next', handleNext)
+    return () => window.removeEventListener('roulette-next', handleNext)
+  }, [page, totalPages])
+
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   useRealtime('customers', () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
@@ -127,8 +140,6 @@ export default function Customers() {
       toast({ title: 'Erro', variant: 'destructive' })
     }
   }
-
-  const totalPages = Math.ceil(totalItems / perPage)
 
   const renderPageNumbers = () => {
     const pages = []

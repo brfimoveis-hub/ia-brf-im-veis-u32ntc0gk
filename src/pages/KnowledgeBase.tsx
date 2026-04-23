@@ -114,6 +114,16 @@ export default function KnowledgeBase() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isDirty])
 
+  useEffect(() => {
+    const handleNext = (e: Event) => {
+      if (isDirty) {
+        e.preventDefault() // Pause roulette if there are unsaved changes
+      }
+    }
+    window.addEventListener('roulette-next', handleNext)
+    return () => window.removeEventListener('roulette-next', handleNext)
+  }, [isDirty])
+
   const handleSave = async () => {
     if (!user) return
     setSaving(true)
