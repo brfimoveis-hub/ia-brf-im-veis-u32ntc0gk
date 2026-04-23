@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, Navigate, Outlet } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -21,37 +21,57 @@ const ProtectedRoute = () => {
   return <Outlet />
 }
 
-const AppRoutes = () => {
-  return (
-    <>
-      <MetaPixel />
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route element={<ProtectedRoute />}>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Index />} />
-            <Route path="/crm" element={<CRM />} />
-            <Route path="/clientes" element={<Customers />} />
-            <Route path="/conversas" element={<Conversations />} />
-            <Route path="/conhecimento" element={<KnowledgeBase />} />
-            <Route path="/configuracoes" element={<Settings />} />
-          </Route>
-        </Route>
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </>
-  )
-}
+const Root = () => (
+  <>
+    <MetaPixel />
+    <Outlet />
+  </>
+)
+
+const router = createBrowserRouter(
+  [
+    {
+      element: <Root />,
+      children: [
+        { path: '/login', element: <Login /> },
+        {
+          element: <ProtectedRoute />,
+          children: [
+            {
+              element: <Layout />,
+              children: [
+                { path: '/', element: <Index /> },
+                { path: '/crm', element: <CRM /> },
+                { path: '/clientes', element: <Customers /> },
+                { path: '/conversas', element: <Conversations /> },
+                { path: '/conhecimento', element: <KnowledgeBase /> },
+                { path: '/configuracoes', element: <Settings /> },
+              ],
+            },
+          ],
+        },
+        { path: '*', element: <NotFound /> },
+      ],
+    },
+  ],
+  {
+    future: {
+      v7_relativeSplatPath: true,
+      v7_fetcherPersist: true,
+      v7_normalizeFormMethod: true,
+      v7_partialHydration: true,
+      v7_skipActionErrorRevalidation: true,
+    },
+  },
+)
 
 const App = () => (
   <AuthProvider>
-    <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <AppRoutes />
-      </TooltipProvider>
-    </BrowserRouter>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <RouterProvider router={router} future={{ v7_startTransition: true }} />
+    </TooltipProvider>
   </AuthProvider>
 )
 
