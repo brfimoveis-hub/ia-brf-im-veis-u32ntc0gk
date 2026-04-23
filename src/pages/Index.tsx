@@ -5,6 +5,7 @@ import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid } fro
 import { MessageCircle, Clock, Users, Zap, RotateCw, Bot } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { CadenceRoulette } from '@/components/CadenceRoulette'
 
 const chartData = [
   { date: 'Seg', messages: 120 },
@@ -113,6 +114,8 @@ export default function Index() {
           </CardContent>
         </Card>
       </div>
+
+      <CadenceRoulette />
 
       <div className="grid gap-4 md:grid-cols-7 lg:grid-cols-8">
         <Card className="md:col-span-4 lg:col-span-5 shadow-subtle">
