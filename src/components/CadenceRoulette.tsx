@@ -5,8 +5,16 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { getActiveCadences, updateCadence, type Cadence } from '@/services/cadences'
+import { getPaginatedCustomers, updateCustomer, type Customer } from '@/services/customers'
 import {
   Edit2,
   Save,
@@ -18,23 +26,36 @@ import {
   RefreshCw,
   Layers,
   MessageSquare,
+  User,
+  Phone,
+  StickyNote,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function CadenceRoulette() {
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [cadences, setCadences] = useState<Cadence[]>([])
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [isEditing, setIsEditing] = useState(false)
+
+  const [customerIndex, setCustomerIndex] = useState(0)
+  const [cadenceIndex, setCadenceIndex] = useState(0)
+  const [limit, setLimit] = useState<number>(50)
+
+  const [isEditingCadence, setIsEditingCadence] = useState(false)
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
+
   const [isPaused, setIsPaused] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [editContent, setEditContent] = useState('')
+
+  const [editCadenceContent, setEditCadenceContent] = useState('')
+  const [editNotesContent, setEditNotesContent] = useState('')
+
   const { toast } = useToast()
 
   // Prevent navigation when editing
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      isEditing && currentLocation.pathname !== nextLocation.pathname,
+      (isEditingCadence || isEditingNotes) && currentLocation.pathname !== nextLocation.pathname,
   )
 
   useEffect(() => {
@@ -49,48 +70,69 @@ export function CadenceRoulette() {
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isEditing) {
+      if (isEditingCadence || isEditingNotes) {
         e.preventDefault()
         e.returnValue = ''
       }
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isEditing])
+  }, [isEditingCadence, isEditingNotes])
 
-  const loadCadences = async () => {
+  const loadData = async () => {
+    setIsLoading(true)
     try {
-      const data = await getActiveCadences()
-      setCadences(data)
+      const [cadData, custData] = await Promise.all([
+        getActiveCadences(),
+        getPaginatedCustomers(1, limit, '', 'all', ''),
+      ])
+      setCadences(cadData)
+      setCustomers(custData.items)
+      // Reset indexes if out of bounds
+      setCustomerIndex(0)
+      setCadenceIndex(0)
     } catch (err) {
-      toast({ title: 'Erro', description: 'Falha ao carregar cadências.', variant: 'destructive' })
+      toast({
+        title: 'Erro',
+        description: 'Falha ao carregar dados da roleta.',
+        variant: 'destructive',
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    loadCadences()
-  }, [])
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [limit])
 
   useEffect(() => {
-    if (cadences.length <= 1 || isPaused || isEditing) return
+    if (customers.length <= 1 || isPaused || isEditingCadence || isEditingNotes) return
     const timer = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % cadences.length)
-    }, 10000) // Rotate every 10 seconds
+      setCustomerIndex((prev) => (prev + 1) % customers.length)
+    }, 15000) // Rotate every 15 seconds to give time to read
     return () => clearInterval(timer)
-  }, [cadences.length, isPaused, isEditing])
+  }, [customers.length, isPaused, isEditingCadence, isEditingNotes])
 
-  const current = cadences[currentIndex]
+  const currentCadence = cadences[cadenceIndex]
+  const currentCustomer = customers[customerIndex]
 
-  const handleEdit = () => {
-    setEditContent(current.content)
-    setIsEditing(true)
+  const handleEditCadence = () => {
+    if (!currentCadence) return
+    setEditCadenceContent(currentCadence.content)
+    setIsEditingCadence(true)
   }
 
-  const handleSave = async () => {
-    if (!current) return
-    if (!editContent.trim()) {
+  const handleEditNotes = () => {
+    if (!currentCustomer) return
+    setEditNotesContent(currentCustomer.notes || '')
+    setIsEditingNotes(true)
+  }
+
+  const handleSaveCadence = async () => {
+    if (!currentCadence) return
+    if (!editCadenceContent.trim()) {
       toast({
         title: 'Aviso',
         description: 'O conteúdo da mensagem é obrigatório.',
@@ -101,13 +143,11 @@ export function CadenceRoulette() {
 
     setIsSaving(true)
     try {
-      const updated = await updateCadence(current.id, { content: editContent })
+      const updated = await updateCadence(currentCadence.id, { content: editCadenceContent })
       setCadences((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-      setIsEditing(false)
+      setIsEditingCadence(false)
       toast({ title: 'Sucesso', description: 'Mensagem sugerida atualizada com sucesso.' })
-      if (blocker.state === 'blocked') {
-        blocker.proceed?.()
-      }
+      if (blocker.state === 'blocked' && !isEditingNotes) blocker.proceed?.()
     } catch (err) {
       toast({ title: 'Erro', description: 'Falha ao atualizar cadência.', variant: 'destructive' })
     } finally {
@@ -115,122 +155,270 @@ export function CadenceRoulette() {
     }
   }
 
-  const handleCancel = () => {
-    setIsEditing(false)
-    if (blocker.state === 'blocked') {
-      blocker.proceed?.()
+  const handleSaveNotes = async () => {
+    if (!currentCustomer) return
+    setIsSaving(true)
+    try {
+      const updated = await updateCustomer(currentCustomer.id, { notes: editNotesContent })
+      setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      setIsEditingNotes(false)
+      toast({ title: 'Sucesso', description: 'Anotações do cliente atualizadas.' })
+      if (blocker.state === 'blocked' && !isEditingCadence) blocker.proceed?.()
+    } catch (err) {
+      toast({ title: 'Erro', description: 'Falha ao atualizar cliente.', variant: 'destructive' })
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  const next = () => setCurrentIndex((p) => (p + 1) % cadences.length)
-  const prev = () => setCurrentIndex((p) => (p - 1 + cadences.length) % cadences.length)
+  const handleCancelCadence = () => {
+    setIsEditingCadence(false)
+    if (blocker.state === 'blocked' && !isEditingNotes) blocker.proceed?.()
+  }
 
-  if (isLoading) {
+  const handleCancelNotes = () => {
+    setIsEditingNotes(false)
+    if (blocker.state === 'blocked' && !isEditingCadence) blocker.proceed?.()
+  }
+
+  const nextCustomer = () => setCustomerIndex((p) => (p + 1) % customers.length)
+  const prevCustomer = () => setCustomerIndex((p) => (p - 1 + customers.length) % customers.length)
+
+  const nextCadence = () => setCadenceIndex((p) => (p + 1) % cadences.length)
+  const prevCadence = () => setCadenceIndex((p) => (p - 1 + cadences.length) % cadences.length)
+
+  if (isLoading && customers.length === 0) {
     return (
-      <Card className="h-[300px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
+      <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <RefreshCw className="h-8 w-8 animate-spin mb-4 text-primary/50" />
         <p>Carregando Roleta Inteligente...</p>
       </Card>
     )
   }
 
-  if (cadences.length === 0) {
+  if (customers.length === 0) {
     return (
-      <Card className="h-[300px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
+      <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <Layers className="h-8 w-8 mb-4 text-primary/50" />
-        <p>Nenhuma cadência ativa encontrada para a roleta.</p>
+        <p>Nenhum cliente encontrado para a roleta.</p>
       </Card>
     )
   }
 
-  const parts = current.title.split('|').map((s) => s.trim())
-  const step = parts[0] || current.title
+  const parts = currentCadence?.title.split('|').map((s) => s.trim()) || []
+  const step = parts[0] || currentCadence?.title || 'Sem cadência'
   const trigger = parts[1] || ''
   const channel = parts[2] || ''
 
   return (
     <Card className="shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative">
       <div className="absolute top-0 left-0 w-full h-1 bg-muted">
-        {!isPaused && !isEditing && cadences.length > 1 && (
+        {!isPaused && !isEditingCadence && !isEditingNotes && customers.length > 1 && (
           <div
-            key={currentIndex}
-            className="h-full bg-primary animate-[progress_10s_linear]"
+            key={customerIndex}
+            className="h-full bg-primary animate-[progress_15s_linear]"
             style={{ width: '100%', animationFillMode: 'forwards' }}
           />
         )}
       </div>
 
-      <CardHeader className="flex flex-row items-start sm:items-center justify-between pb-2 gap-4">
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-2 gap-4">
         <div>
           <CardTitle className="text-secondary flex items-center gap-2 text-xl">
             Roleta Inteligente: Villa dos Açores
             <span className="text-xs bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-medium border border-primary/20">
-              {currentIndex + 1} / {cadences.length}
+              Cliente {customerIndex + 1} de {customers.length}
             </span>
           </CardTitle>
           <CardDescription>Pipeline da Bia - Ciclo de Cadência</CardDescription>
         </div>
 
-        <div className="flex items-center gap-1 bg-background/50 backdrop-blur-sm rounded-md p-1 border shadow-sm z-10">
-          <Button
-            variant={isPaused ? 'secondary' : 'ghost'}
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setIsPaused(!isPaused)}
-            disabled={isEditing || cadences.length <= 1}
-            title={isPaused ? 'Retomar Rotação' : 'Pausar Rotação'}
+        <div className="flex flex-wrap items-center gap-2 z-10">
+          <Select
+            value={limit.toString()}
+            onValueChange={(v) => setLimit(Number(v))}
+            disabled={isEditingCadence || isEditingNotes}
           >
-            {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-          </Button>
-          <div className="w-px h-4 bg-border mx-1" />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={prev}
-            disabled={isEditing || cadences.length <= 1}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={next}
-            disabled={isEditing || cadences.length <= 1}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+            <SelectTrigger className="h-8 w-[120px] text-xs bg-background/50 backdrop-blur-sm">
+              <SelectValue placeholder="Limite" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="50">50 clientes</SelectItem>
+              <SelectItem value="100">100 clientes</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex items-center gap-1 bg-background/50 backdrop-blur-sm rounded-md p-1 border shadow-sm">
+            <Button
+              variant={isPaused ? 'secondary' : 'ghost'}
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setIsPaused(!isPaused)}
+              disabled={isEditingCadence || isEditingNotes || customers.length <= 1}
+              title={isPaused ? 'Retomar Rotação' : 'Pausar Rotação'}
+            >
+              {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+            </Button>
+            <div className="w-px h-4 bg-border mx-1" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={prevCustomer}
+              disabled={isEditingCadence || isEditingNotes || customers.length <= 1}
+              title="Cliente Anterior"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={nextCustomer}
+              disabled={isEditingCadence || isEditingNotes || customers.length <= 1}
+              title="Próximo Cliente"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
 
-      <CardContent>
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <Badge
-            variant="outline"
-            className="bg-primary/5 text-primary border-primary/20 shadow-sm"
-          >
-            {step}
-          </Badge>
-          {trigger && (
-            <Badge
-              variant="outline"
-              className="bg-primary/5 text-primary border-primary/20 shadow-sm"
-            >
-              Gatilho: {trigger}
-            </Badge>
-          )}
-          {channel && (
-            <Badge
-              variant="outline"
-              className="bg-primary/5 text-primary border-primary/20 shadow-sm"
-            >
-              Canal: {channel}
-            </Badge>
-          )}
-        </div>
+      <CardContent className="space-y-4">
+        {/* Customer Information Section */}
+        {currentCustomer && (
+          <div className="bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-4 shadow-sm group relative">
+            <div className="flex flex-col sm:flex-row gap-4 items-start justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="font-semibold text-secondary">{currentCustomer.name}</h3>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {currentCustomer.status}
+                  </Badge>
+                </div>
+                {(currentCustomer.phone || currentCustomer.phone_1_value) && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Phone className="h-3.5 w-3.5" />
+                    <span>{currentCustomer.phone || currentCustomer.phone_1_value}</span>
+                  </div>
+                )}
+              </div>
 
-        {isEditing ? (
+              <div className="w-full sm:w-1/2">
+                {isEditingNotes ? (
+                  <div className="space-y-2 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-secondary flex items-center gap-1.5">
+                        <StickyNote className="w-3.5 h-3.5" /> Anotações
+                      </span>
+                    </div>
+                    <Textarea
+                      className="min-h-[80px] text-sm resize-none"
+                      value={editNotesContent}
+                      onChange={(e) => setEditNotesContent(e.target.value)}
+                      placeholder="Anotações do cliente..."
+                      disabled={isSaving}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCancelNotes}
+                        disabled={isSaving}
+                        className="h-7 text-xs"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleSaveNotes}
+                        disabled={isSaving}
+                        className="h-7 text-xs"
+                      >
+                        {isSaving && <RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />}
+                        Salvar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative cursor-text group/notes" onClick={handleEditNotes}>
+                    <div className="absolute right-1 top-1 opacity-0 group-hover/notes:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-6 w-6">
+                        <Edit2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-1">
+                      <StickyNote className="w-3.5 h-3.5" /> Anotações
+                    </span>
+                    <ScrollArea className="h-[60px] w-full text-sm text-secondary/80 bg-muted/30 p-2 rounded border border-transparent group-hover/notes:border-border/50">
+                      {currentCustomer.notes || (
+                        <span className="italic opacity-50">
+                          Sem anotações. Clique para adicionar.
+                        </span>
+                      )}
+                    </ScrollArea>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cadence Section */}
+        {cadences.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-2 pt-2 border-t border-border/30">
+            <div className="flex items-center mr-2">
+              <span className="text-xs font-semibold text-muted-foreground mr-2">Cadência:</span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 rounded-r-none border-r-0"
+                onClick={prevCadence}
+                disabled={isEditingCadence || isEditingNotes}
+              >
+                <ChevronLeft className="h-3 w-3" />
+              </Button>
+              <div className="h-6 px-2 flex items-center border-y border-input bg-background text-xs font-medium">
+                {cadenceIndex + 1}/{cadences.length}
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-6 w-6 rounded-l-none border-l-0"
+                onClick={nextCadence}
+                disabled={isEditingCadence || isEditingNotes}
+              >
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+            </div>
+
+            <Badge
+              variant="outline"
+              className="bg-primary/5 text-primary border-primary/20 shadow-sm text-[10px] py-0"
+            >
+              {step}
+            </Badge>
+            {trigger && (
+              <Badge
+                variant="outline"
+                className="bg-primary/5 text-primary border-primary/20 shadow-sm text-[10px] py-0"
+              >
+                Gatilho: {trigger}
+              </Badge>
+            )}
+            {channel && (
+              <Badge
+                variant="outline"
+                className="bg-primary/5 text-primary border-primary/20 shadow-sm text-[10px] py-0"
+              >
+                Canal: {channel}
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {isEditingCadence ? (
           <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-secondary flex items-center gap-1.5">
@@ -239,16 +427,16 @@ export function CadenceRoulette() {
             </div>
             <Textarea
               className="min-h-[120px] resize-none bg-background/80 shadow-inner border-primary/30 focus-visible:ring-primary/50"
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
+              value={editCadenceContent}
+              onChange={(e) => setEditCadenceContent(e.target.value)}
               placeholder="Conteúdo da mensagem sugerida..."
               disabled={isSaving}
             />
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={handleCancel} disabled={isSaving}>
+              <Button variant="ghost" onClick={handleCancelCadence} disabled={isSaving}>
                 <X className="w-4 h-4 mr-2" /> Cancelar
               </Button>
-              <Button onClick={handleSave} disabled={isSaving}>
+              <Button onClick={handleSaveCadence} disabled={isSaving}>
                 {isSaving ? (
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                 ) : (
@@ -258,33 +446,37 @@ export function CadenceRoulette() {
               </Button>
             </div>
           </div>
-        ) : (
+        ) : currentCadence ? (
           <div className="group relative animate-in fade-in duration-300">
             <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={handleEdit}
-                className="shadow-sm border border-border/50"
+                onClick={handleEditCadence}
+                className="shadow-sm border border-border/50 h-7 text-xs"
               >
-                <Edit2 className="w-3.5 h-3.5 mr-2" /> Editar Mensagem
+                <Edit2 className="w-3 h-3 mr-1.5" /> Editar Mensagem
               </Button>
             </div>
 
             <div
-              className="bg-background/60 backdrop-blur-sm border border-border/50 rounded-lg p-5 cursor-text hover:border-primary/40 transition-colors shadow-sm group-hover:shadow relative"
-              onClick={handleEdit}
+              className="bg-background/60 backdrop-blur-sm border border-border/50 rounded-lg p-4 cursor-text hover:border-primary/40 transition-colors shadow-sm group-hover:shadow relative"
+              onClick={handleEditCadence}
             >
               <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 rounded-l-lg" />
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
                 <MessageSquare className="w-3.5 h-3.5" /> Mensagem Sugerida
               </h4>
-              <ScrollArea className="h-[100px] w-full pr-4">
+              <ScrollArea className="h-[80px] w-full pr-4">
                 <div className="text-sm text-secondary/90 font-medium whitespace-pre-wrap leading-relaxed">
-                  {current.content}
+                  {currentCadence.content}
                 </div>
               </ScrollArea>
             </div>
+          </div>
+        ) : (
+          <div className="p-4 text-center text-sm text-muted-foreground border rounded-lg bg-muted/20">
+            Nenhuma mensagem de cadência configurada.
           </div>
         )}
       </CardContent>
