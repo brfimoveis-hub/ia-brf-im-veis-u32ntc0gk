@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-23T18:13:15.296Z",
+  "generatedAt": "2026-04-23T18:23:52.303Z",
   "collections": [
     {
       "name": "users",
@@ -367,7 +367,9 @@
       ],
       "indexes": [
         "CREATE INDEX idx_customers_user_id ON customers (user_id)",
-        "CREATE INDEX idx_customers_status ON customers (status)"
+        "CREATE INDEX idx_customers_status ON customers (status)",
+        "CREATE INDEX `idx_customers_email` ON `customers` (email)",
+        "CREATE INDEX `idx_customers_phone` ON `customers` (phone)"
       ]
     },
     {

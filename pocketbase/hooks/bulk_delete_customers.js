@@ -25,15 +25,13 @@ routerAdd(
           )
           .bind(bindParams)
           .execute()
-      } else {
-        $app
-          .db()
-          .newQuery('DELETE FROM customers WHERE user_id = {:userId}')
-          .bind({ userId: userId })
-          .execute()
-      }
 
-      return e.noContent(204)
+        return e.noContent(204)
+      } else {
+        return e.badRequestError(
+          'O array de IDs é obrigatório. A exclusão em massa de todos os registros foi desabilitada por segurança.',
+        )
+      }
     } catch (err) {
       console.log('Bulk delete error:', err)
       return e.internalServerError('Failed to delete customers')

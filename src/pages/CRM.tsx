@@ -26,6 +26,7 @@ const PHASES = [
 
 export default function CRM() {
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [loading, setLoading] = useState(true)
   const customersRef = useRef(customers)
   const { toast } = useToast()
 
@@ -34,7 +35,15 @@ export default function CRM() {
   }, [customers])
 
   useEffect(() => {
-    getCustomers().then(setCustomers).catch(console.error)
+    getCustomers()
+      .then((data) => {
+        setCustomers(data)
+        setLoading(false)
+      })
+      .catch((err) => {
+        console.error(err)
+        setLoading(false)
+      })
   }, [])
 
   useRealtime('customers', (e) => {
@@ -81,6 +90,17 @@ export default function CRM() {
 
     return () => clearInterval(timer)
   }, [toast])
+
+  if (loading) {
+    return (
+      <div className="h-[calc(100vh-10rem)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <TrendingUp className="h-8 w-8 text-primary animate-pulse" />
+          <p className="text-muted-foreground animate-pulse">Carregando pipeline...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-[calc(100vh-10rem)] flex flex-col">

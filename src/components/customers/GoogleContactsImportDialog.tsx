@@ -9,11 +9,10 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
-import { deleteAllCustomers, createCustomerWithRetry } from '@/services/customers'
+import { createCustomerWithRetry, updateCustomer } from '@/services/customers'
 import pb from '@/lib/pocketbase/client'
 import { Loader2, UploadCloud, CheckCircle2, AlertTriangle } from 'lucide-react'
 
@@ -81,7 +80,6 @@ export function GoogleContactsImportDialog({
   onOpenChange: (o: boolean) => void
   onSuccess: () => void
 }) {
-  const [mode, setMode] = useState<'append' | 'replace'>('append')
   const [jsonInput, setJsonInput] = useState('')
   const [parsedData, setParsedData] = useState<any[] | null>(null)
   const [importing, setImporting] = useState(false)
@@ -141,36 +139,35 @@ export function GoogleContactsImportDialog({
 
     try {
       setImporting(true)
-      setProgress({ current: 0, total: recordsToProcess.length, message: 'Iniciando...' })
-
-      if (mode === 'replace' && recordsToProcess === parsedData) {
-        setProgress((p) => ({ ...p, message: 'Limpando base atual...' }))
-        await deleteAllCustomers()
-      }
-
-      setProgress((p) => ({ ...p, message: 'Verificando contatos existentes (Idempotência)...' }))
-
-      const existing = await pb.collection('customers').getFullList({
-        fields: 'email_1_value,phone_1_value,email,phone',
+      setProgress({
+        current: 0,
+        total: recordsToProcess.length,
+        message: 'Iniciando importação segura (Upsert)...',
       })
 
-      const uniqueEmails = new Set(
-        existing.flatMap((c) => [c.email_1_value, c.email]).filter(Boolean),
-      )
-      const uniquePhones = new Set(
-        existing.flatMap((c) => [c.phone_1_value, c.phone]).filter(Boolean),
-      )
+      const existing = await pb.collection('customers').getFullList({
+        fields: 'id,email_1_value,phone_1_value,email,phone',
+      })
+
+      const emailMap = new Map()
+      const phoneMap = new Map()
+      existing.forEach((c) => {
+        if (c.email) emailMap.set(c.email, c.id)
+        if (c.email_1_value) emailMap.set(c.email_1_value, c.id)
+        if (c.phone) phoneMap.set(c.phone, c.id)
+        if (c.phone_1_value) phoneMap.set(c.phone_1_value, c.id)
+      })
 
       let successCount = 0
       let newFailed: any[] = []
 
-      const batchSize = 50
+      const batchSize = 25
       for (let i = 0; i < recordsToProcess.length; i += batchSize) {
         const batch = recordsToProcess.slice(i, i + batchSize)
         setProgress({
           current: i,
           total: recordsToProcess.length,
-          message: `Importando lote (${i} de ${recordsToProcess.length})...`,
+          message: `Processando lote (${i} de ${recordsToProcess.length})...`,
         })
 
         const promises = batch.map(async (item) => {
@@ -194,17 +191,13 @@ export function GoogleContactsImportDialog({
           const birthday = (item['Birthday'] || '').trim()
           const notes = (item['Notes'] || '').trim()
 
-          // Skip completely blank lines
           if (!nameRaw && !emailValue && !phoneValue) return Promise.resolve('skipped')
 
-          // Prevent Duplicates based on email/phone matching existing DB records
-          if (emailValue && uniqueEmails.has(emailValue)) return Promise.resolve('skipped')
-          if (phoneValue && uniquePhones.has(phoneValue)) return Promise.resolve('skipped')
+          let existingId = null
+          if (emailValue && emailMap.has(emailValue)) existingId = emailMap.get(emailValue)
+          else if (phoneValue && phoneMap.has(phoneValue)) existingId = phoneMap.get(phoneValue)
 
-          if (emailValue) uniqueEmails.add(emailValue)
-          if (phoneValue) uniquePhones.add(phoneValue)
-
-          return createCustomerWithRetry({
+          const payload: any = {
             name,
             first_name: givenName,
             middle_name: middleName,
@@ -220,15 +213,25 @@ export function GoogleContactsImportDialog({
             birthday,
             notes,
             source: 'Google Contacts',
-            status: '1', // Lead
-            tags: ['Importado', 'Google Contacts'],
-          })
+          }
+
+          if (existingId) {
+            return updateCustomer(existingId, payload)
+          } else {
+            payload.status = '1'
+            payload.tags = ['Importado', 'Google Contacts']
+            const created = await createCustomerWithRetry(payload)
+            if (emailValue) emailMap.set(emailValue, created.id)
+            if (phoneValue) phoneMap.set(phoneValue, created.id)
+            return created
+          }
         })
 
         const results = await Promise.allSettled(promises)
 
         results.forEach((res, idx) => {
           if (res.status === 'rejected') {
+            console.error('Import failed for row', batch[idx], res.reason)
             newFailed.push(batch[idx])
           } else if (res.value !== 'skipped') {
             successCount++
@@ -238,39 +241,37 @@ export function GoogleContactsImportDialog({
         setProgress({
           current: Math.min(i + batch.length, recordsToProcess.length),
           total: recordsToProcess.length,
-          message: `Processados ${Math.min(i + batch.length, recordsToProcess.length)} de ${recordsToProcess.length}...`,
+          message: `Atualizados/Inseridos ${Math.min(i + batch.length, recordsToProcess.length)} de ${recordsToProcess.length}...`,
         })
 
-        // Avoid hammering Pocketbase too hard and keep UI responsive
-        await new Promise((r) => setTimeout(r, 100))
+        await new Promise((r) => setTimeout(r, 200))
       }
 
       if (newFailed.length > 0) {
         setFailedRecords(newFailed)
         toast({
           title: `Importação parcial`,
-          description: `${successCount} contatos importados. ${newFailed.length} falharam na rede.`,
+          description: `${successCount} contatos processados. ${newFailed.length} falharam.`,
           variant: 'destructive',
         })
         if (successCount > 0) onSuccess()
       } else {
         toast({
-          title: `Contatos importados com sucesso!`,
-          description: `${successCount} novos contatos adicionados.`,
+          title: `Importação concluída com sucesso!`,
+          description: `${successCount} contatos atualizados ou inseridos de forma segura.`,
         })
         onSuccess()
         setTimeout(() => {
           onOpenChange(false)
           setParsedData(null)
           setJsonInput('')
-          setMode('append')
           setFailedRecords([])
         }, 1500)
       }
     } catch (err: any) {
       toast({
         title: 'Erro na importação',
-        description: err.message || 'Erro de servidor.',
+        description: err.message || 'Ocorreu um erro ao processar os contatos.',
         variant: 'destructive',
       })
     } finally {
@@ -295,35 +296,14 @@ export function GoogleContactsImportDialog({
         <DialogHeader>
           <DialogTitle>Importar Google Contacts</DialogTitle>
           <DialogDescription>
-            Faça upload de um arquivo CSV exportado do Google Contacts ou JSON para importar seus
-            contatos. O sistema ignorará contatos duplicados automaticamente.
+            Faça upload de um arquivo CSV exportado do Google Contacts ou cole um JSON. O sistema
+            atualizará de forma segura os contatos já existentes (verificando email ou telefone) e
+            adicionará os novos automaticamente.
           </DialogDescription>
         </DialogHeader>
 
         {!parsedData ? (
           <div className="py-4 space-y-6">
-            <div className="space-y-3">
-              <Label>Modo de Importação</Label>
-              <RadioGroup
-                value={mode}
-                onValueChange={(v: any) => setMode(v)}
-                className="flex flex-col space-y-1"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="append" id="r1" />
-                  <Label htmlFor="r1" className="cursor-pointer">
-                    Adicionar (Manter base atual e ignorar duplicados)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="replace" id="r2" />
-                  <Label htmlFor="r2" className="cursor-pointer text-destructive">
-                    Substituir Base (Apagar todos os clientes atuais)
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-
             <div className="space-y-3">
               <Label>Upload de Arquivo (CSV Google Contacts)</Label>
               <div className="flex items-center gap-2">
@@ -404,12 +384,6 @@ export function GoogleContactsImportDialog({
               <p className="text-sm text-muted-foreground text-center">
                 As colunas do Google Contacts foram identificadas e mapeadas com sucesso.
               </p>
-
-              {mode === 'replace' && (
-                <p className="text-sm font-medium text-destructive mt-4 text-center">
-                  ⚠️ Atenção: Todos os clientes atuais serão apagados antes da importação.
-                </p>
-              )}
             </div>
 
             {importing && (
@@ -442,11 +416,7 @@ export function GoogleContactsImportDialog({
           </Button>
 
           {parsedData && failedRecords.length === 0 && (
-            <Button
-              variant={mode === 'replace' ? 'destructive' : 'default'}
-              onClick={() => handleImport()}
-              disabled={importing}
-            >
+            <Button onClick={() => handleImport()} disabled={importing}>
               {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {importing ? 'Importando...' : 'Confirmar Importação'}
             </Button>

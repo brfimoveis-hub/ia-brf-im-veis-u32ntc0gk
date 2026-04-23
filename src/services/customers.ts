@@ -139,8 +139,9 @@ export const deleteCustomer = async (id: string): Promise<void> => {
 }
 
 export const deleteAllCustomers = async (): Promise<void> => {
-  // Uses the atomic bulk-delete server endpoint to avoid 429 errors and slow loops
-  await bulkDeleteCustomers()
+  throw new Error(
+    'A exclusão de todos os clientes foi desabilitada por segurança para evitar perda de dados.',
+  )
 }
 
 export const bulkDeleteCustomers = async (ids?: string[]): Promise<void> => {
