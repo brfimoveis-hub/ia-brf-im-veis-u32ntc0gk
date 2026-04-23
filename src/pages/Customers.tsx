@@ -147,7 +147,7 @@ export default function Customers() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="default" onClick={() => setGoogleContactsOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" /> Importar Google Contacts
+            <Upload className="h-4 w-4" /> Importar Contatos
           </Button>
           <Button
             onClick={() => {

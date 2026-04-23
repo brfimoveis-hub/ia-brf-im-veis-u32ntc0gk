@@ -14,7 +14,7 @@ import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
 import { createCustomerWithRetry, updateCustomer } from '@/services/customers'
 import pb from '@/lib/pocketbase/client'
-import { Loader2, UploadCloud, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Loader2, UploadCloud, CheckCircle2, AlertTriangle, Download } from 'lucide-react'
 import { formatPhone } from '@/lib/utils'
 
 function parseCSV(str: string) {
@@ -80,9 +80,56 @@ export function GoogleContactsImportDialog({
   const [importing, setImporting] = useState(false)
   const [progress, setProgress] = useState({ current: 0, total: 0, message: '' })
   const [failedRecords, setFailedRecords] = useState<any[]>([])
+  const [ignoredCount, setIgnoredCount] = useState(0)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
+
+  const downloadSampleCSV = () => {
+    const headers =
+      'Name,Given Name,Family Name,Phone 1 - Value,E-mail 1 - Value,Organization 1 - Name\n'
+    const sample = 'João da Silva,João,Silva,11999999999,joao@exemplo.com,Empresa Exemplo\n'
+    const blob = new Blob([headers + sample], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', 'modelo_importacao.csv')
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const processParsedData = (data: any[]) => {
+    let ignored = 0
+    const validData = data.filter((item) => {
+      const isValid =
+        item['Name'] ||
+        item['Given Name'] ||
+        item['Family Name'] ||
+        item['E-mail 1 - Value'] ||
+        item['Phone 1 - Value']
+
+      if (!isValid && Object.keys(item).length > 0) ignored++
+      return isValid
+    })
+
+    if (validData.length === 0) {
+      toast({
+        title: 'Aviso',
+        description:
+          'Nenhuma linha de dados válida encontrada. Certifique-se de que o arquivo contém cabeçalhos corretos.',
+        variant: 'destructive',
+      })
+      setParsedData(null)
+      return false
+    }
+
+    setParsedData(validData)
+    setFailedRecords([])
+    setIgnoredCount(ignored)
+    return true
+  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -107,36 +154,16 @@ export function GoogleContactsImportDialog({
         throw new Error('Invalid file format')
       }
 
-      const validData = data.filter((item) => {
-        return (
-          item['Name'] ||
-          item['Given Name'] ||
-          item['Family Name'] ||
-          item['E-mail 1 - Value'] ||
-          item['Phone 1 - Value']
-        )
-      })
-
-      if (validData.length === 0) {
+      const success = processParsedData(data)
+      if (success) {
         toast({
-          title: 'Aviso',
-          description:
-            'Nenhuma linha de dados válida encontrada. Certifique-se de que o arquivo contém cabeçalhos como "Name", "Given Name", "E-mail 1 - Value" ou "Phone 1 - Value".',
-          variant: 'destructive',
+          title: 'Sucesso',
+          description: 'Arquivo carregado com sucesso. Verifique os dados e confirme a importação.',
         })
-        setParsedData(null)
-        return
       }
-
-      setParsedData(validData)
-      setFailedRecords([])
-      toast({
-        title: 'Success',
-        description: `Arquivo carregado com ${validData.length} contatos prontos para importação.`,
-      })
     } catch (err: any) {
       toast({
-        title: 'Error',
+        title: 'Erro',
         description: err.message === 'Invalid file format' ? err.message : 'Invalid file format',
         variant: 'destructive',
       })
@@ -152,32 +179,16 @@ export function GoogleContactsImportDialog({
       if (!Array.isArray(data)) {
         throw new Error('Invalid file format')
       }
-      const validData = data.filter((item) => {
-        return (
-          item['Name'] ||
-          item['Given Name'] ||
-          item['Family Name'] ||
-          item['E-mail 1 - Value'] ||
-          item['Phone 1 - Value']
-        )
-      })
 
-      if (validData.length === 0) {
+      const success = processParsedData(data)
+      if (success) {
         toast({
-          title: 'Aviso',
-          description:
-            'Nenhuma linha de dados válida encontrada. Certifique-se de que o arquivo contém cabeçalhos como "Name", "Given Name", "E-mail 1 - Value" ou "Phone 1 - Value".',
-          variant: 'destructive',
+          title: 'Sucesso',
+          description: 'Texto carregado com sucesso. Confirme a importação.',
         })
-        setParsedData(null)
-        return
       }
-
-      setParsedData(validData)
-      setFailedRecords([])
-      toast({ title: 'Success', description: `Texto carregado com ${validData.length} contatos.` })
     } catch (err: any) {
-      toast({ title: 'Error', description: 'Invalid file format', variant: 'destructive' })
+      toast({ title: 'Erro', description: 'Formato de arquivo inválido.', variant: 'destructive' })
     }
   }
 
@@ -207,6 +218,7 @@ export function GoogleContactsImportDialog({
 
       let successCount = 0
       let newFailed: any[] = []
+      const userId = pb.authStore.record?.id
 
       const batchSize = 25
       for (let i = 0; i < recordsToProcess.length; i += batchSize) {
@@ -249,6 +261,8 @@ export function GoogleContactsImportDialog({
 
           const orgName = (item['Organization 1 - Name'] || '').trim()
           const orgTitle = (item['Organization 1 - Title'] || '').trim()
+
+          // Non-blocking parsing for generic fields
           const birthday = (item['Birthday'] || '').trim()
           const notes = (item['Notes'] || '').trim()
 
@@ -259,6 +273,7 @@ export function GoogleContactsImportDialog({
           else if (phoneValue && phoneMap.has(phoneValue)) existingId = phoneMap.get(phoneValue)
 
           const payload: any = {
+            user_id: userId,
             name,
             first_name: givenName,
             middle_name: middleName,
@@ -314,18 +329,20 @@ export function GoogleContactsImportDialog({
         await new Promise((r) => setTimeout(r, 200))
       }
 
-      if (newFailed.length > 0) {
+      const totalIgnored = newFailed.length + ignoredCount
+
+      if (totalIgnored > 0) {
         setFailedRecords(newFailed)
         toast({
-          title: `Importação parcial`,
-          description: `Importação concluída: ${successCount} contatos adicionados/atualizados. ${newFailed.length} falharam.`,
+          title: `Importação concluída com avisos`,
+          description: `Importação concluída com avisos: ${successCount} contatos importados, ${totalIgnored} linhas ignoradas devido a erros de formato.`,
           variant: 'destructive',
         })
         if (successCount > 0) onSuccess()
       } else {
         toast({
           title: `Sucesso`,
-          description: `Importação concluída: ${successCount} contatos adicionados/atualizados.`,
+          description: `Importação concluída: ${successCount} contatos processados com sucesso.`,
         })
         onSuccess()
         setTimeout(() => {
@@ -333,12 +350,13 @@ export function GoogleContactsImportDialog({
           setParsedData(null)
           setJsonInput('')
           setFailedRecords([])
+          setIgnoredCount(0)
         }, 1500)
       }
     } catch (err: any) {
       toast({
-        title: 'Error',
-        description: 'Error connecting to the database',
+        title: 'Erro',
+        description: 'Erro de conexão ou falha inesperada na importação.',
         variant: 'destructive',
       })
     } finally {
@@ -350,6 +368,7 @@ export function GoogleContactsImportDialog({
     setParsedData(null)
     setJsonInput('')
     setFailedRecords([])
+    setIgnoredCount(0)
   }
 
   return (
@@ -361,7 +380,7 @@ export function GoogleContactsImportDialog({
     >
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Importar Google Contacts</DialogTitle>
+          <DialogTitle>Importar Contatos</DialogTitle>
           <DialogDescription>
             Faça upload de um arquivo CSV exportado do Google Contacts ou cole um JSON. O sistema
             atualizará de forma segura os contatos já existentes (verificando email ou telefone) e
@@ -372,7 +391,17 @@ export function GoogleContactsImportDialog({
         {!parsedData ? (
           <div className="py-4 space-y-6">
             <div className="space-y-3">
-              <Label>Upload de Arquivo (CSV Google Contacts)</Label>
+              <div className="flex justify-between items-center">
+                <Label>Upload de Arquivo (CSV)</Label>
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={downloadSampleCSV}
+                  className="h-auto p-0 text-primary"
+                >
+                  <Download className="mr-1 h-3 w-3" /> Baixar modelo CSV
+                </Button>
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -449,7 +478,12 @@ export function GoogleContactsImportDialog({
               <CheckCircle2 className="h-10 w-10 text-green-500 mb-2" />
               <h3 className="font-semibold text-lg">{parsedData.length} registros prontos!</h3>
               <p className="text-sm text-muted-foreground text-center">
-                As colunas do Google Contacts foram identificadas e mapeadas com sucesso.
+                As colunas foram identificadas e mapeadas com sucesso.{' '}
+                {ignoredCount > 0 && (
+                  <span className="text-destructive font-medium block mt-1">
+                    ({ignoredCount} linhas ignoradas com falhas de formato)
+                  </span>
+                )}
               </p>
             </div>
 
