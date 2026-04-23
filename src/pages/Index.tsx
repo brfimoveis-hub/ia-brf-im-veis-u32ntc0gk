@@ -3,9 +3,13 @@ import { Button } from '@/components/ui/button'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { MessageCircle, Clock, Users, Zap, RotateCw, Bot } from 'lucide-react'
+import { lazy, Suspense } from 'react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
-import { CadenceRoulette } from '@/components/CadenceRoulette'
+
+const CadenceRoulette = lazy(() =>
+  import('@/components/CadenceRoulette').then((m) => ({ default: m.CadenceRoulette })),
+)
 
 const chartData = [
   { date: 'Seg', messages: 120 },
@@ -115,7 +119,11 @@ export default function Index() {
         </Card>
       </div>
 
-      <CadenceRoulette />
+      <Suspense
+        fallback={<div className="h-[400px] w-full rounded-xl bg-muted/20 animate-pulse" />}
+      >
+        <CadenceRoulette />
+      </Suspense>
 
       <div className="grid gap-4 md:grid-cols-7 lg:grid-cols-8">
         <Card className="md:col-span-4 lg:col-span-5 shadow-subtle">

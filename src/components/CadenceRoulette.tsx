@@ -35,12 +35,18 @@ import { cn } from '@/lib/utils'
 export function CadenceRoulette({
   externalCustomers,
   externalIsLoading,
+  externalPage,
+  externalPerPage,
+  externalTotalItems,
   onCustomerUpdated,
   onNextPage,
   onPrevPage,
 }: {
   externalCustomers?: Customer[]
   externalIsLoading?: boolean
+  externalPage?: number
+  externalPerPage?: number
+  externalTotalItems?: number
   onCustomerUpdated?: (c: Customer) => void
   onNextPage?: () => void
   onPrevPage?: () => void
@@ -55,6 +61,7 @@ export function CadenceRoulette({
   const [customerIndex, setCustomerIndex] = useState(0)
   const [cadenceIndex, setCadenceIndex] = useState(0)
   const [rotationKey, setRotationKey] = useState(0)
+  const [pendingPrevPage, setPendingPrevPage] = useState(false)
 
   const [isEditingCadence, setIsEditingCadence] = useState(false)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
@@ -118,9 +125,20 @@ export function CadenceRoulette({
         const custData = await getPaginatedCustomers(page, perPage, '', 'all', '')
         setInternalCustomers(custData.items)
         setTotalItems(custData.totalItems)
-        setCustomerIndex((prev) => (prev >= custData.items.length ? 0 : prev))
+
+        if (pendingPrevPage) {
+          setCustomerIndex(Math.max(0, custData.items.length - 1))
+          setPendingPrevPage(false)
+        } else {
+          setCustomerIndex((prev) => (prev >= custData.items.length ? 0 : prev))
+        }
       } else {
-        setCustomerIndex((prev) => (prev >= externalCustomers.length ? 0 : prev))
+        if (pendingPrevPage) {
+          setCustomerIndex(Math.max(0, externalCustomers.length - 1))
+          setPendingPrevPage(false)
+        } else {
+          setCustomerIndex((prev) => (prev >= externalCustomers.length ? 0 : prev))
+        }
       }
     } catch (err) {
       toast({
@@ -161,8 +179,10 @@ export function CadenceRoulette({
     setCustomerIndex((prev) => {
       if (prev === 0) {
         if (onPrevPage) {
+          setPendingPrevPage(true)
           onPrevPage()
         } else if (!externalCustomers && page > 1) {
+          setPendingPrevPage(true)
           setPage((p) => p - 1)
         }
         return 0
@@ -285,6 +305,14 @@ export function CadenceRoulette({
   const trigger = parts[1] || ''
   const channel = parts[2] || ''
 
+  const currentPage = externalPage ?? page
+  const currentPerPage = externalPerPage ?? perPage
+  const currentTotalItems = externalTotalItems ?? totalItems
+  const globalIndex = Math.min(
+    currentTotalItems,
+    (currentPage - 1) * currentPerPage + customerIndex + 1,
+  )
+
   return (
     <Card
       className={cn(
@@ -319,7 +347,7 @@ export function CadenceRoulette({
           <CardTitle className="text-secondary flex items-center gap-2 text-xl">
             Roleta Inteligente: Villa dos Açores
             <span className="text-xs bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-medium border border-primary/20">
-              Cliente {customerIndex + 1} de {customers.length}
+              Cliente {globalIndex} de {currentTotalItems}
             </span>
           </CardTitle>
           <CardDescription>Pipeline da Bia - Ciclo de Cadência</CardDescription>

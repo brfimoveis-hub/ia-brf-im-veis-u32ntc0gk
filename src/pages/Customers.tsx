@@ -19,16 +19,26 @@ import {
   ChevronRight,
   MoreHorizontal as Ellipsis,
 } from 'lucide-react'
-import { GoogleContactsImportDialog } from '@/components/customers/GoogleContactsImportDialog'
-import { LeadDialog } from '@/components/customers/LeadDialog'
+import { lazy, Suspense } from 'react'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { useToast } from '@/hooks/use-toast'
 import { getPaginatedCustomers, deleteCustomer, Customer } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
 import { PHASES } from '@/components/customers/constants'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
-import { CadenceRoulette } from '@/components/CadenceRoulette'
 import { Play } from 'lucide-react'
+
+const GoogleContactsImportDialog = lazy(() =>
+  import('@/components/customers/GoogleContactsImportDialog').then((m) => ({
+    default: m.GoogleContactsImportDialog,
+  })),
+)
+const LeadDialog = lazy(() =>
+  import('@/components/customers/LeadDialog').then((m) => ({ default: m.LeadDialog })),
+)
+const CadenceRoulette = lazy(() =>
+  import('@/components/CadenceRoulette').then((m) => ({ default: m.CadenceRoulette })),
+)
 
 export default function Customers() {
   const [leads, setLeads] = useState<Customer[]>([])
@@ -377,31 +387,40 @@ export default function Customers() {
         </div>
       </Card>
 
-      {googleContactsOpen && (
-        <GoogleContactsImportDialog
-          open={googleContactsOpen}
-          onOpenChange={setGoogleContactsOpen}
-          onSuccess={() => {
-            setPage(1)
-            loadData(1, perPage)
-          }}
-        />
-      )}
-      {leadOpen && (
-        <LeadDialog open={leadOpen} onOpenChange={setLeadOpen} defaultValues={editingLead} />
-      )}
+      <Suspense fallback={null}>
+        {googleContactsOpen && (
+          <GoogleContactsImportDialog
+            open={googleContactsOpen}
+            onOpenChange={setGoogleContactsOpen}
+            onSuccess={() => {
+              setPage(1)
+              loadData(1, perPage)
+            }}
+          />
+        )}
+        {leadOpen && (
+          <LeadDialog open={leadOpen} onOpenChange={setLeadOpen} defaultValues={editingLead} />
+        )}
+      </Suspense>
 
       <Dialog open={rouletteOpen} onOpenChange={setRouletteOpen}>
         <DialogContent className="max-w-4xl p-0 border-none bg-transparent shadow-none">
-          <CadenceRoulette
-            externalCustomers={leads}
-            externalIsLoading={loading}
-            onCustomerUpdated={(updated) => {
-              setLeads((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-            }}
-            onNextPage={totalPages > 1 ? handleNextPage : undefined}
-            onPrevPage={totalPages > 1 ? handlePrevPage : undefined}
-          />
+          <Suspense
+            fallback={<div className="h-[400px] w-full rounded-xl bg-background animate-pulse" />}
+          >
+            <CadenceRoulette
+              externalCustomers={leads}
+              externalIsLoading={loading}
+              externalPage={page}
+              externalPerPage={perPage}
+              externalTotalItems={totalItems}
+              onCustomerUpdated={(updated) => {
+                setLeads((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+              }}
+              onNextPage={totalPages > 1 ? handleNextPage : undefined}
+              onPrevPage={totalPages > 1 ? handlePrevPage : undefined}
+            />
+          </Suspense>
         </DialogContent>
       </Dialog>
     </div>
