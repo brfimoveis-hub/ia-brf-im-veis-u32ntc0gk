@@ -38,7 +38,7 @@ export function CadenceRoulette() {
 
   const [customerIndex, setCustomerIndex] = useState(0)
   const [cadenceIndex, setCadenceIndex] = useState(0)
-  const [limit, setLimit] = useState<number>(50)
+  const [limit, setLimit] = useState<number>(12)
 
   const [isEditingCadence, setIsEditingCadence] = useState(false)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
@@ -247,13 +247,17 @@ export function CadenceRoulette() {
         <div className="flex flex-wrap items-center gap-2 z-10">
           <Select
             value={limit.toString()}
-            onValueChange={(v) => setLimit(Number(v))}
+            onValueChange={(v) => {
+              setLimit(Number(v))
+              setCustomerIndex(0)
+            }}
             disabled={isEditingCadence || isEditingNotes || isLoading}
           >
             <SelectTrigger className="h-8 w-[120px] text-xs bg-background/50 backdrop-blur-sm">
               <SelectValue placeholder="Limite" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="12">12 clientes</SelectItem>
               <SelectItem value="50">50 clientes</SelectItem>
               <SelectItem value="100">100 clientes</SelectItem>
             </SelectContent>
