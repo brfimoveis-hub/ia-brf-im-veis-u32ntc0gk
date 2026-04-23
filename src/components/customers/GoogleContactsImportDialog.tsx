@@ -66,6 +66,63 @@ function parseCSV(str: string) {
   return data
 }
 
+const mapRow = (item: any) => {
+  const getVal = (keys: string[]) => {
+    for (const key of keys) {
+      const found = Object.keys(item).find((k) => k.toLowerCase().trim() === key.toLowerCase())
+      if (found && item[found]) return item[found]
+    }
+    return ''
+  }
+
+  const name = getVal([
+    'name',
+    'given name',
+    'first name',
+    'nome',
+    'nome próprio',
+    'display name',
+    'nome de exibição',
+  ])
+  const lastName = getVal(['family name', 'last name', 'sobrenome'])
+  const email = getVal(['e-mail', 'email', 'e-mail 1 - value', 'correio eletrônico'])
+  const phone = getVal([
+    'phone',
+    'mobile',
+    'telefone',
+    'celular',
+    'phone 1 - value',
+    'telefone 1 - valor',
+  ])
+  const orgName = getVal(['organization 1 - name', 'empresa', 'company'])
+
+  let fallbackEmail = email
+  let fallbackPhone = phone
+
+  if (!fallbackEmail || !fallbackPhone) {
+    for (const rawVal of Object.values(item)) {
+      if (rawVal) {
+        const val = String(rawVal)
+        if (!fallbackEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+          fallbackEmail = val
+        }
+        if (!fallbackPhone && /[\d()\-+]{8,15}/.test(val) && val.replace(/\D/g, '').length >= 8) {
+          fallbackPhone = val
+        }
+      }
+    }
+  }
+
+  return {
+    ...item,
+    NormalizedName: name,
+    NormalizedLastName: lastName,
+    NormalizedEmail: fallbackEmail,
+    NormalizedPhone: fallbackPhone,
+    NormalizedOrg: orgName,
+  }
+}
+
 export function GoogleContactsImportDialog({
   open,
   onOpenChange,
@@ -102,14 +159,13 @@ export function GoogleContactsImportDialog({
 
   const processParsedData = (data: any[]) => {
     let ignored = 0
-    const validData = data.filter((item) => {
+    const mappedData = data.map(mapRow)
+    const validData = mappedData.filter((item) => {
       const isValid =
-        item['Name'] ||
-        item['Given Name'] ||
-        item['Family Name'] ||
-        item['E-mail 1 - Value'] ||
-        item['Phone 1 - Value']
-
+        item.NormalizedName ||
+        item.NormalizedLastName ||
+        item.NormalizedEmail ||
+        item.NormalizedPhone
       if (!isValid && Object.keys(item).length > 0) ignored++
       return isValid
     })
@@ -118,7 +174,7 @@ export function GoogleContactsImportDialog({
       toast({
         title: 'Aviso',
         description:
-          'Nenhuma linha de dados válida encontrada. Certifique-se de que o arquivo contém cabeçalhos corretos.',
+          'Verifique se o seu arquivo CSV utiliza vírgula ou ponto-e-vírgula e se contém uma coluna de Nome ou Telefone.',
         variant: 'destructive',
       })
       setParsedData(null)
@@ -230,11 +286,11 @@ export function GoogleContactsImportDialog({
         })
 
         const promises = batch.map(async (item) => {
-          let givenName = (item['Given Name'] || '').trim()
+          let givenName = (item.NormalizedName || '').trim()
           const middleName = (item['Additional Name'] || '').trim()
-          let familyName = (item['Family Name'] || '').trim()
+          let familyName = (item.NormalizedLastName || '').trim()
 
-          const fullName = (item['Name'] || '').trim()
+          const fullName = [givenName, familyName].filter(Boolean).join(' ')
 
           if (fullName && !givenName && !familyName) {
             const parts = fullName.split(' ')
@@ -246,20 +302,14 @@ export function GoogleContactsImportDialog({
           const name = nameRaw || 'Sem nome'
 
           const emailLabel = (item['E-mail 1 - Type'] || '').trim()
-          const emailValue = (item['E-mail 1 - Value'] || '').trim()
+          const emailValue = (item.NormalizedEmail || '').trim()
 
           const phone1Label = (item['Phone 1 - Type'] || '').trim()
-          const phone1Value = formatPhone(item['Phone 1 - Value'] || '')
-          const phone2Label = (item['Phone 2 - Type'] || '').trim()
-          const phone2Value = formatPhone(item['Phone 2 - Value'] || '')
-          const phone3Label = (item['Phone 3 - Type'] || '').trim()
-          const phone3Value = formatPhone(item['Phone 3 - Value'] || '')
-          const phone4Label = (item['Phone 4 - Type'] || '').trim()
-          const phone4Value = formatPhone(item['Phone 4 - Value'] || '')
+          const phone1Value = formatPhone(item.NormalizedPhone || '')
 
-          const phoneValue = phone1Value || phone2Value || phone3Value || phone4Value
+          const phoneValue = phone1Value
 
-          const orgName = (item['Organization 1 - Name'] || '').trim()
+          const orgName = (item.NormalizedOrg || '').trim()
           const orgTitle = (item['Organization 1 - Title'] || '').trim()
 
           // Non-blocking parsing for generic fields
@@ -284,24 +334,18 @@ export function GoogleContactsImportDialog({
             phone: phoneValue,
             phone_1_label: phone1Label,
             phone_1_value: phone1Value,
-            phone_2_label: phone2Label,
-            phone_2_value: phone2Value,
-            phone_3_label: phone3Label,
-            phone_3_value: phone3Value,
-            phone_4_label: phone4Label,
-            phone_4_value: phone4Value,
             org_name: orgName,
             org_title: orgTitle,
             birthday,
             notes,
-            source: 'Google Contacts',
+            source: 'Importação Manual',
           }
 
           if (existingId) {
             return updateCustomer(existingId, payload)
           } else {
             payload.status = '1'
-            payload.tags = ['Importado', 'Google Contacts']
+            payload.tags = ['Importado']
             const created = await createCustomerWithRetry(payload)
             if (emailValue) emailMap.set(emailValue, created.id)
             if (phoneValue) phoneMap.set(phoneValue, created.id)
@@ -335,14 +379,14 @@ export function GoogleContactsImportDialog({
         setFailedRecords(newFailed)
         toast({
           title: `Importação concluída com avisos`,
-          description: `Importação concluída com avisos: ${successCount} contatos importados, ${totalIgnored} linhas ignoradas devido a erros de formato.`,
+          description: `Importação concluída com avisos: ${successCount} contatos importados e mapeados automaticamente, ${totalIgnored} linhas ignoradas.`,
           variant: 'destructive',
         })
         if (successCount > 0) onSuccess()
       } else {
         toast({
-          title: `Sucesso`,
-          description: `Importação concluída: ${successCount} contatos processados com sucesso.`,
+          title: `Sucesso!`,
+          description: `${successCount} contatos importados e mapeados automaticamente.`,
         })
         onSuccess()
         setTimeout(() => {
