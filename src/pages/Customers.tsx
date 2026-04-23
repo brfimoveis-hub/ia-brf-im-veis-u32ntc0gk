@@ -26,6 +26,9 @@ import { useToast } from '@/hooks/use-toast'
 import { getPaginatedCustomers, deleteCustomer, Customer } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
 import { PHASES } from '@/components/customers/constants'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { CadenceRoulette } from '@/components/CadenceRoulette'
+import { Play } from 'lucide-react'
 
 export default function Customers() {
   const [leads, setLeads] = useState<Customer[]>([])
@@ -43,6 +46,7 @@ export default function Customers() {
 
   const [googleContactsOpen, setGoogleContactsOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
+  const [rouletteOpen, setRouletteOpen] = useState(false)
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
 
   const { toast } = useToast()
@@ -251,6 +255,13 @@ export default function Customers() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => setRouletteOpen(true)}
+            className="gap-2 bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 border"
+          >
+            <Play className="h-4 w-4" /> Roleta Mágica
+          </Button>
           <Button variant="default" onClick={() => setGoogleContactsOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" /> Importar Contatos
           </Button>
@@ -334,7 +345,7 @@ export default function Customers() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[10, 20, 50, 100].map((v) => (
+                  {[12, 50, 100].map((v) => (
                     <SelectItem key={v} value={v.toString()}>
                       {v}
                     </SelectItem>
@@ -382,6 +393,18 @@ export default function Customers() {
       {leadOpen && (
         <LeadDialog open={leadOpen} onOpenChange={setLeadOpen} defaultValues={editingLead} />
       )}
+
+      <Dialog open={rouletteOpen} onOpenChange={setRouletteOpen}>
+        <DialogContent className="max-w-4xl p-0 border-none bg-transparent shadow-none">
+          <CadenceRoulette
+            externalCustomers={leads}
+            externalIsLoading={loading}
+            onCustomerUpdated={(updated) => {
+              setLeads((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -32,19 +32,29 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export function CadenceRoulette() {
-  const [customers, setCustomers] = useState<Customer[]>([])
+export function CadenceRoulette({
+  externalCustomers,
+  externalIsLoading,
+  onCustomerUpdated,
+}: {
+  externalCustomers?: Customer[]
+  externalIsLoading?: boolean
+  onCustomerUpdated?: (c: Customer) => void
+} = {}) {
+  const [internalCustomers, setInternalCustomers] = useState<Customer[]>([])
   const [cadences, setCadences] = useState<Cadence[]>([])
 
   const [customerIndex, setCustomerIndex] = useState(0)
   const [cadenceIndex, setCadenceIndex] = useState(0)
-  const [limit, setLimit] = useState<number>(12)
 
   const [isEditingCadence, setIsEditingCadence] = useState(false)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
 
   const [isPaused, setIsPaused] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [internalIsLoading, setInternalIsLoading] = useState(true)
+
+  const customers = externalCustomers || internalCustomers
+  const isLoading = externalIsLoading !== undefined ? externalIsLoading : internalIsLoading
   const [isSaving, setIsSaving] = useState(false)
 
   const [editCadenceContent, setEditCadenceContent] = useState('')
@@ -79,18 +89,30 @@ export function CadenceRoulette() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isEditingCadence, isEditingNotes])
 
-  const loadData = async () => {
-    setIsLoading(true)
+  const loadCadences = async () => {
     try {
-      const [cadData, custData] = await Promise.all([
-        getActiveCadences(),
-        getPaginatedCustomers(1, limit, '', 'all', ''),
-      ])
+      const cadData = await getActiveCadences()
       setCadences(cadData)
-      setCustomers(custData.items)
-      // Reset indexes if out of bounds
-      setCustomerIndex((prev) => (prev >= custData.items.length ? 0 : prev))
       setCadenceIndex((prev) => (prev >= cadData.length ? 0 : prev))
+    } catch (err) {
+      toast({
+        title: 'Erro',
+        description: 'Falha ao carregar cadências.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const loadCustomers = async () => {
+    if (externalIsLoading === undefined) setInternalIsLoading(true)
+    try {
+      if (!externalCustomers) {
+        const custData = await getPaginatedCustomers(1, 50, '', 'all', '')
+        setInternalCustomers(custData.items)
+        setCustomerIndex((prev) => (prev >= custData.items.length ? 0 : prev))
+      } else {
+        setCustomerIndex((prev) => (prev >= externalCustomers.length ? 0 : prev))
+      }
     } catch (err) {
       toast({
         title: 'Erro',
@@ -98,14 +120,18 @@ export function CadenceRoulette() {
         variant: 'destructive',
       })
     } finally {
-      setIsLoading(false)
+      if (externalIsLoading === undefined) setInternalIsLoading(false)
     }
   }
 
   useEffect(() => {
-    loadData()
+    loadCadences()
+  }, [])
+
+  useEffect(() => {
+    loadCustomers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [limit])
+  }, [externalCustomers])
 
   useEffect(() => {
     if (customers.length <= 1 || isPaused || isEditingCadence || isEditingNotes) return
@@ -160,7 +186,11 @@ export function CadenceRoulette() {
     setIsSaving(true)
     try {
       const updated = await updateCustomer(currentCustomer.id, { notes: editNotesContent })
-      setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      if (onCustomerUpdated) {
+        onCustomerUpdated(updated)
+      } else {
+        setInternalCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      }
       setIsEditingNotes(false)
       toast({ title: 'Sucesso', description: 'Anotações do cliente atualizadas.' })
       if (blocker.state === 'blocked' && !isEditingCadence) blocker.proceed?.()
@@ -245,24 +275,6 @@ export function CadenceRoulette() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 z-10">
-          <Select
-            value={limit.toString()}
-            onValueChange={(v) => {
-              setLimit(Number(v))
-              setCustomerIndex(0)
-            }}
-            disabled={isEditingCadence || isEditingNotes || isLoading}
-          >
-            <SelectTrigger className="h-8 w-[120px] text-xs bg-background/50 backdrop-blur-sm">
-              <SelectValue placeholder="Limite" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="12">12 clientes</SelectItem>
-              <SelectItem value="50">50 clientes</SelectItem>
-              <SelectItem value="100">100 clientes</SelectItem>
-            </SelectContent>
-          </Select>
-
           <div className="flex items-center gap-1 bg-background/50 backdrop-blur-sm rounded-md p-1 border shadow-sm">
             <Button
               variant={isPaused ? 'secondary' : 'ghost'}
