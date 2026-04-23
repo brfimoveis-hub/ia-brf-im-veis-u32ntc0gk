@@ -18,6 +18,9 @@ import { Loader2, UploadCloud, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { formatPhone } from '@/lib/utils'
 
 function parseCSV(str: string) {
+  const firstLine = str.split('\n')[0] || ''
+  const delimiter = firstLine.split(';').length > firstLine.split(',').length ? ';' : ','
+
   const result = []
   let row = []
   let inQuotes = false
@@ -31,7 +34,7 @@ function parseCSV(str: string) {
       } else {
         inQuotes = !inQuotes
       }
-    } else if (char === ',' && !inQuotes) {
+    } else if (char === delimiter && !inQuotes) {
       row.push(val)
       val = ''
     } else if (char === '\n' && !inQuotes) {
@@ -106,14 +109,19 @@ export function GoogleContactsImportDialog({
 
       const validData = data.filter((item) => {
         return (
-          item['Name'] || item['Given Name'] || item['E-mail 1 - Value'] || item['Phone 1 - Value']
+          item['Name'] ||
+          item['Given Name'] ||
+          item['Family Name'] ||
+          item['E-mail 1 - Value'] ||
+          item['Phone 1 - Value']
         )
       })
 
       if (validData.length === 0) {
         toast({
-          title: 'Warning',
-          description: 'No valid data rows found in the file.',
+          title: 'Aviso',
+          description:
+            'Nenhuma linha de dados válida encontrada. Certifique-se de que o arquivo contém cabeçalhos como "Name", "Given Name", "E-mail 1 - Value" ou "Phone 1 - Value".',
           variant: 'destructive',
         })
         setParsedData(null)
@@ -146,14 +154,19 @@ export function GoogleContactsImportDialog({
       }
       const validData = data.filter((item) => {
         return (
-          item['Name'] || item['Given Name'] || item['E-mail 1 - Value'] || item['Phone 1 - Value']
+          item['Name'] ||
+          item['Given Name'] ||
+          item['Family Name'] ||
+          item['E-mail 1 - Value'] ||
+          item['Phone 1 - Value']
         )
       })
 
       if (validData.length === 0) {
         toast({
-          title: 'Warning',
-          description: 'No valid data rows found in the file.',
+          title: 'Aviso',
+          description:
+            'Nenhuma linha de dados válida encontrada. Certifique-se de que o arquivo contém cabeçalhos como "Name", "Given Name", "E-mail 1 - Value" ou "Phone 1 - Value".',
           variant: 'destructive',
         })
         setParsedData(null)
@@ -305,14 +318,14 @@ export function GoogleContactsImportDialog({
         setFailedRecords(newFailed)
         toast({
           title: `Importação parcial`,
-          description: `Import completed: ${successCount} contacts added/updated. ${newFailed.length} failed.`,
+          description: `Importação concluída: ${successCount} contatos adicionados/atualizados. ${newFailed.length} falharam.`,
           variant: 'destructive',
         })
         if (successCount > 0) onSuccess()
       } else {
         toast({
-          title: `Success`,
-          description: `Import completed: ${successCount} contacts added/updated.`,
+          title: `Sucesso`,
+          description: `Importação concluída: ${successCount} contatos adicionados/atualizados.`,
         })
         onSuccess()
         setTimeout(() => {

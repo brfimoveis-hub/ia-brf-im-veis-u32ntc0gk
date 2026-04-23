@@ -141,8 +141,8 @@ export function CustomerTable({
 
                     if (col.key === 'phone') {
                       const rawPhone =
-                        lead.phone ||
                         lead.phone_1_value ||
+                        lead.phone ||
                         lead.phone_2_value ||
                         lead.phone_3_value ||
                         lead.phone_4_value ||
