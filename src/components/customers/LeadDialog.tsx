@@ -26,6 +26,8 @@ export function LeadDialog({
 }) {
   const [formData, setFormData] = useState({
     name: '',
+    first_name: '',
+    last_name: '',
     phone: '',
     email: '',
     status: '1',
@@ -40,26 +42,77 @@ export function LeadDialog({
       if (defaultValues) {
         setFormData({
           name: defaultValues.name || '',
+          first_name: defaultValues.first_name || '',
+          last_name: defaultValues.last_name || '',
           phone: defaultValues.phone || '',
           email: defaultValues.email || '',
           status: defaultValues.status || '1',
         })
       } else {
-        setFormData({ name: '', phone: '', email: '', status: '1' })
+        setFormData({ name: '', first_name: '', last_name: '', phone: '', email: '', status: '1' })
       }
     }
   }, [defaultValues, open])
+
+  const handleFirstNameChange = (val: string) => {
+    setFormData((prev) => {
+      const prevConstructed = [prev.first_name, prev.last_name].filter(Boolean).join(' ').trim()
+      const newConstructed = [val, prev.last_name].filter(Boolean).join(' ').trim()
+      const isNameSyncing =
+        !prev.name || prev.name === prevConstructed || prev.name.toLowerCase() === 'sem nome'
+
+      return {
+        ...prev,
+        first_name: val,
+        name: isNameSyncing ? newConstructed : prev.name,
+      }
+    })
+  }
+
+  const handleLastNameChange = (val: string) => {
+    setFormData((prev) => {
+      const prevConstructed = [prev.first_name, prev.last_name].filter(Boolean).join(' ').trim()
+      const newConstructed = [prev.first_name, val].filter(Boolean).join(' ').trim()
+      const isNameSyncing =
+        !prev.name || prev.name === prevConstructed || prev.name.toLowerCase() === 'sem nome'
+
+      return {
+        ...prev,
+        last_name: val,
+        name: isNameSyncing ? newConstructed : prev.name,
+      }
+    })
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setErrors({})
     try {
+      const dataToSubmit = { ...formData, name: formData.name.trim() }
+
+      // Fallback for name before submit, to avoid empty name error
+      if (!dataToSubmit.name) {
+        const constructed = [dataToSubmit.first_name, dataToSubmit.last_name]
+          .filter(Boolean)
+          .join(' ')
+          .trim()
+        if (constructed) {
+          dataToSubmit.name = constructed
+        } else if (dataToSubmit.email) {
+          dataToSubmit.name = dataToSubmit.email
+        } else if (dataToSubmit.phone) {
+          dataToSubmit.name = dataToSubmit.phone
+        } else {
+          dataToSubmit.name = 'Sem nome'
+        }
+      }
+
       if (defaultValues?.id) {
-        await updateCustomer(defaultValues.id, formData)
+        await updateCustomer(defaultValues.id, dataToSubmit)
         toast({ title: 'Lead atualizado com sucesso!' })
       } else {
-        await createCustomer({ ...formData, tags: ['Manual'] })
+        await createCustomer({ ...dataToSubmit, tags: ['Manual'] })
         toast({ title: 'Lead adicionado com sucesso!' })
       }
       onOpenChange(false)
@@ -86,8 +139,28 @@ export function LeadDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="first_name">Nome (Primeiro)</Label>
+              <Input
+                id="first_name"
+                value={formData.first_name}
+                onChange={(e) => handleFirstNameChange(e.target.value)}
+                placeholder="Ex: João"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="last_name">Sobrenome</Label>
+              <Input
+                id="last_name"
+                value={formData.last_name}
+                onChange={(e) => handleLastNameChange(e.target.value)}
+                placeholder="Ex: da Silva"
+              />
+            </div>
+          </div>
           <div className="space-y-2">
-            <Label htmlFor="name">Nome</Label>
+            <Label htmlFor="name">Nome Completo (Exibição) *</Label>
             <Input
               id="name"
               required

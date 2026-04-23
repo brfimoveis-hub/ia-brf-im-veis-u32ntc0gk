@@ -44,8 +44,17 @@ onRecordValidate((e) => {
   }
 
   // 3. Final fallback to satisfy required DB constraint
-  if (!record.getString('name').trim()) {
-    record.set('name', 'Sem nome')
+  let finalName = record.getString('name').trim()
+  if (!finalName || finalName.toLowerCase() === 'sem nome' || finalName === '—') {
+    const email = record.getString('email').trim()
+    const phone = record.getString('phone').trim()
+    if (email) {
+      record.set('name', email)
+    } else if (phone) {
+      record.set('name', phone)
+    } else {
+      record.set('name', 'Sem nome')
+    }
   }
 
   e.next()

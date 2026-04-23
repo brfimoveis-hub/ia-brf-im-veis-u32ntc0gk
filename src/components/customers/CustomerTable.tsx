@@ -142,9 +142,25 @@ export function CustomerTable({
                       const concatenatedName = [lead.first_name, lead.middle_name, lead.last_name]
                         .filter(Boolean)
                         .join(' ')
+                        .trim()
 
-                      if (!val || val === 'Sem Nome' || val === 'Sem nome' || val.trim() === '') {
-                        val = concatenatedName.trim() !== '' ? concatenatedName : 'Sem nome'
+                      const isPlaceholder =
+                        !val ||
+                        val === 'Sem Nome' ||
+                        val === 'Sem nome' ||
+                        val === '—' ||
+                        val.trim() === ''
+
+                      if (isPlaceholder) {
+                        if (concatenatedName !== '') {
+                          val = concatenatedName
+                        } else if (lead.email && lead.email.trim() !== '') {
+                          val = lead.email
+                        } else if (lead.phone && lead.phone.trim() !== '') {
+                          val = lead.phone
+                        } else {
+                          val = 'Sem nome'
+                        }
                       }
                     }
 
