@@ -9,7 +9,16 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
-import { Search, Plus, Upload, Users, Loader2, Filter } from 'lucide-react'
+import {
+  Search,
+  Plus,
+  Upload,
+  Users,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal as Ellipsis,
+} from 'lucide-react'
 import { GoogleContactsImportDialog } from '@/components/customers/GoogleContactsImportDialog'
 import { LeadDialog } from '@/components/customers/LeadDialog'
 import { CustomerTable } from '@/components/customers/CustomerTable'
@@ -27,10 +36,9 @@ export default function Customers() {
   const [debouncedSourceFilter, setDebouncedSourceFilter] = useState('')
 
   const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
+  const [perPage, setPerPage] = useState(50)
   const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(false)
 
   const [googleContactsOpen, setGoogleContactsOpen] = useState(false)
@@ -47,61 +55,49 @@ export default function Customers() {
     return () => clearTimeout(timer)
   }, [search, sourceFilter])
 
+  const [prevFilters, setPrevFilters] = useState({
+    debouncedSearch,
+    phaseFilter,
+    debouncedSourceFilter,
+  })
+  useEffect(() => {
+    if (
+      prevFilters.debouncedSearch !== debouncedSearch ||
+      prevFilters.phaseFilter !== phaseFilter ||
+      prevFilters.debouncedSourceFilter !== debouncedSourceFilter
+    ) {
+      setPage(1)
+      setPrevFilters({ debouncedSearch, phaseFilter, debouncedSourceFilter })
+    }
+  }, [debouncedSearch, phaseFilter, debouncedSourceFilter, prevFilters])
+
   const loadData = useCallback(
-    async (currentPage: number, isLoadMore = false) => {
+    async (currentPage: number, currentPerPage: number) => {
       try {
-        if (isLoadMore) {
-          setLoadingMore(true)
-        } else {
-          setLoading(true)
-        }
+        setLoading(true)
         setError(false)
         const data = await getPaginatedCustomers(
           currentPage,
-          50,
+          currentPerPage,
           debouncedSearch,
           phaseFilter,
           debouncedSourceFilter,
         )
-
-        if (isLoadMore) {
-          setLeads((prev) => {
-            const existingIds = new Set(prev.map((l) => l.id))
-            const newItems = data.items.filter((l) => !existingIds.has(l.id))
-            return [...prev, ...newItems]
-          })
-        } else {
-          setLeads(data.items)
-        }
-
-        setHasMore(data.page < data.totalPages)
+        setLeads(data.items)
         setTotalItems(data.totalItems)
       } catch {
         setError(true)
         toast({ title: 'Erro ao carregar clientes', variant: 'destructive' })
       } finally {
-        if (isLoadMore) {
-          setLoadingMore(false)
-        } else {
-          setLoading(false)
-        }
+        setLoading(false)
       }
     },
     [debouncedSearch, phaseFilter, debouncedSourceFilter, toast],
   )
 
   useEffect(() => {
-    setPage(1)
-    loadData(1, false)
-  }, [debouncedSearch, phaseFilter, debouncedSourceFilter, loadData])
-
-  const handleLoadMore = useCallback(() => {
-    if (!loading && !loadingMore && hasMore) {
-      const nextPage = page + 1
-      setPage(nextPage)
-      loadData(nextPage, true)
-    }
-  }, [loading, loadingMore, hasMore, page, loadData])
+    loadData(page, perPage)
+  }, [page, perPage, loadData])
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   useRealtime('customers', () => {
@@ -109,15 +105,14 @@ export default function Customers() {
     timeoutRef.current = setTimeout(async () => {
       try {
         const data = await getPaginatedCustomers(
-          1,
-          page * 50,
+          page,
+          perPage,
           debouncedSearch,
           phaseFilter,
           debouncedSourceFilter,
         )
         setLeads(data.items)
         setTotalItems(data.totalItems)
-        setHasMore(data.items.length < data.totalItems)
       } catch {
         // silent background refresh fail
       }
@@ -128,10 +123,109 @@ export default function Customers() {
     try {
       await deleteCustomer(id)
       toast({ title: 'Lead removido' })
-      // The realtime hook will refresh the list automatically
     } catch {
       toast({ title: 'Erro', variant: 'destructive' })
     }
+  }
+
+  const totalPages = Math.ceil(totalItems / perPage)
+
+  const renderPageNumbers = () => {
+    const pages = []
+    const maxVisiblePages = 5
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(
+          <Button
+            key={i}
+            variant={page === i ? 'default' : 'outline'}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setPage(i)}
+            disabled={loading}
+          >
+            {i}
+          </Button>,
+        )
+      }
+    } else {
+      let startPage = Math.max(1, page - 1)
+      let endPage = Math.min(totalPages, page + 1)
+
+      if (page === 1) {
+        endPage = 3
+      } else if (page === totalPages) {
+        startPage = totalPages - 2
+      }
+
+      if (startPage > 1) {
+        pages.push(
+          <Button
+            key={1}
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setPage(1)}
+            disabled={loading}
+          >
+            1
+          </Button>,
+        )
+        if (startPage > 2) {
+          pages.push(
+            <div
+              key="e1"
+              className="h-8 w-8 flex items-center justify-center text-muted-foreground"
+            >
+              <Ellipsis className="h-4 w-4" />
+            </div>,
+          )
+        }
+      }
+
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(
+          <Button
+            key={i}
+            variant={page === i ? 'default' : 'outline'}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setPage(i)}
+            disabled={loading}
+          >
+            {i}
+          </Button>,
+        )
+      }
+
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+          pages.push(
+            <div
+              key="e2"
+              className="h-8 w-8 flex items-center justify-center text-muted-foreground"
+            >
+              <Ellipsis className="h-4 w-4" />
+            </div>,
+          )
+        }
+        pages.push(
+          <Button
+            key={totalPages}
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setPage(totalPages)}
+            disabled={loading}
+          >
+            {totalPages}
+          </Button>,
+        )
+      }
+    }
+
+    return pages
   }
 
   return (
@@ -200,20 +294,66 @@ export default function Customers() {
           <CustomerTable
             leads={leads}
             loading={loading}
-            loadingMore={loadingMore}
-            hasMore={hasMore}
             error={error}
             onEdit={(lead) => {
               setEditingLead(lead)
               setLeadOpen(true)
             }}
             onDelete={handleDelete}
-            onLoadMore={handleLoadMore}
           />
         </CardContent>
-        <div className="border-t p-3 flex items-center justify-between bg-muted/20 shrink-0">
+        <div className="border-t p-4 flex flex-col sm:flex-row items-center justify-between bg-muted/20 shrink-0 gap-4">
           <div className="text-sm text-muted-foreground">
-            Mostrando {leads.length} de {totalItems} clientes
+            Mostrando {totalItems === 0 ? 0 : (page - 1) * perPage + 1} -{' '}
+            {Math.min(page * perPage, totalItems)} de {totalItems} clientes
+          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                Itens por página
+              </span>
+              <Select
+                value={perPage.toString()}
+                onValueChange={(v) => {
+                  setPerPage(Number(v))
+                  setPage(1)
+                }}
+              >
+                <SelectTrigger className="h-8 w-[70px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 20, 50, 100].map((v) => (
+                    <SelectItem key={v} value={v.toString()}>
+                      {v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || loading}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex items-center gap-1 text-sm font-medium">
+                {renderPageNumbers()}
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
@@ -224,7 +364,7 @@ export default function Customers() {
           onOpenChange={setGoogleContactsOpen}
           onSuccess={() => {
             setPage(1)
-            loadData(1, false)
+            loadData(1, perPage)
           }}
         />
       )}
