@@ -143,12 +143,8 @@ export function CustomerTable({
                         .filter(Boolean)
                         .join(' ')
 
-                      if (val && val !== 'Sem Nome' && val !== 'Sem nome' && val.trim() !== '') {
-                        val = val
-                      } else if (concatenatedName.trim() !== '') {
-                        val = concatenatedName
-                      } else {
-                        val = 'Sem nome'
+                      if (!val || val === 'Sem Nome' || val === 'Sem nome' || val.trim() === '') {
+                        val = concatenatedName.trim() !== '' ? concatenatedName : 'Sem nome'
                       }
                     }
 
