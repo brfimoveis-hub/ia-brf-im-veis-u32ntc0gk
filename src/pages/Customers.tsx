@@ -49,6 +49,8 @@ export default function Customers() {
   const [rouletteOpen, setRouletteOpen] = useState(false)
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
 
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
+
   const { toast } = useToast()
 
   const handleNextPage = useCallback(() => {
@@ -110,8 +112,6 @@ export default function Customers() {
   useEffect(() => {
     loadData(page, perPage)
   }, [page, perPage, loadData])
-
-  const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   useRealtime('customers', () => {

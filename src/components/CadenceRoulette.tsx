@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useBlocker } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -71,7 +71,6 @@ export function CadenceRoulette({
 
   const { toast } = useToast()
 
-  // Prevent navigation when editing
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       (isEditingCadence || isEditingNotes) && currentLocation.pathname !== nextLocation.pathname,
@@ -143,61 +142,52 @@ export function CadenceRoulette({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalCustomers, page, perPage])
 
-  const nextCustomer = () => {
-    if (customerIndex >= customers.length - 1) {
-      if (onNextPage) {
-        onNextPage()
-      } else if (!externalCustomers && page * perPage < totalItems) {
-        setPage((p) => p + 1)
+  const nextCustomer = useCallback(() => {
+    setCustomerIndex((prev) => {
+      if (prev >= customers.length - 1) {
+        if (onNextPage) {
+          onNextPage()
+        } else if (!externalCustomers && page * perPage < totalItems) {
+          setPage((p) => p + 1)
+        }
+        return 0
       }
-      setCustomerIndex(0)
-    } else {
-      setCustomerIndex(customerIndex + 1)
-    }
+      return prev + 1
+    })
     setRotationKey((k) => k + 1)
-  }
+  }, [customers.length, onNextPage, externalCustomers, page, perPage, totalItems])
 
-  const prevCustomer = () => {
-    if (customerIndex === 0) {
-      if (onPrevPage) {
-        onPrevPage()
-      } else if (!externalCustomers && page > 1) {
-        setPage((p) => p - 1)
+  const prevCustomer = useCallback(() => {
+    setCustomerIndex((prev) => {
+      if (prev === 0) {
+        if (onPrevPage) {
+          onPrevPage()
+        } else if (!externalCustomers && page > 1) {
+          setPage((p) => p - 1)
+        }
+        return 0
       }
-      setCustomerIndex(0)
-    } else {
-      setCustomerIndex(customerIndex - 1)
-    }
+      return prev - 1
+    })
     setRotationKey((k) => k + 1)
-  }
+  }, [onPrevPage, externalCustomers, page])
+
+  const nextCustomerRef = useRef(nextCustomer)
+  useEffect(() => {
+    nextCustomerRef.current = nextCustomer
+  }, [nextCustomer])
 
   useEffect(() => {
-    if (
-      isLoading ||
-      (customers.length <= 1 &&
-        !onNextPage &&
-        !externalCustomers &&
-        page * perPage >= totalItems) ||
-      isPaused ||
-      isEditingCadence ||
-      isEditingNotes
-    )
+    if (isLoading || isPaused || isEditingCadence || isEditingNotes || customers.length === 0) {
       return
-    const timer = setInterval(nextCustomer, 15000)
+    }
+
+    const timer = setInterval(() => {
+      nextCustomerRef.current()
+    }, 15000)
+
     return () => clearInterval(timer)
-  }, [
-    isLoading,
-    customers.length,
-    isPaused,
-    isEditingCadence,
-    isEditingNotes,
-    customerIndex,
-    onNextPage,
-    externalCustomers,
-    page,
-    perPage,
-    totalItems,
-  ])
+  }, [isLoading, isPaused, isEditingCadence, isEditingNotes, customers.length === 0, rotationKey])
 
   const currentCadence = cadences[cadenceIndex]
   const currentCustomer = customers[customerIndex]
@@ -359,7 +349,7 @@ export function CadenceRoulette({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={prevCustomer}
+              onClick={() => prevCustomer()}
               disabled={
                 isEditingCadence ||
                 isEditingNotes ||
@@ -373,7 +363,7 @@ export function CadenceRoulette({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={nextCustomer}
+              onClick={() => nextCustomer()}
               disabled={
                 isEditingCadence ||
                 isEditingNotes ||
@@ -391,7 +381,6 @@ export function CadenceRoulette({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Customer Information Section */}
         {currentCustomer && (
           <div className="bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-4 shadow-sm group relative">
             <div className="flex flex-col sm:flex-row gap-4 items-start justify-between">
@@ -471,7 +460,6 @@ export function CadenceRoulette({
           </div>
         )}
 
-        {/* Cadence Section */}
         {cadences.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 mb-2 pt-2 border-t border-border/30">
             <div className="flex items-center mr-2">
@@ -590,8 +578,8 @@ export function CadenceRoulette({
       {!externalCustomers && totalItems > 0 && (
         <div className="bg-muted/30 border-t border-border/50 p-3 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-xs text-muted-foreground font-medium">
-            Mostrando {(page - 1) * perPage + 1} - {Math.min(page * perPage, totalItems)} de{' '}
-            {totalItems} clientes
+            Mostrando {totalItems === 0 ? 0 : (page - 1) * perPage + 1} -{' '}
+            {Math.min(page * perPage, totalItems)} de {totalItems} clientes
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
