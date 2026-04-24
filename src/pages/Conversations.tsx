@@ -27,6 +27,7 @@ export default function Conversations() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeContactId, setActiveContactId] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [showMobileChat, setShowMobileChat] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const customersRef = useRef(customers)
@@ -131,6 +132,18 @@ export default function Conversations() {
     }
   })
 
+  const filteredContacts = contacts.filter((contact) => {
+    if (!searchTerm) return true
+    const term = searchTerm.toLowerCase()
+    const phone1Value = (contact as any).phone_1_value || ''
+    return (
+      contact.name?.toLowerCase().includes(term) ||
+      contact.email?.toLowerCase().includes(term) ||
+      contact.phone?.toLowerCase().includes(term) ||
+      phone1Value.toLowerCase().includes(term)
+    )
+  })
+
   return (
     <div className="max-w-6xl mx-auto h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)]">
       <div className="flex h-full overflow-hidden rounded-xl border bg-card shadow-elevation relative">
@@ -146,59 +159,67 @@ export default function Conversations() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar contatos..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9 bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary rounded-full h-9"
               />
             </div>
           </div>
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1">
-              {contacts.map((contact) => (
-                <button
-                  key={contact.id}
-                  onClick={() => handleSelectContact(contact.id)}
-                  className={cn(
-                    'w-full flex items-start gap-3 p-3 rounded-lg text-left transition-all hover:bg-accent focus:outline-none',
-                    activeContactId === contact.id ? 'bg-accent shadow-subtle' : 'bg-transparent',
-                  )}
-                >
-                  <Avatar className="h-12 w-12 border-2 border-background shadow-sm shrink-0">
-                    <AvatarImage
-                      src={`https://img.usecurling.com/ppl/thumbnail?seed=${contact.id}`}
-                    />
-                    <AvatarFallback>{contact.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 overflow-hidden">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-sm text-secondary truncate pr-2">
-                        {contact.name}
-                      </span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {contact.time}
-                      </span>
+              {filteredContacts.length === 0 ? (
+                <div className="p-4 text-center text-sm text-muted-foreground">
+                  Nenhum contato encontrado
+                </div>
+              ) : (
+                filteredContacts.map((contact) => (
+                  <button
+                    key={contact.id}
+                    onClick={() => handleSelectContact(contact.id)}
+                    className={cn(
+                      'w-full flex items-start gap-3 p-3 rounded-lg text-left transition-all hover:bg-accent focus:outline-none',
+                      activeContactId === contact.id ? 'bg-accent shadow-subtle' : 'bg-transparent',
+                    )}
+                  >
+                    <Avatar className="h-12 w-12 border-2 border-background shadow-sm shrink-0">
+                      <AvatarImage
+                        src={`https://img.usecurling.com/ppl/thumbnail?seed=${contact.id}`}
+                      />
+                      <AvatarFallback>{contact.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 overflow-hidden">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-sm text-secondary truncate pr-2">
+                          {contact.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {contact.time}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mt-1 gap-2">
+                        <span className="text-xs truncate text-muted-foreground">
+                          {contact.lastMessage}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] h-4 px-1.5 bg-muted/50 font-normal"
+                        >
+                          {contact.phase}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] h-4 px-1.5 border-primary/20 text-primary bg-primary/5 font-normal"
+                        >
+                          <Sparkles className="h-2 w-2 mr-1" />
+                          {contact.sentiment}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between mt-1 gap-2">
-                      <span className="text-xs truncate text-muted-foreground">
-                        {contact.lastMessage}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-2">
-                      <Badge
-                        variant="outline"
-                        className="text-[9px] h-4 px-1.5 bg-muted/50 font-normal"
-                      >
-                        {contact.phase}
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="text-[9px] h-4 px-1.5 border-primary/20 text-primary bg-primary/5 font-normal"
-                      >
-                        <Sparkles className="h-2 w-2 mr-1" />
-                        {contact.sentiment}
-                      </Badge>
-                    </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))
+              )}
             </div>
           </ScrollArea>
         </div>
