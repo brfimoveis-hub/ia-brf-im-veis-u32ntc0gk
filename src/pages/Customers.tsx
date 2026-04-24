@@ -27,6 +27,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { PHASES } from '@/components/customers/constants'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Play } from 'lucide-react'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const GoogleContactsImportDialog = lazy(() =>
   import('@/components/customers/GoogleContactsImportDialog').then((m) => ({
@@ -318,18 +319,20 @@ export default function Customers() {
         </div>
       </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden shadow-sm">
+      <Card className="flex-1 flex flex-col overflow-hidden shadow-sm relative">
         <CardContent className="p-0 flex-1 overflow-x-auto relative scroll-smooth">
-          <CustomerTable
-            leads={leads}
-            loading={loading}
-            error={error}
-            onEdit={(lead) => {
-              setEditingLead(lead)
-              setLeadOpen(true)
-            }}
-            onDelete={handleDelete}
-          />
+          <ErrorBoundary>
+            <CustomerTable
+              leads={leads}
+              loading={loading}
+              error={error}
+              onEdit={(lead) => {
+                setEditingLead(lead)
+                setLeadOpen(true)
+              }}
+              onDelete={handleDelete}
+            />
+          </ErrorBoundary>
         </CardContent>
         <div className="border-t p-4 flex flex-col sm:flex-row items-center justify-between bg-muted/20 shrink-0 gap-4">
           <div className="text-sm text-muted-foreground">
@@ -405,22 +408,22 @@ export default function Customers() {
 
       <Dialog open={rouletteOpen} onOpenChange={setRouletteOpen}>
         <DialogContent className="max-w-4xl p-0 border-none bg-transparent shadow-none">
-          <Suspense
-            fallback={<div className="h-[400px] w-full rounded-xl bg-background animate-pulse" />}
-          >
-            <CadenceRoulette
-              externalCustomers={leads}
-              externalIsLoading={loading}
-              externalPage={page}
-              externalPerPage={perPage}
-              externalTotalItems={totalItems}
-              onCustomerUpdated={(updated) => {
-                setLeads((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-              }}
-              onNextPage={totalPages > 1 ? handleNextPage : undefined}
-              onPrevPage={totalPages > 1 ? handlePrevPage : undefined}
-            />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense
+              fallback={
+                <div className="h-[400px] w-full rounded-xl bg-background animate-pulse border border-border/50" />
+              }
+            >
+              <CadenceRoulette
+                search={debouncedSearch}
+                phaseFilter={phaseFilter}
+                sourceFilter={debouncedSourceFilter}
+                onCustomerUpdated={(updated) => {
+                  setLeads((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+                }}
+              />
+            </Suspense>
+          </ErrorBoundary>
         </DialogContent>
       </Dialog>
     </div>

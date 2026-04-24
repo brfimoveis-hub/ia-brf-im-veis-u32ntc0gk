@@ -33,29 +33,21 @@ import {
 import { cn } from '@/lib/utils'
 
 export function CadenceRoulette({
-  externalCustomers,
-  externalIsLoading,
-  externalPage,
-  externalPerPage,
-  externalTotalItems,
+  search = '',
+  phaseFilter = 'all',
+  sourceFilter = '',
   onCustomerUpdated,
-  onNextPage,
-  onPrevPage,
 }: {
-  externalCustomers?: Customer[]
-  externalIsLoading?: boolean
-  externalPage?: number
-  externalPerPage?: number
-  externalTotalItems?: number
+  search?: string
+  phaseFilter?: string
+  sourceFilter?: string
   onCustomerUpdated?: (c: Customer) => void
-  onNextPage?: () => void
-  onPrevPage?: () => void
 } = {}) {
-  const [internalCustomers, setInternalCustomers] = useState<Customer[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [cadences, setCadences] = useState<Cadence[]>([])
 
   const [page, setPage] = useState(1)
-  const [perPage, setPerPage] = useState(50)
+  const [perPage, setPerPage] = useState(100)
   const [totalItems, setTotalItems] = useState(0)
 
   const [customerIndex, setCustomerIndex] = useState(0)
@@ -67,10 +59,8 @@ export function CadenceRoulette({
   const [isEditingNotes, setIsEditingNotes] = useState(false)
 
   const [isPaused, setIsPaused] = useState(false)
-  const [internalIsLoading, setInternalIsLoading] = useState(true)
-
-  const customers = externalCustomers || internalCustomers
-  const isLoading = externalIsLoading !== undefined ? externalIsLoading : internalIsLoading
+  const [isLoading, setIsLoading] = useState(true)
+  const [isInitialized, setIsInitialized] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   const [editCadenceContent, setEditCadenceContent] = useState('')
@@ -119,26 +109,17 @@ export function CadenceRoulette({
   }
 
   const loadCustomers = async () => {
-    if (externalIsLoading === undefined) setInternalIsLoading(true)
+    setIsLoading(true)
     try {
-      if (!externalCustomers) {
-        const custData = await getPaginatedCustomers(page, perPage, '', 'all', '')
-        setInternalCustomers(custData.items)
-        setTotalItems(custData.totalItems)
+      const custData = await getPaginatedCustomers(page, perPage, search, phaseFilter, sourceFilter)
+      setCustomers(custData.items)
+      setTotalItems(custData.totalItems)
 
-        if (pendingPrevPage) {
-          setCustomerIndex(Math.max(0, custData.items.length - 1))
-          setPendingPrevPage(false)
-        } else {
-          setCustomerIndex((prev) => (prev >= custData.items.length ? 0 : prev))
-        }
+      if (pendingPrevPage) {
+        setCustomerIndex(Math.max(0, custData.items.length - 1))
+        setPendingPrevPage(false)
       } else {
-        if (pendingPrevPage) {
-          setCustomerIndex(Math.max(0, externalCustomers.length - 1))
-          setPendingPrevPage(false)
-        } else {
-          setCustomerIndex((prev) => (prev >= externalCustomers.length ? 0 : prev))
-        }
+        setCustomerIndex((prev) => (prev >= custData.items.length ? 0 : prev))
       }
     } catch (err) {
       toast({
@@ -147,7 +128,8 @@ export function CadenceRoulette({
         variant: 'destructive',
       })
     } finally {
-      if (externalIsLoading === undefined) setInternalIsLoading(false)
+      setIsLoading(false)
+      setIsInitialized(true)
     }
   }
 
@@ -158,39 +140,42 @@ export function CadenceRoulette({
   useEffect(() => {
     loadCustomers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalCustomers, page, perPage])
+  }, [page, perPage, search, phaseFilter, sourceFilter])
 
   const nextCustomer = useCallback(() => {
     setCustomerIndex((prev) => {
       if (prev >= customers.length - 1) {
-        if (onNextPage) {
-          onNextPage()
-        } else if (!externalCustomers && page * perPage < totalItems) {
+        if (page * perPage < totalItems) {
           setPage((p) => p + 1)
+        } else {
+          setPage(1) // Loop back to start if at the very end
         }
         return 0
       }
       return prev + 1
     })
     setRotationKey((k) => k + 1)
-  }, [customers.length, onNextPage, externalCustomers, page, perPage, totalItems])
+  }, [customers.length, page, perPage, totalItems])
 
   const prevCustomer = useCallback(() => {
     setCustomerIndex((prev) => {
       if (prev === 0) {
-        if (onPrevPage) {
-          setPendingPrevPage(true)
-          onPrevPage()
-        } else if (!externalCustomers && page > 1) {
+        if (page > 1) {
           setPendingPrevPage(true)
           setPage((p) => p - 1)
+        } else {
+          const lastPage = Math.ceil(totalItems / perPage) || 1
+          if (lastPage > 1) {
+            setPendingPrevPage(true)
+            setPage(lastPage)
+          }
         }
         return 0
       }
       return prev - 1
     })
     setRotationKey((k) => k + 1)
-  }, [onPrevPage, externalCustomers, page])
+  }, [page, totalItems, perPage])
 
   const nextCustomerRef = useRef(nextCustomer)
   useEffect(() => {
@@ -254,10 +239,9 @@ export function CadenceRoulette({
     setIsSaving(true)
     try {
       const updated = await updateCustomer(currentCustomer.id, { notes: editNotesContent })
+      setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       if (onCustomerUpdated) {
         onCustomerUpdated(updated)
-      } else {
-        setInternalCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       }
       setIsEditingNotes(false)
       toast({ title: 'Sucesso', description: 'Anotações do cliente atualizadas.' })
@@ -282,11 +266,11 @@ export function CadenceRoulette({
   const nextCadence = () => setCadenceIndex((p) => (p + 1) % cadences.length)
   const prevCadence = () => setCadenceIndex((p) => (p - 1 + cadences.length) % cadences.length)
 
-  if (isLoading && customers.length === 0) {
+  if (!isInitialized || (isLoading && customers.length === 0)) {
     return (
       <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <RefreshCw className="h-8 w-8 animate-spin mb-4 text-primary/50" />
-        <p>Carregando Roleta Inteligente...</p>
+        <p>Iniciando Roleta Inteligente...</p>
       </Card>
     )
   }
@@ -295,7 +279,7 @@ export function CadenceRoulette({
     return (
       <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <Layers className="h-8 w-8 mb-4 text-primary/50" />
-        <p>Nenhum cliente encontrado para a roleta.</p>
+        <p>Nenhum cliente encontrado para a roleta com os filtros atuais.</p>
       </Card>
     )
   }
@@ -305,9 +289,9 @@ export function CadenceRoulette({
   const trigger = parts[1] || ''
   const channel = parts[2] || ''
 
-  const currentPage = externalPage ?? page
-  const currentPerPage = externalPerPage ?? perPage
-  const currentTotalItems = externalTotalItems ?? totalItems
+  const currentPage = page
+  const currentPerPage = perPage
+  const currentTotalItems = totalItems
   const globalIndex = Math.min(
     currentTotalItems,
     (currentPage - 1) * currentPerPage + customerIndex + 1,
@@ -331,9 +315,7 @@ export function CadenceRoulette({
           !isPaused &&
           !isEditingCadence &&
           !isEditingNotes &&
-          (customers.length > 1 ||
-            onNextPage ||
-            (!externalCustomers && page * perPage < totalItems)) && (
+          (customers.length > 1 || page * perPage < totalItems) && (
             <div
               key={rotationKey}
               className="h-full bg-primary animate-[progress_15s_linear]"
@@ -363,10 +345,7 @@ export function CadenceRoulette({
               disabled={
                 isEditingCadence ||
                 isEditingNotes ||
-                (customers.length <= 1 &&
-                  !onNextPage &&
-                  !externalCustomers &&
-                  page * perPage >= totalItems)
+                (customers.length <= 1 && page * perPage >= totalItems)
               }
               title={isPaused ? 'Retomar Rotação' : 'Pausar Rotação'}
             >
@@ -378,11 +357,7 @@ export function CadenceRoulette({
               size="icon"
               className="h-7 w-7"
               onClick={() => prevCustomer()}
-              disabled={
-                isEditingCadence ||
-                isEditingNotes ||
-                (customers.length <= 1 && !onPrevPage && !externalCustomers && page === 1)
-              }
+              disabled={isEditingCadence || isEditingNotes || (customers.length <= 1 && page === 1)}
               title="Cliente Anterior"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -395,10 +370,7 @@ export function CadenceRoulette({
               disabled={
                 isEditingCadence ||
                 isEditingNotes ||
-                (customers.length <= 1 &&
-                  !onNextPage &&
-                  !externalCustomers &&
-                  page * perPage >= totalItems)
+                (customers.length <= 1 && page * perPage >= totalItems)
               }
               title="Próximo Cliente"
             >
@@ -603,20 +575,20 @@ export function CadenceRoulette({
         )}
       </CardContent>
 
-      {!externalCustomers && totalItems > 0 && (
+      {totalItems > 0 && (
         <div className="bg-muted/30 border-t border-border/50 p-3 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-xs text-muted-foreground font-medium">
-            Mostrando {totalItems === 0 ? 0 : (page - 1) * perPage + 1} -{' '}
-            {Math.min(page * perPage, totalItems)} de {totalItems} clientes
+            Tamanho do lote: {Math.min(page * perPage, totalItems) - (page - 1) * perPage} clientes
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Itens por página:</span>
+              <span className="text-xs text-muted-foreground">Itens por lote:</span>
               <Select
                 value={perPage.toString()}
                 onValueChange={(v) => {
                   setPerPage(Number(v))
                   setPage(1)
+                  setCustomerIndex(0)
                 }}
               >
                 <SelectTrigger className="h-7 w-20 text-xs">
@@ -636,15 +608,18 @@ export function CadenceRoulette({
                 className="h-7 w-7"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1 || isLoading}
+                title="Lote Anterior"
               >
                 <ChevronLeft className="h-3 w-3" />
               </Button>
+              <span className="text-xs font-medium w-8 text-center">{page}</span>
               <Button
                 variant="outline"
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => setPage((p) => p + 1)}
                 disabled={page * perPage >= totalItems || isLoading}
+                title="Próximo Lote"
               >
                 <ChevronRight className="h-3 w-3" />
               </Button>
