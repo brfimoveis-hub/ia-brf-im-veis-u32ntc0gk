@@ -31,7 +31,7 @@ routerAdd(
         $app.save(logRecord)
       } catch (logErr) {}
       return e.badRequestError(
-        'O ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para as configurações para preenchê-los.',
+        'Erro de sincronização - o ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para Configurações para preenchê-los.',
       )
     }
 
@@ -47,7 +47,19 @@ routerAdd(
       } catch (err) {}
     }
 
-    if (!customers.length) return e.badRequestError('Nenhum cliente válido encontrado')
+    if (!customers.length) {
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', user.id)
+        logRecord.set('type', 'REMARKETING_SYNC')
+        logRecord.set('message', 'Falha na sincronização: clientes não encontrados.')
+        logRecord.set('details', 'Nenhum dos clientes fornecidos pertence a este usuário.')
+        logRecord.set('payload', { customerIds, eventName })
+        $app.save(logRecord)
+      } catch (logErr) {}
+      return e.badRequestError('Nenhum cliente válido encontrado')
+    }
 
     const data = []
     const currentTimestamp = Math.floor(Date.now() / 1000)
@@ -78,8 +90,19 @@ routerAdd(
       }
     }
 
-    if (!data.length)
+    if (!data.length) {
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', user.id)
+        logRecord.set('type', 'REMARKETING_SYNC')
+        logRecord.set('message', 'Falha na sincronização: nenhum contato com dados válidos.')
+        logRecord.set('details', 'Os clientes selecionados não possuem email ou telefone.')
+        logRecord.set('payload', { customerIds, eventName })
+        $app.save(logRecord)
+      } catch (logErr) {}
       return e.badRequestError('Nenhum cliente com email ou telefone válido para enviar ao Meta.')
+    }
 
     const batches = []
     for (let i = 0; i < data.length; i += 1000) {
@@ -113,6 +136,16 @@ routerAdd(
 
     if (totalSynced === 0 && lastError) {
       $app.logger().error('Meta CAPI Complete Failure', 'error', JSON.stringify(lastError))
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', user.id)
+        logRecord.set('type', 'REMARKETING_SYNC')
+        logRecord.set('message', 'Falha ao enviar eventos para o Meta.')
+        logRecord.set('details', JSON.stringify(lastError))
+        logRecord.set('payload', { customerIds, eventName })
+        $app.save(logRecord)
+      } catch (logErr) {}
       return e.internalServerError('Falha ao enviar eventos para o Meta.')
     }
 

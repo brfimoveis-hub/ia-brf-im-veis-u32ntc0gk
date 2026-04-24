@@ -203,9 +203,8 @@ export default function CRM() {
               onClick={() => {
                 if (!user?.meta_pixel_id || !user?.meta_capi_token) {
                   toast({
-                    title: 'Erro de sincronização',
                     description:
-                      'O ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para as configurações para preenchê-los.',
+                      'Erro de sincronização - o ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para Configurações para preenchê-los.',
                     variant: 'destructive',
                   })
                   if (user?.id) {

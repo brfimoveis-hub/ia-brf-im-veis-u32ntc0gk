@@ -108,9 +108,9 @@ export default function Settings() {
     try {
       if (user?.id) {
         const updatedUser = await pb.collection('users').update(user.id, {
-          meta_pixel_id: metaPixelId,
-          meta_capi_token: metaCapiToken,
-          meta_test_event_code: metaTestEventCode,
+          meta_pixel_id: metaPixelId.trim(),
+          meta_capi_token: metaCapiToken.trim(),
+          meta_test_event_code: metaTestEventCode.trim(),
           meta_tags_list: metaTagsList,
         })
         setInitialMeta({
@@ -145,9 +145,9 @@ export default function Settings() {
     try {
       if (user?.id) {
         const updatedUser = await pb.collection('users').update(user.id, {
-          meta_pixel_id: metaPixelId,
-          meta_capi_token: metaCapiToken,
-          meta_test_event_code: metaTestEventCode,
+          meta_pixel_id: metaPixelId.trim(),
+          meta_capi_token: metaCapiToken.trim(),
+          meta_test_event_code: metaTestEventCode.trim(),
           meta_tags_list: metaTagsList,
         })
         setInitialMeta({
