@@ -11,6 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
@@ -34,9 +36,66 @@ import {
   FileText,
   Trash2,
   User,
+  Mic,
+  Info,
+  MapPin,
+  Briefcase,
+  Headset,
+  Volume2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBlocker } from 'react-router-dom'
+
+const VOICE_PROFILES = [
+  {
+    id: 'bia_executiva',
+    name: 'Bia Executiva',
+    tone: 'Madura, pausada e autoritária',
+    stability: 75,
+    clarity: 80,
+  },
+  {
+    id: 'bia_amiga',
+    name: 'Bia Amiga',
+    tone: 'Jovem, dinâmica e entusiasmada',
+    stability: 45,
+    clarity: 90,
+  },
+  {
+    id: 'bia_consultora',
+    name: 'Bia Consultora',
+    tone: 'Equilibrada, empática e segura',
+    stability: 60,
+    clarity: 85,
+  },
+]
+
+const AVATAR_STYLES = [
+  {
+    id: 'foco_regional',
+    name: 'Foco Regional',
+    description:
+      'Visual de corretora local, fundo com praias ou centros urbanos de Biguaçu/Floripa',
+    query: 'female%20realtor%20beach',
+    icon: MapPin,
+  },
+  {
+    id: 'foco_luxo',
+    name: 'Foco Luxo',
+    description:
+      'Trajes executivos mais formais, fundo de escritório moderno ou decorado do Villa dos Açores',
+    query: 'female%20executive%20modern%20office',
+    icon: Briefcase,
+  },
+  {
+    id: 'foco_agilidade',
+    name: 'Foco Agilidade',
+    description:
+      'Visual moderno, com fone de ouvido estilo "central de inteligência", reforçando o suporte 24h',
+    query: 'modern%20female%20support%20agent%20headset',
+    icon: Headset,
+  },
+]
 
 export default function KnowledgeBase() {
   const { user } = useAuth()
@@ -53,8 +112,16 @@ export default function KnowledgeBase() {
   const [form, setForm] = useState({ site: '', tags: '', ai_instructions: '' })
   const [initialForm, setInitialForm] = useState({ site: '', tags: '', ai_instructions: '' })
 
-  const [userForm, setUserForm] = useState({ ai_name: 'Bia', ai_voice_id: 'alloy' })
-  const [initialUserForm, setInitialUserForm] = useState({ ai_name: 'Bia', ai_voice_id: 'alloy' })
+  const [userForm, setUserForm] = useState({
+    ai_name: 'Bia',
+    voice: 'bia_consultora',
+    avatarStyle: 'foco_luxo',
+  })
+  const [initialUserForm, setInitialUserForm] = useState({
+    ai_name: 'Bia',
+    voice: 'bia_consultora',
+    avatarStyle: 'foco_luxo',
+  })
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
 
@@ -65,7 +132,8 @@ export default function KnowledgeBase() {
     form.tags !== initialForm.tags ||
     form.ai_instructions !== initialForm.ai_instructions ||
     userForm.ai_name !== initialUserForm.ai_name ||
-    userForm.ai_voice_id !== initialUserForm.ai_voice_id ||
+    userForm.voice !== initialUserForm.voice ||
+    userForm.avatarStyle !== initialUserForm.avatarStyle ||
     avatarFile !== null
 
   const isDirtyRef = useRef(isDirty)
@@ -112,9 +180,28 @@ export default function KnowledgeBase() {
         }
 
         if (resetForm || !isDirtyRef.current) {
+          let voice = 'bia_consultora'
+          let avatarStyle = 'foco_luxo'
+
+          if (loadedUser.ai_voice_id) {
+            try {
+              if (loadedUser.ai_voice_id.startsWith('{')) {
+                const parsed = JSON.parse(loadedUser.ai_voice_id)
+                voice = parsed.voice || voice
+                avatarStyle = parsed.avatarStyle || avatarStyle
+              } else {
+                // Fallback for old simple string data
+                voice = loadedUser.ai_voice_id
+              }
+            } catch (e) {
+              voice = loadedUser.ai_voice_id
+            }
+          }
+
           const uFormData = {
             ai_name: loadedUser.ai_name || 'Bia',
-            ai_voice_id: loadedUser.ai_voice_id || 'alloy',
+            voice,
+            avatarStyle,
           }
           setUserForm(uFormData)
           setInitialUserForm(uFormData)
@@ -211,14 +298,21 @@ export default function KnowledgeBase() {
         let updatedUser = false
         const userData = new FormData()
         const finalAiName = userForm.ai_name.trim() || 'Bia'
-        const finalVoice = userForm.ai_voice_id || 'alloy'
+        const currentVoiceJson = JSON.stringify({
+          voice: userForm.voice,
+          avatarStyle: userForm.avatarStyle,
+        })
+        const initialVoiceJson = JSON.stringify({
+          voice: initialUserForm.voice,
+          avatarStyle: initialUserForm.avatarStyle,
+        })
 
         if (finalAiName !== initialUserForm.ai_name) {
           userData.append('ai_name', finalAiName)
           updatedUser = true
         }
-        if (finalVoice !== initialUserForm.ai_voice_id) {
-          userData.append('ai_voice_id', finalVoice)
+        if (currentVoiceJson !== initialVoiceJson) {
+          userData.append('ai_voice_id', currentVoiceJson)
           updatedUser = true
         }
         if (avatarFile) {
@@ -228,9 +322,23 @@ export default function KnowledgeBase() {
 
         if (updatedUser) {
           const savedUser = await pb.collection('users').update(user.id, userData)
+
+          let savedVoice = 'bia_consultora'
+          let savedAvatarStyle = 'foco_luxo'
+          if (savedUser.ai_voice_id) {
+            try {
+              const parsed = JSON.parse(savedUser.ai_voice_id)
+              savedVoice = parsed.voice || savedVoice
+              savedAvatarStyle = parsed.avatarStyle || savedAvatarStyle
+            } catch {
+              /* intentionally ignored */
+            }
+          }
+
           const newUForm = {
             ai_name: savedUser.ai_name || 'Bia',
-            ai_voice_id: savedUser.ai_voice_id || 'alloy',
+            voice: savedVoice,
+            avatarStyle: savedAvatarStyle,
           }
           setUserForm(newUForm)
           setInitialUserForm(newUForm)
@@ -384,15 +492,21 @@ export default function KnowledgeBase() {
         </CardHeader>
 
         <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-8">
-            <div className="flex flex-col items-center space-y-4">
-              <Avatar className="h-28 w-28 border-4 border-background shadow-md">
-                <AvatarImage src={avatarPreview || ''} className="object-cover" />
+          <div className="flex flex-col lg:flex-row gap-8 mb-8">
+            <div className="flex flex-col items-center space-y-4 lg:w-1/4">
+              <Avatar className="h-32 w-32 border-4 border-background shadow-md">
+                <AvatarImage
+                  src={
+                    avatarPreview ||
+                    `https://img.usecurling.com/p/256/256?q=${AVATAR_STYLES.find((s) => s.id === userForm.avatarStyle)?.query}&dpr=2`
+                  }
+                  className="object-cover bg-muted"
+                />
                 <AvatarFallback className="text-3xl bg-primary/10 text-primary font-medium">
                   {userForm.ai_name?.charAt(0)?.toUpperCase() || 'B'}
                 </AvatarFallback>
               </Avatar>
-              <div className="text-center">
+              <div className="text-center w-full">
                 <input
                   type="file"
                   accept="image/png, image/jpeg, image/webp"
@@ -412,14 +526,20 @@ export default function KnowledgeBase() {
                   size="sm"
                   onClick={() => avatarInputRef.current?.click()}
                   disabled={saving}
+                  className="w-full max-w-[200px]"
                 >
                   <Upload className="h-4 w-4 mr-2" />
-                  Alterar Foto
+                  Upload Personalizado
                 </Button>
+                {avatarPreview && !avatarFile && (
+                  <p className="text-xs text-muted-foreground mt-3 px-2">
+                    Sua foto salva prevalece sobre o estilo visual escolhido.
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="flex-1 space-y-6">
+            <div className="flex-1 space-y-8">
               <div className="space-y-2">
                 <Label htmlFor="ai_name" className="text-base font-semibold">
                   Nome da IA
@@ -432,36 +552,128 @@ export default function KnowledgeBase() {
                   placeholder="Ex: Bia"
                   value={userForm.ai_name}
                   onChange={(e) => setUserForm({ ...userForm, ai_name: e.target.value })}
-                  className="max-w-md"
+                  className="max-w-md text-lg font-medium"
                   disabled={saving}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ai_voice" className="text-base font-semibold">
-                  Voz da IA
-                </Label>
+              <div className="space-y-4">
+                <Label className="text-base font-semibold">Estilo Visual da IA (Avatar)</Label>
                 <p className="text-sm text-muted-foreground">
-                  Selecione a voz que a IA utilizará para enviar respostas em áudio.
+                  Escolha o foco da identidade visual caso não envie uma foto personalizada.
                 </p>
-                <Select
-                  value={userForm.ai_voice_id}
-                  onValueChange={(v) => setUserForm({ ...userForm, ai_voice_id: v })}
+                <RadioGroup
+                  value={userForm.avatarStyle}
+                  onValueChange={(v) => setUserForm({ ...userForm, avatarStyle: v })}
+                  className="grid grid-cols-1 xl:grid-cols-3 gap-4"
                   disabled={saving}
                 >
-                  <SelectTrigger id="ai_voice" className="max-w-md">
-                    <SelectValue placeholder="Selecione uma voz" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="alloy">Alloy (Neutra)</SelectItem>
-                    <SelectItem value="echo">Echo (Masculina suave)</SelectItem>
-                    <SelectItem value="fable">Fable (Sotaque britânico)</SelectItem>
-                    <SelectItem value="onyx">Onyx (Masculina grave)</SelectItem>
-                    <SelectItem value="nova">Nova (Feminina enérgica)</SelectItem>
-                    <SelectItem value="shimmer">Shimmer (Feminina suave)</SelectItem>
-                  </SelectContent>
-                </Select>
+                  {AVATAR_STYLES.map((style) => (
+                    <div key={style.id}>
+                      <RadioGroupItem
+                        value={style.id}
+                        id={`avatar-${style.id}`}
+                        className="peer sr-only"
+                      />
+                      <Label
+                        htmlFor={`avatar-${style.id}`}
+                        className="flex flex-col rounded-xl border-2 border-muted bg-card p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer h-full transition-all"
+                      >
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="p-2 bg-muted rounded-md text-foreground peer-data-[state=checked]:bg-primary peer-data-[state=checked]:text-primary-foreground transition-colors">
+                            <style.icon className="h-4 w-4" />
+                          </div>
+                          <span className="font-semibold text-sm">{style.name}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground leading-relaxed flex-1">
+                          {style.description}
+                        </span>
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
               </div>
+            </div>
+          </div>
+
+          <div className="border-t pt-8 space-y-6">
+            <div className="space-y-4">
+              <Label className="text-base font-semibold">Perfil de Voz</Label>
+              <p className="text-sm text-muted-foreground">
+                Selecione a persona de voz que a IA utilizará para enviar respostas em áudio.
+              </p>
+              <RadioGroup
+                value={userForm.voice}
+                onValueChange={(v) => setUserForm({ ...userForm, voice: v })}
+                className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                disabled={saving}
+              >
+                {VOICE_PROFILES.map((profile) => (
+                  <div key={profile.id}>
+                    <RadioGroupItem
+                      value={profile.id}
+                      id={`voice-${profile.id}`}
+                      className="peer sr-only"
+                    />
+                    <Label
+                      htmlFor={`voice-${profile.id}`}
+                      className="flex flex-col items-center text-center rounded-xl border-2 border-muted bg-card p-5 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer h-full transition-all relative overflow-hidden group"
+                    >
+                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="p-1.5 rounded-full bg-muted text-muted-foreground hover:text-foreground">
+                              <Info className="h-4 w-4" />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent className="text-sm p-3 space-y-1" side="top">
+                            <p>
+                              <strong>Estabilidade:</strong> {profile.stability}%
+                            </p>
+                            <p>
+                              <strong>Clareza:</strong> {profile.clarity}%
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+
+                      <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3 text-primary transition-colors peer-data-[state=checked]:bg-primary peer-data-[state=checked]:text-primary-foreground">
+                        <Volume2 className="h-6 w-6" />
+                      </div>
+                      <span className="font-semibold mb-1 text-base">{profile.name}</span>
+                      <span className="text-xs text-muted-foreground mb-4">{profile.tone}</span>
+
+                      <div className="w-full mt-auto pt-4 border-t flex justify-around text-xs text-muted-foreground">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="font-medium text-foreground text-sm">
+                            {profile.stability}%
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wider">Estabilidade</span>
+                        </div>
+                        <div className="w-px h-8 bg-border"></div>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="font-medium text-foreground text-sm">
+                            {profile.clarity}%
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wider">Clareza</span>
+                        </div>
+                      </div>
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </div>
+
+            <div className="bg-muted/30 p-5 rounded-xl border border-border/50 shadow-sm mt-4">
+              <h4 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground">
+                <Mic className="h-4 w-4 text-primary" />
+                Script de Teste de Voz Padrão
+              </h4>
+              <p className="text-sm text-muted-foreground italic leading-relaxed border-l-2 border-primary/40 pl-4 py-1">
+                "Bom dia! Eu sou {userForm.ai_name || 'Bia'}, responsável pelo atendimento do Villa
+                dos Açores. Antes de te passar todos os detalhes da planta LM311, por onde você nos
+                conheceu? Quero garantir que sua experiência aqui seja impecável."
+              </p>
             </div>
           </div>
         </CardContent>
