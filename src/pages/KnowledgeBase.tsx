@@ -133,11 +133,11 @@ export default function KnowledgeBase() {
       try {
         if (entry?.id) {
           await updateKnowledgeBaseEntry(entry.id, formToSave)
-          if (!silent) toast({ title: 'Configurações salvas com sucesso!' })
+          if (!silent) toast({ title: 'Orientações salvas com sucesso!' })
         } else {
           const newEntry = await createKnowledgeBaseEntry({ user_id: user.id, ...formToSave })
           setEntry(newEntry)
-          if (!silent) toast({ title: 'Configurações salvas com sucesso!' })
+          if (!silent) toast({ title: 'Orientações salvas com sucesso!' })
         }
         setInitialForm(formToSave)
         loadEntry(false)
@@ -275,6 +275,7 @@ export default function KnowledgeBase() {
               value={form.site}
               onChange={(e) => setForm({ ...form, site: e.target.value })}
               className="max-w-xl"
+              disabled={loading || saving}
             />
             {fieldErrors.site && <p className="text-sm text-destructive">{fieldErrors.site}</p>}
           </div>
@@ -299,6 +300,7 @@ export default function KnowledgeBase() {
               value={form.tags}
               onChange={(e) => setForm({ ...form, tags: e.target.value })}
               className="max-w-xl"
+              disabled={loading || saving}
             />
             {fieldErrors.tags && <p className="text-sm text-destructive">{fieldErrors.tags}</p>}
           </div>
@@ -324,6 +326,7 @@ export default function KnowledgeBase() {
               value={form.ai_instructions}
               onChange={(e) => setForm({ ...form, ai_instructions: e.target.value })}
               className="flex-1 resize-none text-base"
+              disabled={loading || saving}
             />
             {fieldErrors.ai_instructions && (
               <p className="text-sm text-destructive">{fieldErrors.ai_instructions}</p>
