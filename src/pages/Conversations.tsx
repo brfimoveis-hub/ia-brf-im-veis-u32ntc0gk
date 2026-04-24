@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Search,
   Send,
   Bot,
@@ -28,6 +35,7 @@ export default function Conversations() {
   const [activeContactId, setActiveContactId] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  const [searchBy, setSearchBy] = useState('all')
   const [showMobileChat, setShowMobileChat] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const customersRef = useRef(customers)
@@ -135,13 +143,21 @@ export default function Conversations() {
   const filteredContacts = contacts.filter((contact) => {
     if (!searchTerm) return true
     const term = searchTerm.toLowerCase()
-    const phone1Value = (contact as any).phone_1_value || ''
-    return (
-      contact.name?.toLowerCase().includes(term) ||
-      contact.email?.toLowerCase().includes(term) ||
+
+    const nameMatch = contact.name?.toLowerCase().includes(term) || false
+    const emailMatch = contact.email?.toLowerCase().includes(term) || false
+    const phoneMatch =
       contact.phone?.toLowerCase().includes(term) ||
-      phone1Value.toLowerCase().includes(term)
-    )
+      (contact as any).phone_1_value?.toLowerCase().includes(term) ||
+      false
+    const statusMatch = contact.status?.toLowerCase().includes(term) || false
+
+    if (searchBy === 'name') return nameMatch
+    if (searchBy === 'email') return emailMatch
+    if (searchBy === 'phone') return phoneMatch
+    if (searchBy === 'status') return statusMatch
+
+    return nameMatch || emailMatch || phoneMatch || statusMatch
   })
 
   return (
@@ -153,16 +169,40 @@ export default function Conversations() {
             showMobileChat ? '-translate-x-full md:translate-x-0' : 'translate-x-0',
           )}
         >
-          <div className="p-4 border-b">
-            <h2 className="font-bold text-xl text-secondary mb-4">Conversas</h2>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar contatos..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary rounded-full h-9"
-              />
+          <div className="p-4 border-b flex flex-col gap-3">
+            <h2 className="font-bold text-xl text-secondary">Conversas</h2>
+            <div className="flex gap-2 items-center">
+              <Select value={searchBy} onValueChange={setSearchBy}>
+                <SelectTrigger className="w-[110px] h-9 bg-muted/50 border-none focus:ring-1 focus:ring-primary rounded-full text-xs">
+                  <SelectValue placeholder="Buscar por" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="name">Nome</SelectItem>
+                  <SelectItem value="email">E-mail</SelectItem>
+                  <SelectItem value="phone">Telefone</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={
+                    searchBy === 'name'
+                      ? 'Buscar por nome...'
+                      : searchBy === 'email'
+                        ? 'Buscar por e-mail...'
+                        : searchBy === 'phone'
+                          ? 'Buscar por telefone...'
+                          : searchBy === 'status'
+                            ? 'Buscar por status...'
+                            : 'Buscar contatos...'
+                  }
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary rounded-full h-9"
+                />
+              </div>
             </div>
           </div>
           <ScrollArea className="flex-1">
