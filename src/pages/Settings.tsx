@@ -34,6 +34,8 @@ export default function Settings() {
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [metaTestEventCode, setMetaTestEventCode] = useState('')
   const [metaTagsList, setMetaTagsList] = useState<{ id: string; name: string }[]>([])
+  const [newTagName, setNewTagName] = useState('')
+  const [newTagId, setNewTagId] = useState('')
 
   const [initialMeta, setInitialMeta] = useState({ pixel: '', capi: '', test: '', tags: '[]' })
 
@@ -316,30 +318,68 @@ export default function Settings() {
               </div>
             </div>
 
-            {metaTagsList.length > 0 && (
-              <div className="space-y-3 pt-4 border-t">
-                <Label className="font-semibold text-secondary">
-                  Tags Multi-Pixel ({metaTagsList.length})
-                </Label>
-                <div className="grid gap-2 max-h-[200px] overflow-y-auto pr-2">
+            <div className="space-y-3 pt-4 border-t">
+              <Label className="font-semibold text-secondary">
+                Tags Multi-Pixel ({metaTagsList.length})
+              </Label>
+              <div className="flex gap-2 mb-2">
+                <Input
+                  placeholder="Nome (Ex: BRF 4)"
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  className="bg-muted/30"
+                />
+                <Input
+                  placeholder="ID (Ex: 123456789)"
+                  value={newTagId}
+                  onChange={(e) => setNewTagId(e.target.value)}
+                  className="bg-muted/30"
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (newTagName && newTagId) {
+                      setMetaTagsList([...metaTagsList, { name: newTagName, id: newTagId }])
+                      setNewTagName('')
+                      setNewTagId('')
+                    }
+                  }}
+                  type="button"
+                >
+                  Adicionar
+                </Button>
+              </div>
+              {metaTagsList.length > 0 && (
+                <div className="grid gap-2 max-h-[250px] overflow-y-auto pr-2">
                   {metaTagsList.map((tag, index) => (
                     <div
                       key={index}
                       className="flex items-center justify-between p-2 text-sm border rounded-md bg-muted/20"
                     >
-                      <span className="font-medium truncate max-w-[200px]">{tag.name}</span>
-                      <span className="text-muted-foreground font-mono bg-muted/50 px-2 py-0.5 rounded">
-                        {tag.id}
-                      </span>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 flex-1 overflow-hidden">
+                        <span className="font-medium truncate max-w-[200px]">{tag.name}</span>
+                        <span className="text-muted-foreground font-mono bg-muted/50 px-2 py-0.5 rounded text-xs w-fit">
+                          {tag.id}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-600 hover:bg-red-500/10 h-8 px-2"
+                        onClick={() => setMetaTagsList(metaTagsList.filter((_, i) => i !== index))}
+                        type="button"
+                      >
+                        Remover
+                      </Button>
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Estas tags são inicializadas automaticamente em todas as páginas para rastreamento
-                  simultâneo.
-                </p>
-              </div>
-            )}
+              )}
+              <p className="text-xs text-muted-foreground">
+                Estas tags são inicializadas automaticamente em todas as páginas para rastreamento
+                simultâneo.
+              </p>
+            </div>
             <div className="space-y-3">
               <Label htmlFor="meta-capi-token" className="font-semibold text-secondary">
                 Token de Acesso (CAPI)

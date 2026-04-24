@@ -6,6 +6,7 @@ declare global {
   interface Window {
     fbq: any
     _fbq: any
+    _fbqInitialized?: Set<string>
   }
 }
 
@@ -42,8 +43,13 @@ export function MetaPixel() {
       /* eslint-enable */
     }
 
+    window._fbqInitialized = window._fbqInitialized || new Set()
+
     allPixels.forEach((id) => {
-      window.fbq('init', id)
+      if (!window._fbqInitialized?.has(id)) {
+        window.fbq('init', id)
+        window._fbqInitialized?.add(id)
+      }
     })
   }, [allPixels.join(',')])
 

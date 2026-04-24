@@ -66,6 +66,56 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                       .logger()
                       .info('Inserted new message from Meta Webhook', 'customerId', customer.id)
 
+                    // CAPI Event
+                    try {
+                      if (userId) {
+                        const userRecord = $app.findRecordById('users', userId)
+                        const capiToken = userRecord.getString('meta_capi_token')
+                        const mainPixelId = userRecord.getString('meta_pixel_id')
+                        const tagsList = userRecord.get('meta_tags_list') || []
+                        const testCode = userRecord.getString('meta_test_event_code')
+
+                        let targetPixels = []
+                        if (mainPixelId) targetPixels.push(mainPixelId)
+                        if (tagsList && Array.isArray(tagsList)) {
+                          tagsList.forEach((t) => {
+                            if (t.id && !targetPixels.includes(t.id)) targetPixels.push(t.id)
+                          })
+                        }
+
+                        if (capiToken && targetPixels.length > 0) {
+                          const timeUnix = Math.floor(new Date().getTime() / 1000)
+                          const phoneNorm = phone.replace(/\D/g, '')
+                          const hashPhone = $security.sha256(phoneNorm)
+
+                          targetPixels.forEach((pixelId) => {
+                            const payload = {
+                              data: [
+                                {
+                                  event_name: 'Contact',
+                                  event_time: timeUnix,
+                                  action_source: 'system_generated',
+                                  user_data: { ph: [hashPhone] },
+                                  custom_data: { currency: 'BRL', value: 0.0 },
+                                },
+                              ],
+                            }
+                            if (testCode) payload.test_event_code = testCode
+
+                            $http.send({
+                              url: `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`,
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(payload),
+                              timeout: 5,
+                            })
+                          })
+                        }
+                      }
+                    } catch (err) {
+                      $app.logger().error('CAPI Error in Webhook', 'err', err)
+                    }
+
                     try {
                       if (userId) {
                         const logCollection = $app.findCollectionByNameOrId('system_logs')

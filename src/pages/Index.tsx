@@ -2,8 +2,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { MessageCircle, Clock, Users, Zap, RotateCw, Bot } from 'lucide-react'
+import {
+  MessageCircle,
+  Clock,
+  Users,
+  Zap,
+  RotateCw,
+  Bot,
+  Facebook,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react'
 import { lazy, Suspense } from 'react'
+import { useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { Link } from 'react-router-dom'
@@ -32,6 +43,11 @@ const recentEvents = [
 
 export default function Index() {
   const { toast } = useToast()
+  const { user } = useAuth()
+
+  const isMetaActive =
+    user?.meta_pixel_id || (user?.meta_tags_list && user.meta_tags_list.length > 0)
+  const isCapiActive = !!user?.meta_capi_token
 
   const handleRestart = () => {
     toast({
@@ -73,6 +89,85 @@ export default function Index() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Status Indicators */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card
+          className={cn(
+            'border shadow-sm',
+            isMetaActive ? 'border-blue-500/30 bg-blue-500/5' : 'border-muted',
+          )}
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={cn('p-2 rounded-lg', isMetaActive ? 'bg-blue-600/20' : 'bg-muted')}>
+                <Facebook
+                  className={cn(
+                    'h-5 w-5',
+                    isMetaActive ? 'text-blue-600' : 'text-muted-foreground',
+                  )}
+                />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-secondary">Integração Meta Ads</p>
+                <p className="text-xs text-muted-foreground">
+                  {isMetaActive
+                    ? `${user?.meta_tags_list?.length || 1} Pixel(s) conectado(s)`
+                    : 'Não configurado'}
+                </p>
+              </div>
+            </div>
+            {isMetaActive ? (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Ativo
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full">
+                <AlertCircle className="h-3.5 w-3.5" />
+                Inativo
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card
+          className={cn(
+            'border shadow-sm',
+            isCapiActive ? 'border-purple-500/30 bg-purple-500/5' : 'border-muted',
+          )}
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={cn('p-2 rounded-lg', isCapiActive ? 'bg-purple-600/20' : 'bg-muted')}>
+                <Zap
+                  className={cn(
+                    'h-5 w-5',
+                    isCapiActive ? 'text-purple-600' : 'text-muted-foreground',
+                  )}
+                />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-secondary">Conversions API (CAPI)</p>
+                <p className="text-xs text-muted-foreground">
+                  {isCapiActive ? 'Sincronização server-side ativa' : 'Token não configurado'}
+                </p>
+              </div>
+            </div>
+            {isCapiActive ? (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Sincronizando
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full">
+                <AlertCircle className="h-3.5 w-3.5" />
+                Pausado
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Metrics */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

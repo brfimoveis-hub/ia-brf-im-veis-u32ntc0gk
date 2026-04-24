@@ -334,6 +334,60 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
 
       $app.save(reply)
 
+      // CAPI Event for AI Reply
+      try {
+        if (userId) {
+          const userRecord = $app.findRecordById('users', userId)
+          const capiToken = userRecord.getString('meta_capi_token')
+          const mainPixelId = userRecord.getString('meta_pixel_id')
+          const tagsList = userRecord.get('meta_tags_list') || []
+          const testCode = userRecord.getString('meta_test_event_code')
+
+          let targetPixels = []
+          if (mainPixelId) targetPixels.push(mainPixelId)
+          if (tagsList && Array.isArray(tagsList)) {
+            tagsList.forEach((t) => {
+              if (t.id && !targetPixels.includes(t.id)) targetPixels.push(t.id)
+            })
+          }
+
+          if (capiToken && targetPixels.length > 0) {
+            const customerRecord = $app.findRecordById('customers', customerId)
+            const phoneVal = customerRecord.getString('phone') || ''
+            const phoneNorm = phoneVal.replace(/\D/g, '')
+            if (phoneNorm) {
+              const hashPhone = $security.sha256(phoneNorm)
+              const timeUnix = Math.floor(new Date().getTime() / 1000)
+
+              targetPixels.forEach((pixelId) => {
+                const payload = {
+                  data: [
+                    {
+                      event_name: 'Lead',
+                      event_time: timeUnix,
+                      action_source: 'system_generated',
+                      user_data: { ph: [hashPhone] },
+                      custom_data: { currency: 'BRL', value: 0.0, content_name: 'ai_reply' },
+                    },
+                  ],
+                }
+                if (testCode) payload.test_event_code = testCode
+
+                $http.send({
+                  url: `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`,
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload),
+                  timeout: 5,
+                })
+              })
+            }
+          }
+        }
+      } catch (err) {
+        $app.logger().error('CAPI Error in AI Reply', 'err', err)
+      }
+
       try {
         if (userId) {
           const logCollection = $app.findCollectionByNameOrId('system_logs')
