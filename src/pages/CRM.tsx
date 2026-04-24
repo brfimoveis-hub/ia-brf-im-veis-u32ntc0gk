@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
@@ -51,6 +51,7 @@ export default function CRM() {
   const [loading, setLoading] = useState(true)
   const customersRef = useRef(customers)
   const { toast } = useToast()
+  const toastRef = useRef(toast)
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -58,6 +59,11 @@ export default function CRM() {
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState('Lead')
+
+  // Optimize state management: Keep stable references to prevent infinite loops
+  useEffect(() => {
+    toastRef.current = toast
+  }, [toast])
 
   useEffect(() => {
     customersRef.current = customers
@@ -75,14 +81,17 @@ export default function CRM() {
       })
   }, [])
 
-  useRealtime('customers', (e) => {
+  // Optimize realtime handler to prevent unnecessary re-subscriptions or deep updates
+  const handleRealtimeEvent = useCallback((e: any) => {
     if (e.action === 'create') setCustomers((prev) => [e.record as unknown as Customer, ...prev])
     else if (e.action === 'update')
       setCustomers((prev) =>
         prev.map((c) => (c.id === e.record.id ? (e.record as unknown as Customer) : c)),
       )
     else if (e.action === 'delete') setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
-  })
+  }, [])
+
+  useRealtime('customers', handleRealtimeEvent)
 
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -108,7 +117,7 @@ export default function CRM() {
           content: `IA analisou a intenção e moveu o lead para "${nextPhase.title}".`,
           sender: 'system',
         })
-        toast({
+        toastRef.current({
           title: 'Transição Automática (IA)',
           description: `A IA processou o lead ${leadToMove.name} e moveu para: ${nextPhase.title}`,
         })
@@ -118,7 +127,7 @@ export default function CRM() {
     }, 15000)
 
     return () => clearInterval(timer)
-  }, [toast])
+  }, []) // Empty dependencies ensure stable effect initialization
 
   const filteredCustomers = useMemo(() => {
     if (!searchFilter) return customers
@@ -128,7 +137,7 @@ export default function CRM() {
         c.name.toLowerCase().includes(lowerSearch) ||
         c.email?.toLowerCase().includes(lowerSearch) ||
         c.phone?.includes(searchFilter) ||
-        c.tags?.some((t) => t.toLowerCase().includes(lowerSearch)),
+        (Array.isArray(c.tags) && c.tags.some((t) => t.toLowerCase().includes(lowerSearch))),
     )
   }, [customers, searchFilter])
 
@@ -154,17 +163,20 @@ export default function CRM() {
     }
   }
 
-  const metaTagsList = user?.meta_tags_list || []
-  let parsedTags: any[] = []
-  if (Array.isArray(metaTagsList)) {
-    parsedTags = metaTagsList
-  } else if (typeof metaTagsList === 'string') {
-    try {
-      parsedTags = JSON.parse(metaTagsList)
-    } catch {
-      /* intentionally ignored */
+  // Safe memoization for JSON parsing during render cycle
+  const parsedTags = useMemo(() => {
+    const list = user?.meta_tags_list
+    if (!list) return []
+    if (Array.isArray(list)) return list
+    if (typeof list === 'string') {
+      try {
+        return JSON.parse(list)
+      } catch {
+        return []
+      }
     }
-  }
+    return []
+  }, [user?.meta_tags_list])
 
   if (loading) {
     return (

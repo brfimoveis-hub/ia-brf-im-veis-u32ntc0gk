@@ -13,7 +13,7 @@ import {
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -45,8 +45,21 @@ export default function Index() {
   const { toast } = useToast()
   const { user } = useAuth()
 
-  const isMetaActive =
-    user?.meta_pixel_id || (user?.meta_tags_list && user.meta_tags_list.length > 0)
+  const parsedTags = useMemo(() => {
+    const list = user?.meta_tags_list
+    if (!list) return []
+    if (Array.isArray(list)) return list
+    if (typeof list === 'string') {
+      try {
+        return JSON.parse(list)
+      } catch {
+        return []
+      }
+    }
+    return []
+  }, [user?.meta_tags_list])
+
+  const isMetaActive = !!user?.meta_pixel_id || parsedTags.length > 0
   const isCapiActive = !!user?.meta_capi_token
 
   const handleRestart = () => {
@@ -112,7 +125,7 @@ export default function Index() {
                 <p className="text-sm font-semibold text-secondary">Integração Meta Ads</p>
                 <p className="text-xs text-muted-foreground">
                   {isMetaActive
-                    ? `${user?.meta_tags_list?.length || 1} Pixel(s) conectado(s)`
+                    ? `${parsedTags.length || 1} Pixel(s) conectado(s)`
                     : 'Não configurado'}
                 </p>
               </div>

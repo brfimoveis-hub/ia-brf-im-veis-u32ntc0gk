@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import pb from '@/lib/pocketbase/client'
 import type { RecordSubscription } from 'pocketbase'
 
@@ -14,7 +14,11 @@ export function useRealtime(
   enabled: boolean = true,
 ) {
   const callbackRef = useRef(callback)
-  callbackRef.current = callback
+
+  // Safe update of callback ref to avoid concurrent mode tearing
+  useLayoutEffect(() => {
+    callbackRef.current = callback
+  }, [callback])
 
   useEffect(() => {
     if (!enabled) return
@@ -24,7 +28,7 @@ export function useRealtime(
 
     pb.collection(collectionName)
       .subscribe('*', (e) => {
-        callbackRef.current(e)
+        if (callbackRef.current) callbackRef.current(e)
       })
       .then((fn) => {
         if (cancelled) {
