@@ -104,6 +104,15 @@ export default function Settings() {
   }, [isDirty])
 
   const handleSave = async () => {
+    if (metaPixelId.trim() && !/^\d+$/.test(metaPixelId.trim())) {
+      toast({
+        title: 'Pixel ID Inválido',
+        description: 'O ID do Pixel do Meta deve conter apenas números.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
       if (user?.id) {
@@ -113,6 +122,7 @@ export default function Settings() {
           meta_test_event_code: metaTestEventCode.trim(),
           meta_tags_list: metaTagsList,
         })
+        await pb.collection('users').authRefresh()
         setInitialMeta({
           pixel: updatedUser.meta_pixel_id || '',
           capi: updatedUser.meta_capi_token || '',
@@ -141,6 +151,15 @@ export default function Settings() {
   const [isSavingMeta, setIsSavingMeta] = useState(false)
 
   const handleSaveMeta = async () => {
+    if (metaPixelId.trim() && !/^\d+$/.test(metaPixelId.trim())) {
+      toast({
+        title: 'Pixel ID Inválido',
+        description: 'O ID do Pixel do Meta deve conter apenas números.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSavingMeta(true)
     try {
       if (user?.id) {
@@ -150,6 +169,7 @@ export default function Settings() {
           meta_test_event_code: metaTestEventCode.trim(),
           meta_tags_list: metaTagsList,
         })
+        await pb.collection('users').authRefresh()
         setInitialMeta({
           pixel: updatedUser.meta_pixel_id || '',
           capi: updatedUser.meta_capi_token || '',
@@ -300,7 +320,7 @@ export default function Settings() {
                   id="meta-pixel-id"
                   placeholder="Ex: 1234567890"
                   value={metaPixelId}
-                  onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
+                  onChange={(e) => setMetaPixelId(e.target.value)}
                   className="bg-muted/30 focus-visible:ring-blue-600"
                   inputMode="numeric"
                 />
@@ -333,7 +353,7 @@ export default function Settings() {
                 <Input
                   placeholder="ID (Ex: 123456789)"
                   value={newTagId}
-                  onChange={(e) => setNewTagId(e.target.value.replace(/\D/g, ''))}
+                  onChange={(e) => setNewTagId(e.target.value)}
                   className="bg-muted/30"
                   inputMode="numeric"
                 />
@@ -341,7 +361,15 @@ export default function Settings() {
                   variant="secondary"
                   onClick={() => {
                     if (newTagName && newTagId) {
-                      setMetaTagsList([...metaTagsList, { name: newTagName, id: newTagId }])
+                      if (!/^\d+$/.test(newTagId.trim())) {
+                        toast({
+                          title: 'Tag ID Inválido',
+                          description: 'O ID da tag deve conter apenas números.',
+                          variant: 'destructive',
+                        })
+                        return
+                      }
+                      setMetaTagsList([...metaTagsList, { name: newTagName, id: newTagId.trim() }])
                       setNewTagName('')
                       setNewTagId('')
                     }
