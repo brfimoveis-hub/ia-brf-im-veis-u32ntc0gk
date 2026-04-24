@@ -6,6 +6,7 @@ import { MessageCircle, Clock, Users, Zap, RotateCw, Bot } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { Link } from 'react-router-dom'
 
 const CadenceRoulette = lazy(() =>
   import('@/components/CadenceRoulette').then((m) => ({ default: m.CadenceRoulette })),
@@ -205,8 +206,9 @@ export default function Index() {
             <Button
               variant="ghost"
               className="w-full mt-6 text-sm text-primary hover:text-primary/80 hover:bg-primary/10"
+              asChild
             >
-              Ver todos os logs
+              <Link to="/logs">Ver todos os logs</Link>
             </Button>
           </CardContent>
         </Card>

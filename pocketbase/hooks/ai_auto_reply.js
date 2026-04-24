@@ -262,6 +262,21 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
       responseText = responseText.replace(/(\(Analisando.*?\))|(\[Analisando.*?\])/gi, '').trim()
     } else {
       $app.logger().error('OpenAI Chat failed', 'status', chatRes.statusCode, 'body', chatRes.raw)
+      try {
+        if (userId) {
+          const logCollection = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logCollection)
+          logRecord.set('user_id', userId)
+          logRecord.set('type', 'ERROR')
+          logRecord.set('message', 'Falha na comunicação com OpenAI Chat')
+          logRecord.set(
+            'details',
+            'Ocorreu um erro ao tentar gerar a resposta da IA. Status HTTP: ' + chatRes.statusCode,
+          )
+          logRecord.set('payload', { status: chatRes.statusCode, raw: chatRes.raw })
+          $app.save(logRecord)
+        }
+      } catch (_) {}
     }
 
     // 5. Idempotency and State check
@@ -318,6 +333,19 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
       reply.set('content', responseText)
 
       $app.save(reply)
+
+      try {
+        if (userId) {
+          const logCollection = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logCollection)
+          logRecord.set('user_id', userId)
+          logRecord.set('type', 'AI_RESPONSE')
+          logRecord.set('message', 'IA respondeu ao cliente com sucesso')
+          logRecord.set('details', 'A inteligência artificial gerou e enviou uma resposta.')
+          logRecord.set('payload', { customer_id: customerId, context_used: !!contextText })
+          $app.save(logRecord)
+        }
+      } catch (_) {}
     }
   } catch (err) {
     $app.logger().error('AI Auto Reply Error', 'err', err)

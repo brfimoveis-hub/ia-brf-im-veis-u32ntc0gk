@@ -16,6 +16,7 @@ const Conversations = lazy(() => import('./pages/Conversations'))
 const Settings = lazy(() => import('./pages/Settings'))
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'))
 const Cadences = lazy(() => import('./pages/Cadences'))
+const Logs = lazy(() => import('./pages/Logs'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Login = lazy(() => import('./pages/Login'))
 
@@ -103,6 +104,14 @@ const router = createBrowserRouter(
                   element: (
                     <Suspense fallback={<PageLoader />}>
                       <Cadences />
+                    </Suspense>
+                  ),
+                },
+                {
+                  path: '/logs',
+                  element: (
+                    <Suspense fallback={<PageLoader />}>
+                      <Logs />
                     </Suspense>
                   ),
                 },

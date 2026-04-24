@@ -55,15 +55,29 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                   } catch (_) {}
 
                   if (!isDuplicate) {
+                    const userId = customer.getString('user_id')
                     const conversation = new Record($app.findCollectionByNameOrId('conversations'))
                     conversation.set('customer_id', customer.id)
-                    conversation.set('user_id', customer.getString('user_id'))
+                    conversation.set('user_id', userId)
                     conversation.set('content', text)
                     conversation.set('sender', 'user')
                     $app.save(conversation)
                     $app
                       .logger()
                       .info('Inserted new message from Meta Webhook', 'customerId', customer.id)
+
+                    try {
+                      if (userId) {
+                        const logCollection = $app.findCollectionByNameOrId('system_logs')
+                        const logRecord = new Record(logCollection)
+                        logRecord.set('user_id', userId)
+                        logRecord.set('type', 'WEBHOOK')
+                        logRecord.set('message', 'Mensagem recebida via Webhook do WhatsApp')
+                        logRecord.set('details', 'Nova mensagem de cliente processada com sucesso.')
+                        logRecord.set('payload', { customer_id: customer.id, phone: phone })
+                        $app.save(logRecord)
+                      }
+                    } catch (_) {}
                   } else {
                     $app
                       .logger()
