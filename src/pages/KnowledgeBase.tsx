@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -22,7 +23,18 @@ import {
 } from '@/services/knowledge_base'
 import pb from '@/lib/pocketbase/client'
 import { extractFieldErrors, getErrorMessage } from '@/lib/pocketbase/errors'
-import { Loader2, Save, Globe, Tags, Bot, Paperclip, Upload, FileText, Trash2 } from 'lucide-react'
+import {
+  Loader2,
+  Save,
+  Globe,
+  Tags,
+  Bot,
+  Paperclip,
+  Upload,
+  FileText,
+  Trash2,
+  User,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBlocker } from 'react-router-dom'
 
@@ -31,6 +43,7 @@ export default function KnowledgeBase() {
   const { toast } = useToast()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -39,12 +52,21 @@ export default function KnowledgeBase() {
   const [entry, setEntry] = useState<KnowledgeBaseEntry | null>(null)
   const [form, setForm] = useState({ site: '', tags: '', ai_instructions: '' })
   const [initialForm, setInitialForm] = useState({ site: '', tags: '', ai_instructions: '' })
+
+  const [userForm, setUserForm] = useState({ ai_name: 'Bia', ai_voice_id: 'alloy' })
+  const [initialUserForm, setInitialUserForm] = useState({ ai_name: 'Bia', ai_voice_id: 'alloy' })
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const isDirty =
     form.site !== initialForm.site ||
     form.tags !== initialForm.tags ||
-    form.ai_instructions !== initialForm.ai_instructions
+    form.ai_instructions !== initialForm.ai_instructions ||
+    userForm.ai_name !== initialUserForm.ai_name ||
+    userForm.ai_voice_id !== initialUserForm.ai_voice_id ||
+    avatarFile !== null
 
   const isDirtyRef = useRef(isDirty)
   useEffect(() => {
@@ -55,7 +77,11 @@ export default function KnowledgeBase() {
     async (resetForm: boolean = true) => {
       if (!user) return
       try {
-        const loadedEntry = await getFirstKnowledgeBaseEntry(user.id)
+        const [loadedEntry, loadedUser] = await Promise.all([
+          getFirstKnowledgeBaseEntry(user.id),
+          pb.collection('users').getOne(user.id),
+        ])
+
         if (loadedEntry) {
           setEntry(loadedEntry)
           if (resetForm || !isDirtyRef.current) {
@@ -84,6 +110,21 @@ export default function KnowledgeBase() {
             setInitialForm({ site: '', tags: '', ai_instructions: defaultInstructions })
           }
         }
+
+        if (resetForm || !isDirtyRef.current) {
+          const uFormData = {
+            ai_name: loadedUser.ai_name || 'Bia',
+            ai_voice_id: loadedUser.ai_voice_id || 'alloy',
+          }
+          setUserForm(uFormData)
+          setInitialUserForm(uFormData)
+          if (loadedUser.ai_avatar) {
+            setAvatarPreview(pb.files.getURL(loadedUser, loadedUser.ai_avatar))
+          } else {
+            setAvatarPreview(null)
+          }
+          setAvatarFile(null)
+        }
       } catch (err) {
         toast({ title: 'Erro ao carregar configurações', variant: 'destructive' })
       } finally {
@@ -107,6 +148,12 @@ export default function KnowledgeBase() {
     }
   })
 
+  useRealtime('users', (e) => {
+    if (!isDirtyRef.current && e.action === 'update' && e.record.id === user?.id) {
+      loadEntry(false)
+    }
+  })
+
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       isDirty && currentLocation.pathname !== nextLocation.pathname,
@@ -115,7 +162,7 @@ export default function KnowledgeBase() {
   useEffect(() => {
     if (blocker.state === 'blocked') {
       const confirmLeave = window.confirm(
-        'Você tem informações de texto não salvas. Deseja sair sem salvar?',
+        'Você tem informações não salvas. Deseja sair sem salvar?',
       )
       if (confirmLeave) {
         blocker.proceed()
@@ -150,7 +197,6 @@ export default function KnowledgeBase() {
             tags: formToSave.tags,
             ai_instructions: formToSave.ai_instructions,
           })
-          if (!silent) toast({ title: 'Alterações salvas com sucesso!' })
         } else {
           updatedEntry = await createKnowledgeBaseEntry({
             user_id: user.id,
@@ -158,10 +204,43 @@ export default function KnowledgeBase() {
             tags: formToSave.tags,
             ai_instructions: formToSave.ai_instructions,
           })
-          if (!silent) toast({ title: 'Alterações salvas com sucesso!' })
         }
         setEntry(updatedEntry)
         setInitialForm(formToSave)
+
+        let updatedUser = false
+        const userData = new FormData()
+        const finalAiName = userForm.ai_name.trim() || 'Bia'
+        const finalVoice = userForm.ai_voice_id || 'alloy'
+
+        if (finalAiName !== initialUserForm.ai_name) {
+          userData.append('ai_name', finalAiName)
+          updatedUser = true
+        }
+        if (finalVoice !== initialUserForm.ai_voice_id) {
+          userData.append('ai_voice_id', finalVoice)
+          updatedUser = true
+        }
+        if (avatarFile) {
+          userData.append('ai_avatar', avatarFile)
+          updatedUser = true
+        }
+
+        if (updatedUser) {
+          const savedUser = await pb.collection('users').update(user.id, userData)
+          const newUForm = {
+            ai_name: savedUser.ai_name || 'Bia',
+            ai_voice_id: savedUser.ai_voice_id || 'alloy',
+          }
+          setUserForm(newUForm)
+          setInitialUserForm(newUForm)
+          if (savedUser.ai_avatar) {
+            setAvatarPreview(pb.files.getURL(savedUser, savedUser.ai_avatar))
+          }
+          setAvatarFile(null)
+        }
+
+        if (!silent) toast({ title: 'Alterações salvas com sucesso!' })
       } catch (err) {
         setFieldErrors(extractFieldErrors(err))
         if (!silent) {
@@ -175,7 +254,7 @@ export default function KnowledgeBase() {
         setSaving(false)
       }
     },
-    [user, entry?.id, form, loadEntry, toast],
+    [user, entry?.id, form, userForm, initialUserForm, avatarFile, toast],
   )
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,11 +273,9 @@ export default function KnowledgeBase() {
             const parser = new DOMParser()
             const xmlDoc = parser.parseFromString(text, 'text/xml')
 
-            // Extract text from tags, filtering out empty strings
             const elements = Array.from(xmlDoc.getElementsByTagName('*'))
             const extractedText = elements
               .map((el) => {
-                // Only get direct text node children to avoid duplication
                 return Array.from(el.childNodes)
                   .filter((node) => node.nodeType === Node.TEXT_NODE)
                   .map((node) => node.textContent?.trim())
@@ -208,7 +285,7 @@ export default function KnowledgeBase() {
               .filter(Boolean)
               .join('\n')
 
-            const finalContext = extractedText || text // fallback to raw text if empty
+            const finalContext = extractedText || text
             xmlContextToAdd += `\n\n--- Conteúdo Estruturado (${file.name}) ---\n${finalContext}\n---------------------------\n`
           } catch (e) {
             console.error('Failed to parse XML file:', e)
@@ -289,6 +366,106 @@ export default function KnowledgeBase() {
           Forneça o contexto, regras e documentos para guiar o atendimento da IA.
         </p>
       </div>
+
+      <Card className="border-border shadow-elevation overflow-hidden">
+        <div className="h-1 bg-purple-500 w-full"></div>
+        <CardHeader className="bg-muted/10 pb-4 border-b">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-purple-500/10 rounded-xl">
+              <User className="h-6 w-6 text-purple-500" />
+            </div>
+            <div>
+              <CardTitle className="text-xl">Identidade da IA</CardTitle>
+              <CardDescription>
+                Personalize o nome, a foto e a voz da sua assistente virtual.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-8">
+            <div className="flex flex-col items-center space-y-4">
+              <Avatar className="h-28 w-28 border-4 border-background shadow-md">
+                <AvatarImage src={avatarPreview || ''} className="object-cover" />
+                <AvatarFallback className="text-3xl bg-primary/10 text-primary font-medium">
+                  {userForm.ai_name?.charAt(0)?.toUpperCase() || 'B'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="text-center">
+                <input
+                  type="file"
+                  accept="image/png, image/jpeg, image/webp"
+                  className="hidden"
+                  ref={avatarInputRef}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setAvatarFile(file)
+                      setAvatarPreview(URL.createObjectURL(file))
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={saving}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Alterar Foto
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="ai_name" className="text-base font-semibold">
+                  Nome da IA
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Como a inteligência artificial deve se chamar ao interagir com os clientes.
+                </p>
+                <Input
+                  id="ai_name"
+                  placeholder="Ex: Bia"
+                  value={userForm.ai_name}
+                  onChange={(e) => setUserForm({ ...userForm, ai_name: e.target.value })}
+                  className="max-w-md"
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ai_voice" className="text-base font-semibold">
+                  Voz da IA
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Selecione a voz que a IA utilizará para enviar respostas em áudio.
+                </p>
+                <Select
+                  value={userForm.ai_voice_id}
+                  onValueChange={(v) => setUserForm({ ...userForm, ai_voice_id: v })}
+                  disabled={saving}
+                >
+                  <SelectTrigger id="ai_voice" className="max-w-md">
+                    <SelectValue placeholder="Selecione uma voz" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="alloy">Alloy (Neutra)</SelectItem>
+                    <SelectItem value="echo">Echo (Masculina suave)</SelectItem>
+                    <SelectItem value="fable">Fable (Sotaque britânico)</SelectItem>
+                    <SelectItem value="onyx">Onyx (Masculina grave)</SelectItem>
+                    <SelectItem value="nova">Nova (Feminina enérgica)</SelectItem>
+                    <SelectItem value="shimmer">Shimmer (Feminina suave)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border-border shadow-elevation overflow-hidden">
         <div className="h-1 bg-blue-500 w-full"></div>
@@ -456,7 +633,6 @@ export default function KnowledgeBase() {
         </CardContent>
       </Card>
 
-      {/* Floating Save Button */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-xl border-t border-border flex justify-end md:pl-[var(--sidebar-width)] z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
         <div className="max-w-4xl w-full mx-auto flex justify-end items-center gap-4 px-4 md:px-0">
           {isDirty && (

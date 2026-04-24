@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-24T14:40:08.657Z",
+  "generatedAt": "2026-04-24T14:51:21.090Z",
   "collections": [
     {
       "name": "users",
@@ -52,6 +52,24 @@
         },
         {
           "name": "meta_test_event_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_avatar",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_voice_id",
           "type": "text",
           "required": false,
           "system": false
