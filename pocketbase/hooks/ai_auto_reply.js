@@ -74,15 +74,20 @@ onRecordAfterCreateSuccess((e) => {
       if (ragRes.statusCode === 200 && ragRes.json) {
         if (ragRes.json.knowledge_base) {
           ragRes.json.knowledge_base.forEach((item) => {
-            if (item.content) contextChunks.push(`[KB - ${item.title || 'Info'}]: ${item.content}`)
+            if (item.content)
+              contextChunks.push(`### Informação (${item.title || 'Geral'}):\n${item.content}`)
           })
         }
         if (ragRes.json.cadences) {
           ragRes.json.cadences.forEach((item) => {
             if (item.content)
-              contextChunks.push(`[Cadência - ${item.title || 'Processo'}]: ${item.content}`)
+              contextChunks.push(
+                `### Procedimento de Venda (${item.title || 'Fluxo'}):\n${item.content}`,
+              )
             if (item.ai_instructions)
-              contextChunks.push(`[Instrução da Cadência]: ${item.ai_instructions}`)
+              contextChunks.push(
+                `Diretriz Específica para este Procedimento:\n${item.ai_instructions}`,
+              )
           })
         }
       } else {
@@ -110,7 +115,12 @@ onRecordAfterCreateSuccess((e) => {
 Sua identidade e instruções principais:
 ${aiInstructions || 'Seja prestativa, educada e direta. Se não souber a resposta, direcione para um corretor.'}
 
-Use EXCLUSIVAMENTE o contexto abaixo para responder às perguntas do cliente. Se a resposta não estiver no contexto, use suas instruções principais para contornar educadamente e informar que não tem essa informação no momento. NUNCA invente informações.
+DIRETRIZES RIGOROSAS:
+1. Responda de forma fluida, coerente e humana, baseando-se EXCLUSIVAMENTE no CONTEXTO RECUPERADO abaixo.
+2. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções".
+3. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.
+4. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
+5. Se a resposta não estiver no contexto, contorne educadamente informando que não tem essa informação no momento e que um corretor entrará em contato. NUNCA invente informações (alucinação).
 
 CONTEXTO RECUPERADO:
 ${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
@@ -150,6 +160,9 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
       'Desculpe, estou com uma instabilidade no momento e não consegui gerar uma resposta.'
     if (chatRes.statusCode === 200 && chatRes.json?.choices?.[0]?.message?.content) {
       responseText = chatRes.json.choices[0].message.content.trim()
+      // Sanitize: Remove possible leaked instruction blocks if AI fails to follow directions
+      responseText = responseText.replace(/\(Aplicando instruções.*?\)/gi, '').trim()
+      responseText = responseText.replace(/\(Com base no contexto.*?\)/gi, '').trim()
     } else {
       $app.logger().error('OpenAI Chat failed', 'status', chatRes.statusCode, 'body', chatRes.raw)
     }

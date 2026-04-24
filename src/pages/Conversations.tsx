@@ -77,26 +77,6 @@ export default function Conversations() {
   const activeMessages = conversations.filter((c) => c.customer_id === activeContactId)
 
   useEffect(() => {
-    const timer = setInterval(async () => {
-      if (!activeContactId) return
-      const currentCustomer = customersRef.current.find((c) => c.id === activeContactId)
-      if (!currentCustomer) return
-
-      try {
-        await createConversation({
-          customer_id: activeContactId,
-          content:
-            'Olá, gostaria de saber mais informações sobre o serviço e tirar algumas dúvidas!',
-          sender: 'customer',
-        })
-      } catch (e) {
-        console.error(e)
-      }
-    }, 45000)
-    return () => clearInterval(timer)
-  }, [activeContactId])
-
-  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeMessages])
 
