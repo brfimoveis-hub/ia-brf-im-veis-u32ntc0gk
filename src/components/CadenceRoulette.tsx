@@ -43,24 +43,27 @@ export function CadenceRoulette({
   sourceFilter?: string
   onCustomerUpdated?: (c: Customer) => void
 } = {}) {
-  const [customers, setCustomers] = useState<Customer[]>([])
   const [cadences, setCadences] = useState<Cadence[]>([])
 
-  const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(100)
   const [totalItems, setTotalItems] = useState(0)
 
-  const [customerIndex, setCustomerIndex] = useState(0)
+  // Global state for continuous rotation across pages
+  const [globalIndex, setGlobalIndex] = useState(0)
+  const [pagesCache, setPagesCache] = useState<Record<number, Customer[]>>({})
+  const cacheRef = useRef<Record<number, Customer[]>>({})
+  const fetchingRef = useRef<Record<number, boolean>>({})
+
   const [cadenceIndex, setCadenceIndex] = useState(0)
   const [rotationKey, setRotationKey] = useState(0)
-  const [pendingPrevPage, setPendingPrevPage] = useState(false)
 
   const [isEditingCadence, setIsEditingCadence] = useState(false)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
 
   const [isPaused, setIsPaused] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
   const [isInitialized, setIsInitialized] = useState(false)
+  const [isLoadingCurrent, setIsLoadingCurrent] = useState(true)
+  const [isPrefetching, setIsPrefetching] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   const [editCadenceContent, setEditCadenceContent] = useState('')
@@ -108,74 +111,109 @@ export function CadenceRoulette({
     }
   }
 
-  const loadCustomers = async () => {
-    setIsLoading(true)
-    try {
-      const custData = await getPaginatedCustomers(page, perPage, search, phaseFilter, sourceFilter)
-      setCustomers(custData.items)
-      setTotalItems(custData.totalItems)
-
-      if (pendingPrevPage) {
-        setCustomerIndex(Math.max(0, custData.items.length - 1))
-        setPendingPrevPage(false)
-      } else {
-        setCustomerIndex((prev) => (prev >= custData.items.length ? 0 : prev))
-      }
-    } catch (err) {
-      toast({
-        title: 'Erro',
-        description: 'Falha ao carregar dados da roleta.',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsLoading(false)
-      setIsInitialized(true)
-    }
-  }
-
   useEffect(() => {
     loadCadences()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const loadPage = useCallback(
+    async (p: number, isPrefetch: boolean) => {
+      if (cacheRef.current[p] || fetchingRef.current[p]) return
+
+      fetchingRef.current[p] = true
+      if (isPrefetch) {
+        setIsPrefetching(true)
+      } else {
+        setIsLoadingCurrent(true)
+      }
+
+      try {
+        const data = await getPaginatedCustomers(p, perPage, search, phaseFilter, sourceFilter)
+        cacheRef.current[p] = data.items
+        setTotalItems(data.totalItems)
+        setPagesCache({ ...cacheRef.current })
+      } catch (err) {
+        if (!isPrefetch) {
+          toast({
+            title: 'Erro',
+            description: 'Falha ao carregar dados da roleta.',
+            variant: 'destructive',
+          })
+        }
+      } finally {
+        fetchingRef.current[p] = false
+        setIsPrefetching(false)
+        setIsLoadingCurrent(false)
+        setIsInitialized(true)
+      }
+    },
+    [perPage, search, phaseFilter, sourceFilter, toast],
+  )
+
+  // Reset logic when filters change
   useEffect(() => {
-    loadCustomers()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, perPage, search, phaseFilter, sourceFilter])
+    cacheRef.current = {}
+    fetchingRef.current = {}
+    setPagesCache({})
+    setTotalItems(0)
+    setGlobalIndex(0)
+    setIsInitialized(false)
+
+    loadPage(1, false)
+  }, [search, phaseFilter, sourceFilter, perPage, loadPage])
+
+  // Prefetch and lazy load on index change
+  useEffect(() => {
+    if (!isInitialized) return
+
+    const currentPage = Math.floor(globalIndex / perPage) + 1
+    const nextPage = currentPage + 1
+    const prevPage = currentPage - 1
+
+    // Fetch current if missing
+    if (!cacheRef.current[currentPage] && !fetchingRef.current[currentPage]) {
+      loadPage(currentPage, false)
+    }
+
+    // Prefetch next
+    const localIndex = globalIndex % perPage
+    const currentItems = cacheRef.current[currentPage]?.length || perPage
+
+    if (localIndex >= Math.max(0, currentItems - 5)) {
+      const totalPages = Math.ceil(totalItems / perPage)
+      if (nextPage <= totalPages && !cacheRef.current[nextPage] && !fetchingRef.current[nextPage]) {
+        loadPage(nextPage, true)
+      }
+    }
+
+    // Prefetch prev if going backwards
+    if (
+      localIndex <= 4 &&
+      prevPage >= 1 &&
+      !cacheRef.current[prevPage] &&
+      !fetchingRef.current[prevPage]
+    ) {
+      loadPage(prevPage, true)
+    }
+  }, [globalIndex, perPage, totalItems, isInitialized, loadPage])
 
   const nextCustomer = useCallback(() => {
-    setCustomerIndex((prev) => {
-      if (prev >= customers.length - 1) {
-        if (page * perPage < totalItems) {
-          setPage((p) => p + 1)
-        } else {
-          setPage(1) // Loop back to start if at the very end
-        }
-        return 0
-      }
+    if (totalItems === 0) return
+    setGlobalIndex((prev) => {
+      if (prev >= totalItems - 1) return 0
       return prev + 1
     })
     setRotationKey((k) => k + 1)
-  }, [customers.length, page, perPage, totalItems])
+  }, [totalItems])
 
   const prevCustomer = useCallback(() => {
-    setCustomerIndex((prev) => {
-      if (prev === 0) {
-        if (page > 1) {
-          setPendingPrevPage(true)
-          setPage((p) => p - 1)
-        } else {
-          const lastPage = Math.ceil(totalItems / perPage) || 1
-          if (lastPage > 1) {
-            setPendingPrevPage(true)
-            setPage(lastPage)
-          }
-        }
-        return 0
-      }
+    if (totalItems === 0) return
+    setGlobalIndex((prev) => {
+      if (prev <= 0) return totalItems - 1
       return prev - 1
     })
     setRotationKey((k) => k + 1)
-  }, [page, totalItems, perPage])
+  }, [totalItems])
 
   const nextCustomerRef = useRef(nextCustomer)
   useEffect(() => {
@@ -183,7 +221,14 @@ export function CadenceRoulette({
   }, [nextCustomer])
 
   useEffect(() => {
-    if (isLoading || isPaused || isEditingCadence || isEditingNotes || customers.length === 0) {
+    if (
+      !isInitialized ||
+      isLoadingCurrent ||
+      isPaused ||
+      isEditingCadence ||
+      isEditingNotes ||
+      totalItems === 0
+    ) {
       return
     }
 
@@ -192,10 +237,20 @@ export function CadenceRoulette({
     }, 15000)
 
     return () => clearInterval(timer)
-  }, [isLoading, isPaused, isEditingCadence, isEditingNotes, customers.length === 0, rotationKey])
+  }, [
+    isInitialized,
+    isLoadingCurrent,
+    isPaused,
+    isEditingCadence,
+    isEditingNotes,
+    totalItems,
+    rotationKey,
+  ])
 
   const currentCadence = cadences[cadenceIndex]
-  const currentCustomer = customers[customerIndex]
+  const currentPage = Math.floor(globalIndex / perPage) + 1
+  const localIndex = globalIndex % perPage
+  const currentCustomer = pagesCache[currentPage]?.[localIndex]
 
   const handleEditCadence = () => {
     if (!currentCadence) return
@@ -239,7 +294,14 @@ export function CadenceRoulette({
     setIsSaving(true)
     try {
       const updated = await updateCustomer(currentCustomer.id, { notes: editNotesContent })
-      setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+
+      if (cacheRef.current[currentPage]) {
+        cacheRef.current[currentPage] = cacheRef.current[currentPage].map((c) =>
+          c.id === updated.id ? updated : c,
+        )
+        setPagesCache({ ...cacheRef.current })
+      }
+
       if (onCustomerUpdated) {
         onCustomerUpdated(updated)
       }
@@ -266,7 +328,7 @@ export function CadenceRoulette({
   const nextCadence = () => setCadenceIndex((p) => (p + 1) % cadences.length)
   const prevCadence = () => setCadenceIndex((p) => (p - 1 + cadences.length) % cadences.length)
 
-  if (!isInitialized || (isLoading && customers.length === 0)) {
+  if (!isInitialized || (isLoadingCurrent && totalItems === 0)) {
     return (
       <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <RefreshCw className="h-8 w-8 animate-spin mb-4 text-primary/50" />
@@ -275,7 +337,7 @@ export function CadenceRoulette({
     )
   }
 
-  if (!isLoading && customers.length === 0) {
+  if (!isLoadingCurrent && totalItems === 0) {
     return (
       <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <Layers className="h-8 w-8 mb-4 text-primary/50" />
@@ -289,33 +351,26 @@ export function CadenceRoulette({
   const trigger = parts[1] || ''
   const channel = parts[2] || ''
 
-  const currentPage = page
-  const currentPerPage = perPage
-  const currentTotalItems = totalItems
-  const globalIndex = Math.min(
-    currentTotalItems,
-    (currentPage - 1) * currentPerPage + customerIndex + 1,
-  )
-
   return (
     <Card
       className={cn(
         'shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative transition-opacity duration-200',
-        isLoading && 'opacity-70 pointer-events-none',
+        isLoadingCurrent && 'pointer-events-none',
       )}
     >
-      {isLoading && customers.length > 0 && (
+      {isLoadingCurrent && totalItems > 0 && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-[1px]">
           <RefreshCw className="h-8 w-8 animate-spin text-primary mb-2" />
-          <p className="text-sm font-medium text-primary">Carregando nova lista...</p>
+          <p className="text-sm font-medium text-primary">Carregando dados...</p>
         </div>
       )}
+
       <div className="absolute top-0 left-0 w-full h-1 bg-muted">
-        {!isLoading &&
+        {!isLoadingCurrent &&
           !isPaused &&
           !isEditingCadence &&
           !isEditingNotes &&
-          (customers.length > 1 || page * perPage < totalItems) && (
+          totalItems > 1 && (
             <div
               key={rotationKey}
               className="h-full bg-primary animate-[progress_15s_linear]"
@@ -329,7 +384,7 @@ export function CadenceRoulette({
           <CardTitle className="text-secondary flex items-center gap-2 text-xl">
             Roleta Inteligente: Villa dos Açores
             <span className="text-xs bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-medium border border-primary/20">
-              Cliente {globalIndex} de {currentTotalItems}
+              Cliente {totalItems > 0 ? globalIndex + 1 : 0} de {totalItems}
             </span>
           </CardTitle>
           <CardDescription>Pipeline da Bia - Ciclo de Cadência</CardDescription>
@@ -342,11 +397,7 @@ export function CadenceRoulette({
               size="icon"
               className="h-7 w-7"
               onClick={() => setIsPaused(!isPaused)}
-              disabled={
-                isEditingCadence ||
-                isEditingNotes ||
-                (customers.length <= 1 && page * perPage >= totalItems)
-              }
+              disabled={isEditingCadence || isEditingNotes || totalItems <= 1}
               title={isPaused ? 'Retomar Rotação' : 'Pausar Rotação'}
             >
               {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
@@ -357,7 +408,7 @@ export function CadenceRoulette({
               size="icon"
               className="h-7 w-7"
               onClick={() => prevCustomer()}
-              disabled={isEditingCadence || isEditingNotes || (customers.length <= 1 && page === 1)}
+              disabled={isEditingCadence || isEditingNotes || totalItems <= 1}
               title="Cliente Anterior"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -367,11 +418,7 @@ export function CadenceRoulette({
               size="icon"
               className="h-7 w-7"
               onClick={() => nextCustomer()}
-              disabled={
-                isEditingCadence ||
-                isEditingNotes ||
-                (customers.length <= 1 && page * perPage >= totalItems)
-              }
+              disabled={isEditingCadence || isEditingNotes || totalItems <= 1}
               title="Próximo Cliente"
             >
               <ChevronRight className="h-4 w-4" />
@@ -577,8 +624,12 @@ export function CadenceRoulette({
 
       {totalItems > 0 && (
         <div className="bg-muted/30 border-t border-border/50 p-3 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="text-xs text-muted-foreground font-medium">
-            Tamanho do lote: {Math.min(page * perPage, totalItems) - (page - 1) * perPage} clientes
+          <div className="flex items-center gap-2">
+            {isPrefetching && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1 animate-pulse">
+                <RefreshCw className="h-3 w-3 animate-spin" /> Carregando lote adicional...
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
@@ -587,8 +638,7 @@ export function CadenceRoulette({
                 value={perPage.toString()}
                 onValueChange={(v) => {
                   setPerPage(Number(v))
-                  setPage(1)
-                  setCustomerIndex(0)
+                  setGlobalIndex(0)
                 }}
               >
                 <SelectTrigger className="h-7 w-20 text-xs">
@@ -606,19 +656,19 @@ export function CadenceRoulette({
                 variant="outline"
                 size="icon"
                 className="h-7 w-7"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1 || isLoading}
+                onClick={() => setGlobalIndex(Math.max(0, globalIndex - perPage))}
+                disabled={currentPage === 1 || isLoadingCurrent}
                 title="Lote Anterior"
               >
                 <ChevronLeft className="h-3 w-3" />
               </Button>
-              <span className="text-xs font-medium w-8 text-center">{page}</span>
+              <span className="text-xs font-medium w-8 text-center">{currentPage}</span>
               <Button
                 variant="outline"
                 size="icon"
                 className="h-7 w-7"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page * perPage >= totalItems || isLoading}
+                onClick={() => setGlobalIndex(Math.min(totalItems - 1, currentPage * perPage))}
+                disabled={currentPage * perPage >= totalItems || isLoadingCurrent}
                 title="Próximo Lote"
               >
                 <ChevronRight className="h-3 w-3" />
