@@ -98,10 +98,12 @@ export default function KnowledgeBase() {
   }, [loadEntry])
 
   useRealtime('knowledge_base', (e) => {
-    if (e.action === 'update' && e.record.id === entry?.id) {
-      loadEntry(false)
-    } else if (e.action === 'create' && e.record.user_id === user?.id) {
-      loadEntry(false)
+    if (!isDirtyRef.current) {
+      if (e.action === 'update' && e.record.id === entry?.id) {
+        loadEntry(false)
+      } else if (e.action === 'create' && e.record.user_id === user?.id) {
+        loadEntry(false)
+      }
     }
   })
 
@@ -141,16 +143,25 @@ export default function KnowledgeBase() {
       setFieldErrors({})
       const formToSave = form
       try {
+        let updatedEntry
         if (entry?.id) {
-          await updateKnowledgeBaseEntry(entry.id, formToSave)
-          if (!silent) toast({ title: 'Instruções salvas com sucesso!' })
+          updatedEntry = await updateKnowledgeBaseEntry(entry.id, {
+            site: formToSave.site,
+            tags: formToSave.tags,
+            ai_instructions: formToSave.ai_instructions,
+          })
+          if (!silent) toast({ title: 'Alterações salvas com sucesso!' })
         } else {
-          const newEntry = await createKnowledgeBaseEntry({ user_id: user.id, ...formToSave })
-          setEntry(newEntry)
-          if (!silent) toast({ title: 'Instruções salvas com sucesso!' })
+          updatedEntry = await createKnowledgeBaseEntry({
+            user_id: user.id,
+            site: formToSave.site,
+            tags: formToSave.tags,
+            ai_instructions: formToSave.ai_instructions,
+          })
+          if (!silent) toast({ title: 'Alterações salvas com sucesso!' })
         }
+        setEntry(updatedEntry)
         setInitialForm(formToSave)
-        loadEntry(false)
       } catch (err) {
         setFieldErrors(extractFieldErrors(err))
         if (!silent) {
@@ -166,16 +177,6 @@ export default function KnowledgeBase() {
     },
     [user, entry?.id, form, loadEntry, toast],
   )
-
-  useEffect(() => {
-    if (!isDirty || saving) return
-
-    const timer = setTimeout(() => {
-      handleSave(true)
-    }, 2500)
-
-    return () => clearTimeout(timer)
-  }, [form, isDirty, saving, handleSave])
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
@@ -221,7 +222,10 @@ export default function KnowledgeBase() {
           const currentContent = entry.content || ''
           formData.append('content', currentContent + xmlContextToAdd)
         }
-        await pb.collection('knowledge_base').update(entry.id, formData)
+        const updatedEntry = await pb
+          .collection('knowledge_base')
+          .update<KnowledgeBaseEntry>(entry.id, formData)
+        setEntry(updatedEntry)
       } else {
         formData.append('user_id', user.id)
         formData.append('site', form.site)
@@ -237,7 +241,6 @@ export default function KnowledgeBase() {
       }
 
       toast({ title: 'Arquivo enviado com sucesso e integrado à base de conhecimento' })
-      loadEntry(false)
     } catch (err) {
       toast({
         title: 'Erro ao enviar arquivo',
@@ -256,9 +259,11 @@ export default function KnowledgeBase() {
       const formData = new FormData()
       formData.append('attachments-', filenameToDelete)
 
-      await pb.collection('knowledge_base').update(entry.id, formData)
+      const updatedEntry = await pb
+        .collection('knowledge_base')
+        .update<KnowledgeBaseEntry>(entry.id, formData)
+      setEntry(updatedEntry)
       toast({ title: 'Arquivo removido com sucesso' })
-      loadEntry(false)
     } catch (err) {
       toast({
         title: 'Erro ao remover arquivo',
