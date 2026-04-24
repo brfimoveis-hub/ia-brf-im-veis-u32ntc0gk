@@ -71,14 +71,14 @@ export default function Conversations() {
     const timer = setInterval(async () => {
       if (!activeContactId) return
       const currentCustomer = customersRef.current.find((c) => c.id === activeContactId)
-      if (!currentCustomer || currentCustomer.tags?.includes('ai_paused')) return
+      if (!currentCustomer) return
 
       try {
         await createConversation({
           customer_id: activeContactId,
           content:
-            'Entendi! Vou separar o material e te envio em instantes. Há algo mais que eu possa adiantar para você?',
-          sender: 'ai',
+            'Olá, gostaria de saber mais informações sobre o serviço e tirar algumas dúvidas!',
+          sender: 'customer',
         })
       } catch (e) {
         console.error(e)

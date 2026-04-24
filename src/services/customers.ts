@@ -60,7 +60,7 @@ export const getCustomers = async (): Promise<Customer[]> => {
 
 export const getPaginatedCustomers = async (
   page: number = 1,
-  perPage: number = 50,
+  perPage: number = 100,
   search: string = '',
   phaseFilter: string = 'all',
   sourceFilter: string = '',

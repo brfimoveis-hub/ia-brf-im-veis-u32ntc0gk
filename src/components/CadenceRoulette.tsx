@@ -38,7 +38,7 @@ export function CadenceRoulette({
   onCustomerUpdated?: (c: Customer) => void
 } = {}) {
   const [cadences, setCadences] = useState<Cadence[]>([])
-  const perPage = 50
+  const perPage = 100
 
   const [leads, setLeads] = useState<Customer[]>([])
   const [totalItems, setTotalItems] = useState(0)

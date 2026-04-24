@@ -39,7 +39,7 @@ export default function Customers() {
   const [debouncedSourceFilter, setDebouncedSourceFilter] = useState('')
 
   const [page, setPage] = useState(1)
-  const perPage = 50
+  const perPage = 100
   const [hasMore, setHasMore] = useState(true)
   const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
