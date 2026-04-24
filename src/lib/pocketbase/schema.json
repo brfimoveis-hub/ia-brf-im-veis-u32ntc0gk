@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-24T15:28:13.251Z",
+  "generatedAt": "2026-04-24T15:35:37.397Z",
   "collections": [
     {
       "name": "users",
@@ -520,6 +520,14 @@
           "type": "file",
           "required": false,
           "system": false
+        },
+        {
+          "name": "embedding",
+          "type": "vector",
+          "required": false,
+          "system": false,
+          "vectorDimensions": 1536,
+          "vectorDistance": "cosine"
         }
       ],
       "indexes": ["CREATE INDEX idx_knowledge_base_user_id ON knowledge_base (user_id)"]
@@ -597,6 +605,14 @@
           "type": "file",
           "required": false,
           "system": false
+        },
+        {
+          "name": "embedding",
+          "type": "vector",
+          "required": false,
+          "system": false,
+          "vectorDimensions": 1536,
+          "vectorDistance": "cosine"
         }
       ],
       "indexes": ["CREATE INDEX idx_cadences_user_id ON cadences (user_id)"]
