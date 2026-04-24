@@ -70,8 +70,18 @@ export default function KnowledgeBase() {
         } else {
           setEntry(null)
           if (resetForm || !isDirtyRef.current) {
-            setForm({ site: '', tags: '', ai_instructions: '' })
-            setInitialForm({ site: '', tags: '', ai_instructions: '' })
+            const defaultInstructions = `{
+  "project": "Ia Uazapi Skip",
+  "agent": "Bia",
+  "version": "1.2 - Consolidada",
+  "system_prompt": "Você é Bia, a assistente virtual de vendas da BRF Imóveis para o Villa dos Açores. Sua missão é identificar a origem do lead, qualificar e fechar a venda com cordialidade e precisão.\\n\\n[DIRETRIZES DE ENTRADA]\\n- Saude dinamicamente: 'Bom dia', 'Boa tarde' ou 'Boa noite' conforme o horário.\\n- Identificação: 'Eu sou Bia, responsável pelo atendimento de todos os leads da nossa cadência'.\\n- MISSÃO 1: Identificar a origem absoluta. Script: 'Para eu falar com clareza e precisão absoluta, me confirme: por qual canal você nos encontrou (Instagram, Site, Google)?'.\\n\\n[BASE TÉCNICA - VILLA DOS AÇORES]\\n- Localização: Rio Caveiras, Biguaçu. Esquina Manoel Urbano Bueno com Simão Ludvig, ao lado da BR-101 duplicada.\\n- Planta LM311: 70,78 m², 2 quartos (1 suíte), sacada com churrasqueira privativa.\\n- Estrutura: 4 torres com lazer completo (Piscina com deck, Playground, Pet place, Fitness, Kids area).\\n- Comercial: Valor de R$ 4.930,77 por m².\\n\\n[ESTRATÉGIA DE CONVERSÃO E REMARKETING]\\nSiga a cadência de 10 passos para levar o cliente ao fechamento:\\n1. Origem: Identificação do canal de entrada.\\n2. Localização: Destaque da facilidade de acesso pela BR-101.\\n3. Lazer: Apresentação da piscina e áreas de convivência.\\n4. Planta: Detalhamento do modelo LM311 (70,78m²).\\n5. Valorização: Foco no preço competitivo (R$ 4.930,77/m²).\\n6. Segurança: Condomínio fechado e infraestrutura das torres.\\n7. Família: Destaque para Kids area e Playground.\\n8. Pets: Informações sobre o Pet place.\\n9. Urgência: Alerta de unidades limitadas e fim de tabela.\\n10. Visita: Convite final agressivo para o decorado e fechamento.\\n\\n[TOM DE VOZ]\\nCordial, objetivo, dinâmico e profundo. Toda interação deve terminar com uma Pergunta de Fechamento ou Chamada para Ação (CTA).",
+  "config": {
+    "temperature": 0.7,
+    "model": "gpt-4o"
+  }
+}`
+            setForm({ site: '', tags: '', ai_instructions: defaultInstructions })
+            setInitialForm({ site: '', tags: '', ai_instructions: defaultInstructions })
           }
         }
       } catch (err) {
@@ -133,11 +143,11 @@ export default function KnowledgeBase() {
       try {
         if (entry?.id) {
           await updateKnowledgeBaseEntry(entry.id, formToSave)
-          if (!silent) toast({ title: 'Orientações salvas com sucesso!' })
+          if (!silent) toast({ title: 'Instruções salvas com sucesso!' })
         } else {
           const newEntry = await createKnowledgeBaseEntry({ user_id: user.id, ...formToSave })
           setEntry(newEntry)
-          if (!silent) toast({ title: 'Orientações salvas com sucesso!' })
+          if (!silent) toast({ title: 'Instruções salvas com sucesso!' })
         }
         setInitialForm(formToSave)
         loadEntry(false)
@@ -180,7 +190,25 @@ export default function KnowledgeBase() {
         if (file.name.toLowerCase().endsWith('.xml')) {
           try {
             const text = await file.text()
-            xmlContextToAdd += `\n\n--- Conteúdo Estruturado (${file.name}) ---\n${text}\n---------------------------\n`
+            const parser = new DOMParser()
+            const xmlDoc = parser.parseFromString(text, 'text/xml')
+
+            // Extract text from tags, filtering out empty strings
+            const elements = Array.from(xmlDoc.getElementsByTagName('*'))
+            const extractedText = elements
+              .map((el) => {
+                // Only get direct text node children to avoid duplication
+                return Array.from(el.childNodes)
+                  .filter((node) => node.nodeType === Node.TEXT_NODE)
+                  .map((node) => node.textContent?.trim())
+                  .filter(Boolean)
+                  .join(' ')
+              })
+              .filter(Boolean)
+              .join('\n')
+
+            const finalContext = extractedText || text // fallback to raw text if empty
+            xmlContextToAdd += `\n\n--- Conteúdo Estruturado (${file.name}) ---\n${finalContext}\n---------------------------\n`
           } catch (e) {
             console.error('Failed to parse XML file:', e)
           }
