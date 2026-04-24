@@ -1,7 +1,7 @@
 onRecordAfterCreateSuccess((e) => {
   const sender = e.record.getString('sender')
 
-  if (sender !== 'user' && sender !== 'customer') {
+  if (sender !== 'customer') {
     return e.next()
   }
 
@@ -9,16 +9,35 @@ onRecordAfterCreateSuccess((e) => {
     // 1. Race condition / Trigger optimization check
     // If a newer customer message exists, skip this one to prevent redundant replies
     try {
-      const latestCustomerMsgs = $app.findRecordsByFilter(
+      const latestMsgs = $app.findRecordsByFilter(
         'conversations',
-        `customer_id = '${e.record.getString('customer_id')}' && (sender = 'user' || sender = 'customer')`,
+        `customer_id = '${e.record.getString('customer_id')}'`,
         '-created',
         1,
         0,
       )
-      if (latestCustomerMsgs.length > 0 && latestCustomerMsgs[0].id !== e.record.id) {
-        $app.logger().info('Skipping auto-reply for older message', 'msgId', e.record.id)
-        return e.next()
+      if (latestMsgs.length > 0) {
+        const lastMsg = latestMsgs[0]
+        if (lastMsg.id !== e.record.id) {
+          $app
+            .logger()
+            .info(
+              'Skipping auto-reply: message is not the latest in conversation',
+              'msgId',
+              e.record.id,
+            )
+          return e.next()
+        }
+        if (lastMsg.getString('sender') !== 'customer') {
+          $app
+            .logger()
+            .info(
+              'Skipping auto-reply: last message not from customer',
+              'lastSender',
+              lastMsg.getString('sender'),
+            )
+          return e.next()
+        }
       }
     } catch (_) {}
 
@@ -147,7 +166,9 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
       historyRecords.forEach((msg) => {
         if (msg.getString('sender') === 'system') return
         const role =
-          msg.getString('sender') === 'ai' || msg.getString('sender') === 'agent'
+          msg.getString('sender') === 'ai' ||
+          msg.getString('sender') === 'agent' ||
+          msg.getString('sender') === 'user'
             ? 'assistant'
             : 'user'
         if (msg.id !== e.record.id) {
@@ -180,34 +201,58 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
       responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
       responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
       responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
+      responseText = responseText.replace(/(\(Recuperando.*?\))|(\[Recuperando.*?\])/gi, '').trim()
+      responseText = responseText.replace(/(\(Analisando.*?\))|(\[Analisando.*?\])/gi, '').trim()
     } else {
       $app.logger().error('OpenAI Chat failed', 'status', chatRes.statusCode, 'body', chatRes.raw)
     }
 
-    // 5. Idempotency check: prevent sending the exact same content within 5 minutes
+    // 5. Idempotency and State check
     let isDuplicate = false
     try {
-      const lastAiMsgs = $app.findRecordsByFilter(
+      // 5.1 Check if the conversation has advanced while we were processing
+      const currentLastMsgs = $app.findRecordsByFilter(
         'conversations',
-        `customer_id = '${e.record.getString('customer_id')}' && sender = 'ai'`,
+        `customer_id = '${e.record.getString('customer_id')}'`,
         '-created',
         1,
         0,
       )
-      if (lastAiMsgs.length > 0) {
-        const lastAiMsg = lastAiMsgs[0]
-        const lastAiDate = new Date(lastAiMsg.getString('created'))
-        const now = new Date()
-        const diffMins = (now.getTime() - lastAiDate.getTime()) / 60000
-        if (diffMins < 5 && lastAiMsg.getString('content') === responseText) {
+
+      if (currentLastMsgs.length > 0) {
+        const lastMsg = currentLastMsgs[0]
+        if (lastMsg.id !== e.record.id) {
           isDuplicate = true
           $app
             .logger()
-            .info(
-              'Prevented loop: exact same AI response within 5 mins for customer',
-              'customerId',
-              e.record.getString('customer_id'),
-            )
+            .info('Prevented auto-reply: conversation already advanced', 'newMsgId', lastMsg.id)
+        }
+      }
+
+      // 5.2 Prevent sending the exact same content within 5 minutes
+      if (!isDuplicate) {
+        const lastAiMsgs = $app.findRecordsByFilter(
+          'conversations',
+          `customer_id = '${e.record.getString('customer_id')}' && sender = 'ai'`,
+          '-created',
+          1,
+          0,
+        )
+        if (lastAiMsgs.length > 0) {
+          const lastAiMsg = lastAiMsgs[0]
+          const lastAiDate = new Date(lastAiMsg.getString('created'))
+          const now = new Date()
+          const diffMins = (now.getTime() - lastAiDate.getTime()) / 60000
+          if (diffMins < 5 && lastAiMsg.getString('content') === responseText) {
+            isDuplicate = true
+            $app
+              .logger()
+              .info(
+                'Prevented loop: exact same AI response within 5 mins for customer',
+                'customerId',
+                e.record.getString('customer_id'),
+              )
+          }
         }
       }
     } catch (_) {}

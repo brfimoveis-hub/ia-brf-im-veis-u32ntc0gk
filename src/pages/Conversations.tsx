@@ -348,7 +348,7 @@ export default function Conversations() {
                       )
                     }
 
-                    const isClient = msg.sender === 'user' || msg.sender === 'customer'
+                    const isClient = msg.sender === 'customer'
                     const displayTime = new Date(msg.created).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -378,7 +378,7 @@ export default function Conversations() {
                               </span>
                             </div>
                           )}
-                          {!isClient && msg.sender === 'agent' && (
+                          {!isClient && (msg.sender === 'agent' || msg.sender === 'user') && (
                             <div className="flex items-center gap-1 mb-1 opacity-70">
                               <User className="h-3 w-3 text-amber-600" />
                               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
