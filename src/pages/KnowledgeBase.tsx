@@ -41,6 +41,16 @@ export default function KnowledgeBase() {
   const [initialForm, setInitialForm] = useState({ site: '', tags: '', ai_instructions: '' })
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
+  const isDirty =
+    form.site !== initialForm.site ||
+    form.tags !== initialForm.tags ||
+    form.ai_instructions !== initialForm.ai_instructions
+
+  const isDirtyRef = useRef(isDirty)
+  useEffect(() => {
+    isDirtyRef.current = isDirty
+  }, [isDirty])
+
   const loadEntry = useCallback(
     async (resetForm: boolean = true) => {
       if (!user) return
@@ -48,7 +58,7 @@ export default function KnowledgeBase() {
         const loadedEntry = await getFirstKnowledgeBaseEntry(user.id)
         if (loadedEntry) {
           setEntry(loadedEntry)
-          if (resetForm) {
+          if (resetForm || !isDirtyRef.current) {
             const formData = {
               site: loadedEntry.site || '',
               tags: loadedEntry.tags || '',
@@ -59,7 +69,7 @@ export default function KnowledgeBase() {
           }
         } else {
           setEntry(null)
-          if (resetForm) {
+          if (resetForm || !isDirtyRef.current) {
             setForm({ site: '', tags: '', ai_instructions: '' })
             setInitialForm({ site: '', tags: '', ai_instructions: '' })
           }
@@ -84,11 +94,6 @@ export default function KnowledgeBase() {
       loadEntry(false)
     }
   })
-
-  const isDirty =
-    form.site !== initialForm.site ||
-    form.tags !== initialForm.tags ||
-    form.ai_instructions !== initialForm.ai_instructions
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
@@ -119,32 +124,48 @@ export default function KnowledgeBase() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isDirty])
 
-  const handleSave = async () => {
-    if (!user) return
-    setSaving(true)
-    setFieldErrors({})
-    try {
-      if (entry?.id) {
-        await updateKnowledgeBaseEntry(entry.id, form)
-        toast({ title: 'Configurações salvas com sucesso!' })
-      } else {
-        const newEntry = await createKnowledgeBaseEntry({ user_id: user.id, ...form })
-        setEntry(newEntry)
-        toast({ title: 'Configurações salvas com sucesso!' })
+  const handleSave = useCallback(
+    async (silent = false) => {
+      if (!user) return
+      setSaving(true)
+      setFieldErrors({})
+      const formToSave = form
+      try {
+        if (entry?.id) {
+          await updateKnowledgeBaseEntry(entry.id, formToSave)
+          if (!silent) toast({ title: 'Configurações salvas com sucesso!' })
+        } else {
+          const newEntry = await createKnowledgeBaseEntry({ user_id: user.id, ...formToSave })
+          setEntry(newEntry)
+          if (!silent) toast({ title: 'Configurações salvas com sucesso!' })
+        }
+        setInitialForm(formToSave)
+        loadEntry(false)
+      } catch (err) {
+        setFieldErrors(extractFieldErrors(err))
+        if (!silent) {
+          toast({
+            title: 'Erro ao salvar as configurações. Tente novamente.',
+            description: getErrorMessage(err),
+            variant: 'destructive',
+          })
+        }
+      } finally {
+        setSaving(false)
       }
-      setInitialForm(form)
-      loadEntry(false)
-    } catch (err) {
-      setFieldErrors(extractFieldErrors(err))
-      toast({
-        title: 'Erro ao salvar as configurações. Tente novamente.',
-        description: getErrorMessage(err),
-        variant: 'destructive',
-      })
-    } finally {
-      setSaving(false)
-    }
-  }
+    },
+    [user, entry?.id, form, loadEntry, toast],
+  )
+
+  useEffect(() => {
+    if (!isDirty || saving) return
+
+    const timer = setTimeout(() => {
+      handleSave(true)
+    }, 2500)
+
+    return () => clearTimeout(timer)
+  }, [form, isDirty, saving, handleSave])
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
@@ -389,7 +410,7 @@ export default function KnowledgeBase() {
             </span>
           )}
           <Button
-            onClick={handleSave}
+            onClick={() => handleSave(false)}
             disabled={saving}
             className="shadow-md px-8 h-11 hover:scale-105 transition-transform"
           >
