@@ -13,9 +13,22 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
-    let aiContext = ''
+    const apiKey = $secrets.get('OPENAI_API_KEY')
+    if (!apiKey) {
+      $app.logger().warn('OPENAI_API_KEY missing for ai auto reply')
+      return e.next()
+    }
+
+    const userId = e.record.getString('user_id')
+    let userRecord = null
     try {
-      const userId = e.record.getString('user_id')
+      if (userId) userRecord = $app.findRecordById('users', userId)
+    } catch (_) {}
+
+    const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
+
+    let aiInstructions = ''
+    try {
       if (userId) {
         const kbRecords = $app.findRecordsByFilter(
           'knowledge_base',
@@ -25,31 +38,124 @@ onRecordAfterCreateSuccess((e) => {
           0,
         )
         if (kbRecords && kbRecords.length > 0) {
-          const kb = kbRecords[0]
-          aiContext = kb.getString('ai_instructions') || ''
-          const extractedContent = kb.getString('content') || ''
-          if (extractedContent) {
-            aiContext += '\n\n[Contexto Estruturado Extraído]:\n' + extractedContent
-          }
-          const attachments = kb.getStringSlice('attachments') || []
-          if (attachments.length > 0) {
-            aiContext += '\n\n[Arquivos em anexo na base]: ' + attachments.join(', ')
-          }
+          aiInstructions = kbRecords[0].getString('ai_instructions') || ''
         }
       }
-    } catch (_) {
-      // Ignorar se não encontrar base de conhecimento
+    } catch (_) {}
+
+    const customerMessage = e.record.getString('content') || ''
+
+    // 1. Embed customer message
+    const embedRes = $http.send({
+      url: 'https://api.openai.com/v1/embeddings',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ model: 'text-embedding-3-small', input: customerMessage }),
+      timeout: 30,
+    })
+
+    let contextChunks = []
+
+    if (embedRes.statusCode === 200 && embedRes.json?.data?.[0]?.embedding) {
+      const queryEmbedding = embedRes.json.data[0].embedding
+      const pbaseURL = $secrets.get('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
+
+      const ragRes = $http.send({
+        url: pbaseURL + '/backend/v1/rag-search',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer internal-rag-token-123',
+        },
+        body: JSON.stringify({ query: queryEmbedding, userId: userId }),
+        timeout: 15,
+      })
+
+      if (ragRes.statusCode === 200 && ragRes.json) {
+        if (ragRes.json.knowledge_base) {
+          ragRes.json.knowledge_base.forEach((item) => {
+            if (item.content) contextChunks.push(`[KB - ${item.title || 'Info'}]: ${item.content}`)
+          })
+        }
+        if (ragRes.json.cadences) {
+          ragRes.json.cadences.forEach((item) => {
+            if (item.content)
+              contextChunks.push(`[Cadência - ${item.title || 'Processo'}]: ${item.content}`)
+            if (item.ai_instructions)
+              contextChunks.push(`[Instrução da Cadência]: ${item.ai_instructions}`)
+          })
+        }
+      } else {
+        $app.logger().error('RAG search failed', 'status', ragRes.statusCode)
+      }
     }
 
-    let responseText =
-      'Entendi! Vou separar o material e te envio em instantes. Há algo mais que eu possa adiantar para você?'
+    const contextText = contextChunks.join('\n\n')
 
-    if (aiContext) {
-      responseText += `\n\n*(Aplicando instruções da base de conhecimento: ${aiContext.substring(0, 60)}...)*`
+    // 2. Fetch conversation history
+    let historyRecords = []
+    try {
+      historyRecords = $app.findRecordsByFilter(
+        'conversations',
+        `customer_id = '${e.record.getString('customer_id')}'`,
+        '-created',
+        10,
+        0,
+      )
+      historyRecords.reverse()
+    } catch (_) {}
+
+    const messages = []
+    const systemPrompt = `Você é ${aiName}, Assistente Virtual de Vendas da BRF Imóveis.
+Sua identidade e instruções principais:
+${aiInstructions || 'Seja prestativa, educada e direta. Se não souber a resposta, direcione para um corretor.'}
+
+Use EXCLUSIVAMENTE o contexto abaixo para responder às perguntas do cliente. Se a resposta não estiver no contexto, use suas instruções principais para contornar educadamente e informar que não tem essa informação no momento. NUNCA invente informações.
+
+CONTEXTO RECUPERADO:
+${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
+
+    messages.push({ role: 'system', content: systemPrompt })
+
+    if (historyRecords && historyRecords.length > 0) {
+      historyRecords.forEach((msg) => {
+        if (msg.getString('sender') === 'system') return
+        const role =
+          msg.getString('sender') === 'ai' || msg.getString('sender') === 'agent'
+            ? 'assistant'
+            : 'user'
+        if (msg.id !== e.record.id) {
+          messages.push({ role: role, content: msg.getString('content') || '' })
+        }
+      })
+    }
+
+    messages.push({ role: 'user', content: customerMessage })
+
+    // 3. Call Chat API
+    const chatRes = $http.send({
+      url: 'https://api.openai.com/v1/chat/completions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: messages,
+        temperature: 0.3,
+        max_tokens: 500,
+      }),
+      timeout: 45,
+    })
+
+    let responseText =
+      'Desculpe, estou com uma instabilidade no momento e não consegui gerar uma resposta.'
+    if (chatRes.statusCode === 200 && chatRes.json?.choices?.[0]?.message?.content) {
+      responseText = chatRes.json.choices[0].message.content.trim()
+    } else {
+      $app.logger().error('OpenAI Chat failed', 'status', chatRes.statusCode, 'body', chatRes.raw)
     }
 
     const reply = new Record($app.findCollectionByNameOrId('conversations'))
-    reply.set('user_id', e.record.getString('user_id'))
+    reply.set('user_id', userId)
     reply.set('customer_id', e.record.getString('customer_id'))
     reply.set('sender', 'ai')
     reply.set('content', responseText)
