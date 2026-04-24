@@ -294,7 +294,7 @@ export default function Settings() {
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-3">
                 <Label htmlFor="meta-pixel-id" className="font-semibold text-secondary">
-                  ID do Pixel do Meta (Principal)
+                  ID do Pixel do Meta
                 </Label>
                 <Input
                   id="meta-pixel-id"
@@ -306,7 +306,7 @@ export default function Settings() {
               </div>
               <div className="space-y-3">
                 <Label htmlFor="meta-test-code" className="font-semibold text-secondary">
-                  Código de Teste
+                  Código de Teste de Evento (Opcional)
                 </Label>
                 <Input
                   id="meta-test-code"
@@ -382,7 +382,7 @@ export default function Settings() {
             </div>
             <div className="space-y-3">
               <Label htmlFor="meta-capi-token" className="font-semibold text-secondary">
-                Token de Acesso (CAPI)
+                Token de Acesso da API de Conversões
               </Label>
               <div className="relative">
                 <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />

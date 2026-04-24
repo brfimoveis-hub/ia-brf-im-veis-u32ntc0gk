@@ -17,8 +17,21 @@ routerAdd(
     const testCode = user.getString('meta_test_event_code')
 
     if (!pixelId || !capiToken) {
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', user.id)
+        logRecord.set('type', 'REMARKETING_SYNC')
+        logRecord.set('message', 'Falha na sincronização: credenciais do Meta ausentes.')
+        logRecord.set(
+          'details',
+          'O ID do Pixel ou o Token da API de Conversões não estão configurados.',
+        )
+        logRecord.set('payload', { customerIds, eventName })
+        $app.save(logRecord)
+      } catch (logErr) {}
       return e.badRequestError(
-        'O ID do Pixel ou o Token da API de Conversões do Meta não estão configurados.',
+        'O ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para as configurações para preenchê-los.',
       )
     }
 

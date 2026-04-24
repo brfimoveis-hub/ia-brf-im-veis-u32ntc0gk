@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuth } from '@/hooks/use-auth'
+import pb from '@/lib/pocketbase/client'
 
 const PHASES = [
   { id: 1, title: 'Lead Novo', color: 'bg-slate-500' },
@@ -199,12 +200,36 @@ export default function CRM() {
           </div>
           {searchFilter && (
             <Button
-              onClick={() => setSyncDialogOpen(true)}
+              onClick={() => {
+                if (!user?.meta_pixel_id || !user?.meta_capi_token) {
+                  toast({
+                    title: 'Erro de sincronização',
+                    description:
+                      'O ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para as configurações para preenchê-los.',
+                    variant: 'destructive',
+                  })
+                  if (user?.id) {
+                    pb.collection('system_logs')
+                      .create({
+                        user_id: user.id,
+                        type: 'REMARKETING_SYNC',
+                        message: 'Falha na sincronização: credenciais do Meta ausentes.',
+                        details:
+                          'O usuário tentou iniciar o remarketing sem configurar o Pixel ID ou Token CAPI.',
+                        payload: { searchFilter, count: filteredCustomers.length },
+                      })
+                      .catch(console.error)
+                  }
+                } else {
+                  setSyncDialogOpen(true)
+                }
+              }}
               variant="secondary"
               className="gap-2 shrink-0 border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary"
             >
               <Megaphone className="h-4 w-4" />
-              <span className="hidden sm:inline">Remarketing</span> ({filteredCustomers.length})
+              <span className="hidden sm:inline">Ativar Remarketing</span> (
+              {filteredCustomers.length})
             </Button>
           )}
         </div>
