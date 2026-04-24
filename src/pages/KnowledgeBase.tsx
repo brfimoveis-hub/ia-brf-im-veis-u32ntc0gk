@@ -175,14 +175,33 @@ export default function KnowledgeBase() {
     try {
       const formData = new FormData()
 
+      let xmlContextToAdd = ''
+      for (const file of Array.from(files)) {
+        if (file.name.toLowerCase().endsWith('.xml')) {
+          try {
+            const text = await file.text()
+            xmlContextToAdd += `\n\n--- Conteúdo Estruturado (${file.name}) ---\n${text}\n---------------------------\n`
+          } catch (e) {
+            console.error('Failed to parse XML file:', e)
+          }
+        }
+      }
+
       if (entry?.id) {
         Array.from(files).forEach((file) => formData.append('attachments+', file))
+        if (xmlContextToAdd) {
+          const currentContent = entry.content || ''
+          formData.append('content', currentContent + xmlContextToAdd)
+        }
         await pb.collection('knowledge_base').update(entry.id, formData)
       } else {
         formData.append('user_id', user.id)
         formData.append('site', form.site)
         formData.append('tags', form.tags)
         formData.append('ai_instructions', form.ai_instructions)
+        if (xmlContextToAdd) {
+          formData.append('content', xmlContextToAdd)
+        }
         Array.from(files).forEach((file) => formData.append('attachments', file))
         const newEntry = await pb.collection('knowledge_base').create<KnowledgeBaseEntry>(formData)
         setEntry(newEntry)
@@ -341,7 +360,7 @@ export default function KnowledgeBase() {
                   Arquivos Anexos
                 </Label>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Faça upload de documentos (PDF, TXT, DOCX) para a IA usar como contexto.
+                  Faça upload de documentos (PDF, TXT, DOCX, XML) para a IA usar como contexto.
                 </p>
               </div>
               <div>
@@ -351,8 +370,8 @@ export default function KnowledgeBase() {
                   className="hidden"
                   ref={fileInputRef}
                   onChange={handleFileUpload}
-                  accept=".pdf,.txt,.doc,.docx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                />
+                  accept=".pdf,.txt,.doc,.docx,.xml,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/xml,text/xml"
+                />{' '}
                 <Button
                   type="button"
                   variant="outline"

@@ -25,7 +25,16 @@ onRecordAfterCreateSuccess((e) => {
           0,
         )
         if (kbRecords && kbRecords.length > 0) {
-          aiContext = kbRecords[0].getString('ai_instructions') || ''
+          const kb = kbRecords[0]
+          aiContext = kb.getString('ai_instructions') || ''
+          const extractedContent = kb.getString('content') || ''
+          if (extractedContent) {
+            aiContext += '\n\n[Contexto Estruturado Extraído]:\n' + extractedContent
+          }
+          const attachments = kb.getStringSlice('attachments') || []
+          if (attachments.length > 0) {
+            aiContext += '\n\n[Arquivos em anexo na base]: ' + attachments.join(', ')
+          }
         }
       }
     } catch (_) {
