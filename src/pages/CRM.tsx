@@ -1,15 +1,34 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Clock, TrendingUp, Sparkles, Bot } from 'lucide-react'
+import { Clock, TrendingUp, Sparkles, Bot, Search, Megaphone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { useRealtime } from '@/hooks/use-realtime'
-import { getCustomers, updateCustomer, type Customer } from '@/services/customers'
+import { getCustomers, updateCustomer, syncRemarketing, type Customer } from '@/services/customers'
 import { createConversation } from '@/services/conversations'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { useAuth } from '@/hooks/use-auth'
 
 const PHASES = [
   { id: 1, title: 'Lead Novo', color: 'bg-slate-500' },
@@ -29,6 +48,12 @@ export default function CRM() {
   const [loading, setLoading] = useState(true)
   const customersRef = useRef(customers)
   const { toast } = useToast()
+  const { user } = useAuth()
+
+  const [searchFilter, setSearchFilter] = useState('')
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState('Lead')
 
   useEffect(() => {
     customersRef.current = customers
@@ -91,6 +116,52 @@ export default function CRM() {
     return () => clearInterval(timer)
   }, [toast])
 
+  const filteredCustomers = useMemo(() => {
+    if (!searchFilter) return customers
+    const lowerSearch = searchFilter.toLowerCase()
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(lowerSearch) ||
+        c.email?.toLowerCase().includes(lowerSearch) ||
+        c.phone?.includes(searchFilter) ||
+        c.tags?.some((t) => t.toLowerCase().includes(lowerSearch)),
+    )
+  }, [customers, searchFilter])
+
+  const handleSyncRemarketing = async () => {
+    if (filteredCustomers.length === 0) return
+    setIsSyncing(true)
+    try {
+      const ids = filteredCustomers.map((c) => c.id)
+      const res = await syncRemarketing(ids, searchFilter, selectedEvent)
+      toast({
+        title: 'Sincronização Concluída',
+        description: `${res.synced} leads enviados para o Meta CAPI.`,
+      })
+      setSyncDialogOpen(false)
+    } catch (error: any) {
+      toast({
+        title: 'Erro de Sincronização',
+        description: error.message || 'Falha ao sincronizar leads com o Meta.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const metaTagsList = user?.meta_tags_list || []
+  let parsedTags: any[] = []
+  if (Array.isArray(metaTagsList)) {
+    parsedTags = metaTagsList
+  } else if (typeof metaTagsList === 'string') {
+    try {
+      parsedTags = JSON.parse(metaTagsList)
+    } catch {
+      /* intentionally ignored */
+    }
+  }
+
   if (loading) {
     return (
       <div className="h-[calc(100vh-10rem)] flex items-center justify-center">
@@ -104,21 +175,47 @@ export default function CRM() {
 
   return (
     <div className="h-[calc(100vh-10rem)] flex flex-col">
-      <div className="mb-6 shrink-0">
-        <h2 className="text-2xl font-bold text-secondary flex items-center gap-2">
-          <TrendingUp className="h-6 w-6 text-primary" />
-          Pipeline de Vendas Inteligente
-        </h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          A inteligência artificial analisa as conversas da linha 55 48 992098050 e avança os leads
-          automaticamente entre as 10 cadências.
-        </p>
+      <div className="mb-6 shrink-0 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-secondary flex items-center gap-2">
+            <TrendingUp className="h-6 w-6 text-primary" />
+            Pipeline de Vendas Inteligente
+          </h2>
+          <p className="text-muted-foreground text-sm mt-1">
+            A inteligência artificial analisa as conversas da linha 55 48 992098050 e avança os
+            leads automaticamente entre as 10 cadências.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Filtrar por nome (ex: Villa dos Açores)..."
+              className="pl-9 bg-background"
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+            />
+          </div>
+          {searchFilter && (
+            <Button
+              onClick={() => setSyncDialogOpen(true)}
+              variant="secondary"
+              className="gap-2 shrink-0 border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary"
+            >
+              <Megaphone className="h-4 w-4" />
+              <span className="hidden sm:inline">Remarketing</span> ({filteredCustomers.length})
+            </Button>
+          )}
+        </div>
       </div>
 
       <ScrollArea className="flex-1 border rounded-xl bg-muted/10 shadow-inner">
         <div className="flex h-full p-4 gap-4 w-max min-w-full">
           {PHASES.map((phase) => {
-            const phaseLeads = customers.filter((l) => (l.status || 'Lead Novo') === phase.title)
+            const phaseLeads = filteredCustomers.filter(
+              (l) => (l.status || 'Lead Novo') === phase.title,
+            )
 
             return (
               <div
@@ -223,6 +320,54 @@ export default function CRM() {
         </div>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
+
+      <Dialog open={syncDialogOpen} onOpenChange={setSyncDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sincronizar Remarketing (Meta CAPI)</DialogTitle>
+            <DialogDescription>
+              Isso enviará {filteredCustomers.length} leads filtrados pela busca "{searchFilter}"
+              para o Meta, permitindo criar campanhas segmentadas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Evento de Conversão / Tag</Label>
+              <Select value={selectedEvent} onValueChange={setSelectedEvent}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o evento" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Lead">Lead (Padrão)</SelectItem>
+                  {parsedTags.map((tag: any, idx: number) => {
+                    const tagValue =
+                      typeof tag === 'string' ? tag : tag.name || tag.id || `Tag ${idx + 1}`
+                    return (
+                      <SelectItem key={idx} value={tagValue}>
+                        {tagValue}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Apenas contatos com email ou telefone válidos serão sincronizados via hash SHA256 para
+              manter a segurança e conformidade com o Meta.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSyncDialogOpen(false)} disabled={isSyncing}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSyncRemarketing} disabled={isSyncing}>
+              {isSyncing ? 'Enviando...' : 'Confirmar Envio'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

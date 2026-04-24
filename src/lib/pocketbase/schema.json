@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-24T19:41:17.379Z",
+  "generatedAt": "2026-04-24T20:46:26.836Z",
   "collections": [
     {
       "name": "users",
@@ -680,7 +680,7 @@
           "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": []
+      "indexes": ["CREATE INDEX `idx_system_logs_type` ON `system_logs` (type)"]
     }
   ]
 }
