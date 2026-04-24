@@ -1,11 +1,27 @@
 onRecordAfterCreateSuccess((e) => {
   const sender = e.record.getString('sender')
 
-  if (sender === 'agent' || sender === 'ai' || sender === 'system') {
+  if (sender !== 'user' && sender !== 'customer') {
     return e.next()
   }
 
   try {
+    // 1. Race condition / Trigger optimization check
+    // If a newer customer message exists, skip this one to prevent redundant replies
+    try {
+      const latestCustomerMsgs = $app.findRecordsByFilter(
+        'conversations',
+        `customer_id = '${e.record.getString('customer_id')}' && (sender = 'user' || sender = 'customer')`,
+        '-created',
+        1,
+        0,
+      )
+      if (latestCustomerMsgs.length > 0 && latestCustomerMsgs[0].id !== e.record.id) {
+        $app.logger().info('Skipping auto-reply for older message', 'msgId', e.record.id)
+        return e.next()
+      }
+    } catch (_) {}
+
     const customer = $app.findRecordById('customers', e.record.getString('customer_id'))
     const tags = customer.get('tags') || []
 
@@ -45,7 +61,7 @@ onRecordAfterCreateSuccess((e) => {
 
     const customerMessage = e.record.getString('content') || ''
 
-    // 1. Embed customer message
+    // 2. Embed customer message
     const embedRes = $http.send({
       url: 'https://api.openai.com/v1/embeddings',
       method: 'POST',
@@ -97,7 +113,7 @@ onRecordAfterCreateSuccess((e) => {
 
     const contextText = contextChunks.join('\n\n')
 
-    // 2. Fetch conversation history
+    // 3. Fetch conversation history
     let historyRecords = []
     try {
       historyRecords = $app.findRecordsByFilter(
@@ -117,7 +133,7 @@ ${aiInstructions || 'Seja prestativa, educada e direta. Se não souber a respost
 
 DIRETRIZES RIGOROSAS:
 1. Responda de forma fluida, coerente e humana, baseando-se EXCLUSIVAMENTE no CONTEXTO RECUPERADO abaixo.
-2. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções".
+2. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.
 3. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.
 4. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
 5. Se a resposta não estiver no contexto, contorne educadamente informando que não tem essa informação no momento e que um corretor entrará em contato. NUNCA invente informações (alucinação).
@@ -142,7 +158,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
 
     messages.push({ role: 'user', content: customerMessage })
 
-    // 3. Call Chat API
+    // 4. Call Chat API
     const chatRes = $http.send({
       url: 'https://api.openai.com/v1/chat/completions',
       method: 'POST',
@@ -161,19 +177,50 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
     if (chatRes.statusCode === 200 && chatRes.json?.choices?.[0]?.message?.content) {
       responseText = chatRes.json.choices[0].message.content.trim()
       // Sanitize: Remove possible leaked instruction blocks if AI fails to follow directions
-      responseText = responseText.replace(/\(Aplicando instruções.*?\)/gi, '').trim()
-      responseText = responseText.replace(/\(Com base no contexto.*?\)/gi, '').trim()
+      responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
+      responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
+      responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
     } else {
       $app.logger().error('OpenAI Chat failed', 'status', chatRes.statusCode, 'body', chatRes.raw)
     }
 
-    const reply = new Record($app.findCollectionByNameOrId('conversations'))
-    reply.set('user_id', userId)
-    reply.set('customer_id', e.record.getString('customer_id'))
-    reply.set('sender', 'ai')
-    reply.set('content', responseText)
+    // 5. Idempotency check: prevent sending the exact same content within 5 minutes
+    let isDuplicate = false
+    try {
+      const lastAiMsgs = $app.findRecordsByFilter(
+        'conversations',
+        `customer_id = '${e.record.getString('customer_id')}' && sender = 'ai'`,
+        '-created',
+        1,
+        0,
+      )
+      if (lastAiMsgs.length > 0) {
+        const lastAiMsg = lastAiMsgs[0]
+        const lastAiDate = new Date(lastAiMsg.getString('created'))
+        const now = new Date()
+        const diffMins = (now.getTime() - lastAiDate.getTime()) / 60000
+        if (diffMins < 5 && lastAiMsg.getString('content') === responseText) {
+          isDuplicate = true
+          $app
+            .logger()
+            .info(
+              'Prevented loop: exact same AI response within 5 mins for customer',
+              'customerId',
+              e.record.getString('customer_id'),
+            )
+        }
+      }
+    } catch (_) {}
 
-    $app.save(reply)
+    if (!isDuplicate) {
+      const reply = new Record($app.findCollectionByNameOrId('conversations'))
+      reply.set('user_id', userId)
+      reply.set('customer_id', e.record.getString('customer_id'))
+      reply.set('sender', 'ai')
+      reply.set('content', responseText)
+
+      $app.save(reply)
+    }
   } catch (err) {
     $app.logger().error('AI Auto Reply Error', 'err', err)
   }

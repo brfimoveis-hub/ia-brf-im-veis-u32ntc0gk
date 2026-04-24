@@ -67,10 +67,18 @@ export default function Conversations() {
   })
 
   useRealtime('conversations', (e) => {
-    if (e.action === 'create')
-      setConversations((prev) => [...prev, e.record as unknown as Conversation])
-    else if (e.action === 'delete')
+    if (e.action === 'create') {
+      setConversations((prev) => {
+        if (prev.some((c) => c.id === e.record.id)) return prev
+        return [...prev, e.record as unknown as Conversation]
+      })
+    } else if (e.action === 'update') {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === e.record.id ? (e.record as unknown as Conversation) : c)),
+      )
+    } else if (e.action === 'delete') {
       setConversations((prev) => prev.filter((c) => c.id !== e.record.id))
+    }
   })
 
   const activeContact = customers.find((c) => c.id === activeContactId)
