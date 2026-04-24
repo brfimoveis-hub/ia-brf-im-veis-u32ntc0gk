@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-24T03:04:48.465Z",
+  "generatedAt": "2026-04-24T12:51:51.565Z",
   "collections": [
     {
       "name": "users",
@@ -561,6 +561,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "ai_instructions",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ebook_file",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price_table_file",
+          "type": "file",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_cadences_user_id ON cadences (user_id)"]

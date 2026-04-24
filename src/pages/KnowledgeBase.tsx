@@ -15,7 +15,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import {
-  getKnowledgeBaseEntries,
+  getFirstKnowledgeBaseEntry,
   createKnowledgeBaseEntry,
   updateKnowledgeBaseEntry,
   KnowledgeBaseEntry,
@@ -46,9 +46,8 @@ export default function KnowledgeBase() {
     async (resetForm: boolean = true) => {
       if (!user) return
       try {
-        const entries = await getKnowledgeBaseEntries()
-        if (entries.length > 0) {
-          const loadedEntry = entries[0]
+        const loadedEntry = await getFirstKnowledgeBaseEntry(user.id)
+        if (loadedEntry) {
           setEntry(loadedEntry)
           if (resetForm) {
             const formData = {
@@ -58,6 +57,12 @@ export default function KnowledgeBase() {
             }
             setForm(formData)
             setInitialForm(formData)
+          }
+        } else {
+          setEntry(null)
+          if (resetForm) {
+            setForm({ site: '', tags: '', ai_instructions: '' })
+            setInitialForm({ site: '', tags: '', ai_instructions: '' })
           }
         }
       } catch (err) {

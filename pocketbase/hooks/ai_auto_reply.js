@@ -15,9 +15,18 @@ onRecordAfterCreateSuccess((e) => {
 
     let aiContext = ''
     try {
-      const kbRecords = $app.findRecordsByFilter('knowledge_base', '1=1', '-created', 1, 0)
-      if (kbRecords && kbRecords.length > 0) {
-        aiContext = kbRecords[0].getString('ai_instructions') || ''
+      const userId = e.record.getString('user_id')
+      if (userId) {
+        const kbRecords = $app.findRecordsByFilter(
+          'knowledge_base',
+          `user_id = '${userId}'`,
+          '-created',
+          1,
+          0,
+        )
+        if (kbRecords && kbRecords.length > 0) {
+          aiContext = kbRecords[0].getString('ai_instructions') || ''
+        }
       }
     } catch (_) {
       // Ignorar se não encontrar base de conhecimento

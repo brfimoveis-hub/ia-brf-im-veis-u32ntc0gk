@@ -19,6 +19,19 @@ export interface KnowledgeBaseEntry {
 export const getKnowledgeBaseEntries = () =>
   pb.collection('knowledge_base').getFullList<KnowledgeBaseEntry>({ sort: '-created' })
 
+export const getFirstKnowledgeBaseEntry = async (userId: string) => {
+  try {
+    return await pb
+      .collection('knowledge_base')
+      .getFirstListItem<KnowledgeBaseEntry>(`user_id = "${userId}"`, {
+        sort: '-created',
+      })
+  } catch (err: any) {
+    if (err.status === 404) return null
+    throw err
+  }
+}
+
 export const createKnowledgeBaseEntry = (data: Partial<KnowledgeBaseEntry>) =>
   pb.collection('knowledge_base').create<KnowledgeBaseEntry>(data)
 
