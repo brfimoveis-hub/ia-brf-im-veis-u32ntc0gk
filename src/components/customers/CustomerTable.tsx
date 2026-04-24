@@ -26,9 +26,17 @@ interface CustomerTableProps {
   error: boolean
   onEdit: (lead: Customer) => void
   onDelete: (id: string) => void
+  lastElementRef?: (node: HTMLTableRowElement | null) => void
 }
 
-export function CustomerTable({ leads, loading, error, onEdit, onDelete }: CustomerTableProps) {
+export function CustomerTable({
+  leads,
+  loading,
+  error,
+  onEdit,
+  onDelete,
+  lastElementRef,
+}: CustomerTableProps) {
   if (error) {
     return (
       <div className="h-32 flex flex-col items-center justify-center text-muted-foreground">
@@ -70,10 +78,15 @@ export function CustomerTable({ leads, loading, error, onEdit, onDelete }: Custo
             </TableCell>
           </TableRow>
         ) : (
-          leads.map((lead) => {
+          leads.map((lead, index) => {
             const phase = PHASES.find((p) => p.id.toString() === lead.status)
+            const isLast = index === leads.length - 1
             return (
-              <TableRow key={lead.id} className="group hover:bg-muted/50">
+              <TableRow
+                key={lead.id}
+                ref={isLast ? lastElementRef : null}
+                className="group hover:bg-muted/50"
+              >
                 <TableCell className="whitespace-nowrap">
                   <Badge
                     variant="secondary"

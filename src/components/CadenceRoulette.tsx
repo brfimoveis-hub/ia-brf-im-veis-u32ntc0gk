@@ -45,7 +45,7 @@ export function CadenceRoulette({
 } = {}) {
   const [cadences, setCadences] = useState<Cadence[]>([])
 
-  const [perPage, setPerPage] = useState(100)
+  const [perPage] = useState(50)
   const [totalItems, setTotalItems] = useState(0)
 
   // Global state for continuous rotation across pages
@@ -622,59 +622,14 @@ export function CadenceRoulette({
         )}
       </CardContent>
 
-      {totalItems > 0 && (
-        <div className="bg-muted/30 border-t border-border/50 p-3 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            {isPrefetching && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1 animate-pulse">
-                <RefreshCw className="h-3 w-3 animate-spin" /> Carregando lote adicional...
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Itens por lote:</span>
-              <Select
-                value={perPage.toString()}
-                onValueChange={(v) => {
-                  setPerPage(Number(v))
-                  setGlobalIndex(0)
-                }}
-              >
-                <SelectTrigger className="h-7 w-20 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="12">12</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setGlobalIndex(Math.max(0, globalIndex - perPage))}
-                disabled={currentPage === 1 || isLoadingCurrent}
-                title="Lote Anterior"
-              >
-                <ChevronLeft className="h-3 w-3" />
-              </Button>
-              <span className="text-xs font-medium w-8 text-center">{currentPage}</span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setGlobalIndex(Math.min(totalItems - 1, currentPage * perPage))}
-                disabled={currentPage * perPage >= totalItems || isLoadingCurrent}
-                title="Próximo Lote"
-              >
-                <ChevronRight className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
+      {isPrefetching && totalItems > 0 && (
+        <div className="absolute bottom-2 left-2 z-50">
+          <Badge
+            variant="outline"
+            className="bg-background/80 backdrop-blur-sm text-[10px] flex items-center gap-1 shadow-sm border-border/50 text-muted-foreground"
+          >
+            <RefreshCw className="h-3 w-3 animate-spin" /> Carregando próximos...
+          </Badge>
         </div>
       )}
 
