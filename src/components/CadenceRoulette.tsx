@@ -39,7 +39,6 @@ export function CadenceRoulette({
   const [cadences, setCadences] = useState<Cadence[]>([])
   const perPage = 50
 
-  // Unified data state for continuous rotation
   const [leads, setLeads] = useState<Customer[]>([])
   const [totalItems, setTotalItems] = useState(0)
   const [page, setPage] = useState(1)
@@ -141,6 +140,7 @@ export function CadenceRoulette({
     loadLeads(1, true)
   }, [search, phaseFilter, sourceFilter, loadLeads])
 
+  // Automatically trigger infinite scroll background load when nearing the end
   useEffect(() => {
     if (leads.length > 0 && globalIndex >= leads.length - 5 && hasMore && !isFetchingMore) {
       const nextPage = page + 1
@@ -267,7 +267,7 @@ export function CadenceRoulette({
     return (
       <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <RefreshCw className="h-8 w-8 animate-spin mb-4 text-primary/50" />
-        <p>Iniciando Roleta Inteligente...</p>
+        <p>Iniciando Roleta Inteligente com carregamento contínuo...</p>
       </Card>
     )
   }
@@ -560,12 +560,12 @@ export function CadenceRoulette({
       </CardContent>
 
       {isFetchingMore && totalItems > 0 && (
-        <div className="absolute bottom-2 left-2 z-50">
+        <div className="absolute bottom-2 left-2 z-50 animate-fade-in-up">
           <Badge
             variant="outline"
-            className="bg-background/80 backdrop-blur-sm text-[10px] flex items-center gap-1 shadow-sm border-border/50 text-muted-foreground"
+            className="bg-background/90 backdrop-blur-md text-[10px] flex items-center gap-1.5 shadow-sm border-primary/20 text-primary py-1 px-2"
           >
-            <RefreshCw className="h-3 w-3 animate-spin" /> Carregando próximos...
+            <RefreshCw className="h-3 w-3 animate-spin" /> Carregando próximos na roleta...
           </Badge>
         </div>
       )}

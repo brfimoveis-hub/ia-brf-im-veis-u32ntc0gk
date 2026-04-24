@@ -61,7 +61,7 @@ export function CustomerTable({
       </TableHeader>
       <TableBody>
         {loading ? (
-          Array.from({ length: 10 }).map((_, i) => (
+          Array.from({ length: 15 }).map((_, i) => (
             <TableRow key={i}>
               <TableCell colSpan={COLUMNS.length + 2} className="py-3">
                 <Skeleton className="h-8 w-full" />
@@ -85,7 +85,7 @@ export function CustomerTable({
               <TableRow
                 key={lead.id}
                 ref={isLast ? lastElementRef : null}
-                className="group hover:bg-muted/50"
+                className="group hover:bg-muted/50 transition-colors"
               >
                 <TableCell className="whitespace-nowrap">
                   <Badge
@@ -160,7 +160,7 @@ export function CustomerTable({
                     </TableCell>
                   )
                 })}
-                <TableCell className="sticky right-0 bg-background group-hover:bg-muted/50 border-l">
+                <TableCell className="sticky right-0 bg-background group-hover:bg-muted/50 border-l transition-colors">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-8 w-8">

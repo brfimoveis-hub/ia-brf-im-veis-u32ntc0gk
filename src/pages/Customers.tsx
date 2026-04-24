@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -9,15 +9,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
-import { Search, Plus, Upload, Users, Filter, Loader2 } from 'lucide-react'
-import { lazy, Suspense } from 'react'
+import { Search, Plus, Upload, Users, Filter, Loader2, Play } from 'lucide-react'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { useToast } from '@/hooks/use-toast'
 import { getPaginatedCustomers, deleteCustomer, Customer } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
 import { PHASES } from '@/components/customers/constants'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
-import { Play } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const GoogleContactsImportDialog = lazy(() =>
@@ -185,7 +183,7 @@ export default function Customers() {
             <Users className="h-6 w-6 text-primary" /> Base de Clientes
           </h2>
           <p className="text-muted-foreground text-sm mt-1">
-            Gerencie seus leads e contatos importados do Google Contacts de forma otimizada.
+            Gerencie seus leads em uma lista contínua e fluida, sem se preocupar com páginas.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
