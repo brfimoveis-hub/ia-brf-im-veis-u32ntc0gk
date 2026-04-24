@@ -5,13 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { getActiveCadences, updateCadence, type Cadence } from '@/services/cadences'
 import { getPaginatedCustomers, updateCustomer, type Customer } from '@/services/customers'
@@ -44,26 +37,24 @@ export function CadenceRoulette({
   onCustomerUpdated?: (c: Customer) => void
 } = {}) {
   const [cadences, setCadences] = useState<Cadence[]>([])
+  const perPage = 50
 
-  const [perPage] = useState(50)
+  // Unified data state for continuous rotation
+  const [leads, setLeads] = useState<Customer[]>([])
   const [totalItems, setTotalItems] = useState(0)
-
-  // Global state for continuous rotation across pages
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
   const [globalIndex, setGlobalIndex] = useState(0)
-  const [pagesCache, setPagesCache] = useState<Record<number, Customer[]>>({})
-  const cacheRef = useRef<Record<number, Customer[]>>({})
-  const fetchingRef = useRef<Record<number, boolean>>({})
 
   const [cadenceIndex, setCadenceIndex] = useState(0)
   const [rotationKey, setRotationKey] = useState(0)
 
   const [isEditingCadence, setIsEditingCadence] = useState(false)
   const [isEditingNotes, setIsEditingNotes] = useState(false)
-
   const [isPaused, setIsPaused] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
-  const [isLoadingCurrent, setIsLoadingCurrent] = useState(true)
-  const [isPrefetching, setIsPrefetching] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   const [editCadenceContent, setEditCadenceContent] = useState('')
@@ -97,105 +88,66 @@ export function CadenceRoulette({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isEditingCadence, isEditingNotes])
 
-  const loadCadences = async () => {
-    try {
-      const cadData = await getActiveCadences()
-      setCadences(cadData)
-      setCadenceIndex((prev) => (prev >= cadData.length ? 0 : prev))
-    } catch (err) {
-      toast({
-        title: 'Erro',
-        description: 'Falha ao carregar cadências.',
-        variant: 'destructive',
-      })
-    }
-  }
-
   useEffect(() => {
-    loadCadences()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    getActiveCadences()
+      .then((data) => {
+        setCadences(data)
+        setCadenceIndex((prev) => (prev >= data.length ? 0 : prev))
+      })
+      .catch(() =>
+        toast({
+          title: 'Erro',
+          description: 'Falha ao carregar cadências.',
+          variant: 'destructive',
+        }),
+      )
+  }, [toast])
 
-  const loadPage = useCallback(
-    async (p: number, isPrefetch: boolean) => {
-      if (cacheRef.current[p] || fetchingRef.current[p]) return
-
-      fetchingRef.current[p] = true
-      if (isPrefetch) {
-        setIsPrefetching(true)
-      } else {
-        setIsLoadingCurrent(true)
-      }
-
+  const loadLeads = useCallback(
+    async (p: number, overwrite = false) => {
       try {
+        if (overwrite) setIsLoading(true)
+        else setIsFetchingMore(true)
+
         const data = await getPaginatedCustomers(p, perPage, search, phaseFilter, sourceFilter)
-        cacheRef.current[p] = data.items
+
+        setLeads((prev) => {
+          if (overwrite) return data.items
+          const newItems = data.items.filter((item) => !prev.some((p) => p.id === item.id))
+          return [...prev, ...newItems]
+        })
+
         setTotalItems(data.totalItems)
-        setPagesCache({ ...cacheRef.current })
+        setHasMore(p < data.totalPages)
+        if (overwrite) setGlobalIndex(0)
       } catch (err) {
-        if (!isPrefetch) {
+        if (!overwrite)
           toast({
             title: 'Erro',
-            description: 'Falha ao carregar dados da roleta.',
+            description: 'Falha ao carregar mais clientes.',
             variant: 'destructive',
           })
-        }
       } finally {
-        fetchingRef.current[p] = false
-        setIsPrefetching(false)
-        setIsLoadingCurrent(false)
+        setIsLoading(false)
+        setIsFetchingMore(false)
         setIsInitialized(true)
       }
     },
-    [perPage, search, phaseFilter, sourceFilter, toast],
+    [search, phaseFilter, sourceFilter, perPage, toast],
   )
 
-  // Reset logic when filters change
   useEffect(() => {
-    cacheRef.current = {}
-    fetchingRef.current = {}
-    setPagesCache({})
-    setTotalItems(0)
-    setGlobalIndex(0)
-    setIsInitialized(false)
+    setPage(1)
+    loadLeads(1, true)
+  }, [search, phaseFilter, sourceFilter, loadLeads])
 
-    loadPage(1, false)
-  }, [search, phaseFilter, sourceFilter, perPage, loadPage])
-
-  // Prefetch and lazy load on index change
   useEffect(() => {
-    if (!isInitialized) return
-
-    const currentPage = Math.floor(globalIndex / perPage) + 1
-    const nextPage = currentPage + 1
-    const prevPage = currentPage - 1
-
-    // Fetch current if missing
-    if (!cacheRef.current[currentPage] && !fetchingRef.current[currentPage]) {
-      loadPage(currentPage, false)
+    if (leads.length > 0 && globalIndex >= leads.length - 5 && hasMore && !isFetchingMore) {
+      const nextPage = page + 1
+      setPage(nextPage)
+      loadLeads(nextPage, false)
     }
-
-    // Prefetch next
-    const localIndex = globalIndex % perPage
-    const currentItems = cacheRef.current[currentPage]?.length || perPage
-
-    if (localIndex >= Math.max(0, currentItems - 5)) {
-      const totalPages = Math.ceil(totalItems / perPage)
-      if (nextPage <= totalPages && !cacheRef.current[nextPage] && !fetchingRef.current[nextPage]) {
-        loadPage(nextPage, true)
-      }
-    }
-
-    // Prefetch prev if going backwards
-    if (
-      localIndex <= 4 &&
-      prevPage >= 1 &&
-      !cacheRef.current[prevPage] &&
-      !fetchingRef.current[prevPage]
-    ) {
-      loadPage(prevPage, true)
-    }
-  }, [globalIndex, perPage, totalItems, isInitialized, loadPage])
+  }, [globalIndex, leads.length, hasMore, isFetchingMore, page, loadLeads])
 
   const nextCustomer = useCallback(() => {
     if (totalItems === 0) return
@@ -223,23 +175,18 @@ export function CadenceRoulette({
   useEffect(() => {
     if (
       !isInitialized ||
-      isLoadingCurrent ||
+      isLoading ||
       isPaused ||
       isEditingCadence ||
       isEditingNotes ||
       totalItems === 0
-    ) {
+    )
       return
-    }
-
-    const timer = setInterval(() => {
-      nextCustomerRef.current()
-    }, 15000)
-
+    const timer = setInterval(() => nextCustomerRef.current(), 15000)
     return () => clearInterval(timer)
   }, [
     isInitialized,
-    isLoadingCurrent,
+    isLoading,
     isPaused,
     isEditingCadence,
     isEditingNotes,
@@ -248,9 +195,7 @@ export function CadenceRoulette({
   ])
 
   const currentCadence = cadences[cadenceIndex]
-  const currentPage = Math.floor(globalIndex / perPage) + 1
-  const localIndex = globalIndex % perPage
-  const currentCustomer = pagesCache[currentPage]?.[localIndex]
+  const currentCustomer = leads[globalIndex]
 
   const handleEditCadence = () => {
     if (!currentCadence) return
@@ -274,7 +219,6 @@ export function CadenceRoulette({
       })
       return
     }
-
     setIsSaving(true)
     try {
       const updated = await updateCadence(currentCadence.id, { content: editCadenceContent })
@@ -294,17 +238,8 @@ export function CadenceRoulette({
     setIsSaving(true)
     try {
       const updated = await updateCustomer(currentCustomer.id, { notes: editNotesContent })
-
-      if (cacheRef.current[currentPage]) {
-        cacheRef.current[currentPage] = cacheRef.current[currentPage].map((c) =>
-          c.id === updated.id ? updated : c,
-        )
-        setPagesCache({ ...cacheRef.current })
-      }
-
-      if (onCustomerUpdated) {
-        onCustomerUpdated(updated)
-      }
+      setLeads((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      if (onCustomerUpdated) onCustomerUpdated(updated)
       setIsEditingNotes(false)
       toast({ title: 'Sucesso', description: 'Anotações do cliente atualizadas.' })
       if (blocker.state === 'blocked' && !isEditingCadence) blocker.proceed?.()
@@ -328,7 +263,7 @@ export function CadenceRoulette({
   const nextCadence = () => setCadenceIndex((p) => (p + 1) % cadences.length)
   const prevCadence = () => setCadenceIndex((p) => (p - 1 + cadences.length) % cadences.length)
 
-  if (!isInitialized || (isLoadingCurrent && totalItems === 0)) {
+  if (!isInitialized || (isLoading && leads.length === 0)) {
     return (
       <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <RefreshCw className="h-8 w-8 animate-spin mb-4 text-primary/50" />
@@ -337,7 +272,7 @@ export function CadenceRoulette({
     )
   }
 
-  if (!isLoadingCurrent && totalItems === 0) {
+  if (!isLoading && leads.length === 0) {
     return (
       <Card className="h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed">
         <Layers className="h-8 w-8 mb-4 text-primary/50" />
@@ -355,10 +290,10 @@ export function CadenceRoulette({
     <Card
       className={cn(
         'shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative transition-opacity duration-200',
-        isLoadingCurrent && 'pointer-events-none',
+        isLoading && 'pointer-events-none',
       )}
     >
-      {isLoadingCurrent && totalItems > 0 && (
+      {isLoading && leads.length > 0 && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-[1px]">
           <RefreshCw className="h-8 w-8 animate-spin text-primary mb-2" />
           <p className="text-sm font-medium text-primary">Carregando dados...</p>
@@ -366,17 +301,13 @@ export function CadenceRoulette({
       )}
 
       <div className="absolute top-0 left-0 w-full h-1 bg-muted">
-        {!isLoadingCurrent &&
-          !isPaused &&
-          !isEditingCadence &&
-          !isEditingNotes &&
-          totalItems > 1 && (
-            <div
-              key={rotationKey}
-              className="h-full bg-primary animate-[progress_15s_linear]"
-              style={{ width: '100%', animationFillMode: 'forwards' }}
-            />
-          )}
+        {!isLoading && !isPaused && !isEditingCadence && !isEditingNotes && totalItems > 1 && (
+          <div
+            key={rotationKey}
+            className="h-full bg-primary animate-[progress_15s_linear]"
+            style={{ width: '100%', animationFillMode: 'forwards' }}
+          />
+        )}
       </div>
 
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-2 gap-4">
@@ -407,7 +338,7 @@ export function CadenceRoulette({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => prevCustomer()}
+              onClick={prevCustomer}
               disabled={isEditingCadence || isEditingNotes || totalItems <= 1}
               title="Cliente Anterior"
             >
@@ -417,7 +348,7 @@ export function CadenceRoulette({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => nextCustomer()}
+              onClick={nextCustomer}
               disabled={isEditingCadence || isEditingNotes || totalItems <= 1}
               title="Próximo Cliente"
             >
@@ -428,83 +359,89 @@ export function CadenceRoulette({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {currentCustomer && (
-          <div className="bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-4 shadow-sm group relative">
-            <div className="flex flex-col sm:flex-row gap-4 items-start justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="font-semibold text-secondary">{currentCustomer.name}</h3>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {currentCustomer.status}
-                  </Badge>
-                </div>
-                {(currentCustomer.phone || currentCustomer.phone_1_value) && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Phone className="h-3.5 w-3.5" />
-                    <span>{currentCustomer.phone || currentCustomer.phone_1_value}</span>
+        {!currentCustomer && isFetchingMore ? (
+          <div className="bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-8 flex justify-center items-center">
+            <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          currentCustomer && (
+            <div className="bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-4 shadow-sm group relative">
+              <div className="flex flex-col sm:flex-row gap-4 items-start justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="font-semibold text-secondary">{currentCustomer.name}</h3>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {currentCustomer.status}
+                    </Badge>
                   </div>
-                )}
-              </div>
+                  {(currentCustomer.phone || currentCustomer.phone_1_value) && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="h-3.5 w-3.5" />
+                      <span>{currentCustomer.phone || currentCustomer.phone_1_value}</span>
+                    </div>
+                  )}
+                </div>
 
-              <div className="w-full sm:w-1/2">
-                {isEditingNotes ? (
-                  <div className="space-y-2 animate-in fade-in">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-secondary flex items-center gap-1.5">
+                <div className="w-full sm:w-1/2">
+                  {isEditingNotes ? (
+                    <div className="space-y-2 animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-secondary flex items-center gap-1.5">
+                          <StickyNote className="w-3.5 h-3.5" /> Anotações
+                        </span>
+                      </div>
+                      <Textarea
+                        className="min-h-[80px] text-sm resize-none"
+                        value={editNotesContent}
+                        onChange={(e) => setEditNotesContent(e.target.value)}
+                        placeholder="Anotações do cliente..."
+                        disabled={isSaving}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleCancelNotes}
+                          disabled={isSaving}
+                          className="h-7 text-xs"
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSaveNotes}
+                          disabled={isSaving}
+                          className="h-7 text-xs"
+                        >
+                          {isSaving && <RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />}
+                          Salvar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative cursor-text group/notes" onClick={handleEditNotes}>
+                      <div className="absolute right-1 top-1 opacity-0 group-hover/notes:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" className="h-6 w-6">
+                          <Edit2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                      <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-1">
                         <StickyNote className="w-3.5 h-3.5" /> Anotações
                       </span>
+                      <ScrollArea className="h-[60px] w-full text-sm text-secondary/80 bg-muted/30 p-2 rounded border border-transparent group-hover/notes:border-border/50">
+                        {currentCustomer.notes || (
+                          <span className="italic opacity-50">
+                            Sem anotações. Clique para adicionar.
+                          </span>
+                        )}
+                      </ScrollArea>
                     </div>
-                    <Textarea
-                      className="min-h-[80px] text-sm resize-none"
-                      value={editNotesContent}
-                      onChange={(e) => setEditNotesContent(e.target.value)}
-                      placeholder="Anotações do cliente..."
-                      disabled={isSaving}
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleCancelNotes}
-                        disabled={isSaving}
-                        className="h-7 text-xs"
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleSaveNotes}
-                        disabled={isSaving}
-                        className="h-7 text-xs"
-                      >
-                        {isSaving && <RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />}
-                        Salvar
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="relative cursor-text group/notes" onClick={handleEditNotes}>
-                    <div className="absolute right-1 top-1 opacity-0 group-hover/notes:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" className="h-6 w-6">
-                        <Edit2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                    <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-1">
-                      <StickyNote className="w-3.5 h-3.5" /> Anotações
-                    </span>
-                    <ScrollArea className="h-[60px] w-full text-sm text-secondary/80 bg-muted/30 p-2 rounded border border-transparent group-hover/notes:border-border/50">
-                      {currentCustomer.notes || (
-                        <span className="italic opacity-50">
-                          Sem anotações. Clique para adicionar.
-                        </span>
-                      )}
-                    </ScrollArea>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )
         )}
 
         {cadences.length > 0 && (
@@ -622,7 +559,7 @@ export function CadenceRoulette({
         )}
       </CardContent>
 
-      {isPrefetching && totalItems > 0 && (
+      {isFetchingMore && totalItems > 0 && (
         <div className="absolute bottom-2 left-2 z-50">
           <Badge
             variant="outline"

@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
-import { Search, Plus, Upload, Users, Filter } from 'lucide-react'
+import { Search, Plus, Upload, Users, Filter, Loader2 } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { useToast } from '@/hooks/use-toast'
@@ -260,7 +260,8 @@ export default function Customers() {
               onDelete={handleDelete}
             />
             {loadingMore && (
-              <div className="flex justify-center p-4 text-muted-foreground">
+              <div className="flex justify-center items-center p-4 text-muted-foreground gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 <span className="text-sm animate-pulse">Carregando mais clientes...</span>
               </div>
             )}
