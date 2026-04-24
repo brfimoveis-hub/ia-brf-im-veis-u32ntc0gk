@@ -12,6 +12,8 @@ import { getCustomers, updateCustomer, syncRemarketing, type Customer } from '@/
 import { createConversation } from '@/services/conversations'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { useNavigate } from 'react-router-dom'
+import { ToastAction } from '@/components/ui/toast'
 import {
   Dialog,
   DialogContent,
@@ -50,6 +52,7 @@ export default function CRM() {
   const customersRef = useRef(customers)
   const { toast } = useToast()
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   const [searchFilter, setSearchFilter] = useState('')
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
@@ -204,8 +207,16 @@ export default function CRM() {
                 if (!user?.meta_pixel_id || !user?.meta_capi_token) {
                   toast({
                     description:
-                      'Erro de sincronização - o ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para Configurações para preenchê-los.',
+                      'Erro de sincronização: o ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para configurações para preenchê-los.',
                     variant: 'destructive',
+                    action: (
+                      <ToastAction
+                        altText="Ir para configurações"
+                        onClick={() => navigate('/configuracoes')}
+                      >
+                        Configurar
+                      </ToastAction>
+                    ),
                   })
                   if (user?.id) {
                     pb.collection('system_logs')
