@@ -5,13 +5,49 @@ onRecordAfterCreateSuccess((e) => {
     return e.next()
   }
 
+  let acquiredLock = false
+  const customerId = e.record.getString('customer_id')
+
   try {
+    // 0. Strict Locking Mechanism
+    try {
+      $app.runInTransaction((txApp) => {
+        const customer = txApp.findRecordById('customers', customerId)
+        const tags = customer.get('tags') || []
+
+        if (tags.includes('ai_processing')) {
+          const updatedDate = new Date(customer.getString('updated')).getTime()
+          const now = new Date().getTime()
+          // If lock is older than 2 minutes, assume stale and override
+          if (now - updatedDate < 120000) {
+            throw new Error('LOCKED')
+          }
+        }
+
+        const newTags = tags.filter((t) => t !== 'ai_processing')
+        newTags.push('ai_processing')
+        customer.set('tags', newTags)
+        txApp.save(customer)
+        acquiredLock = true
+      })
+    } catch (err) {
+      if (err.message === 'LOCKED') {
+        $app
+          .logger()
+          .info(
+            'Prevented concurrent execution: AI is already processing',
+            'customerId',
+            customerId,
+          )
+        return e.next()
+      }
+    }
+
     // 1. Race condition / Trigger optimization check
-    // If a newer customer message exists, skip this one to prevent redundant replies
     try {
       const latestMsgs = $app.findRecordsByFilter(
         'conversations',
-        `customer_id = '${e.record.getString('customer_id')}'`,
+        `customer_id = '${customerId}'`,
         '-created',
         1,
         0,
@@ -41,7 +77,28 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (_) {}
 
-    const customer = $app.findRecordById('customers', e.record.getString('customer_id'))
+    // 1.5 Cooldown check (Debouncing)
+    try {
+      const lastAiMsgs = $app.findRecordsByFilter(
+        'conversations',
+        `customer_id = '${customerId}' && sender = 'ai'`,
+        '-created',
+        1,
+        0,
+      )
+      if (lastAiMsgs.length > 0) {
+        const lastAiDate = new Date(lastAiMsgs[0].getString('created'))
+        const now = new Date()
+        if (now.getTime() - lastAiDate.getTime() < 10000) {
+          $app
+            .logger()
+            .info('Skipping auto-reply: cooldown period active (10s)', 'customerId', customerId)
+          return e.next()
+        }
+      }
+    } catch (_) {}
+
+    const customer = $app.findRecordById('customers', customerId)
     const tags = customer.get('tags') || []
 
     if (tags.includes('ai_paused')) {
@@ -137,7 +194,7 @@ onRecordAfterCreateSuccess((e) => {
     try {
       historyRecords = $app.findRecordsByFilter(
         'conversations',
-        `customer_id = '${e.record.getString('customer_id')}'`,
+        `customer_id = '${customerId}'`,
         '-created',
         10,
         0,
@@ -213,7 +270,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
       // 5.1 Check if the conversation has advanced while we were processing
       const currentLastMsgs = $app.findRecordsByFilter(
         'conversations',
-        `customer_id = '${e.record.getString('customer_id')}'`,
+        `customer_id = '${customerId}'`,
         '-created',
         1,
         0,
@@ -229,29 +286,25 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
         }
       }
 
-      // 5.2 Prevent sending the exact same content within 5 minutes
+      // 5.2 Prevent sending the exact same content (Duplicate Content Filter)
       if (!isDuplicate) {
         const lastAiMsgs = $app.findRecordsByFilter(
           'conversations',
-          `customer_id = '${e.record.getString('customer_id')}' && sender = 'ai'`,
+          `customer_id = '${customerId}' && sender = 'ai'`,
           '-created',
           1,
           0,
         )
         if (lastAiMsgs.length > 0) {
           const lastAiMsg = lastAiMsgs[0]
-          const lastAiDate = new Date(lastAiMsg.getString('created'))
-          const now = new Date()
-          const diffMins = (now.getTime() - lastAiDate.getTime()) / 60000
-          if (diffMins < 5 && lastAiMsg.getString('content') === responseText) {
+          const lastContent = (lastAiMsg.getString('content') || '').trim().toLowerCase()
+          const newContent = responseText.trim().toLowerCase()
+
+          if (lastContent === newContent) {
             isDuplicate = true
             $app
               .logger()
-              .info(
-                'Prevented loop: exact same AI response within 5 mins for customer',
-                'customerId',
-                e.record.getString('customer_id'),
-              )
+              .info('Prevented loop: exact same AI response generated', 'customerId', customerId)
           }
         }
       }
@@ -260,7 +313,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
     if (!isDuplicate) {
       const reply = new Record($app.findCollectionByNameOrId('conversations'))
       reply.set('user_id', userId)
-      reply.set('customer_id', e.record.getString('customer_id'))
+      reply.set('customer_id', customerId)
       reply.set('sender', 'ai')
       reply.set('content', responseText)
 
@@ -268,6 +321,24 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
     }
   } catch (err) {
     $app.logger().error('AI Auto Reply Error', 'err', err)
+  } finally {
+    if (acquiredLock) {
+      try {
+        $app.runInTransaction((txApp) => {
+          const customer = txApp.findRecordById('customers', customerId)
+          const tags = customer.get('tags') || []
+          if (tags.includes('ai_processing')) {
+            customer.set(
+              'tags',
+              tags.filter((t) => t !== 'ai_processing'),
+            )
+            txApp.save(customer)
+          }
+        })
+      } catch (err) {
+        $app.logger().error('Failed to release lock', 'customerId', customerId, 'err', err)
+      }
+    }
   }
 
   return e.next()

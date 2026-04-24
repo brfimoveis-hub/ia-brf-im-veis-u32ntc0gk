@@ -82,7 +82,20 @@ export default function Conversations() {
   })
 
   const activeContact = customers.find((c) => c.id === activeContactId)
-  const activeMessages = conversations.filter((c) => c.customer_id === activeContactId)
+  const activeMessages = conversations
+    .filter((c) => c.customer_id === activeContactId)
+    .filter((msg, index, arr) => {
+      if (index === 0) return true
+      const prevMsg = arr[index - 1]
+      if (
+        msg.sender === prevMsg.sender &&
+        msg.content.trim().toLowerCase() === prevMsg.content.trim().toLowerCase()
+      ) {
+        const timeDiff = new Date(msg.created).getTime() - new Date(prevMsg.created).getTime()
+        if (timeDiff < 60 * 60 * 1000) return false // Filter immediate duplicates (within 1h)
+      }
+      return true
+    })
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
