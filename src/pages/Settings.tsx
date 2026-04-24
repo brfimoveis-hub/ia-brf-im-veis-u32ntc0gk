@@ -33,18 +33,27 @@ export default function Settings() {
   const [metaPixelId, setMetaPixelId] = useState('')
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [metaTestEventCode, setMetaTestEventCode] = useState('')
+  const [metaTagsList, setMetaTagsList] = useState<{ id: string; name: string }[]>([])
 
-  const [initialMeta, setInitialMeta] = useState({ pixel: '', capi: '', test: '' })
+  const [initialMeta, setInitialMeta] = useState({ pixel: '', capi: '', test: '', tags: '[]' })
 
   useEffect(() => {
-    if (user && !initialMeta.pixel && !initialMeta.capi && !initialMeta.test) {
+    if (
+      user &&
+      !initialMeta.pixel &&
+      !initialMeta.capi &&
+      !initialMeta.test &&
+      initialMeta.tags === '[]'
+    ) {
       setMetaPixelId(user.meta_pixel_id || '')
       setMetaCapiToken(user.meta_capi_token || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
+      setMetaTagsList(user.meta_tags_list || [])
       setInitialMeta({
         pixel: user.meta_pixel_id || '',
         capi: user.meta_capi_token || '',
         test: user.meta_test_event_code || '',
+        tags: JSON.stringify(user.meta_tags_list || []),
       })
     }
   }, [user, initialMeta])
@@ -52,7 +61,8 @@ export default function Settings() {
   const isDirty =
     metaPixelId !== initialMeta.pixel ||
     metaCapiToken !== initialMeta.capi ||
-    metaTestEventCode !== initialMeta.test
+    metaTestEventCode !== initialMeta.test ||
+    JSON.stringify(metaTagsList) !== initialMeta.tags
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
@@ -99,11 +109,13 @@ export default function Settings() {
           meta_pixel_id: metaPixelId,
           meta_capi_token: metaCapiToken,
           meta_test_event_code: metaTestEventCode,
+          meta_tags_list: metaTagsList,
         })
         setInitialMeta({
           pixel: updatedUser.meta_pixel_id || '',
           capi: updatedUser.meta_capi_token || '',
           test: updatedUser.meta_test_event_code || '',
+          tags: JSON.stringify(updatedUser.meta_tags_list || []),
         })
       }
 
@@ -134,11 +146,13 @@ export default function Settings() {
           meta_pixel_id: metaPixelId,
           meta_capi_token: metaCapiToken,
           meta_test_event_code: metaTestEventCode,
+          meta_tags_list: metaTagsList,
         })
         setInitialMeta({
           pixel: updatedUser.meta_pixel_id || '',
           capi: updatedUser.meta_capi_token || '',
           test: updatedUser.meta_test_event_code || '',
+          tags: JSON.stringify(updatedUser.meta_tags_list || []),
         })
       }
       toast({
@@ -278,7 +292,7 @@ export default function Settings() {
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-3">
                 <Label htmlFor="meta-pixel-id" className="font-semibold text-secondary">
-                  ID do Pixel do Meta
+                  ID do Pixel do Meta (Principal)
                 </Label>
                 <Input
                   id="meta-pixel-id"
@@ -301,6 +315,31 @@ export default function Settings() {
                 />
               </div>
             </div>
+
+            {metaTagsList.length > 0 && (
+              <div className="space-y-3 pt-4 border-t">
+                <Label className="font-semibold text-secondary">
+                  Tags Multi-Pixel ({metaTagsList.length})
+                </Label>
+                <div className="grid gap-2 max-h-[200px] overflow-y-auto pr-2">
+                  {metaTagsList.map((tag, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-2 text-sm border rounded-md bg-muted/20"
+                    >
+                      <span className="font-medium truncate max-w-[200px]">{tag.name}</span>
+                      <span className="text-muted-foreground font-mono bg-muted/50 px-2 py-0.5 rounded">
+                        {tag.id}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Estas tags são inicializadas automaticamente em todas as páginas para rastreamento
+                  simultâneo.
+                </p>
+              </div>
+            )}
             <div className="space-y-3">
               <Label htmlFor="meta-capi-token" className="font-semibold text-secondary">
                 Token de Acesso (CAPI)

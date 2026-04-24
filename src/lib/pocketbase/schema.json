@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-24T16:34:19.182Z",
+  "generatedAt": "2026-04-24T19:36:03.319Z",
   "collections": [
     {
       "name": "users",
@@ -71,6 +71,12 @@
         {
           "name": "ai_voice_id",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_tags_list",
+          "type": "json",
           "required": false,
           "system": false
         }
