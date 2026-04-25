@@ -153,13 +153,13 @@ export const bulkDeleteCustomers = async (ids?: string[]): Promise<void> => {
 }
 
 export const syncRemarketing = async (
-  customerIds: string[],
+  payloads: { id: string; em?: string; ph?: string; tags: string[] }[],
   keyword: string,
   eventName: string,
 ): Promise<{ success: boolean; synced: number }> => {
   return pb.send('/backend/v1/meta-remarketing-sync', {
     method: 'POST',
-    body: JSON.stringify({ customerIds, keyword, eventName }),
+    body: JSON.stringify({ payloads, keyword, eventName }),
     headers: { 'Content-Type': 'application/json' },
   })
 }

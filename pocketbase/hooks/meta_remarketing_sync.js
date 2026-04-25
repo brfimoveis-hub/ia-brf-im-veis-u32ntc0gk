@@ -3,11 +3,14 @@ routerAdd(
   '/backend/v1/meta-remarketing-sync',
   (e) => {
     const body = e.requestInfo().body || {}
-    const customerIds = body.customerIds || []
+    const payloads = body.payloads || []
     const eventName = body.eventName || 'Lead'
     const keyword = body.keyword || ''
 
-    if (!customerIds.length) return e.badRequestError('No customers provided')
+    // Backward compatibility for older clients sending customerIds
+    const customerIds = body.customerIds || []
+
+    if (!payloads.length && !customerIds.length) return e.badRequestError('No customers provided')
 
     const user = e.auth
     if (!user) return e.unauthorizedError('Not authenticated')
@@ -25,13 +28,13 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing_error')
+        logRecord.set('type', 'remarketing')
         logRecord.set('message', 'Falha na sincronização: credenciais do Meta ausentes.')
         logRecord.set(
           'details',
           'O ID do Pixel ou o Token da API de Conversões não estão configurados.',
         )
-        logRecord.set('payload', { customerIds, eventName })
+        logRecord.set('payload', { count: payloads.length || customerIds.length, eventName })
         $app.save(logRecord)
       } catch (logErr) {}
       return e.badRequestError(
@@ -44,88 +47,107 @@ routerAdd(
     }
 
     const finalEventName = eventName
-    const customers = []
-
-    for (const id of customerIds) {
-      try {
-        const c = $app.findRecordById('customers', id)
-        if (c.getString('user_id') === user.id) {
-          customers.push(c)
-        }
-      } catch (err) {}
-    }
+    const data = []
+    const currentTimestamp = Math.floor(Date.now() / 1000)
 
     let metaTagsList = user.get('meta_tags_list')
     if (!metaTagsList) metaTagsList = []
     if (typeof metaTagsList === 'string') {
       try {
         metaTagsList = JSON.parse(metaTagsList)
-      } catch (e) {
+      } catch (err) {
         metaTagsList = []
       }
     }
     if (!Array.isArray(metaTagsList)) metaTagsList = []
 
-    if (!customers.length) {
+    const allIds = payloads.length > 0 ? payloads.map((p) => p.id) : customerIds
+    const validCustomers = new Set()
+
+    for (const id of allIds) {
       try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing_error')
-        logRecord.set('message', 'Falha na sincronização: clientes não encontrados.')
-        logRecord.set('details', 'Nenhum dos clientes fornecidos pertence a este usuário.')
-        logRecord.set('payload', { customerIds, eventName })
-        $app.save(logRecord)
-      } catch (logErr) {}
+        const c = $app.findRecordById('customers', id)
+        if (c.getString('user_id') === user.id) {
+          validCustomers.add(id)
+        }
+      } catch (err) {}
+    }
+
+    if (validCustomers.size === 0) {
       return e.badRequestError('Nenhum cliente válido encontrado')
     }
 
-    const data = []
-    const currentTimestamp = Math.floor(Date.now() / 1000)
+    if (payloads.length > 0) {
+      for (const p of payloads) {
+        if (!validCustomers.has(p.id)) continue
 
-    for (const c of customers) {
-      let email = c.getString('email_1_value') || c.getString('email') || ''
-      let phone = c.getString('phone_1_value') || c.getString('phone') || ''
+        const userData = {}
+        if (p.em) userData.em = [p.em]
+        if (p.ph) userData.ph = [p.ph]
 
-      email = email.trim().toLowerCase()
-      phone = phone.replace(/[^0-9]/g, '')
+        if (userData.em || userData.ph) {
+          let cTags = p.tags || []
+          const validTags = cTags.filter((t) => metaTagsList.includes(t))
+          const finalKeyword = validTags.length > 0 ? validTags.join(', ') : keyword
 
-      // Normalize Brazilian phone numbers to include country code for Meta CAPI
-      if (phone.length === 10 || phone.length === 11) {
-        phone = '55' + phone
-      }
-
-      const userData = {}
-      if (email) userData.em = [$security.sha256(email)]
-      if (phone) userData.ph = [$security.sha256(phone)]
-
-      let cTags = c.get('tags')
-      if (!cTags) cTags = []
-      if (typeof cTags === 'string') {
-        try {
-          cTags = JSON.parse(cTags)
-        } catch (e) {
-          cTags = []
+          data.push({
+            event_name: finalEventName,
+            event_time: currentTimestamp,
+            action_source: 'other',
+            user_data: userData,
+            custom_data: {
+              currency: 'BRL',
+              value: 0,
+              search_keyword: finalKeyword,
+            },
+          })
         }
       }
-      if (!Array.isArray(cTags)) cTags = []
+    } else {
+      for (const id of customerIds) {
+        if (!validCustomers.has(id)) continue
+        const c = $app.findRecordById('customers', id)
+        let email = c.getString('email_1_value') || c.getString('email') || ''
+        let phone = c.getString('phone_1_value') || c.getString('phone') || ''
 
-      // verify if the tags associated with the filtered leads are included in the user's meta_tags_list configuration.
-      const validTags = cTags.filter((t) => metaTagsList.includes(t))
-      const finalKeyword = validTags.length > 0 ? validTags.join(', ') : keyword
+        email = email.trim().toLowerCase()
+        phone = phone.replace(/[^0-9]/g, '')
 
-      if (userData.em || userData.ph) {
-        data.push({
-          event_name: finalEventName,
-          event_time: currentTimestamp,
-          action_source: 'other',
-          user_data: userData,
-          custom_data: {
-            currency: 'BRL',
-            value: 0,
-            search_keyword: finalKeyword,
-          },
-        })
+        if (phone.length === 10 || phone.length === 11) {
+          phone = '55' + phone
+        }
+
+        const userData = {}
+        if (email) userData.em = [$security.sha256(email)]
+        if (phone) userData.ph = [$security.sha256(phone)]
+
+        let cTags = c.get('tags')
+        if (!cTags) cTags = []
+        if (typeof cTags === 'string') {
+          try {
+            cTags = JSON.parse(cTags)
+          } catch (err) {
+            cTags = []
+          }
+        }
+        if (!Array.isArray(cTags)) cTags = []
+
+        const validTags = cTags.filter((t) => metaTagsList.includes(t))
+        const finalKeyword = validTags.length > 0 ? validTags.join(', ') : keyword
+
+        if (userData.em || userData.ph) {
+          data.push({
+            event_name: finalEventName,
+            event_time: currentTimestamp,
+            action_source: 'other',
+            user_data: userData,
+            custom_data: {
+              currency: 'BRL',
+              value: 0,
+              search_keyword: finalKeyword,
+            },
+          })
+        }
       }
     }
 
@@ -134,10 +156,10 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing_error')
+        logRecord.set('type', 'remarketing')
         logRecord.set('message', 'Falha na sincronização: nenhum contato com dados válidos.')
         logRecord.set('details', 'Os clientes selecionados não possuem email ou telefone.')
-        logRecord.set('payload', { customerIds, eventName })
+        logRecord.set('payload', { count: payloads.length || customerIds.length, eventName })
         $app.save(logRecord)
       } catch (logErr) {}
       return e.badRequestError('Nenhum cliente com email ou telefone válido para enviar ao Meta.')
@@ -173,7 +195,6 @@ routerAdd(
           break
         } else if (res.statusCode === 0 || res.statusCode >= 500) {
           retries--
-          // brief block for retry
           const start = Date.now()
           while (Date.now() - start < 500) {}
         } else {
@@ -193,7 +214,7 @@ routerAdd(
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
-          logRecord.set('type', 'remarketing_error')
+          logRecord.set('type', 'remarketing')
           logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
           logRecord.set(
             'details',
@@ -214,18 +235,22 @@ routerAdd(
       $app.logger().error('Meta CAPI Complete Failure', 'error', JSON.stringify(lastError))
 
       let errMsg = 'Falha ao enviar eventos para o Meta.'
-      if (lastError && lastError.error && lastError.error.message) {
-        const metaErrorMsg = lastError.error.message.toLowerCase()
+      if (lastError && lastError.error) {
+        const metaErrorMsg = (
+          lastError.error.error_user_msg ||
+          lastError.error.message ||
+          ''
+        ).toLowerCase()
         if (
           metaErrorMsg.includes('oauth') ||
           metaErrorMsg.includes('access token') ||
           metaErrorMsg.includes('token') ||
-          metaErrorMsg.includes('auth')
+          metaErrorMsg.includes('auth') ||
+          metaErrorMsg.includes('invalid')
         ) {
-          errMsg =
-            'Erro de autenticação com o Meta: Token de acesso inválido ou expirado. Verifique suas configurações.'
+          errMsg = `Erro de autenticação com o Meta: ${lastError.error.error_user_msg || lastError.error.message || 'Token de acesso inválido ou expirado.'}`
         } else {
-          errMsg = `Erro do Meta: ${lastError.error.message}`
+          errMsg = `Erro do Meta: ${lastError.error.error_user_msg || lastError.error.message}`
         }
       } else if (typeof lastError === 'string') {
         errMsg = `Erro: ${lastError}`
@@ -245,7 +270,7 @@ routerAdd(
         logRecord.set('message', `Sincronizou ${totalSynced} leads para o Meta CAPI.`)
         logRecord.set('details', `Palavra-chave: ${keyword}, Evento: ${finalEventName}`)
         logRecord.set('payload', {
-          customerIds,
+          count: payloads.length || customerIds.length,
           successCount: totalSynced,
           metaResponse: 'Success',
         })

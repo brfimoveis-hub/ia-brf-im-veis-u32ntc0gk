@@ -152,7 +152,10 @@ export default function Settings() {
         meta_capi_token: cleanCapiToken,
         meta_test_event_code: cleanTestCode,
         meta_tags_list: metaTagsList,
-        ai_instructions: prompt,
+      }
+
+      if (prompt && prompt.trim() !== '') {
+        updateData.ai_instructions = prompt
       }
 
       if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capi) {

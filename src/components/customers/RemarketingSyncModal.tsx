@@ -108,6 +108,13 @@ export function RemarketingSyncModal({
     fetchFilteredLeads()
   }, [isOpen, searchTerm, phaseFilter, sourceFilter, toast])
 
+  const sha256 = async (message: string) => {
+    const msgBuffer = new TextEncoder().encode(message)
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+  }
+
   const handleSync = async () => {
     if (!user?.meta_pixel_id || !user?.meta_capi_token) {
       setSyncError(
@@ -149,13 +156,14 @@ export function RemarketingSyncModal({
       } catch (error: any) {
         setIsSyncing(false)
         let errorMsg = 'Erro de autenticação com o Meta'
-        if (
+        const metaError = error.response?.data?.error || error.response?.error
+        if (metaError) {
+          errorMsg = metaError.error_user_msg || metaError.message || JSON.stringify(metaError)
+        } else if (
           error.response?.message &&
-          error.response?.message !== 'Something went wrong while processing your request.'
+          error.response.message !== 'Something went wrong while processing your request.'
         ) {
           errorMsg = error.response.message
-        } else if (error.response?.data?.error?.message) {
-          errorMsg = error.response.data.error.message
         } else if (error.message) {
           errorMsg = error.message
         }
@@ -175,22 +183,45 @@ export function RemarketingSyncModal({
 
     for (let i = 0; i < validLeads.length; i += BATCH_SIZE) {
       const batch = validLeads.slice(i, i + BATCH_SIZE)
-      const batchIds = batch.map((l) => l.id)
+
+      const payloads = await Promise.all(
+        batch.map(async (l) => {
+          let email = l.email_1_value || l.email || ''
+          let phone = l.phone_1_value || l.phone || ''
+
+          email = email.trim().toLowerCase()
+          phone = phone.replace(/[^0-9]/g, '')
+          if (phone.length === 10 || phone.length === 11) {
+            phone = '55' + phone
+          }
+
+          return {
+            id: l.id,
+            em: email ? await sha256(email) : undefined,
+            ph: phone ? await sha256(phone) : undefined,
+            tags: l.tags || [],
+          }
+        }),
+      )
 
       try {
-        const result = await syncRemarketing(batchIds, searchTerm, 'Lead')
+        const result = await syncRemarketing(payloads, searchTerm, 'Lead')
         currentSynced += result.synced
         setSyncedCount(currentSynced)
       } catch (error: any) {
         let errorMsg = 'Erro desconhecido no lote'
-        if (
+        const metaError = error.response?.data?.error || error.response?.error
+        if (metaError) {
+          errorMsg = metaError.error_user_msg || metaError.message || JSON.stringify(metaError)
+        } else if (
           error.response?.message &&
-          error.response?.message !== 'Something went wrong while processing your request.'
+          error.response.message !== 'Something went wrong while processing your request.'
         ) {
           errorMsg = error.response.message
         } else if (error.message) {
           errorMsg = error.message
         }
+
         if (typeof errorMsg === 'object') {
           errorMsg = JSON.stringify(errorMsg)
         }
@@ -244,9 +275,8 @@ export function RemarketingSyncModal({
                   {!isSyncing && !isFinished && (
                     <>
                       <p>
-                        Isso enviará {totalFiltered} leads
-                        {searchTerm ? ` filtrados pela busca '${searchTerm}'` : ' filtrados'} para o
-                        Meta, permitindo criar campanhas segmentadas.
+                        Isso enviará {totalFiltered} leads filtrados para o Meta, permitindo criar
+                        campanhas segmentadas.
                       </p>
                       <p>
                         <strong>Evento de Conversão / Tag:</strong> Lead (Padrão)
