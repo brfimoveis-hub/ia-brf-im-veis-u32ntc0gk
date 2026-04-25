@@ -13,7 +13,7 @@ routerAdd(
     if (!user) return e.unauthorizedError('Not authenticated')
 
     const pixelId = (user.getString('meta_pixel_id') || '').trim()
-    const capiToken = (user.getString('meta_capi_token') || '').trim()
+    const capiToken = (user.getString('meta_capi_token') || '').replace(/^Bearer\s+/i, '').trim()
     const testCode = (user.getString('meta_test_event_code') || '').trim()
 
     if (!pixelId || !capiToken) {

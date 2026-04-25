@@ -113,10 +113,14 @@ export default function Settings() {
   const saveMetaFields = async () => {
     if (!user?.id) throw new Error('Usuário não autenticado')
 
+    const cleanPixelId = metaPixelId.replace(/\s+/g, '')
+    const cleanCapiToken = metaCapiToken.replace(/^Bearer\s+/i, '').trim()
+    const cleanTestCode = metaTestEventCode.trim()
+
     const updatedUser = await pb.collection('users').update(user.id, {
-      meta_pixel_id: metaPixelId.trim(),
-      meta_capi_token: metaCapiToken.trim(),
-      meta_test_event_code: metaTestEventCode.trim(),
+      meta_pixel_id: cleanPixelId,
+      meta_capi_token: cleanCapiToken,
+      meta_test_event_code: cleanTestCode,
       meta_tags_list: metaTagsList,
     })
 
@@ -128,6 +132,10 @@ export default function Settings() {
       test: updatedUser.meta_test_event_code || '',
       tags: JSON.stringify(updatedUser.meta_tags_list || []),
     })
+
+    setMetaPixelId(cleanPixelId)
+    setMetaCapiToken(cleanCapiToken)
+    setMetaTestEventCode(cleanTestCode)
   }
 
   const handleSave = async () => {
@@ -179,7 +187,10 @@ export default function Settings() {
   }
 
   const testMetaConnection = async () => {
-    if (!metaPixelId.trim() || !metaCapiToken.trim()) {
+    const cleanPixelId = metaPixelId.replace(/\s+/g, '')
+    const cleanCapiToken = metaCapiToken.replace(/^Bearer\s+/i, '').trim()
+
+    if (!cleanPixelId || !cleanCapiToken) {
       toast({
         title: 'Campos obrigatórios',
         description: 'Preencha o Pixel ID e o Token CAPI antes de testar.',
@@ -193,8 +204,8 @@ export default function Settings() {
       await pb.send('/backend/v1/meta-test-connection', {
         method: 'POST',
         body: JSON.stringify({
-          pixelId: metaPixelId.trim(),
-          capiToken: metaCapiToken.trim(),
+          pixelId: cleanPixelId,
+          capiToken: cleanCapiToken,
         }),
         headers: { 'Content-Type': 'application/json' },
       })
@@ -203,10 +214,14 @@ export default function Settings() {
         description: 'O Pixel ID e o Token CAPI são válidos e estão comunicando com o Meta.',
       })
     } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.error?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        'Verifique as credenciais.'
       toast({
         title: 'Erro de Conexão',
-        description:
-          'Não foi possível validar o token ou pixel com o Meta. Verifique as credenciais.',
+        description: `Falha ao validar com o Meta: ${errorMsg}`,
         variant: 'destructive',
       })
     } finally {
@@ -422,7 +437,7 @@ export default function Settings() {
                   ) : (
                     <ShieldCheck className="h-4 w-4 text-green-600" />
                   )}
-                  Testar Conexão
+                  Testar Conexão com Meta
                 </Button>
               </div>
             </div>
