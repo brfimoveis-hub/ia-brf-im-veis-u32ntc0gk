@@ -12,8 +12,12 @@ routerAdd(
     const user = e.auth
     if (!user) return e.unauthorizedError('Not authenticated')
 
-    const pixelId = (user.getString('meta_pixel_id') || '').trim()
-    const capiToken = (user.getString('meta_capi_token') || '').replace(/^Bearer\s+/i, '').trim()
+    const pixelId = (user.getString('meta_pixel_id') || '').replace(/[\s\uFEFF\xA0]+/g, '').trim()
+    const capiToken = (user.getString('meta_capi_token') || '')
+      .replace(/^Bearer\s+/i, '')
+      .replace(/[\s\uFEFF\xA0]+/g, '')
+      .replace(/^(EA)+/i, 'EA')
+      .trim()
     const testCode = (user.getString('meta_test_event_code') || '').trim()
 
     if (!pixelId || !capiToken) {
@@ -229,7 +233,7 @@ routerAdd(
         errMsg = `Erro: ${JSON.stringify(lastError)}`
       }
 
-      return e.badRequestError(errMsg)
+      return e.json(400, { message: errMsg, error: lastError })
     }
 
     if (totalSynced > 0) {

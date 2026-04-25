@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useBlocker } from 'react-router-dom'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export default function Settings() {
   const { toast } = useToast()
@@ -45,8 +46,24 @@ export default function Settings() {
   const [showCapiToken, setShowCapiToken] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
 
-  const [initialMeta, setInitialMeta] = useState({ pixel: '', capi: '', test: '', tags: '[]' })
+  const [initialMeta, setInitialMeta] = useState({
+    pixel: '',
+    capi: '',
+    test: '',
+    tags: '[]',
+    prompt: '',
+  })
   const [isInitialized, setIsInitialized] = useState(false)
+
+  useRealtime('users', (e) => {
+    if (e.action === 'update' && e.record.id === user?.id) {
+      if (e.record.meta_token_status !== user?.meta_token_status) {
+        pb.collection('users')
+          .authRefresh()
+          .catch(() => {})
+      }
+    }
+  })
 
   useEffect(() => {
     if (user && !isInitialized) {
@@ -54,12 +71,14 @@ export default function Settings() {
       setMetaCapiToken(user.meta_capi_token || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
       setMetaTagsList(user.meta_tags_list || [])
+      if (user.ai_instructions) setPrompt(user.ai_instructions)
 
       setInitialMeta({
         pixel: user.meta_pixel_id || '',
         capi: user.meta_capi_token || '',
         test: user.meta_test_event_code || '',
         tags: JSON.stringify(user.meta_tags_list || []),
+        prompt: user.ai_instructions || '',
       })
       setIsInitialized(true)
     }
@@ -69,7 +88,8 @@ export default function Settings() {
     metaPixelId !== initialMeta.pixel ||
     metaCapiToken !== initialMeta.capi ||
     metaTestEventCode !== initialMeta.test ||
-    JSON.stringify(metaTagsList) !== initialMeta.tags
+    JSON.stringify(metaTagsList) !== initialMeta.tags ||
+    prompt !== initialMeta.prompt
 
   const shouldBlock = useCallback(
     ({ currentLocation, nextLocation }: any) =>
@@ -114,7 +134,11 @@ export default function Settings() {
     if (!user?.id) throw new Error('Usuário não autenticado')
 
     const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0]+/g, '')
-    const cleanCapiToken = metaCapiToken.replace(/^Bearer\s+/i, '').replace(/[\s\uFEFF\xA0]+/g, '')
+    const cleanCapiToken = metaCapiToken
+      .replace(/^Bearer\s+/i, '')
+      .replace(/[\s\uFEFF\xA0]+/g, '')
+      .replace(/^(EA)+/i, 'EA')
+      .trim()
     const cleanTestCode = metaTestEventCode.trim()
 
     const updateData: any = {
@@ -122,6 +146,7 @@ export default function Settings() {
       meta_capi_token: cleanCapiToken,
       meta_test_event_code: cleanTestCode,
       meta_tags_list: metaTagsList,
+      ai_instructions: prompt,
     }
 
     // Reset status if credentials changed
@@ -139,6 +164,7 @@ export default function Settings() {
       capi: updatedUser.meta_capi_token || '',
       test: updatedUser.meta_test_event_code || '',
       tags: JSON.stringify(updatedUser.meta_tags_list || []),
+      prompt: updatedUser.ai_instructions || '',
     })
 
     setMetaPixelId(cleanPixelId)
@@ -196,7 +222,11 @@ export default function Settings() {
 
   const testMetaConnection = async () => {
     const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0]+/g, '')
-    const cleanCapiToken = metaCapiToken.replace(/^Bearer\s+/i, '').replace(/[\s\uFEFF\xA0]+/g, '')
+    const cleanCapiToken = metaCapiToken
+      .replace(/^Bearer\s+/i, '')
+      .replace(/[\s\uFEFF\xA0]+/g, '')
+      .replace(/^(EA)+/i, 'EA')
+      .trim()
 
     if (!cleanPixelId || !cleanCapiToken) {
       toast({

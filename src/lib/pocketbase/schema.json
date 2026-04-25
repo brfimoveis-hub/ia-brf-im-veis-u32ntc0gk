@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-25T13:29:16.313Z",
+  "generatedAt": "2026-04-25T13:37:00.069Z",
   "collections": [
     {
       "name": "users",
@@ -88,6 +88,12 @@
         },
         {
           "name": "meta_last_validated",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_instructions",
           "type": "text",
           "required": false,
           "system": false

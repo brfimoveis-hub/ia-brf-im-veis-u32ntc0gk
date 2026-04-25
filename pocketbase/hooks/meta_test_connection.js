@@ -3,8 +3,12 @@ routerAdd(
   '/backend/v1/meta-test-connection',
   (e) => {
     const body = e.requestInfo().body || {}
-    const pixelId = (body.pixelId || '').trim()
-    const capiToken = (body.capiToken || '').replace(/^Bearer\s+/i, '').trim()
+    const pixelId = (body.pixelId || '').replace(/[\s\uFEFF\xA0]+/g, '').trim()
+    const capiToken = (body.capiToken || '')
+      .replace(/^Bearer\s+/i, '')
+      .replace(/[\s\uFEFF\xA0]+/g, '')
+      .replace(/^(EA)+/i, 'EA')
+      .trim()
 
     if (!pixelId || !capiToken) {
       return e.badRequestError('Pixel ID e Token CAPI são obrigatórios')
@@ -59,7 +63,7 @@ routerAdd(
         errorMessage = JSON.stringify(errorPayload)
       }
 
-      return e.badRequestError(errorMessage, errorPayload)
+      return e.json(400, { message: errorMessage, error: errorPayload })
     }
   },
   $apis.requireAuth(),
