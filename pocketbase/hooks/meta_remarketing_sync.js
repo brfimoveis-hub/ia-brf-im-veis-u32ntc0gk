@@ -175,15 +175,29 @@ routerAdd(
       )
     }
 
+    const batchSize = Math.max(1, body.batchSize || 1000)
+    const intervalMinutes = Math.max(0, body.intervalMinutes || 0)
+    const intervalMs = intervalMinutes * 60 * 1000
+
     const batches = []
-    for (let i = 0; i < data.length; i += 1000) {
-      batches.push(data.slice(i, i + 1000))
+    for (let i = 0; i < data.length; i += batchSize) {
+      batches.push(data.slice(i, i + batchSize))
     }
 
     let totalSynced = 0
     let lastError = null
 
-    for (const batch of batches) {
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i]
+
+      // Anti-ban throttling in the backend
+      if (i > 0 && intervalMs > 0) {
+        const start = Date.now()
+        while (Date.now() - start < intervalMs) {
+          // busy wait to simulate sleep since there is no setTimeout in goja
+        }
+      }
+
       const payload = { data: batch }
       if (testCode) payload.test_event_code = testCode
 
@@ -258,7 +272,7 @@ routerAdd(
           metaErrorMsg.includes('auth') ||
           metaErrorMsg.includes('invalid')
         ) {
-          errMsg = `Erro de autenticação com o Meta: Verifique se o seu Token CAPI está correto e sem espaços ocultos.`
+          errMsg = `Erro de autenticação com o Meta. Meta retornou: ${lastError.error.message}. Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel. Verifique espaços em branco no seu token e tente novamente.`
         } else {
           errMsg = `Erro do Meta: ${lastError.error.error_user_msg || lastError.error.message}`
         }

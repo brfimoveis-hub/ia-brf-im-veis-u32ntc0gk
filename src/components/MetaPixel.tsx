@@ -38,6 +38,7 @@ export function MetaPixel() {
         t = b.createElement(e) as HTMLScriptElement
         t.async = !0
         t.src = v
+        t.setAttribute('nonce', 'meta-pixel')
         s = b.getElementsByTagName(e)[0]
         s?.parentNode?.insertBefore(t, s)
       })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js')

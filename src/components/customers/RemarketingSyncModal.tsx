@@ -214,7 +214,13 @@ export function RemarketingSyncModal({
       )
 
       try {
-        const result = await syncRemarketing(payloads, searchTerm, 'Lead')
+        const result = await syncRemarketing(
+          payloads,
+          searchTerm,
+          'Lead',
+          batchSize,
+          intervalMinutes,
+        )
         currentSynced += result.synced
         setSyncedCount(currentSynced)
       } catch (error: any) {

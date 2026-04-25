@@ -156,10 +156,12 @@ export const syncRemarketing = async (
   payloads: { id: string; em?: string; ph?: string; tags: string[] }[],
   keyword: string,
   eventName: string,
+  batchSize?: number,
+  intervalMinutes?: number,
 ): Promise<{ success: boolean; synced: number }> => {
   return pb.send('/backend/v1/meta-remarketing-sync', {
     method: 'POST',
-    body: JSON.stringify({ payloads, keyword, eventName }),
+    body: JSON.stringify({ payloads, keyword, eventName, batchSize, intervalMinutes }),
     headers: { 'Content-Type': 'application/json' },
   })
 }

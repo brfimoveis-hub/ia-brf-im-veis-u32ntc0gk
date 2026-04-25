@@ -495,7 +495,7 @@ export default function Settings() {
                   id="meta-test-code"
                   placeholder="Ex: TEST12345"
                   value={metaTestEventCode}
-                  onChange={(e) => setMetaTestEventCode(e.target.value)}
+                  onChange={(e) => setMetaTestEventCode(e.target.value.replace(/\s+/g, ''))}
                   className="bg-muted/30 focus-visible:ring-blue-600"
                 />
               </div>
@@ -521,7 +521,11 @@ export default function Settings() {
                   type={showCapiToken ? 'text' : 'password'}
                   placeholder="Insira seu token de acesso permanente"
                   value={metaCapiToken}
-                  onChange={(e) => setMetaCapiToken(e.target.value)}
+                  onChange={(e) =>
+                    setMetaCapiToken(
+                      e.target.value.replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, ''),
+                    )
+                  }
                   className="pl-10 pr-10 h-11 bg-muted/30 focus-visible:ring-blue-600 font-mono text-sm"
                 />
                 <button

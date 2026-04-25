@@ -71,7 +71,14 @@ routerAdd(
 
       let errorMessage = 'Falha na autenticação com o Meta. O token pode ser inválido ou expirado.'
       if (errorPayload && errorPayload.error && errorPayload.error.message) {
-        errorMessage = `Meta retornou: ${errorPayload.error.message}. Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel.`
+        const msg = errorPayload.error.message
+        if (msg.includes('Invalid OAuth access token')) {
+          errorMessage = `Meta retornou: ${msg}. Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel. Verifique espaços em branco no seu token e tente novamente.`
+        } else if (msg.includes('Missing Permissions') || msg.includes('permission')) {
+          errorMessage = `Meta retornou: ${msg}. Dica: O token CAPI não tem permissões suficientes para este Pixel.`
+        } else {
+          errorMessage = `Meta retornou: ${msg}. Dica: Verifique as configurações do seu Pixel e Token CAPI.`
+        }
       } else if (typeof errorPayload === 'string') {
         errorMessage = errorPayload
       } else if (typeof errorPayload === 'object') {
