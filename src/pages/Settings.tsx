@@ -113,8 +113,8 @@ export default function Settings() {
   const saveMetaFields = async () => {
     if (!user?.id) throw new Error('Usuário não autenticado')
 
-    const cleanPixelId = metaPixelId.replace(/\s+/g, '')
-    const cleanCapiToken = metaCapiToken.replace(/^Bearer\s+/i, '').trim()
+    const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0]+/g, '')
+    const cleanCapiToken = metaCapiToken.replace(/^Bearer\s+/i, '').replace(/[\s\uFEFF\xA0]+/g, '')
     const cleanTestCode = metaTestEventCode.trim()
 
     const updatedUser = await pb.collection('users').update(user.id, {
@@ -187,8 +187,8 @@ export default function Settings() {
   }
 
   const testMetaConnection = async () => {
-    const cleanPixelId = metaPixelId.replace(/\s+/g, '')
-    const cleanCapiToken = metaCapiToken.replace(/^Bearer\s+/i, '').trim()
+    const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0]+/g, '')
+    const cleanCapiToken = metaCapiToken.replace(/^Bearer\s+/i, '').replace(/[\s\uFEFF\xA0]+/g, '')
 
     if (!cleanPixelId || !cleanCapiToken) {
       toast({
