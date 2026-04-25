@@ -70,16 +70,25 @@ export default function CRM() {
   }, [customers])
 
   useEffect(() => {
+    let mounted = true
+    if (!loading) return
+
     getCustomers()
       .then((data) => {
-        setCustomers(data)
-        setLoading(false)
+        if (mounted) {
+          setCustomers(data)
+          setLoading(false)
+        }
       })
       .catch((err) => {
         console.error(err)
-        setLoading(false)
+        if (mounted) setLoading(false)
       })
-  }, [])
+
+    return () => {
+      mounted = false
+    }
+  }, [loading])
 
   // Optimize realtime handler to prevent unnecessary re-subscriptions or deep updates
   const handleRealtimeEvent = useCallback((e: any) => {

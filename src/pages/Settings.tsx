@@ -316,7 +316,7 @@ export default function Settings() {
                   id="meta-pixel-id"
                   placeholder="Ex: 1234567890"
                   value={metaPixelId}
-                  onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
+                  onChange={(e) => setMetaPixelId(e.target.value)}
                   className="bg-muted/30 focus-visible:ring-blue-600"
                   inputMode="numeric"
                 />
@@ -349,7 +349,7 @@ export default function Settings() {
                 <Input
                   placeholder="ID (Ex: 123456789)"
                   value={newTagId}
-                  onChange={(e) => setNewTagId(e.target.value.replace(/\D/g, ''))}
+                  onChange={(e) => setNewTagId(e.target.value)}
                   className="bg-muted/30"
                   inputMode="numeric"
                 />
