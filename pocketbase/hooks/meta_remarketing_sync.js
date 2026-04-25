@@ -88,8 +88,14 @@ routerAdd(
         if (!validCustomers.has(p.id)) continue
 
         const userData = {}
-        if (p.em) userData.em = [p.em]
-        if (p.ph) userData.ph = [p.ph]
+        if (p.em) {
+          const emStr = String(p.em).trim().toLowerCase()
+          userData.em = [emStr.length === 64 ? emStr : $security.sha256(emStr)]
+        }
+        if (p.ph) {
+          const phStr = String(p.ph).replace(/[^0-9]/g, '')
+          userData.ph = [phStr.length === 64 ? phStr : $security.sha256(phStr)]
+        }
 
         if (userData.em || userData.ph) {
           let cTags = p.tags || []

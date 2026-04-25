@@ -58,17 +58,19 @@ onRecordAfterCreateSuccess((e) => {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const logRecord = new Record(logsCol)
       logRecord.set('user_id', userId)
-      logRecord.set('type', 'meta_sync')
+      logRecord.set('type', 'remarketing')
       logRecord.set('message', 'Falha no sync automático (Create)')
       logRecord.set('details', String(res.json || res.raw))
+      logRecord.set('payload', { request: payload, response: res.json || res.raw })
       $app.saveNoValidate(logRecord)
     } else {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const logRecord = new Record(logsCol)
       logRecord.set('user_id', userId)
-      logRecord.set('type', 'meta_sync')
+      logRecord.set('type', 'remarketing')
       logRecord.set('message', 'Sync automático de Lead com sucesso (Create)')
       logRecord.set('details', 'Customer ID: ' + customer.id)
+      logRecord.set('payload', { request: payload, response: res.json || res.raw })
       $app.saveNoValidate(logRecord)
     }
   } catch (err) {

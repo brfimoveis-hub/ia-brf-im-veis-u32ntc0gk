@@ -472,15 +472,25 @@ export default function Settings() {
                   >
                     {isPixelConfigured ? 'Configurado' : 'Não configurado'}
                   </Badge>
-                </div>{' '}
+                </div>
                 <Input
                   id="meta-pixel-id"
                   placeholder="Ex: 1234567890"
                   value={metaPixelId}
                   onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
-                  className="bg-muted/30 focus-visible:ring-blue-600"
+                  className={cn(
+                    'bg-muted/30 focus-visible:ring-blue-600',
+                    metaPixelId.length > 0 &&
+                      !/^\d+$/.test(metaPixelId) &&
+                      'border-red-500 focus-visible:ring-red-500',
+                  )}
                   inputMode="numeric"
                 />
+                {metaPixelId.length > 0 && !/^\d+$/.test(metaPixelId) && (
+                  <p className="text-xs text-red-500">
+                    O Pixel ID deve conter apenas números sem espaços.
+                  </p>
+                )}
               </div>
 
               {/* Test Event Code Configuration */}
@@ -526,7 +536,12 @@ export default function Settings() {
                       e.target.value.replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, ''),
                     )
                   }
-                  className="pl-10 pr-10 h-11 bg-muted/30 focus-visible:ring-blue-600 font-mono text-sm"
+                  className={cn(
+                    'pl-10 pr-10 h-11 bg-muted/30 focus-visible:ring-blue-600 font-mono text-sm',
+                    metaCapiToken.length > 0 &&
+                      metaCapiToken.length < 20 &&
+                      'border-red-500 focus-visible:ring-red-500',
+                  )}
                 />
                 <button
                   type="button"
@@ -536,6 +551,11 @@ export default function Settings() {
                   {showCapiToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {metaCapiToken.length > 0 && metaCapiToken.length < 20 && (
+                <p className="text-xs text-red-500 mt-1">
+                  O token parece curto demais para ser válido.
+                </p>
+              )}
               <div className="flex justify-end mt-2">
                 <Button
                   type="button"

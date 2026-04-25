@@ -38,10 +38,10 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', e.auth?.id || '')
-        logRecord.set('type', 'meta_sync')
+        logRecord.set('type', 'remarketing')
         logRecord.set('message', 'Teste de conexão Meta CAPI e Pixel Browser validado com sucesso.')
         logRecord.set('details', 'Handshake OK')
-        logRecord.set('payload', { statusCode: res.statusCode })
+        logRecord.set('payload', { statusCode: res.statusCode, response: res.json })
         $app.save(logRecord)
       } catch (logErr) {}
 
@@ -59,7 +59,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', e.auth.id)
-        logRecord.set('type', 'meta_error')
+        logRecord.set('type', 'remarketing')
         logRecord.set('message', 'Falha no teste de conexão com Meta.')
         logRecord.set(
           'details',
