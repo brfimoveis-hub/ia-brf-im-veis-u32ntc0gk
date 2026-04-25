@@ -21,7 +21,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'REMARKETING_SYNC')
+        logRecord.set('type', 'remarketing_error')
         logRecord.set('message', 'Falha na sincronização: credenciais do Meta ausentes.')
         logRecord.set(
           'details',
@@ -52,7 +52,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'REMARKETING_SYNC')
+        logRecord.set('type', 'remarketing_error')
         logRecord.set('message', 'Falha na sincronização: clientes não encontrados.')
         logRecord.set('details', 'Nenhum dos clientes fornecidos pertence a este usuário.')
         logRecord.set('payload', { customerIds, eventName })
@@ -70,6 +70,11 @@ routerAdd(
 
       email = email.trim().toLowerCase()
       phone = phone.replace(/[^0-9]/g, '')
+
+      // Normalize Brazilian phone numbers to include country code for Meta CAPI
+      if (phone.length === 10 || phone.length === 11) {
+        phone = '55' + phone
+      }
 
       const userData = {}
       if (email) userData.em = [$security.sha256(email)]
@@ -95,7 +100,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'REMARKETING_SYNC')
+        logRecord.set('type', 'remarketing_error')
         logRecord.set('message', 'Falha na sincronização: nenhum contato com dados válidos.')
         logRecord.set('details', 'Os clientes selecionados não possuem email ou telefone.')
         logRecord.set('payload', { customerIds, eventName })
@@ -131,35 +136,42 @@ routerAdd(
         $app
           .logger()
           .error('Meta CAPI Batch Error', 'status', res.statusCode, 'response', lastError)
+
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', user.id)
+          logRecord.set('type', 'remarketing_error')
+          logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
+          logRecord.set('details', JSON.stringify(lastError))
+          logRecord.set('payload', {
+            eventName,
+            batchSize: batch.length,
+            statusCode: res.statusCode,
+          })
+          $app.save(logRecord)
+        } catch (logErr) {}
       }
     }
 
     if (totalSynced === 0 && lastError) {
       $app.logger().error('Meta CAPI Complete Failure', 'error', JSON.stringify(lastError))
+      return e.internalServerError('Falha ao enviar eventos para o Meta.')
+    }
+
+    if (totalSynced > 0) {
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'REMARKETING_SYNC')
-        logRecord.set('message', 'Falha ao enviar eventos para o Meta.')
-        logRecord.set('details', JSON.stringify(lastError))
-        logRecord.set('payload', { customerIds, eventName })
+        logRecord.set('type', 'remarketing_success')
+        logRecord.set('message', `Sincronizou ${totalSynced} leads para o Meta CAPI.`)
+        logRecord.set('details', `Palavra-chave: ${keyword}, Evento: ${finalEventName}`)
+        logRecord.set('payload', { customerIds, successCount: totalSynced })
         $app.save(logRecord)
-      } catch (logErr) {}
-      return e.internalServerError('Falha ao enviar eventos para o Meta.')
-    }
-
-    try {
-      const logsCol = $app.findCollectionByNameOrId('system_logs')
-      const logRecord = new Record(logsCol)
-      logRecord.set('user_id', user.id)
-      logRecord.set('type', 'REMARKETING_SYNC')
-      logRecord.set('message', `Sincronizou ${totalSynced} leads para o Meta CAPI.`)
-      logRecord.set('details', `Palavra-chave: ${keyword}, Evento: ${finalEventName}`)
-      logRecord.set('payload', { customerIds, successCount: totalSynced })
-      $app.save(logRecord)
-    } catch (logErr) {
-      $app.logger().error('Failed to write system_logs', 'error', String(logErr))
+      } catch (logErr) {
+        $app.logger().error('Failed to write system_logs', 'error', String(logErr))
+      }
     }
 
     return e.json(200, { success: true, synced: totalSynced })
