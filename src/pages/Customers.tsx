@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
-import { Search, Plus, Upload, Users, Filter, Loader2, Play } from 'lucide-react'
+import { Search, Plus, Upload, Users, Filter, Loader2, Play, Target } from 'lucide-react'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { useToast } from '@/hooks/use-toast'
 import { getPaginatedCustomers, deleteCustomer, Customer } from '@/services/customers'
@@ -28,6 +28,11 @@ const LeadDialog = lazy(() =>
 )
 const CadenceRoulette = lazy(() =>
   import('@/components/CadenceRoulette').then((m) => ({ default: m.CadenceRoulette })),
+)
+const RemarketingSyncModal = lazy(() =>
+  import('@/components/customers/RemarketingSyncModal').then((m) => ({
+    default: m.RemarketingSyncModal,
+  })),
 )
 
 export default function Customers() {
@@ -49,6 +54,7 @@ export default function Customers() {
   const [googleContactsOpen, setGoogleContactsOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
   const [rouletteOpen, setRouletteOpen] = useState(false)
+  const [syncModalOpen, setSyncModalOpen] = useState(false)
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
 
   const { toast } = useToast()
@@ -189,6 +195,13 @@ export default function Customers() {
         <div className="flex flex-wrap gap-2">
           <Button
             variant="secondary"
+            onClick={() => setSyncModalOpen(true)}
+            className="gap-2 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border-blue-500/20 border"
+          >
+            <Target className="h-4 w-4" /> Sincronizar Meta
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => setRouletteOpen(true)}
             className="gap-2 bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 border"
           >
@@ -286,6 +299,14 @@ export default function Customers() {
         )}
         {leadOpen && (
           <LeadDialog open={leadOpen} onOpenChange={setLeadOpen} defaultValues={editingLead} />
+        )}
+        {syncModalOpen && (
+          <RemarketingSyncModal
+            isOpen={syncModalOpen}
+            onClose={() => setSyncModalOpen(false)}
+            leads={leads}
+            searchTerm={debouncedSearch}
+          />
         )}
       </Suspense>
 

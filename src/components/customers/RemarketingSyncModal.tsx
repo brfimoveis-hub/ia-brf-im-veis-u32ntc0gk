@@ -69,7 +69,7 @@ export function RemarketingSyncModal({
               permitindo criar campanhas segmentadas.
             </p>
             <p>
-              <strong>Evento de conversão:</strong> Lead (Padrão)
+              <strong>Evento de Conversão / Tag:</strong> Lead (Padrão)
             </p>
             <div className="text-sm text-muted-foreground bg-muted p-4 rounded-md border">
               Apenas contatos com email ou telefone válidos serão sincronizados via hash SHA256 para
