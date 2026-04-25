@@ -10,18 +10,22 @@ routerAdd(
     // Backward compatibility for older clients sending customerIds
     const customerIds = body.customerIds || []
 
-    if (!payloads.length && !customerIds.length) return e.badRequestError('No customers provided')
+    if (!payloads.length && !customerIds.length)
+      return e.badRequestError('Nenhum cliente fornecido para sincronização.')
 
     const user = e.auth
     if (!user) return e.unauthorizedError('Not authenticated')
 
-    const pixelId = (user.getString('meta_pixel_id') || '').replace(/[\s\uFEFF\xA0]+/g, '').trim()
+    const pixelId = (user.getString('meta_pixel_id') || '')
+      .replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
+      .trim()
     const capiToken = (user.getString('meta_capi_token') || '')
       .replace(/^Bearer\s+/i, '')
-      .replace(/[\s\uFEFF\xA0]+/g, '')
+      .replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
       .replace(/^(EA)+/i, 'EA')
       .trim()
     const testCode = (user.getString('meta_test_event_code') || '').trim()
+    const campaignPhone = (user.getString('meta_campaign_phone') || '').replace(/\D/g, '')
 
     if (!pixelId || !capiToken) {
       try {
@@ -38,12 +42,14 @@ routerAdd(
         $app.save(logRecord)
       } catch (logErr) {}
       return e.badRequestError(
-        'O ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para Configurações para preenchê-los.',
+        'O ID do Pixel ou o Token da API de Conversões não estão configurados corretamente. Vá para Configurações para preenchê-los.',
       )
     }
 
     if (!/^\d+$/.test(pixelId)) {
-      return e.badRequestError('O ID do Pixel é inválido. Ele deve conter apenas números.')
+      return e.badRequestError(
+        'O ID do Pixel é inválido. Ele deve conter apenas números sem espaços.',
+      )
     }
 
     const finalEventName = eventName
@@ -74,7 +80,7 @@ routerAdd(
     }
 
     if (validCustomers.size === 0) {
-      return e.badRequestError('Nenhum cliente válido encontrado')
+      return e.badRequestError('Nenhum cliente válido encontrado para o usuário logado.')
     }
 
     if (payloads.length > 0) {
@@ -99,6 +105,7 @@ routerAdd(
               currency: 'BRL',
               value: 0,
               search_keyword: finalKeyword,
+              campaign_phone: campaignPhone ? $security.sha256(campaignPhone) : undefined,
             },
           })
         }
@@ -145,6 +152,7 @@ routerAdd(
               currency: 'BRL',
               value: 0,
               search_keyword: finalKeyword,
+              campaign_phone: campaignPhone ? $security.sha256(campaignPhone) : undefined,
             },
           })
         }
@@ -162,7 +170,9 @@ routerAdd(
         logRecord.set('payload', { count: payloads.length || customerIds.length, eventName })
         $app.save(logRecord)
       } catch (logErr) {}
-      return e.badRequestError('Nenhum cliente com email ou telefone válido para enviar ao Meta.')
+      return e.badRequestError(
+        'Nenhum cliente possui email ou telefone válido para ser enviado ao Meta.',
+      )
     }
 
     const batches = []
@@ -248,14 +258,14 @@ routerAdd(
           metaErrorMsg.includes('auth') ||
           metaErrorMsg.includes('invalid')
         ) {
-          errMsg = `Erro de autenticação com o Meta: ${lastError.error.error_user_msg || lastError.error.message || 'Token de acesso inválido ou expirado.'}`
+          errMsg = `Erro de autenticação com o Meta: Verifique se o seu Token CAPI está correto e sem espaços ocultos.`
         } else {
           errMsg = `Erro do Meta: ${lastError.error.error_user_msg || lastError.error.message}`
         }
       } else if (typeof lastError === 'string') {
-        errMsg = `Erro: ${lastError}`
+        errMsg = `Erro de comunicação: ${lastError}`
       } else if (typeof lastError === 'object') {
-        errMsg = `Erro: ${JSON.stringify(lastError)}`
+        errMsg = `Erro estrutural: ${JSON.stringify(lastError)}`
       }
 
       return e.json(400, { message: errMsg, error: lastError })

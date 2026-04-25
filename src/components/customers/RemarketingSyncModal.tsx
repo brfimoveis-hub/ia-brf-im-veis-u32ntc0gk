@@ -39,6 +39,10 @@ export function RemarketingSyncModal({
   const [totalFiltered, setTotalFiltered] = useState(0)
   const [syncError, setSyncError] = useState<string | null>(null)
 
+  // Sync Settings
+  const [batchSize, setBatchSize] = useState<number>(50)
+  const [intervalSeconds, setIntervalSeconds] = useState<number>(5)
+
   // Progress state
   const [progress, setProgress] = useState(0)
   const [syncedCount, setSyncedCount] = useState(0)
@@ -178,11 +182,11 @@ export function RemarketingSyncModal({
     }
 
     // Client-side batching for Real-time Progress & explicitly listing failed leads
-    const BATCH_SIZE = 50
+    const currentBatchSize = Math.max(1, batchSize)
     let currentSynced = 0
 
-    for (let i = 0; i < validLeads.length; i += BATCH_SIZE) {
-      const batch = validLeads.slice(i, i + BATCH_SIZE)
+    for (let i = 0; i < validLeads.length; i += currentBatchSize) {
+      const batch = validLeads.slice(i, i + currentBatchSize)
 
       const payloads = await Promise.all(
         batch.map(async (l) => {
@@ -234,6 +238,11 @@ export function RemarketingSyncModal({
       }
 
       setProgress(Math.round(((i + batch.length) / validLeads.length) * 100))
+
+      // Anti-Ban Throttling
+      if (i + currentBatchSize < validLeads.length) {
+        await new Promise((resolve) => setTimeout(resolve, intervalSeconds * 1000))
+      }
     }
 
     setIsSyncing(false)
@@ -289,6 +298,36 @@ export function RemarketingSyncModal({
                           {validLeads.length} contatos válidos encontrados
                         </span>
                       </div>
+
+                      <div className="grid grid-cols-2 gap-4 mt-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Tamanho do Lote (Leads)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="1000"
+                            value={batchSize}
+                            onChange={(e) => setBatchSize(Number(e.target.value))}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Intervalo (Segundos)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="300"
+                            value={intervalSeconds}
+                            onChange={(e) => setIntervalSeconds(Number(e.target.value))}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Para evitar bloqueios, o sistema enviará {batchSize} leads e pausará por{' '}
+                        {intervalSeconds} segundos antes do próximo envio.
+                      </p>
+
                       {syncError && (
                         <div className="mt-4 p-4 rounded-md border border-destructive bg-destructive/10 text-destructive text-sm font-medium flex gap-2 items-start">
                           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />

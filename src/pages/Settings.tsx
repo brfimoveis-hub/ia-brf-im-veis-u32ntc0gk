@@ -39,6 +39,7 @@ export default function Settings() {
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [metaTestEventCode, setMetaTestEventCode] = useState('')
   const [metaTagsList, setMetaTagsList] = useState<{ id: string; name: string }[]>([])
+  const [metaCampaignPhone, setMetaCampaignPhone] = useState('')
 
   // UI State
   const [newTagName, setNewTagName] = useState('')
@@ -52,6 +53,7 @@ export default function Settings() {
     test: '',
     tags: '[]',
     prompt: '',
+    campaignPhone: '',
   })
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -70,6 +72,7 @@ export default function Settings() {
       setMetaPixelId(user.meta_pixel_id || '')
       setMetaCapiToken(user.meta_capi_token || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
+      setMetaCampaignPhone(user.meta_campaign_phone || '')
       setMetaTagsList(user.meta_tags_list || [])
       if (user.ai_instructions) setPrompt(user.ai_instructions)
 
@@ -79,6 +82,7 @@ export default function Settings() {
         test: user.meta_test_event_code || '',
         tags: JSON.stringify(user.meta_tags_list || []),
         prompt: user.ai_instructions || '',
+        campaignPhone: user.meta_campaign_phone || '',
       })
       setIsInitialized(true)
     }
@@ -88,6 +92,7 @@ export default function Settings() {
     metaPixelId !== initialMeta.pixel ||
     metaCapiToken !== initialMeta.capi ||
     metaTestEventCode !== initialMeta.test ||
+    metaCampaignPhone !== initialMeta.campaignPhone ||
     JSON.stringify(metaTagsList) !== initialMeta.tags ||
     prompt !== initialMeta.prompt
 
@@ -131,26 +136,28 @@ export default function Settings() {
   }, [isDirty])
 
   const getCleanMeta = () => {
-    const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0\u200B-\u200D]+/g, '')
+    const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
     const cleanCapiToken = metaCapiToken
       .replace(/^Bearer\s+/i, '')
-      .replace(/[\s\uFEFF\xA0\u200B-\u200D]+/g, '')
+      .replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
       .replace(/^(EA)+/i, 'EA')
       .trim()
     const cleanTestCode = metaTestEventCode.trim()
-    return { cleanPixelId, cleanCapiToken, cleanTestCode }
+    const cleanCampaignPhone = metaCampaignPhone.trim()
+    return { cleanPixelId, cleanCapiToken, cleanTestCode, cleanCampaignPhone }
   }
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
       if (!user?.id) throw new Error('Usuário não autenticado')
-      const { cleanPixelId, cleanCapiToken, cleanTestCode } = getCleanMeta()
+      const { cleanPixelId, cleanCapiToken, cleanTestCode, cleanCampaignPhone } = getCleanMeta()
 
       const updateData: any = {
         meta_pixel_id: cleanPixelId,
         meta_capi_token: cleanCapiToken,
         meta_test_event_code: cleanTestCode,
+        meta_campaign_phone: cleanCampaignPhone,
         meta_tags_list: metaTagsList,
       }
 
@@ -172,11 +179,13 @@ export default function Settings() {
         test: updatedUser.meta_test_event_code || '',
         tags: JSON.stringify(updatedUser.meta_tags_list || []),
         prompt: updatedUser.ai_instructions || '',
+        campaignPhone: updatedUser.meta_campaign_phone || '',
       })
 
       setMetaPixelId(cleanPixelId)
       setMetaCapiToken(cleanCapiToken)
       setMetaTestEventCode(cleanTestCode)
+      setMetaCampaignPhone(cleanCampaignPhone)
 
       setTimeout(() => {
         setIsSaving(false)
@@ -199,12 +208,13 @@ export default function Settings() {
     setIsSavingMeta(true)
     try {
       if (!user?.id) throw new Error('Usuário não autenticado')
-      const { cleanPixelId, cleanCapiToken, cleanTestCode } = getCleanMeta()
+      const { cleanPixelId, cleanCapiToken, cleanTestCode, cleanCampaignPhone } = getCleanMeta()
 
       const updateData: any = {
         meta_pixel_id: cleanPixelId,
         meta_capi_token: cleanCapiToken,
         meta_test_event_code: cleanTestCode,
+        meta_campaign_phone: cleanCampaignPhone,
         meta_tags_list: metaTagsList,
         // Partial Update: DO NOT INCLUDE ai_instructions here to prevent overwriting
       }
@@ -222,12 +232,14 @@ export default function Settings() {
         pixel: updatedUser.meta_pixel_id || '',
         capi: updatedUser.meta_capi_token || '',
         test: updatedUser.meta_test_event_code || '',
+        campaignPhone: updatedUser.meta_campaign_phone || '',
         tags: JSON.stringify(updatedUser.meta_tags_list || []),
       }))
 
       setMetaPixelId(cleanPixelId)
       setMetaCapiToken(cleanCapiToken)
       setMetaTestEventCode(cleanTestCode)
+      setMetaCampaignPhone(cleanCampaignPhone)
 
       toast({
         title: 'Configurações do Meta salvas!',
@@ -303,7 +315,7 @@ export default function Settings() {
 
       toast({
         title: 'Erro de Conexão',
-        description: `Falha ao validar com o Meta: ${errorMsg}`,
+        description: `Falha ao validar com o Meta: ${errorMsg}. Verifique espaços em branco no seu token e tente novamente.`,
         variant: 'destructive',
       })
     } finally {
@@ -604,6 +616,33 @@ export default function Settings() {
                 Estas tags são inicializadas automaticamente em todas as páginas para rastreamento
                 simultâneo.
               </p>
+            </div>
+
+            <div className="space-y-3 pt-4 border-t">
+              <h3 className="text-lg font-medium text-secondary">
+                Safeguards de Remarketing (Anti-Ban)
+              </h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Proteja seu número principal utilizando um número secundário exclusivo para eventos
+                de remarketing e controle as integrações.
+              </p>
+              <div className="space-y-3">
+                <Label htmlFor="meta-campaign-phone" className="font-semibold text-secondary">
+                  Telefone de Campanha (WhatsApp Secundário)
+                </Label>
+                <Input
+                  id="meta-campaign-phone"
+                  placeholder="Ex: 5511999999999"
+                  value={metaCampaignPhone}
+                  onChange={(e) => setMetaCampaignPhone(e.target.value.replace(/\D/g, ''))}
+                  className="bg-muted/30 focus-visible:ring-blue-600"
+                  inputMode="numeric"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se preenchido, este número será associado aos eventos enviados para o Meta como o
+                  remetente da campanha.
+                </p>
+              </div>
             </div>
 
             <div className="space-y-3 pt-2">

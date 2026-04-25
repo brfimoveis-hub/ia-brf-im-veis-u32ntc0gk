@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-25T13:55:35.041Z",
+  "generatedAt": "2026-04-25T14:10:15.316Z",
   "collections": [
     {
       "name": "users",
@@ -94,6 +94,12 @@
         },
         {
           "name": "ai_instructions",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_campaign_phone",
           "type": "text",
           "required": false,
           "system": false

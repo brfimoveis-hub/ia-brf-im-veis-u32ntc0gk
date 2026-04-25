@@ -3,15 +3,19 @@ routerAdd(
   '/backend/v1/meta-test-connection',
   (e) => {
     const body = e.requestInfo().body || {}
-    const pixelId = (body.pixelId || '').replace(/[\s\uFEFF\xA0\u200B-\u200D]+/g, '').trim()
+    const pixelId = (body.pixelId || '')
+      .replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
+      .trim()
     const capiToken = (body.capiToken || '')
       .replace(/^Bearer\s+/i, '')
-      .replace(/[\s\uFEFF\xA0\u200B-\u200D]+/g, '')
+      .replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
       .replace(/^(EA)+/i, 'EA')
       .trim()
 
     if (!pixelId || !capiToken) {
-      return e.badRequestError('Pixel ID e Token CAPI são obrigatórios')
+      return e.badRequestError(
+        'Pixel ID e Token CAPI são obrigatórios. Verifique se os campos estão preenchidos.',
+      )
     }
 
     const res = $http.send({
@@ -54,9 +58,9 @@ routerAdd(
         $app.save(logRecord)
       } catch (logErr) {}
 
-      let errorMessage = 'Falha na autenticação com o Meta'
+      let errorMessage = 'Falha na autenticação com o Meta. O token pode ser inválido ou expirado.'
       if (errorPayload && errorPayload.error && errorPayload.error.message) {
-        errorMessage = errorPayload.error.message
+        errorMessage = `Meta retornou: ${errorPayload.error.message}. Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel.`
       } else if (typeof errorPayload === 'string') {
         errorMessage = errorPayload
       } else if (typeof errorPayload === 'object') {
