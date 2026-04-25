@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import {
   Save,
@@ -14,114 +15,47 @@ import {
   Facebook,
   Copy,
   Loader2,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useBlocker } from 'react-router-dom'
 
-// Componente dedicado para gerenciar o ID do Meta Pixel com estabilidade
-// Isola as atualizações de estado para prevenir re-renderizações cíclicas ("Maximum update depth exceeded")
-function IsolatedMetaPixelInput() {
-  const { user } = useAuth()
-  const { toast } = useToast()
-
-  const [value, setValue] = useState(user?.meta_pixel_id || '')
-  const [isSaving, setIsSaving] = useState(false)
-
-  useEffect(() => {
-    if (user?.meta_pixel_id !== undefined && !isSaving) {
-      setValue(user.meta_pixel_id)
-    }
-  }, [user?.meta_pixel_id, isSaving])
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setValue(e.target.value.replace(/\D/g, ''))
-  }
-
-  const savePixel = async () => {
-    const currentStoredValue = user?.meta_pixel_id || ''
-    if (value === currentStoredValue) return
-
-    setIsSaving(true)
-    try {
-      if (user?.id) {
-        await pb.collection('users').update(user.id, {
-          meta_pixel_id: value,
-        })
-        await pb.collection('users').authRefresh()
-        toast({
-          title: 'Pixel ID atualizado',
-          description: 'O Meta Pixel ID foi salvo com sucesso.',
-        })
-      }
-    } catch (error) {
-      toast({
-        title: 'Erro ao salvar',
-        description: 'Não foi possível salvar o Pixel ID.',
-        variant: 'destructive',
-      })
-      setValue(currentStoredValue)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <Label htmlFor="isolated-meta-pixel" className="font-semibold text-secondary">
-        ID do Pixel do Meta
-      </Label>
-      <div className="flex gap-2">
-        <Input
-          id="isolated-meta-pixel"
-          placeholder="Ex: 1234567890"
-          value={value}
-          onChange={handleChange}
-          onBlur={savePixel}
-          className="bg-muted/30 focus-visible:ring-blue-600"
-          inputMode="numeric"
-          disabled={isSaving}
-        />
-        <Button
-          variant="secondary"
-          onClick={savePixel}
-          disabled={isSaving || value === (user?.meta_pixel_id || '')}
-          type="button"
-          className="shrink-0 gap-2 px-3"
-        >
-          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          <span className="hidden sm:inline">Salvar</span>
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground">Salvo automaticamente ao sair do campo.</p>
-    </div>
-  )
-}
-
 export default function Settings() {
   const { toast } = useToast()
   const { user } = useAuth()
   const [isSaving, setIsSaving] = useState(false)
+  const [isSavingMeta, setIsSavingMeta] = useState(false)
+
   const [prompt, setPrompt] = useState(
     'Você é um assistente virtual de vendas especializado em produtos SaaS. Seja sempre educado, objetivo e utilize emojis ocasionalmente.',
   )
 
+  // Meta Ads State
+  const [metaPixelId, setMetaPixelId] = useState('')
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [metaTestEventCode, setMetaTestEventCode] = useState('')
   const [metaTagsList, setMetaTagsList] = useState<{ id: string; name: string }[]>([])
+
+  // UI State
   const [newTagName, setNewTagName] = useState('')
   const [newTagId, setNewTagId] = useState('')
+  const [showCapiToken, setShowCapiToken] = useState(false)
 
-  const [initialMeta, setInitialMeta] = useState({ capi: '', test: '', tags: '[]' })
+  const [initialMeta, setInitialMeta] = useState({ pixel: '', capi: '', test: '', tags: '[]' })
   const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
     if (user && !isInitialized) {
+      setMetaPixelId(user.meta_pixel_id || '')
       setMetaCapiToken(user.meta_capi_token || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
       setMetaTagsList(user.meta_tags_list || [])
+
       setInitialMeta({
+        pixel: user.meta_pixel_id || '',
         capi: user.meta_capi_token || '',
         test: user.meta_test_event_code || '',
         tags: JSON.stringify(user.meta_tags_list || []),
@@ -131,11 +65,11 @@ export default function Settings() {
   }, [user, isInitialized])
 
   const isDirty =
+    metaPixelId !== initialMeta.pixel ||
     metaCapiToken !== initialMeta.capi ||
     metaTestEventCode !== initialMeta.test ||
     JSON.stringify(metaTagsList) !== initialMeta.tags
 
-  // Evita o ciclo infinito do React Router estabilizando a função de callback
   const shouldBlock = useCallback(
     ({ currentLocation, nextLocation }: any) =>
       isDirty && currentLocation.pathname !== nextLocation.pathname,
@@ -168,30 +102,37 @@ export default function Settings() {
   useEffect(() => {
     const handleNext = (e: Event) => {
       if (isDirty) {
-        e.preventDefault() // Pause roulette se houver alterações não salvas
+        e.preventDefault()
       }
     }
     window.addEventListener('roulette-next', handleNext)
     return () => window.removeEventListener('roulette-next', handleNext)
   }, [isDirty])
 
+  const saveMetaFields = async () => {
+    if (!user?.id) throw new Error('Usuário não autenticado')
+
+    const updatedUser = await pb.collection('users').update(user.id, {
+      meta_pixel_id: metaPixelId.trim(),
+      meta_capi_token: metaCapiToken.trim(),
+      meta_test_event_code: metaTestEventCode.trim(),
+      meta_tags_list: metaTagsList,
+    })
+
+    await pb.collection('users').authRefresh()
+
+    setInitialMeta({
+      pixel: updatedUser.meta_pixel_id || '',
+      capi: updatedUser.meta_capi_token || '',
+      test: updatedUser.meta_test_event_code || '',
+      tags: JSON.stringify(updatedUser.meta_tags_list || []),
+    })
+  }
+
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      if (user?.id) {
-        const updatedUser = await pb.collection('users').update(user.id, {
-          meta_capi_token: metaCapiToken.trim(),
-          meta_test_event_code: metaTestEventCode.trim(),
-          meta_tags_list: metaTagsList,
-        })
-        await pb.collection('users').authRefresh()
-        setInitialMeta({
-          capi: updatedUser.meta_capi_token || '',
-          test: updatedUser.meta_test_event_code || '',
-          tags: JSON.stringify(updatedUser.meta_tags_list || []),
-        })
-      }
-
+      await saveMetaFields()
       setTimeout(() => {
         setIsSaving(false)
         toast({
@@ -209,24 +150,10 @@ export default function Settings() {
     }
   }
 
-  const [isSavingMeta, setIsSavingMeta] = useState(false)
-
   const handleSaveMeta = async () => {
     setIsSavingMeta(true)
     try {
-      if (user?.id) {
-        const updatedUser = await pb.collection('users').update(user.id, {
-          meta_capi_token: metaCapiToken.trim(),
-          meta_test_event_code: metaTestEventCode.trim(),
-          meta_tags_list: metaTagsList,
-        })
-        await pb.collection('users').authRefresh()
-        setInitialMeta({
-          capi: updatedUser.meta_capi_token || '',
-          test: updatedUser.meta_test_event_code || '',
-          tags: JSON.stringify(updatedUser.meta_tags_list || []),
-        })
-      }
+      await saveMetaFields()
       toast({
         title: 'Configurações do Meta salvas!',
         description: 'As alterações foram aplicadas com sucesso.',
@@ -249,6 +176,15 @@ export default function Settings() {
       description: 'A URL do Webhook foi copiada para a área de transferência.',
     })
   }
+
+  // Status Logic variables
+  const isPixelConfigured = metaPixelId.trim().length > 0
+  const pixelBadgeText = isPixelConfigured ? 'Configurado' : 'Não configurado'
+  const pixelStatusText = isPixelConfigured ? 'Ativo' : 'Inativo'
+
+  const isCapiConfigured = metaCapiToken.trim().length > 0
+  const capiBadgeText = isCapiConfigured ? 'Token configurado' : 'Token não configurado'
+  const capiStatusText = isCapiConfigured ? 'Ativo' : 'Pausado'
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
@@ -353,19 +289,46 @@ export default function Settings() {
                 <Facebook className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <CardTitle className="text-xl">Gerenciador de Eventos do Meta</CardTitle>
+                <CardTitle className="text-xl">Integração Meta Ads</CardTitle>
                 <CardDescription>
-                  Configure o Pixel e a API de Conversões para rastreamento de eventos.
+                  Configure o Pixel e a API de Conversões para rastreamento de eventos e
+                  remarketing.
                 </CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="pt-6 space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
-              <IsolatedMetaPixelInput />
+              {/* Pixel Configuration */}
               <div className="space-y-3">
-                <Label htmlFor="meta-test-code" className="font-semibold text-secondary">
-                  Código de Teste de Evento (Opcional)
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="meta-pixel-id" className="font-semibold text-secondary">
+                    Meta Pixel ID
+                  </Label>
+                  <Badge
+                    variant={isPixelConfigured ? 'default' : 'secondary'}
+                    className="h-5 text-[10px] px-2 font-medium"
+                  >
+                    {pixelStatusText} • {pixelBadgeText}
+                  </Badge>
+                </div>
+                <Input
+                  id="meta-pixel-id"
+                  placeholder="Ex: 1234567890"
+                  value={metaPixelId}
+                  onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
+                  className="bg-muted/30 focus-visible:ring-blue-600"
+                  inputMode="numeric"
+                />
+              </div>
+
+              {/* Test Event Code Configuration */}
+              <div className="space-y-3">
+                <Label
+                  htmlFor="meta-test-code"
+                  className="font-semibold text-secondary flex items-center h-[26px]"
+                >
+                  Código de Teste de Evento (opcional)
                 </Label>
                 <Input
                   id="meta-test-code"
@@ -374,6 +337,39 @@ export default function Settings() {
                   onChange={(e) => setMetaTestEventCode(e.target.value)}
                   className="bg-muted/30 focus-visible:ring-blue-600"
                 />
+              </div>
+            </div>
+
+            {/* CAPI Configuration */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="meta-capi-token" className="font-semibold text-secondary">
+                  Token de Acesso CAPI
+                </Label>
+                <Badge
+                  variant={isCapiConfigured ? 'default' : 'secondary'}
+                  className="h-5 text-[10px] px-2 font-medium"
+                >
+                  {capiStatusText} • {capiBadgeText}
+                </Badge>
+              </div>
+              <div className="relative">
+                <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="meta-capi-token"
+                  type={showCapiToken ? 'text' : 'password'}
+                  placeholder="Insira seu token de acesso permanente"
+                  value={metaCapiToken}
+                  onChange={(e) => setMetaCapiToken(e.target.value)}
+                  className="pl-10 pr-10 h-11 bg-muted/30 focus-visible:ring-blue-600 font-mono text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCapiToken(!showCapiToken)}
+                  className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showCapiToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 
@@ -448,22 +444,7 @@ export default function Settings() {
                 simultâneo.
               </p>
             </div>
-            <div className="space-y-3">
-              <Label htmlFor="meta-capi-token" className="font-semibold text-secondary">
-                Token de Acesso da API de Conversões
-              </Label>
-              <div className="relative">
-                <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="meta-capi-token"
-                  type="password"
-                  placeholder="Insira seu token de acesso permanente"
-                  value={metaCapiToken}
-                  onChange={(e) => setMetaCapiToken(e.target.value)}
-                  className="pl-10 h-11 bg-muted/30 focus-visible:ring-blue-600"
-                />
-              </div>
-            </div>
+
             <div className="space-y-3 pt-2">
               <Label className="font-semibold text-secondary">
                 URL do Webhook (API de Conversões)
@@ -486,7 +467,7 @@ export default function Settings() {
               <Button
                 onClick={handleSaveMeta}
                 disabled={isSavingMeta}
-                className="gap-2 bg-blue-600 hover:bg-blue-700"
+                className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
               >
                 {isSavingMeta ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
