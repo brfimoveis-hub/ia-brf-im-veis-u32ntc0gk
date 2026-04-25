@@ -304,8 +304,9 @@ export default function Customers() {
           <RemarketingSyncModal
             isOpen={syncModalOpen}
             onClose={() => setSyncModalOpen(false)}
-            leads={leads}
             searchTerm={debouncedSearch}
+            phaseFilter={phaseFilter}
+            sourceFilter={debouncedSourceFilter}
           />
         )}
       </Suspense>

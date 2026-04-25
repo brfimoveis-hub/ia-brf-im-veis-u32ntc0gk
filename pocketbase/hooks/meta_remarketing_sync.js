@@ -21,7 +21,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing_log')
+        logRecord.set('type', 'error')
         logRecord.set('message', 'Falha na sincronização: credenciais do Meta ausentes.')
         logRecord.set(
           'details',
@@ -52,7 +52,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing_log')
+        logRecord.set('type', 'error')
         logRecord.set('message', 'Falha na sincronização: clientes não encontrados.')
         logRecord.set('details', 'Nenhum dos clientes fornecidos pertence a este usuário.')
         logRecord.set('payload', { customerIds, eventName })
@@ -84,7 +84,7 @@ routerAdd(
         data.push({
           event_name: finalEventName,
           event_time: currentTimestamp,
-          action_source: 'system_generated',
+          action_source: 'other',
           user_data: userData,
           custom_data: {
             currency: 'BRL',
@@ -100,7 +100,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing_log')
+        logRecord.set('type', 'error')
         logRecord.set('message', 'Falha na sincronização: nenhum contato com dados válidos.')
         logRecord.set('details', 'Os clientes selecionados não possuem email ou telefone.')
         logRecord.set('payload', { customerIds, eventName })
@@ -141,7 +141,7 @@ routerAdd(
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
-          logRecord.set('type', 'remarketing_log')
+          logRecord.set('type', 'error')
           logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
           logRecord.set('details', JSON.stringify(lastError))
           logRecord.set('payload', {
