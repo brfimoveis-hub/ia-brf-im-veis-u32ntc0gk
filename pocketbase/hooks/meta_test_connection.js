@@ -17,15 +17,30 @@ routerAdd(
       timeout: 15,
     })
 
+    const user = e.auth
+    const now = new Date().toISOString()
+
     if (res.statusCode === 200) {
+      if (user) {
+        user.set('meta_token_status', 'valid')
+        user.set('meta_last_validated', now)
+        $app.save(user)
+      }
       return e.json(200, { success: true, data: res.json })
     } else {
       const errorPayload = res.json || res.raw || 'Erro desconhecido'
+
+      if (user) {
+        user.set('meta_token_status', 'invalid')
+        user.set('meta_last_validated', now)
+        $app.save(user)
+      }
+
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', e.auth.id)
-        logRecord.set('type', 'meta_error')
+        logRecord.set('type', 'remarketing_error')
         logRecord.set('message', 'Falha no teste de conexão com Meta.')
         logRecord.set(
           'details',
@@ -35,7 +50,16 @@ routerAdd(
         $app.save(logRecord)
       } catch (logErr) {}
 
-      return e.badRequestError('Falha na autenticação com o Meta', errorPayload)
+      let errorMessage = 'Falha na autenticação com o Meta'
+      if (errorPayload && errorPayload.error && errorPayload.error.message) {
+        errorMessage = errorPayload.error.message
+      } else if (typeof errorPayload === 'string') {
+        errorMessage = errorPayload
+      } else if (typeof errorPayload === 'object') {
+        errorMessage = JSON.stringify(errorPayload)
+      }
+
+      return e.badRequestError(errorMessage, errorPayload)
     }
   },
   $apis.requireAuth(),

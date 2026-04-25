@@ -117,12 +117,20 @@ export default function Settings() {
     const cleanCapiToken = metaCapiToken.replace(/^Bearer\s+/i, '').replace(/[\s\uFEFF\xA0]+/g, '')
     const cleanTestCode = metaTestEventCode.trim()
 
-    const updatedUser = await pb.collection('users').update(user.id, {
+    const updateData: any = {
       meta_pixel_id: cleanPixelId,
       meta_capi_token: cleanCapiToken,
       meta_test_event_code: cleanTestCode,
       meta_tags_list: metaTagsList,
-    })
+    }
+
+    // Reset status if credentials changed
+    if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capi) {
+      updateData.meta_token_status = 'untested'
+      updateData.meta_last_validated = ''
+    }
+
+    const updatedUser = await pb.collection('users').update(user.id, updateData)
 
     await pb.collection('users').authRefresh()
 
@@ -209,16 +217,29 @@ export default function Settings() {
         }),
         headers: { 'Content-Type': 'application/json' },
       })
+      await pb.collection('users').authRefresh()
       toast({
         title: 'Conexão bem-sucedida',
         description: 'O Pixel ID e o Token CAPI são válidos e estão comunicando com o Meta.',
       })
     } catch (error: any) {
-      const errorMsg =
-        error.response?.data?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
-        'Verifique as credenciais.'
+      await pb.collection('users').authRefresh()
+      let errorMsg = 'Verifique as credenciais.'
+      if (
+        error.response?.message &&
+        error.response?.message !== 'Something went wrong while processing your request.'
+      ) {
+        errorMsg = error.response.message
+      } else if (error.response?.data?.error?.message) {
+        errorMsg = error.response.data.error.message
+      } else if (error.message) {
+        errorMsg = error.message
+      }
+
+      if (typeof errorMsg === 'object') {
+        errorMsg = JSON.stringify(errorMsg)
+      }
+
       toast({
         title: 'Erro de Conexão',
         description: `Falha ao validar com o Meta: ${errorMsg}`,
@@ -231,12 +252,22 @@ export default function Settings() {
 
   // Status Logic variables
   const isPixelConfigured = metaPixelId.trim().length > 0
-  const pixelBadgeText = isPixelConfigured ? 'Configurado' : 'Não configurado'
-  const pixelStatusText = isPixelConfigured ? 'Ativo' : 'Inativo'
-
   const isCapiConfigured = metaCapiToken.trim().length > 0
-  const capiBadgeText = isCapiConfigured ? 'Token configurado' : 'Token não configurado'
-  const capiStatusText = isCapiConfigured ? 'Ativo' : 'Pausado'
+
+  const metaTokenStatus = user?.meta_token_status || 'untested'
+
+  let connectionBadgeText = 'Não Testado'
+  let connectionBadgeColor = 'bg-muted text-muted-foreground'
+
+  if (metaTokenStatus === 'valid') {
+    connectionBadgeText = 'Validado'
+    connectionBadgeColor =
+      'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
+  } else if (metaTokenStatus === 'invalid') {
+    connectionBadgeText = 'Erro de Conexão'
+    connectionBadgeColor =
+      'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
@@ -361,9 +392,9 @@ export default function Settings() {
                     variant={isPixelConfigured ? 'default' : 'secondary'}
                     className="h-5 text-[10px] px-2 font-medium"
                   >
-                    {pixelStatusText} • {pixelBadgeText}
+                    {isPixelConfigured ? 'Configurado' : 'Não configurado'}
                   </Badge>
-                </div>
+                </div>{' '}
                 <Input
                   id="meta-pixel-id"
                   placeholder="Ex: 1234567890"
@@ -399,10 +430,10 @@ export default function Settings() {
                   Token de Acesso CAPI
                 </Label>
                 <Badge
-                  variant={isCapiConfigured ? 'default' : 'secondary'}
-                  className="h-5 text-[10px] px-2 font-medium"
+                  variant="outline"
+                  className={cn('h-5 text-[10px] px-2 font-medium', connectionBadgeColor)}
                 >
-                  {capiStatusText} • {capiBadgeText}
+                  {connectionBadgeText}
                 </Badge>
               </div>
               <div className="relative">

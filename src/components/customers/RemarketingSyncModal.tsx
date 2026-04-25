@@ -124,24 +124,49 @@ export function RemarketingSyncModal({
     setIsFinished(false)
 
     // Pre-flight check (Handshake)
-    try {
-      await pb.send('/backend/v1/meta-test-connection', {
-        method: 'POST',
-        body: JSON.stringify({
-          pixelId: user.meta_pixel_id,
-          capiToken: user.meta_capi_token,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      })
-    } catch (error: any) {
-      setIsSyncing(false)
-      const errorMsg =
-        error.response?.data?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
-        'Erro de autenticação com o Meta'
-      setSyncError(`Falha na validação do Token (Pre-flight): ${errorMsg}`)
-      return
+    const lastValidatedStr = user?.meta_last_validated
+    let needsValidation = true
+    if (lastValidatedStr && user?.meta_token_status === 'valid') {
+      const lastValidated = new Date(lastValidatedStr).getTime()
+      const now = Date.now()
+      const hours24 = 24 * 60 * 60 * 1000
+      if (now - lastValidated < hours24) {
+        needsValidation = false
+      }
+    }
+
+    if (needsValidation) {
+      try {
+        await pb.send('/backend/v1/meta-test-connection', {
+          method: 'POST',
+          body: JSON.stringify({
+            pixelId: user.meta_pixel_id,
+            capiToken: user.meta_capi_token,
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+        await pb.collection('users').authRefresh() // Refresh to get updated status
+      } catch (error: any) {
+        setIsSyncing(false)
+        let errorMsg = 'Erro de autenticação com o Meta'
+        if (
+          error.response?.message &&
+          error.response?.message !== 'Something went wrong while processing your request.'
+        ) {
+          errorMsg = error.response.message
+        } else if (error.response?.data?.error?.message) {
+          errorMsg = error.response.data.error.message
+        } else if (error.message) {
+          errorMsg = error.message
+        }
+
+        if (typeof errorMsg === 'object') {
+          errorMsg = JSON.stringify(errorMsg)
+        }
+
+        setSyncError(`Falha na validação do Token (Pre-flight): ${errorMsg}`)
+        return
+      }
     }
 
     // Client-side batching for Real-time Progress & explicitly listing failed leads
@@ -157,7 +182,19 @@ export function RemarketingSyncModal({
         currentSynced += result.synced
         setSyncedCount(currentSynced)
       } catch (error: any) {
-        const errorMsg = error.response?.message || error.message || 'Erro desconhecido no lote'
+        let errorMsg = 'Erro desconhecido no lote'
+        if (
+          error.response?.message &&
+          error.response?.message !== 'Something went wrong while processing your request.'
+        ) {
+          errorMsg = error.response.message
+        } else if (error.message) {
+          errorMsg = error.message
+        }
+        if (typeof errorMsg === 'object') {
+          errorMsg = JSON.stringify(errorMsg)
+        }
+
         const failures = batch.map((lead) => ({
           lead,
           error: errorMsg,

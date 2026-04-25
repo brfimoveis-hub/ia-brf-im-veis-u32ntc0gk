@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-25T13:19:21.946Z",
+  "generatedAt": "2026-04-25T13:29:16.313Z",
   "collections": [
     {
       "name": "users",
@@ -77,6 +77,18 @@
         {
           "name": "meta_tags_list",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_token_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_last_validated",
+          "type": "text",
           "required": false,
           "system": false
         }
