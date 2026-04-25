@@ -38,15 +38,10 @@ export default function Settings() {
   const [newTagId, setNewTagId] = useState('')
 
   const [initialMeta, setInitialMeta] = useState({ pixel: '', capi: '', test: '', tags: '[]' })
+  const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
-    if (
-      user &&
-      !initialMeta.pixel &&
-      !initialMeta.capi &&
-      !initialMeta.test &&
-      initialMeta.tags === '[]'
-    ) {
+    if (user && !isInitialized) {
       setMetaPixelId(user.meta_pixel_id || '')
       setMetaCapiToken(user.meta_capi_token || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
@@ -57,8 +52,9 @@ export default function Settings() {
         test: user.meta_test_event_code || '',
         tags: JSON.stringify(user.meta_tags_list || []),
       })
+      setIsInitialized(true)
     }
-  }, [user, initialMeta])
+  }, [user, isInitialized])
 
   const isDirty =
     metaPixelId !== initialMeta.pixel ||
@@ -320,7 +316,7 @@ export default function Settings() {
                   id="meta-pixel-id"
                   placeholder="Ex: 1234567890"
                   value={metaPixelId}
-                  onChange={(e) => setMetaPixelId(e.target.value)}
+                  onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
                   className="bg-muted/30 focus-visible:ring-blue-600"
                   inputMode="numeric"
                 />
@@ -353,7 +349,7 @@ export default function Settings() {
                 <Input
                   placeholder="ID (Ex: 123456789)"
                   value={newTagId}
-                  onChange={(e) => setNewTagId(e.target.value)}
+                  onChange={(e) => setNewTagId(e.target.value.replace(/\D/g, ''))}
                   className="bg-muted/30"
                   inputMode="numeric"
                 />
