@@ -41,11 +41,13 @@ export function RemarketingSyncModal({
 
   // Sync Settings
   const [batchSize, setBatchSize] = useState<number>(50)
-  const [intervalSeconds, setIntervalSeconds] = useState<number>(5)
+  const [intervalMinutes, setIntervalMinutes] = useState<number>(2)
 
   // Progress state
   const [progress, setProgress] = useState(0)
   const [syncedCount, setSyncedCount] = useState(0)
+  const [currentBatchIndex, setCurrentBatchIndex] = useState(0)
+  const [totalBatches, setTotalBatches] = useState(0)
   const [failedLeads, setFailedLeads] = useState<{ lead: Customer; error: string }[]>([])
   const [isFinished, setIsFinished] = useState(false)
 
@@ -131,6 +133,8 @@ export function RemarketingSyncModal({
     setSyncError(null)
     setProgress(0)
     setSyncedCount(0)
+    setCurrentBatchIndex(0)
+    setTotalBatches(Math.ceil(validLeads.length / Math.max(1, batchSize)))
     setFailedLeads([])
     setIsFinished(false)
 
@@ -186,6 +190,7 @@ export function RemarketingSyncModal({
     let currentSynced = 0
 
     for (let i = 0; i < validLeads.length; i += currentBatchSize) {
+      setCurrentBatchIndex(Math.floor(i / currentBatchSize) + 1)
       const batch = validLeads.slice(i, i + currentBatchSize)
 
       const payloads = await Promise.all(
@@ -241,7 +246,7 @@ export function RemarketingSyncModal({
 
       // Anti-Ban Throttling
       if (i + currentBatchSize < validLeads.length) {
-        await new Promise((resolve) => setTimeout(resolve, intervalSeconds * 1000))
+        await new Promise((resolve) => setTimeout(resolve, intervalMinutes * 60 * 1000))
       }
     }
 
@@ -312,20 +317,20 @@ export function RemarketingSyncModal({
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-sm font-medium">Intervalo (Segundos)</label>
+                          <label className="text-sm font-medium">Intervalo (Minutos)</label>
                           <input
                             type="number"
                             min="0"
-                            max="300"
-                            value={intervalSeconds}
-                            onChange={(e) => setIntervalSeconds(Number(e.target.value))}
+                            max="60"
+                            value={intervalMinutes}
+                            onChange={(e) => setIntervalMinutes(Number(e.target.value))}
                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           />
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Para evitar bloqueios, o sistema enviará {batchSize} leads e pausará por{' '}
-                        {intervalSeconds} segundos antes do próximo envio.
+                        {intervalMinutes} minuto(s) antes do próximo envio.
                       </p>
 
                       {syncError && (
@@ -341,7 +346,11 @@ export function RemarketingSyncModal({
                     <div className="space-y-6 py-4">
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm font-medium">
-                          <span>Progresso</span>
+                          <span>
+                            {isSyncing
+                              ? `Enviando lote ${currentBatchIndex}/${totalBatches}...`
+                              : 'Progresso'}
+                          </span>
                           <span>{progress}%</span>
                         </div>
                         <Progress value={progress} className="h-2" />

@@ -300,6 +300,10 @@ export default function Settings() {
         errorMsg = resData.message
       } else if (resData?.error?.error?.message) {
         errorMsg = resData.error.error.message
+      } else if (resData?.error?.message) {
+        errorMsg = resData.error.message
+      } else if (resData?.error && typeof resData.error === 'string') {
+        errorMsg = resData.error
       } else if (
         error.response?.message &&
         error.response?.message !== 'Something went wrong while processing your request.'

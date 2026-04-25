@@ -15,8 +15,9 @@ export function MetaPixel() {
   const location = useLocation()
   const pixelId = user?.meta_pixel_id
   const metaTagsList = Array.isArray(user?.meta_tags_list) ? user?.meta_tags_list : []
+  const HARDCODED_PIXEL = '3828467217409862'
   const allPixels = Array.from(
-    new Set([pixelId, ...metaTagsList.map((tag: any) => tag.id)].filter(Boolean)),
+    new Set([HARDCODED_PIXEL, pixelId, ...metaTagsList.map((tag: any) => tag.id)].filter(Boolean)),
   )
 
   useEffect(() => {
