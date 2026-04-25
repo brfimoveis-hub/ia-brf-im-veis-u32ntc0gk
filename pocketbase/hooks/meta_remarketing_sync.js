@@ -21,7 +21,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'error')
+        logRecord.set('type', 'remarketing')
         logRecord.set('message', 'Falha na sincronização: credenciais do Meta ausentes.')
         logRecord.set(
           'details',
@@ -31,8 +31,12 @@ routerAdd(
         $app.save(logRecord)
       } catch (logErr) {}
       return e.badRequestError(
-        'Erro de sincronização - o ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para Configurações para preenchê-los.',
+        'O ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para Configurações para preenchê-los.',
       )
+    }
+
+    if (!/^\d+$/.test(pixelId)) {
+      return e.badRequestError('O ID do Pixel é inválido. Ele deve conter apenas números.')
     }
 
     const finalEventName = eventName
@@ -47,12 +51,23 @@ routerAdd(
       } catch (err) {}
     }
 
+    let metaTagsList = user.get('meta_tags_list')
+    if (!metaTagsList) metaTagsList = []
+    if (typeof metaTagsList === 'string') {
+      try {
+        metaTagsList = JSON.parse(metaTagsList)
+      } catch (e) {
+        metaTagsList = []
+      }
+    }
+    if (!Array.isArray(metaTagsList)) metaTagsList = []
+
     if (!customers.length) {
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'error')
+        logRecord.set('type', 'remarketing')
         logRecord.set('message', 'Falha na sincronização: clientes não encontrados.')
         logRecord.set('details', 'Nenhum dos clientes fornecidos pertence a este usuário.')
         logRecord.set('payload', { customerIds, eventName })
@@ -80,6 +95,21 @@ routerAdd(
       if (email) userData.em = [$security.sha256(email)]
       if (phone) userData.ph = [$security.sha256(phone)]
 
+      let cTags = c.get('tags')
+      if (!cTags) cTags = []
+      if (typeof cTags === 'string') {
+        try {
+          cTags = JSON.parse(cTags)
+        } catch (e) {
+          cTags = []
+        }
+      }
+      if (!Array.isArray(cTags)) cTags = []
+
+      // verify if the tags associated with the filtered leads are included in the user's meta_tags_list configuration.
+      const validTags = cTags.filter((t) => metaTagsList.includes(t))
+      const finalKeyword = validTags.length > 0 ? validTags.join(', ') : keyword
+
       if (userData.em || userData.ph) {
         data.push({
           event_name: finalEventName,
@@ -89,7 +119,7 @@ routerAdd(
           custom_data: {
             currency: 'BRL',
             value: 0,
-            search_keyword: keyword,
+            search_keyword: finalKeyword,
           },
         })
       }
@@ -100,7 +130,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'error')
+        logRecord.set('type', 'remarketing')
         logRecord.set('message', 'Falha na sincronização: nenhum contato com dados válidos.')
         logRecord.set('details', 'Os clientes selecionados não possuem email ou telefone.')
         logRecord.set('payload', { customerIds, eventName })
@@ -121,15 +151,33 @@ routerAdd(
       const payload = { data: batch }
       if (testCode) payload.test_event_code = testCode
 
-      const res = $http.send({
-        url: `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        timeout: 15,
-      })
+      let retries = 3
+      let res
+      let success = false
 
-      if (res.statusCode === 200) {
+      while (retries > 0) {
+        res = $http.send({
+          url: `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          timeout: 15,
+        })
+
+        if (res.statusCode === 200) {
+          success = true
+          break
+        } else if (res.statusCode === 0 || res.statusCode >= 500) {
+          retries--
+          // brief block for retry
+          const start = Date.now()
+          while (Date.now() - start < 500) {}
+        } else {
+          break
+        }
+      }
+
+      if (success) {
         totalSynced += batch.length
       } else {
         lastError = res.json || res.raw || 'Unknown error'
@@ -141,9 +189,12 @@ routerAdd(
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
-          logRecord.set('type', 'error')
+          logRecord.set('type', 'remarketing')
           logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
-          logRecord.set('details', JSON.stringify(lastError))
+          logRecord.set(
+            'details',
+            typeof lastError === 'object' ? JSON.stringify(lastError) : String(lastError),
+          )
           logRecord.set('payload', {
             eventName,
             batchSize: batch.length,
@@ -157,7 +208,15 @@ routerAdd(
 
     if (totalSynced === 0 && lastError) {
       $app.logger().error('Meta CAPI Complete Failure', 'error', JSON.stringify(lastError))
-      return e.internalServerError('Falha ao enviar eventos para o Meta.')
+
+      let errMsg = 'Falha ao enviar eventos para o Meta.'
+      if (lastError && lastError.error && lastError.error.message) {
+        errMsg = `Erro do Meta: ${lastError.error.message}`
+      } else if (typeof lastError === 'string') {
+        errMsg = `Erro: ${lastError}`
+      }
+
+      return e.badRequestError(errMsg)
     }
 
     if (totalSynced > 0) {
@@ -165,7 +224,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing_log')
+        logRecord.set('type', 'remarketing')
         logRecord.set('message', `Sincronizou ${totalSynced} leads para o Meta CAPI.`)
         logRecord.set('details', `Palavra-chave: ${keyword}, Evento: ${finalEventName}`)
         logRecord.set('payload', {

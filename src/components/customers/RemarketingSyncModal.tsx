@@ -33,6 +33,7 @@ export function RemarketingSyncModal({
   const [isLoading, setIsLoading] = useState(true)
   const [validLeads, setValidLeads] = useState<Customer[]>([])
   const [totalFiltered, setTotalFiltered] = useState(0)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -91,6 +92,7 @@ export function RemarketingSyncModal({
 
   const handleSync = async () => {
     setIsSyncing(true)
+    setSyncError(null)
     try {
       const ids = validLeads.map((l) => l.id)
       const result = await syncRemarketing(ids, searchTerm, 'Lead')
@@ -100,11 +102,8 @@ export function RemarketingSyncModal({
       })
       onClose()
     } catch (error: any) {
-      toast({
-        title: 'Erro na sincronização',
-        description: error.message || 'Ocorreu um erro ao sincronizar com o Meta.',
-        variant: 'destructive',
-      })
+      let errorMsg = error.message || 'Ocorreu um erro ao sincronizar com o Meta.'
+      setSyncError(errorMsg)
     } finally {
       setIsSyncing(false)
     }
@@ -138,6 +137,11 @@ export function RemarketingSyncModal({
                       ({validLeads.length} contatos válidos encontrados)
                     </span>
                   </div>
+                  {syncError && (
+                    <div className="mt-4 p-4 rounded-md border border-destructive bg-destructive/10 text-destructive text-sm font-medium">
+                      Falha na sincronização: {syncError}
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -148,7 +152,14 @@ export function RemarketingSyncModal({
             Cancelar
           </Button>
           <Button onClick={handleSync} disabled={isSyncing || isLoading || validLeads.length === 0}>
-            {isSyncing ? 'Sincronizando...' : 'Confirmar Envio'}
+            {isSyncing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Enviando...
+              </>
+            ) : (
+              'Confirmar Envio'
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
