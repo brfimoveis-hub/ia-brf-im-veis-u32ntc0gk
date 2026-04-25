@@ -12,16 +12,16 @@ routerAdd(
     const user = e.auth
     if (!user) return e.unauthorizedError('Not authenticated')
 
-    const pixelId = user.getString('meta_pixel_id')
-    const capiToken = user.getString('meta_capi_token')
-    const testCode = user.getString('meta_test_event_code')
+    const pixelId = (user.getString('meta_pixel_id') || '').trim()
+    const capiToken = (user.getString('meta_capi_token') || '').trim()
+    const testCode = (user.getString('meta_test_event_code') || '').trim()
 
     if (!pixelId || !capiToken) {
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing')
+        logRecord.set('type', 'error')
         logRecord.set('message', 'Falha na sincronização: credenciais do Meta ausentes.')
         logRecord.set(
           'details',
@@ -67,7 +67,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing')
+        logRecord.set('type', 'error')
         logRecord.set('message', 'Falha na sincronização: clientes não encontrados.')
         logRecord.set('details', 'Nenhum dos clientes fornecidos pertence a este usuário.')
         logRecord.set('payload', { customerIds, eventName })
@@ -130,7 +130,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing')
+        logRecord.set('type', 'error')
         logRecord.set('message', 'Falha na sincronização: nenhum contato com dados válidos.')
         logRecord.set('details', 'Os clientes selecionados não possuem email ou telefone.')
         logRecord.set('payload', { customerIds, eventName })
@@ -189,7 +189,7 @@ routerAdd(
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
-          logRecord.set('type', 'remarketing')
+          logRecord.set('type', 'error')
           logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
           logRecord.set(
             'details',
@@ -211,7 +211,18 @@ routerAdd(
 
       let errMsg = 'Falha ao enviar eventos para o Meta.'
       if (lastError && lastError.error && lastError.error.message) {
-        errMsg = `Erro do Meta: ${lastError.error.message}`
+        const metaErrorMsg = lastError.error.message.toLowerCase()
+        if (
+          metaErrorMsg.includes('oauth') ||
+          metaErrorMsg.includes('access token') ||
+          metaErrorMsg.includes('token') ||
+          metaErrorMsg.includes('auth')
+        ) {
+          errMsg =
+            'Erro de autenticação com o Meta: Token de acesso inválido ou expirado. Verifique suas configurações.'
+        } else {
+          errMsg = `Erro do Meta: ${lastError.error.message}`
+        }
       } else if (typeof lastError === 'string') {
         errMsg = `Erro: ${lastError}`
       }

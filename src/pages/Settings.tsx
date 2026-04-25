@@ -43,6 +43,7 @@ export default function Settings() {
   const [newTagName, setNewTagName] = useState('')
   const [newTagId, setNewTagId] = useState('')
   const [showCapiToken, setShowCapiToken] = useState(false)
+  const [isTestingConnection, setIsTestingConnection] = useState(false)
 
   const [initialMeta, setInitialMeta] = useState({ pixel: '', capi: '', test: '', tags: '[]' })
   const [isInitialized, setIsInitialized] = useState(false)
@@ -175,6 +176,42 @@ export default function Settings() {
       title: 'URL Copiada',
       description: 'A URL do Webhook foi copiada para a área de transferência.',
     })
+  }
+
+  const testMetaConnection = async () => {
+    if (!metaPixelId.trim() || !metaCapiToken.trim()) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Preencha o Pixel ID e o Token CAPI antes de testar.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsTestingConnection(true)
+    try {
+      await pb.send('/backend/v1/meta-test-connection', {
+        method: 'POST',
+        body: JSON.stringify({
+          pixelId: metaPixelId.trim(),
+          capiToken: metaCapiToken.trim(),
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      toast({
+        title: 'Conexão bem-sucedida',
+        description: 'O Pixel ID e o Token CAPI são válidos e estão comunicando com o Meta.',
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Erro de Conexão',
+        description:
+          'Não foi possível validar o token ou pixel com o Meta. Verifique as credenciais.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsTestingConnection(false)
+    }
   }
 
   // Status Logic variables
@@ -370,6 +407,23 @@ export default function Settings() {
                 >
                   {showCapiToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
+              </div>
+              <div className="flex justify-end mt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={testMetaConnection}
+                  disabled={isTestingConnection}
+                  className="gap-2"
+                >
+                  {isTestingConnection ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-4 w-4 text-green-600" />
+                  )}
+                  Testar Conexão
+                </Button>
               </div>
             </div>
 

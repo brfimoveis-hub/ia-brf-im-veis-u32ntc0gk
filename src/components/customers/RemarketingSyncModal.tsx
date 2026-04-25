@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast'
 import { syncRemarketing, Customer } from '@/services/customers'
 import pb from '@/lib/pocketbase/client'
 import { Loader2 } from 'lucide-react'
+import { useAuth } from '@/hooks/use-auth'
 
 interface RemarketingSyncModalProps {
   isOpen: boolean
@@ -29,6 +30,7 @@ export function RemarketingSyncModal({
   sourceFilter = '',
 }: RemarketingSyncModalProps) {
   const { toast } = useToast()
+  const { user } = useAuth()
   const [isSyncing, setIsSyncing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [validLeads, setValidLeads] = useState<Customer[]>([])
@@ -91,6 +93,13 @@ export function RemarketingSyncModal({
   }, [isOpen, searchTerm, phaseFilter, sourceFilter, toast])
 
   const handleSync = async () => {
+    if (!user?.meta_pixel_id || !user?.meta_capi_token) {
+      setSyncError(
+        'O ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para Configurações para preenchê-los.',
+      )
+      return
+    }
+
     setIsSyncing(true)
     setSyncError(null)
     try {
@@ -102,7 +111,8 @@ export function RemarketingSyncModal({
       })
       onClose()
     } catch (error: any) {
-      let errorMsg = error.message || 'Ocorreu um erro ao sincronizar com o Meta.'
+      let errorMsg =
+        error.response?.message || error.message || 'Ocorreu um erro ao sincronizar com o Meta.'
       setSyncError(errorMsg)
     } finally {
       setIsSyncing(false)
