@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -6,21 +6,98 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import {
-  UploadCloud,
   Save,
   Key,
-  FileText,
   Settings as SettingsIcon,
   ShieldCheck,
   CheckCircle2,
   Facebook,
   Copy,
+  Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useBlocker } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+
+// Componente dedicado para gerenciar o ID do Meta Pixel com estabilidade
+// Isola as atualizações de estado para prevenir re-renderizações cíclicas ("Maximum update depth exceeded")
+function IsolatedMetaPixelInput() {
+  const { user } = useAuth()
+  const { toast } = useToast()
+
+  const [value, setValue] = useState(user?.meta_pixel_id || '')
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    if (user?.meta_pixel_id !== undefined && !isSaving) {
+      setValue(user.meta_pixel_id)
+    }
+  }, [user?.meta_pixel_id, isSaving])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setValue(e.target.value.replace(/\D/g, ''))
+  }
+
+  const savePixel = async () => {
+    const currentStoredValue = user?.meta_pixel_id || ''
+    if (value === currentStoredValue) return
+
+    setIsSaving(true)
+    try {
+      if (user?.id) {
+        await pb.collection('users').update(user.id, {
+          meta_pixel_id: value,
+        })
+        await pb.collection('users').authRefresh()
+        toast({
+          title: 'Pixel ID atualizado',
+          description: 'O Meta Pixel ID foi salvo com sucesso.',
+        })
+      }
+    } catch (error) {
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Não foi possível salvar o Pixel ID.',
+        variant: 'destructive',
+      })
+      setValue(currentStoredValue)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Label htmlFor="isolated-meta-pixel" className="font-semibold text-secondary">
+        ID do Pixel do Meta
+      </Label>
+      <div className="flex gap-2">
+        <Input
+          id="isolated-meta-pixel"
+          placeholder="Ex: 1234567890"
+          value={value}
+          onChange={handleChange}
+          onBlur={savePixel}
+          className="bg-muted/30 focus-visible:ring-blue-600"
+          inputMode="numeric"
+          disabled={isSaving}
+        />
+        <Button
+          variant="secondary"
+          onClick={savePixel}
+          disabled={isSaving || value === (user?.meta_pixel_id || '')}
+          type="button"
+          className="shrink-0 gap-2 px-3"
+        >
+          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          <span className="hidden sm:inline">Salvar</span>
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Salvo automaticamente ao sair do campo.</p>
+    </div>
+  )
+}
 
 export default function Settings() {
   const { toast } = useToast()
@@ -30,24 +107,21 @@ export default function Settings() {
     'Você é um assistente virtual de vendas especializado em produtos SaaS. Seja sempre educado, objetivo e utilize emojis ocasionalmente.',
   )
 
-  const [metaPixelId, setMetaPixelId] = useState('')
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [metaTestEventCode, setMetaTestEventCode] = useState('')
   const [metaTagsList, setMetaTagsList] = useState<{ id: string; name: string }[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [newTagId, setNewTagId] = useState('')
 
-  const [initialMeta, setInitialMeta] = useState({ pixel: '', capi: '', test: '', tags: '[]' })
+  const [initialMeta, setInitialMeta] = useState({ capi: '', test: '', tags: '[]' })
   const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
     if (user && !isInitialized) {
-      setMetaPixelId(user.meta_pixel_id || '')
       setMetaCapiToken(user.meta_capi_token || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
       setMetaTagsList(user.meta_tags_list || [])
       setInitialMeta({
-        pixel: user.meta_pixel_id || '',
         capi: user.meta_capi_token || '',
         test: user.meta_test_event_code || '',
         tags: JSON.stringify(user.meta_tags_list || []),
@@ -57,15 +131,17 @@ export default function Settings() {
   }, [user, isInitialized])
 
   const isDirty =
-    metaPixelId !== initialMeta.pixel ||
     metaCapiToken !== initialMeta.capi ||
     metaTestEventCode !== initialMeta.test ||
     JSON.stringify(metaTagsList) !== initialMeta.tags
 
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
+  // Evita o ciclo infinito do React Router estabilizando a função de callback
+  const shouldBlock = useCallback(
+    ({ currentLocation, nextLocation }: any) =>
       isDirty && currentLocation.pathname !== nextLocation.pathname,
+    [isDirty],
   )
+  const blocker = useBlocker(shouldBlock)
 
   useEffect(() => {
     if (blocker.state === 'blocked') {
@@ -100,27 +176,16 @@ export default function Settings() {
   }, [isDirty])
 
   const handleSave = async () => {
-    if (metaPixelId.trim() && !/^\d+$/.test(metaPixelId.trim())) {
-      toast({
-        title: 'Pixel ID Inválido',
-        description: 'O ID do Pixel do Meta deve conter apenas números.',
-        variant: 'destructive',
-      })
-      return
-    }
-
     setIsSaving(true)
     try {
       if (user?.id) {
         const updatedUser = await pb.collection('users').update(user.id, {
-          meta_pixel_id: metaPixelId.trim(),
           meta_capi_token: metaCapiToken.trim(),
           meta_test_event_code: metaTestEventCode.trim(),
           meta_tags_list: metaTagsList,
         })
         await pb.collection('users').authRefresh()
         setInitialMeta({
-          pixel: updatedUser.meta_pixel_id || '',
           capi: updatedUser.meta_capi_token || '',
           test: updatedUser.meta_test_event_code || '',
           tags: JSON.stringify(updatedUser.meta_tags_list || []),
@@ -147,27 +212,16 @@ export default function Settings() {
   const [isSavingMeta, setIsSavingMeta] = useState(false)
 
   const handleSaveMeta = async () => {
-    if (metaPixelId.trim() && !/^\d+$/.test(metaPixelId.trim())) {
-      toast({
-        title: 'Pixel ID Inválido',
-        description: 'O ID do Pixel do Meta deve conter apenas números.',
-        variant: 'destructive',
-      })
-      return
-    }
-
     setIsSavingMeta(true)
     try {
       if (user?.id) {
         const updatedUser = await pb.collection('users').update(user.id, {
-          meta_pixel_id: metaPixelId.trim(),
           meta_capi_token: metaCapiToken.trim(),
           meta_test_event_code: metaTestEventCode.trim(),
           meta_tags_list: metaTagsList,
         })
         await pb.collection('users').authRefresh()
         setInitialMeta({
-          pixel: updatedUser.meta_pixel_id || '',
           capi: updatedUser.meta_capi_token || '',
           test: updatedUser.meta_test_event_code || '',
           tags: JSON.stringify(updatedUser.meta_tags_list || []),
@@ -308,19 +362,7 @@ export default function Settings() {
           </CardHeader>
           <CardContent className="pt-6 space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-3">
-                <Label htmlFor="meta-pixel-id" className="font-semibold text-secondary">
-                  ID do Pixel do Meta
-                </Label>
-                <Input
-                  id="meta-pixel-id"
-                  placeholder="Ex: 1234567890"
-                  value={metaPixelId}
-                  onChange={(e) => setMetaPixelId(e.target.value)}
-                  className="bg-muted/30 focus-visible:ring-blue-600"
-                  inputMode="numeric"
-                />
-              </div>
+              <IsolatedMetaPixelInput />
               <div className="space-y-3">
                 <Label htmlFor="meta-test-code" className="font-semibold text-secondary">
                   Código de Teste de Evento (Opcional)
