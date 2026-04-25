@@ -296,6 +296,10 @@ export function RemarketingSyncModal({
                         <strong>Evento de Conversão / Tag:</strong> Lead (Padrão)
                       </p>
                       <div className="text-sm text-muted-foreground bg-muted p-4 rounded-md border">
+                        <p className="mb-3 text-primary font-medium flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4" />
+                          Integração utilizando o Pixel Ativo ID: 3828467217409862
+                        </p>
                         Apenas contatos com email ou telefone válidos serão sincronizados via hash
                         SHA256 para manter a segurança e conformidade com o Meta.
                         <span className="block mt-2 font-medium text-foreground flex items-center gap-1">

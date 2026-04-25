@@ -289,7 +289,8 @@ export default function Settings() {
       await pb.collection('users').authRefresh()
       toast({
         title: 'Conexão bem-sucedida',
-        description: 'O Pixel ID e o Token CAPI são válidos e estão comunicando com o Meta.',
+        description:
+          'O Pixel ID (Browser) e o Token (Server-to-Server CAPI) foram validados com sucesso e estão comunicando com o Meta.',
       })
     } catch (error: any) {
       await pb.collection('users').authRefresh()

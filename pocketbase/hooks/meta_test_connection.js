@@ -34,6 +34,17 @@ routerAdd(
         user.set('meta_last_validated', now)
         $app.save(user)
       }
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', e.auth?.id || '')
+        logRecord.set('type', 'meta_sync')
+        logRecord.set('message', 'Teste de conexão Meta CAPI e Pixel Browser validado com sucesso.')
+        logRecord.set('details', 'Handshake OK')
+        logRecord.set('payload', { statusCode: res.statusCode })
+        $app.save(logRecord)
+      } catch (logErr) {}
+
       return e.json(200, { success: true, data: res.json })
     } else {
       const errorPayload = res.json || res.raw || 'Erro desconhecido'
