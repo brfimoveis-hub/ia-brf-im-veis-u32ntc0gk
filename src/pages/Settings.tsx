@@ -130,52 +130,51 @@ export default function Settings() {
     return () => window.removeEventListener('roulette-next', handleNext)
   }, [isDirty])
 
-  const saveMetaFields = async () => {
-    if (!user?.id) throw new Error('Usuário não autenticado')
-
-    const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0]+/g, '')
+  const getCleanMeta = () => {
+    const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0\u200B-\u200D]+/g, '')
     const cleanCapiToken = metaCapiToken
       .replace(/^Bearer\s+/i, '')
-      .replace(/[\s\uFEFF\xA0]+/g, '')
+      .replace(/[\s\uFEFF\xA0\u200B-\u200D]+/g, '')
       .replace(/^(EA)+/i, 'EA')
       .trim()
     const cleanTestCode = metaTestEventCode.trim()
-
-    const updateData: any = {
-      meta_pixel_id: cleanPixelId,
-      meta_capi_token: cleanCapiToken,
-      meta_test_event_code: cleanTestCode,
-      meta_tags_list: metaTagsList,
-      ai_instructions: prompt,
-    }
-
-    // Reset status if credentials changed
-    if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capi) {
-      updateData.meta_token_status = 'untested'
-      updateData.meta_last_validated = ''
-    }
-
-    const updatedUser = await pb.collection('users').update(user.id, updateData)
-
-    await pb.collection('users').authRefresh()
-
-    setInitialMeta({
-      pixel: updatedUser.meta_pixel_id || '',
-      capi: updatedUser.meta_capi_token || '',
-      test: updatedUser.meta_test_event_code || '',
-      tags: JSON.stringify(updatedUser.meta_tags_list || []),
-      prompt: updatedUser.ai_instructions || '',
-    })
-
-    setMetaPixelId(cleanPixelId)
-    setMetaCapiToken(cleanCapiToken)
-    setMetaTestEventCode(cleanTestCode)
+    return { cleanPixelId, cleanCapiToken, cleanTestCode }
   }
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      await saveMetaFields()
+      if (!user?.id) throw new Error('Usuário não autenticado')
+      const { cleanPixelId, cleanCapiToken, cleanTestCode } = getCleanMeta()
+
+      const updateData: any = {
+        meta_pixel_id: cleanPixelId,
+        meta_capi_token: cleanCapiToken,
+        meta_test_event_code: cleanTestCode,
+        meta_tags_list: metaTagsList,
+        ai_instructions: prompt,
+      }
+
+      if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capi) {
+        updateData.meta_token_status = 'untested'
+        updateData.meta_last_validated = ''
+      }
+
+      const updatedUser = await pb.collection('users').update(user.id, updateData)
+      await pb.collection('users').authRefresh()
+
+      setInitialMeta({
+        pixel: updatedUser.meta_pixel_id || '',
+        capi: updatedUser.meta_capi_token || '',
+        test: updatedUser.meta_test_event_code || '',
+        tags: JSON.stringify(updatedUser.meta_tags_list || []),
+        prompt: updatedUser.ai_instructions || '',
+      })
+
+      setMetaPixelId(cleanPixelId)
+      setMetaCapiToken(cleanCapiToken)
+      setMetaTestEventCode(cleanTestCode)
+
       setTimeout(() => {
         setIsSaving(false)
         toast({
@@ -196,7 +195,37 @@ export default function Settings() {
   const handleSaveMeta = async () => {
     setIsSavingMeta(true)
     try {
-      await saveMetaFields()
+      if (!user?.id) throw new Error('Usuário não autenticado')
+      const { cleanPixelId, cleanCapiToken, cleanTestCode } = getCleanMeta()
+
+      const updateData: any = {
+        meta_pixel_id: cleanPixelId,
+        meta_capi_token: cleanCapiToken,
+        meta_test_event_code: cleanTestCode,
+        meta_tags_list: metaTagsList,
+        // Partial Update: DO NOT INCLUDE ai_instructions here to prevent overwriting
+      }
+
+      if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capi) {
+        updateData.meta_token_status = 'untested'
+        updateData.meta_last_validated = ''
+      }
+
+      const updatedUser = await pb.collection('users').update(user.id, updateData)
+      await pb.collection('users').authRefresh()
+
+      setInitialMeta((prev) => ({
+        ...prev,
+        pixel: updatedUser.meta_pixel_id || '',
+        capi: updatedUser.meta_capi_token || '',
+        test: updatedUser.meta_test_event_code || '',
+        tags: JSON.stringify(updatedUser.meta_tags_list || []),
+      }))
+
+      setMetaPixelId(cleanPixelId)
+      setMetaCapiToken(cleanCapiToken)
+      setMetaTestEventCode(cleanTestCode)
+
       toast({
         title: 'Configurações do Meta salvas!',
         description: 'As alterações foram aplicadas com sucesso.',
@@ -221,12 +250,7 @@ export default function Settings() {
   }
 
   const testMetaConnection = async () => {
-    const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0]+/g, '')
-    const cleanCapiToken = metaCapiToken
-      .replace(/^Bearer\s+/i, '')
-      .replace(/[\s\uFEFF\xA0]+/g, '')
-      .replace(/^(EA)+/i, 'EA')
-      .trim()
+    const { cleanPixelId, cleanCapiToken } = getCleanMeta()
 
     if (!cleanPixelId || !cleanCapiToken) {
       toast({
@@ -255,13 +279,17 @@ export default function Settings() {
     } catch (error: any) {
       await pb.collection('users').authRefresh()
       let errorMsg = 'Verifique as credenciais.'
-      if (
+
+      const resData = error.response?.data
+      if (resData?.message && typeof resData.message === 'string') {
+        errorMsg = resData.message
+      } else if (resData?.error?.error?.message) {
+        errorMsg = resData.error.error.message
+      } else if (
         error.response?.message &&
         error.response?.message !== 'Something went wrong while processing your request.'
       ) {
         errorMsg = error.response.message
-      } else if (error.response?.data?.error?.message) {
-        errorMsg = error.response.data.error.message
       } else if (error.message) {
         errorMsg = error.message
       }

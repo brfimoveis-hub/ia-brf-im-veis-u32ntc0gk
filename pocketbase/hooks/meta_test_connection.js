@@ -3,10 +3,10 @@ routerAdd(
   '/backend/v1/meta-test-connection',
   (e) => {
     const body = e.requestInfo().body || {}
-    const pixelId = (body.pixelId || '').replace(/[\s\uFEFF\xA0]+/g, '').trim()
+    const pixelId = (body.pixelId || '').replace(/[\s\uFEFF\xA0\u200B-\u200D]+/g, '').trim()
     const capiToken = (body.capiToken || '')
       .replace(/^Bearer\s+/i, '')
-      .replace(/[\s\uFEFF\xA0]+/g, '')
+      .replace(/[\s\uFEFF\xA0\u200B-\u200D]+/g, '')
       .replace(/^(EA)+/i, 'EA')
       .trim()
 
@@ -44,7 +44,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', e.auth.id)
-        logRecord.set('type', 'remarketing_error')
+        logRecord.set('type', 'meta_error')
         logRecord.set('message', 'Falha no teste de conexão com Meta.')
         logRecord.set(
           'details',
