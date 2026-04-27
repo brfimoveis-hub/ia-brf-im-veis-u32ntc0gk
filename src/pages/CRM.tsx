@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Clock, TrendingUp, Sparkles, Bot, Search, Megaphone } from 'lucide-react'
+import { Clock, TrendingUp, Sparkles, Bot, Search, Megaphone, Users, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -154,8 +154,13 @@ export default function CRM() {
     if (filteredCustomers.length === 0) return
     setIsSyncing(true)
     try {
-      const ids = filteredCustomers.map((c) => c.id)
-      const res = await syncRemarketing(ids, searchFilter, selectedEvent)
+      const payloads = filteredCustomers.map((c) => ({
+        id: c.id,
+        em: c.email || c.email_1_value || '',
+        ph: c.phone || c.phone_1_value || '',
+        tags: c.tags || [],
+      }))
+      const res = await syncRemarketing(payloads, searchFilter, selectedEvent)
       toast({
         title: 'Sincronização Concluída',
         description: `${res.synced} leads enviados para o Meta CAPI.`,
@@ -194,6 +199,25 @@ export default function CRM() {
           <TrendingUp className="h-8 w-8 text-primary animate-pulse" />
           <p className="text-muted-foreground animate-pulse">Carregando pipeline...</p>
         </div>
+      </div>
+    )
+  }
+
+  if (customers.length === 0) {
+    return (
+      <div className="h-[calc(100vh-10rem)] flex flex-col items-center justify-center p-8 text-center animate-fade-in-up">
+        <div className="bg-muted/30 p-6 rounded-full mb-6">
+          <Users className="h-12 w-12 text-muted-foreground/50" />
+        </div>
+        <h2 className="text-2xl font-bold text-secondary mb-2">Nenhum cliente encontrado</h2>
+        <p className="text-muted-foreground max-w-md mb-8">
+          Você ainda não possui clientes cadastrados. Adicione seu primeiro cliente para iniciar o
+          acompanhamento.
+        </p>
+        <Button onClick={() => navigate('/clientes')} size="lg" className="gap-2">
+          <Plus className="h-5 w-5" />
+          Adicionar Primeiro Cliente
+        </Button>
       </div>
     )
   }

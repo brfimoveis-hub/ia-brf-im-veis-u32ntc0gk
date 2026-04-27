@@ -10,8 +10,13 @@ routerAdd(
     // Backward compatibility for older clients sending customerIds
     const customerIds = body.customerIds || []
 
-    if (!payloads.length && !customerIds.length)
-      return e.badRequestError('Nenhum cliente fornecido para sincronização.')
+    if (!payloads.length && !customerIds.length) {
+      return e.json(200, {
+        success: true,
+        synced: 0,
+        message: 'Nenhum cliente fornecido para sincronização.',
+      })
+    }
 
     const user = e.auth
     if (!user) return e.unauthorizedError('Not authenticated')
@@ -80,7 +85,24 @@ routerAdd(
     }
 
     if (validCustomers.size === 0) {
-      return e.badRequestError('Nenhum cliente válido encontrado para o usuário logado.')
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', user.id)
+        logRecord.set('type', 'remarketing')
+        logRecord.set('message', 'Sincronização ignorada: nenhum cliente válido.')
+        logRecord.set(
+          'details',
+          'O usuário tentou sincronizar, mas não possui clientes cadastrados.',
+        )
+        logRecord.set('payload', { count: payloads.length || customerIds.length, eventName })
+        $app.save(logRecord)
+      } catch (logErr) {}
+      return e.json(200, {
+        success: true,
+        synced: 0,
+        message: 'Nenhum cliente válido encontrado para o usuário logado.',
+      })
     }
 
     if (payloads.length > 0) {
@@ -171,14 +193,16 @@ routerAdd(
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
         logRecord.set('type', 'remarketing')
-        logRecord.set('message', 'Falha na sincronização: nenhum contato com dados válidos.')
-        logRecord.set('details', 'Os clientes selecionados não possuem email ou telefone.')
+        logRecord.set('message', 'Sincronização ignorada: nenhum contato com dados válidos.')
+        logRecord.set('details', 'Os clientes selecionados não possuem email ou telefone válido.')
         logRecord.set('payload', { count: payloads.length || customerIds.length, eventName })
         $app.save(logRecord)
       } catch (logErr) {}
-      return e.badRequestError(
-        'Nenhum cliente possui email ou telefone válido para ser enviado ao Meta.',
-      )
+      return e.json(200, {
+        success: true,
+        synced: 0,
+        message: 'Nenhum cliente possui email ou telefone válido para ser enviado ao Meta.',
+      })
     }
 
     const batchSize = Math.max(1, body.batchSize || 1000)
