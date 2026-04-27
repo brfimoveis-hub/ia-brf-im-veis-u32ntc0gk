@@ -11,7 +11,10 @@ export interface SystemLog {
   updated: string
 }
 
-export const getSystemLogs = (page = 1, perPage = 50) =>
-  pb.collection('system_logs').getList<SystemLog>(page, perPage, {
-    sort: '-created',
-  })
+export const getSystemLogs = (page = 1, perPage = 50, typeFilter?: string) => {
+  const options: any = { sort: '-created' }
+  if (typeFilter) {
+    options.filter = `type = "${typeFilter}"`
+  }
+  return pb.collection('system_logs').getList<SystemLog>(page, perPage, options)
+}

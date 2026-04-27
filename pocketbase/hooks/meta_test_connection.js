@@ -59,7 +59,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', e.auth.id)
-        logRecord.set('type', 'remarketing')
+        logRecord.set('type', 'meta_error')
         logRecord.set('message', 'Falha no teste de conexão com Meta.')
         logRecord.set(
           'details',
@@ -72,8 +72,12 @@ routerAdd(
       let errorMessage = 'Falha na autenticação com o Meta. O token pode ser inválido ou expirado.'
       if (errorPayload && errorPayload.error && errorPayload.error.message) {
         const msg = errorPayload.error.message
-        if (msg.includes('Invalid OAuth access token')) {
-          errorMessage = `Meta retornou: ${msg}. Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel. Verifique espaços em branco no seu token e tente novamente.`
+        if (
+          msg.includes('Invalid OAuth access token') ||
+          msg.includes('invalid oauth access token data') ||
+          msg.includes('invalid')
+        ) {
+          errorMessage = `Meta retornou erro de autenticação (invalid oauth access token data). Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel. Verifique espaços em branco no seu token e tente novamente.`
         } else if (msg.includes('Missing Permissions') || msg.includes('permission')) {
           errorMessage = `Meta retornou: ${msg}. Dica: O token CAPI não tem permissões suficientes para este Pixel.`
         } else {

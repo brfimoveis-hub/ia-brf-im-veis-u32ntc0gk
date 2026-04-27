@@ -37,7 +37,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing')
+        logRecord.set('type', 'meta_error')
         logRecord.set('message', 'Falha na sincronização: credenciais do Meta ausentes.')
         logRecord.set(
           'details',
@@ -115,7 +115,10 @@ routerAdd(
           userData.em = [emStr.length === 64 ? emStr : $security.sha256(emStr)]
         }
         if (p.ph) {
-          const phStr = String(p.ph).replace(/[^0-9]/g, '')
+          let phStr = String(p.ph).replace(/[^0-9]/g, '')
+          if (phStr.length === 10 || phStr.length === 11) {
+            phStr = '55' + phStr
+          }
           userData.ph = [phStr.length === 64 ? phStr : $security.sha256(phStr)]
         }
 
@@ -153,8 +156,8 @@ routerAdd(
         }
 
         const userData = {}
-        if (email) userData.em = [$security.sha256(email)]
-        if (phone) userData.ph = [$security.sha256(phone)]
+        if (email) userData.em = [email.length === 64 ? email : $security.sha256(email)]
+        if (phone) userData.ph = [phone.length === 64 ? phone : $security.sha256(phone)]
 
         let cTags = c.get('tags')
         if (!cTags) cTags = []
@@ -268,7 +271,7 @@ routerAdd(
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
-          logRecord.set('type', 'remarketing')
+          logRecord.set('type', 'meta_error')
           logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
           logRecord.set(
             'details',
@@ -302,7 +305,7 @@ routerAdd(
           metaErrorMsg.includes('auth') ||
           metaErrorMsg.includes('invalid')
         ) {
-          errMsg = `Erro de autenticação com o Meta. Meta retornou: ${lastError.error.message}. Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel. Verifique espaços em branco no seu token e tente novamente.`
+          errMsg = `Erro de autenticação com o Meta (invalid oauth access token data). Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel. Verifique espaços em branco no seu token e tente novamente.`
         } else {
           errMsg = `Erro do Meta: ${lastError.error.error_user_msg || lastError.error.message}`
         }
@@ -320,7 +323,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'remarketing')
+        logRecord.set('type', 'meta_sync')
         logRecord.set('message', `Sincronizou ${totalSynced} leads para o Meta CAPI.`)
         logRecord.set('details', `Palavra-chave: ${keyword}, Evento: ${finalEventName}`)
         logRecord.set('payload', {

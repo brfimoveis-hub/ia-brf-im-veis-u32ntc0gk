@@ -267,7 +267,7 @@ export default function CRM() {
                     pb.collection('system_logs')
                       .create({
                         user_id: user.id,
-                        type: 'REMARKETING_SYNC',
+                        type: 'meta_error',
                         message: 'Falha na sincronização: credenciais do Meta ausentes.',
                         details:
                           'O usuário tentou iniciar o remarketing sem configurar o Pixel ID ou Token CAPI.',

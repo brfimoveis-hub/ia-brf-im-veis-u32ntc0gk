@@ -20,16 +20,25 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Filter } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export default function Logs() {
   const [logs, setLogs] = useState<SystemLog[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null)
+  const [filterType, setFilterType] = useState<string>('all')
 
   const loadLogs = async () => {
+    setLoading(true)
     try {
-      const result = await getSystemLogs(1, 50)
+      const result = await getSystemLogs(1, 50, filterType === 'all' ? undefined : filterType)
       setLogs(result.items)
     } catch (error) {
       console.error('Failed to load logs', error)
@@ -40,9 +49,11 @@ export default function Logs() {
 
   useEffect(() => {
     loadLogs()
-  }, [])
+  }, [filterType])
 
   useRealtime('system_logs', (e) => {
+    if (filterType !== 'all' && e.record.type !== filterType) return
+
     if (e.action === 'create') {
       setLogs((prev) => [e.record as SystemLog, ...prev])
     } else if (e.action === 'update') {
@@ -53,12 +64,14 @@ export default function Logs() {
   })
 
   const getBadgeVariant = (type: string) => {
-    switch (type) {
-      case 'ERROR':
+    switch (type.toLowerCase()) {
+      case 'error':
+      case 'meta_error':
         return 'destructive'
-      case 'WEBHOOK':
+      case 'webhook':
         return 'secondary'
-      case 'AI_RESPONSE':
+      case 'ai_response':
+      case 'meta_sync':
         return 'default'
       default:
         return 'outline'
@@ -67,11 +80,29 @@ export default function Logs() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
-      <div className="flex flex-col space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight text-secondary">Logs do Sistema</h1>
-        <p className="text-muted-foreground">
-          Monitore os eventos, execuções de IA e atividades executadas em segundo plano.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight text-secondary">Logs do Sistema</h1>
+          <p className="text-muted-foreground">
+            Monitore os eventos, execuções de IA e atividades executadas em segundo plano.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Select value={filterType} onValueChange={setFilterType}>
+            <SelectTrigger className="w-[180px] bg-background">
+              <SelectValue placeholder="Filtrar por tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os Logs</SelectItem>
+              <SelectItem value="remarketing">Remarketing (Testes)</SelectItem>
+              <SelectItem value="meta_sync">Meta Sync (CAPI)</SelectItem>
+              <SelectItem value="meta_error">Erros do Meta</SelectItem>
+              <SelectItem value="system">Sistema</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Card className="shadow-subtle border-border/50">
