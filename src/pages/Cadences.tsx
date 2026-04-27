@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,16 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Plus, Edit2, Trash2, ListOrdered, PlayCircle, Loader2 } from 'lucide-react'
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  ListOrdered,
+  PlayCircle,
+  Loader2,
+  BrainCircuit,
+  FileText,
+} from 'lucide-react'
 import {
   getCadences,
   createCadence,
@@ -37,6 +47,8 @@ export default function Cadences() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [formData, setFormData] = useState<Partial<Cadence>>({})
+  const [ebookFile, setEbookFile] = useState<File | null>(null)
+  const [priceTableFile, setPriceTableFile] = useState<File | null>(null)
 
   const activeCadences = cadences.filter((c) => c.is_active).sort((a, b) => a.order - b.order)
 
@@ -88,11 +100,24 @@ export default function Cadences() {
 
     setIsSaving(true)
     try {
+      const fd = new FormData()
+      fd.append('title', formData.title || '')
+      fd.append('content', formData.content || '')
+      fd.append('order', (formData.order || 1).toString())
+      fd.append('is_active', (formData.is_active ?? true).toString())
+
+      if (formData.ai_instructions !== undefined) {
+        fd.append('ai_instructions', formData.ai_instructions)
+      }
+
+      if (ebookFile) fd.append('ebook_file', ebookFile)
+      if (priceTableFile) fd.append('price_table_file', priceTableFile)
+
       if (formData.id) {
-        await updateCadence(formData.id, formData)
+        await updateCadence(formData.id, fd)
         toast({ title: 'Cadência atualizada com sucesso!' })
       } else {
-        await createCadence(formData)
+        await createCadence(fd)
         toast({ title: 'Cadência criada com sucesso!' })
       }
       setIsModalOpen(false)
@@ -135,12 +160,15 @@ export default function Cadences() {
   }
 
   const openEditModal = (cadence?: Cadence) => {
+    setEbookFile(null)
+    setPriceTableFile(null)
     if (cadence) {
       setFormData(cadence)
     } else {
       setFormData({
         title: '',
         content: '',
+        ai_instructions: '',
         order: cadences.length > 0 ? Math.max(...cadences.map((c) => c.order)) + 1 : 1,
         is_active: true,
       })
@@ -230,9 +258,20 @@ export default function Cadences() {
                   <CardTitle className="text-lg font-semibold leading-tight">
                     {cadence.title}
                   </CardTitle>
-                  <div className="flex items-center text-xs font-medium text-muted-foreground bg-secondary/10 w-fit px-2 py-0.5 rounded-md">
-                    <ListOrdered className="w-3 h-3 mr-1.5" />
-                    Passo {cadence.order}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center text-xs font-medium text-muted-foreground bg-secondary/10 w-fit px-2 py-0.5 rounded-md">
+                      <ListOrdered className="w-3 h-3 mr-1.5" />
+                      Passo {cadence.order}
+                    </div>
+                    {cadence.ai_instructions && (
+                      <BrainCircuit
+                        className="w-3.5 h-3.5 text-primary/70"
+                        title="Instruções IA customizadas"
+                      />
+                    )}
+                    {(cadence.ebook_file || cadence.price_table_file) && (
+                      <FileText className="w-3.5 h-3.5 text-primary/70" title="Arquivos anexados" />
+                    )}
                   </div>
                 </div>
                 <Switch
@@ -267,63 +306,128 @@ export default function Cadences() {
       )}
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[550px]">
-          <form onSubmit={handleSave}>
-            <DialogHeader>
+        <DialogContent className="sm:max-w-[650px] p-0">
+          <form onSubmit={handleSave} className="flex flex-col h-full max-h-[90vh]">
+            <DialogHeader className="p-6 pb-4">
               <DialogTitle>{formData.id ? 'Editar Cadência' : 'Nova Cadência'}</DialogTitle>
               <DialogDescription>
-                Defina o título, a ordem e o conteúdo da mensagem desta etapa.
+                Defina o título, a ordem, o conteúdo e as instruções específicas para a IA nesta
+                etapa.
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 gap-4">
-                <div className="col-span-3 space-y-2">
-                  <Label htmlFor="title">Título da Etapa</Label>
-                  <Input
-                    id="title"
-                    value={formData.title || ''}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="Ex: Primeiro Contato"
+            <ScrollArea className="px-6 flex-1">
+              <div className="grid gap-5 py-2 pb-6">
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="col-span-3 space-y-2">
+                    <Label htmlFor="title">Título da Etapa</Label>
+                    <Input
+                      id="title"
+                      value={formData.title || ''}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      placeholder="Ex: Primeiro Contato"
+                      required
+                    />
+                  </div>
+                  <div className="col-span-1 space-y-2">
+                    <Label htmlFor="order">Ordem</Label>
+                    <Input
+                      id="order"
+                      type="number"
+                      min="1"
+                      value={formData.order || 1}
+                      onChange={(e) =>
+                        setFormData({ ...formData, order: parseInt(e.target.value) || 1 })
+                      }
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="content">Conteúdo da Mensagem Padrão</Label>
+                  <Textarea
+                    id="content"
+                    value={formData.content || ''}
+                    onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                    placeholder="Escreva a mensagem base que será enviada ou usada como referência..."
+                    className="min-h-[120px] resize-y"
                     required
                   />
                 </div>
-                <div className="col-span-1 space-y-2">
-                  <Label htmlFor="order">Ordem</Label>
-                  <Input
-                    id="order"
-                    type="number"
-                    min="1"
-                    value={formData.order || 1}
-                    onChange={(e) =>
-                      setFormData({ ...formData, order: parseInt(e.target.value) || 1 })
-                    }
-                    required
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_instructions" className="flex items-center gap-2">
+                    <BrainCircuit className="w-4 h-4 text-primary" />
+                    Instruções para IA (Opcional)
+                  </Label>
+                  <Textarea
+                    id="ai_instructions"
+                    value={formData.ai_instructions || ''}
+                    onChange={(e) => setFormData({ ...formData, ai_instructions: e.target.value })}
+                    placeholder="Ex: 'Nesta etapa, envie o e-book se o lead demonstrar interesse e tente marcar uma reunião.'"
+                    className="min-h-[100px] resize-y bg-primary/5 border-primary/20"
                   />
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 border rounded-xl bg-muted/20">
+                  <div className="space-y-3">
+                    <Label htmlFor="ebook_file" className="text-sm font-semibold">
+                      E-book (PDF/Arquivo)
+                    </Label>
+                    <Input
+                      id="ebook_file"
+                      type="file"
+                      className="text-xs file:text-xs file:bg-primary/10 file:text-primary file:border-0 file:rounded-md file:px-2 file:py-1"
+                      onChange={(e) => setEbookFile(e.target.files?.[0] || null)}
+                    />
+                    {formData.ebook_file && !ebookFile && (
+                      <p
+                        className="text-xs text-muted-foreground truncate"
+                        title={formData.ebook_file}
+                      >
+                        Arquivo atual:{' '}
+                        <span className="font-medium text-secondary">{formData.ebook_file}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="price_table_file" className="text-sm font-semibold">
+                      Tabela de Preços
+                    </Label>
+                    <Input
+                      id="price_table_file"
+                      type="file"
+                      className="text-xs file:text-xs file:bg-primary/10 file:text-primary file:border-0 file:rounded-md file:px-2 file:py-1"
+                      onChange={(e) => setPriceTableFile(e.target.files?.[0] || null)}
+                    />
+                    {formData.price_table_file && !priceTableFile && (
+                      <p
+                        className="text-xs text-muted-foreground truncate"
+                        title={formData.price_table_file}
+                      >
+                        Arquivo atual:{' '}
+                        <span className="font-medium text-secondary">
+                          {formData.price_table_file}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 pt-2">
+                  <Switch
+                    id="is_active"
+                    checked={formData.is_active ?? true}
+                    onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                  />
+                  <Label htmlFor="is_active" className="cursor-pointer">
+                    Ativar esta etapa na roleta e nos disparos
+                  </Label>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="content">Conteúdo da Mensagem</Label>
-                <Textarea
-                  id="content"
-                  value={formData.content || ''}
-                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  placeholder="Escreva a mensagem que será enviada nesta etapa..."
-                  className="min-h-[150px] resize-y"
-                  required
-                />
-              </div>
-              <div className="flex items-center space-x-2 pt-2">
-                <Switch
-                  id="is_active"
-                  checked={formData.is_active ?? true}
-                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-                />
-                <Label htmlFor="is_active" className="cursor-pointer">
-                  Ativar esta etapa na roleta e nos disparos
-                </Label>
-              </div>
-            </div>
-            <DialogFooter>
+            </ScrollArea>
+            <DialogFooter className="p-6 pt-4 border-t bg-card mt-auto">
               <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
                 Cancelar
               </Button>
