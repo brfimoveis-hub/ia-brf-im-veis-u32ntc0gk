@@ -11,6 +11,13 @@ export interface SystemLog {
   updated: string
 }
 
+export const createSystemLog = (data: Partial<SystemLog>) => {
+  return pb.collection('system_logs').create<SystemLog>({
+    ...data,
+    user_id: pb.authStore.record?.id,
+  })
+}
+
 export const getSystemLogs = (page = 1, perPage = 50, typeFilter?: string) => {
   const options: any = { sort: '-created' }
   if (typeFilter) {

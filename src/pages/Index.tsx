@@ -92,14 +92,22 @@ export default function Index() {
               </div>
             </div>
           </div>
-          <Button
-            variant="outline"
-            className="shrink-0 bg-background shadow-sm hover:scale-[1.02] transition-transform"
-            onClick={handleRestart}
-          >
-            <RotateCw className="mr-2 h-4 w-4" />
-            Reiniciar Instância
-          </Button>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <Button
+              variant="outline"
+              className="bg-background shadow-sm hover:scale-[1.02] transition-transform w-full"
+              onClick={handleRestart}
+            >
+              <RotateCw className="mr-2 h-4 w-4" />
+              Reiniciar Instância
+            </Button>
+            <Link to="/configuracoes" className="w-full">
+              <div className="flex items-center justify-center gap-2 bg-background/80 hover:bg-background px-3 py-1.5 rounded-md border border-border/50 transition-colors cursor-pointer text-sm font-medium text-secondary shadow-sm">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                Saúde do Sistema: Excelente
+              </div>
+            </Link>
+          </div>
         </CardContent>
       </Card>
 
