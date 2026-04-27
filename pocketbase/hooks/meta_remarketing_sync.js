@@ -21,7 +21,7 @@ routerAdd(
     const user = e.auth
     if (!user) return e.unauthorizedError('Not authenticated')
 
-    const pixelId = (user.getString('meta_pixel_id') || '')
+    const pixelId = (user.getString('meta_pixel_id') || '1522162279584545')
       .replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
       .trim()
     const capiToken = (user.getString('meta_capi_token') || '')
@@ -268,6 +268,21 @@ routerAdd(
           .error('Meta CAPI Batch Error', 'status', res.statusCode, 'response', lastError)
 
         try {
+          if (
+            lastError &&
+            lastError.error &&
+            (lastError.error.code === 100 ||
+              String(lastError.error.message).includes('does not exist'))
+          ) {
+            user.set('meta_token_status', 'invalid_permission')
+            $app.saveNoValidate(user)
+          } else {
+            user.set('meta_token_status', 'invalid')
+            $app.saveNoValidate(user)
+          }
+        } catch (e) {}
+
+        try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
@@ -298,7 +313,10 @@ routerAdd(
           lastError.error.message ||
           ''
         ).toLowerCase()
-        if (
+
+        if (metaErrorMsg.includes('does not exist') || lastError.error.code === 100) {
+          errMsg = `Erro de Permissão/ID Meta: O Pixel ID '${pixelId}' não existe ou o token CAPI não possui permissões adequadas.`
+        } else if (
           metaErrorMsg.includes('oauth') ||
           metaErrorMsg.includes('access token') ||
           metaErrorMsg.includes('token') ||

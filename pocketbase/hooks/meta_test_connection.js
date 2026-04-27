@@ -3,7 +3,7 @@ routerAdd(
   '/backend/v1/meta-test-connection',
   (e) => {
     const body = e.requestInfo().body || {}
-    const pixelId = (body.pixelId || '')
+    const pixelId = (body.pixelId || '1522162279584545')
       .replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
       .trim()
     const capiToken = (body.capiToken || '')
@@ -49,8 +49,19 @@ routerAdd(
     } else {
       const errorPayload = res.json || res.raw || 'Erro desconhecido'
 
+      let isPermissionError = false
+      if (errorPayload && errorPayload.error) {
+        if (
+          errorPayload.error.code === 100 ||
+          errorPayload.error.error_subcode === 33 ||
+          String(errorPayload.error.message).includes('does not exist')
+        ) {
+          isPermissionError = true
+        }
+      }
+
       if (user) {
-        user.set('meta_token_status', 'invalid')
+        user.set('meta_token_status', isPermissionError ? 'invalid_permission' : 'invalid')
         user.set('meta_last_validated', now)
         $app.save(user)
       }
@@ -73,6 +84,11 @@ routerAdd(
       if (errorPayload && errorPayload.error && errorPayload.error.message) {
         const msg = errorPayload.error.message
         if (
+          msg.includes('does not exist') ||
+          (errorPayload.error && errorPayload.error.code === 100)
+        ) {
+          errorMessage = `Erro de Permissão/ID Meta: O Pixel ID não existe ou o token CAPI não tem permissão para acessá-lo.`
+        } else if (
           msg.includes('Invalid OAuth access token') ||
           msg.includes('invalid oauth access token data') ||
           msg.includes('invalid')

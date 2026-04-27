@@ -268,10 +268,11 @@ export default function Settings() {
   const testMetaConnection = async () => {
     const { cleanPixelId, cleanCapiToken } = getCleanMeta()
 
-    if (!cleanPixelId || !cleanCapiToken) {
+    if (!cleanCapiToken) {
       toast({
         title: 'Campos obrigatórios',
-        description: 'Preencha o Pixel ID e o Token CAPI antes de testar.',
+        description:
+          'Preencha o Token CAPI antes de testar. O Pixel ID utilizará o padrão se estiver vazio.',
         variant: 'destructive',
       })
       return
@@ -342,6 +343,10 @@ export default function Settings() {
     connectionBadgeText = 'Validado'
     connectionBadgeColor =
       'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
+  } else if (metaTokenStatus === 'invalid_permission') {
+    connectionBadgeText = 'Erro de Permissão/ID'
+    connectionBadgeColor =
+      'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
   } else if (metaTokenStatus === 'invalid') {
     connectionBadgeText = 'Erro de Conexão'
     connectionBadgeColor =
@@ -476,7 +481,7 @@ export default function Settings() {
                 </div>
                 <Input
                   id="meta-pixel-id"
-                  placeholder="Ex: 1632697264651953 (Padrão)"
+                  placeholder="Ex: 1522162279584545 (Padrão)"
                   value={metaPixelId}
                   onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
                   className={cn(
@@ -495,7 +500,7 @@ export default function Settings() {
                 {metaPixelId.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
                     Se vazio, o sistema utilizará o ID padrão:{' '}
-                    <span className="font-mono text-foreground">1632697264651953</span>
+                    <span className="font-mono text-foreground">1522162279584545</span>
                   </p>
                 )}
               </div>

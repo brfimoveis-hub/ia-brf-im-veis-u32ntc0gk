@@ -68,28 +68,37 @@ export function DiagnosticCenter() {
         })
         setProgress(90)
       } else {
+        let lastErrorMsg = ''
         for (let i = 0; i < testCount; i++) {
           try {
             await pb.send('/backend/v1/meta-test-connection', {
               method: 'POST',
               body: JSON.stringify({
-                pixelId: user.meta_pixel_id,
+                pixelId: user.meta_pixel_id || '1522162279584545',
                 capiToken: user.meta_capi_token,
               }),
               headers: { 'Content-Type': 'application/json' },
             })
             metaSuccesses++
-          } catch (e) {
-            // fail silently for diagnostic count
+          } catch (e: any) {
+            lastErrorMsg = e.response?.data?.message || e.message || ''
           }
           setProgress(50 + ((i + 1) / testCount) * 40)
           if (i < testCount - 1) await new Promise((r) => setTimeout(r, 1500))
         }
 
+        let finalMessage = `${metaSuccesses}/${testCount} handshakes bem-sucedidos com a API do Meta.`
+        if (metaSuccesses < testCount && lastErrorMsg.includes('Permissão/ID Meta')) {
+          finalMessage =
+            'Erro de Permissão/ID Meta: Verifique se o Pixel ID existe e se o Token possui escopo de acesso.'
+        } else if (metaSuccesses < testCount && lastErrorMsg) {
+          finalMessage = `Falha de conexão: ${lastErrorMsg}`
+        }
+
         newResults.push({
           name: 'Integração Meta (Pixel & CAPI)',
           status: metaSuccesses === testCount ? 'success' : metaSuccesses > 0 ? 'warning' : 'error',
-          message: `${metaSuccesses}/${testCount} handshakes bem-sucedidos com a API do Meta.`,
+          message: finalMessage,
         })
       }
       setResults([...newResults])

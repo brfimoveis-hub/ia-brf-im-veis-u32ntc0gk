@@ -14,6 +14,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { lazy, Suspense, useMemo } from 'react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -138,7 +139,21 @@ export default function Index() {
                 </p>
               </div>
             </div>
-            {isMetaActive ? (
+            {user?.meta_token_status === 'invalid_permission' ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/10 px-2.5 py-1 rounded-full cursor-help">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Erro
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Erro de Permissão/ID Meta</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : isMetaActive ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Ativo
@@ -175,7 +190,21 @@ export default function Index() {
                 </p>
               </div>
             </div>
-            {isCapiActive ? (
+            {user?.meta_token_status === 'invalid_permission' ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/10 px-2.5 py-1 rounded-full cursor-help">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Falha
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Erro de Permissão/ID Meta</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : isCapiActive ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Sincronizando
