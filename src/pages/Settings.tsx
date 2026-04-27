@@ -475,7 +475,7 @@ export default function Settings() {
                 </div>
                 <Input
                   id="meta-pixel-id"
-                  placeholder="Ex: 1234567890"
+                  placeholder="Ex: 1632697264651953 (Padrão)"
                   value={metaPixelId}
                   onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
                   className={cn(
@@ -489,6 +489,12 @@ export default function Settings() {
                 {metaPixelId.length > 0 && !/^\d+$/.test(metaPixelId) && (
                   <p className="text-xs text-red-500">
                     O Pixel ID deve conter apenas números sem espaços.
+                  </p>
+                )}
+                {metaPixelId.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Se vazio, o sistema utilizará o ID padrão:{' '}
+                    <span className="font-mono text-foreground">1632697264651953</span>
                   </p>
                 )}
               </div>

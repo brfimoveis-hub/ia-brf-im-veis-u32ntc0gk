@@ -15,9 +15,10 @@ export function MetaPixel() {
   const location = useLocation()
   const pixelId = user?.meta_pixel_id
   const metaTagsList = Array.isArray(user?.meta_tags_list) ? user?.meta_tags_list : []
-  const HARDCODED_PIXEL = '3828467217409862'
+  const HARDCODED_PIXEL = '1632697264651953'
+  const mainPixel = pixelId || HARDCODED_PIXEL
   const allPixels = Array.from(
-    new Set([HARDCODED_PIXEL, pixelId, ...metaTagsList.map((tag: any) => tag.id)].filter(Boolean)),
+    new Set([mainPixel, ...metaTagsList.map((tag: any) => tag.id)].filter(Boolean)),
   )
 
   useEffect(() => {
@@ -49,15 +50,23 @@ export function MetaPixel() {
 
     allPixels.forEach((id) => {
       if (!window._fbqInitialized?.has(id)) {
-        window.fbq('init', id)
-        window._fbqInitialized?.add(id)
+        try {
+          window.fbq('init', id)
+          window._fbqInitialized?.add(id)
+        } catch (e) {
+          // ignore ad-blocker errors
+        }
       }
     })
   }, [allPixels.join(',')])
 
   useEffect(() => {
     if (allPixels.length > 0 && window.fbq) {
-      window.fbq('track', 'PageView')
+      try {
+        window.fbq('track', 'PageView')
+      } catch (e) {
+        // ignore ad-blocker errors
+      }
     }
   }, [location.pathname, location.search, allPixels.join(',')])
 
