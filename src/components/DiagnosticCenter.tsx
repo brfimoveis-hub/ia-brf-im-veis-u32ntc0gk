@@ -81,7 +81,9 @@ export function DiagnosticCenter() {
             })
             metaSuccesses++
           } catch (e: any) {
-            lastErrorMsg = e.response?.data?.message || e.message || ''
+            let msg = e.response?.data?.message || e.message || 'Erro desconhecido'
+            if (typeof msg === 'object') msg = JSON.stringify(msg)
+            lastErrorMsg = msg
           }
           setProgress(50 + ((i + 1) / testCount) * 40)
           if (i < testCount - 1) await new Promise((r) => setTimeout(r, 1500))

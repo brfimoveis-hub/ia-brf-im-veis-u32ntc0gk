@@ -102,18 +102,50 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                             }
                             if (testCode) payload.test_event_code = testCode
 
-                            $http.send({
+                            const res = $http.send({
                               url: `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`,
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify(payload),
                               timeout: 5,
                             })
+
+                            if (res.statusCode !== 200) {
+                              const logsCol = $app.findCollectionByNameOrId('system_logs')
+                              const logRecord = new Record(logsCol)
+                              logRecord.set('user_id', userId)
+                              logRecord.set('type', 'remarketing_error')
+                              logRecord.set(
+                                'message',
+                                `Falha no CAPI via Webhook (Status ${res.statusCode})`,
+                              )
+                              logRecord.set(
+                                'details',
+                                typeof res.json === 'object'
+                                  ? JSON.stringify(res.json)
+                                  : String(res.raw),
+                              )
+                              logRecord.set('payload', {
+                                statusCode: res.statusCode,
+                                pixelId,
+                                error: res.json,
+                              })
+                              $app.save(logRecord)
+                            }
                           })
                         }
                       }
                     } catch (err) {
                       $app.logger().error('CAPI Error in Webhook', 'err', err)
+                      try {
+                        const logsCol = $app.findCollectionByNameOrId('system_logs')
+                        const logRecord = new Record(logsCol)
+                        logRecord.set('user_id', userId || '')
+                        logRecord.set('type', 'remarketing_error')
+                        logRecord.set('message', 'Erro interno no CAPI via Webhook')
+                        logRecord.set('details', String(err))
+                        $app.save(logRecord)
+                      } catch (_) {}
                     }
 
                     try {

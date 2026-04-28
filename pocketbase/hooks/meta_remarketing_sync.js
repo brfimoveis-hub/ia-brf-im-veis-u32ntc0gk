@@ -37,7 +37,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'error')
+        logRecord.set('type', 'remarketing_error')
         logRecord.set('message', 'Falha na sincronização: credenciais do Meta ausentes.')
         logRecord.set(
           'details',
@@ -286,7 +286,7 @@ routerAdd(
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
-          logRecord.set('type', 'error')
+          logRecord.set('type', 'remarketing_error')
           logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
           logRecord.set(
             'details',
@@ -314,8 +314,12 @@ routerAdd(
           ''
         ).toLowerCase()
 
-        if (metaErrorMsg.includes('does not exist') || lastError.error.code === 100) {
-          errMsg = `Erro de Permissão/ID Meta: O Pixel ID '${pixelId}' não existe ou o token CAPI não possui permissões adequadas.`
+        if (
+          metaErrorMsg.includes('does not exist') ||
+          lastError.error.code === 100 ||
+          lastError.error.error_subcode === 33
+        ) {
+          errMsg = `Erro de Permissão/ID Meta: O Pixel ID '${pixelId}' não existe ou o token CAPI não possui permissões adequadas (GraphMethodException).`
         } else if (
           metaErrorMsg.includes('oauth') ||
           metaErrorMsg.includes('access token') ||

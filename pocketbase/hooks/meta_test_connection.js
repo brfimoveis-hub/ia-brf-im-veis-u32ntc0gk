@@ -70,7 +70,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', e.auth.id)
-        logRecord.set('type', 'error')
+        logRecord.set('type', 'remarketing_error')
         logRecord.set('message', 'Falha no teste de conexão com Meta.')
         logRecord.set(
           'details',
@@ -85,9 +85,10 @@ routerAdd(
         const msg = errorPayload.error.message
         if (
           msg.includes('does not exist') ||
-          (errorPayload.error && errorPayload.error.code === 100)
+          (errorPayload.error && errorPayload.error.code === 100) ||
+          (errorPayload.error && errorPayload.error.error_subcode === 33)
         ) {
-          errorMessage = `Erro de Permissão/ID Meta: O Pixel ID não existe ou o token CAPI não tem permissão para acessá-lo.`
+          errorMessage = `Erro de Permissão/ID Meta: O Pixel ID não existe ou o token CAPI não tem permissão para acessá-lo (GraphMethodException).`
         } else if (
           msg.includes('Invalid OAuth access token') ||
           msg.includes('invalid oauth access token data') ||
