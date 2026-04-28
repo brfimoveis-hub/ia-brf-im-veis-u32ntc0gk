@@ -26,22 +26,27 @@ export function DiagnosticCenter() {
   const { toast } = useToast()
   const [isRunning, setIsRunning] = useState(false)
 
-  const handleCopyError = (text: string) => {
-    navigator.clipboard.writeText(text)
+  const handleCopyError = (text: string, payload?: any) => {
+    const contentToCopy = payload
+      ? `${text}\n\nPayload:\n${JSON.stringify(payload, null, 2)}`
+      : text
+    navigator.clipboard.writeText(contentToCopy)
     toast({
       title: 'Copiado!',
-      description: 'Texto do erro copiado para a área de transferência!',
+      description: 'Erro e payload copiados para a área de transferência!',
     })
   }
   const [progress, setProgress] = useState(0)
   const [loopEnabled, setLoopEnabled] = useState(false)
-  const [results, setResults] = useState<{ name: string; status: string; message: string }[]>([])
+  const [results, setResults] = useState<
+    { name: string; status: string; message: string; payload?: any }[]
+  >([])
 
   const runDiagnostics = async () => {
     setIsRunning(true)
     setProgress(0)
     setResults([])
-    const newResults: { name: string; status: string; message: string }[] = []
+    const newResults: { name: string; status: string; message: string; payload?: any }[] = []
 
     try {
       // 1. Uazapi Connectivity Check
@@ -54,6 +59,7 @@ export function DiagnosticCenter() {
         message: hasPhone
           ? `Telefone ${user.meta_campaign_phone} alcançável e configurado.`
           : 'Telefone de campanha ausente. O Uazapi requer configuração.',
+        payload: { meta_campaign_phone: user?.meta_campaign_phone },
       })
       setResults([...newResults])
 
@@ -68,6 +74,7 @@ export function DiagnosticCenter() {
         name: 'Auditoria de Cadências',
         status: hasIssues ? 'warning' : 'success',
         message: `${cadences.length} cadências ativas. ${validCadences.length} estruturalmente íntegras (com regras IA).`,
+        payload: { total: cadences.length, valid: validCadences.length, cadences },
       })
       setResults([...newResults])
 
@@ -81,6 +88,7 @@ export function DiagnosticCenter() {
           name: 'Integração Meta (Pixel & CAPI)',
           status: 'error',
           message: 'Credenciais ausentes. Impossível realizar o handshake com o Meta.',
+          payload: { pixel: user?.meta_pixel_id, capi_token: user?.meta_capi_token ? '***' : null },
         })
         setProgress(90)
       } else {
@@ -126,6 +134,7 @@ export function DiagnosticCenter() {
           name: 'Integração Meta (Pixel & CAPI)',
           status: metaSuccesses === testCount ? 'success' : metaSuccesses > 0 ? 'warning' : 'error',
           message: finalMessage,
+          payload: { successes: metaSuccesses, testCount, lastErrorMsg },
         })
       }
       setResults([...newResults])
@@ -244,7 +253,7 @@ export function DiagnosticCenter() {
                             variant="ghost"
                             size="icon"
                             className="h-5 w-5 hover:bg-muted shrink-0 -mt-0.5 text-muted-foreground"
-                            onClick={() => handleCopyError(res.message)}
+                            onClick={() => handleCopyError(res.message, res.payload)}
                             title="Copiar mensagem de erro"
                           >
                             <Copy className="h-3 w-3" />

@@ -244,8 +244,35 @@ export default function Settings() {
 
       toast({
         title: 'Configurações do Meta salvas!',
-        description: 'As alterações foram aplicadas com sucesso.',
+        description: 'As alterações foram aplicadas com sucesso. Testando conexão...',
       })
+
+      if (cleanCapiToken) {
+        try {
+          await pb.send('/backend/v1/meta-test-connection', {
+            method: 'POST',
+            body: JSON.stringify({
+              pixelId: cleanPixelId,
+              capiToken: cleanCapiToken,
+            }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+          await pb.collection('users').authRefresh()
+          toast({
+            title: 'Conexão bem-sucedida',
+            description:
+              'O Pixel ID e o Token CAPI foram validados com sucesso e estão comunicando com o Meta.',
+          })
+        } catch (testError: any) {
+          await pb.collection('users').authRefresh()
+          toast({
+            title: 'Configurações salvas, mas falha no teste',
+            description:
+              'Credenciais foram salvas, mas o teste com o Meta falhou. Verifique o token.',
+            variant: 'destructive',
+          })
+        }
+      }
     } catch (error) {
       toast({
         title: 'Erro ao salvar',
@@ -340,7 +367,7 @@ export default function Settings() {
   let connectionBadgeColor = 'bg-muted text-muted-foreground'
 
   if (metaTokenStatus === 'active') {
-    connectionBadgeText = 'Ativo'
+    connectionBadgeText = 'Conectado'
     connectionBadgeColor =
       'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
   } else if (metaTokenStatus === 'invalid_permission') {
@@ -355,6 +382,9 @@ export default function Settings() {
     connectionBadgeText = 'Erro de Conexão'
     connectionBadgeColor =
       'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
+  } else {
+    connectionBadgeText = 'Não Testado'
+    connectionBadgeColor = 'bg-muted text-muted-foreground'
   }
 
   return (
