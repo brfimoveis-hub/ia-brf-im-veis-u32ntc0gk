@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Copy,
 } from 'lucide-react'
 import { lazy, Suspense, useMemo, useEffect, useState } from 'react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -112,6 +113,14 @@ export default function Index() {
     })
   }
 
+  const handleCopyError = (text: string) => {
+    navigator.clipboard.writeText(text)
+    toast({
+      title: 'Copiado!',
+      description: 'Texto do erro copiado para a área de transferência!',
+    })
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Status Card */}
@@ -166,7 +175,23 @@ export default function Index() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Erro de Autenticação</AlertTitle>
           <AlertDescription className="mt-2 flex flex-col gap-3">
-            <p>Erro de autenticação com o Meta: Token inválido ou expirado</p>
+            <div className="flex items-center justify-between gap-4 bg-destructive/10 p-2.5 rounded-md border border-destructive/20">
+              <p className="select-text text-sm font-medium">
+                Erro de autenticação com o Meta: Token inválido ou expirado
+              </p>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/20 shrink-0"
+                onClick={() =>
+                  handleCopyError('Erro de autenticação com o Meta: Token inválido ou expirado')
+                }
+                title="Copiar mensagem de erro"
+              >
+                <Copy className="h-4 w-4" />
+                <span className="sr-only">Copiar erro</span>
+              </Button>
+            </div>
             <Button
               variant="outline"
               size="sm"

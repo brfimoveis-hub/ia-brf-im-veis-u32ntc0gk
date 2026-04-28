@@ -5,7 +5,15 @@ import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { Activity, CheckCircle2, XCircle, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react'
+import {
+  Activity,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  AlertTriangle,
+  ShieldCheck,
+  Copy,
+} from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
@@ -17,6 +25,14 @@ export function DiagnosticCenter() {
   const { user } = useAuth()
   const { toast } = useToast()
   const [isRunning, setIsRunning] = useState(false)
+
+  const handleCopyError = (text: string) => {
+    navigator.clipboard.writeText(text)
+    toast({
+      title: 'Copiado!',
+      description: 'Texto do erro copiado para a área de transferência!',
+    })
+  }
   const [progress, setProgress] = useState(0)
   const [loopEnabled, setLoopEnabled] = useState(false)
   const [results, setResults] = useState<{ name: string; status: string; message: string }[]>([])
@@ -209,7 +225,7 @@ export function DiagnosticCenter() {
                   key={i}
                   className="flex items-center justify-between p-3 border rounded-lg bg-card shadow-sm"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
                     {res.status === 'success' && (
                       <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
                     )}
@@ -219,9 +235,23 @@ export function DiagnosticCenter() {
                     {res.status === 'error' && (
                       <XCircle className="h-5 w-5 text-destructive shrink-0" />
                     )}
-                    <div>
-                      <p className="text-sm font-medium text-secondary">{res.name}</p>
-                      <p className="text-xs text-muted-foreground">{res.message}</p>
+                    <div className="flex-1 min-w-0 pr-2">
+                      <p className="text-sm font-medium text-secondary truncate">{res.name}</p>
+                      <div className="flex items-start gap-2 mt-0.5">
+                        <p className="text-xs text-muted-foreground select-text">{res.message}</p>
+                        {(res.status === 'error' || res.status === 'warning') && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 hover:bg-muted shrink-0 -mt-0.5 text-muted-foreground"
+                            onClick={() => handleCopyError(res.message)}
+                            title="Copiar mensagem de erro"
+                          >
+                            <Copy className="h-3 w-3" />
+                            <span className="sr-only">Copiar erro</span>
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <Badge
