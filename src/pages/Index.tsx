@@ -28,6 +28,10 @@ const CadenceRoulette = lazy(() =>
   import('@/components/CadenceRoulette').then((m) => ({ default: m.CadenceRoulette })),
 )
 
+const DiagnosticCenter = lazy(() =>
+  import('@/components/DiagnosticCenter').then((m) => ({ default: m.DiagnosticCenter })),
+)
+
 const chartData = [
   { date: 'Seg', messages: 120 },
   { date: 'Ter', messages: 210 },
@@ -140,15 +144,25 @@ export default function Index() {
       </Card>
 
       {/* Meta Authentication Alert */}
-      {(user?.meta_token_status === 'invalid' || user?.meta_token_status === 'invalid_oauth') && (
+      {(user?.meta_token_status === 'invalid' ||
+        user?.meta_token_status === 'invalid_oauth' ||
+        user?.meta_token_status === 'invalid_permission') && (
         <Alert
           variant="destructive"
           className="bg-destructive/5 border-destructive/20 text-destructive mb-6"
         >
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Erro de Autenticação</AlertTitle>
-          <AlertDescription>
-            Erro de autenticação com o Meta: Token inválido ou expirado
+          <AlertDescription className="mt-2 flex flex-col gap-3">
+            <p>Erro de autenticação com o Meta: Token inválido ou expirado</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-fit border-destructive/30 hover:bg-destructive/10"
+              asChild
+            >
+              <Link to="/configuracoes">Atualizar Token CAPI em Configurações</Link>
+            </Button>
           </AlertDescription>
         </Alert>
       )}
@@ -174,9 +188,11 @@ export default function Index() {
               <div>
                 <p className="text-sm font-semibold text-secondary">Integração Meta Ads</p>
                 <p className="text-xs text-muted-foreground">
-                  {isMetaActive
-                    ? `${parsedTags.length || 1} Pixel(s) conectado(s)`
-                    : 'Não configurado'}
+                  {user?.meta_pixel_id
+                    ? '1 Pixel(s) conectado(s)'
+                    : isMetaActive
+                      ? `${parsedTags.length || 1} Pixel(s) conectado(s)`
+                      : 'Não configurado'}
                 </p>
               </div>
             </div>
@@ -257,10 +273,7 @@ export default function Index() {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>
-                      Erro de Permissão/ID Meta ou Token inválido. Sincronização interrompida.
-                      Acesse Configurações &gt; Centro de Diagnóstico para mais detalhes.
-                    </p>
+                    <p>Erro de autenticação com o Meta: Token inválido ou expirado</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -334,6 +347,12 @@ export default function Index() {
         fallback={<div className="h-[400px] w-full rounded-xl bg-muted/20 animate-pulse" />}
       >
         <CadenceRoulette />
+      </Suspense>
+
+      <Suspense
+        fallback={<div className="h-[400px] w-full rounded-xl bg-muted/20 animate-pulse" />}
+      >
+        <DiagnosticCenter />
       </Suspense>
 
       <div className="grid gap-4 md:grid-cols-7 lg:grid-cols-8">

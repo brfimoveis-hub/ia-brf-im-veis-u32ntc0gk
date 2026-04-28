@@ -76,8 +76,8 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', e.auth.id)
-        logRecord.set('type', 'meta_error')
-        logRecord.set('message', 'Falha no teste de conexão com Meta.')
+        logRecord.set('type', 'error')
+        logRecord.set('message', 'Falha na validação do Token CAPI')
         logRecord.set(
           'details',
           typeof errorPayload === 'object' ? JSON.stringify(errorPayload) : String(errorPayload),
