@@ -90,11 +90,19 @@ export function DiagnosticCenter() {
         }
 
         let finalMessage = `${metaSuccesses}/${testCount} handshakes bem-sucedidos com a API do Meta.`
-        if (metaSuccesses < testCount && lastErrorMsg.includes('Permissão/ID Meta')) {
-          finalMessage =
-            'Erro de Permissão/ID Meta: Verifique se o Pixel ID existe e se o Token possui escopo de acesso.'
-        } else if (metaSuccesses < testCount && lastErrorMsg) {
-          finalMessage = `Falha de conexão: ${lastErrorMsg}`
+        if (metaSuccesses < testCount) {
+          if (lastErrorMsg.includes('Permissão/ID Meta')) {
+            finalMessage =
+              'Erro de Permissão/ID Meta: Verifique se o Pixel ID existe e se o Token possui escopo de acesso.'
+          } else if (
+            lastErrorMsg.includes('invalid oauth access token data') ||
+            lastErrorMsg.includes('autenticação') ||
+            lastErrorMsg.includes('Token CAPI')
+          ) {
+            finalMessage = `Token Inválido: Certifique-se de que o token CAPI é válido e tem permissão. Detalhe: ${lastErrorMsg}`
+          } else {
+            finalMessage = `Falha de conexão: ${lastErrorMsg}`
+          }
         }
 
         newResults.push({

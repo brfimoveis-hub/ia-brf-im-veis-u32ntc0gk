@@ -171,7 +171,10 @@ export default function Index() {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Falha ao conectar com a API do Meta. Verifique o token e o ID do Pixel.</p>
+                    <p>
+                      Falha ao conectar com a API do Meta. Verifique o token e o ID do Pixel. Acesse
+                      Configurações &gt; Centro de Diagnóstico para mais detalhes.
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -228,7 +231,10 @@ export default function Index() {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Erro de Permissão/ID Meta. Sincronização interrompida.</p>
+                    <p>
+                      Erro de Permissão/ID Meta ou Token inválido. Sincronização interrompida.
+                      Acesse Configurações &gt; Centro de Diagnóstico para mais detalhes.
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

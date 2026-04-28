@@ -70,7 +70,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', e.auth.id)
-        logRecord.set('type', 'remarketing_error')
+        logRecord.set('type', 'meta_error')
         logRecord.set('message', 'Falha no teste de conexão com Meta.')
         logRecord.set(
           'details',
