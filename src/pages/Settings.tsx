@@ -321,9 +321,9 @@ export default function Settings() {
       }
 
       toast({
-        title: 'Erro de Conexão',
-        description: `Falha ao validar com o Meta: ${errorMsg}. Verifique espaços em branco no seu token e tente novamente.`,
-        variant: 'destructive',
+        title: 'Erro de Conexão com o Meta',
+        description: `Falha na validação: ${errorMsg}. Verifique seu token e ID do Pixel.`,
+        variant: 'default',
       })
     } finally {
       setIsTestingConnection(false)

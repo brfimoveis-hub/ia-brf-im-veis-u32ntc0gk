@@ -13,10 +13,11 @@ import {
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react'
-import { lazy, Suspense, useMemo } from 'react'
+import { lazy, Suspense, useMemo, useEffect } from 'react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
+import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 import { Link } from 'react-router-dom'
 
@@ -62,6 +63,26 @@ export default function Index() {
 
   const isMetaActive = !!user?.meta_pixel_id || parsedTags.length > 0
   const isCapiActive = !!user?.meta_capi_token
+
+  useEffect(() => {
+    if (user?.meta_capi_token && user.meta_token_status === 'untested') {
+      pb.send('/backend/v1/meta-test-connection', {
+        method: 'POST',
+        body: JSON.stringify({
+          pixelId: user.meta_pixel_id || '1522162279584545',
+          capiToken: user.meta_capi_token,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+        .then(() =>
+          pb
+            .collection('users')
+            .authRefresh()
+            .catch(() => {}),
+        )
+        .catch(() => {})
+    }
+  }, [user?.meta_capi_token, user?.meta_token_status, user?.meta_pixel_id])
 
   const handleRestart = () => {
     toast({
@@ -139,24 +160,30 @@ export default function Index() {
                 </p>
               </div>
             </div>
-            {user?.meta_token_status === 'invalid_permission' ? (
+            {user?.meta_token_status === 'invalid_permission' ||
+            user?.meta_token_status === 'invalid' ? (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/10 px-2.5 py-1 rounded-full cursor-help">
                       <AlertCircle className="h-3.5 w-3.5" />
-                      Erro
+                      Erro de Conexão
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Erro de Permissão/ID Meta</p>
+                    <p>Falha ao conectar com a API do Meta. Verifique o token e o ID do Pixel.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            ) : isMetaActive ? (
+            ) : user?.meta_token_status === 'valid' ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Ativo
+                Conectado (Healthy)
+              </div>
+            ) : isMetaActive ? (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-500/10 px-2.5 py-1 rounded-full">
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                Validando...
               </div>
             ) : (
               <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full">
@@ -190,7 +217,8 @@ export default function Index() {
                 </p>
               </div>
             </div>
-            {user?.meta_token_status === 'invalid_permission' ? (
+            {user?.meta_token_status === 'invalid_permission' ||
+            user?.meta_token_status === 'invalid' ? (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -200,14 +228,19 @@ export default function Index() {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Erro de Permissão/ID Meta</p>
+                    <p>Erro de Permissão/ID Meta. Sincronização interrompida.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            ) : isCapiActive ? (
+            ) : user?.meta_token_status === 'valid' ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Sincronizando
+                Healthy (Sincronizando)
+              </div>
+            ) : isCapiActive ? (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-500/10 px-2.5 py-1 rounded-full">
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                Aguardando Validação
               </div>
             ) : (
               <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full">

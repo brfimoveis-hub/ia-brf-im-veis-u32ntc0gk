@@ -58,7 +58,7 @@ onRecordAfterCreateSuccess((e) => {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const logRecord = new Record(logsCol)
       logRecord.set('user_id', userId)
-      logRecord.set('type', 'remarketing')
+      logRecord.set('type', 'error')
       logRecord.set('message', 'Falha no sync automático (Create)')
       logRecord.set('details', String(res.json || res.raw))
       logRecord.set('payload', { request: payload, response: res.json || res.raw })

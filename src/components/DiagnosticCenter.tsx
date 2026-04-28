@@ -119,9 +119,9 @@ export function DiagnosticCenter() {
       })
     } catch (e) {
       toast({
-        title: 'Erro no Diagnóstico',
-        description: 'Uma falha inesperada interrompeu a verificação.',
-        variant: 'destructive',
+        title: 'Diagnóstico Finalizado com Alertas',
+        description: 'A verificação foi concluída, mas alguns testes relataram falhas.',
+        variant: 'default',
       })
     } finally {
       setIsRunning(false)

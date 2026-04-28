@@ -37,7 +37,7 @@ routerAdd(
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'meta_error')
+        logRecord.set('type', 'error')
         logRecord.set('message', 'Falha na sincronização: credenciais do Meta ausentes.')
         logRecord.set(
           'details',
@@ -286,7 +286,7 @@ routerAdd(
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
-          logRecord.set('type', 'meta_error')
+          logRecord.set('type', 'error')
           logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
           logRecord.set(
             'details',
