@@ -89,7 +89,7 @@ export function DiagnosticCenter() {
           if (i < testCount - 1) await new Promise((r) => setTimeout(r, 1500))
         }
 
-        let finalMessage = `${metaSuccesses}/${testCount} handshakes bem-sucedidos com a API do Meta.`
+        let finalMessage = `${metaSuccesses}/${testCount} handshakes bem-sucedidos com a API do Meta. Status: Ativo.`
         if (metaSuccesses < testCount) {
           if (lastErrorMsg.includes('Permissão/ID Meta')) {
             finalMessage =
@@ -97,9 +97,10 @@ export function DiagnosticCenter() {
           } else if (
             lastErrorMsg.includes('invalid oauth access token data') ||
             lastErrorMsg.includes('autenticação') ||
-            lastErrorMsg.includes('Token CAPI')
+            lastErrorMsg.includes('Token CAPI') ||
+            lastErrorMsg.includes('Token inválido')
           ) {
-            finalMessage = `Token Inválido: Certifique-se de que o token CAPI é válido e tem permissão. Detalhe: ${lastErrorMsg}`
+            finalMessage = `Erro de autenticação com o Meta: Token inválido ou expirado. Detalhe: ${lastErrorMsg}`
           } else {
             finalMessage = `Falha de conexão: ${lastErrorMsg}`
           }
@@ -184,7 +185,7 @@ export function DiagnosticCenter() {
               ) : (
                 <ShieldCheck className="h-4 w-4" />
               )}
-              {isRunning ? 'Verificando...' : 'Executar Scan'}
+              {isRunning ? 'Verificando...' : 'Executar Diagnóstico Completo'}
             </Button>
           </div>
         </div>

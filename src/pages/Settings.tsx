@@ -339,15 +339,15 @@ export default function Settings() {
   let connectionBadgeText = 'Não Testado'
   let connectionBadgeColor = 'bg-muted text-muted-foreground'
 
-  if (metaTokenStatus === 'valid') {
-    connectionBadgeText = 'Validado'
+  if (metaTokenStatus === 'active') {
+    connectionBadgeText = 'Ativo'
     connectionBadgeColor =
       'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
   } else if (metaTokenStatus === 'invalid_permission') {
     connectionBadgeText = 'Erro de Permissão/ID'
     connectionBadgeColor =
       'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
-  } else if (metaTokenStatus === 'invalid') {
+  } else if (metaTokenStatus === 'invalid' || metaTokenStatus === 'invalid_oauth') {
     connectionBadgeText = 'Erro de Conexão'
     connectionBadgeColor =
       'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'

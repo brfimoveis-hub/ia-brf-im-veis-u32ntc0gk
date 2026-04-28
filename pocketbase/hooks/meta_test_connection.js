@@ -30,7 +30,7 @@ routerAdd(
 
     if (res.statusCode === 200) {
       if (user) {
-        user.set('meta_token_status', 'valid')
+        user.set('meta_token_status', 'active')
         user.set('meta_last_validated', now)
         $app.save(user)
       }
@@ -50,8 +50,11 @@ routerAdd(
       const errorPayload = res.json || res.raw || 'Erro desconhecido'
 
       let isPermissionError = false
+      let isOAuthError = false
       if (errorPayload && errorPayload.error) {
-        if (
+        if (errorPayload.error.code === 190) {
+          isOAuthError = true
+        } else if (
           errorPayload.error.code === 100 ||
           errorPayload.error.error_subcode === 33 ||
           String(errorPayload.error.message).includes('does not exist')
@@ -61,7 +64,10 @@ routerAdd(
       }
 
       if (user) {
-        user.set('meta_token_status', isPermissionError ? 'invalid_permission' : 'invalid')
+        user.set(
+          'meta_token_status',
+          isOAuthError ? 'invalid_oauth' : isPermissionError ? 'invalid_permission' : 'invalid',
+        )
         user.set('meta_last_validated', now)
         $app.save(user)
       }
@@ -92,9 +98,10 @@ routerAdd(
         } else if (
           msg.includes('Invalid OAuth access token') ||
           msg.includes('invalid oauth access token data') ||
-          msg.includes('invalid')
+          msg.includes('invalid') ||
+          (errorPayload.error && errorPayload.error.code === 190)
         ) {
-          errorMessage = `Meta retornou erro de autenticação (invalid oauth access token data). Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel. Verifique espaços em branco no seu token e tente novamente.`
+          errorMessage = `Erro de autenticação com o Meta: Token inválido ou expirado.`
         } else if (msg.includes('Missing Permissions') || msg.includes('permission')) {
           errorMessage = `Meta retornou: ${msg}. Dica: O token CAPI não tem permissões suficientes para este Pixel.`
         } else {

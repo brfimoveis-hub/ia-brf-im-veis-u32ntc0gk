@@ -12,9 +12,12 @@ import {
   Facebook,
   CheckCircle2,
   AlertCircle,
+  Loader2,
 } from 'lucide-react'
-import { lazy, Suspense, useMemo, useEffect } from 'react'
+import { lazy, Suspense, useMemo, useEffect, useState } from 'react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
@@ -63,9 +66,11 @@ export default function Index() {
 
   const isMetaActive = !!user?.meta_pixel_id || parsedTags.length > 0
   const isCapiActive = !!user?.meta_capi_token
+  const [isValidating, setIsValidating] = useState(false)
 
   useEffect(() => {
     if (user?.meta_capi_token && user.meta_token_status === 'untested') {
+      setIsValidating(true)
       pb.send('/backend/v1/meta-test-connection', {
         method: 'POST',
         body: JSON.stringify({
@@ -81,6 +86,7 @@ export default function Index() {
             .catch(() => {}),
         )
         .catch(() => {})
+        .finally(() => setIsValidating(false))
     }
   }, [user?.meta_capi_token, user?.meta_token_status, user?.meta_pixel_id])
 
@@ -133,6 +139,20 @@ export default function Index() {
         </CardContent>
       </Card>
 
+      {/* Meta Authentication Alert */}
+      {(user?.meta_token_status === 'invalid' || user?.meta_token_status === 'invalid_oauth') && (
+        <Alert
+          variant="destructive"
+          className="bg-destructive/5 border-destructive/20 text-destructive mb-6"
+        >
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Erro de Autenticação</AlertTitle>
+          <AlertDescription>
+            Erro de autenticação com o Meta: Token inválido ou expirado
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Status Indicators */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card
@@ -160,8 +180,11 @@ export default function Index() {
                 </p>
               </div>
             </div>
-            {user?.meta_token_status === 'invalid_permission' ||
-            user?.meta_token_status === 'invalid' ? (
+            {isValidating ? (
+              <Skeleton className="h-6 w-24 rounded-full" />
+            ) : user?.meta_token_status === 'invalid_permission' ||
+              user?.meta_token_status === 'invalid' ||
+              user?.meta_token_status === 'invalid_oauth' ? (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -178,10 +201,10 @@ export default function Index() {
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            ) : user?.meta_token_status === 'valid' ? (
+            ) : user?.meta_token_status === 'active' ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Conectado (Healthy)
+                Ativo
               </div>
             ) : isMetaActive ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-500/10 px-2.5 py-1 rounded-full">
@@ -220,8 +243,11 @@ export default function Index() {
                 </p>
               </div>
             </div>
-            {user?.meta_token_status === 'invalid_permission' ||
-            user?.meta_token_status === 'invalid' ? (
+            {isValidating ? (
+              <Skeleton className="h-6 w-24 rounded-full" />
+            ) : user?.meta_token_status === 'invalid_permission' ||
+              user?.meta_token_status === 'invalid' ||
+              user?.meta_token_status === 'invalid_oauth' ? (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -238,10 +264,10 @@ export default function Index() {
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            ) : user?.meta_token_status === 'valid' ? (
+            ) : user?.meta_token_status === 'active' ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Healthy (Sincronizando)
+                Ativo
               </div>
             ) : isCapiActive ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-500/10 px-2.5 py-1 rounded-full">
