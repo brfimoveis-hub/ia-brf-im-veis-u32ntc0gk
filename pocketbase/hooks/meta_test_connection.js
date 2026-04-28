@@ -57,7 +57,8 @@ routerAdd(
         } else if (
           errorPayload.error.code === 100 ||
           errorPayload.error.error_subcode === 33 ||
-          String(errorPayload.error.message).includes('does not exist')
+          String(errorPayload.error.message).includes('does not exist') ||
+          String(errorPayload.error.message).includes('permission')
         ) {
           isPermissionError = true
         }
@@ -66,7 +67,7 @@ routerAdd(
       if (user) {
         user.set(
           'meta_token_status',
-          isOAuthError ? 'expired' : isPermissionError ? 'invalid_permission' : 'invalid',
+          isOAuthError ? 'expired' : isPermissionError ? 'error: permission_denied' : 'invalid',
         )
         user.set('meta_last_validated', now)
         $app.save(user)
@@ -92,18 +93,18 @@ routerAdd(
         if (
           msg.includes('does not exist') ||
           (errorPayload.error && errorPayload.error.code === 100) ||
-          (errorPayload.error && errorPayload.error.error_subcode === 33)
+          (errorPayload.error && errorPayload.error.error_subcode === 33) ||
+          msg.includes('Missing Permissions') ||
+          msg.includes('permission')
         ) {
-          errorMessage = `Erro de Permissão/ID Meta: O Pixel ID não existe ou o token CAPI não tem permissão para acessá-lo (GraphMethodException).`
+          errorMessage = `Erro de Permissão/ID Meta: O Pixel ID não existe ou o token CAPI não tem permissão para acessá-lo. Código: ${errorPayload.error.code}`
         } else if (
           msg.includes('Invalid OAuth access token') ||
           msg.includes('invalid oauth access token data') ||
           msg.includes('invalid') ||
           (errorPayload.error && errorPayload.error.code === 190)
         ) {
-          errorMessage = `Erro de autenticação com o Meta: Token inválido ou expirado.`
-        } else if (msg.includes('Missing Permissions') || msg.includes('permission')) {
-          errorMessage = `Meta retornou: ${msg}. Dica: O token CAPI não tem permissões suficientes para este Pixel.`
+          errorMessage = `Erro de autenticação com o Meta: Token inválido ou expirado. Código: 190`
         } else {
           errorMessage = `Meta retornou: ${msg}. Dica: Verifique as configurações do seu Pixel e Token CAPI.`
         }

@@ -370,7 +370,10 @@ export default function Settings() {
     connectionBadgeText = 'Conectado'
     connectionBadgeColor =
       'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
-  } else if (metaTokenStatus === 'invalid_permission') {
+  } else if (
+    metaTokenStatus === 'error: permission_denied' ||
+    metaTokenStatus === 'invalid_permission'
+  ) {
     connectionBadgeText = 'Erro de Permissão/ID'
     connectionBadgeColor =
       'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'

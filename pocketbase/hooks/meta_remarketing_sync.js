@@ -272,9 +272,14 @@ routerAdd(
             lastError &&
             lastError.error &&
             (lastError.error.code === 100 ||
-              String(lastError.error.message).includes('does not exist'))
+              lastError.error.error_subcode === 33 ||
+              String(lastError.error.message).includes('does not exist') ||
+              String(lastError.error.message).includes('permission'))
           ) {
-            user.set('meta_token_status', 'invalid_permission')
+            user.set('meta_token_status', 'error: permission_denied')
+            $app.saveNoValidate(user)
+          } else if (lastError && lastError.error && lastError.error.code === 190) {
+            user.set('meta_token_status', 'expired')
             $app.saveNoValidate(user)
           } else {
             user.set('meta_token_status', 'invalid')
@@ -316,18 +321,20 @@ routerAdd(
 
         if (
           metaErrorMsg.includes('does not exist') ||
+          metaErrorMsg.includes('permission') ||
           lastError.error.code === 100 ||
           lastError.error.error_subcode === 33
         ) {
-          errMsg = `Erro de Permissão/ID Meta: O Pixel ID '${pixelId}' não existe ou o token CAPI não possui permissões adequadas (GraphMethodException).`
+          errMsg = `Erro de Permissão/ID Meta: O Pixel ID '${pixelId}' não existe ou o token CAPI não possui permissões adequadas (Code: ${lastError.error.code}).`
         } else if (
           metaErrorMsg.includes('oauth') ||
           metaErrorMsg.includes('access token') ||
           metaErrorMsg.includes('token') ||
           metaErrorMsg.includes('auth') ||
-          metaErrorMsg.includes('invalid')
+          metaErrorMsg.includes('invalid') ||
+          lastError.error.code === 190
         ) {
-          errMsg = `Erro de autenticação com o Meta (invalid oauth access token data). Dica: Certifique-se de que o token CAPI é válido e tem permissão de acesso ao pixel. Verifique espaços em branco no seu token e tente novamente.`
+          errMsg = `Erro de autenticação com o Meta (invalid oauth access token data). Dica: Certifique-se de que o token CAPI é válido e não expirou. Verifique espaços em branco no seu token e tente novamente.`
         } else {
           errMsg = `Erro do Meta: ${lastError.error.error_user_msg || lastError.error.message}`
         }

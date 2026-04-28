@@ -74,6 +74,10 @@ export default function Index() {
   const isCapiActive = !!user?.meta_capi_token
   const [isValidating, setIsValidating] = useState(false)
 
+  const isLastValidatedRecent = user?.meta_last_validated
+    ? new Date().getTime() - new Date(user.meta_last_validated).getTime() < 24 * 60 * 60 * 1000
+    : false
+
   useRealtime('users', (e) => {
     if (e.action === 'update' && e.record.id === user?.id) {
       if (e.record.meta_token_status !== user?.meta_token_status) {
@@ -167,6 +171,7 @@ export default function Index() {
       {(user?.meta_token_status === 'invalid' ||
         user?.meta_token_status === 'invalid_oauth' ||
         user?.meta_token_status === 'expired' ||
+        user?.meta_token_status === 'error: permission_denied' ||
         user?.meta_token_status === 'invalid_permission') && (
         <Alert
           variant="destructive"
@@ -235,7 +240,8 @@ export default function Index() {
             </div>
             {isValidating ? (
               <Skeleton className="h-6 w-24 rounded-full" />
-            ) : user?.meta_token_status === 'invalid_permission' ||
+            ) : user?.meta_token_status === 'error: permission_denied' ||
+              user?.meta_token_status === 'invalid_permission' ||
               user?.meta_token_status === 'invalid' ||
               user?.meta_token_status === 'expired' ||
               user?.meta_token_status === 'invalid_oauth' ? (
@@ -255,11 +261,28 @@ export default function Index() {
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            ) : user?.meta_token_status === 'active' ? (
+            ) : user?.meta_token_status === 'active' && isLastValidatedRecent ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Ativo
               </div>
+            ) : user?.meta_token_status === 'active' && !isLastValidatedRecent ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full cursor-help">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Aviso
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>
+                      Validação pendente ou intermitente. A última verificação ocorreu há mais de
+                      24h.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             ) : isMetaActive ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-500/10 px-2.5 py-1 rounded-full">
                 <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -299,7 +322,8 @@ export default function Index() {
             </div>
             {isValidating ? (
               <Skeleton className="h-6 w-24 rounded-full" />
-            ) : user?.meta_token_status === 'invalid_permission' ||
+            ) : user?.meta_token_status === 'error: permission_denied' ||
+              user?.meta_token_status === 'invalid_permission' ||
               user?.meta_token_status === 'invalid' ||
               user?.meta_token_status === 'expired' ||
               user?.meta_token_status === 'invalid_oauth' ? (
@@ -316,10 +340,15 @@ export default function Index() {
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            ) : user?.meta_token_status === 'active' ? (
+            ) : user?.meta_token_status === 'active' && isLastValidatedRecent ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Ativo
+              </div>
+            ) : user?.meta_token_status === 'active' && !isLastValidatedRecent ? (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full">
+                <AlertCircle className="h-3.5 w-3.5" />
+                Aviso
               </div>
             ) : isCapiActive ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-500/10 px-2.5 py-1 rounded-full">
