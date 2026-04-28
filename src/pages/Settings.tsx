@@ -347,7 +347,11 @@ export default function Settings() {
     connectionBadgeText = 'Erro de Permissão/ID'
     connectionBadgeColor =
       'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
-  } else if (metaTokenStatus === 'invalid' || metaTokenStatus === 'invalid_oauth') {
+  } else if (
+    metaTokenStatus === 'invalid' ||
+    metaTokenStatus === 'invalid_oauth' ||
+    metaTokenStatus === 'expired'
+  ) {
     connectionBadgeText = 'Erro de Conexão'
     connectionBadgeColor =
       'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'

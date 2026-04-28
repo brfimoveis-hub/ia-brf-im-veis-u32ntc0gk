@@ -66,7 +66,7 @@ routerAdd(
       if (user) {
         user.set(
           'meta_token_status',
-          isOAuthError ? 'invalid_oauth' : isPermissionError ? 'invalid_permission' : 'invalid',
+          isOAuthError ? 'expired' : isPermissionError ? 'invalid_permission' : 'invalid',
         )
         user.set('meta_last_validated', now)
         $app.save(user)

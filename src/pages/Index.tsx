@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 import { Link } from 'react-router-dom'
+import { useRealtime } from '@/hooks/use-realtime'
 
 const CadenceRoulette = lazy(() =>
   import('@/components/CadenceRoulette').then((m) => ({ default: m.CadenceRoulette })),
@@ -71,6 +72,16 @@ export default function Index() {
   const isMetaActive = !!user?.meta_pixel_id || parsedTags.length > 0
   const isCapiActive = !!user?.meta_capi_token
   const [isValidating, setIsValidating] = useState(false)
+
+  useRealtime('users', (e) => {
+    if (e.action === 'update' && e.record.id === user?.id) {
+      if (e.record.meta_token_status !== user?.meta_token_status) {
+        pb.collection('users')
+          .authRefresh()
+          .catch(() => {})
+      }
+    }
+  })
 
   useEffect(() => {
     if (user?.meta_capi_token && user.meta_token_status === 'untested') {
@@ -146,6 +157,7 @@ export default function Index() {
       {/* Meta Authentication Alert */}
       {(user?.meta_token_status === 'invalid' ||
         user?.meta_token_status === 'invalid_oauth' ||
+        user?.meta_token_status === 'expired' ||
         user?.meta_token_status === 'invalid_permission') && (
         <Alert
           variant="destructive"
@@ -200,6 +212,7 @@ export default function Index() {
               <Skeleton className="h-6 w-24 rounded-full" />
             ) : user?.meta_token_status === 'invalid_permission' ||
               user?.meta_token_status === 'invalid' ||
+              user?.meta_token_status === 'expired' ||
               user?.meta_token_status === 'invalid_oauth' ? (
               <TooltipProvider>
                 <Tooltip>
@@ -255,7 +268,7 @@ export default function Index() {
               <div>
                 <p className="text-sm font-semibold text-secondary">Conversions API (CAPI)</p>
                 <p className="text-xs text-muted-foreground">
-                  {isCapiActive ? 'Sincronização server-side ativa' : 'Token não configurado'}
+                  {isCapiActive ? 'Sincronização server-side: Ativa' : 'Token não configurado'}
                 </p>
               </div>
             </div>
@@ -263,6 +276,7 @@ export default function Index() {
               <Skeleton className="h-6 w-24 rounded-full" />
             ) : user?.meta_token_status === 'invalid_permission' ||
               user?.meta_token_status === 'invalid' ||
+              user?.meta_token_status === 'expired' ||
               user?.meta_token_status === 'invalid_oauth' ? (
               <TooltipProvider>
                 <Tooltip>
