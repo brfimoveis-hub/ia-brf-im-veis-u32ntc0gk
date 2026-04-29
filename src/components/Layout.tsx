@@ -41,7 +41,7 @@ const menuItems = [
   { title: 'Base de Conhecimento', url: '/conhecimento', icon: BookOpen },
   { title: 'Cadências', url: '/cadencias', icon: ListOrdered },
   { title: 'Configurações', url: '/configuracoes', icon: SettingsIcon },
-  { title: 'Logs', url: '#', icon: Activity },
+  { title: 'Logs', url: '/logs', icon: Activity },
 ]
 
 const ROULETTE_ROUTES = ['/', '/crm', '/clientes', '/conversas', '/conhecimento', '/cadencias']
