@@ -28,6 +28,10 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+import pb from '@/lib/pocketbase/client'
+import { useAuth } from '@/hooks/use-auth'
 
 const menuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
@@ -45,6 +49,28 @@ const ROULETTE_INTERVAL = 30000 // 30 seconds
 
 export default function Layout() {
   const location = useLocation()
+  const { user } = useAuth()
+  const [gtmActive, setGtmActive] = useState(false)
+
+  useEffect(() => {
+    const checkGtm = () => {
+      setGtmActive(!!(window as any).google_tag_manager)
+    }
+    checkGtm()
+    const interval = setInterval(checkGtm, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const dl = (window as any).dataLayer || []
+      ;(window as any).dataLayer = dl
+      dl.push({
+        event: 'page_view',
+        page_path: location.pathname,
+      })
+    }
+  }, [location.pathname])
   const navigate = useNavigate()
   const locationRef = useRef(location.pathname)
 
@@ -154,6 +180,99 @@ export default function Layout() {
               {menuItems.find((item) => item.url === location.pathname)?.title || 'Uazapi AI'}
             </h1>
           </div>
+
+          <div className="hidden lg:flex items-center gap-2 mr-auto ml-8">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-bold tracking-wide uppercase cursor-help transition-colors shadow-sm',
+                    pb.authStore.isValid
+                      ? 'bg-green-500/10 border-green-500/20 text-green-600'
+                      : 'bg-red-500/10 border-red-500/20 text-red-600',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'w-1.5 h-1.5 rounded-full shadow-sm',
+                      pb.authStore.isValid ? 'bg-green-500' : 'bg-red-500',
+                    )}
+                  />
+                  DB
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Status do Banco de Dados</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-bold tracking-wide uppercase cursor-help transition-colors shadow-sm',
+                    gtmActive
+                      ? 'bg-green-500/10 border-green-500/20 text-green-600'
+                      : 'bg-red-500/10 border-red-500/20 text-red-600',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'w-1.5 h-1.5 rounded-full shadow-sm',
+                      gtmActive ? 'bg-green-500' : 'bg-red-500',
+                    )}
+                  />
+                  GTM
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Status do Google Tag Manager</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-bold tracking-wide uppercase cursor-help transition-colors shadow-sm',
+                    user?.meta_token_status === 'valid' || user?.meta_token_status === 'active'
+                      ? 'bg-green-500/10 border-green-500/20 text-green-600'
+                      : 'bg-red-500/10 border-red-500/20 text-red-600',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'w-1.5 h-1.5 rounded-full shadow-sm',
+                      user?.meta_token_status === 'valid' || user?.meta_token_status === 'active'
+                        ? 'bg-green-500'
+                        : 'bg-red-500',
+                    )}
+                  />
+                  CAPI
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Status da Meta Conversions API</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-bold tracking-wide uppercase cursor-help transition-colors shadow-sm',
+                    user?.meta_campaign_phone
+                      ? 'bg-green-500/10 border-green-500/20 text-green-600'
+                      : 'bg-red-500/10 border-red-500/20 text-red-600',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'w-1.5 h-1.5 rounded-full shadow-sm',
+                      user?.meta_campaign_phone ? 'bg-green-500' : 'bg-red-500',
+                    )}
+                  />
+                  UAZAPI
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Status da Conexão Uazapi</TooltipContent>
+            </Tooltip>
+          </div>
+
           <div className="flex items-center gap-3 sm:gap-4">
             <div className="flex items-center gap-2 mr-1 sm:mr-2">
               <Switch

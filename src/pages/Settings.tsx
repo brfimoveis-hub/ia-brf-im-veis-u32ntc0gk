@@ -18,6 +18,7 @@ import {
   Eye,
   EyeOff,
   Activity,
+  AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -336,6 +337,12 @@ export default function Settings() {
         }),
         headers: { 'Content-Type': 'application/json' },
       })
+      if (user?.id) {
+        await pb.collection('users').update(user.id, {
+          meta_token_status: 'valid',
+          meta_last_validated: new Date().toISOString(),
+        })
+      }
       await pb.collection('users').authRefresh()
       toast({
         title: 'Conexão bem-sucedida',
@@ -343,7 +350,6 @@ export default function Settings() {
           'O Pixel ID (Browser) e o Token (Server-to-Server CAPI) foram validados com sucesso e estão comunicando com o Meta.',
       })
     } catch (error: any) {
-      await pb.collection('users').authRefresh()
       let errorMsg = 'Verifique as credenciais.'
 
       const resData = error.response?.data
@@ -368,6 +374,23 @@ export default function Settings() {
         errorMsg = JSON.stringify(errorMsg)
       }
 
+      let status = 'error'
+      if (
+        errorMsg.includes('permission') ||
+        errorMsg.includes('100') ||
+        errorMsg.includes('190') ||
+        errorMsg.includes('does not exist')
+      ) {
+        status = 'permission_denied'
+      }
+      if (user?.id) {
+        await pb.collection('users').update(user.id, {
+          meta_token_status: status,
+          meta_last_validated: new Date().toISOString(),
+        })
+      }
+      await pb.collection('users').authRefresh()
+
       toast({
         title: 'Erro de Conexão com o Meta',
         description: `Falha na validação: ${errorMsg}. Verifique seu token e ID do Pixel.`,
@@ -387,13 +410,14 @@ export default function Settings() {
   let connectionBadgeText = 'Não Testado'
   let connectionBadgeColor = 'bg-muted text-muted-foreground'
 
-  if (metaTokenStatus === 'active') {
+  if (metaTokenStatus === 'active' || metaTokenStatus === 'valid') {
     connectionBadgeText = 'Conectado'
     connectionBadgeColor =
       'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
   } else if (
     metaTokenStatus === 'error: permission_denied' ||
-    metaTokenStatus === 'invalid_permission'
+    metaTokenStatus === 'invalid_permission' ||
+    metaTokenStatus === 'permission_denied'
   ) {
     connectionBadgeText = 'Erro de Permissão/ID'
     connectionBadgeColor =
@@ -607,7 +631,25 @@ export default function Settings() {
                   {connectionBadgeText}
                 </Badge>
               </div>
+              {metaTokenStatus !== 'active' &&
+                metaTokenStatus !== 'valid' &&
+                metaTokenStatus !== 'untested' && (
+                  <div className="flex items-center gap-2 mt-1 mb-2 bg-destructive/10 text-destructive text-xs p-2 rounded-md border border-destructive/20">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>
+                      Erro detectado.{' '}
+                      <button
+                        type="button"
+                        onClick={() => document.getElementById('meta-capi-token')?.focus()}
+                        className="underline font-semibold hover:text-destructive/80"
+                      >
+                        Corrigir Conexão
+                      </button>
+                    </span>
+                  </div>
+                )}
               <div className="relative">
+                {' '}
                 <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="meta-capi-token"

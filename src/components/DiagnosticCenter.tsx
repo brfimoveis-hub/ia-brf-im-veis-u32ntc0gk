@@ -18,11 +18,24 @@ import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
 import { getCadences } from '@/services/cadences'
-import { createSystemLog } from '@/services/system_logs'
+import { createSystemLog, getSystemLogs, type SystemLog } from '@/services/system_logs'
 import { cn } from '@/lib/utils'
 
 export function DiagnosticCenter() {
   const { user } = useAuth()
+  const [recentLogs, setRecentLogs] = useState<SystemLog[]>([])
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const res = await getSystemLogs(1, 10)
+        setRecentLogs(res.items)
+      } catch {
+        /* intentionally ignored */
+      }
+    }
+    fetchLogs()
+  }, [])
   const { toast } = useToast()
   const [isRunning, setIsRunning] = useState(false)
 
@@ -208,128 +221,196 @@ export function DiagnosticCenter() {
   }
 
   return (
-    <Card className="border-border shadow-elevation">
-      <div className="h-1 bg-green-500 w-full rounded-t-xl"></div>
-      <CardHeader className="bg-muted/10 pb-4 border-b">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-green-500/10 rounded-xl">
-            <Activity className="h-6 w-6 text-green-600" />
+    <div className="space-y-8">
+      <Card className="border-border shadow-elevation">
+        <div className="h-1 bg-green-500 w-full rounded-t-xl"></div>
+        <CardHeader className="bg-muted/10 pb-4 border-b">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-green-500/10 rounded-xl">
+              <Activity className="h-6 w-6 text-green-600" />
+            </div>
+            <div>
+              <CardTitle className="text-xl">Centro de Diagnóstico de Integridade</CardTitle>
+              <CardDescription>
+                Verifique conexões externas (Meta, Uazapi) e a saúde interna do sistema de IA.
+              </CardDescription>
+            </div>
           </div>
-          <div>
-            <CardTitle className="text-xl">Centro de Diagnóstico de Integridade</CardTitle>
-            <CardDescription>
-              Verifique conexões externas (Meta, Uazapi) e a saúde interna do sistema de IA.
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-6 space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-xl bg-muted/20">
-          <div className="space-y-1">
-            <h4 className="font-semibold text-secondary">Verificação Completa Profunda</h4>
-            <p className="text-sm text-muted-foreground">
-              Executa um "handshake" automático com todos os serviços integrados.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-4 shrink-0">
-            <div className="flex items-center space-x-2 bg-background px-3 py-2 rounded-md border shadow-sm">
-              <Checkbox
-                id="loop-test"
-                checked={loopEnabled}
-                onCheckedChange={(c) => setLoopEnabled(!!c)}
+        </CardHeader>
+        <CardContent className="pt-6 space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-xl bg-muted/20">
+            <div className="space-y-1">
+              <h4 className="font-semibold text-secondary">Verificação Completa Profunda</h4>
+              <p className="text-sm text-muted-foreground">
+                Executa um "handshake" automático com todos os serviços integrados.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 shrink-0">
+              <div className="flex items-center space-x-2 bg-background px-3 py-2 rounded-md border shadow-sm">
+                <Checkbox
+                  id="loop-test"
+                  checked={loopEnabled}
+                  onCheckedChange={(c) => setLoopEnabled(!!c)}
+                  disabled={isRunning}
+                />
+                <Label htmlFor="loop-test" className="text-sm font-medium cursor-pointer">
+                  Stress Test (5x)
+                </Label>
+              </div>
+              <Button
+                onClick={runDiagnostics}
                 disabled={isRunning}
-              />
-              <Label htmlFor="loop-test" className="text-sm font-medium cursor-pointer">
-                Stress Test (5x)
-              </Label>
+                className="gap-2 bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto shadow-sm"
+              >
+                {isRunning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4" />
+                )}
+                {isRunning ? 'Verificando...' : 'Executar Diagnóstico Completo'}
+              </Button>
             </div>
-            <Button
-              onClick={runDiagnostics}
-              disabled={isRunning}
-              className="gap-2 bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto shadow-sm"
-            >
-              {isRunning ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ShieldCheck className="h-4 w-4" />
-              )}
-              {isRunning ? 'Verificando...' : 'Executar Diagnóstico Completo'}
-            </Button>
           </div>
-        </div>
 
-        {isRunning && (
-          <div className="space-y-2 animate-in fade-in duration-300">
-            <div className="flex justify-between text-sm font-medium text-secondary">
-              <span>Progresso do scan profundo...</span>
-              <span>{Math.round(progress)}%</span>
+          {isRunning && (
+            <div className="space-y-2 animate-in fade-in duration-300">
+              <div className="flex justify-between text-sm font-medium text-secondary">
+                <span>Progresso do scan profundo...</span>
+                <span>{Math.round(progress)}%</span>
+              </div>
+              <Progress value={progress} className="h-2" />
             </div>
-            <Progress value={progress} className="h-2" />
-          </div>
-        )}
+          )}
 
-        {results.length > 0 && (
-          <div className="space-y-3 pt-2 animate-in slide-in-from-bottom-2 duration-500">
-            <h4 className="font-semibold text-secondary">Relatório do Sistema</h4>
-            <div className="grid gap-2">
-              {results.map((res, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between p-3 border rounded-lg bg-card shadow-sm"
-                >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {res.status === 'success' && (
-                      <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
-                    )}
-                    {res.status === 'warning' && (
-                      <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
-                    )}
-                    {res.status === 'error' && (
-                      <XCircle className="h-5 w-5 text-destructive shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0 pr-2">
-                      <p className="text-sm font-medium text-secondary truncate">{res.name}</p>
-                      <div className="flex items-start gap-2 mt-0.5">
-                        <p className="text-xs text-muted-foreground select-text">{res.message}</p>
-                        {(res.status === 'error' || res.status === 'warning') && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 hover:bg-muted shrink-0 -mt-0.5 text-muted-foreground"
-                            onClick={() => handleCopyError(res.message, res.payload)}
-                            title="Copiar mensagem de erro"
-                          >
-                            <Copy className="h-3 w-3" />
-                            <span className="sr-only">Copiar erro</span>
-                          </Button>
-                        )}
+          {results.length > 0 && (
+            <div className="space-y-3 pt-2 animate-in slide-in-from-bottom-2 duration-500">
+              <h4 className="font-semibold text-secondary">Relatório do Sistema</h4>
+              <div className="grid gap-2">
+                {results.map((res, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between p-3 border rounded-lg bg-card shadow-sm"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {res.status === 'success' && (
+                        <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                      )}
+                      {res.status === 'warning' && (
+                        <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
+                      )}
+                      {res.status === 'error' && (
+                        <XCircle className="h-5 w-5 text-destructive shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0 pr-2">
+                        <p className="text-sm font-medium text-secondary truncate">{res.name}</p>
+                        <div className="flex items-start gap-2 mt-0.5">
+                          <p className="text-xs text-muted-foreground select-text">{res.message}</p>
+                          {(res.status === 'error' || res.status === 'warning') && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 hover:bg-muted shrink-0 -mt-0.5 text-muted-foreground"
+                              onClick={() => handleCopyError(res.message, res.payload)}
+                              title="Copiar mensagem de erro"
+                            >
+                              <Copy className="h-3 w-3" />
+                              <span className="sr-only">Copiar erro</span>
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'shrink-0 ml-2',
+                        res.status === 'success' &&
+                          'bg-green-500/10 text-green-600 border-green-500/20',
+                        res.status === 'warning' &&
+                          'bg-amber-500/10 text-amber-600 border-amber-500/20',
+                        res.status === 'error' &&
+                          'bg-destructive/10 text-destructive border-destructive/20',
+                      )}
+                    >
+                      {res.status === 'success'
+                        ? 'Saudável'
+                        : res.status === 'warning'
+                          ? 'Atenção'
+                          : 'Falha'}
+                    </Badge>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'shrink-0 ml-2',
-                      res.status === 'success' &&
-                        'bg-green-500/10 text-green-600 border-green-500/20',
-                      res.status === 'warning' &&
-                        'bg-amber-500/10 text-amber-600 border-amber-500/20',
-                      res.status === 'error' &&
-                        'bg-destructive/10 text-destructive border-destructive/20',
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border shadow-elevation">
+        <CardHeader className="bg-muted/10 pb-4 border-b">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-secondary/10 rounded-xl">
+              <Activity className="h-6 w-6 text-secondary" />
+            </div>
+            <div>
+              <CardTitle className="text-xl">Logs Recentes do Sistema</CardTitle>
+              <CardDescription>
+                Histórico de eventos e erros recentes para troubleshooting.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-6">
+          {recentLogs.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Nenhum log recente encontrado.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {recentLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between p-3 border rounded-lg bg-card shadow-sm"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[10px] h-5',
+                          log.type === 'error'
+                            ? 'bg-destructive/10 text-destructive border-destructive/20'
+                            : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {log.type.toUpperCase()}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {new Date(log.created).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-secondary line-clamp-2">{log.message}</p>
+                    {log.details && (
+                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                        {log.details}
+                      </p>
                     )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5 h-8 text-xs"
+                    onClick={() => handleCopyError(log.message, log.payload)}
                   >
-                    {res.status === 'success'
-                      ? 'Saudável'
-                      : res.status === 'warning'
-                        ? 'Atenção'
-                        : 'Falha'}
-                  </Badge>
+                    <Copy className="h-3 w-3" />
+                    Copiar Erro
+                  </Button>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   )
 }
