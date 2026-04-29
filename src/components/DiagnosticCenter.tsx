@@ -68,6 +68,17 @@ export function DiagnosticCenter() {
       const hasGtmScript = document.querySelector(`script[src*="${gtmId}"]`) !== null
       const isGtmObjectPresent =
         (window as any).google_tag_manager && (window as any).google_tag_manager[gtmId]
+
+      let dataLayerWorks = false
+      try {
+        const win = window as any
+        win.dataLayer = win.dataLayer || []
+        win.dataLayer.push({ event: 'gtm_diagnostic_test' })
+        dataLayerWorks = true
+      } catch (e) {
+        /* ignore */
+      }
+
       const isGtmFunctional = hasGtmScript || isGtmObjectPresent
 
       if (!isGtmFunctional) {
@@ -86,9 +97,11 @@ export function DiagnosticCenter() {
       } else {
         newResults.push({
           name: 'Google Tag Manager',
-          status: 'success',
-          message: `GTM (${gtmId}) detectado e inicializado com sucesso.`,
-          payload: { gtmId, status: 'active', hasGtmScript, isGtmObjectPresent },
+          status: dataLayerWorks ? 'success' : 'warning',
+          message: dataLayerWorks
+            ? `GTM (${gtmId}) detectado e dataLayer funcional.`
+            : `GTM (${gtmId}) detectado, mas dataLayer pode estar bloqueado.`,
+          payload: { gtmId, status: 'active', hasGtmScript, isGtmObjectPresent, dataLayerWorks },
         })
       }
       setResults([...newResults])

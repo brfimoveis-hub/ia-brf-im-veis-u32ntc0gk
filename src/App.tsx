@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import Layout from './components/Layout'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
 import { MetaPixel } from '@/components/MetaPixel'
+import { GTMTracker } from '@/components/GTMTracker'
 import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
 
@@ -36,6 +37,7 @@ const ProtectedRoute = () => {
 
 const Root = () => (
   <>
+    <GTMTracker />
     <MetaPixel />
     <Outlet />
   </>
