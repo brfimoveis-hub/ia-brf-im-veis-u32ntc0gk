@@ -691,6 +691,7 @@ export default function Settings() {
                 className="min-h-[180px] resize-y bg-card border-muted-foreground/20 font-mono text-sm shadow-inner focus-visible:ring-primary"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
+                maxLength={100000}
               />
               <div className="bg-primary/5 rounded-lg p-3 flex items-start gap-2 border border-primary/10">
                 <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
@@ -1066,6 +1067,7 @@ export default function Settings() {
               value={editAiInstructions}
               onChange={(e) => setEditAiInstructions(e.target.value)}
               className="min-h-[200px] resize-y"
+              maxLength={100000}
             />
           </div>
           <DialogFooter>
