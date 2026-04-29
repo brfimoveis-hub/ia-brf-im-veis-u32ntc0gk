@@ -50,6 +50,7 @@ export default function Settings() {
   const [showCapiToken, setShowCapiToken] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [gtmStatus, setGtmStatus] = useState<'checking' | 'active' | 'error'>('checking')
+  const [lastFbTraceId, setLastFbTraceId] = useState('')
 
   const [initialMeta, setInitialMeta] = useState({
     pixel: '',
@@ -354,6 +355,7 @@ export default function Settings() {
 
       const resData = error.response?.data
       let fbtraceId = resData?.fbtrace_id || resData?.error?.error?.fbtrace_id || ''
+      setLastFbTraceId(fbtraceId)
 
       if (resData?.message && typeof resData.message === 'string') {
         errorMsg = resData.message
@@ -405,10 +407,7 @@ export default function Settings() {
               ? 'Permissões Insuficientes'
               : 'Erro de Conexão com o Meta',
         description: fbtraceId ? `${errorMsg} (Trace ID: ${fbtraceId})` : errorMsg,
-        variant:
-          status === 'permissions_error' || status === 'missing_permission'
-            ? 'default'
-            : 'destructive',
+        variant: 'destructive',
       })
     } finally {
       setIsTestingConnection(false)
@@ -655,10 +654,10 @@ export default function Settings() {
                   <div
                     className={cn(
                       'flex items-start gap-2 mt-1 mb-2 text-xs p-2.5 rounded-md border',
-                      metaTokenStatus === 'permissions_error'
+                      metaTokenStatus === 'permissions_error' ||
+                        metaTokenStatus === 'missing_permission'
                         ? 'bg-red-500/10 text-red-700 border-red-500/20'
-                        : metaTokenStatus === 'missing_permission' ||
-                            metaTokenStatus === 'permission_denied' ||
+                        : metaTokenStatus === 'permission_denied' ||
                             metaTokenStatus === 'error: permission_denied'
                           ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
                           : 'bg-destructive/10 text-destructive border-destructive/20',
@@ -667,14 +666,19 @@ export default function Settings() {
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                     <div className="flex flex-col gap-1">
                       <span className="font-semibold">
-                        {metaTokenStatus === 'permissions_error'
+                        {metaTokenStatus === 'permissions_error' ||
+                        metaTokenStatus === 'missing_permission'
                           ? 'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
-                          : metaTokenStatus === 'missing_permission' ||
-                              metaTokenStatus === 'permission_denied' ||
+                          : metaTokenStatus === 'permission_denied' ||
                               metaTokenStatus === 'error: permission_denied'
                             ? 'Permissões Insuficientes. O token não tem escopo necessário para acessar este Pixel.'
                             : 'Erro detectado na conexão com o Meta.'}
                       </span>
+                      {lastFbTraceId && (
+                        <span className="font-mono text-[10px] opacity-70">
+                          Trace ID: {lastFbTraceId}
+                        </span>
+                      )}
                       <span>
                         <button
                           type="button"

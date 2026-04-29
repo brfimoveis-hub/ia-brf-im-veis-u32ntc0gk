@@ -99,7 +99,24 @@ routerAdd(
             'details',
             typeof errorPayload === 'object' ? JSON.stringify(errorPayload) : String(errorPayload),
           )
-          logRecord.set('payload', { statusCode: res.statusCode, metaResponse: errorPayload })
+          logRecord.set('payload', {
+            statusCode: res.statusCode,
+            metaResponse: errorPayload,
+            count: 1,
+          })
+          $app.save(logRecord)
+        } else {
+          const logRecord = existingLogs[0]
+          logRecord.set('updated', new Date().toISOString())
+          const currentPayload = logRecord.get('payload') || {}
+          currentPayload.count = (currentPayload.count || 1) + 1
+          currentPayload.metaResponse = errorPayload
+          currentPayload.statusCode = res.statusCode
+          logRecord.set('payload', currentPayload)
+          logRecord.set(
+            'details',
+            typeof errorPayload === 'object' ? JSON.stringify(errorPayload) : String(errorPayload),
+          )
           $app.save(logRecord)
         }
       } catch (logErr) {}
