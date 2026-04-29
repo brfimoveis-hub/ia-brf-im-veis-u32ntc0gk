@@ -25,7 +25,6 @@ import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useBlocker } from 'react-router-dom'
 import { useRealtime } from '@/hooks/use-realtime'
-import { DiagnosticCenter } from '@/components/DiagnosticCenter'
 import { getCadences, updateCadence, type Cadence } from '@/services/cadences'
 import {
   Dialog,
@@ -988,9 +987,6 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Diagnostic Center */}
-        <DiagnosticCenter />
 
         {/* Integrations & API */}
         <Card className="border-border shadow-elevation">
