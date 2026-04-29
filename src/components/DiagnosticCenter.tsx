@@ -49,8 +49,39 @@ export function DiagnosticCenter() {
     const newResults: { name: string; status: string; message: string; payload?: any }[] = []
 
     try {
-      // 1. Uazapi Connectivity Check
-      setProgress(15)
+      // 1. GTM Verification
+      setProgress(10)
+      const gtmId = 'GTM-MWML5KFQ'
+      const hasGtmScript = document.querySelector(`script[src*="${gtmId}"]`) !== null
+      const isGtmObjectPresent =
+        (window as any).google_tag_manager && (window as any).google_tag_manager[gtmId]
+      const isGtmFunctional = hasGtmScript || isGtmObjectPresent
+
+      if (!isGtmFunctional) {
+        newResults.push({
+          name: 'Google Tag Manager',
+          status: 'error',
+          message: 'A TAG DO GOOGLE NÃO FOI DETECTADA. Verifique a instalação do script GTM.',
+          payload: { error: `${gtmId} not found in DOM`, hasGtmScript, isGtmObjectPresent },
+        })
+        await createSystemLog({
+          type: 'error',
+          message: 'Falha na detecção do GTM',
+          details: 'GTM_DETECTION_FAILED',
+          payload: { error: `${gtmId} not found in DOM` },
+        }).catch(() => {})
+      } else {
+        newResults.push({
+          name: 'Google Tag Manager',
+          status: 'success',
+          message: `GTM (${gtmId}) detectado e inicializado com sucesso.`,
+          payload: { gtmId, status: 'active', hasGtmScript, isGtmObjectPresent },
+        })
+      }
+      setResults([...newResults])
+
+      // 2. Uazapi Connectivity Check
+      setProgress(25)
       await new Promise((r) => setTimeout(r, 1000))
       const hasPhone = !!user?.meta_campaign_phone
       newResults.push({
@@ -63,8 +94,8 @@ export function DiagnosticCenter() {
       })
       setResults([...newResults])
 
-      // 2. Cadence Audit
-      setProgress(30)
+      // 3. Cadence Audit
+      setProgress(40)
       const cadences = await getCadences()
       const validCadences = cadences.filter(
         (c) => c.order !== undefined && c.ai_instructions && c.ai_instructions.length > 10,
@@ -78,8 +109,8 @@ export function DiagnosticCenter() {
       })
       setResults([...newResults])
 
-      // 3. Meta Integration Validation (Loopable)
-      setProgress(50)
+      // 4. Meta Integration Validation (Loopable)
+      setProgress(60)
       const testCount = loopEnabled ? 5 : 1
       let metaSuccesses = 0
 
@@ -116,7 +147,7 @@ export function DiagnosticCenter() {
             if (typeof msg === 'object') msg = JSON.stringify(msg)
             lastErrorMsg = msg
           }
-          setProgress(50 + ((i + 1) / testCount) * 40)
+          setProgress(60 + ((i + 1) / testCount) * 30)
           if (i < testCount - 1) await new Promise((r) => setTimeout(r, 1500))
         }
 

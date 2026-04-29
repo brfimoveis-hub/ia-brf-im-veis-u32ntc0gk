@@ -17,6 +17,7 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Activity,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -47,6 +48,7 @@ export default function Settings() {
   const [newTagId, setNewTagId] = useState('')
   const [showCapiToken, setShowCapiToken] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
+  const [gtmStatus, setGtmStatus] = useState<'checking' | 'active' | 'error'>('checking')
 
   const [initialMeta, setInitialMeta] = useState({
     pixel: '',
@@ -67,6 +69,25 @@ export default function Settings() {
       }
     }
   })
+
+  useEffect(() => {
+    const checkGTM = () => {
+      const gtmId = 'GTM-MWML5KFQ'
+      const hasGtmScript = document.querySelector(`script[src*="${gtmId}"]`) !== null
+      const isGtmObjectPresent =
+        (window as any).google_tag_manager && (window as any).google_tag_manager[gtmId]
+
+      if (hasGtmScript || isGtmObjectPresent) {
+        setGtmStatus('active')
+      } else {
+        setGtmStatus('error')
+      }
+    }
+
+    checkGTM()
+    const timer = setTimeout(checkGTM, 2500)
+    return () => clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     if (user && !isInitialized) {
@@ -389,6 +410,19 @@ export default function Settings() {
     connectionBadgeText = 'Não Testado'
     connectionBadgeColor = 'bg-muted text-muted-foreground'
   }
+
+  const gtmStatusText =
+    gtmStatus === 'checking'
+      ? 'Verificando...'
+      : gtmStatus === 'active'
+        ? 'Tag detectada (Verde)'
+        : 'A TAG DO GOOGLE NÃO FOI DETECTADA (Vermelho)'
+  const gtmStatusColor =
+    gtmStatus === 'checking'
+      ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+      : gtmStatus === 'active'
+        ? 'bg-green-500/10 text-green-600 border-green-500/20'
+        : 'bg-destructive/10 text-destructive border-destructive/20'
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
@@ -754,6 +788,46 @@ export default function Settings() {
                 )}
                 Salvar Configurações do Meta
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Google Tag Manager (GTM) Status Widget */}
+        <Card className="border-border shadow-elevation overflow-hidden">
+          <div className="h-1 bg-green-500 w-full"></div>
+          <CardHeader className="bg-muted/10 pb-4 border-b">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-green-500/10 rounded-xl">
+                <Activity className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Google Tag Manager</CardTitle>
+                <CardDescription>Status de integração do container global GTM.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-xl bg-muted/20 gap-4">
+              <div className="space-y-1">
+                <h4 className="font-semibold text-secondary flex items-center gap-2">
+                  Container ID:{' '}
+                  <span className="font-mono bg-background px-2 py-0.5 rounded border text-sm">
+                    GTM-MWML5KFQ
+                  </span>
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Monitoramento de eventos e tracking do sistema.
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  'h-7 px-3 text-xs font-semibold whitespace-nowrap shrink-0',
+                  gtmStatusColor,
+                )}
+              >
+                {gtmStatusText}
+              </Badge>
             </div>
           </CardContent>
         </Card>
