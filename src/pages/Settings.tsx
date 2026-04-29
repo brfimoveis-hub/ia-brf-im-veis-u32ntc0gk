@@ -18,6 +18,7 @@ import {
   Activity,
   AlertTriangle,
   AlertCircle,
+  FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -25,6 +26,23 @@ import pb from '@/lib/pocketbase/client'
 import { useBlocker } from 'react-router-dom'
 import { useRealtime } from '@/hooks/use-realtime'
 import { DiagnosticCenter } from '@/components/DiagnosticCenter'
+import { getCadences, updateCadence, type Cadence } from '@/services/cadences'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 export default function Settings() {
   const { toast } = useToast()
@@ -60,6 +78,63 @@ export default function Settings() {
     campaignPhone: '',
   })
   const [isInitialized, setIsInitialized] = useState(false)
+
+  // Cadence Audit State
+  const [cadences, setCadences] = useState<Cadence[]>([])
+  const [editingCadence, setEditingCadence] = useState<Cadence | null>(null)
+  const [editAiInstructions, setEditAiInstructions] = useState('')
+  const [isSavingCadence, setIsSavingCadence] = useState(false)
+
+  useEffect(() => {
+    const loadCadences = async () => {
+      try {
+        const data = await getCadences()
+        setCadences(data)
+      } catch (error) {
+        console.error('Failed to load cadences:', error)
+      }
+    }
+    if (user) {
+      loadCadences()
+    }
+  }, [user])
+
+  useRealtime('cadences', async () => {
+    try {
+      const data = await getCadences()
+      setCadences(data)
+    } catch (error) {
+      console.error('Failed to load cadences:', error)
+    }
+  })
+
+  const activeCadencesCount = cadences.filter((c) => c.is_active).length
+  const intactCadencesCount = cadences.filter(
+    (c) => c.is_active && c.ai_instructions && c.ai_instructions.trim().length > 0,
+  ).length
+
+  const handleSaveCadenceInstructions = async () => {
+    if (!editingCadence) return
+    setIsSavingCadence(true)
+    try {
+      await updateCadence(editingCadence.id, {
+        ai_instructions: editAiInstructions,
+      })
+      toast({
+        title: 'Regras de IA atualizadas',
+        description: 'As regras da cadência foram salvas com sucesso.',
+      })
+      setEditingCadence(null)
+    } catch (error) {
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Ocorreu um erro ao atualizar a cadência.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingCadence(false)
+    }
+  }
 
   useRealtime('users', (e) => {
     if (e.action === 'update' && e.record.id === user?.id) {
@@ -391,6 +466,86 @@ export default function Settings() {
       </div>
 
       <div className="grid gap-8">
+        {/* Cadence Audit */}
+        <Card className="border-border shadow-elevation overflow-hidden">
+          <div className="h-1 bg-teal-500 w-full"></div>
+          <CardHeader className="bg-muted/10 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-teal-500/10 rounded-xl">
+                <FileText className="h-6 w-6 text-teal-600" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Auditoria de Cadências</CardTitle>
+                <CardDescription>
+                  {activeCadencesCount} cadências ativas. {intactCadencesCount} estruturalmente
+                  íntegras (com regras IA).
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Integridade</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cadences.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground h-24">
+                        Nenhuma cadência encontrada.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    cadences.map((cadence) => {
+                      const isIntact =
+                        cadence.ai_instructions && cadence.ai_instructions.trim().length > 0
+                      return (
+                        <TableRow key={cadence.id}>
+                          <TableCell className="font-medium">{cadence.title}</TableCell>
+                          <TableCell>
+                            <Badge variant={cadence.is_active ? 'default' : 'secondary'}>
+                              {cadence.is_active ? 'Ativa' : 'Inativa'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {isIntact ? (
+                              <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border font-medium">
+                                Íntegra
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20 border font-medium">
+                                Atenção: Sem Regras IA
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingCadence(cadence)
+                                setEditAiInstructions(cadence.ai_instructions || '')
+                              }}
+                            >
+                              Editar Regras
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Cadence Management */}
         <Card className="border-border shadow-elevation overflow-hidden">
           <div className="h-1 bg-purple-500 w-full"></div>
@@ -797,6 +952,58 @@ export default function Settings() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Cadence AI Rules Editor Dialog */}
+      <Dialog
+        open={!!editingCadence}
+        onOpenChange={(open) => {
+          if (!open) setEditingCadence(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Editar Regras IA: {editingCadence?.title}</DialogTitle>
+            <DialogDescription>
+              Defina as instruções exclusivas que a IA usará ao interagir com leads nesta fase da
+              cadência. O conteúdo e status não serão alterados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label
+              htmlFor="cadence-ai-rules"
+              className="text-sm font-semibold text-secondary mb-2 block"
+            >
+              Regras e Instruções da IA
+            </Label>
+            <Textarea
+              id="cadence-ai-rules"
+              placeholder="Descreva como a IA deve se comportar nesta cadência..."
+              value={editAiInstructions}
+              onChange={(e) => setEditAiInstructions(e.target.value)}
+              className="min-h-[200px] resize-y"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditingCadence(null)}
+              disabled={isSavingCadence}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveCadenceInstructions} disabled={isSavingCadence}>
+              {isSavingCadence ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                'Salvar Regras'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Floating Save Button */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-xl border-t border-border flex justify-end md:pl-[var(--sidebar-width)] z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
