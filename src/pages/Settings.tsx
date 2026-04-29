@@ -290,6 +290,11 @@ export default function Settings() {
           })
         } catch (testError: any) {
           await pb.collection('users').authRefresh()
+          const resData = testError.response || {}
+          setLastFbTraceId(resData.fbtrace_id || '')
+          setLastErrorCode(resData.code || '')
+          setLastErrorMsg(resData.message || 'Verifique as credenciais.')
+
           toast({
             title: 'Configurações salvas, mas falha no teste',
             description:
@@ -340,12 +345,7 @@ export default function Settings() {
         }),
         headers: { 'Content-Type': 'application/json' },
       })
-      if (user?.id) {
-        await pb.collection('users').update(user.id, {
-          meta_token_status: 'valid',
-          meta_last_validated: new Date().toISOString(),
-        })
-      }
+      // O hook de backend já atualiza o user no banco com status 'active'
       await pb.collection('users').authRefresh()
       toast({
         title: 'Conexão bem-sucedida',
@@ -353,63 +353,23 @@ export default function Settings() {
           'O Pixel ID (Browser) e o Token (Server-to-Server CAPI) foram validados com sucesso e estão comunicando com o Meta.',
       })
     } catch (error: any) {
-      let errorMsg = 'Verifique as credenciais.'
+      const resData = error.response || {}
 
-      const resData = error.response?.data
-      let fbtraceId =
-        resData?.fbtrace_id || resData?.error?.error?.fbtrace_id || resData?.error?.fbtrace_id || ''
+      let errorMsg = resData.message || 'Verifique as credenciais.'
+      let fbtraceId = resData.fbtrace_id || ''
+      let code = resData.code || ''
+
       setLastFbTraceId(fbtraceId)
-
-      let code = resData?.code || resData?.error?.error?.code || resData?.error?.code || ''
       setLastErrorCode(code)
-
-      if (resData?.message && typeof resData.message === 'string') {
-        errorMsg = resData.message
-      } else if (resData?.error?.error?.message) {
-        errorMsg = resData.error.error.message
-      } else if (resData?.error?.message) {
-        errorMsg = resData.error.message
-      } else if (resData?.error && typeof resData.error === 'string') {
-        errorMsg = resData.error
-      } else if (
-        error.response?.message &&
-        error.response?.message !== 'Something went wrong while processing your request.'
-      ) {
-        errorMsg = error.response.message
-      } else if (error.message) {
-        errorMsg = error.message
-      }
-
-      if (typeof errorMsg === 'object') {
-        errorMsg = JSON.stringify(errorMsg)
-      }
       setLastErrorMsg(errorMsg)
 
-      let status = 'Erro de Validação'
-      const errorMsgLower = errorMsg.toLowerCase()
-      if (
-        code === 100 ||
-        errorMsgLower.includes('erro (#100)') ||
-        errorMsgLower.includes('permission') ||
-        errorMsgLower.includes('100') ||
-        errorMsgLower.includes('does not exist')
-      ) {
-        status = 'Permissões Insuficientes'
-      }
-
-      if (user?.id) {
-        await pb.collection('users').update(user.id, {
-          meta_token_status: 'Connected',
-          meta_last_validated: new Date().toISOString(),
-        })
-      }
+      // O hook de backend já atualiza o status de erro no banco
       await pb.collection('users').authRefresh()
 
+      const isPermissionError = code === 100 || errorMsg.includes('Permissão Ausente')
+
       toast({
-        title:
-          status === 'Permissões Insuficientes'
-            ? 'Erro (#100): Permissão Ausente'
-            : 'Erro de Conexão com o Meta',
+        title: isPermissionError ? 'Erro (#100): Permissão Ausente' : 'Erro de Conexão com o Meta',
         description: fbtraceId ? `${errorMsg} (Trace ID: ${fbtraceId})` : errorMsg,
         variant: 'destructive',
       })
@@ -694,8 +654,8 @@ export default function Settings() {
                         <>
                           <span>
                             <strong>Mensagem:</strong>{' '}
-                            {lastErrorCode ? `(#${lastErrorCode})` : '(#100)'}{' '}
-                            {lastErrorMsg || 'Missing Permission'}
+                            {lastErrorMsg ||
+                              'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'}
                           </span>
                           {lastFbTraceId && (
                             <span className="font-mono text-[11px] opacity-80 break-all bg-red-500/10 p-1 rounded">

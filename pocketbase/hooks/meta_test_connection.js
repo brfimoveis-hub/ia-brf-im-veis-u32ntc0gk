@@ -19,9 +19,12 @@ routerAdd(
     }
 
     const res = $http.send({
-      url: `https://graph.facebook.com/v19.0/${pixelId}?access_token=${capiToken}`,
+      url: `https://graph.facebook.com/v19.0/${pixelId}`,
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${capiToken}`,
+      },
       timeout: 15,
     })
 
@@ -30,7 +33,7 @@ routerAdd(
 
     if (res.statusCode === 200) {
       if (user) {
-        user.set('meta_token_status', 'Connected')
+        user.set('meta_token_status', 'active')
         user.set('meta_last_validated', now)
         $app.save(user)
       }
@@ -52,13 +55,15 @@ routerAdd(
       let isPermissionError = false
       let isOAuthError = false
       let fbtraceId = ''
+      let errorCode = null
 
       if (errorPayload && errorPayload.error) {
         fbtraceId = errorPayload.error.fbtrace_id || ''
-        if (errorPayload.error.code === 190) {
+        errorCode = errorPayload.error.code
+        if (errorCode === 190) {
           isOAuthError = true
         } else if (
-          errorPayload.error.code === 100 ||
+          errorCode === 100 ||
           errorPayload.error.error_subcode === 33 ||
           String(errorPayload.error.message).includes('does not exist') ||
           String(errorPayload.error.message).toLowerCase().includes('permission')
@@ -80,6 +85,35 @@ routerAdd(
         $app.save(user)
       }
 
+      let errorMessage = 'Falha na autenticação com o Meta. O token pode ser inválido ou expirado.'
+      if (errorPayload && errorPayload.error && errorPayload.error.message) {
+        const msg = errorPayload.error.message
+        if (errorCode === 100) {
+          errorMessage =
+            'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
+        } else if (
+          msg.includes('does not exist') ||
+          (errorPayload.error && errorPayload.error.error_subcode === 33) ||
+          msg.toLowerCase().includes('missing permission') ||
+          msg.toLowerCase().includes('permission')
+        ) {
+          errorMessage = `Erro de Permissão/ID Meta: O Pixel ID não existe ou o token CAPI não tem permissão para acessá-lo. Detalhe do Meta: ${msg} (Código: ${errorCode})`
+        } else if (
+          msg.includes('Invalid OAuth access token') ||
+          msg.includes('invalid oauth access token data') ||
+          msg.includes('invalid') ||
+          errorCode === 190
+        ) {
+          errorMessage = `Erro de autenticação com o Meta: Token inválido ou expirado. Código: 190`
+        } else {
+          errorMessage = `Meta retornou: ${msg}. Dica: Verifique as configurações do seu Pixel e Token CAPI.`
+        }
+      } else if (typeof errorPayload === 'string') {
+        errorMessage = errorPayload
+      } else if (typeof errorPayload === 'object') {
+        errorMessage = JSON.stringify(errorPayload)
+      }
+
       try {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
         const timeString = oneHourAgo.toISOString().replace('T', ' ')
@@ -99,63 +133,32 @@ routerAdd(
           logRecord.set('user_id', e.auth.id)
           logRecord.set('type', 'error')
           logRecord.set('message', 'Falha na validação do Token CAPI')
-          logRecord.set(
-            'details',
-            typeof errorPayload === 'object' ? JSON.stringify(errorPayload) : String(errorPayload),
-          )
+          logRecord.set('details', errorMessage)
           logRecord.set('payload', {
             statusCode: res.statusCode,
             metaResponse: errorPayload,
             count: 1,
+            fbtrace_id: fbtraceId,
           })
           $app.save(logRecord)
         } else {
-          // Circuit Breaker for Logs: skip creating a new log entry to prevent flooding, just update
           const logRecord = existingLogs[0]
-          logRecord.set('updated', new Date().toISOString())
           const currentPayload = logRecord.get('payload') || {}
           currentPayload.count = (currentPayload.count || 1) + 1
           currentPayload.metaResponse = errorPayload
           currentPayload.statusCode = res.statusCode
+          currentPayload.fbtrace_id = fbtraceId
           logRecord.set('payload', currentPayload)
+          logRecord.set('details', errorMessage)
           $app.save(logRecord)
         }
       } catch (logErr) {}
-
-      let errorMessage = 'Falha na autenticação com o Meta. O token pode ser inválido ou expirado.'
-      if (errorPayload && errorPayload.error && errorPayload.error.message) {
-        const msg = errorPayload.error.message
-        if (errorPayload.error.code === 100) {
-          errorMessage =
-            'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
-        } else if (
-          msg.includes('does not exist') ||
-          (errorPayload.error && errorPayload.error.error_subcode === 33) ||
-          msg.toLowerCase().includes('missing permission') ||
-          msg.toLowerCase().includes('permission')
-        ) {
-          errorMessage = `Erro de Permissão/ID Meta: O Pixel ID não existe ou o token CAPI não tem permissão para acessá-lo. Detalhe do Meta: ${msg} (Código: ${errorPayload.error.code})`
-        } else if (
-          msg.includes('Invalid OAuth access token') ||
-          msg.includes('invalid oauth access token data') ||
-          msg.includes('invalid') ||
-          (errorPayload.error && errorPayload.error.code === 190)
-        ) {
-          errorMessage = `Erro de autenticação com o Meta: Token inválido ou expirado. Código: 190`
-        } else {
-          errorMessage = `Meta retornou: ${msg}. Dica: Verifique as configurações do seu Pixel e Token CAPI.`
-        }
-      } else if (typeof errorPayload === 'string') {
-        errorMessage = errorPayload
-      } else if (typeof errorPayload === 'object') {
-        errorMessage = JSON.stringify(errorPayload)
-      }
 
       return e.json(400, {
         message: errorMessage,
         error: errorPayload,
         fbtrace_id: fbtraceId,
-        code: errorPayload?.error?.code,
+        code: errorCode,
       })
     }
   },

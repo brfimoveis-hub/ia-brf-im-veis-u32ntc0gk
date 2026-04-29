@@ -195,14 +195,15 @@ export function DiagnosticCenter() {
             })
             metaSuccesses++
           } catch (e: any) {
-            let msg = e.response?.data?.message || e.message || 'Erro desconhecido'
-
-            // Extract Meta specific error code if present
-            const metaError = e.response?.data?.error?.error
-            if (metaError && metaError.code) {
-              msg += ` (Meta Error Code: ${metaError.code}${metaError.error_subcode ? `, Subcode: ${metaError.error_subcode}` : ''})`
+            const resData = e.response || {}
+            let msg = resData.message || e.message || 'Erro desconhecido'
+            if (
+              resData.code &&
+              !msg.includes(`Código: ${resData.code}`) &&
+              !msg.includes(`#${resData.code}`)
+            ) {
+              msg += ` (Meta Error Code: ${resData.code})`
             }
-
             if (typeof msg === 'object') msg = JSON.stringify(msg)
             lastErrorMsg = msg
           }
@@ -214,7 +215,7 @@ export function DiagnosticCenter() {
         if (metaSuccesses < testCount) {
           const lastErrorMsgLower = lastErrorMsg.toLowerCase()
           if (lastErrorMsgLower.includes('erro (#100)')) {
-            finalMessage = `Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App. Detalhe: ${lastErrorMsg}`
+            finalMessage = lastErrorMsg
           } else if (
             lastErrorMsgLower.includes('permissão/id meta') ||
             lastErrorMsgLower.includes('code: 100') ||
