@@ -30,7 +30,8 @@ export function GTMTracker() {
       // Use setTimeout to allow React to update document.title if necessary
       const timeoutId = setTimeout(() => {
         window.dataLayer.push({
-          event: 'virtual_pageview',
+          event: 'virtual_page_view',
+          path: location.pathname,
           page_path: location.pathname + location.search,
           page_title: document.title,
           page_location: window.location.href,
