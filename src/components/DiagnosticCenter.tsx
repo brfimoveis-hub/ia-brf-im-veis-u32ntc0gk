@@ -173,12 +173,12 @@ export function DiagnosticCenter() {
       const testCount = loopEnabled ? 5 : 1
       let metaSuccesses = 0
 
-      if (!user?.meta_pixel_id || !user?.meta_capi_token) {
+      if (!user?.meta_pixel_id) {
         newResults.push({
-          name: 'Integração Meta (Pixel & CAPI)',
+          name: 'Integração Meta (Pixel)',
           status: 'error',
-          message: 'Credenciais ausentes. Impossível realizar o handshake com o Meta.',
-          payload: { pixel: user?.meta_pixel_id, capi_token: user?.meta_capi_token ? '***' : null },
+          message: 'Pixel ID ausente.',
+          payload: { pixel: user?.meta_pixel_id },
         })
         setProgress(90)
       } else {
@@ -189,7 +189,6 @@ export function DiagnosticCenter() {
               method: 'POST',
               body: JSON.stringify({
                 pixelId: user.meta_pixel_id || '1522162279584545',
-                capiToken: user.meta_capi_token,
               }),
               headers: { 'Content-Type': 'application/json' },
             })
@@ -211,33 +210,13 @@ export function DiagnosticCenter() {
           if (i < testCount - 1) await new Promise((r) => setTimeout(r, 1500))
         }
 
-        let finalMessage = `${metaSuccesses}/${testCount} handshakes bem-sucedidos com a API do Meta. Status: Ativo.`
+        let finalMessage = `${metaSuccesses}/${testCount} testes do Pixel bem-sucedidos. Status: Ativo.`
         if (metaSuccesses < testCount) {
-          const lastErrorMsgLower = lastErrorMsg.toLowerCase()
-          if (lastErrorMsgLower.includes('erro (#100)')) {
-            finalMessage = lastErrorMsg
-          } else if (
-            lastErrorMsgLower.includes('permissão/id meta') ||
-            lastErrorMsgLower.includes('code: 100') ||
-            lastErrorMsgLower.includes('permission') ||
-            lastErrorMsgLower.includes('does not exist')
-          ) {
-            finalMessage = `Permissões Insuficientes / ID Inválido: O token pode não ter o escopo necessário ou o Pixel ID está incorreto. Detalhe: ${lastErrorMsg}`
-          } else if (
-            lastErrorMsgLower.includes('invalid oauth access token data') ||
-            lastErrorMsgLower.includes('autenticação') ||
-            lastErrorMsgLower.includes('token capi') ||
-            lastErrorMsgLower.includes('token inválido') ||
-            lastErrorMsgLower.includes('code: 190')
-          ) {
-            finalMessage = `Erro de autenticação com o Meta: Token inválido ou expirado. Detalhe: ${lastErrorMsg}`
-          } else {
-            finalMessage = `Falha de conexão: ${lastErrorMsg}`
-          }
+          finalMessage = `Falha de conexão: ${lastErrorMsg}`
         }
 
         newResults.push({
-          name: 'Integração Meta (Pixel & CAPI)',
+          name: 'Integração Meta (Pixel)',
           status: metaSuccesses === testCount ? 'success' : metaSuccesses > 0 ? 'warning' : 'error',
           message: finalMessage,
           payload: { successes: metaSuccesses, testCount, lastErrorMsg },

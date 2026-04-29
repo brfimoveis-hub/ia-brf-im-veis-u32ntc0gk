@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-29T20:19:01.285Z",
+  "generatedAt": "2026-04-29T20:34:27.324Z",
   "collections": [
     {
       "name": "users",
@@ -40,12 +40,6 @@
         },
         {
           "name": "meta_pixel_id",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "meta_capi_token",
           "type": "text",
           "required": false,
           "system": false

@@ -14,10 +14,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   Facebook,
-  Copy,
   Loader2,
-  Eye,
-  EyeOff,
   Activity,
   AlertTriangle,
   AlertCircle,
@@ -41,7 +38,6 @@ export default function Settings() {
 
   // Meta Ads State
   const [metaPixelId, setMetaPixelId] = useState('')
-  const [metaCapiToken, setMetaCapiToken] = useState('')
   const [metaTestEventCode, setMetaTestEventCode] = useState('')
   const [metaTagsList, setMetaTagsList] = useState<{ id: string; name: string }[]>([])
   const [metaCampaignPhone, setMetaCampaignPhone] = useState('')
@@ -49,7 +45,6 @@ export default function Settings() {
   // UI State
   const [newTagName, setNewTagName] = useState('')
   const [newTagId, setNewTagId] = useState('')
-  const [showCapiToken, setShowCapiToken] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [gtmStatus, setGtmStatus] = useState<'checking' | 'active' | 'error'>('checking')
   const [lastFbTraceId, setLastFbTraceId] = useState('')
@@ -59,7 +54,6 @@ export default function Settings() {
 
   const [initialMeta, setInitialMeta] = useState({
     pixel: '',
-    capi: '',
     test: '',
     tags: '[]',
     prompt: '',
@@ -99,7 +93,6 @@ export default function Settings() {
   useEffect(() => {
     if (user && !isInitialized) {
       setMetaPixelId(user.meta_pixel_id || '')
-      setMetaCapiToken(user.meta_capi_token || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
       setMetaCampaignPhone(user.meta_campaign_phone || '')
       setMetaTagsList(user.meta_tags_list || [])
@@ -107,7 +100,6 @@ export default function Settings() {
 
       setInitialMeta({
         pixel: user.meta_pixel_id || '',
-        capi: user.meta_capi_token || '',
         test: user.meta_test_event_code || '',
         tags: JSON.stringify(user.meta_tags_list || []),
         prompt: user.ai_instructions || '',
@@ -119,7 +111,6 @@ export default function Settings() {
 
   const isDirty =
     metaPixelId !== initialMeta.pixel ||
-    metaCapiToken !== initialMeta.capi ||
     metaTestEventCode !== initialMeta.test ||
     metaCampaignPhone !== initialMeta.campaignPhone ||
     JSON.stringify(metaTagsList) !== initialMeta.tags ||
@@ -166,25 +157,19 @@ export default function Settings() {
 
   const getCleanMeta = () => {
     const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
-    const cleanCapiToken = metaCapiToken
-      .replace(/^Bearer\s+/i, '')
-      .replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
-      .replace(/^(EA)+/i, 'EA')
-      .trim()
     const cleanTestCode = metaTestEventCode.trim()
     const cleanCampaignPhone = metaCampaignPhone.trim()
-    return { cleanPixelId, cleanCapiToken, cleanTestCode, cleanCampaignPhone }
+    return { cleanPixelId, cleanTestCode, cleanCampaignPhone }
   }
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
       if (!user?.id) throw new Error('Usuário não autenticado')
-      const { cleanPixelId, cleanCapiToken, cleanTestCode, cleanCampaignPhone } = getCleanMeta()
+      const { cleanPixelId, cleanTestCode, cleanCampaignPhone } = getCleanMeta()
 
       const updateData: any = {
         meta_pixel_id: cleanPixelId,
-        meta_capi_token: cleanCapiToken,
         meta_test_event_code: cleanTestCode,
         meta_campaign_phone: cleanCampaignPhone,
         meta_tags_list: metaTagsList,
@@ -194,7 +179,7 @@ export default function Settings() {
         updateData.ai_instructions = prompt
       }
 
-      if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capi) {
+      if (cleanPixelId !== initialMeta.pixel) {
         updateData.meta_token_status = 'untested'
         updateData.meta_last_validated = ''
       }
@@ -204,7 +189,6 @@ export default function Settings() {
 
       setInitialMeta({
         pixel: updatedUser.meta_pixel_id || '',
-        capi: updatedUser.meta_capi_token || '',
         test: updatedUser.meta_test_event_code || '',
         tags: JSON.stringify(updatedUser.meta_tags_list || []),
         prompt: updatedUser.ai_instructions || '',
@@ -212,7 +196,6 @@ export default function Settings() {
       })
 
       setMetaPixelId(cleanPixelId)
-      setMetaCapiToken(cleanCapiToken)
       setMetaTestEventCode(cleanTestCode)
       setMetaCampaignPhone(cleanCampaignPhone)
 
@@ -237,18 +220,17 @@ export default function Settings() {
     setIsSavingMeta(true)
     try {
       if (!user?.id) throw new Error('Usuário não autenticado')
-      const { cleanPixelId, cleanCapiToken, cleanTestCode, cleanCampaignPhone } = getCleanMeta()
+      const { cleanPixelId, cleanTestCode, cleanCampaignPhone } = getCleanMeta()
 
       const updateData: any = {
         meta_pixel_id: cleanPixelId,
-        meta_capi_token: cleanCapiToken,
         meta_test_event_code: cleanTestCode,
         meta_campaign_phone: cleanCampaignPhone,
         meta_tags_list: metaTagsList,
         // Partial Update: DO NOT INCLUDE ai_instructions here to prevent overwriting
       }
 
-      if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capi) {
+      if (cleanPixelId !== initialMeta.pixel) {
         updateData.meta_token_status = 'untested'
         updateData.meta_last_validated = ''
       }
@@ -259,14 +241,12 @@ export default function Settings() {
       setInitialMeta((prev) => ({
         ...prev,
         pixel: updatedUser.meta_pixel_id || '',
-        capi: updatedUser.meta_capi_token || '',
         test: updatedUser.meta_test_event_code || '',
         campaignPhone: updatedUser.meta_campaign_phone || '',
         tags: JSON.stringify(updatedUser.meta_tags_list || []),
       }))
 
       setMetaPixelId(cleanPixelId)
-      setMetaCapiToken(cleanCapiToken)
       setMetaTestEventCode(cleanTestCode)
       setMetaCampaignPhone(cleanCampaignPhone)
 
@@ -275,38 +255,33 @@ export default function Settings() {
         description: 'As alterações foram aplicadas com sucesso. Testando conexão...',
       })
 
-      if (cleanCapiToken) {
-        try {
-          await pb.send('/backend/v1/meta-test-connection', {
-            method: 'POST',
-            body: JSON.stringify({
-              pixelId: cleanPixelId,
-              capiToken: cleanCapiToken,
-            }),
-            headers: { 'Content-Type': 'application/json' },
-          })
-          await pb.collection('users').authRefresh()
-          setMissingScopes([])
-          toast({
-            title: 'Conexão bem-sucedida',
-            description:
-              'O Pixel ID e o Token CAPI foram validados com sucesso e estão comunicando com o Meta.',
-          })
-        } catch (testError: any) {
-          await pb.collection('users').authRefresh()
-          const resData = testError.response || {}
-          setLastFbTraceId(resData.fbtrace_id || '')
-          setLastErrorCode(resData.code || '')
-          setLastErrorMsg(resData.message || 'Verifique as credenciais.')
-          setMissingScopes(resData.missing_scopes || [])
+      try {
+        await pb.send('/backend/v1/meta-test-connection', {
+          method: 'POST',
+          body: JSON.stringify({
+            pixelId: cleanPixelId,
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+        await pb.collection('users').authRefresh()
+        setMissingScopes([])
+        toast({
+          title: 'Conexão bem-sucedida',
+          description: 'O Pixel ID foi validado com sucesso e está pronto para uso.',
+        })
+      } catch (testError: any) {
+        await pb.collection('users').authRefresh()
+        const resData = testError.response || {}
+        setLastFbTraceId(resData.fbtrace_id || '')
+        setLastErrorCode(resData.code || '')
+        setLastErrorMsg(resData.message || 'Verifique as credenciais.')
+        setMissingScopes(resData.missing_scopes || [])
 
-          toast({
-            title: 'Configurações salvas, mas falha no teste',
-            description:
-              'Credenciais foram salvas, mas o teste com o Meta falhou. Verifique o token.',
-            variant: 'destructive',
-          })
-        }
+        toast({
+          title: 'Configurações salvas, mas falha no teste',
+          description: 'Credenciais foram salvas, mas o teste falhou. Verifique o Pixel ID.',
+          variant: 'destructive',
+        })
       }
     } catch (error) {
       toast({
@@ -319,26 +294,8 @@ export default function Settings() {
     }
   }
 
-  const copyWebhookUrl = () => {
-    navigator.clipboard.writeText('https://ia-uazapi-6d79e.goskip.app/backend/v1/meta-webhook')
-    toast({
-      title: 'URL Copiada',
-      description: 'A URL do Webhook foi copiada para a área de transferência.',
-    })
-  }
-
   const testMetaConnection = async () => {
-    const { cleanPixelId, cleanCapiToken } = getCleanMeta()
-
-    if (!cleanCapiToken) {
-      toast({
-        title: 'Campos obrigatórios',
-        description:
-          'Preencha o Token CAPI antes de testar. O Pixel ID utilizará o padrão se estiver vazio.',
-        variant: 'destructive',
-      })
-      return
-    }
+    const { cleanPixelId } = getCleanMeta()
 
     setIsTestingConnection(true)
     try {
@@ -346,7 +303,6 @@ export default function Settings() {
         method: 'POST',
         body: JSON.stringify({
           pixelId: cleanPixelId,
-          capiToken: cleanCapiToken,
         }),
         headers: { 'Content-Type': 'application/json' },
       })
@@ -355,8 +311,7 @@ export default function Settings() {
       await pb.collection('users').authRefresh()
       toast({
         title: 'Conexão bem-sucedida',
-        description:
-          'O Pixel ID (Browser) e o Token (Server-to-Server CAPI) foram validados com sucesso e estão comunicando com o Meta.',
+        description: 'O Pixel ID foi validado com sucesso e está comunicando com o Meta.',
       })
     } catch (error: any) {
       const resData = error.response || {}
@@ -374,11 +329,8 @@ export default function Settings() {
       // O hook de backend já atualiza o status de erro no banco
       await pb.collection('users').authRefresh()
 
-      const isPermissionError =
-        code === 100 || errorMsg.includes('Permissão Ausente') || mScopes.length > 0
-
       toast({
-        title: isPermissionError ? 'Erro (#100): Permissão Ausente' : 'Erro de Conexão com o Meta',
+        title: 'Erro de Conexão com o Meta',
         description: fbtraceId ? `${errorMsg} (Trace ID: ${fbtraceId})` : errorMsg,
         variant: 'destructive',
       })
@@ -389,7 +341,6 @@ export default function Settings() {
 
   // Status Logic variables
   const isPixelConfigured = metaPixelId.trim().length > 0
-  const isCapiConfigured = metaCapiToken.trim().length > 0
 
   const metaTokenStatus = user?.meta_token_status || 'untested'
 
@@ -404,14 +355,6 @@ export default function Settings() {
     connectionBadgeText = 'Conectado'
     connectionBadgeColor =
       'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
-  } else if (
-    metaTokenStatus === 'Permissões Insuficientes' ||
-    metaTokenStatus === 'permissions_error' ||
-    metaTokenStatus === 'error: permission_denied' ||
-    metaTokenStatus === 'missing_permission'
-  ) {
-    connectionBadgeText = 'Erro (#100): Permissão Ausente'
-    connectionBadgeColor = 'bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20 border'
   } else if (
     metaTokenStatus === 'Erro de Validação' ||
     metaTokenStatus === 'invalid' ||
@@ -554,8 +497,7 @@ export default function Settings() {
               <div>
                 <CardTitle className="text-xl">Integração Meta Ads</CardTitle>
                 <CardDescription>
-                  Configure o Pixel e a API de Conversões para rastreamento de eventos e
-                  remarketing.
+                  Configure o Pixel para rastreamento de eventos e remarketing.
                 </CardDescription>
               </div>
             </div>
@@ -617,142 +559,16 @@ export default function Settings() {
                   className="bg-muted/30 focus-visible:ring-blue-600"
                 />
               </div>
-            </div>
-
-            {/* CAPI Configuration */}
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="meta-capi-token" className="font-semibold text-secondary">
-                  Token de Acesso CAPI
-                </Label>
+              <div className="flex justify-end mt-2">
                 <Badge
                   variant="outline"
-                  className={cn('h-5 text-[10px] px-2 font-medium', connectionBadgeColor)}
+                  className={cn(
+                    'h-5 text-[10px] px-2 font-medium mr-auto mt-1',
+                    connectionBadgeColor,
+                  )}
                 >
                   {connectionBadgeText}
                 </Badge>
-              </div>
-              {metaTokenStatus !== 'active' &&
-                metaTokenStatus !== 'valid' &&
-                metaTokenStatus !== 'Connected' &&
-                metaTokenStatus !== 'untested' && (
-                  <Alert
-                    variant="destructive"
-                    className="mt-1 mb-3 bg-destructive/5 border-destructive/20 text-destructive"
-                  >
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>
-                      {metaTokenStatus === 'Permissões Insuficientes' ||
-                      metaTokenStatus === 'permissions_error' ||
-                      metaTokenStatus === 'missing_permission'
-                        ? 'Erro de Permissão'
-                        : 'Erro de Validação'}
-                    </AlertTitle>
-                    <AlertDescription className="mt-2 flex flex-col gap-2">
-                      {metaTokenStatus === 'Permissões Insuficientes' ||
-                      metaTokenStatus === 'permissions_error' ||
-                      metaTokenStatus === 'missing_permission' ? (
-                        <>
-                          <span>
-                            <strong>Mensagem:</strong>{' '}
-                            {lastErrorMsg ||
-                              'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'}
-                          </span>
-                          {missingScopes.length > 0 && (
-                            <div className="bg-destructive/10 p-2 rounded-md mt-1 border border-destructive/20">
-                              <strong>Escopos Ausentes:</strong>
-                              <ul className="list-disc list-inside ml-4 mt-1">
-                                {missingScopes.map((scope) => (
-                                  <li key={scope} className="font-mono text-xs">
-                                    {scope}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {lastFbTraceId && (
-                            <span className="font-mono text-[11px] opacity-80 break-all bg-destructive/10 p-1 rounded inline-block w-fit">
-                              <strong>fbtrace_id:</strong> {lastFbTraceId}
-                            </span>
-                          )}
-                          <p className="mt-0.5 leading-relaxed text-sm opacity-90">
-                            O token informado não possui os escopos necessários ou você não tem
-                            acesso ao Pixel informado.
-                          </p>
-                          <a
-                            href="https://developers.facebook.com/docs/marketing-api/error-reference"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-semibold ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground hover:bg-destructive/90 h-8 px-3 py-2 mt-1 w-fit shadow-sm"
-                          >
-                            Check Permissions
-                          </a>
-                        </>
-                      ) : (
-                        <>
-                          {lastErrorMsg && (
-                            <span className="font-medium text-sm mb-1">
-                              <strong>Erro {lastErrorCode ? `(#${lastErrorCode})` : ''}:</strong>{' '}
-                              {lastErrorMsg}
-                            </span>
-                          )}
-                          {lastFbTraceId && (
-                            <span className="font-mono text-[11px] opacity-80 break-all bg-destructive/10 p-1 rounded inline-block w-fit mb-1">
-                              <strong>fbtrace_id:</strong> {lastFbTraceId}
-                            </span>
-                          )}
-                          <span>
-                            Verifique o token e tente novamente. O token pode estar expirado ou
-                            inválido.
-                          </span>
-                          <span>
-                            <button
-                              type="button"
-                              onClick={() => document.getElementById('meta-capi-token')?.focus()}
-                              className="underline font-medium hover:opacity-80"
-                            >
-                              Revisar Token CAPI
-                            </button>
-                          </span>
-                        </>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
-              <div className="relative">
-                {' '}
-                <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="meta-capi-token"
-                  type={showCapiToken ? 'text' : 'password'}
-                  placeholder="Insira seu token de acesso permanente"
-                  value={metaCapiToken}
-                  onChange={(e) =>
-                    setMetaCapiToken(
-                      e.target.value.replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, ''),
-                    )
-                  }
-                  className={cn(
-                    'pl-10 pr-10 h-11 bg-muted/30 focus-visible:ring-blue-600 font-mono text-sm',
-                    metaCapiToken.length > 0 &&
-                      metaCapiToken.length < 20 &&
-                      'border-red-500 focus-visible:ring-red-500',
-                  )}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCapiToken(!showCapiToken)}
-                  className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showCapiToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {metaCapiToken.length > 0 && metaCapiToken.length < 20 && (
-                <p className="text-xs text-red-500 mt-1">
-                  O token parece curto demais para ser válido.
-                </p>
-              )}
-              <div className="flex justify-end mt-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -766,7 +582,7 @@ export default function Settings() {
                   ) : (
                     <ShieldCheck className="h-4 w-4 text-green-600" />
                   )}
-                  Testar Conexão com Meta
+                  Testar Conexão do Pixel
                 </Button>
               </div>
             </div>
@@ -870,24 +686,6 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="space-y-3 pt-2">
-              <Label className="font-semibold text-secondary">
-                URL do Webhook (API de Conversões)
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value="https://ia-uazapi-6d79e.goskip.app/backend/v1/meta-webhook"
-                  className="bg-muted/50 text-muted-foreground font-mono text-sm"
-                />
-                <Button variant="secondary" onClick={copyWebhookUrl} className="shrink-0 gap-2">
-                  <Copy className="h-4 w-4" /> Copiar
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Copie e cole esta URL no Gerenciador de Eventos do Meta para envios server-side.
-              </p>
-            </div>
             <div className="flex justify-end pt-4 border-t mt-4">
               <Button
                 onClick={handleSaveMeta}
