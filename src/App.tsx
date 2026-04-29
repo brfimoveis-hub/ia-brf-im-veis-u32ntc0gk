@@ -7,6 +7,7 @@ import Layout from './components/Layout'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
 import { MetaPixel } from '@/components/MetaPixel'
 import { Loader2 } from 'lucide-react'
+import { GlobalError } from '@/components/GlobalError'
 
 // Break circular dependencies completely by using lazy-loaded routes
 const Index = lazy(() => import('./pages/Index'))
@@ -44,6 +45,7 @@ const router = createBrowserRouter(
   [
     {
       element: <Root />,
+      errorElement: <GlobalError />,
       children: [
         {
           path: '/login',
@@ -58,6 +60,7 @@ const router = createBrowserRouter(
           children: [
             {
               element: <Layout />,
+              errorElement: <GlobalError />,
               children: [
                 {
                   path: '/',
