@@ -353,6 +353,8 @@ export default function Settings() {
       let errorMsg = 'Verifique as credenciais.'
 
       const resData = error.response?.data
+      let fbtraceId = resData?.fbtrace_id || resData?.error?.error?.fbtrace_id || ''
+
       if (resData?.message && typeof resData.message === 'string') {
         errorMsg = resData.message
       } else if (resData?.error?.error?.message) {
@@ -376,7 +378,9 @@ export default function Settings() {
 
       let status = 'error'
       const errorMsgLower = errorMsg.toLowerCase()
-      if (
+      if (errorMsgLower.includes('erro (#100)')) {
+        status = 'permissions_error'
+      } else if (
         errorMsgLower.includes('permission') ||
         errorMsgLower.includes('100') ||
         errorMsgLower.includes('does not exist')
@@ -395,11 +399,16 @@ export default function Settings() {
 
       toast({
         title:
-          status === 'missing_permission'
-            ? 'Permissões Insuficientes'
-            : 'Erro de Conexão com o Meta',
-        description: `${errorMsg}`,
-        variant: status === 'missing_permission' ? 'default' : 'destructive',
+          status === 'permissions_error'
+            ? 'Erro (#100): Permissão Ausente'
+            : status === 'missing_permission'
+              ? 'Permissões Insuficientes'
+              : 'Erro de Conexão com o Meta',
+        description: fbtraceId ? `${errorMsg} (Trace ID: ${fbtraceId})` : errorMsg,
+        variant:
+          status === 'permissions_error' || status === 'missing_permission'
+            ? 'default'
+            : 'destructive',
       })
     } finally {
       setIsTestingConnection(false)
@@ -419,6 +428,9 @@ export default function Settings() {
     connectionBadgeText = 'Conectado'
     connectionBadgeColor =
       'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
+  } else if (metaTokenStatus === 'permissions_error') {
+    connectionBadgeText = 'Erro (#100): Permissão Ausente'
+    connectionBadgeColor = 'bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20 border'
   } else if (
     metaTokenStatus === 'error: permission_denied' ||
     metaTokenStatus === 'invalid_permission' ||
@@ -643,21 +655,25 @@ export default function Settings() {
                   <div
                     className={cn(
                       'flex items-start gap-2 mt-1 mb-2 text-xs p-2.5 rounded-md border',
-                      metaTokenStatus === 'missing_permission' ||
-                        metaTokenStatus === 'permission_denied' ||
-                        metaTokenStatus === 'error: permission_denied'
-                        ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
-                        : 'bg-destructive/10 text-destructive border-destructive/20',
+                      metaTokenStatus === 'permissions_error'
+                        ? 'bg-red-500/10 text-red-700 border-red-500/20'
+                        : metaTokenStatus === 'missing_permission' ||
+                            metaTokenStatus === 'permission_denied' ||
+                            metaTokenStatus === 'error: permission_denied'
+                          ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                          : 'bg-destructive/10 text-destructive border-destructive/20',
                     )}
                   >
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                     <div className="flex flex-col gap-1">
                       <span className="font-semibold">
-                        {metaTokenStatus === 'missing_permission' ||
-                        metaTokenStatus === 'permission_denied' ||
-                        metaTokenStatus === 'error: permission_denied'
-                          ? 'Permissões Insuficientes. O token não tem escopo necessário para acessar este Pixel.'
-                          : 'Erro detectado na conexão com o Meta.'}
+                        {metaTokenStatus === 'permissions_error'
+                          ? 'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
+                          : metaTokenStatus === 'missing_permission' ||
+                              metaTokenStatus === 'permission_denied' ||
+                              metaTokenStatus === 'error: permission_denied'
+                            ? 'Permissões Insuficientes. O token não tem escopo necessário para acessar este Pixel.'
+                            : 'Erro detectado na conexão com o Meta.'}
                       </span>
                       <span>
                         <button

@@ -172,24 +172,35 @@ export default function Index() {
         user?.meta_token_status === 'invalid_oauth' ||
         user?.meta_token_status === 'expired' ||
         user?.meta_token_status === 'error: permission_denied' ||
-        user?.meta_token_status === 'invalid_permission') && (
+        user?.meta_token_status === 'invalid_permission' ||
+        user?.meta_token_status === 'permissions_error') && (
         <Alert
           variant="destructive"
           className="bg-destructive/5 border-destructive/20 text-destructive mb-6"
         >
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Erro de Autenticação</AlertTitle>
+          <AlertTitle>
+            {user?.meta_token_status === 'permissions_error'
+              ? 'Erro de Permissão (Meta API)'
+              : 'Erro de Autenticação'}
+          </AlertTitle>
           <AlertDescription className="mt-2 flex flex-col gap-3">
             <div className="flex items-center justify-between gap-4 bg-destructive/10 p-2.5 rounded-md border border-destructive/20">
               <p className="select-text text-sm font-medium">
-                Erro de autenticação com o Meta: Token inválido ou expirado
+                {user?.meta_token_status === 'permissions_error'
+                  ? 'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
+                  : 'Erro de autenticação com o Meta: Token inválido ou expirado'}
               </p>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/20 shrink-0"
                 onClick={() =>
-                  handleCopyError('Erro de autenticação com o Meta: Token inválido ou expirado')
+                  handleCopyError(
+                    user?.meta_token_status === 'permissions_error'
+                      ? 'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
+                      : 'Erro de autenticação com o Meta: Token inválido ou expirado',
+                  )
                 }
                 title="Copiar mensagem de erro"
               >
@@ -244,19 +255,23 @@ export default function Index() {
               user?.meta_token_status === 'invalid_permission' ||
               user?.meta_token_status === 'invalid' ||
               user?.meta_token_status === 'expired' ||
+              user?.meta_token_status === 'permissions_error' ||
               user?.meta_token_status === 'invalid_oauth' ? (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/10 px-2.5 py-1 rounded-full cursor-help">
                       <AlertCircle className="h-3.5 w-3.5" />
-                      Erro de Conexão
+                      {user?.meta_token_status === 'permissions_error'
+                        ? 'Erro de Permissão'
+                        : 'Erro de Conexão'}
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>
-                      Falha ao conectar com a API do Meta. Verifique o token e o ID do Pixel. Acesse
-                      Configurações &gt; Centro de Diagnóstico para mais detalhes.
+                      {user?.meta_token_status === 'permissions_error'
+                        ? 'Erro (#100): Permissão Ausente. Verifique os escopos do App.'
+                        : 'Falha ao conectar com a API do Meta. Verifique o token e o ID do Pixel. Acesse Configurações > Centro de Diagnóstico para mais detalhes.'}
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -326,6 +341,7 @@ export default function Index() {
               user?.meta_token_status === 'invalid_permission' ||
               user?.meta_token_status === 'invalid' ||
               user?.meta_token_status === 'expired' ||
+              user?.meta_token_status === 'permissions_error' ||
               user?.meta_token_status === 'invalid_oauth' ? (
               <TooltipProvider>
                 <Tooltip>
@@ -336,7 +352,11 @@ export default function Index() {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Erro de autenticação com o Meta: Token inválido ou expirado</p>
+                    <p>
+                      {user?.meta_token_status === 'permissions_error'
+                        ? 'Erro (#100): Permissão Ausente.'
+                        : 'Erro de autenticação com o Meta: Token inválido ou expirado'}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

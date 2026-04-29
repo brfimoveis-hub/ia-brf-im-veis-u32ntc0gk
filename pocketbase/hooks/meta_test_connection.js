@@ -51,7 +51,10 @@ routerAdd(
 
       let isPermissionError = false
       let isOAuthError = false
+      let fbtraceId = ''
+
       if (errorPayload && errorPayload.error) {
+        fbtraceId = errorPayload.error.fbtrace_id || ''
         if (errorPayload.error.code === 190) {
           isOAuthError = true
         } else if (
@@ -67,32 +70,48 @@ routerAdd(
       if (user) {
         user.set(
           'meta_token_status',
-          isOAuthError ? 'expired' : isPermissionError ? 'missing_permission' : 'invalid',
+          isOAuthError ? 'expired' : isPermissionError ? 'permissions_error' : 'invalid',
         )
         user.set('meta_last_validated', now)
         $app.save(user)
       }
 
       try {
+        const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000)
+        const timeString = fiveMinsAgo.toISOString().replace('T', ' ')
+
         const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', e.auth.id)
-        logRecord.set('type', 'error')
-        logRecord.set('message', 'Falha na validação do Token CAPI')
-        logRecord.set(
-          'details',
-          typeof errorPayload === 'object' ? JSON.stringify(errorPayload) : String(errorPayload),
+        const existingLogs = $app.findRecordsByFilter(
+          logsCol.id,
+          "user_id = {:userId} && type = 'error' && message = 'Falha na validação do Token CAPI' && created >= {:time}",
+          '-created',
+          1,
+          0,
+          { userId: e.auth.id, time: timeString },
         )
-        logRecord.set('payload', { statusCode: res.statusCode, metaResponse: errorPayload })
-        $app.save(logRecord)
+
+        if (!existingLogs || existingLogs.length === 0) {
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', e.auth.id)
+          logRecord.set('type', 'error')
+          logRecord.set('message', 'Falha na validação do Token CAPI')
+          logRecord.set(
+            'details',
+            typeof errorPayload === 'object' ? JSON.stringify(errorPayload) : String(errorPayload),
+          )
+          logRecord.set('payload', { statusCode: res.statusCode, metaResponse: errorPayload })
+          $app.save(logRecord)
+        }
       } catch (logErr) {}
 
       let errorMessage = 'Falha na autenticação com o Meta. O token pode ser inválido ou expirado.'
       if (errorPayload && errorPayload.error && errorPayload.error.message) {
         const msg = errorPayload.error.message
-        if (
+        if (errorPayload.error.code === 100) {
+          errorMessage =
+            'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
+        } else if (
           msg.includes('does not exist') ||
-          (errorPayload.error && errorPayload.error.code === 100) ||
           (errorPayload.error && errorPayload.error.error_subcode === 33) ||
           msg.toLowerCase().includes('missing permission') ||
           msg.toLowerCase().includes('permission')
@@ -114,7 +133,7 @@ routerAdd(
         errorMessage = JSON.stringify(errorPayload)
       }
 
-      return e.json(400, { message: errorMessage, error: errorPayload })
+      return e.json(400, { message: errorMessage, error: errorPayload, fbtrace_id: fbtraceId })
     }
   },
   $apis.requireAuth(),

@@ -213,7 +213,9 @@ export function DiagnosticCenter() {
         let finalMessage = `${metaSuccesses}/${testCount} handshakes bem-sucedidos com a API do Meta. Status: Ativo.`
         if (metaSuccesses < testCount) {
           const lastErrorMsgLower = lastErrorMsg.toLowerCase()
-          if (
+          if (lastErrorMsgLower.includes('erro (#100)')) {
+            finalMessage = `Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App. Detalhe: ${lastErrorMsg}`
+          } else if (
             lastErrorMsgLower.includes('permissão/id meta') ||
             lastErrorMsgLower.includes('code: 100') ||
             lastErrorMsgLower.includes('permission') ||
