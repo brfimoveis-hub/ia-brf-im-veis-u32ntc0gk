@@ -43,6 +43,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { DiagnosticCenter } from '@/components/DiagnosticCenter'
+import { RecentPerformance } from '@/components/RecentPerformance'
 
 export default function Settings() {
   const { toast } = useToast()
@@ -511,6 +512,17 @@ export default function Settings() {
         <p className="text-muted-foreground mt-2 text-lg">
           Gerencie o comportamento e o conhecimento do seu agente inteligente.
         </p>
+      </div>
+
+      {/* Recent Performance Carousel */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Activity className="h-5 w-5 text-primary" />
+          <h3 className="text-xl font-semibold tracking-tight text-secondary">
+            Performance Recente
+          </h3>
+        </div>
+        <RecentPerformance />
       </div>
 
       <div className="grid gap-8">
