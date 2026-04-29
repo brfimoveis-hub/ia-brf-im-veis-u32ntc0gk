@@ -24,38 +24,6 @@ import { cn } from '@/lib/utils'
 export function DiagnosticCenter() {
   const { user } = useAuth()
   const [recentLogs, setRecentLogs] = useState<SystemLog[]>([])
-  const [gtmEvents, setGtmEvents] = useState<{ event: any; timestamp: number }[]>([])
-
-  useEffect(() => {
-    // Intercept GTM dataLayer for real-time diagnostic view
-    const win = window as any
-    win.dataLayer = win.dataLayer || []
-
-    const mapEvent = (e: any) => ({
-      event: e,
-      timestamp: Date.now(),
-    })
-
-    // Initial events already in dataLayer
-    setGtmEvents(win.dataLayer.map(mapEvent).slice(-10))
-
-    const originalPush = win.dataLayer.push.bind(win.dataLayer)
-    win.dataLayer.push = function (...args: any[]) {
-      try {
-        const event = args[0]
-        if (event && typeof event === 'object') {
-          setGtmEvents((prev) => [...prev, { event, timestamp: Date.now() }].slice(-10))
-        }
-      } catch (e) {
-        console.error('Erro ao interceptar dataLayer', e)
-      }
-      return originalPush(...args)
-    }
-
-    return () => {
-      win.dataLayer.push = originalPush
-    }
-  }, [])
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -370,63 +338,6 @@ export function DiagnosticCenter() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="border-border shadow-elevation">
-        <CardHeader className="bg-muted/10 pb-4 border-b">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-500/10 rounded-xl">
-              <Activity className="h-6 w-6 text-blue-600" />
-            </div>
-            <div>
-              <CardTitle className="text-xl">GTM DataLayer Monitor</CardTitle>
-              <CardDescription>
-                Eventos em tempo real disparados para o Google Tag Manager.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-6">
-          {gtmEvents.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Nenhum evento GTM detectado ainda.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {gtmEvents
-                .slice()
-                .reverse()
-                .map((item, i) => {
-                  const ev = item.event
-                  const timeStr = new Date(item.timestamp).toLocaleTimeString()
-                  return (
-                    <div
-                      key={i}
-                      className="flex flex-col gap-2 p-3 border rounded-lg bg-card shadow-sm"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className="bg-blue-500/10 text-blue-600 border-blue-500/20 font-mono text-xs"
-                          >
-                            {ev.event || 'Mensagem (Sem Evento)'}
-                          </Badge>
-                          {ev.path && (
-                            <span className="text-xs text-muted-foreground">Path: {ev.path}</span>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground font-mono">{timeStr}</span>
-                      </div>
-                      <pre className="text-[10px] text-muted-foreground bg-muted/50 p-2 rounded-md overflow-x-auto whitespace-pre-wrap">
-                        {JSON.stringify(ev, null, 2)}
-                      </pre>
-                    </div>
-                  )
-                })}
             </div>
           )}
         </CardContent>

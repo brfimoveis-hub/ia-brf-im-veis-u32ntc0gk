@@ -682,9 +682,14 @@ export default function Settings() {
               </div>
             </div>
             <div className="space-y-3">
-              <Label htmlFor="system-prompt" className="text-sm font-semibold text-secondary">
-                Prompt do Sistema
-              </Label>
+              <div className="flex justify-between items-center">
+                <Label htmlFor="system-prompt" className="text-sm font-semibold text-secondary">
+                  Prompt do Sistema
+                </Label>
+                <span className="text-xs text-muted-foreground font-mono">
+                  {prompt.length.toLocaleString('pt-BR')} / 100.000
+                </span>
+              </div>
               <Textarea
                 id="system-prompt"
                 placeholder="Ex: Você é um atendente..."
@@ -1055,12 +1060,14 @@ export default function Settings() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label
-              htmlFor="cadence-ai-rules"
-              className="text-sm font-semibold text-secondary mb-2 block"
-            >
-              Regras e Instruções da IA
-            </Label>
+            <div className="flex justify-between items-center mb-2">
+              <Label htmlFor="cadence-ai-rules" className="text-sm font-semibold text-secondary">
+                Regras e Instruções da IA
+              </Label>
+              <span className="text-xs text-muted-foreground font-mono">
+                {editAiInstructions.length.toLocaleString('pt-BR')} / 100.000
+              </span>
+            </div>
             <Textarea
               id="cadence-ai-rules"
               placeholder="Descreva como a IA deve se comportar nesta cadência..."
