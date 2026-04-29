@@ -378,19 +378,18 @@ export default function Settings() {
         errorMsg = JSON.stringify(errorMsg)
       }
 
-      let status = 'error'
+      let status = 'Erro de Validação'
       const errorMsgLower = errorMsg.toLowerCase()
-      if (errorMsgLower.includes('erro (#100)')) {
-        status = 'permissions_error'
-      } else if (
+      if (
+        resData?.code === 100 ||
+        errorMsgLower.includes('erro (#100)') ||
         errorMsgLower.includes('permission') ||
         errorMsgLower.includes('100') ||
         errorMsgLower.includes('does not exist')
       ) {
-        status = 'missing_permission'
-      } else if (errorMsgLower.includes('190')) {
-        status = 'expired'
+        status = 'Permissões Insuficientes'
       }
+
       if (user?.id) {
         await pb.collection('users').update(user.id, {
           meta_token_status: status,
@@ -401,11 +400,9 @@ export default function Settings() {
 
       toast({
         title:
-          status === 'permissions_error'
+          status === 'Permissões Insuficientes'
             ? 'Erro (#100): Permissão Ausente'
-            : status === 'missing_permission'
-              ? 'Permissões Insuficientes'
-              : 'Erro de Conexão com o Meta',
+            : 'Erro de Conexão com o Meta',
         description: fbtraceId ? `${errorMsg} (Trace ID: ${fbtraceId})` : errorMsg,
         variant: 'destructive',
       })
@@ -427,24 +424,20 @@ export default function Settings() {
     connectionBadgeText = 'Conectado'
     connectionBadgeColor =
       'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
-  } else if (metaTokenStatus === 'permissions_error') {
+  } else if (
+    metaTokenStatus === 'Permissões Insuficientes' ||
+    metaTokenStatus === 'permissions_error' ||
+    metaTokenStatus === 'error: permission_denied' ||
+    metaTokenStatus === 'missing_permission'
+  ) {
     connectionBadgeText = 'Erro (#100): Permissão Ausente'
     connectionBadgeColor = 'bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20 border'
   } else if (
-    metaTokenStatus === 'error: permission_denied' ||
-    metaTokenStatus === 'invalid_permission' ||
-    metaTokenStatus === 'permission_denied' ||
-    metaTokenStatus === 'missing_permission'
-  ) {
-    connectionBadgeText = 'Permissões Insuficientes / Erro de ID'
-    connectionBadgeColor =
-      'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/20 border'
-  } else if (
+    metaTokenStatus === 'Erro de Validação' ||
     metaTokenStatus === 'invalid' ||
-    metaTokenStatus === 'invalid_oauth' ||
     metaTokenStatus === 'expired'
   ) {
-    connectionBadgeText = 'Erro de Conexão'
+    connectionBadgeText = 'Erro de Validação'
     connectionBadgeColor =
       'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
   } else {
@@ -560,8 +553,19 @@ export default function Settings() {
         </Card>
 
         {/* Meta Event Manager */}
-        <Card className="border-border shadow-elevation">
-          <div className="h-1 bg-blue-600 w-full"></div>
+        <Card
+          className={cn(
+            'border-border shadow-elevation transition-colors duration-300',
+            metaTokenStatus === 'Permissões Insuficientes' &&
+              'border-red-500/50 ring-1 ring-red-500/20',
+          )}
+        >
+          <div
+            className={cn(
+              'h-1 w-full transition-colors duration-300',
+              metaTokenStatus === 'Permissões Insuficientes' ? 'bg-red-500' : 'bg-blue-600',
+            )}
+          ></div>
           <CardHeader className="bg-muted/10 pb-4 border-b">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-blue-600/10 rounded-xl">
@@ -653,41 +657,71 @@ export default function Settings() {
                 metaTokenStatus !== 'untested' && (
                   <div
                     className={cn(
-                      'flex items-start gap-2 mt-1 mb-2 text-xs p-2.5 rounded-md border',
-                      metaTokenStatus === 'permissions_error' ||
+                      'flex items-start gap-2 mt-1 mb-3 text-xs p-3 rounded-md border flex-col',
+                      metaTokenStatus === 'Permissões Insuficientes' ||
+                        metaTokenStatus === 'permissions_error' ||
                         metaTokenStatus === 'missing_permission'
-                        ? 'bg-red-500/10 text-red-700 border-red-500/20'
-                        : metaTokenStatus === 'permission_denied' ||
-                            metaTokenStatus === 'error: permission_denied'
-                          ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
-                          : 'bg-destructive/10 text-destructive border-destructive/20',
+                        ? 'bg-red-500/10 text-red-700 border-red-500/30'
+                        : 'bg-destructive/10 text-destructive border-destructive/30',
                     )}
                   >
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <div className="flex flex-col gap-1">
-                      <span className="font-semibold">
-                        {metaTokenStatus === 'permissions_error' ||
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span className="font-semibold text-sm">
+                        {metaTokenStatus === 'Permissões Insuficientes' ||
+                        metaTokenStatus === 'permissions_error' ||
                         metaTokenStatus === 'missing_permission'
-                          ? 'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
-                          : metaTokenStatus === 'permission_denied' ||
-                              metaTokenStatus === 'error: permission_denied'
-                            ? 'Permissões Insuficientes. O token não tem escopo necessário para acessar este Pixel.'
-                            : 'Erro detectado na conexão com o Meta.'}
+                          ? 'Erro de Permissão'
+                          : 'Erro de Validação'}
                       </span>
-                      {lastFbTraceId && (
-                        <span className="font-mono text-[10px] opacity-70">
-                          Trace ID: {lastFbTraceId}
-                        </span>
+                    </div>
+                    <div className="flex flex-col gap-2 ml-6 w-full pr-4">
+                      {metaTokenStatus === 'Permissões Insuficientes' ||
+                      metaTokenStatus === 'permissions_error' ||
+                      metaTokenStatus === 'missing_permission' ? (
+                        <>
+                          <span>
+                            <strong>Mensagem:</strong> (#100) Missing Permission
+                          </span>
+                          {lastFbTraceId && (
+                            <span className="font-mono text-[11px] opacity-80 break-all bg-red-500/10 p-1 rounded">
+                              <strong>fbtrace_id:</strong> {lastFbTraceId}
+                            </span>
+                          )}
+                          <p className="mt-0.5 text-red-700/90 leading-relaxed">
+                            O token informado não possui os escopos necessários (
+                            <code className="bg-red-500/10 px-1 py-0.5 rounded">ads_read</code>,{' '}
+                            <code className="bg-red-500/10 px-1 py-0.5 rounded">
+                              whatsapp_business_management
+                            </code>
+                            ) ou você não tem acesso ao Pixel informado.
+                          </p>
+                          <a
+                            href="https://developers.facebook.com/docs/marketing-api/error-reference"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-semibold ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-red-600 text-white hover:bg-red-700 h-8 px-3 py-2 mt-1 w-fit shadow-sm"
+                          >
+                            Check Permissions
+                          </a>
+                        </>
+                      ) : (
+                        <>
+                          <span>
+                            Verifique o token e tente novamente. O token pode estar expirado ou
+                            inválido.
+                          </span>
+                          <span>
+                            <button
+                              type="button"
+                              onClick={() => document.getElementById('meta-capi-token')?.focus()}
+                              className="underline font-medium hover:opacity-80"
+                            >
+                              Revisar Token CAPI
+                            </button>
+                          </span>
+                        </>
                       )}
-                      <span>
-                        <button
-                          type="button"
-                          onClick={() => document.getElementById('meta-capi-token')?.focus()}
-                          className="underline font-medium hover:opacity-80"
-                        >
-                          Revisar Token CAPI e Pixel ID
-                        </button>
-                      </span>
                     </div>
                   </div>
                 )}

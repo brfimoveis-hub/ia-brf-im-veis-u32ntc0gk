@@ -70,7 +70,11 @@ routerAdd(
       if (user) {
         user.set(
           'meta_token_status',
-          isOAuthError ? 'expired' : isPermissionError ? 'permissions_error' : 'invalid',
+          isOAuthError
+            ? 'expired'
+            : isPermissionError
+              ? 'Permissões Insuficientes'
+              : 'Erro de Validação',
         )
         user.set('meta_last_validated', now)
         $app.save(user)
@@ -106,6 +110,7 @@ routerAdd(
           })
           $app.save(logRecord)
         } else {
+          // Circuit Breaker for Logs: skip creating a new log entry to prevent flooding, just update
           const logRecord = existingLogs[0]
           logRecord.set('updated', new Date().toISOString())
           const currentPayload = logRecord.get('payload') || {}
@@ -113,10 +118,6 @@ routerAdd(
           currentPayload.metaResponse = errorPayload
           currentPayload.statusCode = res.statusCode
           logRecord.set('payload', currentPayload)
-          logRecord.set(
-            'details',
-            typeof errorPayload === 'object' ? JSON.stringify(errorPayload) : String(errorPayload),
-          )
           $app.save(logRecord)
         }
       } catch (logErr) {}
@@ -150,7 +151,12 @@ routerAdd(
         errorMessage = JSON.stringify(errorPayload)
       }
 
-      return e.json(400, { message: errorMessage, error: errorPayload, fbtrace_id: fbtraceId })
+      return e.json(400, {
+        message: errorMessage,
+        error: errorPayload,
+        fbtrace_id: fbtraceId,
+        code: errorPayload?.error?.code,
+      })
     }
   },
   $apis.requireAuth(),
