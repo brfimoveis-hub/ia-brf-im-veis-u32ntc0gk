@@ -15,7 +15,66 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
   $app.logger().info('Meta Webhook Received', 'body', body)
 
   try {
-    if (body.object === 'whatsapp_business_account' && body.entry) {
+    // AC: Every time the meta_webhook is triggered, a record must be created in system_logs with the type DIAGNOSTIC.
+    let globalUserId = ''
+    try {
+      const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
+      if (fallbackUser.length > 0) globalUserId = fallbackUser[0].id
+    } catch (_) {}
+
+    try {
+      const logsCol = $app.findCollectionByNameOrId('system_logs')
+      const rawLog = new Record(logsCol)
+      rawLog.set('user_id', globalUserId)
+      rawLog.set('type', 'diagnostic')
+      rawLog.set('message', 'Raw Meta Webhook Payload Received')
+      rawLog.set('details', 'Payload bruto recebido do Meta Webhook (Lead Form / WhatsApp).')
+      rawLog.set('payload', body)
+      $app.saveNoValidate(rawLog)
+    } catch (err) {
+      $app.logger().error('Failed to save raw webhook log', err)
+    }
+
+    if (body.object === 'page' && body.entry) {
+      // Handle Meta Lead Form (leadgen)
+      for (const entry of body.entry) {
+        for (const change of entry.changes || []) {
+          if (change.field === 'leadgen') {
+            const value = change.value
+            if (!value) continue
+
+            const leadId = value.leadgen_id
+            const formId = value.form_id
+            const contactName = `Meta Lead Form - ${leadId || new Date().getTime()}`
+            const phone = `+5500000000000` // Placeholder for generic page leadgen without auth token
+
+            try {
+              const customersCol = $app.findCollectionByNameOrId('customers')
+              const customer = new Record(customersCol)
+              customer.set('user_id', globalUserId)
+              customer.set('name', contactName)
+              customer.set('phone', phone)
+              customer.set('status', 'Novo')
+              customer.set('source', 'Meta Ads Lead Form')
+              customer.set(
+                'notes',
+                `Form ID: ${formId}\nLead ID: ${leadId}\nNote: Raw leadgen event without token to fetch details.`,
+              )
+              $app.save(customer)
+            } catch (err) {
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const logRecord = new Record(logsCol)
+              logRecord.set('user_id', globalUserId)
+              logRecord.set('type', 'diagnostic_error')
+              logRecord.set('message', `Falha ao criar cliente via Meta Lead Form`)
+              logRecord.set('details', `Erro do Banco de Dados: ${String(err)}`)
+              logRecord.set('payload', { error: String(err), raw_body: body })
+              $app.saveNoValidate(logRecord)
+            }
+          }
+        }
+      }
+    } else if (body.object === 'whatsapp_business_account' && body.entry) {
       for (const entry of body.entry) {
         for (const change of entry.changes || []) {
           const value = change.value
@@ -48,7 +107,8 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                   }
                 } catch (_) {}
 
-                let contactName = 'Lead Desconhecido'
+                // AC: Fallback to phone number if name is missing to prevent constraint errors
+                let contactName = `Meta Lead - ${phone}`
                 if (value.contacts && value.contacts.length > 0) {
                   const contact = value.contacts.find((c) => c.wa_id === phone)
                   if (contact && contact.profile && contact.profile.name) {
@@ -76,7 +136,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
 
                     let source = 'WhatsApp'
                     let notes = ''
-                    if (msg.referral && msg.referral.source_type === 'ad') {
+                    if (msg.referral) {
                       source = 'Meta Ads'
                       notes = `Origem: Anúncio Meta\nHeadline: ${msg.referral.headline || 'N/A'}\nAd ID: ${msg.referral.source_id || 'N/A'}`
                     }
@@ -109,9 +169,10 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                       logRecord.set('user_id', targetUserId)
                       logRecord.set('type', 'diagnostic_error')
                       logRecord.set('message', `Falha ao criar lead do telefone ${phone}`)
-                      logRecord.set('details', String(err))
+                      // AC: Error Transparency - Record specific PocketBase error in details
+                      logRecord.set('details', `Erro do Banco de Dados: ${String(err)}`)
                       logRecord.set('payload', { error: String(err), raw_body: body, phone, msg })
-                      $app.save(logRecord)
+                      $app.saveNoValidate(logRecord)
                     } catch (_) {}
                   }
                 }

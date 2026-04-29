@@ -30,7 +30,16 @@ import {
   ArrowUpDown,
   TrendingUp,
   Target,
+  FileJson,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
@@ -72,6 +81,7 @@ export function DiagnosticCenter() {
   const [results, setResults] = useState<
     { name: string; status: string; message: string; payload?: any }[]
   >([])
+  const [selectedPayloadLog, setSelectedPayloadLog] = useState<SystemLog | null>(null)
 
   const fetchLogsAndStats = async () => {
     try {
@@ -621,6 +631,16 @@ export function DiagnosticCenter() {
                           <Button
                             variant="outline"
                             size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                            onClick={() => setSelectedPayloadLog(log)}
+                            title="Ver Payload Raw"
+                          >
+                            <FileJson className="h-4 w-4" />
+                            <span className="sr-only">Ver Payload Raw</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
                             className="h-8 w-8 text-muted-foreground hover:text-foreground"
                             onClick={() => handleCopyError(log.message, log.payload)}
                             title="Copiar Detalhes"
@@ -668,6 +688,27 @@ export function DiagnosticCenter() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!selectedPayloadLog}
+        onOpenChange={(open) => !open && setSelectedPayloadLog(null)}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Payload Bruto - {selectedPayloadLog?.type.toUpperCase()}</DialogTitle>
+            <DialogDescription>
+              Inspecione os dados JSON originais recebidos pelo sistema para este evento.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] mt-4 rounded-md bg-slate-950 p-4 border">
+            <pre className="text-xs text-slate-50 font-mono whitespace-pre-wrap break-words">
+              {selectedPayloadLog?.payload
+                ? JSON.stringify(selectedPayloadLog.payload, null, 2)
+                : 'Nenhum payload disponível para este log.'}
+            </pre>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
