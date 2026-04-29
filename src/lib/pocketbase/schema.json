@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-29T22:28:42.548Z",
+  "generatedAt": "2026-04-29T22:47:52.106Z",
   "collections": [
     {
       "name": "users",
@@ -412,7 +412,8 @@
         "CREATE INDEX idx_customers_status ON customers (status)",
         "CREATE INDEX `idx_customers_email` ON `customers` (email)",
         "CREATE INDEX `idx_customers_phone` ON `customers` (phone)",
-        "CREATE INDEX `idx_customers_source` ON `customers` (source)"
+        "CREATE INDEX `idx_customers_source` ON `customers` (source)",
+        "CREATE INDEX `idx_customers_created` ON `customers` (created)"
       ]
     },
     {
@@ -699,7 +700,10 @@
           "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": ["CREATE INDEX `idx_system_logs_type` ON `system_logs` (type)"]
+      "indexes": [
+        "CREATE INDEX `idx_system_logs_type` ON `system_logs` (type)",
+        "CREATE INDEX `idx_system_logs_created` ON `system_logs` (created)"
+      ]
     }
   ]
 }

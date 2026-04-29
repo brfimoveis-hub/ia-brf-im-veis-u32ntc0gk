@@ -110,6 +110,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                       logRecord.set('type', 'diagnostic_error')
                       logRecord.set('message', `Falha ao criar lead do telefone ${phone}`)
                       logRecord.set('details', String(err))
+                      logRecord.set('payload', { error: String(err), raw_body: body, phone, msg })
                       $app.save(logRecord)
                     } catch (_) {}
                   }

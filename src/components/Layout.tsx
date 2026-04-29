@@ -51,6 +51,60 @@ export default function Layout() {
   const location = useLocation()
   const { user } = useAuth()
   const [gtmActive, setGtmActive] = useState(false)
+  const [healthStatus, setHealthStatus] = useState<'green' | 'yellow' | 'red'>('green')
+  const [healthTooltip, setHealthTooltip] = useState('Sistema Saudável')
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await pb.collection('system_logs').getList(1, 1, { sort: '-created' })
+        if (res.items.length > 0) {
+          const lastLog = res.items[0]
+          const hoursSince = (Date.now() - new Date(lastLog.created).getTime()) / 3600000
+
+          if (lastLog.type.includes('error')) {
+            setHealthStatus('red')
+            setHealthTooltip('Último evento registrou falha')
+          } else if (hoursSince > 24) {
+            setHealthStatus('yellow')
+            setHealthTooltip('Nenhum evento nas últimas 24h')
+          } else {
+            setHealthStatus('green')
+            setHealthTooltip('Sistema Saudável e Operante')
+          }
+        }
+      } catch {
+        /* intentionally ignored */
+      }
+    }
+    if (pb.authStore.isValid) {
+      checkHealth()
+    }
+    const interval = setInterval(() => {
+      if (pb.authStore.isValid) checkHealth()
+    }, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (pb.authStore.isValid) {
+      const unsub = pb.collection('system_logs').subscribe('*', (e) => {
+        if (e.action === 'create') {
+          const log = e.record
+          if (log.type.includes('error')) {
+            setHealthStatus('red')
+            setHealthTooltip('Último evento registrou falha')
+          } else {
+            setHealthStatus('green')
+            setHealthTooltip('Sistema Saudável e Operante')
+          }
+        }
+      })
+      return () => {
+        unsub.then((u) => u()).catch(() => {})
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const checkGtm = () => {
@@ -270,6 +324,34 @@ export default function Layout() {
                 </div>
               </TooltipTrigger>
               <TooltipContent>Status da Conexão Uazapi</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-bold tracking-wide uppercase cursor-help transition-colors shadow-sm',
+                    healthStatus === 'green'
+                      ? 'bg-green-500/10 border-green-500/20 text-green-600'
+                      : healthStatus === 'yellow'
+                        ? 'bg-amber-500/10 border-amber-500/20 text-amber-600'
+                        : 'bg-red-500/10 border-red-500/20 text-red-600',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'w-1.5 h-1.5 rounded-full shadow-sm',
+                      healthStatus === 'green'
+                        ? 'bg-green-500'
+                        : healthStatus === 'yellow'
+                          ? 'bg-amber-500'
+                          : 'bg-red-500',
+                    )}
+                  />
+                  HEALTH
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>{healthTooltip}</TooltipContent>
             </Tooltip>
           </div>
 

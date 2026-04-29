@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Button } from '@/components/ui/button'
@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +26,10 @@ import {
   ShieldCheck,
   Copy,
   Trash2,
+  Search,
+  ArrowUpDown,
+  TrendingUp,
+  Target,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
@@ -48,29 +53,87 @@ import { cn } from '@/lib/utils'
 
 export function DiagnosticCenter() {
   const { user } = useAuth()
-  const [recentLogs, setRecentLogs] = useState<SystemLog[]>([])
+  const { toast } = useToast()
 
-  const fetchLogs = async () => {
+  const [recentLogs, setRecentLogs] = useState<SystemLog[]>([])
+  const [leadStats, setLeadStats] = useState({ success: 0, errors: 0 })
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortConfig, setSortConfig] = useState<{ key: keyof SystemLog; direction: 'asc' | 'desc' }>(
+    {
+      key: 'created',
+      direction: 'desc',
+    },
+  )
+
+  const [isRunning, setIsRunning] = useState(false)
+  const [logToDelete, setLogToDelete] = useState<string | null>(null)
+  const [progress, setProgress] = useState(0)
+  const [loopEnabled, setLoopEnabled] = useState(false)
+  const [results, setResults] = useState<
+    { name: string; status: string; message: string; payload?: any }[]
+  >([])
+
+  const fetchLogsAndStats = async () => {
     try {
-      const res = await getSystemLogs(1, 10)
-      setRecentLogs(res.items)
-    } catch {
-      /* intentionally ignored */
+      const logsRes = await getSystemLogs(1, 200)
+      setRecentLogs(logsRes.items)
+
+      const customersRes = await pb.collection('customers').getList(1, 1)
+      const errorsRes = await pb.collection('system_logs').getList(1, 1, {
+        filter: 'type ~ "error" || type = "diagnostic_error" || type = "remarketing_error"',
+      })
+
+      setLeadStats({
+        success: customersRes.totalItems,
+        errors: errorsRes.totalItems,
+      })
+    } catch (e) {
+      console.error(e)
     }
   }
 
   useEffect(() => {
-    fetchLogs()
+    fetchLogsAndStats()
   }, [])
 
   useRealtime('system_logs', () => {
-    fetchLogs()
+    fetchLogsAndStats()
+  })
+  useRealtime('customers', () => {
+    fetchLogsAndStats()
   })
 
-  const { toast } = useToast()
-  const [isRunning, setIsRunning] = useState(false)
+  const handleSort = (key: keyof SystemLog) => {
+    setSortConfig((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }))
+  }
 
-  const [logToDelete, setLogToDelete] = useState<string | null>(null)
+  const filteredAndSortedLogs = useMemo(() => {
+    let result = [...recentLogs]
+
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      result = result.filter(
+        (log) =>
+          log.message.toLowerCase().includes(q) ||
+          (log.details && log.details.toLowerCase().includes(q)) ||
+          log.type.toLowerCase().includes(q),
+      )
+    }
+
+    result.sort((a, b) => {
+      const aVal = a[sortConfig.key]
+      const bVal = b[sortConfig.key]
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return result
+  }, [recentLogs, searchQuery, sortConfig])
 
   const confirmDeleteLog = async () => {
     if (!logToDelete) return
@@ -99,14 +162,9 @@ export function DiagnosticCenter() {
     navigator.clipboard.writeText(contentToCopy)
     toast({
       title: 'Copiado!',
-      description: 'Erro e payload copiados para a área de transferência!',
+      description: 'Conteúdo copiado para a área de transferência!',
     })
   }
-  const [progress, setProgress] = useState(0)
-  const [loopEnabled, setLoopEnabled] = useState(false)
-  const [results, setResults] = useState<
-    { name: string; status: string; message: string; payload?: any }[]
-  >([])
 
   const runDiagnostics = async () => {
     setIsRunning(true)
@@ -128,8 +186,8 @@ export function DiagnosticCenter() {
         win.dataLayer = win.dataLayer || []
         win.dataLayer.push({ event: 'gtm_diagnostic_test' })
         dataLayerWorks = true
-      } catch (e) {
-        /* ignore */
+      } catch {
+        /* intentionally ignored */
       }
 
       const isGtmFunctional = hasGtmScript || isGtmObjectPresent
@@ -138,8 +196,7 @@ export function DiagnosticCenter() {
         newResults.push({
           name: 'Google Tag Manager',
           status: 'warning',
-          message:
-            'Script do GTM não detectado. Pode estar sendo bloqueado por um Ad Blocker. O sistema continuará funcionando normalmente.',
+          message: 'Script do GTM não detectado. Pode estar sendo bloqueado por um Ad Blocker.',
           payload: { error: `${gtmId} not found in DOM`, hasGtmScript, isGtmObjectPresent },
         })
         await createSystemLog({
@@ -160,7 +217,7 @@ export function DiagnosticCenter() {
       }
       setResults([...newResults])
 
-      // 2. Webhook & Lead Ingestion Check
+      // 2. Webhook Check
       setProgress(25)
       await new Promise((r) => setTimeout(r, 1000))
       const hasPhone = !!user?.meta_campaign_phone
@@ -168,8 +225,8 @@ export function DiagnosticCenter() {
         name: 'Ingestão de Leads Webhook',
         status: hasPhone ? 'success' : 'error',
         message: hasPhone
-          ? `Telefone de campanha (${user.meta_campaign_phone}) ativo. Webhook em modo 'Listening' para novos leads Meta.`
-          : 'Telefone de campanha ausente. A ingestão automática de leads do Meta Ads pode não funcionar.',
+          ? `Telefone de campanha (${user.meta_campaign_phone}) ativo.`
+          : 'Telefone de campanha ausente. A ingestão automática pode falhar.',
         payload: { meta_campaign_phone: user?.meta_campaign_phone, listening: hasPhone },
       })
       setResults([...newResults])
@@ -184,12 +241,12 @@ export function DiagnosticCenter() {
       newResults.push({
         name: 'Auditoria de Cadências',
         status: hasIssues ? 'warning' : 'success',
-        message: `${cadences.length} cadências ativas. ${validCadences.length} estruturalmente íntegras (com regras IA).`,
+        message: `${cadences.length} cadências ativas. ${validCadences.length} íntegras.`,
         payload: { total: cadences.length, valid: validCadences.length, cadences },
       })
       setResults([...newResults])
 
-      // 4. Meta Integration Validation (Loopable)
+      // 4. Meta Validation
       setProgress(60)
       const testCount = loopEnabled ? 5 : 1
       let metaSuccesses = 0
@@ -208,23 +265,16 @@ export function DiagnosticCenter() {
           try {
             await pb.send('/backend/v1/meta-test-connection', {
               method: 'POST',
-              body: JSON.stringify({
-                pixelId: user.meta_pixel_id || '1522162279584545',
-              }),
+              body: JSON.stringify({ pixelId: user.meta_pixel_id || '1522162279584545' }),
               headers: { 'Content-Type': 'application/json' },
             })
             metaSuccesses++
           } catch (e: any) {
             const resData = e.response || {}
             let msg = resData.message || e.message || 'Erro desconhecido'
-            if (
-              resData.code &&
-              !msg.includes(`Código: ${resData.code}`) &&
-              !msg.includes(`#${resData.code}`)
-            ) {
+            if (resData.code && !msg.includes(`Código: ${resData.code}`)) {
               msg += ` (Meta Error Code: ${resData.code})`
             }
-            if (typeof msg === 'object') msg = JSON.stringify(msg)
             lastErrorMsg = msg
           }
           setProgress(60 + ((i + 1) / testCount) * 30)
@@ -232,9 +282,7 @@ export function DiagnosticCenter() {
         }
 
         let finalMessage = `${metaSuccesses}/${testCount} testes do Pixel bem-sucedidos. Status: Ativo.`
-        if (metaSuccesses < testCount) {
-          finalMessage = `Falha de conexão: ${lastErrorMsg}`
-        }
+        if (metaSuccesses < testCount) finalMessage = `Falha de conexão: ${lastErrorMsg}`
 
         newResults.push({
           name: 'Integração Meta (Pixel)',
@@ -244,10 +292,8 @@ export function DiagnosticCenter() {
         })
       }
       setResults([...newResults])
-
       setProgress(100)
 
-      // Log results
       await createSystemLog({
         type: 'diagnostic',
         message: 'Diagnóstico de integridade concluído',
@@ -257,7 +303,7 @@ export function DiagnosticCenter() {
 
       toast({
         title: 'Diagnóstico Concluído',
-        description: 'O relatório de saúde do sistema foi gerado com sucesso.',
+        description: 'O relatório de saúde do sistema foi gerado.',
       })
     } catch (e) {
       toast({
@@ -270,8 +316,89 @@ export function DiagnosticCenter() {
     }
   }
 
+  const successRatio =
+    leadStats.success + leadStats.errors > 0
+      ? Math.round((leadStats.success / (leadStats.success + leadStats.errors)) * 100)
+      : 100
+
+  const getLogBadgeColor = (type: string) => {
+    const t = type.toLowerCase()
+    if (t.includes('error') || t.includes('fail'))
+      return 'bg-destructive/10 text-destructive border-destructive/20'
+    if (t.includes('warning') || t.includes('diagnostic'))
+      return 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+    if (t.includes('success') || t.includes('valid') || t === 'webhook')
+      return 'bg-green-500/10 text-green-600 border-green-500/20'
+    return 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+  }
+
   return (
     <div className="space-y-8">
+      {/* Lead Capture Analytics */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="border-border shadow-elevation">
+          <CardContent className="p-6 flex flex-col items-center justify-center text-center space-y-2">
+            <div className="p-3 bg-primary/10 rounded-full">
+              <Target className="h-6 w-6 text-primary" />
+            </div>
+            <h3 className="text-2xl font-bold tracking-tight">{leadStats.success}</h3>
+            <p className="text-sm text-muted-foreground font-medium">Leads Capturados (Total)</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border shadow-elevation">
+          <CardContent className="p-6 flex flex-col items-center justify-center text-center space-y-2">
+            <div className="p-3 bg-amber-500/10 rounded-full">
+              <AlertTriangle className="h-6 w-6 text-amber-600" />
+            </div>
+            <h3 className="text-2xl font-bold tracking-tight">{leadStats.errors}</h3>
+            <p className="text-sm text-muted-foreground font-medium">Falhas Registradas</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border shadow-elevation">
+          <CardContent className="p-6 flex flex-col items-center justify-center text-center space-y-2">
+            <div
+              className={cn(
+                'p-3 rounded-full',
+                successRatio >= 90
+                  ? 'bg-green-500/10'
+                  : successRatio >= 70
+                    ? 'bg-amber-500/10'
+                    : 'bg-destructive/10',
+              )}
+            >
+              <TrendingUp
+                className={cn(
+                  'h-6 w-6',
+                  successRatio >= 90
+                    ? 'text-green-600'
+                    : successRatio >= 70
+                      ? 'text-amber-600'
+                      : 'text-destructive',
+                )}
+              />
+            </div>
+            <h3
+              className={cn(
+                'text-2xl font-bold tracking-tight',
+                successRatio >= 90
+                  ? 'text-green-600'
+                  : successRatio >= 70
+                    ? 'text-amber-600'
+                    : 'text-destructive',
+              )}
+            >
+              {successRatio}%
+            </h3>
+            <p className="text-sm text-muted-foreground font-medium">
+              Taxa de Sucesso (Capture Rate)
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Diagnóstico */}
       <Card className="border-border shadow-elevation">
         <div className="h-1 bg-green-500 w-full rounded-t-xl"></div>
         <CardHeader className="bg-muted/10 pb-4 border-b">
@@ -317,7 +444,7 @@ export function DiagnosticCenter() {
                 ) : (
                   <ShieldCheck className="h-4 w-4" />
                 )}
-                {isRunning ? 'Verificando...' : 'Executar Diagnóstico Completo'}
+                {isRunning ? 'Verificando...' : 'Executar Diagnóstico'}
               </Button>
             </div>
           </div>
@@ -396,50 +523,81 @@ export function DiagnosticCenter() {
         </CardContent>
       </Card>
 
+      {/* Logs Table */}
       <Card className="border-border shadow-elevation">
         <CardHeader className="bg-muted/10 pb-4 border-b">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-secondary/10 rounded-xl">
-              <Activity className="h-6 w-6 text-secondary" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-secondary/10 rounded-xl">
+                <Activity className="h-6 w-6 text-secondary" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Logs Recentes do Sistema</CardTitle>
+                <CardDescription>
+                  Histórico de eventos e erros recentes para troubleshooting.
+                </CardDescription>
+              </div>
             </div>
-            <div>
-              <CardTitle className="text-xl">Logs Recentes do Sistema</CardTitle>
-              <CardDescription>
-                Histórico de eventos e erros recentes para troubleshooting.
-              </CardDescription>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar logs..."
+                className="pl-9 h-9"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          <div className="rounded-md border">
+          <div className="rounded-md border max-h-[600px] overflow-auto">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/50 sticky top-0 z-10">
                 <TableRow>
-                  <TableHead className="w-[120px]">Tipo</TableHead>
-                  <TableHead className="w-[160px]">Data/Hora</TableHead>
-                  <TableHead className="max-w-[250px]">Mensagem</TableHead>
-                  <TableHead className="max-w-[250px]">Detalhes</TableHead>
+                  <TableHead
+                    className="w-[140px] cursor-pointer hover:bg-muted/80 transition-colors select-none"
+                    onClick={() => handleSort('type')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Tipo <ArrowUpDown className="h-3 w-3" />
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="w-[160px] cursor-pointer hover:bg-muted/80 transition-colors select-none"
+                    onClick={() => handleSort('created')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Data/Hora <ArrowUpDown className="h-3 w-3" />
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="min-w-[200px] cursor-pointer hover:bg-muted/80 transition-colors select-none"
+                    onClick={() => handleSort('message')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Mensagem / Status <ArrowUpDown className="h-3 w-3" />
+                    </div>
+                  </TableHead>
+                  <TableHead className="min-w-[200px]">Detalhes</TableHead>
                   <TableHead className="text-right w-[100px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentLogs.length === 0 ? (
+                {filteredAndSortedLogs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground h-24">
-                      Nenhum log recente encontrado.
+                      Nenhum log encontrado para esta busca.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  recentLogs.map((log) => (
+                  filteredAndSortedLogs.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell>
                         <Badge
                           variant="outline"
                           className={cn(
-                            'text-[10px] h-5',
-                            log.type === 'error'
-                              ? 'bg-destructive/10 text-destructive border-destructive/20'
-                              : 'bg-muted text-muted-foreground',
+                            'text-[10px] h-6 px-2 whitespace-nowrap',
+                            getLogBadgeColor(log.type),
                           )}
                         >
                           {log.type.toUpperCase()}
