@@ -375,13 +375,15 @@ export default function Settings() {
       }
 
       let status = 'error'
+      const errorMsgLower = errorMsg.toLowerCase()
       if (
-        errorMsg.includes('permission') ||
-        errorMsg.includes('100') ||
-        errorMsg.includes('190') ||
-        errorMsg.includes('does not exist')
+        errorMsgLower.includes('permission') ||
+        errorMsgLower.includes('100') ||
+        errorMsgLower.includes('does not exist')
       ) {
-        status = 'permission_denied'
+        status = 'missing_permission'
+      } else if (errorMsgLower.includes('190')) {
+        status = 'expired'
       }
       if (user?.id) {
         await pb.collection('users').update(user.id, {
@@ -392,9 +394,12 @@ export default function Settings() {
       await pb.collection('users').authRefresh()
 
       toast({
-        title: 'Erro de Conexão com o Meta',
-        description: `Falha na validação: ${errorMsg}. Verifique seu token e ID do Pixel.`,
-        variant: 'default',
+        title:
+          status === 'missing_permission'
+            ? 'Permissões Insuficientes'
+            : 'Erro de Conexão com o Meta',
+        description: `${errorMsg}`,
+        variant: status === 'missing_permission' ? 'default' : 'destructive',
       })
     } finally {
       setIsTestingConnection(false)
@@ -417,11 +422,12 @@ export default function Settings() {
   } else if (
     metaTokenStatus === 'error: permission_denied' ||
     metaTokenStatus === 'invalid_permission' ||
-    metaTokenStatus === 'permission_denied'
+    metaTokenStatus === 'permission_denied' ||
+    metaTokenStatus === 'missing_permission'
   ) {
-    connectionBadgeText = 'Erro de Permissão/ID'
+    connectionBadgeText = 'Permissões Insuficientes / Erro de ID'
     connectionBadgeColor =
-      'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
+      'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/20 border'
   } else if (
     metaTokenStatus === 'invalid' ||
     metaTokenStatus === 'invalid_oauth' ||
@@ -634,18 +640,35 @@ export default function Settings() {
               {metaTokenStatus !== 'active' &&
                 metaTokenStatus !== 'valid' &&
                 metaTokenStatus !== 'untested' && (
-                  <div className="flex items-center gap-2 mt-1 mb-2 bg-destructive/10 text-destructive text-xs p-2 rounded-md border border-destructive/20">
-                    <AlertTriangle className="h-4 w-4 shrink-0" />
-                    <span>
-                      Erro detectado.{' '}
-                      <button
-                        type="button"
-                        onClick={() => document.getElementById('meta-capi-token')?.focus()}
-                        className="underline font-semibold hover:text-destructive/80"
-                      >
-                        Corrigir Conexão
-                      </button>
-                    </span>
+                  <div
+                    className={cn(
+                      'flex items-start gap-2 mt-1 mb-2 text-xs p-2.5 rounded-md border',
+                      metaTokenStatus === 'missing_permission' ||
+                        metaTokenStatus === 'permission_denied' ||
+                        metaTokenStatus === 'error: permission_denied'
+                        ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                        : 'bg-destructive/10 text-destructive border-destructive/20',
+                    )}
+                  >
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div className="flex flex-col gap-1">
+                      <span className="font-semibold">
+                        {metaTokenStatus === 'missing_permission' ||
+                        metaTokenStatus === 'permission_denied' ||
+                        metaTokenStatus === 'error: permission_denied'
+                          ? 'Permissões Insuficientes. O token não tem escopo necessário para acessar este Pixel.'
+                          : 'Erro detectado na conexão com o Meta.'}
+                      </span>
+                      <span>
+                        <button
+                          type="button"
+                          onClick={() => document.getElementById('meta-capi-token')?.focus()}
+                          className="underline font-medium hover:opacity-80"
+                        >
+                          Revisar Token CAPI e Pixel ID
+                        </button>
+                      </span>
+                    </div>
                   </div>
                 )}
               <div className="relative">

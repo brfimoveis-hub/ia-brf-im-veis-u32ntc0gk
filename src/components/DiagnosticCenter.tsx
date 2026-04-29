@@ -212,19 +212,20 @@ export function DiagnosticCenter() {
 
         let finalMessage = `${metaSuccesses}/${testCount} handshakes bem-sucedidos com a API do Meta. Status: Ativo.`
         if (metaSuccesses < testCount) {
+          const lastErrorMsgLower = lastErrorMsg.toLowerCase()
           if (
-            lastErrorMsg.includes('Permissão/ID Meta') ||
-            lastErrorMsg.includes('Code: 100') ||
-            lastErrorMsg.includes('permission') ||
-            lastErrorMsg.includes('does not exist')
+            lastErrorMsgLower.includes('permissão/id meta') ||
+            lastErrorMsgLower.includes('code: 100') ||
+            lastErrorMsgLower.includes('permission') ||
+            lastErrorMsgLower.includes('does not exist')
           ) {
-            finalMessage = `Erro de Permissão/ID Meta: Verifique se o Pixel ID existe e se o Token possui escopo de acesso. ${lastErrorMsg}`
+            finalMessage = `Permissões Insuficientes / ID Inválido: O token pode não ter o escopo necessário ou o Pixel ID está incorreto. Detalhe: ${lastErrorMsg}`
           } else if (
-            lastErrorMsg.includes('invalid oauth access token data') ||
-            lastErrorMsg.includes('autenticação') ||
-            lastErrorMsg.includes('Token CAPI') ||
-            lastErrorMsg.includes('Token inválido') ||
-            lastErrorMsg.includes('Code: 190')
+            lastErrorMsgLower.includes('invalid oauth access token data') ||
+            lastErrorMsgLower.includes('autenticação') ||
+            lastErrorMsgLower.includes('token capi') ||
+            lastErrorMsgLower.includes('token inválido') ||
+            lastErrorMsgLower.includes('code: 190')
           ) {
             finalMessage = `Erro de autenticação com o Meta: Token inválido ou expirado. Detalhe: ${lastErrorMsg}`
           } else {

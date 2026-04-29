@@ -58,7 +58,7 @@ routerAdd(
           errorPayload.error.code === 100 ||
           errorPayload.error.error_subcode === 33 ||
           String(errorPayload.error.message).includes('does not exist') ||
-          String(errorPayload.error.message).includes('permission')
+          String(errorPayload.error.message).toLowerCase().includes('permission')
         ) {
           isPermissionError = true
         }
@@ -67,7 +67,7 @@ routerAdd(
       if (user) {
         user.set(
           'meta_token_status',
-          isOAuthError ? 'expired' : isPermissionError ? 'error: permission_denied' : 'invalid',
+          isOAuthError ? 'expired' : isPermissionError ? 'missing_permission' : 'invalid',
         )
         user.set('meta_last_validated', now)
         $app.save(user)
@@ -94,10 +94,10 @@ routerAdd(
           msg.includes('does not exist') ||
           (errorPayload.error && errorPayload.error.code === 100) ||
           (errorPayload.error && errorPayload.error.error_subcode === 33) ||
-          msg.includes('Missing Permissions') ||
-          msg.includes('permission')
+          msg.toLowerCase().includes('missing permission') ||
+          msg.toLowerCase().includes('permission')
         ) {
-          errorMessage = `Erro de Permissão/ID Meta: O Pixel ID não existe ou o token CAPI não tem permissão para acessá-lo. Código: ${errorPayload.error.code}`
+          errorMessage = `Erro de Permissão/ID Meta: O Pixel ID não existe ou o token CAPI não tem permissão para acessá-lo. Detalhe do Meta: ${msg} (Código: ${errorPayload.error.code})`
         } else if (
           msg.includes('Invalid OAuth access token') ||
           msg.includes('invalid oauth access token data') ||
