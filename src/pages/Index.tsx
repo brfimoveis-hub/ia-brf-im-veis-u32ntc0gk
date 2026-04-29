@@ -283,12 +283,14 @@ export default function Index() {
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            ) : user?.meta_token_status === 'active' && isLastValidatedRecent ? (
+            ) : (user?.meta_token_status === 'active' || user?.meta_token_status === 'Connected') &&
+              isLastValidatedRecent ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Ativo
               </div>
-            ) : user?.meta_token_status === 'active' && !isLastValidatedRecent ? (
+            ) : (user?.meta_token_status === 'active' || user?.meta_token_status === 'Connected') &&
+              !isLastValidatedRecent ? (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -369,12 +371,14 @@ export default function Index() {
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            ) : user?.meta_token_status === 'active' && isLastValidatedRecent ? (
+            ) : (user?.meta_token_status === 'active' || user?.meta_token_status === 'Connected') &&
+              isLastValidatedRecent ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Ativo
               </div>
-            ) : user?.meta_token_status === 'active' && !isLastValidatedRecent ? (
+            ) : (user?.meta_token_status === 'active' || user?.meta_token_status === 'Connected') &&
+              !isLastValidatedRecent ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full">
                 <AlertCircle className="h-3.5 w-3.5" />
                 Aviso

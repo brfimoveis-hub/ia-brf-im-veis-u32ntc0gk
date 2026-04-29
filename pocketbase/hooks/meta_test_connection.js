@@ -30,7 +30,7 @@ routerAdd(
 
     if (res.statusCode === 200) {
       if (user) {
-        user.set('meta_token_status', 'active')
+        user.set('meta_token_status', 'Connected')
         user.set('meta_last_validated', now)
         $app.save(user)
       }
@@ -81,8 +81,8 @@ routerAdd(
       }
 
       try {
-        const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000)
-        const timeString = fiveMinsAgo.toISOString().replace('T', ' ')
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+        const timeString = oneHourAgo.toISOString().replace('T', ' ')
 
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const existingLogs = $app.findRecordsByFilter(

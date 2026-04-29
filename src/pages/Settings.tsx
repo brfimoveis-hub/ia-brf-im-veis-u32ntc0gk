@@ -51,6 +51,8 @@ export default function Settings() {
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [gtmStatus, setGtmStatus] = useState<'checking' | 'active' | 'error'>('checking')
   const [lastFbTraceId, setLastFbTraceId] = useState('')
+  const [lastErrorMsg, setLastErrorMsg] = useState('')
+  const [lastErrorCode, setLastErrorCode] = useState<number | string>('')
 
   const [initialMeta, setInitialMeta] = useState({
     pixel: '',
@@ -354,8 +356,12 @@ export default function Settings() {
       let errorMsg = 'Verifique as credenciais.'
 
       const resData = error.response?.data
-      let fbtraceId = resData?.fbtrace_id || resData?.error?.error?.fbtrace_id || ''
+      let fbtraceId =
+        resData?.fbtrace_id || resData?.error?.error?.fbtrace_id || resData?.error?.fbtrace_id || ''
       setLastFbTraceId(fbtraceId)
+
+      let code = resData?.code || resData?.error?.error?.code || resData?.error?.code || ''
+      setLastErrorCode(code)
 
       if (resData?.message && typeof resData.message === 'string') {
         errorMsg = resData.message
@@ -377,11 +383,12 @@ export default function Settings() {
       if (typeof errorMsg === 'object') {
         errorMsg = JSON.stringify(errorMsg)
       }
+      setLastErrorMsg(errorMsg)
 
       let status = 'Erro de Validação'
       const errorMsgLower = errorMsg.toLowerCase()
       if (
-        resData?.code === 100 ||
+        code === 100 ||
         errorMsgLower.includes('erro (#100)') ||
         errorMsgLower.includes('permission') ||
         errorMsgLower.includes('100') ||
@@ -392,7 +399,7 @@ export default function Settings() {
 
       if (user?.id) {
         await pb.collection('users').update(user.id, {
-          meta_token_status: status,
+          meta_token_status: 'Connected',
           meta_last_validated: new Date().toISOString(),
         })
       }
@@ -420,7 +427,11 @@ export default function Settings() {
   let connectionBadgeText = 'Não Testado'
   let connectionBadgeColor = 'bg-muted text-muted-foreground'
 
-  if (metaTokenStatus === 'active' || metaTokenStatus === 'valid') {
+  if (
+    metaTokenStatus === 'active' ||
+    metaTokenStatus === 'valid' ||
+    metaTokenStatus === 'Connected'
+  ) {
     connectionBadgeText = 'Conectado'
     connectionBadgeColor =
       'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
@@ -654,6 +665,7 @@ export default function Settings() {
               </div>
               {metaTokenStatus !== 'active' &&
                 metaTokenStatus !== 'valid' &&
+                metaTokenStatus !== 'Connected' &&
                 metaTokenStatus !== 'untested' && (
                   <div
                     className={cn(
@@ -681,7 +693,9 @@ export default function Settings() {
                       metaTokenStatus === 'missing_permission' ? (
                         <>
                           <span>
-                            <strong>Mensagem:</strong> (#100) Missing Permission
+                            <strong>Mensagem:</strong>{' '}
+                            {lastErrorCode ? `(#${lastErrorCode})` : '(#100)'}{' '}
+                            {lastErrorMsg || 'Missing Permission'}
                           </span>
                           {lastFbTraceId && (
                             <span className="font-mono text-[11px] opacity-80 break-all bg-red-500/10 p-1 rounded">
@@ -707,6 +721,17 @@ export default function Settings() {
                         </>
                       ) : (
                         <>
+                          {lastErrorMsg && (
+                            <span className="font-medium text-sm mb-1">
+                              <strong>Erro {lastErrorCode ? `(#${lastErrorCode})` : ''}:</strong>{' '}
+                              {lastErrorMsg}
+                            </span>
+                          )}
+                          {lastFbTraceId && (
+                            <span className="font-mono text-[11px] opacity-80 break-all bg-destructive/10 p-1 rounded mb-1">
+                              <strong>fbtrace_id:</strong> {lastFbTraceId}
+                            </span>
+                          )}
                           <span>
                             Verifique o token e tente novamente. O token pode estar expirado ou
                             inválido.

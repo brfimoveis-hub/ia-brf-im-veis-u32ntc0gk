@@ -288,22 +288,46 @@ routerAdd(
         } catch (e) {}
 
         try {
+          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+          const timeString = oneHourAgo.toISOString().replace('T', ' ')
           const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const logRecord = new Record(logsCol)
-          logRecord.set('user_id', user.id)
-          logRecord.set('type', 'remarketing_error')
-          logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
-          logRecord.set(
-            'details',
-            typeof lastError === 'object' ? JSON.stringify(lastError) : String(lastError),
+
+          const existingLogs = $app.findRecordsByFilter(
+            logsCol.id,
+            "user_id = {:userId} && type = 'remarketing_error' && created >= {:time}",
+            '-created',
+            1,
+            0,
+            { userId: user.id, time: timeString },
           )
-          logRecord.set('payload', {
-            eventName,
-            batchSize: batch.length,
-            statusCode: res.statusCode,
-            metaResponse: lastError,
-          })
-          $app.save(logRecord)
+
+          if (!existingLogs || existingLogs.length === 0) {
+            const logRecord = new Record(logsCol)
+            logRecord.set('user_id', user.id)
+            logRecord.set('type', 'remarketing_error')
+            logRecord.set('message', `Erro na API do Meta (Status ${res.statusCode})`)
+            logRecord.set(
+              'details',
+              typeof lastError === 'object' ? JSON.stringify(lastError) : String(lastError),
+            )
+            logRecord.set('payload', {
+              eventName,
+              batchSize: batch.length,
+              statusCode: res.statusCode,
+              metaResponse: lastError,
+              count: 1,
+            })
+            $app.save(logRecord)
+          } else {
+            const logRecord = existingLogs[0]
+            logRecord.set('updated', new Date().toISOString())
+            const currentPayload = logRecord.get('payload') || {}
+            currentPayload.count = (currentPayload.count || 1) + 1
+            currentPayload.metaResponse = lastError
+            currentPayload.statusCode = res.statusCode
+            logRecord.set('payload', currentPayload)
+            $app.save(logRecord)
+          }
         } catch (logErr) {}
       }
     }
