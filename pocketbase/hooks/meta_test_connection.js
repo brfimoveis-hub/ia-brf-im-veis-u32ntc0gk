@@ -18,6 +18,28 @@ routerAdd(
       )
     }
 
+    const user = e.auth
+    const now = new Date().toISOString()
+
+    // 1. Debug Token Request for Scope Deep-Scan
+    const debugRes = $http.send({
+      url: `https://graph.facebook.com/v19.0/debug_token?input_token=${capiToken}&access_token=${capiToken}`,
+      method: 'GET',
+      timeout: 15,
+    })
+
+    let missingScopes = []
+    let isDebugSuccess = debugRes.statusCode === 200
+    let debugData = {}
+
+    if (isDebugSuccess && debugRes.json && debugRes.json.data) {
+      debugData = debugRes.json.data
+      const scopes = debugData.scopes || []
+      const requiredScopes = ['ads_read', 'whatsapp_business_management']
+      missingScopes = requiredScopes.filter((s) => !scopes.includes(s))
+    }
+
+    // 2. Pixel Authorization Test
     const res = $http.send({
       url: `https://graph.facebook.com/v19.0/${pixelId}`,
       method: 'GET',
@@ -28,10 +50,10 @@ routerAdd(
       timeout: 15,
     })
 
-    const user = e.auth
-    const now = new Date().toISOString()
+    const isPixelSuccess = res.statusCode === 200
 
-    if (res.statusCode === 200) {
+    // Evaluate combined success
+    if (isPixelSuccess && missingScopes.length === 0) {
       if (user) {
         user.set('meta_token_status', 'active')
         user.set('meta_last_validated', now)
@@ -44,20 +66,27 @@ routerAdd(
         logRecord.set('type', 'remarketing')
         logRecord.set('message', 'Teste de conexão Meta CAPI e Pixel Browser validado com sucesso.')
         logRecord.set('details', 'Handshake OK')
-        logRecord.set('payload', { statusCode: res.statusCode, response: res.json })
+        logRecord.set('payload', { debugToken: debugData, pixelResponse: res.json })
         $app.save(logRecord)
       } catch (logErr) {}
 
-      return e.json(200, { success: true, data: res.json })
+      return e.json(200, {
+        success: true,
+        message: 'Token and Pixel validated successfully',
+        missing_scopes: [],
+        fbtrace_id: (res.json && res.json.fbtrace_id) || '',
+      })
     } else {
-      const errorPayload = res.json || res.raw || 'Erro desconhecido'
+      const errorPayload = !isPixelSuccess
+        ? res.json || res.raw || 'Erro desconhecido'
+        : debugRes.json || debugRes.raw || 'Erro no debug_token'
 
-      let isPermissionError = false
+      let isPermissionError = missingScopes.length > 0
       let isOAuthError = false
       let fbtraceId = ''
       let errorCode = null
 
-      if (errorPayload && errorPayload.error) {
+      if (!isPixelSuccess && errorPayload && errorPayload.error) {
         fbtraceId = errorPayload.error.fbtrace_id || ''
         errorCode = errorPayload.error.code
         if (errorCode === 190) {
@@ -69,6 +98,12 @@ routerAdd(
           String(errorPayload.error.message).toLowerCase().includes('permission')
         ) {
           isPermissionError = true
+        }
+      } else if (!isDebugSuccess && debugRes.json && debugRes.json.error) {
+        fbtraceId = debugRes.json.error.fbtrace_id || ''
+        errorCode = debugRes.json.error.code
+        if (errorCode === 190) {
+          isOAuthError = true
         }
       }
 
@@ -86,7 +121,17 @@ routerAdd(
       }
 
       let errorMessage = 'Falha na autenticação com o Meta. O token pode ser inválido ou expirado.'
-      if (errorPayload && errorPayload.error && errorPayload.error.message) {
+
+      if (missingScopes.length > 0) {
+        errorMessage =
+          'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
+        errorCode = 100
+      } else if (
+        !isPixelSuccess &&
+        errorPayload &&
+        errorPayload.error &&
+        errorPayload.error.message
+      ) {
         const msg = errorPayload.error.message
         if (errorCode === 100) {
           errorMessage =
@@ -115,50 +160,29 @@ routerAdd(
       }
 
       try {
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
-        const timeString = oneHourAgo.toISOString().replace('T', ' ')
-
         const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const existingLogs = $app.findRecordsByFilter(
-          logsCol.id,
-          "user_id = {:userId} && type = 'error' && message = 'Falha na validação do Token CAPI' && created >= {:time}",
-          '-created',
-          1,
-          0,
-          { userId: e.auth.id, time: timeString },
-        )
-
-        if (!existingLogs || existingLogs.length === 0) {
-          const logRecord = new Record(logsCol)
-          logRecord.set('user_id', e.auth.id)
-          logRecord.set('type', 'error')
-          logRecord.set('message', 'Falha na validação do Token CAPI')
-          logRecord.set('details', errorMessage)
-          logRecord.set('payload', {
-            statusCode: res.statusCode,
-            metaResponse: errorPayload,
-            count: 1,
-            fbtrace_id: fbtraceId,
-          })
-          $app.save(logRecord)
-        } else {
-          const logRecord = existingLogs[0]
-          const currentPayload = logRecord.get('payload') || {}
-          currentPayload.count = (currentPayload.count || 1) + 1
-          currentPayload.metaResponse = errorPayload
-          currentPayload.statusCode = res.statusCode
-          currentPayload.fbtrace_id = fbtraceId
-          logRecord.set('payload', currentPayload)
-          logRecord.set('details', errorMessage)
-          $app.save(logRecord)
-        }
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', e.auth.id)
+        logRecord.set('type', 'error')
+        logRecord.set('message', 'Falha na validação do Token CAPI')
+        logRecord.set('details', errorMessage)
+        logRecord.set('payload', {
+          statusCode: isPixelSuccess ? debugRes.statusCode : res.statusCode,
+          metaResponse: errorPayload,
+          debugResponse: debugData,
+          missingScopes: missingScopes,
+          fbtrace_id: fbtraceId,
+        })
+        $app.save(logRecord)
       } catch (logErr) {}
 
       return e.json(400, {
+        success: false,
         message: errorMessage,
         error: errorPayload,
         fbtrace_id: fbtraceId,
         code: errorCode,
+        missing_scopes: missingScopes,
       })
     }
   },

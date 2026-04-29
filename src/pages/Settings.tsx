@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,7 @@ import {
   EyeOff,
   Activity,
   AlertTriangle,
+  AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -53,6 +55,7 @@ export default function Settings() {
   const [lastFbTraceId, setLastFbTraceId] = useState('')
   const [lastErrorMsg, setLastErrorMsg] = useState('')
   const [lastErrorCode, setLastErrorCode] = useState<number | string>('')
+  const [missingScopes, setMissingScopes] = useState<string[]>([])
 
   const [initialMeta, setInitialMeta] = useState({
     pixel: '',
@@ -283,6 +286,7 @@ export default function Settings() {
             headers: { 'Content-Type': 'application/json' },
           })
           await pb.collection('users').authRefresh()
+          setMissingScopes([])
           toast({
             title: 'Conexão bem-sucedida',
             description:
@@ -294,6 +298,7 @@ export default function Settings() {
           setLastFbTraceId(resData.fbtrace_id || '')
           setLastErrorCode(resData.code || '')
           setLastErrorMsg(resData.message || 'Verifique as credenciais.')
+          setMissingScopes(resData.missing_scopes || [])
 
           toast({
             title: 'Configurações salvas, mas falha no teste',
@@ -345,6 +350,7 @@ export default function Settings() {
         }),
         headers: { 'Content-Type': 'application/json' },
       })
+      setMissingScopes([])
       // O hook de backend já atualiza o user no banco com status 'active'
       await pb.collection('users').authRefresh()
       toast({
@@ -358,15 +364,18 @@ export default function Settings() {
       let errorMsg = resData.message || 'Verifique as credenciais.'
       let fbtraceId = resData.fbtrace_id || ''
       let code = resData.code || ''
+      let mScopes = resData.missing_scopes || []
 
       setLastFbTraceId(fbtraceId)
       setLastErrorCode(code)
       setLastErrorMsg(errorMsg)
+      setMissingScopes(mScopes)
 
       // O hook de backend já atualiza o status de erro no banco
       await pb.collection('users').authRefresh()
 
-      const isPermissionError = code === 100 || errorMsg.includes('Permissão Ausente')
+      const isPermissionError =
+        code === 100 || errorMsg.includes('Permissão Ausente') || mScopes.length > 0
 
       toast({
         title: isPermissionError ? 'Erro (#100): Permissão Ausente' : 'Erro de Conexão com o Meta',
@@ -627,27 +636,19 @@ export default function Settings() {
                 metaTokenStatus !== 'valid' &&
                 metaTokenStatus !== 'Connected' &&
                 metaTokenStatus !== 'untested' && (
-                  <div
-                    className={cn(
-                      'flex items-start gap-2 mt-1 mb-3 text-xs p-3 rounded-md border flex-col',
-                      metaTokenStatus === 'Permissões Insuficientes' ||
-                        metaTokenStatus === 'permissions_error' ||
-                        metaTokenStatus === 'missing_permission'
-                        ? 'bg-red-500/10 text-red-700 border-red-500/30'
-                        : 'bg-destructive/10 text-destructive border-destructive/30',
-                    )}
+                  <Alert
+                    variant="destructive"
+                    className="mt-1 mb-3 bg-destructive/5 border-destructive/20 text-destructive"
                   >
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      <span className="font-semibold text-sm">
-                        {metaTokenStatus === 'Permissões Insuficientes' ||
-                        metaTokenStatus === 'permissions_error' ||
-                        metaTokenStatus === 'missing_permission'
-                          ? 'Erro de Permissão'
-                          : 'Erro de Validação'}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-2 ml-6 w-full pr-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>
+                      {metaTokenStatus === 'Permissões Insuficientes' ||
+                      metaTokenStatus === 'permissions_error' ||
+                      metaTokenStatus === 'missing_permission'
+                        ? 'Erro de Permissão'
+                        : 'Erro de Validação'}
+                    </AlertTitle>
+                    <AlertDescription className="mt-2 flex flex-col gap-2">
                       {metaTokenStatus === 'Permissões Insuficientes' ||
                       metaTokenStatus === 'permissions_error' ||
                       metaTokenStatus === 'missing_permission' ? (
@@ -657,24 +658,32 @@ export default function Settings() {
                             {lastErrorMsg ||
                               'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'}
                           </span>
+                          {missingScopes.length > 0 && (
+                            <div className="bg-destructive/10 p-2 rounded-md mt-1 border border-destructive/20">
+                              <strong>Escopos Ausentes:</strong>
+                              <ul className="list-disc list-inside ml-4 mt-1">
+                                {missingScopes.map((scope) => (
+                                  <li key={scope} className="font-mono text-xs">
+                                    {scope}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                           {lastFbTraceId && (
-                            <span className="font-mono text-[11px] opacity-80 break-all bg-red-500/10 p-1 rounded">
+                            <span className="font-mono text-[11px] opacity-80 break-all bg-destructive/10 p-1 rounded inline-block w-fit">
                               <strong>fbtrace_id:</strong> {lastFbTraceId}
                             </span>
                           )}
-                          <p className="mt-0.5 text-red-700/90 leading-relaxed">
-                            O token informado não possui os escopos necessários (
-                            <code className="bg-red-500/10 px-1 py-0.5 rounded">ads_read</code>,{' '}
-                            <code className="bg-red-500/10 px-1 py-0.5 rounded">
-                              whatsapp_business_management
-                            </code>
-                            ) ou você não tem acesso ao Pixel informado.
+                          <p className="mt-0.5 leading-relaxed text-sm opacity-90">
+                            O token informado não possui os escopos necessários ou você não tem
+                            acesso ao Pixel informado.
                           </p>
                           <a
                             href="https://developers.facebook.com/docs/marketing-api/error-reference"
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-semibold ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-red-600 text-white hover:bg-red-700 h-8 px-3 py-2 mt-1 w-fit shadow-sm"
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-semibold ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground hover:bg-destructive/90 h-8 px-3 py-2 mt-1 w-fit shadow-sm"
                           >
                             Check Permissions
                           </a>
@@ -688,7 +697,7 @@ export default function Settings() {
                             </span>
                           )}
                           {lastFbTraceId && (
-                            <span className="font-mono text-[11px] opacity-80 break-all bg-destructive/10 p-1 rounded mb-1">
+                            <span className="font-mono text-[11px] opacity-80 break-all bg-destructive/10 p-1 rounded inline-block w-fit mb-1">
                               <strong>fbtrace_id:</strong> {lastFbTraceId}
                             </span>
                           )}
@@ -707,8 +716,8 @@ export default function Settings() {
                           </span>
                         </>
                       )}
-                    </div>
-                  </div>
+                    </AlertDescription>
+                  </Alert>
                 )}
               <div className="relative">
                 {' '}
