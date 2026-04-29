@@ -42,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { DiagnosticCenter } from '@/components/DiagnosticCenter'
 
 export default function Settings() {
   const { toast } = useToast()
@@ -987,6 +988,8 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        <DiagnosticCenter />
 
         {/* Integrations & API */}
         <Card className="border-border shadow-elevation">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useRealtime } from '@/hooks/use-realtime'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -25,17 +26,23 @@ export function DiagnosticCenter() {
   const { user } = useAuth()
   const [recentLogs, setRecentLogs] = useState<SystemLog[]>([])
 
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const res = await getSystemLogs(1, 10)
-        setRecentLogs(res.items)
-      } catch {
-        /* intentionally ignored */
-      }
+  const fetchLogs = async () => {
+    try {
+      const res = await getSystemLogs(1, 10)
+      setRecentLogs(res.items)
+    } catch {
+      /* intentionally ignored */
     }
+  }
+
+  useEffect(() => {
     fetchLogs()
   }, [])
+
+  useRealtime('system_logs', () => {
+    fetchLogs()
+  })
+
   const { toast } = useToast()
   const [isRunning, setIsRunning] = useState(false)
 
@@ -383,7 +390,7 @@ export function DiagnosticCenter() {
                         {log.type.toUpperCase()}
                       </Badge>
                       <span className="text-xs text-muted-foreground font-mono">
-                        {new Date(log.created).toLocaleString()}
+                        {new Date(log.created).toLocaleString('pt-BR')}
                       </span>
                     </div>
                     <p className="text-sm font-medium text-secondary line-clamp-2">{log.message}</p>
