@@ -24,22 +24,27 @@ import { cn } from '@/lib/utils'
 export function DiagnosticCenter() {
   const { user } = useAuth()
   const [recentLogs, setRecentLogs] = useState<SystemLog[]>([])
-  const [gtmEvents, setGtmEvents] = useState<any[]>([])
+  const [gtmEvents, setGtmEvents] = useState<{ event: any; timestamp: number }[]>([])
 
   useEffect(() => {
     // Intercept GTM dataLayer for real-time diagnostic view
     const win = window as any
     win.dataLayer = win.dataLayer || []
 
+    const mapEvent = (e: any) => ({
+      event: e,
+      timestamp: Date.now(),
+    })
+
     // Initial events already in dataLayer
-    setGtmEvents([...win.dataLayer])
+    setGtmEvents(win.dataLayer.map(mapEvent).slice(-10))
 
     const originalPush = win.dataLayer.push.bind(win.dataLayer)
     win.dataLayer.push = function (...args: any[]) {
       try {
         const event = args[0]
         if (event && typeof event === 'object') {
-          setGtmEvents((prev) => [...prev, event].slice(-15))
+          setGtmEvents((prev) => [...prev, { event, timestamp: Date.now() }].slice(-10))
         }
       } catch (e) {
         console.error('Erro ao interceptar dataLayer', e)
@@ -111,14 +116,15 @@ export function DiagnosticCenter() {
       if (!isGtmFunctional) {
         newResults.push({
           name: 'Google Tag Manager',
-          status: 'error',
-          message: 'A TAG DO GOOGLE NÃO FOI DETECTADA. Verifique a instalação do script GTM.',
+          status: 'warning',
+          message:
+            'Script do GTM não detectado. Pode estar sendo bloqueado por um Ad Blocker. O sistema continuará funcionando normalmente.',
           payload: { error: `${gtmId} not found in DOM`, hasGtmScript, isGtmObjectPresent },
         })
         await createSystemLog({
-          type: 'error',
-          message: 'Falha na detecção do GTM',
-          details: 'GTM_DETECTION_FAILED',
+          type: 'warning',
+          message: 'Script do GTM não detectado (Possível AdBlock)',
+          details: 'GTM_DETECTION_WARNING',
           payload: { error: `${gtmId} not found in DOM` },
         }).catch(() => {})
       } else {
@@ -410,29 +416,34 @@ export function DiagnosticCenter() {
               {gtmEvents
                 .slice()
                 .reverse()
-                .map((ev, i) => (
-                  <div
-                    key={i}
-                    className="flex flex-col gap-2 p-3 border rounded-lg bg-card shadow-sm"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className="bg-blue-500/10 text-blue-600 border-blue-500/20 font-mono text-xs"
-                        >
-                          {ev.event || 'Mensagem (Sem Evento)'}
-                        </Badge>
-                        {ev.path && (
-                          <span className="text-xs text-muted-foreground">Path: {ev.path}</span>
-                        )}
+                .map((item, i) => {
+                  const ev = item.event
+                  const timeStr = new Date(item.timestamp).toLocaleTimeString()
+                  return (
+                    <div
+                      key={i}
+                      className="flex flex-col gap-2 p-3 border rounded-lg bg-card shadow-sm"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="bg-blue-500/10 text-blue-600 border-blue-500/20 font-mono text-xs"
+                          >
+                            {ev.event || 'Mensagem (Sem Evento)'}
+                          </Badge>
+                          {ev.path && (
+                            <span className="text-xs text-muted-foreground">Path: {ev.path}</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground font-mono">{timeStr}</span>
                       </div>
+                      <pre className="text-[10px] text-muted-foreground bg-muted/50 p-2 rounded-md overflow-x-auto whitespace-pre-wrap">
+                        {JSON.stringify(ev, null, 2)}
+                      </pre>
                     </div>
-                    <pre className="text-[10px] text-muted-foreground bg-muted/50 p-2 rounded-md overflow-x-auto whitespace-pre-wrap">
-                      {JSON.stringify(ev, null, 2)}
-                    </pre>
-                  </div>
-                ))}
+                  )
+                })}
             </div>
           )}
         </CardContent>

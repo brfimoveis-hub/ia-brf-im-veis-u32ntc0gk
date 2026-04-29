@@ -17,6 +17,9 @@ export function GTMTracker() {
       window.dataLayer.push({
         event: 'gtm_spa_init',
         linker_domains: ['ia-uazapi-6d79e.goskip.app', 'ia-uazapi-6d79e--preview.goskip.app'],
+        linker: {
+          domains: ['ia-uazapi-6d79e.goskip.app', 'ia-uazapi-6d79e--preview.goskip.app'],
+        },
       })
     } catch (error) {
       console.error('GTM Init Error:', error)

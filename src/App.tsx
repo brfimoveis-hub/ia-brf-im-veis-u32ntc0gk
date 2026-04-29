@@ -9,6 +9,7 @@ import { MetaPixel } from '@/components/MetaPixel'
 import { GTMTracker } from '@/components/GTMTracker'
 import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 // Break circular dependencies completely by using lazy-loaded routes
 const Index = lazy(() => import('./pages/Index'))
@@ -37,8 +38,10 @@ const ProtectedRoute = () => {
 
 const Root = () => (
   <>
-    <GTMTracker />
-    <MetaPixel />
+    <ErrorBoundary fallback={null}>
+      <GTMTracker />
+      <MetaPixel />
+    </ErrorBoundary>
     <Outlet />
   </>
 )

@@ -439,14 +439,14 @@ export default function Settings() {
     gtmStatus === 'checking'
       ? 'Verificando...'
       : gtmStatus === 'active'
-        ? 'Tag detectada (Verde)'
-        : 'A TAG DO GOOGLE NÃO FOI DETECTADA (Vermelho)'
+        ? 'Tag GTM Detectada e Ativa'
+        : 'Tag GTM Não Detectada (Possível AdBlock)'
   const gtmStatusColor =
     gtmStatus === 'checking'
       ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
       : gtmStatus === 'active'
         ? 'bg-green-500/10 text-green-600 border-green-500/20'
-        : 'bg-destructive/10 text-destructive border-destructive/20'
+        : 'bg-amber-500/10 text-amber-600 border-amber-500/20'
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
