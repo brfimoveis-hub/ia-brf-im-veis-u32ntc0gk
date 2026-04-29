@@ -29,6 +29,14 @@ import {
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { getCadences } from '@/services/cadences'
 import {
   createSystemLog,
@@ -403,67 +411,83 @@ export function DiagnosticCenter() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {recentLogs.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Nenhum log recente encontrado.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {recentLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between p-3 border rounded-lg bg-card shadow-sm"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-[10px] h-5',
-                          log.type === 'error'
-                            ? 'bg-destructive/10 text-destructive border-destructive/20'
-                            : 'bg-muted text-muted-foreground',
-                        )}
-                      >
-                        {log.type.toUpperCase()}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground font-mono">
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[120px]">Tipo</TableHead>
+                  <TableHead className="w-[160px]">Data/Hora</TableHead>
+                  <TableHead className="max-w-[250px]">Mensagem</TableHead>
+                  <TableHead className="max-w-[250px]">Detalhes</TableHead>
+                  <TableHead className="text-right w-[100px]">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentLogs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground h-24">
+                      Nenhum log recente encontrado.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  recentLogs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-[10px] h-5',
+                            log.type === 'error'
+                              ? 'bg-destructive/10 text-destructive border-destructive/20'
+                              : 'bg-muted text-muted-foreground',
+                          )}
+                        >
+                          {log.type.toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">
                         {new Date(log.created).toLocaleString('pt-BR')}
-                      </span>
-                    </div>
-                    <p className="text-sm font-medium text-secondary line-clamp-2">{log.message}</p>
-                    {log.details && (
-                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                        {log.details}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 mt-2 sm:mt-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0 gap-1.5 h-8 text-xs"
-                      onClick={() => handleCopyError(log.message, log.payload)}
-                    >
-                      <Copy className="h-3 w-3" />
-                      <span className="hidden sm:inline">Copiar Erro</span>
-                      <span className="sm:hidden">Copiar</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-                      onClick={() => setLogToDelete(log.id)}
-                      title="Excluir log"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Excluir log</span>
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                      </TableCell>
+                      <TableCell className="text-sm font-medium text-secondary">
+                        <div className="line-clamp-2" title={log.message}>
+                          {log.message}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        <div className="line-clamp-2" title={log.details}>
+                          {log.details || '-'}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleCopyError(log.message, log.payload)}
+                            title="Copiar Detalhes"
+                          >
+                            <Copy className="h-4 w-4" />
+                            <span className="sr-only">Copiar Detalhes</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setLogToDelete(log.id)}
+                            title="Excluir log"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Excluir log</span>
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
