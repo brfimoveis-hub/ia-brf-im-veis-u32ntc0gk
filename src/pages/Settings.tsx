@@ -49,10 +49,11 @@ export default function Settings() {
   const { user } = useAuth()
   const [isSaving, setIsSaving] = useState(false)
   const [isSavingMeta, setIsSavingMeta] = useState(false)
+  const [isSavingAI, setIsSavingAI] = useState(false)
 
-  const [prompt, setPrompt] = useState(
-    'Você é um assistente virtual de vendas especializado em produtos SaaS. Seja sempre educado, objetivo e utilize emojis ocasionalmente.',
-  )
+  const [prompt, setPrompt] = useState('')
+  const [aiName, setAiName] = useState('')
+  const [aiVoiceId, setAiVoiceId] = useState('')
 
   // Meta Ads State
   const [metaPixelId, setMetaPixelId] = useState('')
@@ -75,6 +76,8 @@ export default function Settings() {
     test: '',
     tags: '[]',
     prompt: '',
+    aiName: '',
+    aiVoiceId: '',
     campaignPhone: '',
   })
   const [isInitialized, setIsInitialized] = useState(false)
@@ -173,11 +176,17 @@ export default function Settings() {
       setMetaTagsList(user.meta_tags_list || [])
       if (user.ai_instructions) setPrompt(user.ai_instructions)
 
+      setPrompt(user.ai_instructions || '')
+      setAiName(user.ai_name || '')
+      setAiVoiceId(user.ai_voice_id || '')
+
       setInitialMeta({
         pixel: user.meta_pixel_id || '',
         test: user.meta_test_event_code || '',
         tags: JSON.stringify(user.meta_tags_list || []),
         prompt: user.ai_instructions || '',
+        aiName: user.ai_name || '',
+        aiVoiceId: user.ai_voice_id || '',
         campaignPhone: user.meta_campaign_phone || '',
       })
       setIsInitialized(true)
@@ -189,7 +198,9 @@ export default function Settings() {
     metaTestEventCode !== initialMeta.test ||
     metaCampaignPhone !== initialMeta.campaignPhone ||
     JSON.stringify(metaTagsList) !== initialMeta.tags ||
-    prompt !== initialMeta.prompt
+    prompt !== initialMeta.prompt ||
+    aiName !== initialMeta.aiName ||
+    aiVoiceId !== initialMeta.aiVoiceId
 
   const shouldBlock = useCallback(
     ({ currentLocation, nextLocation }: any) =>
@@ -248,10 +259,9 @@ export default function Settings() {
         meta_test_event_code: cleanTestCode,
         meta_campaign_phone: cleanCampaignPhone,
         meta_tags_list: metaTagsList,
-      }
-
-      if (prompt && prompt.trim() !== '') {
-        updateData.ai_instructions = prompt
+        ai_instructions: prompt,
+        ai_name: aiName,
+        ai_voice_id: aiVoiceId,
       }
 
       if (cleanPixelId !== initialMeta.pixel) {
@@ -267,6 +277,8 @@ export default function Settings() {
         test: updatedUser.meta_test_event_code || '',
         tags: JSON.stringify(updatedUser.meta_tags_list || []),
         prompt: updatedUser.ai_instructions || '',
+        aiName: updatedUser.ai_name || '',
+        aiVoiceId: updatedUser.ai_voice_id || '',
         campaignPhone: updatedUser.meta_campaign_phone || '',
       })
 
@@ -277,7 +289,7 @@ export default function Settings() {
       setTimeout(() => {
         setIsSaving(false)
         toast({
-          title: 'Configurações salvas!',
+          title: 'Configurações de IA salvas com sucesso!',
           description: 'As alterações foram aplicadas com sucesso.',
         })
       }, 500)
@@ -288,6 +300,42 @@ export default function Settings() {
         description: 'Verifique os dados e tente novamente.',
         variant: 'destructive',
       })
+    }
+  }
+
+  const handleSaveAI = async () => {
+    setIsSavingAI(true)
+    try {
+      if (!user?.id) throw new Error('Usuário não autenticado')
+
+      const updateData = {
+        ai_instructions: prompt,
+        ai_name: aiName,
+        ai_voice_id: aiVoiceId,
+      }
+
+      const updatedUser = await pb.collection('users').update(user.id, updateData)
+      await pb.collection('users').authRefresh()
+
+      setInitialMeta((prev) => ({
+        ...prev,
+        prompt: updatedUser.ai_instructions || '',
+        aiName: updatedUser.ai_name || '',
+        aiVoiceId: updatedUser.ai_voice_id || '',
+      }))
+
+      toast({
+        title: 'Configurações de IA salvas com sucesso!',
+        description: 'A personalidade e comportamento foram atualizados.',
+      })
+    } catch (error) {
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Não foi possível salvar as configurações de IA. Verifique os dados.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingAI(false)
     }
   }
 
@@ -607,6 +655,32 @@ export default function Settings() {
             </div>
           </CardHeader>
           <CardContent className="pt-6 space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-3">
+                <Label htmlFor="ai-name" className="text-sm font-semibold text-secondary">
+                  Nome da IA
+                </Label>
+                <Input
+                  id="ai-name"
+                  value={aiName}
+                  onChange={(e) => setAiName(e.target.value)}
+                  placeholder="Ex: Bia"
+                  className="bg-muted/30"
+                />
+              </div>
+              <div className="space-y-3">
+                <Label htmlFor="ai-voice" className="text-sm font-semibold text-secondary">
+                  ID da Voz (ElevenLabs, etc)
+                </Label>
+                <Input
+                  id="ai-voice"
+                  value={aiVoiceId}
+                  onChange={(e) => setAiVoiceId(e.target.value)}
+                  placeholder="Ex: pNInz6obpgDQGcFmaJcg"
+                  className="bg-muted/30"
+                />
+              </div>
+            </div>
             <div className="space-y-3">
               <Label htmlFor="system-prompt" className="text-sm font-semibold text-secondary">
                 Prompt do Sistema
@@ -626,6 +700,17 @@ export default function Settings() {
                   que não sabe responder.
                 </p>
               </div>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t mt-4">
+              <Button onClick={handleSaveAI} disabled={isSavingAI} className="gap-2">
+                {isSavingAI ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {isSavingAI ? 'Salvando...' : 'Salvar IA'}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -1021,7 +1106,7 @@ export default function Settings() {
             {isSaving ? (
               <span className="flex items-center gap-2">
                 <span className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></span>
-                Aplicando...
+                Salvando...
               </span>
             ) : (
               <span className="flex items-center gap-2 font-medium">
