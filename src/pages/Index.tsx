@@ -1,552 +1,353 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { Area, AreaChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
-import {
-  MessageCircle,
-  Clock,
-  Users,
-  Zap,
-  RotateCw,
-  Bot,
-  Facebook,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  Copy,
-} from 'lucide-react'
-import { lazy, Suspense, useMemo, useEffect, useState } from 'react'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Skeleton } from '@/components/ui/skeleton'
-import { useAuth } from '@/hooks/use-auth'
-import { cn } from '@/lib/utils'
-import pb from '@/lib/pocketbase/client'
-import { useToast } from '@/hooks/use-toast'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, useMemo } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { getCustomers, Customer } from '@/services/customers'
+import { getSystemLogs, SystemLog } from '@/services/system_logs'
+import { getConversations, Conversation } from '@/services/conversations'
 import { useRealtime } from '@/hooks/use-realtime'
-
-const CadenceRoulette = lazy(() =>
-  import('@/components/CadenceRoulette').then((m) => ({ default: m.CadenceRoulette })),
-)
-
-const DiagnosticCenter = lazy(() =>
-  import('@/components/DiagnosticCenter').then((m) => ({ default: m.DiagnosticCenter })),
-)
-
-const chartData = [
-  { date: 'Seg', messages: 120 },
-  { date: 'Ter', messages: 210 },
-  { date: 'Qua', messages: 180 },
-  { date: 'Qui', messages: 290 },
-  { date: 'Sex', messages: 350 },
-  { date: 'Sáb', messages: 150 },
-  { date: 'Dom', messages: 90 },
-]
-
-const recentEvents = [
-  { id: 1, title: 'IA respondeu a João Silva', time: 'Há 2 min', type: 'msg' },
-  { id: 2, title: 'Novo contato iniciou fluxo', time: 'Há 15 min', type: 'flow' },
-  { id: 3, title: 'IA pausada por operador', time: 'Há 1 hora', type: 'pause' },
-  { id: 4, title: 'Instância reconectada', time: 'Há 3 horas', type: 'system' },
-  { id: 5, title: 'IA respondeu a Maria Oliveira', time: 'Há 4 horas', type: 'msg' },
-]
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell } from 'recharts'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { Loader2, Activity, Users, RefreshCw, AlertCircle } from 'lucide-react'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 export default function Index() {
-  const { toast } = useToast()
-  const { user } = useAuth()
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [logs, setLogs] = useState<SystemLog[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const parsedTags = useMemo(() => {
-    const list = user?.meta_tags_list
-    if (!list) return []
-    if (Array.isArray(list)) return list
-    if (typeof list === 'string') {
-      try {
-        return JSON.parse(list)
-      } catch {
-        return []
-      }
+  const loadData = async () => {
+    try {
+      const [custData, logsData, convData] = await Promise.all([
+        getCustomers(),
+        getSystemLogs(1, 100),
+        getConversations(),
+      ])
+      setCustomers(custData)
+      setLogs(logsData.items)
+      setConversations(convData)
+    } catch (error) {
+      console.error('Error loading dashboard data:', error)
+    } finally {
+      setLoading(false)
     }
-    return []
-  }, [user?.meta_tags_list])
-
-  const isMetaActive = !!user?.meta_pixel_id || parsedTags.length > 0
-  const isCapiActive = !!user?.meta_capi_token
-  const [isValidating, setIsValidating] = useState(false)
-
-  const isLastValidatedRecent = user?.meta_last_validated
-    ? new Date().getTime() - new Date(user.meta_last_validated).getTime() < 24 * 60 * 60 * 1000
-    : false
-
-  useRealtime('users', (e) => {
-    if (e.action === 'update' && e.record.id === user?.id) {
-      if (e.record.meta_token_status !== user?.meta_token_status) {
-        pb.collection('users')
-          .authRefresh()
-          .catch(() => {})
-      }
-    }
-  })
-
-  useEffect(() => {
-    if (user?.meta_capi_token && user.meta_token_status === 'untested') {
-      setIsValidating(true)
-      pb.send('/backend/v1/meta-test-connection', {
-        method: 'POST',
-        body: JSON.stringify({
-          pixelId: user.meta_pixel_id || '1522162279584545',
-          capiToken: user.meta_capi_token,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      })
-        .then(() =>
-          pb
-            .collection('users')
-            .authRefresh()
-            .catch(() => {}),
-        )
-        .catch(() => {})
-        .finally(() => setIsValidating(false))
-    }
-  }, [user?.meta_capi_token, user?.meta_token_status, user?.meta_pixel_id])
-
-  const handleRestart = () => {
-    toast({
-      title: 'Reiniciando instância...',
-      description: 'Aguarde enquanto a conexão com o WhatsApp é restabelecida.',
-    })
   }
 
-  const handleCopyError = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast({
-      title: 'Copiado!',
-      description: 'Texto do erro copiado para a área de transferência!',
-    })
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  useRealtime('customers', (e) => {
+    if (e.action === 'create') setCustomers((prev) => [e.record as Customer, ...prev])
+    else if (e.action === 'update')
+      setCustomers((prev) => prev.map((c) => (c.id === e.record.id ? (e.record as Customer) : c)))
+    else if (e.action === 'delete') setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
+  })
+
+  useRealtime('system_logs', (e) => {
+    if (e.action === 'create') setLogs((prev) => [e.record as SystemLog, ...prev].slice(0, 100))
+  })
+
+  useRealtime('conversations', (e) => {
+    if (e.action === 'create') setConversations((prev) => [...prev, e.record as Conversation])
+  })
+
+  const funnelData = useMemo(() => {
+    const counts = customers.reduce(
+      (acc, c) => {
+        const status = c.status || 'sem_status'
+        acc[status] = (acc[status] || 0) + 1
+        return acc
+      },
+      {} as Record<string, number>,
+    )
+
+    const statusOrder = [
+      'novo',
+      'em_atendimento',
+      'qualificado',
+      'agendado',
+      'visita_realizada',
+      'proposta',
+      'vendido',
+      'perdido',
+    ]
+
+    return Object.entries(counts)
+      .map(([status, count]) => ({
+        status: status.replace(/_/g, ' ').toUpperCase(),
+        count,
+        rawStatus: status,
+      }))
+      .sort((a, b) => {
+        const idxA = statusOrder.indexOf(a.rawStatus.toLowerCase())
+        const idxB = statusOrder.indexOf(b.rawStatus.toLowerCase())
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB
+        if (idxA !== -1) return -1
+        if (idxB !== -1) return 1
+        return b.count - a.count
+      })
+  }, [customers])
+
+  const chartConfig = {
+    count: {
+      label: 'Leads',
+      color: 'hsl(var(--primary))',
+    },
+  }
+
+  const kpis = useMemo(() => {
+    const totalLeads = customers.length
+    const remarketingActive = customers.filter((c) => c.tags && c.tags.length > 0).length
+
+    const remarketingLogs = logs.filter((l) => l.type.toUpperCase().includes('REMARKETING'))
+    const successLogs = remarketingLogs.filter(
+      (l) =>
+        !l.message.toLowerCase().includes('erro') &&
+        !l.message.toLowerCase().includes('falha') &&
+        l.payload?.success !== false,
+    )
+    const syncHealth =
+      remarketingLogs.length > 0
+        ? Math.round((successLogs.length / remarketingLogs.length) * 100)
+        : 100
+
+    return { totalLeads, remarketingActive, syncHealth }
+  }, [customers, logs])
+
+  const performanceTableData = useMemo(() => {
+    const latestInteractions = conversations.reduce(
+      (acc, conv) => {
+        if (
+          !acc[conv.customer_id] ||
+          new Date(conv.created) > new Date(acc[conv.customer_id].created)
+        ) {
+          acc[conv.customer_id] = conv
+        }
+        return acc
+      },
+      {} as Record<string, Conversation>,
+    )
+
+    return customers
+      .map((c) => ({
+        ...c,
+        lastInteraction: latestInteractions[c.id]?.created || c.updated,
+      }))
+      .sort((a, b) => new Date(b.lastInteraction).getTime() - new Date(a.lastInteraction).getTime())
+      .slice(0, 10)
+  }, [customers, conversations])
+
+  const integrationLogs = useMemo(() => {
+    return logs
+      .filter(
+        (l) =>
+          l.type.toUpperCase().includes('REMARKETING') ||
+          l.type.toUpperCase().includes('DIAGNOSTIC') ||
+          l.type.toUpperCase().includes('META'),
+      )
+      .slice(0, 20)
+  }, [logs])
+
+  if (loading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Status Card */}
-      <Card className="bg-primary/5 border-primary/20 shadow-sm overflow-hidden relative">
-        <div className="absolute right-0 top-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
-        <CardContent className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center shadow-inner">
-              <Zap className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-secondary tracking-tight">55 48 992098050</h2>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                </span>
-                <span className="text-sm font-medium text-muted-foreground">
-                  Instância Uazapi_01 • <span className="text-primary font-semibold">Online</span>
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2 shrink-0">
-            <Button
-              variant="outline"
-              className="bg-background shadow-sm hover:scale-[1.02] transition-transform w-full"
-              onClick={handleRestart}
-            >
-              <RotateCw className="mr-2 h-4 w-4" />
-              Reiniciar Instância
-            </Button>
-            <Link to="/configuracoes" className="w-full">
-              <div className="flex items-center justify-center gap-2 bg-background/80 hover:bg-background px-3 py-1.5 rounded-md border border-border/50 transition-colors cursor-pointer text-sm font-medium text-secondary shadow-sm">
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                Saúde do Sistema: Excelente
-              </div>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Meta Authentication Alert */}
-      {(user?.meta_token_status === 'invalid' ||
-        user?.meta_token_status === 'invalid_oauth' ||
-        user?.meta_token_status === 'expired' ||
-        user?.meta_token_status === 'error: permission_denied' ||
-        user?.meta_token_status === 'invalid_permission' ||
-        user?.meta_token_status === 'missing_permission' ||
-        user?.meta_token_status === 'permissions_error') && (
-        <Alert
-          variant="destructive"
-          className="bg-destructive/5 border-destructive/20 text-destructive mb-6"
-        >
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>
-            {user?.meta_token_status === 'permissions_error' ||
-            user?.meta_token_status === 'missing_permission'
-              ? 'Erro de Permissão (Meta API)'
-              : 'Erro de Autenticação'}
-          </AlertTitle>
-          <AlertDescription className="mt-2 flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-4 bg-destructive/10 p-2.5 rounded-md border border-destructive/20">
-              <p className="select-text text-sm font-medium">
-                {user?.meta_token_status === 'permissions_error' ||
-                user?.meta_token_status === 'missing_permission'
-                  ? 'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
-                  : 'Erro de autenticação com o Meta: Token inválido ou expirado'}
-              </p>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/20 shrink-0"
-                onClick={() =>
-                  handleCopyError(
-                    user?.meta_token_status === 'permissions_error' ||
-                      user?.meta_token_status === 'missing_permission'
-                      ? 'Erro (#100): Permissão Ausente. Verifique os escopos ads_read ou whatsapp_business_management no seu Meta App.'
-                      : 'Erro de autenticação com o Meta: Token inválido ou expirado',
-                  )
-                }
-                title="Copiar mensagem de erro"
-              >
-                <Copy className="h-4 w-4" />
-                <span className="sr-only">Copiar erro</span>
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-fit border-destructive/30 hover:bg-destructive/10"
-              asChild
-            >
-              <Link to="/configuracoes">Atualizar Token CAPI em Configurações</Link>
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Status Indicators */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card
-          className={cn(
-            'border shadow-sm',
-            isMetaActive ? 'border-blue-500/30 bg-blue-500/5' : 'border-muted',
-          )}
-        >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={cn('p-2 rounded-lg', isMetaActive ? 'bg-blue-600/20' : 'bg-muted')}>
-                <Facebook
-                  className={cn(
-                    'h-5 w-5',
-                    isMetaActive ? 'text-blue-600' : 'text-muted-foreground',
-                  )}
-                />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-secondary">Integração Meta Ads</p>
-                <p className="text-xs text-muted-foreground">
-                  {user?.meta_pixel_id
-                    ? '1 Pixel(s) conectado(s)'
-                    : isMetaActive
-                      ? `${parsedTags.length || 1} Pixel(s) conectado(s)`
-                      : 'Não configurado'}
-                </p>
-              </div>
-            </div>
-            {isValidating ? (
-              <Skeleton className="h-6 w-24 rounded-full" />
-            ) : user?.meta_token_status === 'error: permission_denied' ||
-              user?.meta_token_status === 'invalid_permission' ||
-              user?.meta_token_status === 'missing_permission' ||
-              user?.meta_token_status === 'invalid' ||
-              user?.meta_token_status === 'expired' ||
-              user?.meta_token_status === 'permissions_error' ||
-              user?.meta_token_status === 'invalid_oauth' ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/10 px-2.5 py-1 rounded-full cursor-help">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      {user?.meta_token_status === 'permissions_error' ||
-                      user?.meta_token_status === 'missing_permission'
-                        ? 'Erro de Permissão'
-                        : 'Erro de Conexão'}
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>
-                      {user?.meta_token_status === 'permissions_error' ||
-                      user?.meta_token_status === 'missing_permission'
-                        ? 'Erro (#100): Permissão Ausente. Verifique os escopos do App.'
-                        : 'Falha ao conectar com a API do Meta. Verifique o token e o ID do Pixel. Acesse Configurações > Centro de Diagnóstico para mais detalhes.'}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (user?.meta_token_status === 'active' || user?.meta_token_status === 'Connected') &&
-              isLastValidatedRecent ? (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Ativo
-              </div>
-            ) : (user?.meta_token_status === 'active' || user?.meta_token_status === 'Connected') &&
-              !isLastValidatedRecent ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full cursor-help">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      Aviso
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>
-                      Validação pendente ou intermitente. A última verificação ocorreu há mais de
-                      24h.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : isMetaActive ? (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-500/10 px-2.5 py-1 rounded-full">
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                Validando...
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Inativo
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card
-          className={cn(
-            'border shadow-sm',
-            isCapiActive ? 'border-purple-500/30 bg-purple-500/5' : 'border-muted',
-          )}
-        >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={cn('p-2 rounded-lg', isCapiActive ? 'bg-purple-600/20' : 'bg-muted')}>
-                <Zap
-                  className={cn(
-                    'h-5 w-5',
-                    isCapiActive ? 'text-purple-600' : 'text-muted-foreground',
-                  )}
-                />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-secondary">Conversions API (CAPI)</p>
-                <p className="text-xs text-muted-foreground">
-                  {isCapiActive ? 'Sincronização server-side: Ativa' : 'Token não configurado'}
-                </p>
-              </div>
-            </div>
-            {isValidating ? (
-              <Skeleton className="h-6 w-24 rounded-full" />
-            ) : user?.meta_token_status === 'error: permission_denied' ||
-              user?.meta_token_status === 'invalid_permission' ||
-              user?.meta_token_status === 'missing_permission' ||
-              user?.meta_token_status === 'invalid' ||
-              user?.meta_token_status === 'expired' ||
-              user?.meta_token_status === 'permissions_error' ||
-              user?.meta_token_status === 'invalid_oauth' ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/10 px-2.5 py-1 rounded-full cursor-help">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      Falha
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>
-                      {user?.meta_token_status === 'permissions_error' ||
-                      user?.meta_token_status === 'missing_permission'
-                        ? 'Erro (#100): Permissão Ausente.'
-                        : 'Erro de autenticação com o Meta: Token inválido ou expirado'}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (user?.meta_token_status === 'active' || user?.meta_token_status === 'Connected') &&
-              isLastValidatedRecent ? (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-green-600 bg-green-500/10 px-2.5 py-1 rounded-full">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Ativo
-              </div>
-            ) : (user?.meta_token_status === 'active' || user?.meta_token_status === 'Connected') &&
-              !isLastValidatedRecent ? (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Aviso
-              </div>
-            ) : isCapiActive ? (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-500/10 px-2.5 py-1 rounded-full">
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                Aguardando Validação
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-full">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Pausado
-              </div>
-            )}
-          </CardContent>
-        </Card>
+    <div className="flex flex-col gap-6 p-2 md:p-4 pb-20">
+      <div className="flex flex-col gap-2">
+        <h2 className="text-3xl font-bold tracking-tight">Dashboard de Vendas</h2>
+        <p className="text-muted-foreground">
+          Acompanhe seu funil de vendas e a performance do remarketing em tempo real.
+        </p>
       </div>
 
-      {/* Metrics */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="shadow-subtle hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Mensagens</CardTitle>
-            <MessageCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-secondary">1,390</div>
-            <p className="text-xs text-primary font-medium mt-1">
-              +20% em relação à semana passada
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-subtle hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Respostas da IA</CardTitle>
-            <Bot className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-secondary">1,104</div>
-            <p className="text-xs text-muted-foreground mt-1">79.4% de taxa de automação</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-subtle hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tempo Médio de Resposta</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-secondary">4.2s</div>
-            <p className="text-xs text-primary font-medium mt-1">-1.1s de melhoria no mês</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-subtle hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Usuários Ativos</CardTitle>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Total de Leads</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-secondary">342</div>
-            <p className="text-xs text-muted-foreground mt-1">Nos últimos 7 dias</p>
+            <div className="text-2xl font-bold">{kpis.totalLeads}</div>
+            <p className="text-xs text-muted-foreground">Leads registrados no CRM</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Remarketing Ativo</CardTitle>
+            <RefreshCw className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{kpis.remarketingActive}</div>
+            <p className="text-xs text-muted-foreground">Leads com tags de segmentação</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Saúde do Meta Sync</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{kpis.syncHealth}%</div>
+            <p className="text-xs text-muted-foreground">Taxa de sucesso dos eventos</p>
           </CardContent>
         </Card>
       </div>
 
-      <Suspense
-        fallback={<div className="h-[400px] w-full rounded-xl bg-muted/20 animate-pulse" />}
-      >
-        <CadenceRoulette />
-      </Suspense>
-
-      <Suspense
-        fallback={<div className="h-[400px] w-full rounded-xl bg-muted/20 animate-pulse" />}
-      >
-        <DiagnosticCenter />
-      </Suspense>
-
-      <div className="grid gap-4 md:grid-cols-7 lg:grid-cols-8">
-        <Card className="md:col-span-4 lg:col-span-5 shadow-subtle">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <Card className="col-span-4">
           <CardHeader>
-            <CardTitle className="text-secondary">Volume de Interações</CardTitle>
-            <CardDescription>Mensagens processadas pela IA nos últimos 7 dias.</CardDescription>
+            <CardTitle>Funil de Vendas</CardTitle>
+            <CardDescription>Distribuição de leads por etapa do pipeline</CardDescription>
           </CardHeader>
-          <CardContent>
-            <ChartContainer
-              config={{ messages: { label: 'Mensagens', color: 'hsl(var(--primary))' } }}
-              className="h-[300px] w-full"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  accessibilityLayer
-                  data={chartData}
-                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="colorMessages" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="hsl(var(--border))"
-                  />
-                  <XAxis
-                    dataKey="date"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                    dy={10}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area
-                    type="monotone"
-                    dataKey="messages"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={3}
-                    fillOpacity={1}
-                    fill="url(#colorMessages)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+          <CardContent className="pl-2">
+            <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
+              <BarChart
+                data={funnelData}
+                layout="vertical"
+                margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" hide />
+                <YAxis
+                  dataKey="status"
+                  type="category"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 10 }}
+                  width={120}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={32}>
+                  {funnelData.map((_, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={`hsl(var(--primary) / ${1 - index * 0.15})`}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
             </ChartContainer>
           </CardContent>
         </Card>
 
-        <Card className="md:col-span-3 lg:col-span-3 shadow-subtle">
+        <Card className="col-span-3">
           <CardHeader>
-            <CardTitle className="text-secondary">Atividade Recente</CardTitle>
-            <CardDescription>Últimas ações da inteligência artificial.</CardDescription>
+            <CardTitle>Logs de Integração (Meta)</CardTitle>
+            <CardDescription>Eventos recentes de remarketing e diagnóstico</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              {recentEvents.map((event) => (
-                <div key={event.id} className="flex items-center gap-4">
-                  <div
-                    className={cn(
-                      'mt-1 h-2.5 w-2.5 rounded-full shrink-0 shadow-sm',
-                      event.type === 'pause'
-                        ? 'bg-amber-500'
-                        : event.type === 'system'
-                          ? 'bg-blue-500'
-                          : 'bg-primary',
-                    )}
-                  />
-                  <div className="flex-1 space-y-1">
-                    <p className="text-sm font-medium leading-none text-secondary">{event.title}</p>
-                    <p className="text-xs text-muted-foreground">{event.time}</p>
+            <ScrollArea className="h-[300px] pr-4">
+              <div className="space-y-4">
+                {integrationLogs.length === 0 ? (
+                  <div className="text-sm text-muted-foreground text-center py-8">
+                    Nenhum log de integração encontrado.
                   </div>
-                </div>
-              ))}
-            </div>
-            <Button
-              variant="ghost"
-              className="w-full mt-6 text-sm text-primary hover:text-primary/80 hover:bg-primary/10"
-              asChild
-            >
-              <Link to="/logs">Ver todos os logs</Link>
-            </Button>
+                ) : (
+                  integrationLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="flex items-start gap-4 border-b pb-4 last:border-0 last:pb-0"
+                    >
+                      <div className="mt-1 bg-muted p-1.5 rounded-full shrink-0">
+                        {log.message.toLowerCase().includes('erro') ? (
+                          <AlertCircle className="h-4 w-4 text-red-500" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4 text-green-500" />
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1 w-full min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium truncate">{log.type}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {format(new Date(log.created), 'dd/MM HH:mm')}
+                          </span>
+                        </div>
+                        <span className="text-sm text-muted-foreground line-clamp-2">
+                          {log.message}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Performance Recente</CardTitle>
+          <CardDescription>
+            Últimos leads que interagiram com a IA ou tiveram status atualizado
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Origem</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Última Interação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {performanceTableData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
+                      Nenhum lead encontrado.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  performanceTableData.map((customer) => (
+                    <TableRow key={customer.id}>
+                      <TableCell className="font-medium whitespace-nowrap">
+                        {customer.name || 'Sem nome'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs font-normal whitespace-nowrap">
+                          {customer.source || 'Orgânico'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] uppercase whitespace-nowrap"
+                        >
+                          {customer.status?.replace(/_/g, ' ') || 'NOVO'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground text-sm whitespace-nowrap">
+                        {format(new Date(customer.lastInteraction), "dd 'de' MMM 'às' HH:mm", {
+                          locale: ptBR,
+                        })}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
