@@ -18,6 +18,10 @@ export const createSystemLog = (data: Partial<SystemLog>) => {
   })
 }
 
+export const deleteSystemLog = (id: string) => {
+  return pb.collection('system_logs').delete(id)
+}
+
 export const getSystemLogs = (page = 1, perPage = 50, typeFilter?: string) => {
   const options: any = { sort: '-created' }
   if (typeFilter) {

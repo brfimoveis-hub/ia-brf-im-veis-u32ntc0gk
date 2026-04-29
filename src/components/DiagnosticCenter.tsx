@@ -7,6 +7,16 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Activity,
   CheckCircle2,
   XCircle,
@@ -14,12 +24,18 @@ import {
   AlertTriangle,
   ShieldCheck,
   Copy,
+  Trash2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
 import { getCadences } from '@/services/cadences'
-import { createSystemLog, getSystemLogs, type SystemLog } from '@/services/system_logs'
+import {
+  createSystemLog,
+  getSystemLogs,
+  deleteSystemLog,
+  type SystemLog,
+} from '@/services/system_logs'
 import { cn } from '@/lib/utils'
 
 export function DiagnosticCenter() {
@@ -45,6 +61,28 @@ export function DiagnosticCenter() {
 
   const { toast } = useToast()
   const [isRunning, setIsRunning] = useState(false)
+
+  const [logToDelete, setLogToDelete] = useState<string | null>(null)
+
+  const confirmDeleteLog = async () => {
+    if (!logToDelete) return
+    try {
+      await deleteSystemLog(logToDelete)
+      toast({
+        title: 'Log removido',
+        description: 'O registro foi apagado com sucesso.',
+      })
+      setRecentLogs((prev) => prev.filter((l) => l.id !== logToDelete))
+    } catch (e) {
+      toast({
+        title: 'Erro ao remover',
+        description: 'Não foi possível apagar o log.',
+        variant: 'destructive',
+      })
+    } finally {
+      setLogToDelete(null)
+    }
+  }
 
   const handleCopyError = (text: string, payload?: any) => {
     const contentToCopy = payload
@@ -400,21 +438,54 @@ export function DiagnosticCenter() {
                       </p>
                     )}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 gap-1.5 h-8 text-xs"
-                    onClick={() => handleCopyError(log.message, log.payload)}
-                  >
-                    <Copy className="h-3 w-3" />
-                    Copiar Erro
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0 mt-2 sm:mt-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 gap-1.5 h-8 text-xs"
+                      onClick={() => handleCopyError(log.message, log.payload)}
+                    >
+                      <Copy className="h-3 w-3" />
+                      <span className="hidden sm:inline">Copiar Erro</span>
+                      <span className="sm:hidden">Copiar</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                      onClick={() => setLogToDelete(log.id)}
+                      title="Excluir log"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Excluir log</span>
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!logToDelete} onOpenChange={(open) => !open && setLogToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deseja eliminar este log?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O registro será removido permanentemente do sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteLog}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
