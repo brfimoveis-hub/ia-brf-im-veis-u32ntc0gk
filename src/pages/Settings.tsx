@@ -918,28 +918,51 @@ export default function Settings() {
             </div>
 
             <div className="space-y-3 pt-4 border-t">
-              <h3 className="text-lg font-medium text-secondary">
-                Safeguards de Remarketing (Anti-Ban)
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-secondary">
+                  Telefone de Campanha Ativa (Ingestão de Leads)
+                </h3>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'h-6 gap-1.5',
+                    metaCampaignPhone
+                      ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                      : 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'h-2 w-2 rounded-full',
+                      metaCampaignPhone ? 'bg-green-500 animate-pulse' : 'bg-amber-500',
+                    )}
+                  />
+                  {metaCampaignPhone ? 'Listening (Ativo)' : 'Não Configurado'}
+                </Badge>
+              </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Proteja seu número principal utilizando um número secundário exclusivo para eventos
-                de remarketing e controle as integrações.
+                Configure o número principal que está recebendo os leads das campanhas do Meta Ads.
+                O Webhook irá identificar as mensagens e criar novos contatos no CRM
+                automaticamente.
               </p>
               <div className="space-y-3">
                 <Label htmlFor="meta-campaign-phone" className="font-semibold text-secondary">
-                  Telefone de Campanha (WhatsApp Secundário)
+                  Telefone da Campanha (WhatsApp)
                 </Label>
                 <Input
                   id="meta-campaign-phone"
                   placeholder="Ex: 5511999999999"
                   value={metaCampaignPhone}
                   onChange={(e) => setMetaCampaignPhone(e.target.value.replace(/\D/g, ''))}
-                  className="bg-muted/30 focus-visible:ring-blue-600"
+                  className={cn(
+                    'bg-muted/30 focus-visible:ring-blue-600',
+                    !metaCampaignPhone && 'border-amber-500/50',
+                  )}
                   inputMode="numeric"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Se preenchido, este número será associado aos eventos enviados para o Meta como o
-                  remetente da campanha.
+                  O sistema verificará este número ao receber o payload do Meta e registrará novos
+                  leads automaticamente em seu painel.
                 </p>
               </div>
             </div>

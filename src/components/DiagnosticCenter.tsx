@@ -160,17 +160,17 @@ export function DiagnosticCenter() {
       }
       setResults([...newResults])
 
-      // 2. Uazapi Connectivity Check
+      // 2. Webhook & Lead Ingestion Check
       setProgress(25)
       await new Promise((r) => setTimeout(r, 1000))
       const hasPhone = !!user?.meta_campaign_phone
       newResults.push({
-        name: 'Conectividade Uazapi',
+        name: 'Ingestão de Leads Webhook',
         status: hasPhone ? 'success' : 'error',
         message: hasPhone
-          ? `Telefone ${user.meta_campaign_phone} alcançável e configurado.`
-          : 'Telefone de campanha ausente. O Uazapi requer configuração.',
-        payload: { meta_campaign_phone: user?.meta_campaign_phone },
+          ? `Telefone de campanha (${user.meta_campaign_phone}) ativo. Webhook em modo 'Listening' para novos leads Meta.`
+          : 'Telefone de campanha ausente. A ingestão automática de leads do Meta Ads pode não funcionar.',
+        payload: { meta_campaign_phone: user?.meta_campaign_phone, listening: hasPhone },
       })
       setResults([...newResults])
 

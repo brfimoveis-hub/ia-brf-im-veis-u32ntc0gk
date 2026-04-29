@@ -25,6 +25,37 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                 const phone = msg.from
                 const text = msg.text.body
 
+                let receiverPhone = ''
+                if (value.metadata && value.metadata.display_phone_number) {
+                  receiverPhone = value.metadata.display_phone_number.replace(/\D/g, '')
+                }
+
+                let targetUserId = ''
+                try {
+                  if (receiverPhone) {
+                    const users = $app.findRecordsByFilter(
+                      'users',
+                      `meta_campaign_phone ~ '${receiverPhone}'`,
+                      '',
+                      1,
+                      0,
+                    )
+                    if (users.length > 0) targetUserId = users[0].id
+                  }
+                  if (!targetUserId) {
+                    const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
+                    if (fallbackUser.length > 0) targetUserId = fallbackUser[0].id
+                  }
+                } catch (_) {}
+
+                let contactName = 'Lead Desconhecido'
+                if (value.contacts && value.contacts.length > 0) {
+                  const contact = value.contacts.find((c) => c.wa_id === phone)
+                  if (contact && contact.profile && contact.profile.name) {
+                    contactName = contact.profile.name
+                  }
+                }
+
                 let customer = null
                 try {
                   const phoneNorm = phone.replace(/\D/g, '')
@@ -33,6 +64,56 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     `phone ~ '${phoneNorm}' || phone_1_value ~ '${phoneNorm}'`,
                   )
                 } catch (_) {}
+
+                if (!customer && targetUserId) {
+                  try {
+                    const customersCol = $app.findCollectionByNameOrId('customers')
+                    customer = new Record(customersCol)
+                    customer.set('user_id', targetUserId)
+                    customer.set('name', contactName)
+                    customer.set('phone', phone.replace(/\D/g, ''))
+                    customer.set('status', 'Novo')
+
+                    let source = 'WhatsApp'
+                    let notes = ''
+                    if (msg.referral && msg.referral.source_type === 'ad') {
+                      source = 'Meta Ads'
+                      notes = `Origem: Anúncio Meta\nHeadline: ${msg.referral.headline || 'N/A'}\nAd ID: ${msg.referral.source_id || 'N/A'}`
+                    }
+                    customer.set('source', source)
+                    if (notes) customer.set('notes', notes)
+
+                    $app.save(customer)
+
+                    const logsCol = $app.findCollectionByNameOrId('system_logs')
+                    const logRecord = new Record(logsCol)
+                    logRecord.set('user_id', targetUserId)
+                    logRecord.set('type', 'diagnostic')
+                    logRecord.set('message', `Novo lead capturado via Webhook: ${contactName}`)
+                    logRecord.set(
+                      'details',
+                      `Lead originado do telefone ${phone}. Origem: ${source}`,
+                    )
+                    logRecord.set('payload', {
+                      customer_id: customer.id,
+                      phone: phone,
+                      source,
+                      referral: msg.referral || null,
+                    })
+                    $app.save(logRecord)
+                  } catch (err) {
+                    $app.logger().error('Erro ao criar customer do webhook', err)
+                    try {
+                      const logsCol = $app.findCollectionByNameOrId('system_logs')
+                      const logRecord = new Record(logsCol)
+                      logRecord.set('user_id', targetUserId)
+                      logRecord.set('type', 'diagnostic_error')
+                      logRecord.set('message', `Falha ao criar lead do telefone ${phone}`)
+                      logRecord.set('details', String(err))
+                      $app.save(logRecord)
+                    } catch (_) {}
+                  }
+                }
 
                 if (customer) {
                   let isDuplicate = false
@@ -172,7 +253,22 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                 } else {
                   $app
                     .logger()
-                    .warn('Customer not found for incoming WhatsApp message', 'phone', phone)
+                    .warn(
+                      'Customer not found and could not be created for incoming WhatsApp message',
+                      'phone',
+                      phone,
+                    )
+                  try {
+                    if (targetUserId) {
+                      const logsCol = $app.findCollectionByNameOrId('system_logs')
+                      const logRecord = new Record(logsCol)
+                      logRecord.set('user_id', targetUserId)
+                      logRecord.set('type', 'diagnostic_error')
+                      logRecord.set('message', `Lead ignorado: cliente não pôde ser criado.`)
+                      logRecord.set('details', `Telefone: ${phone}`)
+                      $app.save(logRecord)
+                    }
+                  } catch (_) {}
                 }
               }
             }

@@ -51,6 +51,7 @@ type FeedItem = {
   customerId?: string
   typeCategory:
     | 'diagnostic'
+    | 'diagnostic_error'
     | 'remarketing_sent'
     | 'remarketing_interaction'
     | 'ai_message'
@@ -119,16 +120,23 @@ export default function Logs() {
 
     logs.forEach((log) => {
       let typeCategory: FeedItem['typeCategory'] = 'other'
-      const isDiagnostic = log.type.toLowerCase().includes('diagnostic')
+      const isDiagnostic = log.type.toLowerCase() === 'diagnostic'
+      const isDiagnosticError =
+        log.type.toLowerCase() === 'diagnostic_error' ||
+        log.type.toLowerCase() === 'remarketing_error'
       const isRemarketing =
-        log.type.toLowerCase().includes('remarketing') || log.type.toLowerCase().includes('meta')
+        log.type.toLowerCase().includes('remarketing') ||
+        log.type.toLowerCase().includes('meta') ||
+        log.type.toLowerCase() === 'webhook'
 
       const payloadObj =
         typeof log.payload === 'string' ? JSON.parse(log.payload) : log.payload || {}
       const eventNameStr = payloadObj.eventName || payloadObj.event_name || ''
       const eventName = eventNameStr.toLowerCase()
 
-      if (isDiagnostic) {
+      if (isDiagnosticError) {
+        typeCategory = 'diagnostic_error'
+      } else if (isDiagnostic) {
         typeCategory = 'diagnostic'
       } else if (isRemarketing) {
         if (
@@ -169,13 +177,15 @@ export default function Logs() {
           customerId: payloadObj.customer_id || payloadObj.id,
           typeCategory,
           title:
-            typeCategory === 'diagnostic'
-              ? 'Diagnóstico de Sistema'
-              : typeCategory === 'remarketing_interaction'
-                ? `Interação: ${eventNameStr || 'Evento'}`
-                : typeCategory === 'remarketing_sent'
-                  ? `Remarketing: ${eventNameStr || 'Enviado'}`
-                  : log.message || log.type,
+            typeCategory === 'diagnostic_error'
+              ? 'Erro de Diagnóstico/Ingestão'
+              : typeCategory === 'diagnostic'
+                ? 'Diagnóstico de Sistema'
+                : typeCategory === 'remarketing_interaction'
+                  ? `Interação: ${eventNameStr || 'Evento'}`
+                  : typeCategory === 'remarketing_sent'
+                    ? `Remarketing: ${eventNameStr || 'Enviado'}`
+                    : log.message || log.type,
           description: log.details || '',
           details: payloadObj,
         })
@@ -221,7 +231,12 @@ export default function Logs() {
           return false
         if (typeFilter === 'ai_message' && item.typeCategory !== 'ai_message') return false
         if (typeFilter === 'customer_reply' && item.typeCategory !== 'customer_reply') return false
-        if (typeFilter === 'diagnostic' && item.typeCategory !== 'diagnostic') return false
+        if (
+          typeFilter === 'diagnostic' &&
+          item.typeCategory !== 'diagnostic' &&
+          item.typeCategory !== 'diagnostic_error'
+        )
+          return false
       }
 
       if (searchQuery) {
@@ -244,6 +259,8 @@ export default function Logs() {
     switch (type) {
       case 'diagnostic':
         return <Wrench className="h-4 w-4 text-slate-500" />
+      case 'diagnostic_error':
+        return <Wrench className="h-4 w-4 text-red-500" />
       case 'remarketing_sent':
         return <Send className="h-4 w-4 text-blue-500" />
       case 'remarketing_interaction':
@@ -261,6 +278,8 @@ export default function Logs() {
     switch (type) {
       case 'diagnostic':
         return 'secondary'
+      case 'diagnostic_error':
+        return 'destructive'
       case 'remarketing_sent':
         return 'default'
       case 'remarketing_interaction':
@@ -316,7 +335,7 @@ export default function Logs() {
                   <SelectItem value="remarketing">Remarketing</SelectItem>
                   <SelectItem value="customer_reply">Respostas de Clientes</SelectItem>
                   <SelectItem value="ai_message">Mensagens IA</SelectItem>
-                  <SelectItem value="diagnostic">Diagnósticos</SelectItem>
+                  <SelectItem value="diagnostic">Diagnósticos e Erros</SelectItem>
                 </SelectContent>
               </Select>
             </div>
