@@ -438,8 +438,8 @@ export default function Settings() {
         setMissingScopes(resData.missing_scopes || [])
 
         toast({
-          title: 'Configurações salvas, mas falha no teste',
-          description: `Motivo: ${errorMsg}`,
+          title: 'Configurações salvas, mas falha no teste com o Meta',
+          description: `Erro da API Meta: ${errorMsg}`,
           variant: 'destructive',
         })
       }
@@ -462,6 +462,15 @@ export default function Settings() {
       toast({
         title: 'Credenciais Ausentes',
         description: 'Salve suas credenciais antes de testar a conexão.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (metaPixelId !== savedPixelId || metaCapiToken !== savedCapiToken) {
+      toast({
+        title: 'Alterações Não Salvas',
+        description: 'Por favor, salve as configurações antes de testar a conexão.',
         variant: 'destructive',
       })
       return
@@ -501,7 +510,7 @@ export default function Settings() {
 
       toast({
         title: 'Erro de Conexão com o Meta',
-        description: `Motivo: ${errorMsg} ${code ? `(Código: ${code})` : ''}`,
+        description: `Falha na API: ${errorMsg} ${code ? `(Código: ${code})` : ''}`,
         variant: 'destructive',
       })
     } finally {
@@ -517,7 +526,11 @@ export default function Settings() {
   let connectionBadgeText = 'Não Testado'
   let connectionBadgeColor = 'bg-muted text-muted-foreground'
 
-  if (
+  if (!user?.meta_pixel_id || !user?.meta_capi_token) {
+    connectionBadgeText = 'Configuração Pendente'
+    connectionBadgeColor =
+      'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/20 border'
+  } else if (
     metaTokenStatus === 'active' ||
     metaTokenStatus === 'valid' ||
     metaTokenStatus === 'Connected'
@@ -528,11 +541,14 @@ export default function Settings() {
   } else if (
     metaTokenStatus === 'Erro de Validação' ||
     metaTokenStatus === 'invalid' ||
-    metaTokenStatus === 'expired'
+    metaTokenStatus === 'expired' ||
+    metaTokenStatus === 'untested'
   ) {
-    connectionBadgeText = 'Erro de Validação'
+    connectionBadgeText = metaTokenStatus === 'untested' ? 'Não Testado' : 'Erro de Validação'
     connectionBadgeColor =
-      'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
+      metaTokenStatus === 'untested'
+        ? 'bg-muted text-muted-foreground'
+        : 'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
   } else {
     connectionBadgeText = 'Não Testado'
     connectionBadgeColor = 'bg-muted text-muted-foreground'
@@ -995,7 +1011,7 @@ export default function Settings() {
                   variant="outline"
                   size="sm"
                   onClick={testMetaConnection}
-                  disabled={isTestingConnection}
+                  disabled={isTestingConnection || !user?.meta_pixel_id || !user?.meta_capi_token}
                   className="gap-2"
                 >
                   {isTestingConnection ? (

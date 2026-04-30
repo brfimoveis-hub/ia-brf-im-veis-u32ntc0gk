@@ -17,8 +17,19 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
   try {
     let globalUserId = ''
     try {
-      const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
-      if (fallbackUser.length > 0) globalUserId = fallbackUser[0].id
+      const fallbackUserWithMeta = $app.findRecordsByFilter(
+        'users',
+        "meta_pixel_id != ''",
+        'created',
+        1,
+        0,
+      )
+      if (fallbackUserWithMeta.length > 0) {
+        globalUserId = fallbackUserWithMeta[0].id
+      } else {
+        const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
+        if (fallbackUser.length > 0) globalUserId = fallbackUser[0].id
+      }
     } catch (_) {}
 
     try {
@@ -160,10 +171,10 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('name', contactName)
               customer.set('phone', phone)
               customer.set('status', 'Base de Clientes/Novo LYD')
-              customer.set('source', 'Website')
+              customer.set('source', 'Meta Lead Form')
               customer.set(
                 'notes',
-                `Form ID: ${formId}\nLead ID: ${leadId}\nNote: Raw leadgen event sem token para buscar detalhes.\nOriginado do Website (mapped).`,
+                `Form ID: ${formId}\nLead ID: ${leadId}\nNote: Raw leadgen event sem token para buscar detalhes.\nOriginado do Meta Lead Form.`,
               )
               $app.save(customer)
             } catch (err) {
@@ -205,8 +216,8 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('user_id', targetUserId)
               customer.set('name', contactName)
               customer.set('status', 'Lead Novo')
-              customer.set('source', 'Instagram')
-              customer.set('notes', `IG Sender ID: ${senderId}\nOrigin: Instagram`)
+              customer.set('source', 'Meta Instagram')
+              customer.set('notes', `IG Sender ID: ${senderId}\nOrigin: Meta Instagram`)
               $app.save(customer)
 
               const logsCol = $app.findCollectionByNameOrId('system_logs')
@@ -342,11 +353,13 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     } catch (_) {}
                     customer.set('status', initialStatus)
 
-                    let source = receiverPhone ? `Meta - ${receiverPhone}` : 'WhatsApp'
+                    let source = receiverPhone
+                      ? `Meta WhatsApp - ${receiverPhone}`
+                      : 'Meta WhatsApp'
                     if (receiverPhone.includes('48992098050')) {
-                      source = `Meta - 48992098050`
+                      source = `Meta WhatsApp - 48992098050`
                     } else if (receiverPhone.includes('48991828050')) {
-                      source = `Meta - 48991828050`
+                      source = `Meta WhatsApp - 48991828050`
                     }
                     if (!receiverPhone && targetUserId) {
                       try {
@@ -464,8 +477,19 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
     try {
       let globalUserId = ''
       try {
-        const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
-        if (fallbackUser.length > 0) globalUserId = fallbackUser[0].id
+        const fallbackUserWithMeta = $app.findRecordsByFilter(
+          'users',
+          "meta_pixel_id != ''",
+          'created',
+          1,
+          0,
+        )
+        if (fallbackUserWithMeta.length > 0) {
+          globalUserId = fallbackUserWithMeta[0].id
+        } else {
+          const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
+          if (fallbackUser.length > 0) globalUserId = fallbackUser[0].id
+        }
       } catch (_) {}
 
       const logsCol = $app.findCollectionByNameOrId('system_logs')
