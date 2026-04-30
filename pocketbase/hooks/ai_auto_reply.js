@@ -385,7 +385,7 @@ DIRETRIZES RIGOROSAS:
 4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.
 5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
 6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).
-7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas, você PODE incluir a tag [STATUS: Novo_Status] no final da sua resposta. Os status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Qualificado", "Demo Agend.", "Demo Realiz.", "Proposta", "Negociação", "Fechamento".
+7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas, você DEVE incluir a tag [STATUS: Novo_Status] no final da sua resposta. Os status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Engajamento", "Visita", "Objeção", "Proposta", "Negociação", "Fechamento".
 
 CONTEXTO RECUPERADO:
 ${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
@@ -525,6 +525,9 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           'Contato 2',
           'Qualificação',
           'Qualificado',
+          'Engajamento',
+          'Visita',
+          'Objeção',
           'Demo Agend.',
           'Demo Realiz.',
           'Proposta',

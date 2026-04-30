@@ -24,7 +24,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getCustomer, updateCustomer, deleteCustomer, type Customer } from '@/services/customers'
 import { getConversations, createConversation, type Conversation } from '@/services/conversations'
-import { Send, User, Bot, CheckCircle2, Sparkles, Trash2, Ban, Save } from 'lucide-react'
+import { Send, User, Bot, CheckCircle2, Sparkles, Trash2, Ban, Save, BookOpen } from 'lucide-react'
 import { cn, formatPhone } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
@@ -47,7 +47,19 @@ export function CustomerDetailDrawer({
   const [inputValue, setInputValue] = useState('')
   const [notes, setNotes] = useState('')
   const [isSavingNotes, setIsSavingNotes] = useState(false)
+  const [currentCadence, setCurrentCadence] = useState<any | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (customer?.status && user?.id) {
+      pb.collection('cadences')
+        .getFirstListItem(
+          `user_id = "${user.id}" && is_active = true && title = "${customer.status}"`,
+        )
+        .then((res) => setCurrentCadence(res))
+        .catch(() => setCurrentCadence(null))
+    }
+  }, [customer?.status, user?.id])
 
   const loadData = () => {
     if (!customerId) return
@@ -328,6 +340,27 @@ export function CustomerDetailDrawer({
                       )}
                     </div>
                   </div>
+
+                  {currentCadence && (
+                    <div className="space-y-3 pt-4 border-t">
+                      <Label className="flex items-center gap-2">
+                        <BookOpen className="h-4 w-4 text-primary" /> Playbook Sugerido (Fase:{' '}
+                        {customer.status})
+                      </Label>
+                      <div className="bg-primary/5 p-4 rounded-lg border border-primary/10">
+                        <p className="font-medium text-primary text-sm mb-2">Script/Mensagem:</p>
+                        <p className="text-sm text-foreground italic">"{currentCadence.content}"</p>
+                        {currentCadence.ai_instructions && (
+                          <div className="mt-3 pt-3 border-t border-primary/10">
+                            <p className="font-medium text-primary text-xs mb-1">Diretriz da IA:</p>
+                            <p className="text-xs text-muted-foreground">
+                              {currentCadence.ai_instructions}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-2 pt-4 border-t">
                     <div className="flex items-center justify-between">

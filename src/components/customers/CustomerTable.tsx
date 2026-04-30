@@ -110,7 +110,9 @@ export function CustomerTable({
               </TableRow>
             ) : (
               leads.map((lead, index) => {
-                const phase = PHASES.find((p) => p.id.toString() === lead.status)
+                const phase = PHASES.find(
+                  (p) => p.id.toString() === lead.status || p.title === lead.status,
+                )
                 const isLast = index === leads.length - 1
                 return (
                   <TableRow

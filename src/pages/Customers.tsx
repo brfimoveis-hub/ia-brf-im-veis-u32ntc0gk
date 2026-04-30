@@ -21,6 +21,7 @@ import {
   Clock,
   LayoutGrid,
   List,
+  TrendingUp,
 } from 'lucide-react'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { CustomerKanban } from '@/components/customers/CustomerKanban'
@@ -269,6 +270,42 @@ export default function Customers() {
             <Plus className="h-4 w-4" /> Novo Cliente
           </Button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-4 flex flex-col justify-center h-full">
+            <div className="flex items-center gap-2 text-primary font-medium mb-1">
+              <Users className="h-4 w-4" /> Total de Leads
+            </div>
+            <div className="text-2xl font-bold">{totalItems}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-green-500/5 border-green-500/20">
+          <CardContent className="p-4 flex flex-col justify-center h-full">
+            <div className="flex items-center gap-2 text-green-600 font-medium mb-1">
+              <Target className="h-4 w-4" /> Visitas & Fechamentos
+            </div>
+            <div className="text-2xl font-bold text-green-700">
+              {
+                leads.filter((l) => ['Visita', 'Fechamento', 'Demo Realiz.'].includes(l.status))
+                  .length
+              }
+              <span className="text-sm font-normal text-green-600/70 ml-2">na visão atual</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-blue-500/5 border-blue-500/20">
+          <CardContent className="p-4 flex flex-col justify-center h-full">
+            <div className="flex items-center gap-2 text-blue-600 font-medium mb-1">
+              <TrendingUp className="h-4 w-4" /> Engajamento
+            </div>
+            <div className="text-2xl font-bold text-blue-700">
+              {leads.filter((l) => ['Engajamento', 'Qualificação'].includes(l.status)).length}
+              <span className="text-sm font-normal text-blue-600/70 ml-2">na visão atual</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 shrink-0 justify-between">
