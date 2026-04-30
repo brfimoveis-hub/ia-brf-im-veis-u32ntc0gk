@@ -122,8 +122,9 @@ export default function Index() {
   }
 
   const identityChecks = useMemo(() => {
-    if (!currentUser) return { active: false, reasons: ['Usuário não carregado'] }
+    if (!currentUser) return { active: false, warnings: [], reasons: ['Usuário não carregado'] }
     const reasons: string[] = []
+    const warnings: string[] = []
     const hasName = !!currentUser.ai_name?.trim()
     const hasInstructions =
       !!currentUser.ai_instructions?.trim() && currentUser.ai_instructions.length > 10
@@ -132,10 +133,11 @@ export default function Index() {
 
     if (!hasName) reasons.push('Nome da IA não configurado.')
     if (!hasInstructions) reasons.push('Instruções da IA ausentes ou insuficientes.')
-    if (!hasMeta) reasons.push('Integração Meta Ads pendente ou com erro.')
+    if (!hasMeta) warnings.push('Integração Meta Ads pendente ou com erro.')
 
     return {
-      active: hasName && hasInstructions && hasMeta,
+      active: hasName && hasInstructions,
+      warnings,
       reasons,
     }
   }, [currentUser])
@@ -218,11 +220,20 @@ export default function Index() {
                   variant={identityChecks.active ? 'default' : 'destructive'}
                   className={cn(
                     'px-3 py-1 cursor-help text-sm',
-                    identityChecks.active && 'bg-green-500 hover:bg-green-600',
+                    identityChecks.active &&
+                      identityChecks.warnings.length === 0 &&
+                      'bg-green-500 hover:bg-green-600',
+                    identityChecks.active &&
+                      identityChecks.warnings.length > 0 &&
+                      'bg-amber-500 hover:bg-amber-600 text-white',
                   )}
                 >
                   {identityChecks.active ? (
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    identityChecks.warnings.length > 0 ? (
+                      <AlertCircle className="w-4 h-4 mr-2" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                    )
                   ) : (
                     <AlertCircle className="w-4 h-4 mr-2" />
                   )}
@@ -230,19 +241,41 @@ export default function Index() {
                 </Badge>
               </div>
             </TooltipTrigger>
-            {!identityChecks.active && (
+            {(!identityChecks.active || identityChecks.warnings.length > 0) && (
               <TooltipContent side="bottom" align="end" className="max-w-[300px] p-3">
                 <div className="space-y-2">
-                  <p className="font-semibold text-sm">Ações Necessárias:</p>
-                  <ul className="text-xs list-disc pl-4 space-y-1 text-muted-foreground">
-                    {identityChecks.reasons.map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
-                  <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
-                    A IA não responderá novos leads até que estas pendências sejam resolvidas nas
-                    Configurações.
-                  </p>
+                  {!identityChecks.active && (
+                    <>
+                      <p className="font-semibold text-sm text-destructive">
+                        Ações Necessárias (Bloqueantes):
+                      </p>
+                      <ul className="text-xs list-disc pl-4 space-y-1 text-muted-foreground">
+                        {identityChecks.reasons.map((r, i) => (
+                          <li key={i}>{r}</li>
+                        ))}
+                      </ul>
+                      <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
+                        A IA não responderá novos leads até que estas pendências sejam resolvidas
+                        nas Configurações.
+                      </p>
+                    </>
+                  )}
+                  {identityChecks.active && identityChecks.warnings.length > 0 && (
+                    <>
+                      <p className="font-semibold text-sm text-amber-500">
+                        Avisos (Não bloqueantes):
+                      </p>
+                      <ul className="text-xs list-disc pl-4 space-y-1 text-muted-foreground">
+                        {identityChecks.warnings.map((r, i) => (
+                          <li key={i}>{r}</li>
+                        ))}
+                      </ul>
+                      <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
+                        A IA continuará respondendo, mas algumas funcionalidades (como rastreamento
+                        Meta) podem estar limitadas.
+                      </p>
+                    </>
+                  )}
                 </div>
               </TooltipContent>
             )}

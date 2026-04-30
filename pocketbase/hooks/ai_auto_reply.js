@@ -169,13 +169,12 @@ onRecordAfterCreateSuccess((e) => {
 
     const isNameMissing = !actualAiName.trim()
     const isInstructionsMissing = !aiInstructions || aiInstructions.trim().length < 10
-    const isMetaMissing = !hasMeta
+    // Meta integration is no longer a blocker for AI replies
 
-    if (isNameMissing || isInstructionsMissing || isMetaMissing) {
+    if (isNameMissing || isInstructionsMissing) {
       const reasons = []
       if (isNameMissing) reasons.push('Nome da IA não configurado')
       if (isInstructionsMissing) reasons.push('Instruções da IA ausentes ou insuficientes')
-      if (isMetaMissing) reasons.push('Integração Meta Ads não validada')
 
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
@@ -271,16 +270,17 @@ onRecordAfterCreateSuccess((e) => {
     } catch (_) {}
 
     const messages = []
-    const systemPrompt = `Você é ${aiName}, Assistente Virtual de Vendas da BRF Imóveis.
+    const systemPrompt = `Você é ${aiName}.
 Sua identidade e instruções principais:
-${aiInstructions || 'Seja prestativa, educada e direta. Se não souber a resposta, direcione para um corretor.'}
+${aiInstructions || 'Seja prestativa, educada e direta.'}
 
 DIRETRIZES RIGOROSAS:
-1. Responda de forma fluida, coerente e humana, baseando-se EXCLUSIVAMENTE no CONTEXTO RECUPERADO abaixo.
-2. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.
-3. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.
-4. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
-5. Se a resposta não estiver no contexto, contorne educadamente informando que não tem essa informação no momento e que um corretor entrará em contato. NUNCA invente informações (alucinação).
+1. Responda de forma fluida, coerente e humana.
+2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.
+3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.
+4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.
+5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
+6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).
 
 CONTEXTO RECUPERADO:
 ${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
@@ -533,7 +533,16 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           logRecord.set('user_id', userId)
           logRecord.set('type', 'diagnostic')
           logRecord.set('message', 'IA respondeu ao cliente com sucesso')
-          logRecord.set('details', 'A inteligência artificial gerou e enviou uma resposta.')
+
+          let detailsMsg = 'A inteligência artificial gerou e enviou uma resposta.'
+          if (contextText) {
+            detailsMsg +=
+              ' Baseada em contexto específico recuperado da Base de Conhecimento/Cadências.'
+          } else {
+            detailsMsg +=
+              ' Utilizou apenas as instruções principais (sem contexto específico adicional encontrado).'
+          }
+          logRecord.set('details', detailsMsg)
           logRecord.set('payload', { customer_id: customerId, context_used: !!contextText })
           $app.save(logRecord)
         }
