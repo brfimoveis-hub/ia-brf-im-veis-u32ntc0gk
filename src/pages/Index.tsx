@@ -267,100 +267,101 @@ export default function Index() {
             )}
             <div className="flex items-center gap-2">
               <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="w-fit">
-                  <Badge
-                    variant={deliveryStatus.active ? 'default' : 'secondary'}
-                    className={cn(
-                      'px-3 py-1 cursor-help text-sm',
-                      deliveryStatus.active && 'bg-blue-500 hover:bg-blue-600',
-                      !deliveryStatus.active && 'bg-orange-500 hover:bg-orange-600 text-white',
-                    )}
-                  >
-                    <Clock className="w-4 h-4 mr-2" />
-                    Envios: {deliveryStatus.active ? 'Ativos' : 'Pausados'}
-                  </Badge>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" align="end" className="max-w-[300px] p-3">
-                <div className="space-y-1">
-                  <p className="font-semibold text-sm">Status de Envio</p>
-                  <p className="text-xs text-muted-foreground">{deliveryStatus.reason}</p>
-                  <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
-                    Controla o disparo automático da IA para leads baseado nas configurações de
-                    horário.
-                  </p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="w-fit">
-                  <Badge
-                    variant={identityChecks.active ? 'default' : 'destructive'}
-                    className={cn(
-                      'px-3 py-1 cursor-help text-sm',
-                      identityChecks.active &&
-                        identityChecks.warnings.length === 0 &&
-                        'bg-green-500 hover:bg-green-600',
-                      identityChecks.active &&
-                        identityChecks.warnings.length > 0 &&
-                        'bg-amber-500 hover:bg-amber-600 text-white',
-                    )}
-                  >
-                    {identityChecks.active ? (
-                      identityChecks.warnings.length > 0 ? (
-                        <AlertCircle className="w-4 h-4 mr-2" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4 mr-2" />
-                      )
-                    ) : (
-                      <AlertCircle className="w-4 h-4 mr-2" />
-                    )}
-                    Identidade {identityChecks.active ? 'Ativa' : 'Inativa'}
-                  </Badge>
-                </div>
-              </TooltipTrigger>
-              {(!identityChecks.active || identityChecks.warnings.length > 0) && (
+                <TooltipTrigger asChild>
+                  <div className="w-fit">
+                    <Badge
+                      variant={deliveryStatus.active ? 'default' : 'secondary'}
+                      className={cn(
+                        'px-3 py-1 cursor-help text-sm',
+                        deliveryStatus.active && 'bg-blue-500 hover:bg-blue-600',
+                        !deliveryStatus.active && 'bg-orange-500 hover:bg-orange-600 text-white',
+                      )}
+                    >
+                      <Clock className="w-4 h-4 mr-2" />
+                      Envios: {deliveryStatus.active ? 'Ativos' : 'Pausados'}
+                    </Badge>
+                  </div>
+                </TooltipTrigger>
                 <TooltipContent side="bottom" align="end" className="max-w-[300px] p-3">
-                  <div className="space-y-2">
-                    {!identityChecks.active && (
-                      <>
-                        <p className="font-semibold text-sm text-destructive">
-                          Ações Necessárias (Bloqueantes):
-                        </p>
-                        <ul className="text-xs list-disc pl-4 space-y-1 text-muted-foreground">
-                          {identityChecks.reasons.map((r, i) => (
-                            <li key={i}>{r}</li>
-                          ))}
-                        </ul>
-                        <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
-                          A IA não responderá novos leads até que estas pendências sejam resolvidas
-                          nas Configurações.
-                        </p>
-                      </>
-                    )}
-                    {identityChecks.active && identityChecks.warnings.length > 0 && (
-                      <>
-                        <p className="font-semibold text-sm text-amber-500">
-                          Avisos (Não bloqueantes):
-                        </p>
-                        <ul className="text-xs list-disc pl-4 space-y-1 text-muted-foreground">
-                          {identityChecks.warnings.map((r, i) => (
-                            <li key={i}>{r}</li>
-                          ))}
-                        </ul>
-                        <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
-                          A IA continuará respondendo, mas algumas funcionalidades (como
-                          rastreamento Meta) podem estar limitadas.
-                        </p>
-                      </>
-                    )}
+                  <div className="space-y-1">
+                    <p className="font-semibold text-sm">Status de Envio</p>
+                    <p className="text-xs text-muted-foreground">{deliveryStatus.reason}</p>
+                    <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
+                      Controla o disparo automático da IA para leads baseado nas configurações de
+                      horário.
+                    </p>
                   </div>
                 </TooltipContent>
-              )}
-            </Tooltip>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-fit">
+                    <Badge
+                      variant={identityChecks.active ? 'default' : 'destructive'}
+                      className={cn(
+                        'px-3 py-1 cursor-help text-sm',
+                        identityChecks.active &&
+                          identityChecks.warnings.length === 0 &&
+                          'bg-green-500 hover:bg-green-600',
+                        identityChecks.active &&
+                          identityChecks.warnings.length > 0 &&
+                          'bg-amber-500 hover:bg-amber-600 text-white',
+                      )}
+                    >
+                      {identityChecks.active ? (
+                        identityChecks.warnings.length > 0 ? (
+                          <AlertCircle className="w-4 h-4 mr-2" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                        )
+                      ) : (
+                        <AlertCircle className="w-4 h-4 mr-2" />
+                      )}
+                      Identidade {identityChecks.active ? 'Ativa' : 'Inativa'}
+                    </Badge>
+                  </div>
+                </TooltipTrigger>
+                {(!identityChecks.active || identityChecks.warnings.length > 0) && (
+                  <TooltipContent side="bottom" align="end" className="max-w-[300px] p-3">
+                    <div className="space-y-2">
+                      {!identityChecks.active && (
+                        <>
+                          <p className="font-semibold text-sm text-destructive">
+                            Ações Necessárias (Bloqueantes):
+                          </p>
+                          <ul className="text-xs list-disc pl-4 space-y-1 text-muted-foreground">
+                            {identityChecks.reasons.map((r, i) => (
+                              <li key={i}>{r}</li>
+                            ))}
+                          </ul>
+                          <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
+                            A IA não responderá novos leads até que estas pendências sejam
+                            resolvidas nas Configurações.
+                          </p>
+                        </>
+                      )}
+                      {identityChecks.active && identityChecks.warnings.length > 0 && (
+                        <>
+                          <p className="font-semibold text-sm text-amber-500">
+                            Avisos (Não bloqueantes):
+                          </p>
+                          <ul className="text-xs list-disc pl-4 space-y-1 text-muted-foreground">
+                            {identityChecks.warnings.map((r, i) => (
+                              <li key={i}>{r}</li>
+                            ))}
+                          </ul>
+                          <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
+                            A IA continuará respondendo, mas algumas funcionalidades (como
+                            rastreamento Meta) podem estar limitadas.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </div>
           </div>
         </div>
         <p className="text-muted-foreground">
