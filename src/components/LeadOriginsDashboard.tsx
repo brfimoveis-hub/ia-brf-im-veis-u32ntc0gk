@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast'
 interface SourceStatus {
   name: string
   id?: string
-  status: 'CONNECTED' | 'ATTENTION' | 'DISCONNECTED' | 'CHECKING'
+  status: 'Online' | 'Warning' | 'Offline' | 'Checking'
   icon: any
   url?: string
 }
@@ -26,21 +26,21 @@ export function LeadOriginsDashboard() {
   const { toast } = useToast()
   const [isChecking, setIsChecking] = useState(false)
   const [sources, setSources] = useState<SourceStatus[]>([
-    { name: 'Website', url: 'https://www.brfimoveis.com.br/', status: 'CHECKING', icon: Globe },
+    { name: 'Website', url: 'https://www.brfimoveis.com.br/', status: 'Checking', icon: Globe },
     {
       name: 'Instagram',
-      id: '@maurofengler (17841466333365448)',
-      status: 'CHECKING',
+      id: '@maurofengler (ID: 17841466333365448)',
+      status: 'Checking',
       icon: Instagram,
     },
-    { name: 'YouTube', id: 'BRF Imóveis Channel', status: 'CHECKING', icon: Youtube },
+    { name: 'YouTube', id: 'Studio Channel integration', status: 'Checking', icon: Youtube },
   ])
 
   const checkConnectivity = async () => {
     setIsChecking(true)
 
     // Set all to checking state visually
-    setSources((prev) => prev.map((s) => ({ ...s, status: 'CHECKING' })))
+    setSources((prev) => prev.map((s) => ({ ...s, status: 'Checking' })))
 
     try {
       const res = await pb.send('/backend/v1/ping-sources', {
@@ -52,19 +52,34 @@ export function LeadOriginsDashboard() {
         {
           name: 'Website',
           url: 'https://www.brfimoveis.com.br/',
-          status: res.website || 'CONNECTED',
+          status:
+            res.website === 'CONNECTED'
+              ? 'Online'
+              : res.website === 'ATTENTION'
+                ? 'Warning'
+                : 'Offline',
           icon: Globe,
         },
         {
           name: 'Instagram',
-          id: '@maurofengler (17841466333365448)',
-          status: res.instagram || 'CONNECTED',
+          id: '@maurofengler (ID: 17841466333365448)',
+          status:
+            res.instagram === 'CONNECTED'
+              ? 'Online'
+              : res.instagram === 'ATTENTION'
+                ? 'Warning'
+                : 'Offline',
           icon: Instagram,
         },
         {
           name: 'YouTube',
-          id: 'BRF Imóveis Channel',
-          status: res.youtube || 'CONNECTED',
+          id: 'Studio Channel integration',
+          status:
+            res.youtube === 'CONNECTED'
+              ? 'Online'
+              : res.youtube === 'ATTENTION'
+                ? 'Warning'
+                : 'Offline',
           icon: Youtube,
         },
       ])
@@ -74,7 +89,7 @@ export function LeadOriginsDashboard() {
         description: 'Status de conectividade das origens de leads atualizado.',
       })
     } catch (error) {
-      setSources((prev) => prev.map((s) => ({ ...s, status: 'DISCONNECTED' })))
+      setSources((prev) => prev.map((s) => ({ ...s, status: 'Offline' })))
       toast({
         title: 'Erro na Verificação',
         description: 'Não foi possível validar a conectividade com as origens.',
@@ -91,22 +106,22 @@ export function LeadOriginsDashboard() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'CONNECTED':
+      case 'Online':
         return (
           <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> Conectado
+            <CheckCircle2 className="w-3 h-3 mr-1" /> Online
           </Badge>
         )
-      case 'ATTENTION':
+      case 'Warning':
         return (
           <Badge className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/20">
-            <AlertTriangle className="w-3 h-3 mr-1" /> Atenção
+            <AlertTriangle className="w-3 h-3 mr-1" /> Warning
           </Badge>
         )
-      case 'DISCONNECTED':
+      case 'Offline':
         return (
           <Badge className="bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20">
-            <XCircle className="w-3 h-3 mr-1" /> Desconectado
+            <XCircle className="w-3 h-3 mr-1" /> Offline
           </Badge>
         )
       default:

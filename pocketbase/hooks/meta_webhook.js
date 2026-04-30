@@ -47,7 +47,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
 
             const leadId = value.leadgen_id
             const formId = value.form_id
-            const contactName = `Lead Website - ${leadId || new Date().getTime()}`
+            const contactName = `Lead-Meta-${leadId || new Date().getTime()}`
             const phone = `+5500000000000` // Placeholder for generic page leadgen without auth token
 
             try {
@@ -84,7 +84,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
           if (!senderId) continue
 
           const text = messaging.message?.text || 'Nova interação no Instagram'
-          const contactName = `Lead Instagram - ${senderId}`
+          const contactName = `Lead-Meta-${senderId}`
           let targetUserId = globalUserId
 
           let customer = null
@@ -177,8 +177,13 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                 } catch (_) {}
 
                 // AC: Fallback to phone number if name is missing to prevent constraint errors
-                let contactName = `Lead WhatsApp - ${phone}`
+                let contactName = `Lead-Meta-${phone}`
                 if (value.contacts && value.contacts.length > 0) {
+                  const contact = value.contacts.find((c) => c.wa_id === phone)
+                  if (contact && contact.profile && contact.profile.name) {
+                    contactName = contact.profile.name
+                  }
+                }
                   const contact = value.contacts.find((c) => c.wa_id === phone)
                   if (contact && contact.profile && contact.profile.name) {
                     contactName = contact.profile.name
@@ -308,6 +313,22 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
     }
   } catch (err) {
     $app.logger().error('Error processing Meta Webhook', 'err', err)
+    try {
+      let globalUserId = ''
+      try {
+        const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
+        if (fallbackUser.length > 0) globalUserId = fallbackUser[0].id
+      } catch (_) {}
+      
+      const logsCol = $app.findCollectionByNameOrId('system_logs')
+      const logRecord = new Record(logsCol)
+      logRecord.set('user_id', globalUserId)
+      logRecord.set('type', 'diagnostic_error')
+      logRecord.set('message', 'Falha Crítica no Webhook (Catch Global)')
+      logRecord.set('details', String(err))
+      logRecord.set('payload', { error: String(err), raw_body: body })
+      $app.saveNoValidate(logRecord)
+    } catch (_) {}
   }
 
   return e.json(200, { status: 'ok', message: 'Event received successfully' })

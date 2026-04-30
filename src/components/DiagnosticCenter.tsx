@@ -565,31 +565,24 @@ export function DiagnosticCenter() {
               <TableHeader className="bg-muted/50 sticky top-0 z-10">
                 <TableRow>
                   <TableHead
-                    className="w-[140px] cursor-pointer hover:bg-muted/80 transition-colors select-none"
-                    onClick={() => handleSort('type')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Tipo <ArrowUpDown className="h-3 w-3" />
-                    </div>
-                  </TableHead>
-                  <TableHead
                     className="w-[160px] cursor-pointer hover:bg-muted/80 transition-colors select-none"
                     onClick={() => handleSort('created')}
                   >
                     <div className="flex items-center gap-1">
-                      Data/Hora <ArrowUpDown className="h-3 w-3" />
+                      Timestamp <ArrowUpDown className="h-3 w-3" />
                     </div>
                   </TableHead>
+                  <TableHead className="w-[140px]">Source</TableHead>
                   <TableHead
-                    className="min-w-[200px] cursor-pointer hover:bg-muted/80 transition-colors select-none"
-                    onClick={() => handleSort('message')}
+                    className="w-[140px] cursor-pointer hover:bg-muted/80 transition-colors select-none"
+                    onClick={() => handleSort('type')}
                   >
                     <div className="flex items-center gap-1">
-                      Mensagem / Status <ArrowUpDown className="h-3 w-3" />
+                      Type <ArrowUpDown className="h-3 w-3" />
                     </div>
                   </TableHead>
-                  <TableHead className="min-w-[200px]">Detalhes</TableHead>
-                  <TableHead className="text-right w-[100px]">Ações</TableHead>
+                  <TableHead className="min-w-[200px]">Status</TableHead>
+                  <TableHead className="text-right w-[140px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -600,68 +593,93 @@ export function DiagnosticCenter() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredAndSortedLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'text-[10px] h-6 px-2 whitespace-nowrap',
-                            getLogBadgeColor(log.type),
-                          )}
-                        >
-                          {log.type.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">
-                        {new Date(log.created).toLocaleString('pt-BR')}
-                      </TableCell>
-                      <TableCell className="text-sm font-medium text-secondary">
-                        <div className="line-clamp-2" title={log.message}>
-                          {log.message}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        <div className="line-clamp-2" title={log.details}>
-                          {log.details || '-'}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
+                  filteredAndSortedLogs.map((log) => {
+                    let source = 'System'
+                    if (
+                      log.type.toLowerCase().includes('webhook') ||
+                      log.message.toLowerCase().includes('webhook')
+                    )
+                      source = 'Webhook'
+                    else if (
+                      log.type.toLowerCase().includes('ai') ||
+                      log.type.toLowerCase() === 'ai_response'
+                    )
+                      source = 'AI Engine'
+                    else if (
+                      log.type.toLowerCase().includes('meta') ||
+                      log.type.toLowerCase().includes('remarketing')
+                    )
+                      source = 'Meta Ads'
+
+                    let statusType = 'Success'
+                    if (
+                      log.type.toLowerCase().includes('error') ||
+                      log.message.toLowerCase().includes('falha')
+                    )
+                      statusType = 'Error'
+                    else if (
+                      log.type.toLowerCase().includes('warning') ||
+                      log.type.toLowerCase() === 'diagnostic'
+                    )
+                      statusType = 'Info'
+
+                    return (
+                      <TableRow key={log.id}>
+                        <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">
+                          {new Date(log.created).toLocaleString('pt-BR')}
+                        </TableCell>
+                        <TableCell className="text-xs font-medium">{source}</TableCell>
+                        <TableCell>
+                          <Badge
                             variant="outline"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                            onClick={() => setSelectedPayloadLog(log)}
-                            title="Ver Payload Raw"
+                            className={cn(
+                              'text-[10px] h-6 px-2 whitespace-nowrap',
+                              getLogBadgeColor(log.type),
+                            )}
                           >
-                            <FileJson className="h-4 w-4" />
-                            <span className="sr-only">Ver Payload Raw</span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                            onClick={() => handleCopyError(log.message, log.payload)}
-                            title="Copiar Detalhes"
-                          >
-                            <Copy className="h-4 w-4" />
-                            <span className="sr-only">Copiar Detalhes</span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => setLogToDelete(log.id)}
-                            title="Excluir log"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Excluir log</span>
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                            {log.type.toUpperCase()}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm font-medium text-secondary">
+                          <div className="flex items-center gap-2">
+                            {statusType === 'Error' ? (
+                              <AlertTriangle className="h-4 w-4 text-red-500" />
+                            ) : statusType === 'Info' ? (
+                              <Activity className="h-4 w-4 text-amber-500" />
+                            ) : (
+                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                            )}
+                            <div className="line-clamp-2" title={log.message}>
+                              {log.message}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10"
+                              onClick={() => setSelectedPayloadLog(log)}
+                            >
+                              <FileJson className="h-3 w-3 mr-1" />
+                              View Details
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => setLogToDelete(log.id)}
+                              title="Excluir log"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Excluir log</span>
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>

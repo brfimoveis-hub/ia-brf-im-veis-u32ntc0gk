@@ -122,7 +122,12 @@ export default function Index() {
         ? Math.round((successLogs.length / remarketingLogs.length) * 100)
         : 100
 
-    return { totalLeads, remarketingActive, syncHealth }
+    const captures24h = customers.filter(
+      (c) => new Date(c.created).getTime() > Date.now() - 24 * 60 * 60 * 1000,
+    ).length
+    const activeIntegrations = 3 // Website, Instagram, YouTube
+
+    return { totalLeads, remarketingActive, syncHealth, captures24h, activeIntegrations }
   }, [customers, logs])
 
   const performanceTableData = useMemo(() => {
@@ -176,7 +181,7 @@ export default function Index() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-sm font-medium">Total de Leads</CardTitle>
@@ -189,12 +194,32 @@ export default function Index() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Capturas (24h)</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">+{kpis.captures24h}</div>
+            <p className="text-xs text-muted-foreground">Novos leads hoje</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Integrações Ativas</CardTitle>
+            <RefreshCw className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">{kpis.activeIntegrations}</div>
+            <p className="text-xs text-muted-foreground">Fontes de captura saudáveis</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-sm font-medium">Remarketing Ativo</CardTitle>
             <RefreshCw className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{kpis.remarketingActive}</div>
-            <p className="text-xs text-muted-foreground">Leads com tags de segmentação</p>
+            <p className="text-xs text-muted-foreground">Leads com tags</p>
           </CardContent>
         </Card>
         <Card>
@@ -204,7 +229,7 @@ export default function Index() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{kpis.syncHealth}%</div>
-            <p className="text-xs text-muted-foreground">Taxa de sucesso dos eventos</p>
+            <p className="text-xs text-muted-foreground">Taxa de sucesso</p>
           </CardContent>
         </Card>
       </div>

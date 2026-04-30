@@ -403,6 +403,20 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
     }
   } catch (err) {
     $app.logger().error('AI Auto Reply Error', 'err', err)
+    try {
+      const logsCol = $app.findCollectionByNameOrId('system_logs')
+      const logRecord = new Record(logsCol)
+      logRecord.set('user_id', e.record.getString('user_id'))
+      logRecord.set('type', 'diagnostic_error')
+      logRecord.set('message', 'Falha na Execução do AI Auto Reply')
+      logRecord.set('details', String(err))
+      logRecord.set('payload', {
+        error: String(err),
+        record_id: e.record.id,
+        customer_id: customerId,
+      })
+      $app.saveNoValidate(logRecord)
+    } catch (_) {}
   } finally {
     if (acquiredLock) {
       try {
