@@ -13,9 +13,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 // Break circular dependencies completely by using lazy-loaded routes
 const Index = lazy(() => import('./pages/Index'))
-const CRM = lazy(() => import('./pages/CRM'))
 const Customers = lazy(() => import('./pages/Customers'))
-const Conversations = lazy(() => import('./pages/Conversations'))
 const Settings = lazy(() => import('./pages/Settings'))
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'))
 const Cadences = lazy(() => import('./pages/Cadences'))
@@ -76,26 +74,10 @@ const router = createBrowserRouter(
                   ),
                 },
                 {
-                  path: '/crm',
-                  element: (
-                    <Suspense fallback={<PageLoader />}>
-                      <CRM />
-                    </Suspense>
-                  ),
-                },
-                {
                   path: '/clientes',
                   element: (
                     <Suspense fallback={<PageLoader />}>
                       <Customers />
-                    </Suspense>
-                  ),
-                },
-                {
-                  path: '/conversas',
-                  element: (
-                    <Suspense fallback={<PageLoader />}>
-                      <Conversations />
                     </Suspense>
                   ),
                 },
