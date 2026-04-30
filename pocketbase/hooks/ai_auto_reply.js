@@ -1,7 +1,7 @@
 onRecordAfterCreateSuccess((e) => {
   const sender = e.record.getString('sender')
 
-  if (sender !== 'customer') {
+  if (sender !== 'customer' && sender !== 'user' && sender !== 'lead') {
     return e.next()
   }
 
@@ -64,13 +64,14 @@ onRecordAfterCreateSuccess((e) => {
             )
           return e.next()
         }
-        if (lastMsg.getString('sender') !== 'customer') {
+        const lastSender = lastMsg.getString('sender')
+        if (lastSender !== 'customer' && lastSender !== 'user' && lastSender !== 'lead') {
           $app
             .logger()
             .info(
-              'Skipping auto-reply: last message not from customer',
+              'Skipping auto-reply: last message not from customer/user/lead',
               'lastSender',
-              lastMsg.getString('sender'),
+              lastSender,
             )
           return e.next()
         }
@@ -123,18 +124,16 @@ onRecordAfterCreateSuccess((e) => {
 
     const apiKey = $secrets.get('OPENAI_API_KEY')
     if (!apiKey) {
-      if (isTargetLead) {
-        try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const logRecord = new Record(logsCol)
-          logRecord.set('user_id', e.record.getString('user_id'))
-          logRecord.set('type', 'diagnostic_error')
-          logRecord.set('message', 'AI trigger skipped: missing API Key')
-          logRecord.set('details', `OPENAI_API_KEY ausente.`)
-          logRecord.set('payload', { customer_id: customerId })
-          $app.saveNoValidate(logRecord)
-        } catch (_) {}
-      }
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', e.record.getString('user_id') || '')
+        logRecord.set('type', 'AI_ERROR')
+        logRecord.set('message', 'AI trigger skipped: missing API Key')
+        logRecord.set('details', `OPENAI_API_KEY ausente ou inválida.`)
+        logRecord.set('payload', { customer_id: customerId })
+        $app.saveNoValidate(logRecord)
+      } catch (_) {}
       $app.logger().warn('OPENAI_API_KEY missing for ai auto reply')
       return e.next()
     }
@@ -163,14 +162,14 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (_) {}
 
-    if (!aiInstructions && isTargetLead) {
+    if (!aiInstructions) {
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', userId || '')
-        logRecord.set('type', 'diagnostic_error')
-        logRecord.set('message', 'AI trigger skipped: missing instructions')
-        logRecord.set('details', `Instruções de IA vazias para lead 48992098050.`)
+        logRecord.set('type', 'DIAGNOSTIC')
+        logRecord.set('message', 'AI trigger warning: missing instructions')
+        logRecord.set('details', `Instruções de IA vazias. A IA usará o comportamento padrão.`)
         logRecord.set('payload', { customer_id: customerId })
         $app.saveNoValidate(logRecord)
       } catch (_) {}
@@ -262,13 +261,9 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
 
     if (historyRecords && historyRecords.length > 0) {
       historyRecords.forEach((msg) => {
-        if (msg.getString('sender') === 'system') return
-        const role =
-          msg.getString('sender') === 'ai' ||
-          msg.getString('sender') === 'agent' ||
-          msg.getString('sender') === 'user'
-            ? 'assistant'
-            : 'user'
+        const msgSender = msg.getString('sender')
+        if (msgSender === 'system') return
+        const role = msgSender === 'ai' || msgSender === 'agent' ? 'assistant' : 'user'
         if (msg.id !== e.record.id) {
           messages.push({ role: role, content: msg.getString('content') || '' })
         }
@@ -308,7 +303,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           const logCollection = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logCollection)
           logRecord.set('user_id', userId)
-          logRecord.set('type', 'ERROR')
+          logRecord.set('type', 'AI_ERROR')
           logRecord.set('message', 'Falha na comunicação com OpenAI Chat')
           logRecord.set(
             'details',
@@ -447,14 +442,14 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
     try {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const logRecord = new Record(logsCol)
-      logRecord.set('user_id', e.record.getString('user_id'))
-      logRecord.set('type', 'diagnostic_error')
+      logRecord.set('user_id', e.record.getString('user_id') || '')
+      logRecord.set('type', 'AI_ERROR')
       logRecord.set('message', 'Falha na Execução do AI Auto Reply')
       logRecord.set('details', String(err))
       logRecord.set('payload', {
         error: String(err),
         record_id: e.record.id,
-        customer_id: customerId,
+        customer_id: customerId || 'unknown',
       })
       $app.saveNoValidate(logRecord)
     } catch (_) {}
