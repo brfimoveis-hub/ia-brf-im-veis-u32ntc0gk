@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Loader2, Activity, Users, RefreshCw, AlertCircle, CheckCircle2, Clock } from 'lucide-react'
+import pb from '@/lib/pocketbase/client'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAuth } from '@/hooks/use-auth'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -245,8 +246,27 @@ export default function Index() {
       <div className="flex flex-col gap-2">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h2 className="text-3xl font-bold tracking-tight">Dashboard de Vendas</h2>
-          <div className="flex items-center gap-2">
-            <Tooltip>
+          <div className="flex items-center gap-4">
+            {currentUser && currentUser.ai_name && (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-muted/50 rounded-full border shadow-sm">
+                <div className="h-6 w-6 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center shrink-0">
+                  {currentUser.ai_avatar ? (
+                    <img
+                      src={pb.files.getURL(currentUser, currentUser.ai_avatar)}
+                      alt={currentUser.ai_name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-[10px] font-bold text-primary">
+                      {currentUser.ai_name.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <span className="text-sm font-semibold text-secondary">{currentUser.ai_name}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Tooltip>
               <TooltipTrigger asChild>
                 <div className="w-fit">
                   <Badge

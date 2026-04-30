@@ -28,8 +28,12 @@ import { cn } from '@/lib/utils'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getCustomers, updateCustomer, type Customer } from '@/services/customers'
 import { createConversation, getConversations, type Conversation } from '@/services/conversations'
+import { useAuth } from '@/hooks/use-auth'
+import pb from '@/lib/pocketbase/client'
 
 export default function Conversations() {
+  const { user } = useAuth()
+  const [currentUser, setCurrentUser] = useState(user)
   const [customers, setCustomers] = useState<Customer[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeContactId, setActiveContactId] = useState<string | null>(null)
@@ -43,6 +47,16 @@ export default function Conversations() {
   useEffect(() => {
     customersRef.current = customers
   }, [customers])
+
+  useEffect(() => {
+    setCurrentUser(user)
+  }, [user])
+
+  useRealtime('users', (e) => {
+    if (e.action === 'update' && e.record.id === user?.id) {
+      setCurrentUser(e.record as any)
+    }
+  })
 
   useEffect(() => {
     const loadAll = async () => {
@@ -384,10 +398,18 @@ export default function Conversations() {
                           )}
                         >
                           {!isClient && msg.sender === 'ai' && (
-                            <div className="flex items-center gap-1 mb-1 opacity-70">
-                              <Bot className="h-3 w-3 text-primary dark:text-green-400" />
+                            <div className="flex items-center gap-1.5 mb-1.5 opacity-80">
+                              {currentUser?.ai_avatar ? (
+                                <img
+                                  src={pb.files.getURL(currentUser, currentUser.ai_avatar)}
+                                  alt={currentUser.ai_name || 'AI'}
+                                  className="h-4 w-4 rounded-full object-cover shadow-sm border border-primary/10"
+                                />
+                              ) : (
+                                <Bot className="h-3.5 w-3.5 text-primary dark:text-green-400" />
+                              )}
                               <span className="text-[10px] font-bold uppercase tracking-wider text-primary dark:text-green-400">
-                                Assistente IA
+                                {currentUser?.ai_name || 'Assistente IA'}
                               </span>
                             </div>
                           )}
