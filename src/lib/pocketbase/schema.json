@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-30T17:41:14.514Z",
+  "generatedAt": "2026-04-30T17:49:27.232Z",
   "collections": [
     {
       "name": "users",
@@ -125,6 +125,12 @@
         {
           "name": "delivery_days",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_capi_token",
+          "type": "text",
           "required": false,
           "system": false
         }

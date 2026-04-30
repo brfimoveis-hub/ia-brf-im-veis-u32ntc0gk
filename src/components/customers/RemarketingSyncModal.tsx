@@ -143,7 +143,9 @@ export function RemarketingSyncModal({
       filtered = filtered.filter((l) => {
         const nameMatch = (l.name || '').toLowerCase().includes(lowerFilter)
         const notesMatch = (l.notes || '').toLowerCase().includes(lowerFilter)
-        const tagsMatch = (l.tags || []).some((t) => t.toLowerCase().includes(lowerFilter))
+        const tagsMatch = Array.isArray(l.tags)
+          ? l.tags.some((t) => typeof t === 'string' && t.toLowerCase().includes(lowerFilter))
+          : false
         return nameMatch || notesMatch || tagsMatch
       })
     }
@@ -151,7 +153,11 @@ export function RemarketingSyncModal({
     if (resumeMode === 'letter') {
       const letter = resumeLetter.toLowerCase()
       if (letter) {
-        filtered = filtered.filter((l) => (l.name || '').toLowerCase().startsWith(letter))
+        filtered = filtered.filter((l) => {
+          const nameMatch = (l.name || '').toLowerCase().startsWith(letter)
+          const firstNameMatch = (l.first_name || '').toLowerCase().startsWith(letter)
+          return nameMatch || firstNameMatch
+        })
       }
     } else if (resumeMode === 'sequence' && lastSyncLog?.payload?.last_customer_id) {
       const lastId = lastSyncLog.payload.last_customer_id
@@ -270,7 +276,12 @@ export function RemarketingSyncModal({
       setProgress(Math.round(((i + batch.length) / listToProcess.length) * 100))
 
       if (i + currentBatchSize < listToProcess.length && !isStoppedRef.current) {
-        await new Promise((resolve) => setTimeout(resolve, intervalMinutes * 60 * 1000))
+        const waitTimeMs = intervalMinutes * 60 * 1000
+        const chunkMs = 500
+        for (let w = 0; w < waitTimeMs; w += chunkMs) {
+          if (isStoppedRef.current) break
+          await new Promise((resolve) => setTimeout(resolve, chunkMs))
+        }
       }
     }
 
