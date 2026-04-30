@@ -184,11 +184,6 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     contactName = contact.profile.name
                   }
                 }
-                  const contact = value.contacts.find((c) => c.wa_id === phone)
-                  if (contact && contact.profile && contact.profile.name) {
-                    contactName = contact.profile.name
-                  }
-                }
 
                 let customer = null
                 try {
@@ -319,7 +314,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
         const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
         if (fallbackUser.length > 0) globalUserId = fallbackUser[0].id
       } catch (_) {}
-      
+
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const logRecord = new Record(logsCol)
       logRecord.set('user_id', globalUserId)
