@@ -77,10 +77,32 @@ routerAdd(
           errorMessage += `: ${res.json.error.message}`
         }
 
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', user.id)
+          logRecord.set('type', 'error')
+          logRecord.set('message', 'Erro na Sincronização do Meta CAPI')
+          logRecord.set('details', errorMessage)
+          logRecord.set('payload', res.json || { raw: errorBody })
+          $app.saveNoValidate(logRecord)
+        } catch (_) {}
+
         return e.badRequestError(errorMessage)
       }
     } catch (err) {
       $app.logger().error('Meta CAPI Request Failed', 'error', err.message)
+
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', user.id)
+        logRecord.set('type', 'error')
+        logRecord.set('message', 'Falha Crítica na Conexão Meta CAPI')
+        logRecord.set('details', err.message)
+        $app.saveNoValidate(logRecord)
+      } catch (_) {}
+
       return e.internalServerError(`Falha de conexão com a API do Meta: ${err.message}`)
     }
   },

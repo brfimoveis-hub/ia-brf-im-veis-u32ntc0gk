@@ -39,6 +39,9 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { PHASES } from '@/components/customers/constants'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { useAuth } from '@/hooks/use-auth'
+import { Link } from 'react-router-dom'
+import { AlertCircle } from 'lucide-react'
 
 const CustomerImportDialog = lazy(() =>
   import('@/components/customers/CustomerImportDialog').then((m) => ({
@@ -87,6 +90,9 @@ export default function Customers() {
   const [view, setView] = useState<'list' | 'kanban' | 'dashboard'>('kanban')
 
   const { toast } = useToast()
+  const { user } = useAuth()
+
+  const isMetaConfigured = user?.meta_pixel_id && user?.meta_capi_token
 
   const observer = useRef<IntersectionObserver | null>(null)
   const lastElementRef = useCallback(
@@ -248,9 +254,15 @@ export default function Customers() {
           <Button
             variant="secondary"
             onClick={() => setSyncModalOpen(true)}
-            className="gap-2 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border-blue-500/20 border"
+            className={`gap-2 ${isMetaConfigured ? 'bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border-blue-500/20' : 'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20'} border`}
           >
             <Target className="h-4 w-4" /> Sincronizar Meta
+            {!isMetaConfigured && (
+              <span
+                className="flex h-2 w-2 rounded-full bg-destructive animate-pulse"
+                title="Configuração Pendente"
+              ></span>
+            )}
           </Button>
           <Button
             variant="secondary"
@@ -273,6 +285,26 @@ export default function Customers() {
           </Button>
         </div>
       </div>
+
+      {!isMetaConfigured && (
+        <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 text-sm text-destructive font-medium">
+            <AlertCircle className="h-4 w-4" />
+            <span>
+              Configuração do Meta Ads Pendente. O ID do Pixel ou o Token CAPI estão ausentes.
+            </span>
+          </div>
+          <Link to="/configuracoes">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 border-destructive/30 hover:bg-destructive/20 hover:text-destructive bg-background"
+            >
+              Configurar Agora
+            </Button>
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
         <Card className="bg-primary/5 border-primary/20">

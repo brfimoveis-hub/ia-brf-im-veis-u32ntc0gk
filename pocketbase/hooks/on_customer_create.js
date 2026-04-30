@@ -32,13 +32,13 @@ onRecordAfterCreateSuccess((e) => {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const logRecord = new Record(logsCol)
       logRecord.set('user_id', userId)
-      logRecord.set('type', 'diagnostic_warning')
+      logRecord.set('type', 'diagnostic')
       logRecord.set('message', 'Cadência inicial não encontrada')
       logRecord.set(
         'details',
         `Nenhuma cadência ativa encontrada para a fase inicial '${status}'. Usando apenas instruções base.`,
       )
-      logRecord.set('payload', { customer_id: customerId, status: status })
+      logRecord.set('payload', { customer_id: customerId, status: status, warning: true })
       $app.saveNoValidate(logRecord)
     } catch (_) {}
   }

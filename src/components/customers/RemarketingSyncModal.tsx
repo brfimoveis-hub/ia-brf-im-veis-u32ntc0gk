@@ -204,7 +204,7 @@ export function RemarketingSyncModal({
 
   const handleSync = async () => {
     if (!user?.meta_pixel_id || !user?.meta_capi_token) {
-      setSyncError('O ID do Pixel ou o Token da API de Conversões não estão configurados')
+      setSyncError('O ID do Pixel ou o Token da API de Conversões não estão configurados.')
       return
     }
 
@@ -474,7 +474,7 @@ export function RemarketingSyncModal({
                       <p>{syncError}</p>
                     </div>
                     {syncError ===
-                      'O ID do Pixel ou o Token da API de Conversões não estão configurados' && (
+                      'O ID do Pixel ou o Token da API de Conversões não estão configurados.' && (
                       <Button
                         variant="destructive"
                         size="sm"
