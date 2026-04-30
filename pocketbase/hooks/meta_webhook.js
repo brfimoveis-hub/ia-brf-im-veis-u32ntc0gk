@@ -37,7 +37,109 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
       $app.logger().error('Failed to save raw webhook log', err)
     }
 
-    if (body.object === 'page' && body.entry) {
+    // --- Uazapi / Evolution API Fallback ---
+    if ((body.event === 'messages.upsert' || body.event === 'message.upsert') && body.data) {
+      try {
+        const msgData = body.data
+        const messageInfo = msgData.message || {}
+        const keyInfo = msgData.key || {}
+
+        if (!keyInfo.fromMe && keyInfo.remoteJid) {
+          const phone = keyInfo.remoteJid.split('@')[0]
+          const text =
+            messageInfo.conversation ||
+            (messageInfo.extendedTextMessage && messageInfo.extendedTextMessage.text) ||
+            ''
+
+          if (text) {
+            let targetUserId = globalUserId
+            let receiverPhone = body.instance || '48992098050'
+
+            try {
+              const allUsers = $app.findRecordsByFilter(
+                'users',
+                "meta_campaign_phone != ''",
+                '',
+                100,
+                0,
+              )
+              for (const u of allUsers) {
+                const cp = u.getString('meta_campaign_phone').replace(/\D/g, '')
+                if (cp && (receiverPhone.includes(cp) || cp.includes(receiverPhone))) {
+                  targetUserId = u.id
+                  break
+                }
+              }
+            } catch (_) {}
+
+            let customer = null
+            try {
+              const phoneNorm = phone.replace(/\D/g, '')
+              customer = $app.findFirstRecordByFilter(
+                'customers',
+                `phone ~ '${phoneNorm}' || phone_1_value ~ '${phoneNorm}'`,
+              )
+            } catch (_) {}
+
+            if (!customer && targetUserId) {
+              const customersCol = $app.findCollectionByNameOrId('customers')
+              customer = new Record(customersCol)
+              customer.set('user_id', targetUserId)
+              customer.set('name', msgData.pushName || `Lead-Uazapi-${phone}`)
+              customer.set('phone', phone.replace(/\D/g, ''))
+
+              let initialStatus = 'Novo'
+              try {
+                const activeCadences = $app.findRecordsByFilter(
+                  'cadences',
+                  `user_id = '${targetUserId}' && is_active = true`,
+                  'order',
+                  1,
+                  0,
+                )
+                if (activeCadences.length > 0) {
+                  initialStatus = activeCadences[0].getString('title') || 'Novo'
+                }
+              } catch (_) {}
+              customer.set('status', initialStatus)
+
+              customer.set('source', `Uazapi - ${receiverPhone}`)
+              $app.save(customer)
+
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const logRecord = new Record(logsCol)
+              logRecord.set('user_id', targetUserId)
+              logRecord.set('type', 'diagnostic')
+              logRecord.set(
+                'message',
+                `Novo lead capturado via Uazapi: ${customer.getString('name')}`,
+              )
+              logRecord.set('details', `Telefone: ${phone}. Origem Uazapi - ${receiverPhone}`)
+              logRecord.set('payload', {
+                customer_id: customer.id,
+                phone,
+                source: customer.getString('source'),
+              })
+              $app.save(logRecord)
+            }
+
+            if (customer) {
+              const userId = customer.getString('user_id')
+              const conversation = new Record($app.findCollectionByNameOrId('conversations'))
+              conversation.set('customer_id', customer.id)
+              conversation.set('user_id', userId)
+              conversation.set('content', text)
+              conversation.set('sender', 'user')
+              $app.save(conversation)
+            }
+          }
+        }
+      } catch (err) {
+        $app.logger().error('Uazapi payload error', err)
+      }
+    }
+    // --- Meta Ads / Instagram / FB Forms ---
+    else if (body.object === 'page' && body.entry) {
       // Handle Meta Lead Form (leadgen) mapping to Website
       for (const entry of body.entry) {
         for (const change of entry.changes || []) {
@@ -161,15 +263,34 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
 
                 let targetUserId = ''
                 try {
+                  const allUsers = $app.findRecordsByFilter(
+                    'users',
+                    "meta_campaign_phone != ''",
+                    '',
+                    100,
+                    0,
+                  )
                   if (receiverPhone) {
-                    const users = $app.findRecordsByFilter(
-                      'users',
-                      `meta_campaign_phone ~ '${receiverPhone}'`,
-                      '',
-                      1,
-                      0,
-                    )
-                    if (users.length > 0) targetUserId = users[0].id
+                    for (const u of allUsers) {
+                      const cp = u.getString('meta_campaign_phone').replace(/\D/g, '')
+                      if (cp && (receiverPhone.includes(cp) || cp.includes(receiverPhone))) {
+                        targetUserId = u.id
+                        break
+                      }
+                    }
+                  }
+                  if (
+                    !targetUserId &&
+                    (receiverPhone.includes('48992098050') ||
+                      receiverPhone.includes('5548992098050'))
+                  ) {
+                    for (const u of allUsers) {
+                      const cp = u.getString('meta_campaign_phone').replace(/\D/g, '')
+                      if (cp.includes('48992098050')) {
+                        targetUserId = u.id
+                        break
+                      }
+                    }
                   }
                   if (!targetUserId) {
                     targetUserId = globalUserId
@@ -201,12 +322,38 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     customer.set('user_id', targetUserId)
                     customer.set('name', contactName)
                     customer.set('phone', phone.replace(/\D/g, ''))
-                    customer.set('status', 'Novo')
 
-                    let source = 'WhatsApp'
+                    let initialStatus = 'Novo'
+                    try {
+                      const activeCadences = $app.findRecordsByFilter(
+                        'cadences',
+                        `user_id = '${targetUserId}' && is_active = true`,
+                        'order',
+                        1,
+                        0,
+                      )
+                      if (activeCadences.length > 0) {
+                        initialStatus = activeCadences[0].getString('title') || 'Novo'
+                      }
+                    } catch (_) {}
+                    customer.set('status', initialStatus)
+
+                    let source = receiverPhone ? `Meta - ${receiverPhone}` : 'WhatsApp'
+                    if (receiverPhone.includes('48992098050')) {
+                      source = `Meta - 48992098050`
+                    }
+                    if (!receiverPhone && targetUserId) {
+                      try {
+                        const u = $app.findRecordById('users', targetUserId)
+                        const uPhone = u.getString('meta_campaign_phone')
+                        if (uPhone && uPhone.includes('48992098050')) {
+                          source = `Meta - 48992098050`
+                        }
+                      } catch (_) {}
+                    }
+
                     let notes = ''
                     if (msg.referral) {
-                      source = 'Meta Ads'
                       notes = `Origem: Anúncio Meta\nHeadline: ${msg.referral.headline || 'N/A'}\nAd ID: ${msg.referral.source_id || 'N/A'}`
                     }
                     customer.set('source', source)

@@ -100,13 +100,41 @@ onRecordAfterCreateSuccess((e) => {
 
     const customer = $app.findRecordById('customers', customerId)
     const tags = customer.get('tags') || []
+    const customerPhone = customer.getString('phone') || ''
+    const customerSource = customer.getString('source') || ''
+    const isTargetLead =
+      customerPhone.includes('48992098050') || customerSource.includes('48992098050')
 
     if (tags.includes('ai_paused')) {
+      if (isTargetLead) {
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', e.record.getString('user_id'))
+          logRecord.set('type', 'diagnostic_error')
+          logRecord.set('message', 'AI trigger skipped: AI is paused for this customer')
+          logRecord.set('details', `Lead 48992098050 com tag ai_paused.`)
+          logRecord.set('payload', { customer_id: customerId })
+          $app.saveNoValidate(logRecord)
+        } catch (_) {}
+      }
       return e.next()
     }
 
     const apiKey = $secrets.get('OPENAI_API_KEY')
     if (!apiKey) {
+      if (isTargetLead) {
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', e.record.getString('user_id'))
+          logRecord.set('type', 'diagnostic_error')
+          logRecord.set('message', 'AI trigger skipped: missing API Key')
+          logRecord.set('details', `OPENAI_API_KEY ausente.`)
+          logRecord.set('payload', { customer_id: customerId })
+          $app.saveNoValidate(logRecord)
+        } catch (_) {}
+      }
       $app.logger().warn('OPENAI_API_KEY missing for ai auto reply')
       return e.next()
     }
@@ -119,9 +147,9 @@ onRecordAfterCreateSuccess((e) => {
 
     const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
 
-    let aiInstructions = ''
+    let aiInstructions = userRecord ? userRecord.getString('ai_instructions') || '' : ''
     try {
-      if (userId) {
+      if (userId && !aiInstructions) {
         const kbRecords = $app.findRecordsByFilter(
           'knowledge_base',
           `user_id = '${userId}'`,
@@ -134,6 +162,19 @@ onRecordAfterCreateSuccess((e) => {
         }
       }
     } catch (_) {}
+
+    if (!aiInstructions && isTargetLead) {
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', userId || '')
+        logRecord.set('type', 'diagnostic_error')
+        logRecord.set('message', 'AI trigger skipped: missing instructions')
+        logRecord.set('details', `Instruções de IA vazias para lead 48992098050.`)
+        logRecord.set('payload', { customer_id: customerId })
+        $app.saveNoValidate(logRecord)
+      } catch (_) {}
+    }
 
     const customerMessage = e.record.getString('content') || ''
 

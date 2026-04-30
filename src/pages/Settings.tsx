@@ -941,7 +941,7 @@ export default function Settings() {
                       metaCampaignPhone ? 'bg-green-500 animate-pulse' : 'bg-amber-500',
                     )}
                   />
-                  {metaCampaignPhone ? 'Listening (Ativo)' : 'Não Configurado'}
+                  {metaCampaignPhone ? 'Online' : 'Não Configurado'}
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
