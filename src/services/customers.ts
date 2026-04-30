@@ -55,8 +55,12 @@ export interface Customer {
   website_1_value?: string
 }
 
-export const getCustomers = async (): Promise<Customer[]> => {
-  return pb.collection('customers').getFullList<Customer>({ sort: '-created' })
+export const getCustomers = async (filter?: string): Promise<Customer[]> => {
+  const options: any = { sort: '-created' }
+  if (filter) {
+    options.filter = filter
+  }
+  return pb.collection('customers').getFullList<Customer>(options)
 }
 
 export const getPaginatedCustomers = async (

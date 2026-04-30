@@ -77,7 +77,7 @@ export default function CRM() {
     let mounted = true
     if (!loading) return
 
-    Promise.all([getCustomers(), getConversations()])
+    Promise.all([getCustomers('created >= "2024-04-28 00:00:00.000Z"'), getConversations()])
       .then(([customersData, conversationsData]) => {
         if (mounted) {
           setCustomers(customersData)
@@ -96,12 +96,21 @@ export default function CRM() {
   }, [loading])
 
   const handleCustomersRealtime = useCallback((e: any) => {
-    if (e.action === 'create') setCustomers((prev) => [e.record as unknown as Customer, ...prev])
-    else if (e.action === 'update')
-      setCustomers((prev) =>
-        prev.map((c) => (c.id === e.record.id ? (e.record as unknown as Customer) : c)),
-      )
-    else if (e.action === 'delete') setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
+    const isRecent = new Date(e.record.created) >= new Date('2024-04-28T00:00:00.000Z')
+
+    if (e.action === 'create') {
+      if (isRecent) setCustomers((prev) => [e.record as unknown as Customer, ...prev])
+    } else if (e.action === 'update') {
+      setCustomers((prev) => {
+        if (prev.some((c) => c.id === e.record.id)) {
+          return prev.map((c) => (c.id === e.record.id ? (e.record as unknown as Customer) : c))
+        }
+        if (isRecent) return [e.record as unknown as Customer, ...prev]
+        return prev
+      })
+    } else if (e.action === 'delete') {
+      setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
+    }
   }, [])
 
   const handleConversationsRealtime = useCallback((e: any) => {
@@ -133,6 +142,25 @@ export default function CRM() {
         (Array.isArray(c.tags) && c.tags.some((t) => t.toLowerCase().includes(lowerSearch))),
     )
   }, [customers, searchFilter])
+
+  const dynamicPhases = useMemo(() => {
+    const phases = [...PHASES]
+    const existingTitles = new Set(phases.map((p) => p.title))
+
+    customers.forEach((c) => {
+      const status = c.status || 'Lead Novo'
+      if (!existingTitles.has(status)) {
+        phases.push({
+          id: phases.length + 1,
+          title: status,
+          color: 'bg-slate-400',
+        })
+        existingTitles.add(status)
+      }
+    })
+
+    return phases
+  }, [customers])
 
   const handleSyncRemarketing = async () => {
     if (filteredCustomers.length === 0) return
@@ -235,7 +263,7 @@ export default function CRM() {
         </div>
         <h2 className="text-2xl font-bold text-secondary mb-2">Nenhum cliente encontrado</h2>
         <p className="text-muted-foreground max-w-md mb-8">
-          Você ainda não possui clientes cadastrados. Adicione seu primeiro cliente para iniciar o
+          Nenhum lead encontrado a partir de 28/04. Adicione seu primeiro cliente para iniciar o
           acompanhamento.
         </p>
         <Button onClick={() => navigate('/clientes')} size="lg" className="gap-2">
@@ -304,7 +332,7 @@ export default function CRM() {
 
       <ScrollArea className="flex-1 border rounded-xl bg-muted/10 shadow-inner">
         <div className="flex h-full p-4 gap-4 w-max min-w-full">
-          {PHASES.map((phase) => {
+          {dynamicPhases.map((phase) => {
             const phaseLeads = filteredCustomers.filter(
               (l) => (l.status || 'Lead Novo') === phase.title,
             )
