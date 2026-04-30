@@ -235,19 +235,18 @@ onRecordAfterCreateSuccess((e) => {
 
     if (isNameMissing || isInstructionsMissing) {
       const reasons = []
-      if (isNameMissing) reasons.push('Missing ai_name (Nome da IA não configurado)')
-      if (isInstructionsMissing)
-        reasons.push('Missing ai_instructions (Instruções da IA não configuradas)')
+      if (isNameMissing) reasons.push('AI Name missing')
+      if (isInstructionsMissing) reasons.push('AI Instructions missing')
 
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', userId || '')
         logRecord.set('type', 'diagnostic_error')
-        logRecord.set('message', 'AI trigger skipped: Identidade Inativa')
+        logRecord.set('message', 'AI trigger skipped: ' + reasons.join(' and '))
         logRecord.set(
           'details',
-          `A IA não pode responder porque a Identidade está inativa. Pendências: ${reasons.join(', ')}`,
+          `A IA não pode responder porque a configuração está incompleta. Pendências: ${reasons.join(', ')}`,
         )
         logRecord.set('payload', { customer_id: customerId, reasons })
         $app.saveNoValidate(logRecord)
