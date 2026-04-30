@@ -1,13 +1,7 @@
-onRecordAfterUpdateSuccess((e) => {
-  const oldStatus = e.record.original().getString('status')
-  const newStatus = e.record.getString('status')
-
-  if (!oldStatus || oldStatus === newStatus) {
-    return e.next()
-  }
-
+onRecordAfterCreateSuccess((e) => {
   const customerId = e.record.id
   const userId = e.record.getString('user_id')
+  const status = e.record.getString('status') || 'Lead Novo'
 
   let userRecord = null
   try {
@@ -21,7 +15,7 @@ onRecordAfterUpdateSuccess((e) => {
   try {
     const cadences = $app.findRecordsByFilter(
       'cadences',
-      `user_id = '${userId}' && is_active = true && title = '${newStatus.replace(/'/g, "''")}'`,
+      `user_id = '${userId}' && is_active = true && title = '${status.replace(/'/g, "''")}'`,
       '-created',
       1,
       0,
@@ -30,7 +24,7 @@ onRecordAfterUpdateSuccess((e) => {
       cadenceRecord = cadences[0]
     }
   } catch (err) {
-    $app.logger().error('Error fetching cadence for status change', err)
+    $app.logger().error('Error fetching cadence for customer create', err)
   }
 
   if (!cadenceRecord) {
@@ -39,12 +33,12 @@ onRecordAfterUpdateSuccess((e) => {
       const logRecord = new Record(logsCol)
       logRecord.set('user_id', userId)
       logRecord.set('type', 'diagnostic_warning')
-      logRecord.set('message', 'Cadência não encontrada')
+      logRecord.set('message', 'Cadência inicial não encontrada')
       logRecord.set(
         'details',
-        `Nenhuma cadência ativa encontrada para a fase '${newStatus}'. Usando apenas instruções base da IA.`,
+        `Nenhuma cadência ativa encontrada para a fase inicial '${status}'. Usando apenas instruções base.`,
       )
-      logRecord.set('payload', { customer_id: customerId, status: newStatus })
+      logRecord.set('payload', { customer_id: customerId, status: status })
       $app.saveNoValidate(logRecord)
     } catch (_) {}
   }
@@ -54,19 +48,19 @@ onRecordAfterUpdateSuccess((e) => {
 
   let aiInstructions = baseInstructions
   if (cadenceContent || cadenceInstructions) {
-    aiInstructions += `\n\nDIRETRIZES DA FASE ATUAL (${newStatus}):\n`
+    aiInstructions += `\n\nDIRETRIZES DA FASE ATUAL (${status}):\n`
     if (cadenceContent) aiInstructions += `Procedimento/Conteúdo: ${cadenceContent}\n`
     if (cadenceInstructions) aiInstructions += `Instruções Específicas: ${cadenceInstructions}\n`
   }
 
   if (!aiInstructions.trim()) {
-    $app.logger().info('AI Trigger skipped: No instructions', 'customerId', customerId)
+    $app.logger().info('AI Trigger skipped: No instructions on create', 'customerId', customerId)
     return e.next()
   }
 
   const apiKey = $secrets.get('OPENAI_API_KEY')
   if (!apiKey) {
-    $app.logger().warn('AI Trigger skipped: No OPENAI_API_KEY')
+    $app.logger().warn('AI Trigger skipped: No OPENAI_API_KEY on create')
     return e.next()
   }
 
@@ -75,29 +69,34 @@ onRecordAfterUpdateSuccess((e) => {
     const logRecord = new Record(logsCol)
     logRecord.set('user_id', userId)
     logRecord.set('type', 'diagnostic')
-    logRecord.set('message', 'AI Triggered by Status Change')
+    logRecord.set('message', 'AI Triggered by New Lead')
     logRecord.set(
       'details',
-      `Cliente moveu de '${oldStatus}' para '${newStatus}'. Analisando próxima ação usando cadência específica.`,
+      `Novo lead capturado com status '${status}'. Preparando primeira interação usando cadência específica.`,
     )
     logRecord.set('payload', {
       customer_id: customerId,
-      old_status: oldStatus,
-      new_status: newStatus,
+      status: status,
     })
     $app.saveNoValidate(logRecord)
   } catch (_) {}
 
-  let historyRecords = []
+  // If there are already messages, this might conflict with ai_auto_reply.
+  // We check if there are any conversations. If there are, it means ai_auto_reply will handle it.
   try {
-    historyRecords = $app.findRecordsByFilter(
+    const existingMsgs = $app.findRecordsByFilter(
       'conversations',
       `customer_id = '${customerId}'`,
-      '-created',
-      15,
+      '',
+      1,
       0,
     )
-    historyRecords.reverse()
+    if (existingMsgs.length > 0) {
+      $app
+        .logger()
+        .info('Skipping on_customer_create AI trigger because conversation already exists')
+      return e.next()
+    }
   } catch (_) {}
 
   const messages = []
@@ -106,27 +105,17 @@ Sua identidade e instruções principais:
 ${aiInstructions}
 
 EVENTO ATUAL:
-O cliente acabou de ser movido pelo agente para a fase de funil: "${newStatus}". (Fase anterior: "${oldStatus}").
+Um novo lead acabou de entrar no sistema na fase "${status}".
 
 SUA TAREFA:
-Analise o histórico da conversa e as instruções. Se houver uma mensagem ideal ou um follow-up que deve ser enviado AGORA nesta nova fase, escreva essa mensagem.
+Baseado nas instruções e no procedimento da cadência para a fase atual, escreva a primeira mensagem de abordagem/engajamento (outbound) para este cliente.
 Seja direta, empática e humana.
-NUNCA mencione que você viu uma mudança de status no sistema. A mensagem deve parecer natural.
+NUNCA mencione que você viu o lead entrar no sistema. A mensagem deve parecer natural.
 NUNCA comece com confirmações tipo "Entendido" ou "Vou enviar". Apenas escreva a mensagem para o cliente.
-Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase ou se não for o momento adequado, responda EXATAMENTE com "SKIP_MESSAGE".`
+Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se não for o momento adequado, responda EXATAMENTE com "SKIP_MESSAGE".`
 
   messages.push({ role: 'system', content: systemPrompt })
-
-  if (historyRecords && historyRecords.length > 0) {
-    historyRecords.forEach((msg) => {
-      const msgSender = msg.getString('sender')
-      if (msgSender === 'system') return
-      const role = msgSender === 'ai' || msgSender === 'agent' ? 'assistant' : 'user'
-      messages.push({ role: role, content: msg.getString('content') || '' })
-    })
-  } else {
-    messages.push({ role: 'user', content: '(Nenhum histórico anterior)' })
-  }
+  messages.push({ role: 'user', content: '(Inicie a conversa com o lead)' })
 
   const chatRes = $http.send({
     url: 'https://api.openai.com/v1/chat/completions',
@@ -144,7 +133,6 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase
   if (chatRes.statusCode === 200 && chatRes.json?.choices?.[0]?.message?.content) {
     let responseText = chatRes.json.choices[0].message.content.trim()
 
-    // Sanitize in case AI includes the STATUS tag by mistake
     responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
 
     if (responseText !== 'SKIP_MESSAGE' && responseText !== '') {
@@ -156,20 +144,18 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase
         reply.set('content', responseText)
         $app.save(reply)
 
-        // System Log
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', userId)
         logRecord.set('type', 'diagnostic')
-        logRecord.set('message', 'IA enviou mensagem após mudança de fase')
-        logRecord.set('details', `Mensagem gerada para a fase ${newStatus}.`)
+        logRecord.set('message', 'IA enviou primeira mensagem para novo lead')
+        logRecord.set('details', `Mensagem de abordagem gerada para a fase ${status}.`)
         logRecord.set('payload', { customer_id: customerId, text: responseText })
         $app.saveNoValidate(logRecord)
       } catch (err) {
-        $app.logger().error('Error saving AI reply for status change', err)
+        $app.logger().error('Error saving AI initial reply', err)
       }
 
-      // Send to Uazapi
       try {
         const phone = e.record.getString('phone') || ''
         const source = e.record.getString('source') || ''
@@ -180,7 +166,7 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase
           phone &&
           uazapiUrl &&
           uazapiKey &&
-          (phone.includes('48992098050') || source.includes('Uazapi'))
+          (phone.includes('48992098050') || source.includes('Uazapi') || source.includes('Meta - '))
         ) {
           let instanceName = '48992098050'
           if (source.includes('Uazapi - ')) {
@@ -202,21 +188,7 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase
           })
         }
       } catch (_) {}
-    } else {
-      // Skipped
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', userId)
-        logRecord.set('type', 'diagnostic')
-        logRecord.set('message', 'IA não considerou necessário enviar mensagem')
-        logRecord.set('details', `Para a fase ${newStatus}, a IA retornou SKIP_MESSAGE.`)
-        logRecord.set('payload', { customer_id: customerId })
-        $app.saveNoValidate(logRecord)
-      } catch (_) {}
     }
-  } else {
-    $app.logger().error('OpenAI Chat failed in status change', 'status', chatRes.statusCode)
   }
 
   return e.next()

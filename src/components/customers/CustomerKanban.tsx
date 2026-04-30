@@ -5,7 +5,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { formatPhone, cn } from '@/lib/utils'
 import { Clock } from 'lucide-react'
 import { CustomerDetailDrawer } from './CustomerDetailDrawer'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export function CustomerKanban({
   leads,
@@ -17,6 +18,28 @@ export function CustomerKanban({
   onEdit: (lead: Customer) => void
 }) {
   const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null)
+  const [localLeads, setLocalLeads] = useState<Customer[]>(leads)
+
+  useEffect(() => {
+    setLocalLeads(leads)
+  }, [leads])
+
+  useRealtime('customers', (e) => {
+    if (e.action === 'update') {
+      setLocalLeads((prev) =>
+        prev.map((l) =>
+          l.id === e.record.id ? { ...l, ...(e.record as unknown as Customer) } : l,
+        ),
+      )
+    } else if (e.action === 'create') {
+      setLocalLeads((prev) => {
+        if (prev.some((l) => l.id === e.record.id)) return prev
+        return [e.record as unknown as Customer, ...prev]
+      })
+    } else if (e.action === 'delete') {
+      setLocalLeads((prev) => prev.filter((l) => l.id !== e.record.id))
+    }
+  })
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     e.dataTransfer.setData('customerId', id)
@@ -32,6 +55,7 @@ export function CustomerKanban({
     e.currentTarget.classList.remove('bg-primary/5')
     const id = e.dataTransfer.getData('customerId')
     if (id) {
+      setLocalLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status } : l)))
       onUpdateStatus(id, status)
     }
   }
@@ -53,7 +77,7 @@ export function CustomerKanban({
   return (
     <div className="flex h-full gap-4 overflow-x-auto pb-4 items-start">
       {PHASES.map((phase) => {
-        const columnLeads = leads.filter(
+        const columnLeads = localLeads.filter(
           (l) => l.status === phase.title || (l.status === '' && phase.title === 'Lead Novo'),
         )
         return (

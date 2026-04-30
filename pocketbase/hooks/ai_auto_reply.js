@@ -272,7 +272,40 @@ onRecordAfterCreateSuccess((e) => {
 
     const customerMessage = e.record.getString('content') || ''
 
-    // 2. Embed customer message
+    // 2. Embed customer message and load current cadence
+    const currentStatus = customer.getString('status') || 'Lead Novo'
+    let activeCadenceText = ''
+    try {
+      const cadences = $app.findRecordsByFilter(
+        'cadences',
+        `user_id = '${userId}' && is_active = true && title = '${currentStatus.replace(/'/g, "''")}'`,
+        '-created',
+        1,
+        0,
+      )
+      if (cadences.length > 0) {
+        const c = cadences[0]
+        const cTitle = c.getString('title')
+        const cContent = c.getString('content')
+        const cInst = c.getString('ai_instructions')
+        activeCadenceText = `\n\n### CADÊNCIA ATUAL (${cTitle}):\nProcedimento: ${cContent}\nDiretriz Específica: ${cInst}`
+      } else {
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', userId || '')
+          logRecord.set('type', 'diagnostic_warning')
+          logRecord.set('message', 'Cadência não encontrada para Auto Reply')
+          logRecord.set(
+            'details',
+            `Nenhuma cadência ativa encontrada para a fase '${currentStatus}'.`,
+          )
+          logRecord.set('payload', { customer_id: customerId, status: currentStatus })
+          $app.saveNoValidate(logRecord)
+        } catch (_) {}
+      }
+    } catch (_) {}
+
     const embedRes = $http.send({
       url: 'https://api.openai.com/v1/embeddings',
       method: 'POST',
@@ -322,7 +355,10 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
-    const contextText = contextChunks.join('\n\n')
+    let contextText = contextChunks.join('\n\n')
+    if (activeCadenceText) {
+      contextText += activeCadenceText
+    }
 
     // 3. Fetch conversation history
     let historyRecords = []
