@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-30T03:39:39.055Z",
+  "generatedAt": "2026-04-30T11:32:14.452Z",
   "collections": [
     {
       "name": "users",
@@ -95,6 +95,36 @@
         {
           "name": "meta_campaign_phone",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivery_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivery_start_time",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivery_end_time",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivery_interval",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivery_days",
+          "type": "json",
           "required": false,
           "system": false
         }

@@ -78,22 +78,94 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (_) {}
 
-    // 1.5 Cooldown check (Debouncing)
+    const userId = e.record.getString('user_id')
+    let userRecord = null
     try {
-      const lastAiMsgs = $app.findRecordsByFilter(
+      if (userId) userRecord = $app.findRecordById('users', userId)
+    } catch (_) {}
+
+    // Delivery Scheduling Check
+    const deliveryEnabled = userRecord ? userRecord.get('delivery_enabled') !== false : true
+    const deliveryStart = userRecord
+      ? userRecord.getString('delivery_start_time') || '08:00'
+      : '08:00'
+    const deliveryEnd = userRecord ? userRecord.getString('delivery_end_time') || '18:00' : '18:00'
+    const deliveryInterval = userRecord ? userRecord.getInt('delivery_interval') || 5 : 5
+    let deliveryDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+    if (userRecord && userRecord.get('delivery_days')) {
+      try {
+        const parsed = userRecord.get('delivery_days')
+        if (Array.isArray(parsed)) deliveryDays = parsed
+      } catch (_) {}
+    }
+
+    const now = new Date()
+    const brTime = new Date(now.getTime() - 3 * 3600 * 1000)
+    const dayOfWeek = brTime.getUTCDay()
+    const daysMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    const currentDay = daysMap[dayOfWeek]
+    const currentTimeStr = `${brTime.getUTCHours().toString().padStart(2, '0')}:${brTime.getUTCMinutes().toString().padStart(2, '0')}`
+
+    if (!deliveryEnabled) {
+      $app.logger().info('Message deferred: delivery disabled', 'customerId', customerId)
+      return e.next()
+    }
+
+    if (
+      !deliveryDays.includes(currentDay) ||
+      currentTimeStr < deliveryStart ||
+      currentTimeStr > deliveryEnd
+    ) {
+      $app.logger().info('Message deferred: outside business hours', 'customerId', customerId)
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', userId)
+        logRecord.set('type', 'diagnostic')
+        logRecord.set('message', 'Message deferred: outside business hours')
+        logRecord.set(
+          'details',
+          `Envio pausado. Horário permitido: ${deliveryStart}-${deliveryEnd}, dias: ${deliveryDays.join(',')}`,
+        )
+        logRecord.set('payload', { customer_id: customerId })
+        $app.saveNoValidate(logRecord)
+      } catch (_) {}
+      return e.next()
+    }
+
+    // Interval / Cooldown check
+    try {
+      const globalLastAiMsgs = $app.findRecordsByFilter(
         'conversations',
-        `customer_id = '${customerId}' && sender = 'ai'`,
+        `user_id = '${userId}' && sender = 'ai'`,
         '-created',
         1,
         0,
       )
-      if (lastAiMsgs.length > 0) {
-        const lastAiDate = new Date(lastAiMsgs[0].getString('created'))
-        const now = new Date()
-        if (now.getTime() - lastAiDate.getTime() < 10000) {
+      if (globalLastAiMsgs.length > 0) {
+        const lastAiDate = new Date(globalLastAiMsgs[0].getString('created'))
+        const cooldownMs = deliveryInterval * 60000
+        if (now.getTime() - lastAiDate.getTime() < cooldownMs) {
           $app
             .logger()
-            .info('Skipping auto-reply: cooldown period active (10s)', 'customerId', customerId)
+            .info(
+              `Message deferred: interval cooldown active (${deliveryInterval}m)`,
+              'customerId',
+              customerId,
+            )
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const logRecord = new Record(logsCol)
+            logRecord.set('user_id', userId)
+            logRecord.set('type', 'diagnostic')
+            logRecord.set('message', `Message deferred: interval cooldown`)
+            logRecord.set(
+              'details',
+              `Aguardando intervalo mínimo de ${deliveryInterval} minutos entre mensagens automáticas.`,
+            )
+            logRecord.set('payload', { customer_id: customerId })
+            $app.saveNoValidate(logRecord)
+          } catch (_) {}
           return e.next()
         }
       }
@@ -127,7 +199,7 @@ onRecordAfterCreateSuccess((e) => {
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
-        logRecord.set('user_id', e.record.getString('user_id') || '')
+        logRecord.set('user_id', userId || '')
         logRecord.set('type', 'diagnostic_error')
         logRecord.set('message', 'AI trigger skipped: missing API Key')
         logRecord.set('details', `OPENAI_API_KEY ausente ou inválida.`)
@@ -137,12 +209,6 @@ onRecordAfterCreateSuccess((e) => {
       $app.logger().warn('OPENAI_API_KEY missing for ai auto reply')
       return e.next()
     }
-
-    const userId = e.record.getString('user_id')
-    let userRecord = null
-    try {
-      if (userId) userRecord = $app.findRecordById('users', userId)
-    } catch (_) {}
 
     const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
 

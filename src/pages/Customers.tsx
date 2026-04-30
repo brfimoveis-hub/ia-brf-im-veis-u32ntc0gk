@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
-import { Search, Plus, Upload, Users, Filter, Loader2, Play, Target } from 'lucide-react'
+import { Search, Plus, Upload, Users, Filter, Loader2, Play, Target, Clock } from 'lucide-react'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { useToast } from '@/hooks/use-toast'
 import { getPaginatedCustomers, deleteCustomer, Customer } from '@/services/customers'
@@ -34,6 +34,11 @@ const RemarketingSyncModal = lazy(() =>
     default: m.RemarketingSyncModal,
   })),
 )
+const DeliverySettingsModal = lazy(() =>
+  import('@/components/customers/DeliverySettingsModal').then((m) => ({
+    default: m.DeliverySettingsModal,
+  })),
+)
 
 export default function Customers() {
   const [leads, setLeads] = useState<Customer[]>([])
@@ -55,6 +60,7 @@ export default function Customers() {
   const [leadOpen, setLeadOpen] = useState(false)
   const [rouletteOpen, setRouletteOpen] = useState(false)
   const [syncModalOpen, setSyncModalOpen] = useState(false)
+  const [deliverySettingsOpen, setDeliverySettingsOpen] = useState(false)
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
 
   const { toast } = useToast()
@@ -195,6 +201,13 @@ export default function Customers() {
         <div className="flex flex-wrap gap-2">
           <Button
             variant="secondary"
+            onClick={() => setDeliverySettingsOpen(true)}
+            className="gap-2 bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 border-orange-500/20 border"
+          >
+            <Clock className="h-4 w-4" /> Horários de Envio
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => setSyncModalOpen(true)}
             className="gap-2 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border-blue-500/20 border"
           >
@@ -307,6 +320,12 @@ export default function Customers() {
             searchTerm={debouncedSearch}
             phaseFilter={phaseFilter}
             sourceFilter={debouncedSourceFilter}
+          />
+        )}
+        {deliverySettingsOpen && (
+          <DeliverySettingsModal
+            open={deliverySettingsOpen}
+            onOpenChange={setDeliverySettingsOpen}
           />
         )}
       </Suspense>
