@@ -65,7 +65,7 @@ export default function Index() {
   const funnelData = useMemo(() => {
     const counts = customers.reduce(
       (acc, c) => {
-        const status = c.status || 'sem_status'
+        const status = (c.status || 'sem_status').toLowerCase()
         acc[status] = (acc[status] || 0) + 1
         return acc
       },

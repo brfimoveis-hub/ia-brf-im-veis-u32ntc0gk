@@ -128,7 +128,7 @@ onRecordAfterCreateSuccess((e) => {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', e.record.getString('user_id') || '')
-        logRecord.set('type', 'AI_ERROR')
+        logRecord.set('type', 'diagnostic_error')
         logRecord.set('message', 'AI trigger skipped: missing API Key')
         logRecord.set('details', `OPENAI_API_KEY ausente ou inválida.`)
         logRecord.set('payload', { customer_id: customerId })
@@ -167,7 +167,7 @@ onRecordAfterCreateSuccess((e) => {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', userId || '')
-        logRecord.set('type', 'DIAGNOSTIC')
+        logRecord.set('type', 'diagnostic_warning')
         logRecord.set('message', 'AI trigger warning: missing instructions')
         logRecord.set('details', `Instruções de IA vazias. A IA usará o comportamento padrão.`)
         logRecord.set('payload', { customer_id: customerId })
@@ -303,7 +303,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           const logCollection = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logCollection)
           logRecord.set('user_id', userId)
-          logRecord.set('type', 'AI_ERROR')
+          logRecord.set('type', 'diagnostic_error')
           logRecord.set('message', 'Falha na comunicação com OpenAI Chat')
           logRecord.set(
             'details',
@@ -370,6 +370,80 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
 
       $app.save(reply)
 
+      // Update customer status to em_atendimento
+      try {
+        const custToUpdate = $app.findRecordById('customers', customerId)
+        const currentStatus = (custToUpdate.getString('status') || '').toLowerCase()
+        if (currentStatus === 'novo' || currentStatus === '') {
+          custToUpdate.set('status', 'em_atendimento')
+          $app.save(custToUpdate)
+        }
+      } catch (err) {
+        $app.logger().error('Failed to update customer status', err)
+      }
+
+      // Route response to Uazapi / Meta
+      try {
+        const customerRecord = $app.findRecordById('customers', customerId)
+        const source = customerRecord.getString('source') || ''
+        const phone = customerRecord.getString('phone') || ''
+
+        const uazapiUrl = $secrets.get('UAZAPI_URL') || ''
+        const uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
+
+        if (
+          source.includes('Uazapi') ||
+          source.includes('48992098050') ||
+          phone.includes('48992098050') ||
+          (uazapiUrl && uazapiKey)
+        ) {
+          let instanceName = '48992098050'
+          if (source.includes('Uazapi - ')) {
+            instanceName = source.replace('Uazapi - ', '').trim()
+          } else if (source.includes('Meta - ')) {
+            instanceName = source.replace('Meta - ', '').trim()
+          }
+
+          if (uazapiUrl && uazapiKey && phone) {
+            const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
+            $http.send({
+              url: `${cleanUrl}/message/sendText/${instanceName}`,
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
+              body: JSON.stringify({
+                number: phone,
+                options: { delay: 1200, presence: 'composing' },
+                textMessage: { text: responseText },
+              }),
+              timeout: 15,
+            })
+
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const logRecord = new Record(logsCol)
+            logRecord.set('user_id', userId)
+            logRecord.set('type', 'diagnostic')
+            logRecord.set('message', 'Mensagem enviada via Uazapi')
+            logRecord.set(
+              'details',
+              `Resposta da IA enviada para ${phone} via instância ${instanceName}`,
+            )
+            logRecord.set('payload', { phone, instanceName })
+            $app.saveNoValidate(logRecord)
+          }
+        }
+      } catch (err) {
+        $app.logger().error('Error routing message to Uazapi', err)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', userId)
+          logRecord.set('type', 'diagnostic_error')
+          logRecord.set('message', 'Falha ao enviar resposta via Uazapi')
+          logRecord.set('details', String(err))
+          $app.saveNoValidate(logRecord)
+        } catch (_) {}
+      }
+
       // CAPI Event for AI Reply
       try {
         if (userId) {
@@ -429,7 +503,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           const logCollection = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logCollection)
           logRecord.set('user_id', userId)
-          logRecord.set('type', 'AI_RESPONSE')
+          logRecord.set('type', 'diagnostic')
           logRecord.set('message', 'IA respondeu ao cliente com sucesso')
           logRecord.set('details', 'A inteligência artificial gerou e enviou uma resposta.')
           logRecord.set('payload', { customer_id: customerId, context_used: !!contextText })
@@ -443,7 +517,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const logRecord = new Record(logsCol)
       logRecord.set('user_id', e.record.getString('user_id') || '')
-      logRecord.set('type', 'AI_ERROR')
+      logRecord.set('type', 'diagnostic_error')
       logRecord.set('message', 'Falha na Execução do AI Auto Reply')
       logRecord.set('details', String(err))
       logRecord.set('payload', {

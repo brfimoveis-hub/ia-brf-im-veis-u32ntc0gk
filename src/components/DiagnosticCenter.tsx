@@ -617,11 +617,7 @@ export function DiagnosticCenter() {
                       log.message.toLowerCase().includes('falha')
                     )
                       statusType = 'Error'
-                    else if (
-                      log.type.toLowerCase().includes('warning') ||
-                      log.type.toLowerCase() === 'diagnostic'
-                    )
-                      statusType = 'Info'
+                    else if (log.type.toLowerCase().includes('warning')) statusType = 'Info'
 
                     return (
                       <TableRow key={log.id}>
