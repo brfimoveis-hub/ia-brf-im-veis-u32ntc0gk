@@ -15,7 +15,6 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
   $app.logger().info('Meta Webhook Received', 'body', body)
 
   try {
-    // AC: Every time the meta_webhook is triggered, a record must be created in system_logs with the type DIAGNOSTIC.
     let globalUserId = ''
     try {
       const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
@@ -28,7 +27,10 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
       rawLog.set('user_id', globalUserId)
       rawLog.set('type', 'diagnostic')
       rawLog.set('message', 'Raw Meta Webhook Payload Received')
-      rawLog.set('details', 'Payload bruto recebido do Meta Webhook (Lead Form / WhatsApp).')
+      rawLog.set(
+        'details',
+        'Payload bruto recebido do Meta Webhook (Lead Form / WhatsApp / Instagram).',
+      )
       rawLog.set('payload', body)
       $app.saveNoValidate(rawLog)
     } catch (err) {
@@ -36,7 +38,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
     }
 
     if (body.object === 'page' && body.entry) {
-      // Handle Meta Lead Form (leadgen)
+      // Handle Meta Lead Form (leadgen) mapping to Website
       for (const entry of body.entry) {
         for (const change of entry.changes || []) {
           if (change.field === 'leadgen') {
@@ -45,7 +47,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
 
             const leadId = value.leadgen_id
             const formId = value.form_id
-            const contactName = `Meta Lead Form - ${leadId || new Date().getTime()}`
+            const contactName = `Lead Website - ${leadId || new Date().getTime()}`
             const phone = `+5500000000000` // Placeholder for generic page leadgen without auth token
 
             try {
@@ -55,10 +57,10 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('name', contactName)
               customer.set('phone', phone)
               customer.set('status', 'Novo')
-              customer.set('source', 'Meta Ads Lead Form')
+              customer.set('source', 'Website')
               customer.set(
                 'notes',
-                `Form ID: ${formId}\nLead ID: ${leadId}\nNote: Raw leadgen event without token to fetch details.`,
+                `Form ID: ${formId}\nLead ID: ${leadId}\nNote: Raw leadgen event sem token para buscar detalhes.\nOriginado do Website (mapped).`,
               )
               $app.save(customer)
             } catch (err) {
@@ -66,10 +68,78 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               const logRecord = new Record(logsCol)
               logRecord.set('user_id', globalUserId)
               logRecord.set('type', 'diagnostic_error')
-              logRecord.set('message', `Falha ao criar cliente via Meta Lead Form`)
+              logRecord.set('message', `Falha ao criar cliente via Website (Lead Form)`)
               logRecord.set('details', `Erro do Banco de Dados: ${String(err)}`)
               logRecord.set('payload', { error: String(err), raw_body: body })
               $app.saveNoValidate(logRecord)
+            }
+          }
+        }
+      }
+    } else if (body.object === 'instagram' && body.entry) {
+      // Handle Instagram Messages
+      for (const entry of body.entry) {
+        for (const messaging of entry.messaging || []) {
+          const senderId = messaging.sender?.id
+          if (!senderId) continue
+
+          const text = messaging.message?.text || 'Nova interação no Instagram'
+          const contactName = `Lead Instagram - ${senderId}`
+          let targetUserId = globalUserId
+
+          let customer = null
+          try {
+            customer = $app.findFirstRecordByFilter(
+              'customers',
+              `notes ~ '${senderId}' && source = 'Instagram'`,
+            )
+          } catch (_) {}
+
+          if (!customer && targetUserId) {
+            try {
+              const customersCol = $app.findCollectionByNameOrId('customers')
+              customer = new Record(customersCol)
+              customer.set('user_id', targetUserId)
+              customer.set('name', contactName)
+              customer.set('status', 'Novo')
+              customer.set('source', 'Instagram')
+              customer.set('notes', `IG Sender ID: ${senderId}\nOrigin: Instagram`)
+              $app.save(customer)
+
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const logRecord = new Record(logsCol)
+              logRecord.set('user_id', targetUserId)
+              logRecord.set('type', 'diagnostic')
+              logRecord.set('message', `Novo lead capturado via Webhook: ${contactName}`)
+              logRecord.set('details', `Lead originado do Instagram.`)
+              logRecord.set('payload', {
+                customer_id: customer.id,
+                source: 'Instagram',
+                senderId,
+              })
+              $app.save(logRecord)
+            } catch (err) {
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const logRecord = new Record(logsCol)
+              logRecord.set('user_id', targetUserId)
+              logRecord.set('type', 'diagnostic_error')
+              logRecord.set('message', `Falha ao criar lead do Instagram ID ${senderId}`)
+              logRecord.set('details', `Erro do Banco de Dados: ${String(err)}`)
+              logRecord.set('payload', { error: String(err), raw_body: body })
+              $app.saveNoValidate(logRecord)
+            }
+          }
+
+          if (customer) {
+            try {
+              const conversation = new Record($app.findCollectionByNameOrId('conversations'))
+              conversation.set('customer_id', customer.id)
+              conversation.set('user_id', targetUserId)
+              conversation.set('content', text)
+              conversation.set('sender', 'user')
+              $app.save(conversation)
+            } catch (err) {
+              $app.logger().error('Erro ao salvar conversa do Instagram', err)
             }
           }
         }
@@ -102,13 +172,12 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     if (users.length > 0) targetUserId = users[0].id
                   }
                   if (!targetUserId) {
-                    const fallbackUser = $app.findRecordsByFilter('users', '', 'created', 1, 0)
-                    if (fallbackUser.length > 0) targetUserId = fallbackUser[0].id
+                    targetUserId = globalUserId
                   }
                 } catch (_) {}
 
                 // AC: Fallback to phone number if name is missing to prevent constraint errors
-                let contactName = `Meta Lead - ${phone}`
+                let contactName = `Lead WhatsApp - ${phone}`
                 if (value.contacts && value.contacts.length > 0) {
                   const contact = value.contacts.find((c) => c.wa_id === phone)
                   if (contact && contact.profile && contact.profile.name) {
@@ -169,7 +238,6 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                       logRecord.set('user_id', targetUserId)
                       logRecord.set('type', 'diagnostic_error')
                       logRecord.set('message', `Falha ao criar lead do telefone ${phone}`)
-                      // AC: Error Transparency - Record specific PocketBase error in details
                       logRecord.set('details', `Erro do Banco de Dados: ${String(err)}`)
                       logRecord.set('payload', { error: String(err), raw_body: body, phone, msg })
                       $app.saveNoValidate(logRecord)
@@ -205,91 +273,6 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     conversation.set('content', text)
                     conversation.set('sender', 'user')
                     $app.save(conversation)
-                    $app
-                      .logger()
-                      .info('Inserted new message from Meta Webhook', 'customerId', customer.id)
-
-                    // CAPI Event
-                    try {
-                      if (userId) {
-                        const userRecord = $app.findRecordById('users', userId)
-                        const capiToken = userRecord.getString('meta_capi_token')
-                        const mainPixelId = userRecord.getString('meta_pixel_id')
-                        const tagsList = userRecord.get('meta_tags_list') || []
-                        const testCode = userRecord.getString('meta_test_event_code')
-
-                        let targetPixels = []
-                        if (mainPixelId) targetPixels.push(mainPixelId)
-                        if (tagsList && Array.isArray(tagsList)) {
-                          tagsList.forEach((t) => {
-                            if (t.id && !targetPixels.includes(t.id)) targetPixels.push(t.id)
-                          })
-                        }
-
-                        if (capiToken && targetPixels.length > 0) {
-                          const timeUnix = Math.floor(new Date().getTime() / 1000)
-                          const phoneNorm = phone.replace(/\D/g, '')
-                          const hashPhone = $security.sha256(phoneNorm)
-
-                          targetPixels.forEach((pixelId) => {
-                            const payload = {
-                              data: [
-                                {
-                                  event_name: 'Contact',
-                                  event_time: timeUnix,
-                                  action_source: 'system_generated',
-                                  user_data: { ph: [hashPhone] },
-                                  custom_data: { currency: 'BRL', value: 0.0 },
-                                },
-                              ],
-                            }
-                            if (testCode) payload.test_event_code = testCode
-
-                            const res = $http.send({
-                              url: `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`,
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify(payload),
-                              timeout: 5,
-                            })
-
-                            if (res.statusCode !== 200) {
-                              const logsCol = $app.findCollectionByNameOrId('system_logs')
-                              const logRecord = new Record(logsCol)
-                              logRecord.set('user_id', userId)
-                              logRecord.set('type', 'remarketing_error')
-                              logRecord.set(
-                                'message',
-                                `Falha no CAPI via Webhook (Status ${res.statusCode})`,
-                              )
-                              logRecord.set(
-                                'details',
-                                typeof res.json === 'object'
-                                  ? JSON.stringify(res.json)
-                                  : String(res.raw),
-                              )
-                              logRecord.set('payload', {
-                                statusCode: res.statusCode,
-                                pixelId,
-                                error: res.json,
-                              })
-                              $app.save(logRecord)
-                            }
-                          })
-                        }
-                      }
-                    } catch (err) {
-                      $app.logger().error('CAPI Error in Webhook', 'err', err)
-                      try {
-                        const logsCol = $app.findCollectionByNameOrId('system_logs')
-                        const logRecord = new Record(logsCol)
-                        logRecord.set('user_id', userId || '')
-                        logRecord.set('type', 'remarketing_error')
-                        logRecord.set('message', 'Erro interno no CAPI via Webhook')
-                        logRecord.set('details', String(err))
-                        $app.save(logRecord)
-                      } catch (_) {}
-                    }
 
                     try {
                       if (userId) {
@@ -303,23 +286,8 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                         $app.save(logRecord)
                       }
                     } catch (_) {}
-                  } else {
-                    $app
-                      .logger()
-                      .info(
-                        'Skipped duplicate incoming message from Meta Webhook',
-                        'customerId',
-                        customer.id,
-                      )
                   }
                 } else {
-                  $app
-                    .logger()
-                    .warn(
-                      'Customer not found and could not be created for incoming WhatsApp message',
-                      'phone',
-                      phone,
-                    )
                   try {
                     if (targetUserId) {
                       const logsCol = $app.findCollectionByNameOrId('system_logs')

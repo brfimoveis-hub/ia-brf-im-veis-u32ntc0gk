@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/table'
 import { DiagnosticCenter } from '@/components/DiagnosticCenter'
 import { RecentPerformance } from '@/components/RecentPerformance'
+import { LeadOriginsDashboard } from '@/components/LeadOriginsDashboard'
 
 export default function Settings() {
   const { toast } = useToast()
@@ -526,6 +527,9 @@ export default function Settings() {
       </div>
 
       <div className="grid gap-8">
+        {/* Lead Origins Dashboard */}
+        <LeadOriginsDashboard />
+
         {/* Cadence Audit */}
         <Card className="border-border shadow-elevation overflow-hidden">
           <div className="h-1 bg-teal-500 w-full"></div>
