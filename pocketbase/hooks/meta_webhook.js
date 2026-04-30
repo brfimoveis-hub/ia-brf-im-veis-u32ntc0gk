@@ -282,11 +282,13 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                   if (
                     !targetUserId &&
                     (receiverPhone.includes('48992098050') ||
-                      receiverPhone.includes('5548992098050'))
+                      receiverPhone.includes('5548992098050') ||
+                      receiverPhone.includes('48991828050') ||
+                      receiverPhone.includes('5548991828050'))
                   ) {
                     for (const u of allUsers) {
                       const cp = u.getString('meta_campaign_phone').replace(/\D/g, '')
-                      if (cp.includes('48992098050')) {
+                      if (cp.includes('48992098050') || cp.includes('48991828050')) {
                         targetUserId = u.id
                         break
                       }
@@ -341,6 +343,8 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     let source = receiverPhone ? `Meta - ${receiverPhone}` : 'WhatsApp'
                     if (receiverPhone.includes('48992098050')) {
                       source = `Meta - 48992098050`
+                    } else if (receiverPhone.includes('48991828050')) {
+                      source = `Meta - 48991828050`
                     }
                     if (!receiverPhone && targetUserId) {
                       try {

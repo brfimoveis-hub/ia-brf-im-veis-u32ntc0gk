@@ -195,6 +195,16 @@ onRecordAfterCreateSuccess((e) => {
     const tags = customer.get('tags') || []
     const customerPhone = customer.getString('phone') || ''
     const customerSource = customer.getString('source') || ''
+
+    let receiverPhone = ''
+    const sourceMatch = customerSource.match(/(?:Uazapi|Meta)\s*-\s*(\d+)/)
+    if (sourceMatch) {
+      receiverPhone = sourceMatch[1]
+    } else if (customerPhone.includes('48992098050') || customerSource.includes('48992098050')) {
+      receiverPhone = '48992098050'
+    } else if (customerPhone.includes('48991828050') || customerSource.includes('48991828050')) {
+      receiverPhone = '48991828050'
+    }
     const isTargetLead =
       customerPhone.includes('48992098050') || customerSource.includes('48992098050')
 
@@ -373,10 +383,32 @@ onRecordAfterCreateSuccess((e) => {
       historyRecords.reverse()
     } catch (_) {}
 
+    let channelContext = ''
+    if (receiverPhone.includes('991828050')) {
+      channelContext = `
+[PERFIL DE ATENDIMENTO: REMARKETING]
+O cliente veio de uma campanha de remarketing (já nos conhece ou interagiu antes).
+DIRETRIZES DE REMARKETING:
+- Aborde de forma mais direta, focando em reengajamento.
+- Trabalhe ativamente objeções (preço, tempo, localização).
+- Se for Villa dos Açores e houver objeção de preço, argumente que o valor é excelente (R$ 4.930,77/m²) e a localização estratégica em Biguaçu.
+`
+    } else {
+      channelContext = `
+[PERFIL DE ATENDIMENTO: GERAL]
+O cliente é um lead novo (primeiro contato).
+DIRETRIZES GERAIS:
+- Faça a qualificação inicial.
+- Se houver interesse no Villa dos Açores, pergunte sobre as preferências dele (ex: prefere suíte ou foca mais na área de lazer/piscina?).
+`
+    }
+
     const messages = []
     const systemPrompt = `Você é ${aiName}.
 Sua identidade e instruções principais:
 ${aiInstructions || 'Seja prestativa, educada e direta.'}
+
+${channelContext}
 
 DIRETRIZES RIGOROSAS:
 1. Responda de forma fluida, coerente e humana.
@@ -385,7 +417,7 @@ DIRETRIZES RIGOROSAS:
 4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.
 5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
 6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).
-7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas, você DEVE incluir a tag [STATUS: Novo_Status] no final da sua resposta. Os status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Engajamento", "Visita", "Objeção", "Proposta", "Negociação", "Fechamento".
+7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas (ex: agendou visita, informou orçamento, demonstrou objeção), você DEVE incluir a tag [STATUS: Novo_Status] no final da sua resposta. Os status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Engajamento", "Visita", "Objeção", "Proposta", "Negociação", "Fechamento".
 
 CONTEXTO RECUPERADO:
 ${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`

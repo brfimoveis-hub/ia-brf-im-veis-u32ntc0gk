@@ -22,9 +22,11 @@ import {
   LayoutGrid,
   List,
   TrendingUp,
+  BarChart3,
 } from 'lucide-react'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { CustomerKanban } from '@/components/customers/CustomerKanban'
+import { CustomerDashboard } from '@/components/customers/CustomerDashboard'
 import { useToast } from '@/hooks/use-toast'
 import {
   getPaginatedCustomers,
@@ -82,7 +84,7 @@ export default function Customers() {
   const [syncModalOpen, setSyncModalOpen] = useState(false)
   const [deliverySettingsOpen, setDeliverySettingsOpen] = useState(false)
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
-  const [view, setView] = useState<'list' | 'kanban'>('kanban')
+  const [view, setView] = useState<'list' | 'kanban' | 'dashboard'>('kanban')
 
   const { toast } = useToast()
 
@@ -354,13 +356,20 @@ export default function Customers() {
           <ToggleGroupItem value="kanban" aria-label="Kanban">
             <LayoutGrid className="h-4 w-4" />
           </ToggleGroupItem>
+          <ToggleGroupItem value="dashboard" aria-label="Dashboard">
+            <BarChart3 className="h-4 w-4" />
+          </ToggleGroupItem>
         </ToggleGroup>
       </div>
 
       <Card className="flex-1 flex flex-col overflow-hidden shadow-sm relative bg-transparent border-none sm:bg-card sm:border">
         <CardContent className="p-0 flex-1 overflow-hidden relative sm:p-0 h-full flex flex-col">
           <ErrorBoundary>
-            {view === 'list' ? (
+            {view === 'dashboard' ? (
+              <div className="flex-1 overflow-auto bg-background">
+                <CustomerDashboard leads={leads} />
+              </div>
+            ) : view === 'list' ? (
               <div className="flex-1 overflow-auto scroll-smooth">
                 <CustomerTable
                   leads={leads}
