@@ -43,15 +43,17 @@ export function CustomerDetailDrawer({
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [notes, setNotes] = useState('')
   const [isSavingNotes, setIsSavingNotes] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open || !customerId) return
+  const loadData = () => {
+    if (!customerId) return
     let mounted = true
     setLoading(true)
+    setError(null)
 
     Promise.all([getCustomer(customerId), getConversations(customerId)])
       .then(([cust, convs]) => {
@@ -64,12 +66,20 @@ export function CustomerDetailDrawer({
       })
       .catch((err) => {
         console.error(err)
-        if (mounted) setLoading(false)
+        if (mounted) {
+          setError('Erro ao carregar os detalhes do cliente ou histórico de conversas.')
+          setLoading(false)
+        }
       })
 
     return () => {
       mounted = false
     }
+  }
+
+  useEffect(() => {
+    if (!open || !customerId) return
+    return loadData()
   }, [customerId, open])
 
   useRealtime('customers', (e) => {
@@ -162,9 +172,26 @@ export function CustomerDetailDrawer({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md md:max-w-lg lg:max-w-xl flex flex-col p-0 bg-background/95 backdrop-blur-xl border-l shadow-2xl">
-        {loading || !customer ? (
+        {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        ) : error ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
+            <div className="bg-destructive/10 p-4 rounded-full">
+              <Bot className="h-8 w-8 text-destructive" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="font-semibold text-lg">Erro ao carregar</h3>
+              <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
+            </div>
+            <Button onClick={loadData} variant="outline" className="mt-4">
+              Tentar Novamente
+            </Button>
+          </div>
+        ) : !customer ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            Cliente não encontrado.
           </div>
         ) : (
           <>
@@ -345,75 +372,82 @@ export function CustomerDetailDrawer({
                       backgroundSize: 'cover',
                     }}
                   ></div>
-                  <div className="space-y-3 pb-4 relative z-10">
-                    {conversations.map((msg) => {
-                      const isSystem = msg.sender === 'system'
-                      if (isSystem) {
+                  <div className="space-y-3 pb-4 relative z-10 flex-1 flex flex-col">
+                    {conversations.length === 0 ? (
+                      <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground py-12 text-center space-y-3">
+                        <Bot className="h-12 w-12 opacity-20" />
+                        <p>Nenhuma mensagem ainda.</p>
+                      </div>
+                    ) : (
+                      conversations.map((msg) => {
+                        const isSystem = msg.sender === 'system'
+                        if (isSystem) {
+                          return (
+                            <div key={msg.id} className="flex justify-center my-4">
+                              <div className="bg-primary/10 border border-primary/20 text-primary text-[11px] font-medium px-4 py-2 rounded-xl flex items-center gap-2 max-w-[80%] text-center shadow-sm">
+                                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                                <span className="leading-relaxed">{msg.content}</span>
+                              </div>
+                            </div>
+                          )
+                        }
+                        const isClient = msg.sender === 'customer'
                         return (
-                          <div key={msg.id} className="flex justify-center my-4">
-                            <div className="bg-primary/10 border border-primary/20 text-primary text-[11px] font-medium px-4 py-2 rounded-xl flex items-center gap-2 max-w-[80%] text-center shadow-sm">
-                              <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                              <span className="leading-relaxed">{msg.content}</span>
+                          <div
+                            key={msg.id}
+                            className={cn('flex', isClient ? 'justify-start' : 'justify-end')}
+                          >
+                            <div
+                              className={cn(
+                                'max-w-[85%] rounded-2xl px-3.5 py-2 shadow-sm relative',
+                                isClient
+                                  ? 'bg-card text-foreground rounded-tl-sm'
+                                  : 'bg-[#d9fdd3] dark:bg-[#005c4b] text-foreground rounded-tr-sm',
+                              )}
+                            >
+                              {!isClient && msg.sender === 'ai' && (
+                                <div className="flex items-center gap-1.5 mb-1.5 opacity-80">
+                                  {user?.ai_avatar ? (
+                                    <img
+                                      src={pb.files.getURL(user, user.ai_avatar)}
+                                      alt="AI"
+                                      className="h-4 w-4 rounded-full object-cover shadow-sm border border-primary/10"
+                                    />
+                                  ) : (
+                                    <Bot className="h-3.5 w-3.5 text-primary dark:text-green-400" />
+                                  )}
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-primary dark:text-green-400">
+                                    {user?.ai_name || 'Bia'}
+                                  </span>
+                                </div>
+                              )}
+                              {!isClient && (msg.sender === 'agent' || msg.sender === 'user') && (
+                                <div className="flex items-center gap-1 mb-1 opacity-70">
+                                  <User className="h-3 w-3 text-amber-600" />
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                                    Humano
+                                  </span>
+                                </div>
+                              )}
+                              <p className="text-[14px] leading-relaxed whitespace-pre-wrap">
+                                {msg.content}
+                              </p>
+                              <div className="flex items-center justify-end gap-1 mt-1 -mb-1">
+                                <span className="text-[10px] text-muted-foreground opacity-80">
+                                  {new Date(msg.created).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                                {!isClient && (
+                                  <CheckCircle2 className="h-3 w-3 text-primary/80 dark:text-green-400" />
+                                )}
+                              </div>
                             </div>
                           </div>
                         )
-                      }
-                      const isClient = msg.sender === 'customer'
-                      return (
-                        <div
-                          key={msg.id}
-                          className={cn('flex', isClient ? 'justify-start' : 'justify-end')}
-                        >
-                          <div
-                            className={cn(
-                              'max-w-[85%] rounded-2xl px-3.5 py-2 shadow-sm relative',
-                              isClient
-                                ? 'bg-card text-foreground rounded-tl-sm'
-                                : 'bg-[#d9fdd3] dark:bg-[#005c4b] text-foreground rounded-tr-sm',
-                            )}
-                          >
-                            {!isClient && msg.sender === 'ai' && (
-                              <div className="flex items-center gap-1.5 mb-1.5 opacity-80">
-                                {user?.ai_avatar ? (
-                                  <img
-                                    src={pb.files.getURL(user, user.ai_avatar)}
-                                    alt="AI"
-                                    className="h-4 w-4 rounded-full object-cover shadow-sm border border-primary/10"
-                                  />
-                                ) : (
-                                  <Bot className="h-3.5 w-3.5 text-primary dark:text-green-400" />
-                                )}
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-primary dark:text-green-400">
-                                  {user?.ai_name || 'Bia'}
-                                </span>
-                              </div>
-                            )}
-                            {!isClient && (msg.sender === 'agent' || msg.sender === 'user') && (
-                              <div className="flex items-center gap-1 mb-1 opacity-70">
-                                <User className="h-3 w-3 text-amber-600" />
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
-                                  Humano
-                                </span>
-                              </div>
-                            )}
-                            <p className="text-[14px] leading-relaxed whitespace-pre-wrap">
-                              {msg.content}
-                            </p>
-                            <div className="flex items-center justify-end gap-1 mt-1 -mb-1">
-                              <span className="text-[10px] text-muted-foreground opacity-80">
-                                {new Date(msg.created).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                              {!isClient && (
-                                <CheckCircle2 className="h-3 w-3 text-primary/80 dark:text-green-400" />
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
+                      })
+                    )}
                     <div ref={messagesEndRef} />
                   </div>
                 </ScrollArea>

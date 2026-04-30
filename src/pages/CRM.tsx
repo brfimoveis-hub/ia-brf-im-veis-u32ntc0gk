@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
+import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer'
 
 const PHASES = [
   { id: 1, title: 'Lead Novo', color: 'bg-slate-500' },
