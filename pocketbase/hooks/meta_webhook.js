@@ -25,7 +25,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const rawLog = new Record(logsCol)
       rawLog.set('user_id', globalUserId)
-      rawLog.set('type', 'diagnostic')
+      rawLog.set('type', 'diagnostic_log')
       rawLog.set('message', 'Raw Meta Webhook Payload Received')
       rawLog.set(
         'details',
@@ -110,7 +110,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               const logsCol = $app.findCollectionByNameOrId('system_logs')
               const logRecord = new Record(logsCol)
               logRecord.set('user_id', targetUserId)
-              logRecord.set('type', 'diagnostic')
+              logRecord.set('type', 'diagnostic_log')
               logRecord.set(
                 'message',
                 `Novo lead capturado via Uazapi: ${customer.getString('name')}`,
@@ -170,7 +170,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               const logsCol = $app.findCollectionByNameOrId('system_logs')
               const logRecord = new Record(logsCol)
               logRecord.set('user_id', globalUserId)
-              logRecord.set('type', 'error')
+              logRecord.set('type', 'meta_error')
               logRecord.set('message', `Falha ao criar cliente via Website (Lead Form)`)
               logRecord.set('details', `Erro do Banco de Dados: ${String(err)}`)
               logRecord.set('payload', { error: String(err), raw_body: body })
@@ -212,7 +212,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               const logsCol = $app.findCollectionByNameOrId('system_logs')
               const logRecord = new Record(logsCol)
               logRecord.set('user_id', targetUserId)
-              logRecord.set('type', 'diagnostic')
+              logRecord.set('type', 'diagnostic_log')
               logRecord.set('message', `Novo lead capturado via Webhook: ${contactName}`)
               logRecord.set('details', `Lead originado do Instagram.`)
               logRecord.set('payload', {
@@ -225,7 +225,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               const logsCol = $app.findCollectionByNameOrId('system_logs')
               const logRecord = new Record(logsCol)
               logRecord.set('user_id', targetUserId)
-              logRecord.set('type', 'error')
+              logRecord.set('type', 'meta_error')
               logRecord.set('message', `Falha ao criar lead do Instagram ID ${senderId}`)
               logRecord.set('details', `Erro do Banco de Dados: ${String(err)}`)
               logRecord.set('payload', { error: String(err), raw_body: body })
@@ -389,7 +389,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                       const logsCol = $app.findCollectionByNameOrId('system_logs')
                       const logRecord = new Record(logsCol)
                       logRecord.set('user_id', targetUserId)
-                      logRecord.set('type', 'error')
+                      logRecord.set('type', 'meta_error')
                       logRecord.set('message', `Falha ao criar lead do telefone ${phone}`)
                       logRecord.set('details', `Erro do Banco de Dados: ${String(err)}`)
                       logRecord.set('payload', { error: String(err), raw_body: body, phone, msg })
@@ -446,7 +446,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                       const logsCol = $app.findCollectionByNameOrId('system_logs')
                       const logRecord = new Record(logsCol)
                       logRecord.set('user_id', targetUserId)
-                      logRecord.set('type', 'error')
+                      logRecord.set('type', 'meta_error')
                       logRecord.set('message', `Lead ignorado: cliente não pôde ser criado.`)
                       logRecord.set('details', `Telefone: ${phone}`)
                       $app.save(logRecord)
@@ -471,7 +471,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const logRecord = new Record(logsCol)
       logRecord.set('user_id', globalUserId)
-      logRecord.set('type', 'error')
+      logRecord.set('type', 'meta_error')
       logRecord.set('message', 'Falha Crítica no Webhook (Catch Global)')
       logRecord.set('details', String(err))
       logRecord.set('payload', { error: String(err), raw_body: body })

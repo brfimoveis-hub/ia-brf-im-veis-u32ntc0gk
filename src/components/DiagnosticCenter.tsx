@@ -90,7 +90,8 @@ export function DiagnosticCenter() {
 
       const customersRes = await pb.collection('customers').getList(1, 1)
       const errorsRes = await pb.collection('system_logs').getList(1, 1, {
-        filter: 'type ~ "error" || type = "diagnostic_error" || type = "remarketing_error"',
+        filter:
+          'type ~ "error" || type = "diagnostic_error" || type = "remarketing_error" || type = "meta_error"',
       })
 
       setLeadStats({
@@ -275,7 +276,10 @@ export function DiagnosticCenter() {
           try {
             await pb.send('/backend/v1/meta-test-connection', {
               method: 'POST',
-              body: JSON.stringify({ pixelId: user.meta_pixel_id || '1522162279584545' }),
+              body: JSON.stringify({
+                pixelId: user.meta_pixel_id || '1522162279584545',
+                capiToken: user.meta_capi_token || '',
+              }),
               headers: { 'Content-Type': 'application/json' },
             })
             metaSuccesses++

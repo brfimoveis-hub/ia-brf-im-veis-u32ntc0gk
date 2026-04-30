@@ -467,6 +467,33 @@ export function RemarketingSyncModal({
                   </div>
                 </div>
 
+                {(!user?.meta_pixel_id || !user?.meta_capi_token) && (
+                  <div className="p-4 rounded-md border border-amber-500 bg-amber-500/10 text-amber-700 text-sm font-medium flex flex-col gap-3">
+                    <div className="flex gap-2 items-start">
+                      <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-base font-semibold">Credenciais Ausentes</p>
+                        <p className="font-normal mt-1">
+                          ID do Pixel ou Token não configurados. A sincronização requer estas
+                          informações para comunicar com o Meta.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-fit mt-1 bg-amber-600 hover:bg-amber-700 text-white border-none"
+                      onClick={() => {
+                        onClose()
+                        navigate('/configuracoes')
+                      }}
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Configurar Integração Meta
+                    </Button>
+                  </div>
+                )}
+
                 {syncError && (
                   <div className="p-3 rounded-md border border-destructive bg-destructive/10 text-destructive text-sm font-medium flex flex-col gap-2">
                     <div className="flex gap-2 items-start">
@@ -607,7 +634,12 @@ export function RemarketingSyncModal({
               </Button>
               <Button
                 onClick={handleSync}
-                disabled={isLoading || leadsToSync.length === 0}
+                disabled={
+                  isLoading ||
+                  leadsToSync.length === 0 ||
+                  !user?.meta_pixel_id ||
+                  !user?.meta_capi_token
+                }
                 className="w-full sm:w-auto"
               >
                 {syncStatus === 'stopped' ? 'Retomar envio' : 'Iniciar'}
