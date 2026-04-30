@@ -1,5 +1,5 @@
 export const PHASES = [
-  { id: 'Lead Novo', title: 'Lead Novo', color: 'bg-slate-500' },
+  { id: 'Base de Clientes/Novo LYD', title: 'Base de Clientes/Novo LYD', color: 'bg-slate-500' },
   { id: 'Contato 1', title: 'Contato 1', color: 'bg-blue-400' },
   { id: 'Contato 2', title: 'Contato 2', color: 'bg-blue-500' },
   { id: 'Qualificação', title: 'Qualificação', color: 'bg-indigo-400' },

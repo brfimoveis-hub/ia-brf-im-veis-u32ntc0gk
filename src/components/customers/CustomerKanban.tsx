@@ -54,7 +54,10 @@ export function CustomerKanban({
     <div className="flex h-full gap-4 overflow-x-auto pb-4 items-start">
       {PHASES.map((phase) => {
         const columnLeads = leads.filter(
-          (l) => l.status === phase.title || (l.status === '' && phase.title === 'Lead Novo'),
+          (l) =>
+            l.status === phase.title ||
+            (l.status === '' && phase.title === 'Base de Clientes/Novo LYD') ||
+            (l.status === 'Lead Novo' && phase.title === 'Base de Clientes/Novo LYD'),
         )
         return (
           <div

@@ -283,7 +283,7 @@ onRecordAfterCreateSuccess((e) => {
     const customerMessage = e.record.getString('content') || ''
 
     // 2. Embed customer message and load current cadence
-    const currentStatus = customer.getString('status') || 'Lead Novo'
+    const currentStatus = customer.getString('status') || 'Base de Clientes/Novo LYD'
     let activeCadenceText = ''
     try {
       const cadences = $app.findRecordsByFilter(
@@ -552,6 +552,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
 
         let targetStatus = ''
         const validStatuses = [
+          'Base de Clientes/Novo LYD',
           'Lead Novo',
           'Contato 1',
           'Contato 2',
@@ -572,6 +573,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
         } else if (
           currentStatus === 'novo' ||
           currentStatus === 'lead novo' ||
+          currentStatus === 'base de clientes/novo lyd' ||
           currentStatus === ''
         ) {
           targetStatus = 'Contato 1'

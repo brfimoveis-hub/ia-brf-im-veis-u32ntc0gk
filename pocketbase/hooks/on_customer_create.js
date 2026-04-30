@@ -1,7 +1,7 @@
 onRecordAfterCreateSuccess((e) => {
   const customerId = e.record.id
   const userId = e.record.getString('user_id')
-  const status = e.record.getString('status') || 'Lead Novo'
+  const status = e.record.getString('status') || 'Base de Clientes/Novo LYD'
 
   let userRecord = null
   try {

@@ -88,7 +88,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('name', msgData.pushName || `Lead-Uazapi-${phone}`)
               customer.set('phone', phone.replace(/\D/g, ''))
 
-              let initialStatus = 'Lead Novo'
+              let initialStatus = 'Base de Clientes/Novo LYD'
               try {
                 const activeCadences = $app.findRecordsByFilter(
                   'cadences',
@@ -98,7 +98,8 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                   0,
                 )
                 if (activeCadences.length > 0) {
-                  initialStatus = activeCadences[0].getString('title') || 'Lead Novo'
+                  initialStatus =
+                    activeCadences[0].getString('title') || 'Base de Clientes/Novo LYD'
                 }
               } catch (_) {}
               customer.set('status', initialStatus)
@@ -158,7 +159,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('user_id', globalUserId)
               customer.set('name', contactName)
               customer.set('phone', phone)
-              customer.set('status', 'Lead Novo')
+              customer.set('status', 'Base de Clientes/Novo LYD')
               customer.set('source', 'Website')
               customer.set(
                 'notes',
@@ -325,7 +326,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     customer.set('name', contactName)
                     customer.set('phone', phone.replace(/\D/g, ''))
 
-                    let initialStatus = 'Lead Novo'
+                    let initialStatus = 'Base de Clientes/Novo LYD'
                     try {
                       const activeCadences = $app.findRecordsByFilter(
                         'cadences',
@@ -335,7 +336,8 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                         0,
                       )
                       if (activeCadences.length > 0) {
-                        initialStatus = activeCadences[0].getString('title') || 'Lead Novo'
+                        initialStatus =
+                          activeCadences[0].getString('title') || 'Base de Clientes/Novo LYD'
                       }
                     } catch (_) {}
                     customer.set('status', initialStatus)
