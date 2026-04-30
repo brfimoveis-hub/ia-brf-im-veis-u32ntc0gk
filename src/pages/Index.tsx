@@ -159,13 +159,12 @@ export default function Index() {
     const reasons: string[] = []
     const warnings: string[] = []
     const hasName = !!currentUser.ai_name?.trim()
-    const hasInstructions =
-      !!currentUser.ai_instructions?.trim() && currentUser.ai_instructions.length > 10
+    const hasInstructions = !!currentUser.ai_instructions?.trim()
     const metaStatus = currentUser.meta_token_status
     const hasMeta = metaStatus === 'active' || metaStatus === 'valid' || metaStatus === 'Connected'
 
     if (!hasName) reasons.push('Nome da IA não configurado.')
-    if (!hasInstructions) reasons.push('Instruções da IA ausentes ou insuficientes.')
+    if (!hasInstructions) reasons.push('Instruções da IA não configuradas.')
     if (!hasMeta) warnings.push('Integração Meta Ads pendente ou com erro.')
 
     return {

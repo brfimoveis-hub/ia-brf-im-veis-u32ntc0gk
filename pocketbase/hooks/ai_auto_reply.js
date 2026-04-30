@@ -230,17 +230,14 @@ onRecordAfterCreateSuccess((e) => {
 
     const actualAiName = userRecord ? userRecord.getString('ai_name') : ''
     const metaTokenStatus = userRecord ? userRecord.getString('meta_token_status') : ''
-    const hasMeta =
-      metaTokenStatus === 'active' || metaTokenStatus === 'valid' || metaTokenStatus === 'Connected'
 
     const isNameMissing = !actualAiName.trim()
-    const isInstructionsMissing = !aiInstructions || aiInstructions.trim().length < 10
-    // Meta integration is no longer a blocker for AI replies
+    const isInstructionsMissing = !aiInstructions || !aiInstructions.trim()
 
     if (isNameMissing || isInstructionsMissing) {
       const reasons = []
       if (isNameMissing) reasons.push('Nome da IA não configurado')
-      if (isInstructionsMissing) reasons.push('Instruções da IA ausentes ou insuficientes')
+      if (isInstructionsMissing) reasons.push('Instruções da IA não configuradas')
 
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')

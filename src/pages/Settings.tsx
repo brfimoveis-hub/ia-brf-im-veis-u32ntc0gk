@@ -261,7 +261,7 @@ export default function Settings() {
         meta_test_event_code: cleanTestCode,
         meta_campaign_phone: cleanCampaignPhone,
         meta_tags_list: metaTagsList,
-        ai_instructions: prompt,
+        ai_instructions: prompt.substring(0, 100000),
         ai_name: aiName,
         ai_voice_id: aiVoiceId,
       }
@@ -311,7 +311,7 @@ export default function Settings() {
       if (!user?.id) throw new Error('Usuário não autenticado')
 
       const updateData = {
-        ai_instructions: prompt,
+        ai_instructions: prompt.substring(0, 100000),
         ai_name: aiName,
         ai_voice_id: aiVoiceId,
       }
