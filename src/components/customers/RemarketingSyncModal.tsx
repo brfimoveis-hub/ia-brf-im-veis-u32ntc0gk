@@ -18,6 +18,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SystemLog } from '@/services/system_logs'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 interface RemarketingSyncModalProps {
   isOpen: boolean
@@ -50,7 +51,9 @@ export function RemarketingSyncModal({
   const [intervalMinutes, setIntervalMinutes] = useState<number>(2)
 
   // Resume Strategies & Selection
-  const [resumeMode, setResumeMode] = useState<'all' | 'sequence' | 'letter'>('all')
+  const [resumeMode, setResumeMode] = useState<'all' | 'sequence' | 'letter_from' | 'letter_exact'>(
+    'all',
+  )
   const [resumeLetter, setResumeLetter] = useState('A')
   const [containsFilter, setContainsFilter] = useState('')
   const [lastSyncLog, setLastSyncLog] = useState<SystemLog | null>(null)
@@ -150,7 +153,7 @@ export function RemarketingSyncModal({
       })
     }
 
-    if (resumeMode === 'letter') {
+    if (resumeMode === 'letter_exact') {
       const letter = resumeLetter.toLowerCase()
       if (letter) {
         filtered = filtered.filter((l) => {
@@ -158,6 +161,19 @@ export function RemarketingSyncModal({
           const firstNameMatch = (l.first_name || '').toLowerCase().startsWith(letter)
           return nameMatch || firstNameMatch
         })
+      }
+    } else if (resumeMode === 'letter_from') {
+      const letter = resumeLetter.toLowerCase()
+      if (letter) {
+        const index = filtered.findIndex((l) => {
+          const n = (l.name || l.first_name || '').toLowerCase()
+          return n.localeCompare(letter) >= 0
+        })
+        if (index >= 0) {
+          filtered = filtered.slice(index)
+        } else {
+          filtered = []
+        }
       }
     } else if (resumeMode === 'sequence' && lastSyncLog?.payload?.last_customer_id) {
       const lastId = lastSyncLog.payload.last_customer_id
@@ -213,9 +229,9 @@ export function RemarketingSyncModal({
           headers: { 'Content-Type': 'application/json' },
         })
         await pb.collection('users').authRefresh()
-      } catch (error: any) {
+      } catch (error: unknown) {
         setSyncStatus('idle')
-        setSyncError(`Falha na validação do Token (Pre-flight): ${error.message || 'Erro'}`)
+        setSyncError(`Falha na validação do Token (Pre-flight): ${getErrorMessage(error)}`)
         return
       }
     }
@@ -268,8 +284,8 @@ export function RemarketingSyncModal({
           })
           setLastSyncLog(newLog)
         }
-      } catch (error: any) {
-        const errorMsg = error.message || 'Erro no lote'
+      } catch (error: unknown) {
+        const errorMsg = getErrorMessage(error)
         setFailedLeads((prev) => [...prev, ...batch.map((lead) => ({ lead, error: errorMsg }))])
       }
 
@@ -377,15 +393,21 @@ export function RemarketingSyncModal({
                         </Label>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="letter" id="mode-let" />
-                        <Label htmlFor="mode-let" className="cursor-pointer font-normal">
-                          Por letra inicial do nome
+                        <RadioGroupItem value="letter_from" id="mode-let-from" />
+                        <Label htmlFor="mode-let-from" className="cursor-pointer font-normal">
+                          Iniciar a partir da letra
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="letter_exact" id="mode-let-exact" />
+                        <Label htmlFor="mode-let-exact" className="cursor-pointer font-normal">
+                          Apenas a letra inicial
                         </Label>
                       </div>
                     </RadioGroup>
                   </div>
 
-                  {resumeMode === 'letter' && (
+                  {(resumeMode === 'letter_from' || resumeMode === 'letter_exact') && (
                     <div className="space-y-1.5 pt-2">
                       <Label className="text-xs text-muted-foreground">Letra Inicial</Label>
                       <Input
