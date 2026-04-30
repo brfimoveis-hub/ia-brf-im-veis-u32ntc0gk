@@ -59,6 +59,7 @@ export default function CRM() {
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState('Lead')
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
 
   // Optimize state management: Keep stable references to prevent infinite loops
   useEffect(() => {
@@ -325,6 +326,7 @@ export default function CRM() {
                     {phaseLeads.map((lead) => (
                       <Card
                         key={lead.id}
+                        onClick={() => setSelectedCustomerId(lead.id)}
                         className="shadow-subtle hover:shadow-md transition-all cursor-pointer border-muted group relative overflow-hidden animate-fade-in"
                       >
                         <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
@@ -448,6 +450,11 @@ export default function CRM() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <CustomerDetailDrawer
+        customerId={selectedCustomerId}
+        open={!!selectedCustomerId}
+        onOpenChange={(open) => !open && setSelectedCustomerId(null)}
+      />
     </div>
   )
 }

@@ -22,6 +22,7 @@ import { cn, formatPhone } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
 import { RemarketingSyncModal } from './RemarketingSyncModal'
 import { useState } from 'react'
+import { CustomerDetailDrawer } from './CustomerDetailDrawer'
 
 interface CustomerTableProps {
   leads: Customer[]
@@ -45,6 +46,7 @@ export function CustomerTable({
   const phaseFilter = searchParams.get('phase') || searchParams.get('status') || ''
   const hasFilter = !!searchTerm || !!phaseFilter || Array.from(searchParams.keys()).length > 0
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
 
   if (error) {
     return (
@@ -64,6 +66,11 @@ export function CustomerTable({
           </Button>
         </div>
       )}
+      <CustomerDetailDrawer
+        customerId={selectedCustomerId}
+        open={!!selectedCustomerId}
+        onOpenChange={(open) => !open && setSelectedCustomerId(null)}
+      />
       <RemarketingSyncModal
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
@@ -109,7 +116,8 @@ export function CustomerTable({
                   <TableRow
                     key={lead.id}
                     ref={isLast ? lastElementRef : null}
-                    className="group hover:bg-muted/50 transition-colors"
+                    className="group hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => setSelectedCustomerId(lead.id)}
                   >
                     <TableCell className="whitespace-nowrap">
                       <Badge
@@ -184,7 +192,10 @@ export function CustomerTable({
                         </TableCell>
                       )
                     })}
-                    <TableCell className="sticky right-0 bg-background group-hover:bg-muted/50 border-l transition-colors">
+                    <TableCell
+                      className="sticky right-0 bg-background group-hover:bg-muted/50 border-l transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">

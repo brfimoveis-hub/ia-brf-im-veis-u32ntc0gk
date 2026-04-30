@@ -10,6 +10,7 @@ export interface Customer {
   status: string
   notes?: string
   tags?: string[]
+  is_blocked?: boolean
   created: string
   updated: string
 

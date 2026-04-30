@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-30T15:06:42.195Z",
+  "generatedAt": "2026-04-30T15:18:48.617Z",
   "collections": [
     {
       "name": "users",
@@ -435,6 +435,12 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "is_blocked",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -443,7 +449,8 @@
         "CREATE INDEX `idx_customers_email` ON `customers` (email)",
         "CREATE INDEX `idx_customers_phone` ON `customers` (phone)",
         "CREATE INDEX `idx_customers_source` ON `customers` (source)",
-        "CREATE INDEX `idx_customers_created` ON `customers` (created)"
+        "CREATE INDEX `idx_customers_created` ON `customers` (created)",
+        "CREATE INDEX `idx_customers_is_blocked` ON `customers` (is_blocked)"
       ]
     },
     {

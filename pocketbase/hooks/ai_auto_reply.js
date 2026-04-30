@@ -9,6 +9,12 @@ onRecordAfterCreateSuccess((e) => {
   const customerId = e.record.getString('customer_id')
 
   try {
+    const customerInitialCheck = $app.findRecordById('customers', customerId)
+    if (customerInitialCheck.get('is_blocked') === true) {
+      $app.logger().info('AI trigger skipped: customer is blocked', 'customerId', customerId)
+      return e.next()
+    }
+
     // 0. Strict Locking Mechanism
     try {
       $app.runInTransaction((txApp) => {
