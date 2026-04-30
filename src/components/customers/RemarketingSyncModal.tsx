@@ -13,8 +13,16 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useToast } from '@/hooks/use-toast'
 import { syncRemarketing, Customer } from '@/services/customers'
 import pb from '@/lib/pocketbase/client'
-import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, StopCircle } from 'lucide-react'
+import {
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  AlertTriangle,
+  StopCircle,
+  Settings,
+} from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
+import { useNavigate } from 'react-router-dom'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SystemLog } from '@/services/system_logs'
@@ -38,6 +46,7 @@ export function RemarketingSyncModal({
 }: RemarketingSyncModalProps) {
   const { toast } = useToast()
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'stopped' | 'finished'>('idle')
   const isSyncing = syncStatus === 'syncing'
@@ -195,7 +204,7 @@ export function RemarketingSyncModal({
 
   const handleSync = async () => {
     if (!user?.meta_pixel_id || !user?.meta_capi_token) {
-      setSyncError('O ID do Pixel ou o Token da API de Conversões não estão configurados.')
+      setSyncError('O ID do Pixel ou o Token da API de Conversões não estão configurados')
       return
     }
 
@@ -459,9 +468,26 @@ export function RemarketingSyncModal({
                 </div>
 
                 {syncError && (
-                  <div className="p-3 rounded-md border border-destructive bg-destructive/10 text-destructive text-sm font-medium flex gap-2 items-start">
-                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <p>{syncError}</p>
+                  <div className="p-3 rounded-md border border-destructive bg-destructive/10 text-destructive text-sm font-medium flex flex-col gap-2">
+                    <div className="flex gap-2 items-start">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <p>{syncError}</p>
+                    </div>
+                    {syncError ===
+                      'O ID do Pixel ou o Token da API de Conversões não estão configurados' && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="w-fit mt-1"
+                        onClick={() => {
+                          onClose()
+                          navigate('/configuracoes')
+                        }}
+                      >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Atualizar Configurações
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

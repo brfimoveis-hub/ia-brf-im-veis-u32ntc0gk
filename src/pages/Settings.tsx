@@ -62,6 +62,7 @@ export default function Settings() {
   // Meta Ads State
   const [metaPixelId, setMetaPixelId] = useState('')
   const [metaTestEventCode, setMetaTestEventCode] = useState('')
+  const [metaCapiToken, setMetaCapiToken] = useState('')
   const [metaTagsList, setMetaTagsList] = useState<{ id: string; name: string }[]>([])
   const [metaCampaignPhone, setMetaCampaignPhone] = useState('')
 
@@ -78,6 +79,7 @@ export default function Settings() {
   const [initialMeta, setInitialMeta] = useState({
     pixel: '',
     test: '',
+    capiToken: '',
     tags: '[]',
     prompt: '',
     aiName: '',
@@ -177,6 +179,7 @@ export default function Settings() {
     if (user && !isInitialized) {
       setMetaPixelId(user.meta_pixel_id || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
+      setMetaCapiToken(user.meta_capi_token || '')
       setMetaCampaignPhone(user.meta_campaign_phone || '')
       setMetaTagsList(user.meta_tags_list || [])
 
@@ -187,6 +190,7 @@ export default function Settings() {
       setInitialMeta({
         pixel: user.meta_pixel_id || '',
         test: user.meta_test_event_code || '',
+        capiToken: user.meta_capi_token || '',
         tags: JSON.stringify(user.meta_tags_list || []),
         prompt: user.ai_instructions || '',
         aiName: user.ai_name || '',
@@ -201,6 +205,7 @@ export default function Settings() {
   const isDirty =
     metaPixelId !== initialMeta.pixel ||
     metaTestEventCode !== initialMeta.test ||
+    metaCapiToken !== initialMeta.capiToken ||
     metaCampaignPhone !== initialMeta.campaignPhone ||
     JSON.stringify(metaTagsList) !== initialMeta.tags ||
     prompt !== initialMeta.prompt ||
@@ -250,19 +255,21 @@ export default function Settings() {
   const getCleanMeta = () => {
     const cleanPixelId = metaPixelId.replace(/[\s\uFEFF\xA0\u200B-\u200D\u2028\u2029]+/g, '')
     const cleanTestCode = metaTestEventCode.trim()
+    const cleanCapiToken = metaCapiToken.trim()
     const cleanCampaignPhone = metaCampaignPhone.trim()
-    return { cleanPixelId, cleanTestCode, cleanCampaignPhone }
+    return { cleanPixelId, cleanTestCode, cleanCapiToken, cleanCampaignPhone }
   }
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
       if (!user?.id) throw new Error('Usuário não autenticado')
-      const { cleanPixelId, cleanTestCode, cleanCampaignPhone } = getCleanMeta()
+      const { cleanPixelId, cleanTestCode, cleanCapiToken, cleanCampaignPhone } = getCleanMeta()
 
       const formData = new FormData()
       formData.append('meta_pixel_id', cleanPixelId)
       formData.append('meta_test_event_code', cleanTestCode)
+      formData.append('meta_capi_token', cleanCapiToken)
       formData.append('meta_campaign_phone', cleanCampaignPhone)
       formData.append('meta_tags_list', JSON.stringify(metaTagsList))
       formData.append('ai_instructions', prompt.substring(0, 100000))
@@ -284,6 +291,7 @@ export default function Settings() {
       setInitialMeta({
         pixel: updatedUser.meta_pixel_id || '',
         test: updatedUser.meta_test_event_code || '',
+        capiToken: updatedUser.meta_capi_token || '',
         tags: JSON.stringify(updatedUser.meta_tags_list || []),
         prompt: updatedUser.ai_instructions || '',
         aiName: updatedUser.ai_name || '',
@@ -295,6 +303,7 @@ export default function Settings() {
 
       setMetaPixelId(cleanPixelId)
       setMetaTestEventCode(cleanTestCode)
+      setMetaCapiToken(cleanCapiToken)
       setMetaCampaignPhone(cleanCampaignPhone)
 
       setTimeout(() => {
@@ -359,11 +368,12 @@ export default function Settings() {
     setIsSavingMeta(true)
     try {
       if (!user?.id) throw new Error('Usuário não autenticado')
-      const { cleanPixelId, cleanTestCode, cleanCampaignPhone } = getCleanMeta()
+      const { cleanPixelId, cleanTestCode, cleanCapiToken, cleanCampaignPhone } = getCleanMeta()
 
       const updateData: any = {
         meta_pixel_id: cleanPixelId,
         meta_test_event_code: cleanTestCode,
+        meta_capi_token: cleanCapiToken,
         meta_campaign_phone: cleanCampaignPhone,
         meta_tags_list: metaTagsList,
         // Partial Update: DO NOT INCLUDE ai_instructions here to prevent overwriting
@@ -381,12 +391,14 @@ export default function Settings() {
         ...prev,
         pixel: updatedUser.meta_pixel_id || '',
         test: updatedUser.meta_test_event_code || '',
+        capiToken: updatedUser.meta_capi_token || '',
         campaignPhone: updatedUser.meta_campaign_phone || '',
         tags: JSON.stringify(updatedUser.meta_tags_list || []),
       }))
 
       setMetaPixelId(cleanPixelId)
       setMetaTestEventCode(cleanTestCode)
+      setMetaCapiToken(cleanCapiToken)
       setMetaCampaignPhone(cleanCampaignPhone)
 
       toast({
@@ -399,6 +411,7 @@ export default function Settings() {
           method: 'POST',
           body: JSON.stringify({
             pixelId: cleanPixelId,
+            capiToken: cleanCapiToken,
           }),
           headers: { 'Content-Type': 'application/json' },
         })
@@ -434,7 +447,7 @@ export default function Settings() {
   }
 
   const testMetaConnection = async () => {
-    const { cleanPixelId } = getCleanMeta()
+    const { cleanPixelId, cleanCapiToken } = getCleanMeta()
 
     setIsTestingConnection(true)
     try {
@@ -442,6 +455,7 @@ export default function Settings() {
         method: 'POST',
         body: JSON.stringify({
           pixelId: cleanPixelId,
+          capiToken: cleanCapiToken,
         }),
         headers: { 'Content-Type': 'application/json' },
       })
@@ -917,7 +931,29 @@ export default function Settings() {
                   className="bg-muted/30 focus-visible:ring-blue-600"
                 />
               </div>
-              <div className="flex justify-end mt-2">
+
+              {/* CAPI Token Configuration */}
+              <div className="space-y-3 md:col-span-2">
+                <Label htmlFor="meta-capi-token" className="font-semibold text-secondary">
+                  Token da API de Conversões (CAPI)
+                </Label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="meta-capi-token"
+                    type="password"
+                    placeholder="EAAB..."
+                    value={metaCapiToken}
+                    onChange={(e) => setMetaCapiToken(e.target.value.trim())}
+                    className="pl-10 h-11 bg-muted/30 focus-visible:ring-blue-600"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Necessário para sincronização de Remarketing via Meta CAPI.
+                </p>
+              </div>
+
+              <div className="flex justify-end mt-2 md:col-span-2">
                 <Badge
                   variant="outline"
                   className={cn(
