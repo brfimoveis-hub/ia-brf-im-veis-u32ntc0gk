@@ -709,7 +709,7 @@ export default function Settings() {
                       ? URL.createObjectURL(aiAvatarFile)
                       : user?.ai_avatar
                         ? pb.files.getURL(user, user.ai_avatar)
-                        : undefined
+                        : 'https://img.usecurling.com/ppl/medium?gender=female&seed=22'
                   }
                 />
                 <AvatarFallback className="text-xl font-semibold bg-primary/5 text-primary">

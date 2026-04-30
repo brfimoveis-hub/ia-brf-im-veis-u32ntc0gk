@@ -250,17 +250,15 @@ export default function Index() {
             {currentUser && currentUser.ai_name && (
               <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-muted/50 rounded-full border shadow-sm">
                 <div className="h-6 w-6 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center shrink-0">
-                  {currentUser.ai_avatar ? (
-                    <img
-                      src={pb.files.getURL(currentUser, currentUser.ai_avatar)}
-                      alt={currentUser.ai_name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-[10px] font-bold text-primary">
-                      {currentUser.ai_name.charAt(0).toUpperCase()}
-                    </span>
-                  )}
+                  <img
+                    src={
+                      currentUser.ai_avatar
+                        ? pb.files.getURL(currentUser, currentUser.ai_avatar)
+                        : 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=22'
+                    }
+                    alt={currentUser.ai_name || 'Bia'}
+                    className="h-full w-full object-cover"
+                  />
                 </div>
                 <span className="text-sm font-semibold text-secondary">{currentUser.ai_name}</span>
               </div>

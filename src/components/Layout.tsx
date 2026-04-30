@@ -389,8 +389,12 @@ export default function Layout() {
             </div>
             <Avatar className="h-8 w-8 cursor-pointer ring-2 ring-transparent hover:ring-primary transition-all shadow-sm">
               <AvatarImage
-                src="https://img.usecurling.com/ppl/thumbnail?gender=female&seed=2"
-                alt="User"
+                src={
+                  user?.ai_avatar
+                    ? pb.files.getURL(user, user.ai_avatar)
+                    : 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=22'
+                }
+                alt={user?.ai_name || 'User'}
               />
               <AvatarFallback>UA</AvatarFallback>
             </Avatar>
