@@ -54,6 +54,24 @@ export default function Index() {
 
   useEffect(() => {
     setCurrentUser(user)
+
+    // Auto-initialize Bia's avatar if missing
+    if (user && !user.ai_avatar) {
+      const seedAvatar = async () => {
+        try {
+          const res = await fetch('https://img.usecurling.com/ppl/large?gender=female&seed=12')
+          const blob = await res.blob()
+          const formData = new FormData()
+          formData.append('ai_avatar', blob, 'bia_professional_avatar.jpg')
+          if (!user.ai_name) formData.append('ai_name', 'Bia')
+          await pb.collection('users').update(user.id, formData)
+          await pb.collection('users').authRefresh()
+        } catch (e) {
+          console.error('Failed to seed Bia avatar', e)
+        }
+      }
+      seedAvatar()
+    }
   }, [user])
 
   useRealtime('users', (e) => {

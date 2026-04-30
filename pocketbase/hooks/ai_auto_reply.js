@@ -84,6 +84,20 @@ onRecordAfterCreateSuccess((e) => {
       if (userId) userRecord = $app.findRecordById('users', userId)
     } catch (_) {}
 
+    // Log Initiation
+    try {
+      if (userId) {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', userId)
+        logRecord.set('type', 'diagnostic')
+        logRecord.set('message', 'AI Processing Initiated')
+        logRecord.set('details', `Iniciando verificação de regras para resposta automática.`)
+        logRecord.set('payload', { customer_id: customerId })
+        $app.saveNoValidate(logRecord)
+      }
+    } catch (_) {}
+
     // Delivery Scheduling Check
     const deliveryEnabled = userRecord ? userRecord.get('delivery_enabled') !== false : true
     const deliveryStart = userRecord
@@ -212,32 +226,18 @@ onRecordAfterCreateSuccess((e) => {
 
     const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
 
-    let aiInstructions = userRecord ? userRecord.getString('ai_instructions') || '' : ''
-    try {
-      if (userId && !aiInstructions) {
-        const kbRecords = $app.findRecordsByFilter(
-          'knowledge_base',
-          `user_id = '${userId}'`,
-          '-created',
-          1,
-          0,
-        )
-        if (kbRecords && kbRecords.length > 0) {
-          aiInstructions = kbRecords[0].getString('ai_instructions') || ''
-        }
-      }
-    } catch (_) {}
-
     const actualAiName = userRecord ? userRecord.getString('ai_name') : ''
+    const aiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
     const metaTokenStatus = userRecord ? userRecord.getString('meta_token_status') : ''
 
     const isNameMissing = !actualAiName.trim()
-    const isInstructionsMissing = !aiInstructions || !aiInstructions.trim()
+    const isInstructionsMissing = !aiInstructions.trim()
 
     if (isNameMissing || isInstructionsMissing) {
       const reasons = []
-      if (isNameMissing) reasons.push('Nome da IA não configurado')
-      if (isInstructionsMissing) reasons.push('Instruções da IA não configuradas')
+      if (isNameMissing) reasons.push('Missing ai_name (Nome da IA não configurado)')
+      if (isInstructionsMissing)
+        reasons.push('Missing ai_instructions (Instruções da IA não configuradas)')
 
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
