@@ -92,7 +92,7 @@ export default function Customers() {
   const { toast } = useToast()
   const { user } = useAuth()
 
-  const isMetaConfigured = user?.meta_pixel_id && user?.meta_capi_token
+  const isMetaConfigured = Boolean(user?.meta_pixel_id?.trim() && user?.meta_capi_token?.trim())
 
   const observer = useRef<IntersectionObserver | null>(null)
   const lastElementRef = useCallback(

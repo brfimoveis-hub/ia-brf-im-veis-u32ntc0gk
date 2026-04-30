@@ -125,8 +125,6 @@ export default function Settings() {
     const issues = []
     if (!cadence.title?.trim()) issues.push('Sem título')
     if (!cadence.content?.trim()) issues.push('Sem conteúdo')
-    if (cadence.order === undefined || cadence.order <= 0) issues.push('Ordem inválida')
-    if (!cadence.ai_instructions?.trim()) issues.push('Sem regras de IA')
     return issues
   }
 
@@ -289,7 +287,7 @@ export default function Settings() {
         formData.append('ai_avatar', aiAvatarFile)
       }
 
-      if (cleanPixelId !== initialMeta.pixel) {
+      if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capiToken) {
         formData.append('meta_token_status', 'untested')
         formData.append('meta_last_validated', '')
       }
@@ -385,10 +383,9 @@ export default function Settings() {
         meta_capi_token: cleanCapiToken,
         meta_campaign_phone: cleanCampaignPhone,
         meta_tags_list: metaTagsList,
-        // Partial Update: DO NOT INCLUDE ai_instructions here to prevent overwriting
       }
 
-      if (cleanPixelId !== initialMeta.pixel) {
+      if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capiToken) {
         updateData.meta_token_status = 'untested'
         updateData.meta_last_validated = ''
       }
@@ -428,19 +425,21 @@ export default function Settings() {
         setMissingScopes([])
         toast({
           title: 'Conexão bem-sucedida',
-          description: 'O Pixel ID foi validado com sucesso e está pronto para uso.',
+          description:
+            'O Pixel ID e Token CAPI foram validados com sucesso e estão prontos para uso.',
         })
       } catch (testError: any) {
         await pb.collection('users').authRefresh()
         const resData = testError.response || {}
         setLastFbTraceId(resData.fbtrace_id || '')
         setLastErrorCode(resData.code || '')
-        setLastErrorMsg(resData.message || 'Verifique as credenciais.')
+        const errorMsg = resData.message || 'Verifique as credenciais.'
+        setLastErrorMsg(errorMsg)
         setMissingScopes(resData.missing_scopes || [])
 
         toast({
           title: 'Configurações salvas, mas falha no teste',
-          description: 'Credenciais foram salvas, mas o teste falhou. Verifique o Pixel ID.',
+          description: `Motivo: ${errorMsg}`,
           variant: 'destructive',
         })
       }
@@ -456,24 +455,34 @@ export default function Settings() {
   }
 
   const testMetaConnection = async () => {
-    const { cleanPixelId, cleanCapiToken } = getCleanMeta()
+    const savedPixelId = user?.meta_pixel_id || ''
+    const savedCapiToken = user?.meta_capi_token || ''
+
+    if (!savedPixelId || !savedCapiToken) {
+      toast({
+        title: 'Credenciais Ausentes',
+        description: 'Salve suas credenciais antes de testar a conexão.',
+        variant: 'destructive',
+      })
+      return
+    }
 
     setIsTestingConnection(true)
     try {
       await pb.send('/backend/v1/meta-test-connection', {
         method: 'POST',
         body: JSON.stringify({
-          pixelId: cleanPixelId,
-          capiToken: cleanCapiToken,
+          pixelId: savedPixelId,
+          capiToken: savedCapiToken,
         }),
         headers: { 'Content-Type': 'application/json' },
       })
       setMissingScopes([])
-      // O hook de backend já atualiza o user no banco com status 'active'
       await pb.collection('users').authRefresh()
       toast({
         title: 'Conexão bem-sucedida',
-        description: 'O Pixel ID foi validado com sucesso e está comunicando com o Meta.',
+        description:
+          'O Pixel ID e Token CAPI foram validados com sucesso e estão comunicando com o Meta.',
       })
     } catch (error: any) {
       const resData = error.response || {}
@@ -488,12 +497,11 @@ export default function Settings() {
       setLastErrorMsg(errorMsg)
       setMissingScopes(mScopes)
 
-      // O hook de backend já atualiza o status de erro no banco
       await pb.collection('users').authRefresh()
 
       toast({
         title: 'Erro de Conexão com o Meta',
-        description: fbtraceId ? `${errorMsg} (Trace ID: ${fbtraceId})` : errorMsg,
+        description: `Motivo: ${errorMsg} ${code ? `(Código: ${code})` : ''}`,
         variant: 'destructive',
       })
     } finally {
@@ -578,8 +586,7 @@ export default function Settings() {
               <div>
                 <CardTitle className="text-xl">Auditoria de Cadências</CardTitle>
                 <CardDescription>
-                  {activeCadencesCount} cadências ativas. {intactCadencesCount} estruturalmente
-                  íntegras (com regras IA).
+                  {activeCadencesCount} cadências ativas. {intactCadencesCount} saudáveis.
                 </CardDescription>
               </div>
             </div>
@@ -623,7 +630,7 @@ export default function Settings() {
                               <span className="text-xs text-muted-foreground">-</span>
                             ) : isIntact ? (
                               <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border font-medium">
-                                Íntegra
+                                Saudável
                               </Badge>
                             ) : (
                               <div className="flex flex-col gap-1 items-start">

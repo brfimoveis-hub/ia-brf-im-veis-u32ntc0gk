@@ -14,7 +14,9 @@ routerAdd(
     if (!capiToken && user) capiToken = user.getString('meta_capi_token')
 
     if (!pixelId) {
-      return e.badRequestError('Pixel ID é obrigatório.', { pixelId: 'Ausente' })
+      return e.badRequestError('O ID do Pixel é obrigatório para testar a integração.', {
+        pixelId: 'Ausente',
+      })
     }
 
     if (!/^\d+$/.test(pixelId)) {
@@ -23,7 +25,7 @@ routerAdd(
 
     if (!capiToken) {
       return e.badRequestError(
-        'Token da API de Conversões (CAPI) é obrigatório para testar a integração.',
+        'O Token da API de Conversões (CAPI) é obrigatório para testar a integração.',
         { capiToken: 'Ausente' },
       )
     }

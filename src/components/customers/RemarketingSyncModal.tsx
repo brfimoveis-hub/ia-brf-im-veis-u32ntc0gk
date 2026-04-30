@@ -467,7 +467,7 @@ export function RemarketingSyncModal({
                   </div>
                 </div>
 
-                {(!user?.meta_pixel_id || !user?.meta_capi_token) && (
+                {(!user?.meta_pixel_id?.trim() || !user?.meta_capi_token?.trim()) && (
                   <div className="p-4 rounded-md border border-amber-500 bg-amber-500/10 text-amber-700 text-sm font-medium flex flex-col gap-3">
                     <div className="flex gap-2 items-start">
                       <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
@@ -637,8 +637,8 @@ export function RemarketingSyncModal({
                 disabled={
                   isLoading ||
                   leadsToSync.length === 0 ||
-                  !user?.meta_pixel_id ||
-                  !user?.meta_capi_token
+                  !user?.meta_pixel_id?.trim() ||
+                  !user?.meta_capi_token?.trim()
                 }
                 className="w-full sm:w-auto"
               >

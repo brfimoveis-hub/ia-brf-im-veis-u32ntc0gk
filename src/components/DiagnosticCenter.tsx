@@ -259,8 +259,6 @@ export function DiagnosticCenter() {
         const issues = []
         if (!cadence.title?.trim()) issues.push('Sem título')
         if (!cadence.content?.trim()) issues.push('Sem conteúdo')
-        if (cadence.order === undefined || cadence.order <= 0) issues.push('Ordem inválida')
-        if (!cadence.ai_instructions?.trim()) issues.push('Sem regras de IA')
         return issues
       }
 
@@ -273,7 +271,7 @@ export function DiagnosticCenter() {
       newResults.push({
         name: 'Auditoria de Cadências',
         status: hasIssues ? 'warning' : 'success',
-        message: `${activeCadences.length} cadências ativas. ${validCadences.length} íntegras.`,
+        message: `${activeCadences.length} cadências ativas. ${validCadences.length} saudáveis.`,
         payload: {
           total: activeCadences.length,
           valid: validCadences.length,
