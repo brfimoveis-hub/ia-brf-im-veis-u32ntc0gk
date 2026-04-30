@@ -4,12 +4,23 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Clock, TrendingUp, Sparkles, Bot, Search, Megaphone, Users, Plus } from 'lucide-react'
+import {
+  Clock,
+  TrendingUp,
+  Sparkles,
+  Bot,
+  Search,
+  Megaphone,
+  Users,
+  Plus,
+  MessageSquare,
+  User,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getCustomers, updateCustomer, syncRemarketing, type Customer } from '@/services/customers'
-import { createConversation } from '@/services/conversations'
+import { getConversations, type Conversation } from '@/services/conversations'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
@@ -49,10 +60,9 @@ const PHASES = [
 
 export default function CRM() {
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
-  const customersRef = useRef(customers)
   const { toast } = useToast()
-  const toastRef = useRef(toast)
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -61,24 +71,17 @@ export default function CRM() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState('Lead')
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
-
-  // Optimize state management: Keep stable references to prevent infinite loops
-  useEffect(() => {
-    toastRef.current = toast
-  }, [toast])
-
-  useEffect(() => {
-    customersRef.current = customers
-  }, [customers])
+  const [draggedCustomerId, setDraggedCustomerId] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
     if (!loading) return
 
-    getCustomers()
-      .then((data) => {
+    Promise.all([getCustomers(), getConversations()])
+      .then(([customersData, conversationsData]) => {
         if (mounted) {
-          setCustomers(data)
+          setCustomers(customersData)
+          setConversations(conversationsData)
           setLoading(false)
         }
       })
@@ -92,8 +95,7 @@ export default function CRM() {
     }
   }, [loading])
 
-  // Optimize realtime handler to prevent unnecessary re-subscriptions or deep updates
-  const handleRealtimeEvent = useCallback((e: any) => {
+  const handleCustomersRealtime = useCallback((e: any) => {
     if (e.action === 'create') setCustomers((prev) => [e.record as unknown as Customer, ...prev])
     else if (e.action === 'update')
       setCustomers((prev) =>
@@ -102,43 +104,23 @@ export default function CRM() {
     else if (e.action === 'delete') setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
   }, [])
 
-  useRealtime('customers', handleRealtimeEvent)
-
-  useEffect(() => {
-    const timer = setInterval(async () => {
-      const currentCustomers = customersRef.current
-      if (currentCustomers.length === 0) return
-
-      const movableLeads = currentCustomers.filter((c) => {
-        const currentPhaseIndex = PHASES.findIndex((p) => p.title === (c.status || 'Lead Novo'))
-        return currentPhaseIndex >= 0 && currentPhaseIndex < PHASES.length - 1
+  const handleConversationsRealtime = useCallback((e: any) => {
+    if (e.action === 'create') {
+      setConversations((prev) => {
+        if (prev.some((c) => c.id === e.record.id)) return prev
+        return [...prev, e.record as unknown as Conversation]
       })
-      if (movableLeads.length === 0) return
-
-      const leadToMove = movableLeads[Math.floor(Math.random() * movableLeads.length)]
-      const currentPhaseIndex = PHASES.findIndex(
-        (p) => p.title === (leadToMove.status || 'Lead Novo'),
+    } else if (e.action === 'update') {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === e.record.id ? (e.record as unknown as Conversation) : c)),
       )
-      const nextPhase = PHASES[currentPhaseIndex + 1]
+    } else if (e.action === 'delete') {
+      setConversations((prev) => prev.filter((c) => c.id !== e.record.id))
+    }
+  }, [])
 
-      try {
-        await updateCustomer(leadToMove.id, { status: nextPhase.title })
-        await createConversation({
-          customer_id: leadToMove.id,
-          content: `IA analisou a intenção e moveu o lead para "${nextPhase.title}".`,
-          sender: 'system',
-        })
-        toastRef.current({
-          title: 'Transição Automática (IA)',
-          description: `A IA processou o lead ${leadToMove.name} e moveu para: ${nextPhase.title}`,
-        })
-      } catch (error) {
-        console.error('Failed to transition lead', error)
-      }
-    }, 15000)
-
-    return () => clearInterval(timer)
-  }, []) // Empty dependencies ensure stable effect initialization
+  useRealtime('customers', handleCustomersRealtime)
+  useRealtime('conversations', handleConversationsRealtime)
 
   const filteredCustomers = useMemo(() => {
     if (!searchFilter) return customers
@@ -179,7 +161,6 @@ export default function CRM() {
     }
   }
 
-  // Safe memoization for JSON parsing during render cycle
   const parsedTags = useMemo(() => {
     const list = user?.meta_tags_list
     if (!list) return []
@@ -193,6 +174,47 @@ export default function CRM() {
     }
     return []
   }, [user?.meta_tags_list])
+
+  const handleDragStart = (e: React.DragEvent, customerId: string) => {
+    e.dataTransfer.setData('customerId', customerId)
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggedCustomerId(customerId)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = async (e: React.DragEvent, newPhaseTitle: string) => {
+    e.preventDefault()
+    const customerId = e.dataTransfer.getData('customerId')
+    setDraggedCustomerId(null)
+
+    if (!customerId) return
+
+    const customer = customers.find((c) => c.id === customerId)
+    if (!customer || customer.status === newPhaseTitle) return
+
+    // Optimistic update
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === customerId ? { ...c, status: newPhaseTitle } : c)),
+    )
+
+    try {
+      await updateCustomer(customerId, { status: newPhaseTitle })
+      toast({
+        title: 'Lead atualizado',
+        description: `${customer.name} movido para ${newPhaseTitle}.`,
+      })
+    } catch (error) {
+      // Revert on error
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === customerId ? { ...c, status: customer.status } : c)),
+      )
+      toast({ title: 'Erro ao mover lead', variant: 'destructive' })
+    }
+  }
 
   if (loading) {
     return (
@@ -230,11 +252,11 @@ export default function CRM() {
         <div>
           <h2 className="text-2xl font-bold text-secondary flex items-center gap-2">
             <TrendingUp className="h-6 w-6 text-primary" />
-            Pipeline de Vendas Inteligente
+            Central de Controle de Leads
           </h2>
           <p className="text-muted-foreground text-sm mt-1">
-            A inteligência artificial analisa as conversas da linha 55 48 992098050 e avança os
-            leads automaticamente entre as 10 cadências.
+            Arraste os leads entre as fases ou deixe a IA evoluí-los automaticamente com base nas
+            conversas.
           </p>
         </div>
 
@@ -242,7 +264,7 @@ export default function CRM() {
           <div className="relative flex-1 md:w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Filtrar por nome (ex: Villa dos Açores)..."
+              placeholder="Filtrar por nome..."
               className="pl-9 bg-background"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
@@ -254,7 +276,7 @@ export default function CRM() {
                 if (!user?.meta_pixel_id || !user?.meta_capi_token) {
                   toast({
                     description:
-                      'Erro de sincronização: o ID do Pixel ou o Token da API de Conversões não estão configurados. Vá para configurações para preenchê-los.',
+                      'Erro de sincronização: o ID do Pixel ou o Token da API de Conversões não estão configurados.',
                     variant: 'destructive',
                     action: (
                       <ToastAction
@@ -265,18 +287,6 @@ export default function CRM() {
                       </ToastAction>
                     ),
                   })
-                  if (user?.id) {
-                    pb.collection('system_logs')
-                      .create({
-                        user_id: user.id,
-                        type: 'meta_error',
-                        message: 'Falha na sincronização: credenciais do Meta ausentes.',
-                        details:
-                          'O usuário tentou iniciar o remarketing sem configurar o Pixel ID ou Token CAPI.',
-                        payload: { searchFilter, count: filteredCustomers.length },
-                      })
-                      .catch(console.error)
-                  }
                 } else {
                   setSyncDialogOpen(true)
                 }
@@ -302,7 +312,9 @@ export default function CRM() {
             return (
               <div
                 key={phase.id}
-                className="w-[300px] shrink-0 flex flex-col bg-card rounded-xl border shadow-sm h-full max-h-full overflow-hidden"
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, phase.title)}
+                className="w-[300px] shrink-0 flex flex-col bg-card rounded-xl border shadow-sm h-full max-h-full overflow-hidden transition-colors"
               >
                 <div className="p-3 border-b bg-muted/40 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
@@ -323,76 +335,105 @@ export default function CRM() {
                 </div>
 
                 <ScrollArea className="flex-1 p-2">
-                  <div className="space-y-2">
-                    {phaseLeads.map((lead) => (
-                      <Card
-                        key={lead.id}
-                        onClick={() => setSelectedCustomerId(lead.id)}
-                        className="shadow-subtle hover:shadow-md transition-all cursor-pointer border-muted group relative overflow-hidden animate-fade-in"
-                      >
-                        <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
-                        <CardContent className="p-3">
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-8 w-8 border">
-                                <AvatarImage
-                                  src={`https://img.usecurling.com/ppl/thumbnail?seed=${lead.id}`}
-                                />
-                                <AvatarFallback>{lead.name.charAt(0)}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <h4 className="font-medium text-sm text-secondary leading-tight">
-                                  {lead.name}
-                                </h4>
-                                <span className="text-[10px] text-muted-foreground">
-                                  {lead.phone || lead.email}
-                                </span>
+                  <div className="space-y-2 min-h-[100px]">
+                    {phaseLeads.map((lead) => {
+                      const leadMsgs = conversations.filter((c) => c.customer_id === lead.id)
+                      const lastMsg = leadMsgs.length > 0 ? leadMsgs[leadMsgs.length - 1] : null
+                      const isAiPaused = lead.tags?.includes('ai_paused')
+
+                      return (
+                        <Card
+                          key={lead.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, lead.id)}
+                          onClick={() => setSelectedCustomerId(lead.id)}
+                          className={cn(
+                            'shadow-subtle hover:shadow-md transition-all cursor-grab active:cursor-grabbing border-muted group relative overflow-hidden animate-fade-in',
+                            draggedCustomerId === lead.id ? 'opacity-50 scale-95' : '',
+                          )}
+                        >
+                          <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
+                          <CardContent className="p-3">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-8 w-8 border">
+                                  <AvatarImage
+                                    src={`https://img.usecurling.com/ppl/thumbnail?seed=${lead.id}`}
+                                  />
+                                  <AvatarFallback>{lead.name.charAt(0)}</AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <h4 className="font-medium text-sm text-secondary leading-tight line-clamp-1">
+                                    {lead.name}
+                                  </h4>
+                                  <span className="text-[10px] text-muted-foreground line-clamp-1">
+                                    {lead.phone || lead.email}
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="space-y-2 mt-3">
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              <span>{new Date(lead.updated).toLocaleDateString()}</span>
+                            {lastMsg ? (
+                              <div className="mb-3 px-2 py-1.5 bg-muted/40 rounded-md">
+                                <p className="text-xs text-muted-foreground line-clamp-2">
+                                  <span className="font-semibold text-[10px] uppercase text-secondary/60 mr-1">
+                                    {lastMsg.sender === 'user' || lastMsg.sender === 'agent'
+                                      ? 'Atendente:'
+                                      : lastMsg.sender === 'ai'
+                                        ? 'IA:'
+                                        : lastMsg.sender === 'customer'
+                                          ? 'Lead:'
+                                          : 'Sistema:'}
+                                  </span>
+                                  {lastMsg.content}
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="mb-3 px-2 py-1.5 flex items-center gap-1.5 text-muted-foreground/50">
+                                <MessageSquare className="h-3 w-3" />
+                                <span className="text-[10px]">Sem mensagens</span>
+                              </div>
+                            )}
+
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                  <Clock className="h-3 w-3" />
+                                  <span>{new Date(lead.updated).toLocaleDateString()}</span>
+                                </div>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className={cn(
+                                        'flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full',
+                                        isAiPaused
+                                          ? 'bg-amber-500/10 text-amber-600'
+                                          : 'bg-primary/10 text-primary',
+                                      )}
+                                    >
+                                      {isAiPaused ? (
+                                        <User className="h-2.5 w-2.5" />
+                                      ) : (
+                                        <Bot className="h-2.5 w-2.5" />
+                                      )}
+                                      {isAiPaused ? 'Humano' : 'IA Ativa'}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {isAiPaused
+                                      ? 'Atendimento humano. A IA não responderá.'
+                                      : 'IA está assumindo o atendimento automaticamente.'}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
                             </div>
-
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-primary/5 text-primary border-primary/20 text-[10px] gap-1 cursor-help"
-                                  >
-                                    <Sparkles className="h-2.5 w-2.5" />
-                                    Curioso
-                                  </Badge>
-                                </TooltipTrigger>
-                                <TooltipContent>Sentimento detectado pela IA</TooltipContent>
-                              </Tooltip>
-
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-amber-500/5 text-amber-600 border-amber-500/20 text-[10px] gap-1 cursor-help truncate max-w-[140px]"
-                                  >
-                                    <Bot className="h-2.5 w-2.5" />
-                                    Avançar no pipeline
-                                  </Badge>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Próxima ação sugerida: Avançar no pipeline
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
                     {phaseLeads.length === 0 && (
-                      <div className="h-24 flex items-center justify-center border-2 border-dashed rounded-lg border-muted-foreground/20 text-muted-foreground/50 text-xs font-medium">
-                        Nenhum lead
+                      <div className="h-24 flex items-center justify-center border-2 border-dashed rounded-lg border-muted-foreground/20 text-muted-foreground/50 text-xs font-medium pointer-events-none">
+                        Solte aqui
                       </div>
                     )}
                   </div>

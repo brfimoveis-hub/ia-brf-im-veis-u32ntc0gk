@@ -88,7 +88,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('name', msgData.pushName || `Lead-Uazapi-${phone}`)
               customer.set('phone', phone.replace(/\D/g, ''))
 
-              let initialStatus = 'Novo'
+              let initialStatus = 'Lead Novo'
               try {
                 const activeCadences = $app.findRecordsByFilter(
                   'cadences',
@@ -98,7 +98,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                   0,
                 )
                 if (activeCadences.length > 0) {
-                  initialStatus = activeCadences[0].getString('title') || 'Novo'
+                  initialStatus = activeCadences[0].getString('title') || 'Lead Novo'
                 }
               } catch (_) {}
               customer.set('status', initialStatus)
@@ -158,7 +158,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('user_id', globalUserId)
               customer.set('name', contactName)
               customer.set('phone', phone)
-              customer.set('status', 'Novo')
+              customer.set('status', 'Lead Novo')
               customer.set('source', 'Website')
               customer.set(
                 'notes',
@@ -203,7 +203,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer = new Record(customersCol)
               customer.set('user_id', targetUserId)
               customer.set('name', contactName)
-              customer.set('status', 'Novo')
+              customer.set('status', 'Lead Novo')
               customer.set('source', 'Instagram')
               customer.set('notes', `IG Sender ID: ${senderId}\nOrigin: Instagram`)
               $app.save(customer)
@@ -323,7 +323,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     customer.set('name', contactName)
                     customer.set('phone', phone.replace(/\D/g, ''))
 
-                    let initialStatus = 'Novo'
+                    let initialStatus = 'Lead Novo'
                     try {
                       const activeCadences = $app.findRecordsByFilter(
                         'cadences',
@@ -333,7 +333,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                         0,
                       )
                       if (activeCadences.length > 0) {
-                        initialStatus = activeCadences[0].getString('title') || 'Novo'
+                        initialStatus = activeCadences[0].getString('title') || 'Lead Novo'
                       }
                     } catch (_) {}
                     customer.set('status', initialStatus)

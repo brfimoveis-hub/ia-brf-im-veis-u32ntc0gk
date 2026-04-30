@@ -349,6 +349,7 @@ DIRETRIZES RIGOROSAS:
 4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.
 5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
 6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).
+7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas, você PODE incluir a tag [STATUS: Novo_Status] no final da sua resposta. Os status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Qualificado", "Demo Agend.", "Demo Realiz.", "Proposta", "Negociação", "Fechamento".
 
 CONTEXTO RECUPERADO:
 ${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
@@ -384,8 +385,18 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
 
     let responseText =
       'Desculpe, estou com uma instabilidade no momento e não consegui gerar uma resposta.'
+    let detectedStatus = ''
+
     if (chatRes.statusCode === 200 && chatRes.json?.choices?.[0]?.message?.content) {
       responseText = chatRes.json.choices[0].message.content.trim()
+
+      // Extract status if present
+      const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
+      if (statusMatch && statusMatch[1]) {
+        detectedStatus = statusMatch[1].trim()
+        responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+      }
+
       // Sanitize: Remove possible leaked instruction blocks if AI fails to follow directions
       responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
       responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
@@ -466,12 +477,37 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
 
       $app.save(reply)
 
-      // Update customer status to em_atendimento
+      // Update customer status based on detection or default to Contato 1
       try {
         const custToUpdate = $app.findRecordById('customers', customerId)
         const currentStatus = (custToUpdate.getString('status') || '').toLowerCase()
-        if (currentStatus === 'novo' || currentStatus === '') {
-          custToUpdate.set('status', 'em_atendimento')
+
+        let targetStatus = ''
+        const validStatuses = [
+          'Lead Novo',
+          'Contato 1',
+          'Contato 2',
+          'Qualificação',
+          'Qualificado',
+          'Demo Agend.',
+          'Demo Realiz.',
+          'Proposta',
+          'Negociação',
+          'Fechamento',
+        ]
+
+        if (detectedStatus && validStatuses.includes(detectedStatus)) {
+          targetStatus = detectedStatus
+        } else if (
+          currentStatus === 'novo' ||
+          currentStatus === 'lead novo' ||
+          currentStatus === ''
+        ) {
+          targetStatus = 'Contato 1'
+        }
+
+        if (targetStatus) {
+          custToUpdate.set('status', targetStatus)
           $app.save(custToUpdate)
         }
       } catch (err) {
