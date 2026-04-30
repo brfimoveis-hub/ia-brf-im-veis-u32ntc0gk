@@ -45,6 +45,7 @@ import {
 import { DiagnosticCenter } from '@/components/DiagnosticCenter'
 import { RecentPerformance } from '@/components/RecentPerformance'
 import { LeadOriginsDashboard } from '@/components/LeadOriginsDashboard'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 export default function Settings() {
   const { toast } = useToast()
@@ -56,6 +57,7 @@ export default function Settings() {
   const [prompt, setPrompt] = useState('')
   const [aiName, setAiName] = useState('')
   const [aiVoiceId, setAiVoiceId] = useState('')
+  const [aiAvatarFile, setAiAvatarFile] = useState<File | null>(null)
 
   // Meta Ads State
   const [metaPixelId, setMetaPixelId] = useState('')
@@ -80,6 +82,7 @@ export default function Settings() {
     prompt: '',
     aiName: '',
     aiVoiceId: '',
+    aiAvatar: '',
     campaignPhone: '',
   })
   const [isInitialized, setIsInitialized] = useState(false)
@@ -189,6 +192,7 @@ export default function Settings() {
         prompt: user.ai_instructions || '',
         aiName: user.ai_name || '',
         aiVoiceId: user.ai_voice_id || '',
+        aiAvatar: user.ai_avatar || '',
         campaignPhone: user.meta_campaign_phone || '',
       })
       setIsInitialized(true)
@@ -202,7 +206,8 @@ export default function Settings() {
     JSON.stringify(metaTagsList) !== initialMeta.tags ||
     prompt !== initialMeta.prompt ||
     aiName !== initialMeta.aiName ||
-    aiVoiceId !== initialMeta.aiVoiceId
+    aiVoiceId !== initialMeta.aiVoiceId ||
+    aiAvatarFile !== null
 
   const shouldBlock = useCallback(
     ({ currentLocation, nextLocation }: any) =>
@@ -256,22 +261,25 @@ export default function Settings() {
       if (!user?.id) throw new Error('Usuário não autenticado')
       const { cleanPixelId, cleanTestCode, cleanCampaignPhone } = getCleanMeta()
 
-      const updateData: any = {
-        meta_pixel_id: cleanPixelId,
-        meta_test_event_code: cleanTestCode,
-        meta_campaign_phone: cleanCampaignPhone,
-        meta_tags_list: metaTagsList,
-        ai_instructions: prompt.substring(0, 100000),
-        ai_name: aiName,
-        ai_voice_id: aiVoiceId,
+      const formData = new FormData()
+      formData.append('meta_pixel_id', cleanPixelId)
+      formData.append('meta_test_event_code', cleanTestCode)
+      formData.append('meta_campaign_phone', cleanCampaignPhone)
+      formData.append('meta_tags_list', JSON.stringify(metaTagsList))
+      formData.append('ai_instructions', prompt.substring(0, 100000))
+      formData.append('ai_name', aiName)
+      formData.append('ai_voice_id', aiVoiceId)
+
+      if (aiAvatarFile) {
+        formData.append('ai_avatar', aiAvatarFile)
       }
 
       if (cleanPixelId !== initialMeta.pixel) {
-        updateData.meta_token_status = 'untested'
-        updateData.meta_last_validated = ''
+        formData.append('meta_token_status', 'untested')
+        formData.append('meta_last_validated', '')
       }
 
-      const updatedUser = await pb.collection('users').update(user.id, updateData)
+      const updatedUser = await pb.collection('users').update(user.id, formData)
       await pb.collection('users').authRefresh()
 
       setInitialMeta({
@@ -281,8 +289,10 @@ export default function Settings() {
         prompt: updatedUser.ai_instructions || '',
         aiName: updatedUser.ai_name || '',
         aiVoiceId: updatedUser.ai_voice_id || '',
+        aiAvatar: updatedUser.ai_avatar || '',
         campaignPhone: updatedUser.meta_campaign_phone || '',
       })
+      setAiAvatarFile(null)
 
       setMetaPixelId(cleanPixelId)
       setMetaTestEventCode(cleanTestCode)
@@ -310,13 +320,16 @@ export default function Settings() {
     try {
       if (!user?.id) throw new Error('Usuário não autenticado')
 
-      const updateData = {
-        ai_instructions: prompt.substring(0, 100000),
-        ai_name: aiName,
-        ai_voice_id: aiVoiceId,
+      const formData = new FormData()
+      formData.append('ai_instructions', prompt.substring(0, 100000))
+      formData.append('ai_name', aiName)
+      formData.append('ai_voice_id', aiVoiceId)
+
+      if (aiAvatarFile) {
+        formData.append('ai_avatar', aiAvatarFile)
       }
 
-      const updatedUser = await pb.collection('users').update(user.id, updateData)
+      const updatedUser = await pb.collection('users').update(user.id, formData)
       await pb.collection('users').authRefresh()
 
       setInitialMeta((prev) => ({
@@ -324,11 +337,13 @@ export default function Settings() {
         prompt: updatedUser.ai_instructions || '',
         aiName: updatedUser.ai_name || '',
         aiVoiceId: updatedUser.ai_voice_id || '',
+        aiAvatar: updatedUser.ai_avatar || '',
       }))
+      setAiAvatarFile(null)
 
       toast({
         title: 'Configurações de IA salvas com sucesso!',
-        description: 'A personalidade e comportamento foram atualizados.',
+        description: 'A identidade e comportamento foram atualizados.',
       })
     } catch (error) {
       toast({
@@ -654,27 +669,75 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* AI Personality */}
+        {/* AI Identity */}
         <Card className="border-border shadow-elevation overflow-hidden">
           <div className="h-1 bg-primary w-full"></div>
           <CardHeader className="bg-muted/10 pb-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 w-full">
               <div className="p-2.5 bg-primary/10 rounded-xl">
                 <SettingsIcon className="h-6 w-6 text-primary" />
               </div>
-              <div>
-                <CardTitle className="text-xl">Personalidade e Comportamento</CardTitle>
-                <CardDescription>
-                  Defina o prompt do sistema que guiará as respostas da IA.
-                </CardDescription>
+              <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-xl">Identidade da IA</CardTitle>
+                  <CardDescription>
+                    Defina o nome, avatar e voz do seu agente inteligente.
+                  </CardDescription>
+                </div>
+                <Badge
+                  variant={
+                    aiName.trim().length > 0 && prompt.trim().length > 0 ? 'default' : 'secondary'
+                  }
+                  className={cn(
+                    'whitespace-nowrap w-fit',
+                    aiName.trim().length > 0 && prompt.trim().length > 0
+                      ? 'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
+                      : '',
+                  )}
+                >
+                  <Activity className="w-3 h-3 mr-1.5" />
+                  {aiName.trim().length > 0 && prompt.trim().length > 0 ? 'IA Ativa' : 'IA Inativa'}
+                </Badge>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="pt-6 space-y-4">
+          <CardContent className="pt-6 space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+              <Avatar className="h-20 w-20 border-2 border-muted shadow-sm shrink-0">
+                <AvatarImage
+                  src={
+                    aiAvatarFile
+                      ? URL.createObjectURL(aiAvatarFile)
+                      : user?.ai_avatar
+                        ? pb.files.getURL(user, user.ai_avatar)
+                        : undefined
+                  }
+                />
+                <AvatarFallback className="text-xl font-semibold bg-primary/5 text-primary">
+                  {aiName ? aiName.charAt(0).toUpperCase() : 'IA'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="space-y-1.5 w-full max-w-sm">
+                <Label htmlFor="ai-avatar-upload" className="text-sm font-semibold text-secondary">
+                  Avatar da IA
+                </Label>
+                <Input
+                  id="ai-avatar-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setAiAvatarFile(e.target.files?.[0] || null)}
+                  className="text-xs cursor-pointer bg-muted/30"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Imagem recomendada: 256x256px (JPG, PNG).
+                </p>
+              </div>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-3">
                 <Label htmlFor="ai-name" className="text-sm font-semibold text-secondary">
-                  Nome da IA
+                  Nome da IA <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="ai-name"
@@ -697,10 +760,40 @@ export default function Settings() {
                 />
               </div>
             </div>
+            <div className="flex justify-end pt-4 border-t mt-4">
+              <Button onClick={handleSaveAI} disabled={isSavingAI} className="gap-2">
+                {isSavingAI ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {isSavingAI ? 'Salvando...' : 'Salvar Identidade'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* AI Personality */}
+        <Card className="border-border shadow-elevation overflow-hidden">
+          <div className="h-1 bg-indigo-500 w-full"></div>
+          <CardHeader className="bg-muted/10 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-500/10 rounded-xl">
+                <FileText className="h-6 w-6 text-indigo-600" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Personalidade e Comportamento</CardTitle>
+                <CardDescription>
+                  Defina o prompt do sistema que guiará as respostas da IA.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-4">
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <Label htmlFor="system-prompt" className="text-sm font-semibold text-secondary">
-                  Prompt do Sistema
+                  Prompt do Sistema <span className="text-destructive">*</span>
                 </Label>
                 <span className="text-xs text-muted-foreground font-mono">
                   {prompt.length.toLocaleString('pt-BR')} / 100.000
@@ -709,29 +802,33 @@ export default function Settings() {
               <Textarea
                 id="system-prompt"
                 placeholder="Ex: Você é um atendente..."
-                className="min-h-[180px] resize-y bg-card border-muted-foreground/20 font-mono text-sm shadow-inner focus-visible:ring-primary"
+                className="min-h-[250px] resize-y bg-card border-muted-foreground/20 font-mono text-sm shadow-inner focus-visible:ring-indigo-500"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 maxLength={100000}
               />
-              <div className="bg-primary/5 rounded-lg p-3 flex items-start gap-2 border border-primary/10">
-                <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+              <div className="bg-indigo-500/5 rounded-lg p-3 flex items-start gap-2 border border-indigo-500/10">
+                <CheckCircle2 className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  <strong className="text-primary font-semibold">Dica:</strong> Especifique o tom de
-                  voz, o idioma padrão, restrições de assunto e como a IA deve lidar com situações
-                  que não sabe responder.
+                  <strong className="text-indigo-600 font-semibold">Dica:</strong> Especifique o tom
+                  de voz, o idioma padrão, restrições de assunto e como a IA deve lidar com
+                  situações que não sabe responder.
                 </p>
               </div>
             </div>
 
             <div className="flex justify-end pt-4 border-t mt-4">
-              <Button onClick={handleSaveAI} disabled={isSavingAI} className="gap-2">
+              <Button
+                onClick={handleSaveAI}
+                disabled={isSavingAI}
+                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
                 {isSavingAI ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Save className="h-4 w-4" />
                 )}
-                {isSavingAI ? 'Salvando...' : 'Salvar IA'}
+                {isSavingAI ? 'Salvando...' : 'Salvar Comportamento'}
               </Button>
             </div>
           </CardContent>
