@@ -40,9 +40,9 @@ import { PHASES } from '@/components/customers/constants'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-const GoogleContactsImportDialog = lazy(() =>
-  import('@/components/customers/GoogleContactsImportDialog').then((m) => ({
-    default: m.GoogleContactsImportDialog,
+const CustomerImportDialog = lazy(() =>
+  import('@/components/customers/CustomerImportDialog').then((m) => ({
+    default: m.CustomerImportDialog,
   })),
 )
 const LeadDialog = lazy(() =>
@@ -78,7 +78,7 @@ export default function Customers() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(false)
 
-  const [googleContactsOpen, setGoogleContactsOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [leadOpen, setLeadOpen] = useState(false)
   const [rouletteOpen, setRouletteOpen] = useState(false)
   const [syncModalOpen, setSyncModalOpen] = useState(false)
@@ -259,8 +259,8 @@ export default function Customers() {
           >
             <Play className="h-4 w-4" /> Roleta Mágica
           </Button>
-          <Button variant="default" onClick={() => setGoogleContactsOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" /> Importar Contatos
+          <Button variant="default" onClick={() => setImportDialogOpen(true)} className="gap-2">
+            <Upload className="h-4 w-4" /> Importar CSV/VCF
           </Button>
           <Button
             onClick={() => {
@@ -398,6 +398,8 @@ export default function Customers() {
                     setEditingLead(lead)
                     setLeadOpen(true)
                   }}
+                  onTriggerRoleta={() => setRouletteOpen(true)}
+                  onImport={() => setImportDialogOpen(true)}
                 />
               </div>
             )}
@@ -411,10 +413,10 @@ export default function Customers() {
       </Card>
 
       <Suspense fallback={null}>
-        {googleContactsOpen && (
-          <GoogleContactsImportDialog
-            open={googleContactsOpen}
-            onOpenChange={setGoogleContactsOpen}
+        {importDialogOpen && (
+          <CustomerImportDialog
+            open={importDialogOpen}
+            onOpenChange={setImportDialogOpen}
             onSuccess={() => {
               setPage(1)
               setLeads([])

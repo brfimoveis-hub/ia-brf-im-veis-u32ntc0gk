@@ -3,7 +3,8 @@ import { PHASES } from './constants'
 import { Card } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { formatPhone, cn } from '@/lib/utils'
-import { Clock } from 'lucide-react'
+import { Clock, Play, Upload } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { CustomerDetailDrawer } from './CustomerDetailDrawer'
 import { useState } from 'react'
 
@@ -11,10 +12,14 @@ export function CustomerKanban({
   leads,
   onUpdateStatus,
   onEdit,
+  onTriggerRoleta,
+  onImport,
 }: {
   leads: Customer[]
   onUpdateStatus: (id: string, newStatus: string) => void
   onEdit: (lead: Customer) => void
+  onTriggerRoleta?: () => void
+  onImport?: () => void
 }) {
   const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null)
 
@@ -73,9 +78,33 @@ export function CustomerKanban({
                 <div className={cn('w-2 h-2 rounded-full', phase.color)} />
                 {phase.title}
               </h3>
-              <span className="text-xs text-muted-foreground font-medium bg-background border px-2 py-0.5 rounded-full shadow-sm">
-                {columnLeads.length}
-              </span>
+              <div className="flex items-center gap-2">
+                {phase.title === 'Base de Clientes/Novo LYD' && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={onImport}
+                      title="Importar CSV/VCF"
+                    >
+                      <Upload className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-primary"
+                      onClick={onTriggerRoleta}
+                      title="Roleta Mágica"
+                    >
+                      <Play className="h-3 w-3" />
+                    </Button>
+                  </>
+                )}
+                <span className="text-xs text-muted-foreground font-medium bg-background border px-2 py-0.5 rounded-full shadow-sm">
+                  {columnLeads.length}
+                </span>
+              </div>
             </div>
             <div className="flex flex-col gap-3 overflow-y-auto flex-1 min-h-[150px] scroll-smooth px-1 pb-2">
               {columnLeads.map((lead) => (
@@ -87,7 +116,18 @@ export function CustomerKanban({
                   onClick={() => setDrawerLeadId(lead.id)}
                   className="p-3.5 cursor-grab active:cursor-grabbing hover:border-primary/50 transition-all hover:shadow-md bg-background group"
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 relative">
+                    {(lead.status === 'Lead Novo' ||
+                      lead.status === 'Base de Clientes/Novo LYD' ||
+                      lead.status === '') && (
+                      <span
+                        className="absolute -top-1 -right-1 flex h-3 w-3 z-10"
+                        title="Novo Lead"
+                      >
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 border border-background"></span>
+                      </span>
+                    )}
                     <Avatar className="h-9 w-9 shrink-0 border shadow-sm">
                       <AvatarImage
                         src={`https://img.usecurling.com/ppl/thumbnail?seed=${lead.id}`}

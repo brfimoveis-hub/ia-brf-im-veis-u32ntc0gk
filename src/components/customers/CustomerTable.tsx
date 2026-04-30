@@ -122,12 +122,22 @@ export function CustomerTable({
                     onClick={() => setSelectedCustomerId(lead.id)}
                   >
                     <TableCell className="whitespace-nowrap">
-                      <Badge
-                        variant="secondary"
-                        className={cn('text-white', phase?.color || 'bg-slate-500')}
-                      >
-                        {phase?.title || 'Desconhecido'}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {(lead.status === 'Lead Novo' ||
+                          lead.status === 'Base de Clientes/Novo LYD' ||
+                          lead.status === '') && (
+                          <span className="relative flex h-2.5 w-2.5" title="Novo Lead">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                          </span>
+                        )}
+                        <Badge
+                          variant="secondary"
+                          className={cn('text-white', phase?.color || 'bg-slate-500')}
+                        >
+                          {phase?.title || 'Desconhecido'}
+                        </Badge>
+                      </div>
                     </TableCell>
                     {COLUMNS.map((col) => {
                       if (col.key === 'tags') {

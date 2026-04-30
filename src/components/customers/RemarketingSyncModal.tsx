@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { syncRemarketing, Customer } from '@/services/customers'
 import pb from '@/lib/pocketbase/client'
-import { Loader2, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, Phone } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -302,9 +302,13 @@ export function RemarketingSyncModal({
                         <strong>Evento de Conversão / Tag:</strong> Lead (Padrão)
                       </p>
                       <div className="text-sm text-muted-foreground bg-muted p-4 rounded-md border">
-                        <p className="mb-3 text-primary font-medium flex items-center gap-2">
+                        <p className="mb-2 text-primary font-medium flex items-center gap-2">
                           <CheckCircle2 className="h-4 w-4" />
                           Integração utilizando o Pixel Ativo ID: 3828467217409862
+                        </p>
+                        <p className="mb-3 text-purple-600 font-medium flex items-center gap-2 text-xs">
+                          <Phone className="h-3 w-3" />
+                          Módulo de Remarketing Ativo: Roteamento via 55 48 991828050
                         </p>
                         Apenas contatos com email ou telefone válidos serão sincronizados via hash
                         SHA256 para manter a segurança e conformidade com o Meta.
