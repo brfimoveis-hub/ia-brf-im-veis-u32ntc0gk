@@ -118,10 +118,19 @@ export default function Settings() {
     }
   })
 
-  const activeCadencesCount = cadences.filter((c) => c.is_active).length
-  const intactCadencesCount = cadences.filter(
-    (c) => c.is_active && c.ai_instructions && c.ai_instructions.trim().length > 0,
-  ).length
+  const activeCadences = cadences.filter((c) => c.is_active)
+  const activeCadencesCount = activeCadences.length
+
+  const getCadenceIssues = (cadence: Cadence) => {
+    const issues = []
+    if (!cadence.title?.trim()) issues.push('Sem título')
+    if (!cadence.content?.trim()) issues.push('Sem conteúdo')
+    if (cadence.order === undefined || cadence.order <= 0) issues.push('Ordem inválida')
+    if (!cadence.ai_instructions?.trim()) issues.push('Sem regras de IA')
+    return issues
+  }
+
+  const intactCadencesCount = activeCadences.filter((c) => getCadenceIssues(c).length === 0).length
 
   const handleSaveCadenceInstructions = async () => {
     if (!editingCadence) return
@@ -595,25 +604,36 @@ export default function Settings() {
                     </TableRow>
                   ) : (
                     cadences.map((cadence) => {
-                      const isIntact =
-                        cadence.ai_instructions && cadence.ai_instructions.trim().length > 0
+                      const issues = getCadenceIssues(cadence)
+                      const isIntact = issues.length === 0 && cadence.is_active
+                      const isInactive = !cadence.is_active
+
                       return (
-                        <TableRow key={cadence.id}>
-                          <TableCell className="font-medium">{cadence.title}</TableCell>
+                        <TableRow key={cadence.id} className={cn(isInactive && 'opacity-60')}>
+                          <TableCell className="font-medium">
+                            {cadence.title || 'Sem Título'}
+                          </TableCell>
                           <TableCell>
                             <Badge variant={cadence.is_active ? 'default' : 'secondary'}>
                               {cadence.is_active ? 'Ativa' : 'Inativa'}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {isIntact ? (
+                            {isInactive ? (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            ) : isIntact ? (
                               <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border font-medium">
                                 Íntegra
                               </Badge>
                             ) : (
-                              <Badge className="bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20 border font-medium">
-                                Atenção: Sem Regras IA
-                              </Badge>
+                              <div className="flex flex-col gap-1 items-start">
+                                <Badge className="bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20 border font-medium">
+                                  Atenção: Erro(s)
+                                </Badge>
+                                <span className="text-[10px] text-red-500 font-medium max-w-[150px] leading-tight">
+                                  {issues.join(', ')}
+                                </span>
+                              </div>
                             )}
                           </TableCell>
                           <TableCell className="text-right">

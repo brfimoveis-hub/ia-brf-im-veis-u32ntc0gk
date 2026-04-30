@@ -15,6 +15,10 @@ routerAdd(
     if (!pixelId || !capiToken) {
       return e.badRequestError(
         'O ID do Pixel ou Token da API de Conversões (CAPI) não estão configurados no perfil.',
+        {
+          meta_pixel_id: !pixelId ? 'Ausente' : 'Ok',
+          meta_capi_token: !capiToken ? 'Ausente' : 'Ok',
+        },
       )
     }
 

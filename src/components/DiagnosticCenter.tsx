@@ -167,13 +167,21 @@ export function DiagnosticCenter() {
   }
 
   const handleCopyError = (text: string, payload?: any) => {
-    const contentToCopy = payload
-      ? `${text}\n\nPayload:\n${JSON.stringify(payload, null, 2)}`
-      : text
+    let contentToCopy = text
+    if (payload) {
+      if (payload.lastErrorMsg) {
+        contentToCopy += `\nDetalhes do Erro: ${payload.lastErrorMsg}`
+      }
+      if (payload.issues && payload.issues.length > 0) {
+        contentToCopy += `\nProblemas encontrados:\n- ${payload.issues.join('\n- ')}`
+      }
+      contentToCopy += `\n\nPayload JSON:\n${JSON.stringify(payload, null, 2)}`
+    }
+
     navigator.clipboard.writeText(contentToCopy)
     toast({
       title: 'Copiado!',
-      description: 'Conteúdo copiado para a área de transferência!',
+      description: 'Detalhes do erro copiados para a área de transferência.',
     })
   }
 
@@ -245,15 +253,33 @@ export function DiagnosticCenter() {
       // 3. Cadence Audit
       setProgress(40)
       const cadences = await getCadences()
-      const validCadences = cadences.filter(
-        (c) => c.order !== undefined && c.ai_instructions && c.ai_instructions.length > 10,
-      )
-      const hasIssues = cadences.length !== 10 || validCadences.length !== cadences.length
+      const activeCadences = cadences.filter((c) => c.is_active)
+
+      const getCadenceIssues = (cadence: any) => {
+        const issues = []
+        if (!cadence.title?.trim()) issues.push('Sem título')
+        if (!cadence.content?.trim()) issues.push('Sem conteúdo')
+        if (cadence.order === undefined || cadence.order <= 0) issues.push('Ordem inválida')
+        if (!cadence.ai_instructions?.trim()) issues.push('Sem regras de IA')
+        return issues
+      }
+
+      const validCadences = activeCadences.filter((c) => getCadenceIssues(c).length === 0)
+      const hasIssues = activeCadences.length > 0 && validCadences.length !== activeCadences.length
+      const issuesList = activeCadences
+        .filter((c) => getCadenceIssues(c).length > 0)
+        .map((c) => `${c.title || 'Sem Título'} (ID: ${c.id}): ${getCadenceIssues(c).join(', ')}`)
+
       newResults.push({
         name: 'Auditoria de Cadências',
         status: hasIssues ? 'warning' : 'success',
-        message: `${cadences.length} cadências ativas. ${validCadences.length} íntegras.`,
-        payload: { total: cadences.length, valid: validCadences.length, cadences },
+        message: `${activeCadences.length} cadências ativas. ${validCadences.length} íntegras.`,
+        payload: {
+          total: activeCadences.length,
+          valid: validCadences.length,
+          issues: issuesList,
+          cadences,
+        },
       })
       setResults([...newResults])
 
@@ -262,12 +288,14 @@ export function DiagnosticCenter() {
       const testCount = loopEnabled ? 5 : 1
       let metaSuccesses = 0
 
-      if (!user?.meta_pixel_id) {
+      if (!user?.meta_pixel_id || !user?.meta_capi_token) {
         newResults.push({
-          name: 'Integração Meta (Pixel)',
+          name: 'Integração Meta (Pixel & CAPI)',
           status: 'error',
-          message: 'Pixel ID ausente.',
-          payload: { pixel: user?.meta_pixel_id },
+          message: !user?.meta_pixel_id
+            ? 'Pixel ID ausente.'
+            : 'Token da API de Conversões (CAPI) ausente.',
+          payload: { pixel: user?.meta_pixel_id, hasCapiToken: !!user?.meta_capi_token },
         })
         setProgress(90)
       } else {
@@ -299,10 +327,16 @@ export function DiagnosticCenter() {
         if (metaSuccesses < testCount) finalMessage = `Falha de conexão: ${lastErrorMsg}`
 
         newResults.push({
-          name: 'Integração Meta (Pixel)',
+          name: 'Integração Meta (Pixel & CAPI)',
           status: metaSuccesses === testCount ? 'success' : metaSuccesses > 0 ? 'warning' : 'error',
           message: finalMessage,
-          payload: { successes: metaSuccesses, testCount, lastErrorMsg },
+          payload: {
+            successes: metaSuccesses,
+            testCount,
+            lastErrorMsg,
+            pixel: user.meta_pixel_id,
+            hasCapiToken: !!user.meta_capi_token,
+          },
         })
       }
       setResults([...newResults])
