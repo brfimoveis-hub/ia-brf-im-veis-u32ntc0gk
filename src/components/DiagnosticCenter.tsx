@@ -268,10 +268,15 @@ export function DiagnosticCenter() {
         .filter((c) => getCadenceIssues(c).length > 0)
         .map((c) => `${c.title || 'Sem Título'} (ID: ${c.id}): ${getCadenceIssues(c).join(', ')}`)
 
+      const auditMessage =
+        activeCadences.length === validCadences.length && activeCadences.length > 0
+          ? `${validCadences.length} cadências íntegras.`
+          : `${activeCadences.length} cadências ativas. ${validCadences.length} íntegras.`
+
       newResults.push({
         name: 'Auditoria de Cadências',
         status: hasIssues ? 'warning' : 'success',
-        message: `${activeCadences.length} cadências ativas. ${validCadences.length} saudáveis.`,
+        message: auditMessage,
         payload: {
           total: activeCadences.length,
           valid: validCadences.length,
@@ -300,12 +305,10 @@ export function DiagnosticCenter() {
         let lastErrorMsg = ''
         for (let i = 0; i < testCount; i++) {
           try {
+            // Empty body to force usage of DB single source of truth
             await pb.send('/backend/v1/meta-test-connection', {
               method: 'POST',
-              body: JSON.stringify({
-                pixelId: user.meta_pixel_id || '1522162279584545',
-                capiToken: user.meta_capi_token || '',
-              }),
+              body: JSON.stringify({}),
               headers: { 'Content-Type': 'application/json' },
             })
             metaSuccesses++

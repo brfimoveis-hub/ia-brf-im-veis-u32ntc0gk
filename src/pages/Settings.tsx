@@ -455,19 +455,7 @@ export default function Settings() {
   }
 
   const testMetaConnection = async () => {
-    const savedPixelId = user?.meta_pixel_id || ''
-    const savedCapiToken = user?.meta_capi_token || ''
-
-    if (!savedPixelId || !savedCapiToken) {
-      toast({
-        title: 'Credenciais Ausentes',
-        description: 'Salve suas credenciais antes de testar a conexão.',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    if (metaPixelId !== savedPixelId || metaCapiToken !== savedCapiToken) {
+    if (isDirty) {
       toast({
         title: 'Alterações Não Salvas',
         description: 'Por favor, salve as configurações antes de testar a conexão.',
@@ -478,12 +466,10 @@ export default function Settings() {
 
     setIsTestingConnection(true)
     try {
+      // Body is intentionally empty to pull directly from the DB's single source of truth
       await pb.send('/backend/v1/meta-test-connection', {
         method: 'POST',
-        body: JSON.stringify({
-          pixelId: savedPixelId,
-          capiToken: savedCapiToken,
-        }),
+        body: JSON.stringify({}),
         headers: { 'Content-Type': 'application/json' },
       })
       setMissingScopes([])
@@ -602,7 +588,9 @@ export default function Settings() {
               <div>
                 <CardTitle className="text-xl">Auditoria de Cadências</CardTitle>
                 <CardDescription>
-                  {activeCadencesCount} cadências ativas. {intactCadencesCount} saudáveis.
+                  {activeCadencesCount === intactCadencesCount && activeCadencesCount > 0
+                    ? `${intactCadencesCount} cadências íntegras.`
+                    : `${activeCadencesCount} cadências ativas. ${intactCadencesCount} íntegras.`}
                 </CardDescription>
               </div>
             </div>
@@ -646,7 +634,7 @@ export default function Settings() {
                               <span className="text-xs text-muted-foreground">-</span>
                             ) : isIntact ? (
                               <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border font-medium">
-                                Saudável
+                                Íntegra
                               </Badge>
                             ) : (
                               <div className="flex flex-col gap-1 items-start">

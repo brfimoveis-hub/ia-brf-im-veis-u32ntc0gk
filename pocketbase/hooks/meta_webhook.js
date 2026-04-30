@@ -171,7 +171,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('name', contactName)
               customer.set('phone', phone)
               customer.set('status', 'Base de Clientes/Novo LYD')
-              customer.set('source', 'Meta Lead Form')
+              customer.set('source', 'Meta')
               customer.set(
                 'notes',
                 `Form ID: ${formId}\nLead ID: ${leadId}\nNote: Raw leadgen event sem token para buscar detalhes.\nOriginado do Meta Lead Form.`,
@@ -216,7 +216,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('user_id', targetUserId)
               customer.set('name', contactName)
               customer.set('status', 'Lead Novo')
-              customer.set('source', 'Meta Instagram')
+              customer.set('source', 'Meta')
               customer.set('notes', `IG Sender ID: ${senderId}\nOrigin: Meta Instagram`)
               $app.save(customer)
 
@@ -353,23 +353,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     } catch (_) {}
                     customer.set('status', initialStatus)
 
-                    let source = receiverPhone
-                      ? `Meta WhatsApp - ${receiverPhone}`
-                      : 'Meta WhatsApp'
-                    if (receiverPhone.includes('48992098050')) {
-                      source = `Meta WhatsApp - 48992098050`
-                    } else if (receiverPhone.includes('48991828050')) {
-                      source = `Meta WhatsApp - 48991828050`
-                    }
-                    if (!receiverPhone && targetUserId) {
-                      try {
-                        const u = $app.findRecordById('users', targetUserId)
-                        const uPhone = u.getString('meta_campaign_phone')
-                        if (uPhone && uPhone.includes('48992098050')) {
-                          source = `Meta - 48992098050`
-                        }
-                      } catch (_) {}
-                    }
+                    let source = 'Meta'
 
                     let notes = ''
                     if (msg.referral) {
