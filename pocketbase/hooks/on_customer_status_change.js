@@ -1,0 +1,181 @@
+onRecordAfterUpdateSuccess((e) => {
+  const oldStatus = e.record.original().getString('status')
+  const newStatus = e.record.getString('status')
+
+  if (!oldStatus || oldStatus === newStatus) {
+    return e.next()
+  }
+
+  const customerId = e.record.id
+  const userId = e.record.getString('user_id')
+
+  let userRecord = null
+  try {
+    if (userId) userRecord = $app.findRecordById('users', userId)
+  } catch (_) {}
+
+  const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
+  const aiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
+
+  if (!aiInstructions.trim()) {
+    $app.logger().info('AI Trigger skipped: No instructions', 'customerId', customerId)
+    return e.next()
+  }
+
+  const apiKey = $secrets.get('OPENAI_API_KEY')
+  if (!apiKey) {
+    $app.logger().warn('AI Trigger skipped: No OPENAI_API_KEY')
+    return e.next()
+  }
+
+  try {
+    const logsCol = $app.findCollectionByNameOrId('system_logs')
+    const logRecord = new Record(logsCol)
+    logRecord.set('user_id', userId)
+    logRecord.set('type', 'diagnostic')
+    logRecord.set('message', 'AI Triggered by Status Change')
+    logRecord.set(
+      'details',
+      `Cliente moveu de '${oldStatus}' para '${newStatus}'. Analisando próxima ação na cadência.`,
+    )
+    logRecord.set('payload', {
+      customer_id: customerId,
+      old_status: oldStatus,
+      new_status: newStatus,
+    })
+    $app.saveNoValidate(logRecord)
+  } catch (_) {}
+
+  let historyRecords = []
+  try {
+    historyRecords = $app.findRecordsByFilter(
+      'conversations',
+      `customer_id = '${customerId}'`,
+      '-created',
+      15,
+      0,
+    )
+    historyRecords.reverse()
+  } catch (_) {}
+
+  const messages = []
+  const systemPrompt = `Você é ${aiName}.
+Sua identidade e instruções principais:
+${aiInstructions}
+
+EVENTO ATUAL:
+O cliente acabou de ser movido pelo agente para a fase de funil: "${newStatus}". (Fase anterior: "${oldStatus}").
+
+SUA TAREFA:
+Analise o histórico da conversa e as instruções. Se houver uma mensagem ideal ou um follow-up que deve ser enviado AGORA nesta nova fase, escreva essa mensagem.
+Seja direta, empática e humana.
+NUNCA mencione que você viu uma mudança de status no sistema. A mensagem deve parecer natural.
+NUNCA comece com confirmações tipo "Entendido" ou "Vou enviar". Apenas escreva a mensagem para o cliente.
+Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase ou se não for o momento adequado, responda EXATAMENTE com "SKIP_MESSAGE".`
+
+  messages.push({ role: 'system', content: systemPrompt })
+
+  if (historyRecords && historyRecords.length > 0) {
+    historyRecords.forEach((msg) => {
+      const msgSender = msg.getString('sender')
+      if (msgSender === 'system') return
+      const role = msgSender === 'ai' || msgSender === 'agent' ? 'assistant' : 'user'
+      messages.push({ role: role, content: msg.getString('content') || '' })
+    })
+  } else {
+    messages.push({ role: 'user', content: '(Nenhum histórico anterior)' })
+  }
+
+  const chatRes = $http.send({
+    url: 'https://api.openai.com/v1/chat/completions',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      temperature: 0.3,
+      max_tokens: 400,
+    }),
+    timeout: 30,
+  })
+
+  if (chatRes.statusCode === 200 && chatRes.json?.choices?.[0]?.message?.content) {
+    let responseText = chatRes.json.choices[0].message.content.trim()
+
+    // Sanitize in case AI includes the STATUS tag by mistake
+    responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+
+    if (responseText !== 'SKIP_MESSAGE' && responseText !== '') {
+      try {
+        const reply = new Record($app.findCollectionByNameOrId('conversations'))
+        reply.set('user_id', userId)
+        reply.set('customer_id', customerId)
+        reply.set('sender', 'ai')
+        reply.set('content', responseText)
+        $app.save(reply)
+
+        // System Log
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', userId)
+        logRecord.set('type', 'diagnostic')
+        logRecord.set('message', 'IA enviou mensagem após mudança de fase')
+        logRecord.set('details', `Mensagem gerada para a fase ${newStatus}.`)
+        logRecord.set('payload', { customer_id: customerId, text: responseText })
+        $app.saveNoValidate(logRecord)
+      } catch (err) {
+        $app.logger().error('Error saving AI reply for status change', err)
+      }
+
+      // Send to Uazapi
+      try {
+        const phone = e.record.getString('phone') || ''
+        const source = e.record.getString('source') || ''
+        const uazapiUrl = $secrets.get('UAZAPI_URL') || ''
+        const uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
+
+        if (
+          phone &&
+          uazapiUrl &&
+          uazapiKey &&
+          (phone.includes('48992098050') || source.includes('Uazapi'))
+        ) {
+          let instanceName = '48992098050'
+          if (source.includes('Uazapi - ')) {
+            instanceName = source.replace('Uazapi - ', '').trim()
+          } else if (source.includes('Meta - ')) {
+            instanceName = source.replace('Meta - ', '').trim()
+          }
+          const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
+          $http.send({
+            url: `${cleanUrl}/message/sendText/${instanceName}`,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
+            body: JSON.stringify({
+              number: phone,
+              options: { delay: 1200, presence: 'composing' },
+              textMessage: { text: responseText },
+            }),
+            timeout: 15,
+          })
+        }
+      } catch (_) {}
+    } else {
+      // Skipped
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('user_id', userId)
+        logRecord.set('type', 'diagnostic')
+        logRecord.set('message', 'IA não considerou necessário enviar mensagem')
+        logRecord.set('details', `Para a fase ${newStatus}, a IA retornou SKIP_MESSAGE.`)
+        logRecord.set('payload', { customer_id: customerId })
+        $app.saveNoValidate(logRecord)
+      } catch (_) {}
+    }
+  } else {
+    $app.logger().error('OpenAI Chat failed in status change', 'status', chatRes.statusCode)
+  }
+
+  return e.next()
+}, 'customers')

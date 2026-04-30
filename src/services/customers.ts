@@ -70,7 +70,7 @@ export const getPaginatedCustomers = async (
   phaseFilter: string = 'all',
   sourceFilter: string = '',
 ): Promise<ListResult<Customer>> => {
-  const filters: string[] = []
+  const filters: string[] = ['created >= "2024-04-28 00:00:00.000Z"']
   if (search) {
     const safeSearch = search.replace(/"/g, '\\"')
     filters.push(

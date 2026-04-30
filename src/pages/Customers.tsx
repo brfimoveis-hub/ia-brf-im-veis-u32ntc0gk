@@ -9,10 +9,29 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
-import { Search, Plus, Upload, Users, Filter, Loader2, Play, Target, Clock } from 'lucide-react'
+import {
+  Search,
+  Plus,
+  Upload,
+  Users,
+  Filter,
+  Loader2,
+  Play,
+  Target,
+  Clock,
+  LayoutGrid,
+  List,
+} from 'lucide-react'
 import { CustomerTable } from '@/components/customers/CustomerTable'
+import { CustomerKanban } from '@/components/customers/CustomerKanban'
 import { useToast } from '@/hooks/use-toast'
-import { getPaginatedCustomers, deleteCustomer, Customer } from '@/services/customers'
+import {
+  getPaginatedCustomers,
+  deleteCustomer,
+  updateCustomer,
+  Customer,
+} from '@/services/customers'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useRealtime } from '@/hooks/use-realtime'
 import { PHASES } from '@/components/customers/constants'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
@@ -62,6 +81,7 @@ export default function Customers() {
   const [syncModalOpen, setSyncModalOpen] = useState(false)
   const [deliverySettingsOpen, setDeliverySettingsOpen] = useState(false)
   const [editingLead, setEditingLead] = useState<Customer | null>(null)
+  const [view, setView] = useState<'list' | 'kanban'>('kanban')
 
   const { toast } = useToast()
 
@@ -187,6 +207,22 @@ export default function Customers() {
     }
   }
 
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    const lead = leads.find((l) => l.id === id)
+    if (!lead || lead.status === newStatus) return
+
+    const oldStatus = lead.status
+    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l)))
+
+    try {
+      await updateCustomer(id, { status: newStatus })
+      toast({ title: `Status atualizado para ${newStatus}` })
+    } catch (error) {
+      setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: oldStatus } : l)))
+      toast({ title: 'Erro ao atualizar status', variant: 'destructive' })
+    }
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-10rem)] gap-6 animate-fade-in-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between shrink-0 gap-4">
@@ -235,58 +271,88 @@ export default function Customers() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 shrink-0">
-        <div className="relative flex-1 w-full max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome, email ou telefone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 w-full"
-          />
+      <div className="flex flex-col sm:flex-row gap-4 shrink-0 justify-between">
+        <div className="flex flex-1 gap-4 items-center">
+          <div className="relative flex-1 w-full max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, email ou telefone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 w-full"
+            />
+          </div>
+          <Select value={phaseFilter} onValueChange={setPhaseFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Fase" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as fases</SelectItem>
+              {PHASES.map((p) => (
+                <SelectItem key={p.id} value={p.id.toString()}>
+                  {p.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="relative w-full max-w-[200px]">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Origem (ex: Google Contacts)"
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="pl-9 w-full"
+            />
+          </div>
         </div>
-        <Select value={phaseFilter} onValueChange={setPhaseFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Fase" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as fases</SelectItem>
-            {PHASES.map((p) => (
-              <SelectItem key={p.id} value={p.id.toString()}>
-                {p.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="relative w-full max-w-[200px]">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Origem (ex: Google Contacts)"
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            className="pl-9 w-full"
-          />
-        </div>
+        <ToggleGroup
+          type="single"
+          value={view}
+          onValueChange={(v) => v && setView(v as any)}
+          className="justify-end shrink-0 bg-card p-1 rounded-md border"
+        >
+          <ToggleGroupItem value="list" aria-label="Lista">
+            <List className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="kanban" aria-label="Kanban">
+            <LayoutGrid className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden shadow-sm relative">
-        <CardContent className="p-0 flex-1 overflow-auto relative scroll-smooth">
+      <Card className="flex-1 flex flex-col overflow-hidden shadow-sm relative bg-transparent border-none sm:bg-card sm:border">
+        <CardContent className="p-0 flex-1 overflow-hidden relative sm:p-0 h-full flex flex-col">
           <ErrorBoundary>
-            <CustomerTable
-              leads={leads}
-              loading={loading}
-              error={error}
-              lastElementRef={lastElementRef}
-              onEdit={(lead) => {
-                setEditingLead(lead)
-                setLeadOpen(true)
-              }}
-              onDelete={handleDelete}
-            />
-            {loadingMore && (
-              <div className="flex justify-center items-center p-4 text-muted-foreground gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <span className="text-sm animate-pulse">Carregando mais clientes...</span>
+            {view === 'list' ? (
+              <div className="flex-1 overflow-auto scroll-smooth">
+                <CustomerTable
+                  leads={leads}
+                  loading={loading}
+                  error={error}
+                  lastElementRef={lastElementRef}
+                  onEdit={(lead) => {
+                    setEditingLead(lead)
+                    setLeadOpen(true)
+                  }}
+                  onDelete={handleDelete}
+                />
+                {loadingMore && (
+                  <div className="flex justify-center items-center p-4 text-muted-foreground gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    <span className="text-sm animate-pulse">Carregando mais clientes...</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex-1 h-full overflow-hidden p-2 sm:p-4">
+                <CustomerKanban
+                  leads={leads}
+                  onUpdateStatus={handleUpdateStatus}
+                  onEdit={(lead) => {
+                    setEditingLead(lead)
+                    setLeadOpen(true)
+                  }}
+                />
               </div>
             )}
           </ErrorBoundary>
