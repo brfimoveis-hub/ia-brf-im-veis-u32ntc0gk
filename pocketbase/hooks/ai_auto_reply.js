@@ -162,17 +162,45 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (_) {}
 
-    if (!aiInstructions) {
+    const actualAiName = userRecord ? userRecord.getString('ai_name') : ''
+    const metaTokenStatus = userRecord ? userRecord.getString('meta_token_status') : ''
+    const hasMeta =
+      metaTokenStatus === 'active' || metaTokenStatus === 'valid' || metaTokenStatus === 'Connected'
+
+    const isNameMissing = !actualAiName.trim()
+    const isInstructionsMissing = !aiInstructions || aiInstructions.trim().length < 10
+    const isMetaMissing = !hasMeta
+
+    if (isNameMissing || isInstructionsMissing || isMetaMissing) {
+      const reasons = []
+      if (isNameMissing) reasons.push('Nome da IA não configurado')
+      if (isInstructionsMissing) reasons.push('Instruções da IA ausentes ou insuficientes')
+      if (isMetaMissing) reasons.push('Integração Meta Ads não validada')
+
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', userId || '')
-        logRecord.set('type', 'diagnostic_warning')
-        logRecord.set('message', 'AI trigger warning: missing instructions')
-        logRecord.set('details', `Instruções de IA vazias. A IA usará o comportamento padrão.`)
-        logRecord.set('payload', { customer_id: customerId })
+        logRecord.set('type', 'diagnostic_error')
+        logRecord.set('message', 'AI trigger skipped: Identidade Inativa')
+        logRecord.set(
+          'details',
+          `A IA não pode responder porque a Identidade está inativa. Pendências: ${reasons.join(', ')}`,
+        )
+        logRecord.set('payload', { customer_id: customerId, reasons })
         $app.saveNoValidate(logRecord)
       } catch (_) {}
+
+      $app
+        .logger()
+        .warn(
+          'AI auto reply skipped due to inactive identity',
+          'customerId',
+          customerId,
+          'reasons',
+          reasons.join(', '),
+        )
+      return e.next()
     }
 
     const customerMessage = e.record.getString('content') || ''

@@ -17,10 +17,15 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Loader2, Activity, Users, RefreshCw, AlertCircle } from 'lucide-react'
+import { Loader2, Activity, Users, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useAuth } from '@/hooks/use-auth'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 
 export default function Index() {
+  const { user } = useAuth()
+  const [currentUser, setCurrentUser] = useState(user)
   const [customers, setCustomers] = useState<Customer[]>([])
   const [logs, setLogs] = useState<SystemLog[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -46,6 +51,16 @@ export default function Index() {
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    setCurrentUser(user)
+  }, [user])
+
+  useRealtime('users', (e) => {
+    if (e.action === 'update' && e.record.id === user?.id) {
+      setCurrentUser(e.record as any)
+    }
+  })
 
   useRealtime('customers', (e) => {
     if (e.action === 'create') setCustomers((prev) => [e.record as Customer, ...prev])
@@ -105,6 +120,25 @@ export default function Index() {
       color: 'hsl(var(--primary))',
     },
   }
+
+  const identityChecks = useMemo(() => {
+    if (!currentUser) return { active: false, reasons: ['Usuário não carregado'] }
+    const reasons: string[] = []
+    const hasName = !!currentUser.ai_name?.trim()
+    const hasInstructions =
+      !!currentUser.ai_instructions?.trim() && currentUser.ai_instructions.length > 10
+    const metaStatus = currentUser.meta_token_status
+    const hasMeta = metaStatus === 'active' || metaStatus === 'valid' || metaStatus === 'Connected'
+
+    if (!hasName) reasons.push('Nome da IA não configurado.')
+    if (!hasInstructions) reasons.push('Instruções da IA ausentes ou insuficientes.')
+    if (!hasMeta) reasons.push('Integração Meta Ads pendente ou com erro.')
+
+    return {
+      active: hasName && hasInstructions && hasMeta,
+      reasons,
+    }
+  }, [currentUser])
 
   const kpis = useMemo(() => {
     const totalLeads = customers.length
@@ -175,7 +209,45 @@ export default function Index() {
   return (
     <div className="flex flex-col gap-6 p-2 md:p-4 pb-20">
       <div className="flex flex-col gap-2">
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard de Vendas</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h2 className="text-3xl font-bold tracking-tight">Dashboard de Vendas</h2>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="w-fit">
+                <Badge
+                  variant={identityChecks.active ? 'default' : 'destructive'}
+                  className={cn(
+                    'px-3 py-1 cursor-help text-sm',
+                    identityChecks.active && 'bg-green-500 hover:bg-green-600',
+                  )}
+                >
+                  {identityChecks.active ? (
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 mr-2" />
+                  )}
+                  Identidade {identityChecks.active ? 'Ativa' : 'Inativa'}
+                </Badge>
+              </div>
+            </TooltipTrigger>
+            {!identityChecks.active && (
+              <TooltipContent side="bottom" align="end" className="max-w-[300px] p-3">
+                <div className="space-y-2">
+                  <p className="font-semibold text-sm">Ações Necessárias:</p>
+                  <ul className="text-xs list-disc pl-4 space-y-1 text-muted-foreground">
+                    {identityChecks.reasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                  <p className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
+                    A IA não responderá novos leads até que estas pendências sejam resolvidas nas
+                    Configurações.
+                  </p>
+                </div>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </div>
         <p className="text-muted-foreground">
           Acompanhe seu funil de vendas e a performance do remarketing em tempo real.
         </p>
