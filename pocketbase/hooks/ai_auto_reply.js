@@ -15,7 +15,6 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
-    // 0. Strict Locking Mechanism
     try {
       $app.runInTransaction((txApp) => {
         const customer = txApp.findRecordById('customers', customerId)
@@ -24,7 +23,6 @@ onRecordAfterCreateSuccess((e) => {
         if (tags.includes('ai_processing')) {
           const updatedDate = new Date(customer.getString('updated')).getTime()
           const now = new Date().getTime()
-          // If lock is older than 2 minutes, assume stale and override
           if (now - updatedDate < 120000) {
             throw new Error('LOCKED')
           }
@@ -49,7 +47,6 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
-    // 1. Race condition / Trigger optimization check
     try {
       const latestMsgs = $app.findRecordsByFilter(
         'conversations',
@@ -82,15 +79,14 @@ onRecordAfterCreateSuccess((e) => {
           return e.next()
         }
       }
-    } catch (_) {}
+    } catch (err) {}
 
     const userId = e.record.getString('user_id')
     let userRecord = null
     try {
       if (userId) userRecord = $app.findRecordById('users', userId)
-    } catch (_) {}
+    } catch (err) {}
 
-    // Log Initiation
     try {
       if (userId) {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
@@ -102,7 +98,7 @@ onRecordAfterCreateSuccess((e) => {
         logRecord.set('payload', { customer_id: customerId })
         $app.saveNoValidate(logRecord)
       }
-    } catch (_) {}
+    } catch (err) {}
 
     const now = new Date()
     const customer = $app.findRecordById('customers', customerId)
@@ -122,7 +118,6 @@ onRecordAfterCreateSuccess((e) => {
     const isTargetLead =
       customerPhone.includes('48992098050') || customerSource.includes('48992098050')
 
-    // Delivery Scheduling Check
     const deliveryEnabled = userRecord ? userRecord.get('delivery_enabled') !== false : true
     const deliveryStart = userRecord
       ? userRecord.getString('delivery_start_time') || '08:00'
@@ -134,14 +129,19 @@ onRecordAfterCreateSuccess((e) => {
       try {
         const parsed = userRecord.get('delivery_days')
         if (Array.isArray(parsed)) deliveryDays = parsed
-      } catch (_) {}
+      } catch (err) {}
     }
 
     const brTime = new Date(now.getTime() - 3 * 3600 * 1000)
     const dayOfWeek = brTime.getUTCDay()
     const daysMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
     const currentDay = daysMap[dayOfWeek]
-    const currentTimeStr = `${brTime.getUTCHours().toString().padStart(2, '0')}:${brTime.getUTCMinutes().toString().padStart(2, '0')}`
+
+    let hoursStr = brTime.getUTCHours().toString()
+    if (hoursStr.length < 2) hoursStr = '0' + hoursStr
+    let minutesStr = brTime.getUTCMinutes().toString()
+    if (minutesStr.length < 2) minutesStr = '0' + minutesStr
+    const currentTimeStr = `${hoursStr}:${minutesStr}`
 
     if (!deliveryEnabled) {
       $app.logger().info('Message deferred: delivery disabled', 'customerId', customerId)
@@ -169,12 +169,11 @@ onRecordAfterCreateSuccess((e) => {
           )
           logRecord.set('payload', { customer_id: customerId })
           $app.saveNoValidate(logRecord)
-        } catch (_) {}
+        } catch (err) {}
         return e.next()
       }
     }
 
-    // Interval / Cooldown check
     try {
       const globalLastAiMsgs = $app.findRecordsByFilter(
         'conversations',
@@ -206,11 +205,11 @@ onRecordAfterCreateSuccess((e) => {
             )
             logRecord.set('payload', { customer_id: customerId })
             $app.saveNoValidate(logRecord)
-          } catch (_) {}
+          } catch (err) {}
           return e.next()
         }
       }
-    } catch (_) {}
+    } catch (err) {}
 
     if (tags.includes('ai_paused')) {
       if (isTargetLead) {
@@ -223,7 +222,7 @@ onRecordAfterCreateSuccess((e) => {
           logRecord.set('details', `Lead 48992098050 com tag ai_paused.`)
           logRecord.set('payload', { customer_id: customerId })
           $app.saveNoValidate(logRecord)
-        } catch (_) {}
+        } catch (err) {}
       }
       return e.next()
     }
@@ -239,16 +238,14 @@ onRecordAfterCreateSuccess((e) => {
         logRecord.set('details', `OPENAI_API_KEY ausente ou inválida.`)
         logRecord.set('payload', { customer_id: customerId })
         $app.saveNoValidate(logRecord)
-      } catch (_) {}
+      } catch (err) {}
       $app.logger().warn('OPENAI_API_KEY missing for ai auto reply')
       return e.next()
     }
 
     const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
-
     const actualAiName = userRecord ? userRecord.getString('ai_name') : ''
     const aiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
-    const metaTokenStatus = userRecord ? userRecord.getString('meta_token_status') : ''
 
     const isNameMissing = !actualAiName.trim()
     const isInstructionsMissing = !aiInstructions.trim()
@@ -268,9 +265,9 @@ onRecordAfterCreateSuccess((e) => {
           'details',
           `A IA não pode responder porque a configuração está incompleta. Pendências: ${reasons.join(', ')}`,
         )
-        logRecord.set('payload', { customer_id: customerId, reasons })
+        logRecord.set('payload', { customer_id: customerId, reasons: reasons })
         $app.saveNoValidate(logRecord)
-      } catch (_) {}
+      } catch (err) {}
 
       $app
         .logger()
@@ -285,10 +282,9 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     const customerMessage = e.record.getString('content') || ''
-
-    // 2. Embed customer message and load current cadence
     const currentStatus = customer.getString('status') || 'Base de Clientes/Novo LYD'
     let activeCadenceText = ''
+
     try {
       const cadences = $app.findRecordsByFilter(
         'cadences',
@@ -316,9 +312,9 @@ onRecordAfterCreateSuccess((e) => {
           )
           logRecord.set('payload', { customer_id: customerId, status: currentStatus })
           $app.saveNoValidate(logRecord)
-        } catch (_) {}
+        } catch (err) {}
       }
-    } catch (_) {}
+    } catch (err) {}
 
     const embedRes = $http.send({
       url: 'https://api.openai.com/v1/embeddings',
@@ -330,7 +326,13 @@ onRecordAfterCreateSuccess((e) => {
 
     let contextChunks = []
 
-    if (embedRes.statusCode === 200 && embedRes.json?.data?.[0]?.embedding) {
+    if (
+      embedRes.statusCode === 200 &&
+      embedRes.json &&
+      embedRes.json.data &&
+      embedRes.json.data[0] &&
+      embedRes.json.data[0].embedding
+    ) {
       const queryEmbedding = embedRes.json.data[0].embedding
       const pbaseURL = $secrets.get('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
 
@@ -348,24 +350,27 @@ onRecordAfterCreateSuccess((e) => {
       if (ragRes.statusCode === 200 && ragRes.json) {
         if (ragRes.json.knowledge_base) {
           ragRes.json.knowledge_base.forEach((item) => {
-            if (item.content)
+            if (item.content) {
               contextChunks.push(`### Informação (${item.title || 'Geral'}):\n${item.content}`)
+            }
           })
         }
         if (ragRes.json.cadences) {
           ragRes.json.cadences.forEach((item) => {
-            if (item.content)
+            if (item.content) {
               contextChunks.push(
                 `### Procedimento de Venda (${item.title || 'Fluxo'}):\n${item.content}`,
               )
-            if (item.ai_instructions)
+            }
+            if (item.ai_instructions) {
               contextChunks.push(
                 `Diretriz Específica para este Procedimento:\n${item.ai_instructions}`,
               )
+            }
           })
         }
       } else {
-        $app.logger().error('RAG search failed', 'status', ragRes.statusCode)
+        $app.logger().error('RAG search failed', 'status', String(ragRes.statusCode))
       }
     }
 
@@ -374,7 +379,6 @@ onRecordAfterCreateSuccess((e) => {
       contextText += activeCadenceText
     }
 
-    // 3. Fetch conversation history
     let historyRecords = []
     try {
       historyRecords = $app.findRecordsByFilter(
@@ -385,46 +389,17 @@ onRecordAfterCreateSuccess((e) => {
         0,
       )
       historyRecords.reverse()
-    } catch (_) {}
+    } catch (err) {}
 
     let channelContext = ''
     if (receiverPhone.includes('991828050')) {
-      channelContext = `
-[PERFIL DE ATENDIMENTO: REMARKETING]
-O cliente veio de uma campanha de remarketing (já nos conhece ou interagiu antes).
-DIRETRIZES DE REMARKETING:
-- Aborde de forma mais direta, focando em reengajamento.
-- Trabalhe ativamente objeções (preço, tempo, localização).
-- Se for Villa dos Açores e houver objeção de preço, argumente que o valor é excelente (R$ 4.930,77/m²) e a localização estratégica em Biguaçu.
-`
+      channelContext = `\n[PERFIL DE ATENDIMENTO: REMARKETING]\nO cliente veio de uma campanha de remarketing (já nos conhece ou interagiu antes).\nDIRETRIZES DE REMARKETING:\n- Aborde de forma mais direta, focando em reengajamento.\n- Trabalhe ativamente objeções (preço, tempo, localização).\n- Se for Villa dos Açores e houver objeção de preço, argumente que o valor é excelente (R$ 4.930,77/m²) e a localização estratégica em Biguaçu.\n`
     } else {
-      channelContext = `
-[PERFIL DE ATENDIMENTO: GERAL]
-O cliente é um lead novo (primeiro contato).
-DIRETRIZES GERAIS:
-- Faça a qualificação inicial.
-- Se houver interesse no Villa dos Açores, pergunte sobre as preferências dele (ex: prefere suíte ou foca mais na área de lazer/piscina?).
-`
+      channelContext = `\n[PERFIL DE ATENDIMENTO: GERAL]\nO cliente é um lead novo (primeiro contato).\nDIRETRIZES GERAIS:\n- Faça a qualificação inicial.\n- Se houver interesse no Villa dos Açores, pergunte sobre as preferências dele (ex: prefere suíte ou foca mais na área de lazer/piscina?).\n`
     }
 
     const messages = []
-    const systemPrompt = `Você é ${aiName}.
-Sua identidade e instruções principais:
-${aiInstructions || 'Seja prestativa, educada e direta.'}
-
-${channelContext}
-
-DIRETRIZES RIGOROSAS:
-1. Responda de forma fluida, coerente e humana.
-2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.
-3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.
-4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.
-5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
-6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).
-7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas (ex: agendou visita, informou orçamento, demonstrou objeção), você DEVE incluir a tag [STATUS: Novo_Status] no final da sua resposta. Os status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Engajamento", "Visita", "Objeção", "Proposta", "Negociação", "Fechamento".
-
-CONTEXTO RECUPERADO:
-${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
+    const systemPrompt = `Você é ${aiName}.\nSua identidade e instruções principais:\n${aiInstructions || 'Seja prestativa, educada e direta.'}\n${channelContext}\nDIRETRIZES RIGOROSAS:\n1. Responda de forma fluida, coerente e humana.\n2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.\n3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.\n4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.\n5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.\n6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).\n7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas (ex: agendou visita, informou orçamento, demonstrou objeção), você DEVE incluir a tag [STATUS: Novo_Status] no final da sua resposta. Os status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Engajamento", "Visita", "Objeção", "Proposta", "Negociação", "Fechamento".\n\nCONTEXTO RECUPERADO:\n${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
 
     messages.push({ role: 'system', content: systemPrompt })
 
@@ -441,7 +416,6 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
 
     messages.push({ role: 'user', content: customerMessage })
 
-    // 4. Call Chat API
     const chatRes = $http.send({
       url: 'https://api.openai.com/v1/chat/completions',
       method: 'POST',
@@ -459,24 +433,29 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
       'Desculpe, estou com uma instabilidade no momento e não consegui gerar uma resposta.'
     let detectedStatus = ''
 
-    if (chatRes.statusCode === 200 && chatRes.json?.choices?.[0]?.message?.content) {
+    if (
+      chatRes.statusCode === 200 &&
+      chatRes.json &&
+      chatRes.json.choices &&
+      chatRes.json.choices[0] &&
+      chatRes.json.choices[0].message &&
+      chatRes.json.choices[0].message.content
+    ) {
       responseText = chatRes.json.choices[0].message.content.trim()
 
-      // Extract status if present
       const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
       if (statusMatch && statusMatch[1]) {
         detectedStatus = statusMatch[1].trim()
         responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
       }
 
-      // Sanitize: Remove possible leaked instruction blocks if AI fails to follow directions
       responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
       responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
       responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
       responseText = responseText.replace(/(\(Recuperando.*?\))|(\[Recuperando.*?\])/gi, '').trim()
       responseText = responseText.replace(/(\(Analisando.*?\))|(\[Analisando.*?\])/gi, '').trim()
     } else {
-      $app.logger().error('OpenAI Chat failed', 'status', chatRes.statusCode, 'body', chatRes.raw)
+      $app.logger().error('OpenAI Chat failed', 'status', String(chatRes.statusCode))
       try {
         if (userId) {
           const logCollection = $app.findCollectionByNameOrId('system_logs')
@@ -488,16 +467,15 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
             'details',
             'Ocorreu um erro ao tentar gerar a resposta da IA. Status HTTP: ' + chatRes.statusCode,
           )
-          logRecord.set('payload', { status: chatRes.statusCode, raw: chatRes.raw })
+          const errorRaw = chatRes.json ? JSON.stringify(chatRes.json) : 'error'
+          logRecord.set('payload', { status: chatRes.statusCode, raw: errorRaw })
           $app.save(logRecord)
         }
-      } catch (_) {}
+      } catch (err) {}
     }
 
-    // 5. Idempotency and State check
     let isDuplicate = false
     try {
-      // 5.1 Check if the conversation has advanced while we were processing
       const currentLastMsgs = $app.findRecordsByFilter(
         'conversations',
         `customer_id = '${customerId}'`,
@@ -516,7 +494,6 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
         }
       }
 
-      // 5.2 Prevent sending the exact same content (Duplicate Content Filter)
       if (!isDuplicate) {
         const lastAiMsgs = $app.findRecordsByFilter(
           'conversations',
@@ -538,7 +515,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           }
         }
       }
-    } catch (_) {}
+    } catch (err) {}
 
     if (!isDuplicate) {
       const reply = new Record($app.findCollectionByNameOrId('conversations'))
@@ -549,10 +526,9 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
 
       $app.save(reply)
 
-      // Update customer status based on detection or default to Contato 1
       try {
         const custToUpdate = $app.findRecordById('customers', customerId)
-        const currentStatus = (custToUpdate.getString('status') || '').toLowerCase()
+        const custStatusLower = (custToUpdate.getString('status') || '').toLowerCase()
 
         let targetStatus = ''
         const validStatuses = [
@@ -575,10 +551,10 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
         if (detectedStatus && validStatuses.includes(detectedStatus)) {
           targetStatus = detectedStatus
         } else if (
-          currentStatus === 'novo' ||
-          currentStatus === 'lead novo' ||
-          currentStatus === 'base de clientes/novo lyd' ||
-          currentStatus === ''
+          custStatusLower === 'novo' ||
+          custStatusLower === 'lead novo' ||
+          custStatusLower === 'base de clientes/novo lyd' ||
+          custStatusLower === ''
         ) {
           targetStatus = 'Contato 1'
         }
@@ -588,10 +564,9 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           $app.save(custToUpdate)
         }
       } catch (err) {
-        $app.logger().error('Failed to update customer status', err)
+        $app.logger().error('Failed to update customer status', 'error', String(err))
       }
 
-      // Route response to Uazapi / Meta
       try {
         const customerRecord = $app.findRecordById('customers', customerId)
         const source = customerRecord.getString('source') || ''
@@ -636,12 +611,12 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
               'details',
               `Resposta da IA enviada para ${phone} via instância ${instanceName}`,
             )
-            logRecord.set('payload', { phone, instanceName })
+            logRecord.set('payload', { phone: phone, instanceName: instanceName })
             $app.saveNoValidate(logRecord)
           }
         }
       } catch (err) {
-        $app.logger().error('Error routing message to Uazapi', err)
+        $app.logger().error('Error routing message to Uazapi', 'error', String(err))
         try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
@@ -650,10 +625,9 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           logRecord.set('message', 'Falha ao enviar resposta via Uazapi')
           logRecord.set('details', String(err))
           $app.saveNoValidate(logRecord)
-        } catch (_) {}
+        } catch (err2) {}
       }
 
-      // CAPI Event for AI Reply
       try {
         if (userId) {
           const userRecord = $app.findRecordById('users', userId)
@@ -704,7 +678,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           }
         }
       } catch (err) {
-        $app.logger().error('CAPI Error in AI Reply', 'err', err)
+        $app.logger().error('CAPI Error in AI Reply', 'error', String(err))
       }
 
       try {
@@ -727,14 +701,15 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           logRecord.set('payload', { customer_id: customerId, context_used: !!contextText })
           $app.save(logRecord)
         }
-      } catch (_) {}
+      } catch (err) {}
     }
   } catch (err) {
-    $app.logger().error('AI Auto Reply Error', 'err', err)
+    $app.logger().error('AI Auto Reply Error', 'error', String(err))
     try {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const logRecord = new Record(logsCol)
-      logRecord.set('user_id', e.record.getString('user_id') || '')
+      const userIdVal = e.record.getString('user_id') || ''
+      logRecord.set('user_id', userIdVal)
       logRecord.set('type', 'diagnostic_error')
       logRecord.set('message', 'Falha na Execução do AI Auto Reply')
       logRecord.set('details', String(err))
@@ -744,7 +719,7 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
         customer_id: customerId || 'unknown',
       })
       $app.saveNoValidate(logRecord)
-    } catch (_) {}
+    } catch (err2) {}
   } finally {
     if (acquiredLock) {
       try {
@@ -760,7 +735,9 @@ ${contextText || '(Nenhum contexto específico encontrado na base para esta perg
           }
         })
       } catch (err) {
-        $app.logger().error('Failed to release lock', 'customerId', customerId, 'err', err)
+        $app
+          .logger()
+          .error('Failed to release lock', 'customerId', customerId, 'error', String(err))
       }
     }
   }

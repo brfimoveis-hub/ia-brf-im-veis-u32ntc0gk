@@ -49,7 +49,7 @@ routerAdd(
       }
     })
 
-    const payload = { data }
+    const payload = { data: data }
     if (testCode) {
       payload.test_event_code = testCode
     }
@@ -75,8 +75,10 @@ routerAdd(
           message: 'Sincronização concluída com sucesso no Meta',
         })
       } else {
-        const errorBody = res.json ? JSON.stringify(res.json) : res.body
-        $app.logger().error('Meta CAPI Sync Error', 'status', res.statusCode, 'response', errorBody)
+        const errorBody = res.json ? JSON.stringify(res.json) : String(res.body)
+        $app
+          .logger()
+          .error('Meta CAPI Sync Error', 'status', String(res.statusCode), 'response', errorBody)
 
         let errorMessage = `Erro na API do Meta (Status ${res.statusCode})`
         if (res.json && res.json.error && res.json.error.message) {
@@ -93,7 +95,7 @@ routerAdd(
           logRecord.set('details', `Leads: ${leadsNames} | Meta ID: ${pixelId}`)
           logRecord.set('payload', res.json || { raw: errorBody })
           $app.saveNoValidate(logRecord)
-        } catch (_) {}
+        } catch (err) {}
 
         return e.badRequestError(errorMessage)
       }
@@ -109,7 +111,7 @@ routerAdd(
         logRecord.set('message', err.message)
         logRecord.set('details', `Leads: ${leadsNames} | Meta ID: ${pixelId}`)
         $app.saveNoValidate(logRecord)
-      } catch (_) {}
+      } catch (err2) {}
 
       return e.internalServerError(`Falha de conexão com a API do Meta: ${err.message}`)
     }
