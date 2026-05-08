@@ -69,6 +69,14 @@ routerAdd(
       })
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
+        payloads.forEach((p) => {
+          try {
+            const record = $app.findRecordById('customers', p.id)
+            record.set('meta_sync_status', 'synced')
+            $app.saveNoValidate(record)
+          } catch (e) {}
+        })
+
         return e.json(200, {
           success: true,
           synced: payloads.length,
@@ -84,8 +92,16 @@ routerAdd(
         let apiErrMsg = errorMessage
         if (res.json && res.json.error && res.json.error.message) {
           apiErrMsg = res.json.error.message
-          errorMessage += `: ${res.json.error.message}`
+          errorMessage = res.json.error.message
         }
+
+        payloads.forEach((p) => {
+          try {
+            const record = $app.findRecordById('customers', p.id)
+            record.set('meta_sync_status', 'error')
+            $app.saveNoValidate(record)
+          } catch (e) {}
+        })
 
         try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')

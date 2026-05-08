@@ -35,8 +35,6 @@ export default function Login() {
         description: 'Verifique suas credenciais. ' + (error.message || ''),
         variant: 'destructive',
       })
-    } else {
-      navigate('/', { replace: true })
     }
   }
 

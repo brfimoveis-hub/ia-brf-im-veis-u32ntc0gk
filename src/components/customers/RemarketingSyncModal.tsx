@@ -304,7 +304,7 @@ export function RemarketingSyncModal({
           errorMsg += ` (Code: ${errorObj.response.code})`
         }
         if (errorMsg.includes('Unsupported post request') || errorMsg.includes('does not exist')) {
-          errorMsg = 'Objeto não encontrado no Meta. Verifique o Pixel ID e as permissões.'
+          errorMsg = `Meta API Rejeitou o ID: O Pixel ou Dataset informado não existe ou a conta não tem permissão. Detalhes: ${errorMsg}`
         }
         setFailedLeads((prev) => [...prev, ...batch.map((lead) => ({ lead, error: errorMsg }))])
       }

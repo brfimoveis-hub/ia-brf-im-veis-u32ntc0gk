@@ -73,10 +73,9 @@ routerAdd(
           errorMessage.includes('Unsupported post request') ||
           errorMessage.includes('does not exist')
         ) {
-          errorMessage =
-            'Objeto não encontrado (Object not found). Verifique se o Pixel ID está correto.'
+          errorMessage = `Objeto não encontrado no Meta. O Pixel ID '${pixelId}' não existe ou a conta conectada não tem permissão para acessá-lo. Mensagem original: ${errorMessage}`
         } else if (res.statusCode === 400 && errorMessage.includes('permission')) {
-          errorMessage = 'Erro de permissão. Verifique o CAPI Token.'
+          errorMessage = `Erro de permissão. Verifique o CAPI Token. Mensagem original: ${errorMessage}`
         }
 
         if (user) {
