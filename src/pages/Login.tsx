@@ -30,7 +30,7 @@ export default function Login() {
     if (error) {
       toast({
         title: 'Erro no login',
-        description: 'Verifique suas credenciais. ' + (error.message || ''),
+        description: 'Falha na autenticação. Por favor, verifique seu e-mail e senha.',
         variant: 'destructive',
       })
     }
