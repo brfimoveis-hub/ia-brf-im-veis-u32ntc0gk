@@ -52,8 +52,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const authData = await pb.collection('users').authWithPassword(email, password)
       setUser(authData.record)
+
+      // Log successful login
+      try {
+        await pb.collection('system_logs').create({
+          type: 'auth_success',
+          message: `Login bem-sucedido para ${email}`,
+          details: { email },
+          payload: {},
+          user_id: authData.record.id,
+        })
+      } catch (e) {
+        console.error('Failed to log auth success', e)
+      }
+
       return { error: null }
-    } catch (error) {
+    } catch (error: any) {
+      // Log failed login
+      try {
+        await pb.collection('system_logs').create({
+          type: 'auth_error',
+          message: `Falha de login para ${email}`,
+          details: { email, error: error.message },
+          payload: error.response || {},
+        })
+      } catch (e) {
+        console.error('Failed to log auth error', e)
+      }
+
       return { error }
     }
   }

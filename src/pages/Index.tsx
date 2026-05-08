@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, useCallback, lazy, Suspense } from 'react'
+import React, { useEffect, useState, useMemo, useRef, useCallback, lazy, Suspense } from 'react'
 import { getPaginatedCustomers, updateCustomer, type Customer } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Loader2, Ban, Upload } from 'lucide-react'

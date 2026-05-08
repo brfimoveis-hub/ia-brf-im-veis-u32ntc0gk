@@ -241,16 +241,46 @@ export function DiagnosticCenter() {
       }
       setResults([...newResults])
 
-      // 2. Webhook Check
+      // 2. Uazapi Connection Integrity Check
       setProgress(25)
-      await new Promise((r) => setTimeout(r, 1000))
+      let uazapiStatus = 'error'
+      let uazapiMessage = 'Telefone de campanha Uazapi ausente. A ingestão automática pode falhar.'
       const hasPhone = !!user?.meta_campaign_phone
+
+      if (hasPhone) {
+        try {
+          await pb.send('/backend/v1/uazapi-test-connection', {
+            method: 'POST',
+            body: JSON.stringify({ phone: user.meta_campaign_phone }),
+            headers: { 'Content-Type': 'application/json' },
+          })
+          uazapiStatus = 'success'
+          uazapiMessage = `Conexão Uazapi ativa e operante no número ${user.meta_campaign_phone}. Fluxo de leads ininterrupto.`
+        } catch (e: any) {
+          uazapiStatus = 'error'
+          const errMsg = e.response?.message || e.message || 'Erro desconhecido'
+          uazapiMessage = `Falha na integridade da conexão Uazapi para o número ${user.meta_campaign_phone}: ${errMsg}`
+
+          await createSystemLog({
+            type: 'uazapi_error',
+            message: `Falha na verificação de integridade do Uazapi`,
+            details: { error: errMsg, phone: user.meta_campaign_phone },
+            payload: e.response || {},
+          }).catch(() => {})
+        }
+      } else {
+        await createSystemLog({
+          type: 'uazapi_error',
+          message: `Telefone Uazapi ausente na verificação`,
+          details: { error: 'Telefone não configurado' },
+          payload: {},
+        }).catch(() => {})
+      }
+
       newResults.push({
-        name: 'Ingestão de Leads Webhook',
-        status: hasPhone ? 'success' : 'error',
-        message: hasPhone
-          ? `Telefone de campanha (${user.meta_campaign_phone}) ativo.`
-          : 'Telefone de campanha ausente. A ingestão automática pode falhar.',
+        name: 'Integridade da Conexão Uazapi',
+        status: uazapiStatus,
+        message: uazapiMessage,
         payload: { meta_campaign_phone: user?.meta_campaign_phone, listening: hasPhone },
       })
       setResults([...newResults])
@@ -297,20 +327,28 @@ export function DiagnosticCenter() {
       let metaSuccesses = 0
 
       if (!user?.meta_pixel_id || !user?.meta_capi_token) {
+        const missing = !user?.meta_pixel_id
+          ? 'Pixel ID ausente.'
+          : 'Token da API de Conversões (CAPI) ausente.'
         newResults.push({
-          name: 'Integração Meta (Pixel & CAPI)',
+          name: 'Integração Meta (Pixel & CAPI) 61569504383085',
           status: 'error',
-          message: !user?.meta_pixel_id
-            ? 'Pixel ID ausente.'
-            : 'Token da API de Conversões (CAPI) ausente.',
+          message: `${missing} Certifique-se de configurar o Pixel 61569504383085.`,
           payload: { pixel: user?.meta_pixel_id, hasCapiToken: !!user?.meta_capi_token },
         })
+
+        await createSystemLog({
+          type: 'meta_error',
+          message: `Configuração Meta ausente para Pixel 61569504383085`,
+          details: { error: missing },
+          payload: {},
+        }).catch(() => {})
+
         setProgress(90)
       } else {
         let lastErrorMsg = ''
         for (let i = 0; i < testCount; i++) {
           try {
-            // Empty body to force usage of DB single source of truth
             await pb.send('/backend/v1/meta-test-connection', {
               method: 'POST',
               body: JSON.stringify({}),
@@ -318,29 +356,40 @@ export function DiagnosticCenter() {
             })
             metaSuccesses++
           } catch (e: any) {
-            const resData = e.response || {}
+            const resData = e.response?.data || e.response || {}
             let msg = resData.message || e.message || 'Erro desconhecido'
-            if (resData.code && !msg.includes(`Código: ${resData.code}`)) {
+            if (e.status === 400) {
+              msg = `Erro 400 (Bad Request): O payload enviado para o Meta Pixel 61569504383085 é inválido ou a CAPI rejeitou os dados. Detalhes: ${msg}`
+            } else if (resData.code && !msg.includes(`Código: ${resData.code}`)) {
               msg += ` (Meta Error Code: ${resData.code})`
             }
             lastErrorMsg = msg
+
+            // Log the error to system_logs
+            await createSystemLog({
+              type: 'meta_error',
+              message: `Falha na conexão com Meta Pixel 61569504383085`,
+              details: { error: msg, status: e.status },
+              payload: e.response || {},
+            }).catch(() => {})
           }
           setProgress(60 + ((i + 1) / testCount) * 30)
           if (i < testCount - 1) await new Promise((r) => setTimeout(r, 1500))
         }
 
-        let finalMessage = `${metaSuccesses}/${testCount} testes do Pixel bem-sucedidos. Status: Ativo.`
-        if (metaSuccesses < testCount) finalMessage = `Falha de conexão: ${lastErrorMsg}`
+        let finalMessage = `${metaSuccesses}/${testCount} testes do Pixel 61569504383085 bem-sucedidos. Status: Conectado.`
+        if (metaSuccesses < testCount)
+          finalMessage = `Falha de conexão com Pixel 61569504383085: ${lastErrorMsg}`
 
         newResults.push({
-          name: 'Integração Meta (Pixel & CAPI)',
+          name: 'Integração Meta (Pixel & CAPI) 61569504383085',
           status: metaSuccesses === testCount ? 'success' : metaSuccesses > 0 ? 'warning' : 'error',
           message: finalMessage,
           payload: {
             successes: metaSuccesses,
             testCount,
             lastErrorMsg,
-            pixel: user.meta_pixel_id,
+            pixel: user.meta_pixel_id || '61569504383085',
             hasCapiToken: !!user.meta_capi_token,
           },
         })
