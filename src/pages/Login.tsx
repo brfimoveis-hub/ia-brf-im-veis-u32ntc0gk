@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
@@ -11,12 +11,10 @@ import { Users } from 'lucide-react'
 export default function Login() {
   const [email, setEmail] = useState('brfimoveis@gmail.com')
   const [password, setPassword] = useState('Skip@Pass')
-  const { signIn } = useAuth()
+  const { signIn, user } = useAuth()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
-
-  const { user } = useAuth()
 
   useEffect(() => {
     if (user) {
