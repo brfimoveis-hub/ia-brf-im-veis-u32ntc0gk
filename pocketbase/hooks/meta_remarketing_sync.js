@@ -6,25 +6,21 @@ routerAdd(
     const user = e.auth
 
     if (!user) {
-      return e.unauthorizedError('Usuário não autenticado')
+      throw new UnauthorizedError('Usuário não autenticado')
     }
 
     const pixelId = user.getString('meta_pixel_id')
     const capiToken = user.getString('meta_capi_token')
 
     if (!pixelId || !capiToken) {
-      return e.badRequestError(
+      throw new BadRequestError(
         'O ID do Pixel ou Token da API de Conversões (CAPI) não estão configurados no perfil.',
-        {
-          meta_pixel_id: !pixelId ? 'Ausente' : 'Ok',
-          meta_capi_token: !capiToken ? 'Ausente' : 'Ok',
-        },
       )
     }
 
     const payloads = body.payloads
     if (!payloads || !Array.isArray(payloads) || payloads.length === 0) {
-      return e.badRequestError('Nenhum dado recebido para sincronizar.')
+      throw new BadRequestError('Nenhum dado recebido para sincronizar.')
     }
 
     const eventName = body.eventName || 'Lead'
@@ -67,6 +63,13 @@ routerAdd(
         timeout: 30,
       })
 
+      let resJson = null
+      try {
+        resJson = res.json
+      } catch (_) {
+        resJson = null
+      }
+
       if (res.statusCode >= 200 && res.statusCode < 300) {
         payloads.forEach((p) => {
           try {
@@ -82,16 +85,16 @@ routerAdd(
           message: 'Sincronização concluída com sucesso no Meta',
         })
       } else {
-        const errorBody = res.json ? JSON.stringify(res.json) : String(res.body)
+        const errorBody = resJson ? JSON.stringify(resJson) : 'Unknown Error'
         $app
           .logger()
           .error('Meta CAPI Sync Error', 'status', String(res.statusCode), 'response', errorBody)
 
         let errorMessage = 'Erro na API do Meta (Status ' + res.statusCode + ')'
         let apiErrMsg = errorMessage
-        if (res.json && res.json.error && res.json.error.message) {
-          apiErrMsg = res.json.error.message
-          errorMessage = res.json.error.message
+        if (resJson && resJson.error && resJson.error.message) {
+          apiErrMsg = resJson.error.message
+          errorMessage = resJson.error.message
         }
 
         payloads.forEach((p) => {
@@ -112,21 +115,21 @@ routerAdd(
             leads: payloads.map((p) => ({ name: p.name, id: p.id })),
             metaId: pixelId,
           })
-          logRecord.set('payload', res.json || { raw: errorBody })
+          logRecord.set('payload', resJson || { raw: errorBody })
           $app.saveNoValidate(logRecord)
         } catch (errInner3) {}
 
-        return e.badRequestError(errorMessage)
+        throw new BadRequestError(errorMessage)
       }
     } catch (err) {
-      $app.logger().error('Meta CAPI Request Failed', 'error', err.message)
+      $app.logger().error('Meta CAPI Request Failed', 'error', String(err))
 
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
         logRecord.set('type', 'Remarketing Error')
-        logRecord.set('message', err.message)
+        logRecord.set('message', String(err))
         logRecord.set('details', {
           leads: payloads.map((p) => ({ name: p.name, id: p.id })),
           metaId: pixelId,
@@ -134,7 +137,7 @@ routerAdd(
         $app.saveNoValidate(logRecord)
       } catch (err2) {}
 
-      return e.internalServerError('Falha de conexão com a API do Meta: ' + err.message)
+      throw new InternalServerError('Falha de conexão com a API do Meta: ' + String(err))
     }
   },
   $apis.requireAuth(),

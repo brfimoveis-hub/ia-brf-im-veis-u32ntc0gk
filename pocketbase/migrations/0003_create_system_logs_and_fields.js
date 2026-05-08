@@ -42,8 +42,11 @@ migrate(
   (app) => {
     try {
       const col = app.findCollectionByNameOrId('customers')
-      col.fields.removeByName('meta_sync_status')
-      app.save(col)
+      const field = col.fields.getByName('meta_sync_status')
+      if (field) {
+        col.fields.removeById(field.id)
+        app.save(col)
+      }
     } catch (err) {}
   },
 )

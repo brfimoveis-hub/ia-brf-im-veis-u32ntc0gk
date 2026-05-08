@@ -12,19 +12,16 @@ routerAdd(
     if (!capiToken && user) capiToken = user.getString('meta_capi_token')
 
     if (!pixelId) {
-      return e.badRequestError('O ID do Pixel é obrigatório para testar a integração.', {
-        pixelId: 'Ausente',
-      })
+      throw new BadRequestError('O ID do Pixel é obrigatório para testar a integração.')
     }
 
     if (!/^\d+$/.test(pixelId)) {
-      return e.badRequestError('O ID do Pixel deve conter apenas números.', { pixelId: 'Inválido' })
+      throw new BadRequestError('O ID do Pixel deve conter apenas números.')
     }
 
     if (!capiToken) {
-      return e.badRequestError(
+      throw new BadRequestError(
         'O Token da API de Conversões (CAPI) é obrigatório para testar a integração.',
-        { capiToken: 'Ausente' },
       )
     }
 
@@ -36,6 +33,13 @@ routerAdd(
         method: 'GET',
         timeout: 15,
       })
+
+      let resJson = null
+      try {
+        resJson = res.json
+      } catch (_) {
+        resJson = null
+      }
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         if (user) {
@@ -52,11 +56,11 @@ routerAdd(
           logRecord.set('type', 'diagnostic_log')
           logRecord.set('message', 'Teste de conexão Meta Pixel validado com sucesso.')
           logRecord.set('details', { status: 'Conexão via API do Meta OK' })
-          logRecord.set('payload', { pixelId: pixelId, response: res.json })
+          logRecord.set('payload', { pixelId: pixelId, response: resJson })
           $app.save(logRecord)
         } catch (errInner) {}
 
-        const fbtraceId = res.json && res.json.id ? res.json.id : ''
+        const fbtraceId = resJson && resJson.id ? resJson.id : ''
         return e.json(200, {
           success: true,
           message: 'Conexão com o Meta estabelecida com sucesso',
@@ -64,7 +68,7 @@ routerAdd(
           fbtrace_id: fbtraceId,
         })
       } else {
-        const errorResponse = res.json || {}
+        const errorResponse = resJson || {}
         const metaError = errorResponse.error || {}
         let errorMessage = metaError.message || 'Falha na validação do token'
         const fbtraceId = metaError.fbtrace_id || ''
@@ -124,11 +128,11 @@ routerAdd(
         logRecord.set('user_id', userIdVal)
         logRecord.set('type', 'meta_error')
         logRecord.set('message', 'Falha de rede ao testar Meta API')
-        logRecord.set('details', { error: err.message })
+        logRecord.set('details', { error: String(err) })
         $app.save(logRecord)
       } catch (err2) {}
 
-      return e.internalServerError('Falha de rede ao contatar a API do Meta.')
+      throw new InternalServerError('Falha de rede ao contatar a API do Meta.')
     }
   },
   $apis.requireAuth(),
