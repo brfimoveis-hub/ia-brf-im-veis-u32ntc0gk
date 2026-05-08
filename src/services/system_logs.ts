@@ -2,7 +2,7 @@ import pb from '@/lib/pocketbase/client'
 
 export interface SystemLog {
   id: string
-  user_id: string
+  user_id?: string
   type: string
   message: string
   details: any
@@ -14,7 +14,7 @@ export interface SystemLog {
 export const createSystemLog = (data: Partial<SystemLog>) => {
   return pb.collection('system_logs').create<SystemLog>({
     ...data,
-    user_id: pb.authStore.record?.id,
+    ...(pb.authStore.record?.id ? { user_id: pb.authStore.record.id } : {}),
   })
 }
 
