@@ -32,7 +32,7 @@ routerAdd(
 
     try {
       const res = $http.send({
-        url: `https://graph.facebook.com/v19.0/${pixelId}?access_token=${capiToken}`,
+        url: 'https://graph.facebook.com/v19.0/' + pixelId + '?access_token=' + capiToken,
         method: 'GET',
         timeout: 15,
       })
@@ -54,7 +54,7 @@ routerAdd(
           logRecord.set('details', { status: 'Conexão via API do Meta OK' })
           logRecord.set('payload', { pixelId: pixelId, response: res.json })
           $app.save(logRecord)
-        } catch (err) {}
+        } catch (errInner) {}
 
         const fbtraceId = res.json && res.json.id ? res.json.id : ''
         return e.json(200, {
@@ -73,9 +73,14 @@ routerAdd(
           errorMessage.includes('Unsupported post request') ||
           errorMessage.includes('does not exist')
         ) {
-          errorMessage = `Objeto não encontrado no Meta. O Pixel ID '${pixelId}' não existe ou a conta conectada não tem permissão para acessá-lo. Mensagem original: ${errorMessage}`
+          errorMessage =
+            "Objeto não encontrado no Meta. O Pixel ID '" +
+            pixelId +
+            "' não existe ou a conta conectada não tem permissão para acessá-lo. Mensagem original: " +
+            errorMessage
         } else if (res.statusCode === 400 && errorMessage.includes('permission')) {
-          errorMessage = `Erro de permissão. Verifique o CAPI Token. Mensagem original: ${errorMessage}`
+          errorMessage =
+            'Erro de permissão. Verifique o CAPI Token. Mensagem original: ' + errorMessage
         }
 
         if (user) {
@@ -94,7 +99,7 @@ routerAdd(
           logRecord.set('details', { error: errorMessage, pixelId: pixelId })
           logRecord.set('payload', errorResponse)
           $app.save(logRecord)
-        } catch (err) {}
+        } catch (errInner2) {}
 
         return e.json(res.statusCode === 400 || res.statusCode === 401 ? 400 : 500, {
           success: false,

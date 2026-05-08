@@ -3,7 +3,7 @@ migrate(
     let logsCollection
     try {
       logsCollection = app.findCollectionByNameOrId('system_logs')
-    } catch (_) {
+    } catch (err) {
       logsCollection = new Collection({
         name: 'system_logs',
         type: 'base',
@@ -37,13 +37,13 @@ migrate(
         col.fields.add(new TextField({ name: 'meta_sync_status' }))
         app.save(col)
       }
-    } catch (_) {}
+    } catch (err) {}
   },
   (app) => {
     try {
       const col = app.findCollectionByNameOrId('customers')
       col.fields.removeByName('meta_sync_status')
       app.save(col)
-    } catch (_) {}
+    } catch (err) {}
   },
 )

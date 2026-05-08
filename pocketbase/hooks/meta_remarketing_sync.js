@@ -30,7 +30,6 @@ routerAdd(
     const eventName = body.eventName || 'Lead'
     const testCode = user.getString('meta_test_event_code')
 
-    // Construct the data array for Meta CAPI
     const data = payloads.map((p) => {
       const userData = {}
       if (p.em) userData.em = [p.em]
@@ -54,7 +53,7 @@ routerAdd(
       payload.test_event_code = testCode
     }
 
-    const metaUrl = `https://graph.facebook.com/v19.0/${pixelId}/events`
+    const metaUrl = 'https://graph.facebook.com/v19.0/' + pixelId + '/events'
 
     try {
       const res = $http.send({
@@ -62,7 +61,7 @@ routerAdd(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${capiToken}`,
+          Authorization: 'Bearer ' + capiToken,
         },
         body: JSON.stringify(payload),
         timeout: 30,
@@ -74,7 +73,7 @@ routerAdd(
             const record = $app.findRecordById('customers', p.id)
             record.set('meta_sync_status', 'synced')
             $app.saveNoValidate(record)
-          } catch (e) {}
+          } catch (errInner) {}
         })
 
         return e.json(200, {
@@ -88,7 +87,7 @@ routerAdd(
           .logger()
           .error('Meta CAPI Sync Error', 'status', String(res.statusCode), 'response', errorBody)
 
-        let errorMessage = `Erro na API do Meta (Status ${res.statusCode})`
+        let errorMessage = 'Erro na API do Meta (Status ' + res.statusCode + ')'
         let apiErrMsg = errorMessage
         if (res.json && res.json.error && res.json.error.message) {
           apiErrMsg = res.json.error.message
@@ -100,7 +99,7 @@ routerAdd(
             const record = $app.findRecordById('customers', p.id)
             record.set('meta_sync_status', 'error')
             $app.saveNoValidate(record)
-          } catch (e) {}
+          } catch (errInner2) {}
         })
 
         try {
@@ -115,7 +114,7 @@ routerAdd(
           })
           logRecord.set('payload', res.json || { raw: errorBody })
           $app.saveNoValidate(logRecord)
-        } catch (err) {}
+        } catch (errInner3) {}
 
         return e.badRequestError(errorMessage)
       }
@@ -135,7 +134,7 @@ routerAdd(
         $app.saveNoValidate(logRecord)
       } catch (err2) {}
 
-      return e.internalServerError(`Falha de conexão com a API do Meta: ${err.message}`)
+      return e.internalServerError('Falha de conexão com a API do Meta: ' + err.message)
     }
   },
   $apis.requireAuth(),
