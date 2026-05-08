@@ -51,7 +51,7 @@ routerAdd(
           logRecord.set('user_id', userIdVal)
           logRecord.set('type', 'diagnostic_log')
           logRecord.set('message', 'Teste de conexão Meta Pixel validado com sucesso.')
-          logRecord.set('details', 'Conexão via API do Meta OK')
+          logRecord.set('details', { status: 'Conexão via API do Meta OK' })
           logRecord.set('payload', { pixelId: pixelId, response: res.json })
           $app.save(logRecord)
         } catch (err) {}
@@ -66,8 +66,18 @@ routerAdd(
       } else {
         const errorResponse = res.json || {}
         const metaError = errorResponse.error || {}
-        const errorMessage = metaError.message || 'Falha na validação do token'
+        let errorMessage = metaError.message || 'Falha na validação do token'
         const fbtraceId = metaError.fbtrace_id || ''
+
+        if (
+          errorMessage.includes('Unsupported post request') ||
+          errorMessage.includes('does not exist')
+        ) {
+          errorMessage =
+            'Objeto não encontrado (Object not found). Verifique se o Pixel ID está correto.'
+        } else if (res.statusCode === 400 && errorMessage.includes('permission')) {
+          errorMessage = 'Erro de permissão. Verifique o CAPI Token.'
+        }
 
         if (user) {
           user.set('meta_token_status', 'invalid')
@@ -82,7 +92,7 @@ routerAdd(
           logRecord.set('user_id', userIdVal)
           logRecord.set('type', 'Remarketing Error')
           logRecord.set('message', 'Falha na validação do Meta CAPI Token')
-          logRecord.set('details', `Erro Meta: ${errorMessage} | Pixel ID testado: ${pixelId}`)
+          logRecord.set('details', { error: errorMessage, pixelId: pixelId })
           logRecord.set('payload', errorResponse)
           $app.save(logRecord)
         } catch (err) {}
@@ -110,7 +120,7 @@ routerAdd(
         logRecord.set('user_id', userIdVal)
         logRecord.set('type', 'meta_error')
         logRecord.set('message', 'Falha de rede ao testar Meta API')
-        logRecord.set('details', err.message)
+        logRecord.set('details', { error: err.message })
         $app.save(logRecord)
       } catch (err2) {}
 

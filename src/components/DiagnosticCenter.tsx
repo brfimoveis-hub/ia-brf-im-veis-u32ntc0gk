@@ -129,7 +129,12 @@ export function DiagnosticCenter() {
       result = result.filter(
         (log) =>
           log.message.toLowerCase().includes(q) ||
-          (log.details && log.details.toLowerCase().includes(q)) ||
+          (log.details &&
+            typeof log.details === 'string' &&
+            log.details.toLowerCase().includes(q)) ||
+          (log.details &&
+            typeof log.details === 'object' &&
+            JSON.stringify(log.details).toLowerCase().includes(q)) ||
           log.type.toLowerCase().includes(q),
       )
     }
@@ -221,7 +226,7 @@ export function DiagnosticCenter() {
         await createSystemLog({
           type: 'warning',
           message: 'Script do GTM não detectado (Possível AdBlock)',
-          details: 'GTM_DETECTION_WARNING',
+          details: { error: 'GTM_DETECTION_WARNING' },
           payload: { error: `${gtmId} not found in DOM` },
         }).catch(() => {})
       } else {
@@ -346,7 +351,12 @@ export function DiagnosticCenter() {
       await createSystemLog({
         type: 'diagnostic',
         message: 'Diagnóstico de integridade concluído',
-        details: `Loop: ${loopEnabled ? 'Sim' : 'Não'}. Meta: ${metaSuccesses}/${testCount}. Uazapi: ${hasPhone ? 'Online' : 'Offline'}. Cadências: ${cadences.length}`,
+        details: {
+          loop: loopEnabled,
+          meta: `${metaSuccesses}/${testCount}`,
+          uazapi: hasPhone ? 'Online' : 'Offline',
+          cadences: cadences.length,
+        },
         payload: newResults,
       })
 

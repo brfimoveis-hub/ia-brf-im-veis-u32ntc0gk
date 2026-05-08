@@ -295,7 +295,17 @@ export function RemarketingSyncModal({
           setLastSyncLog(newLog)
         }
       } catch (error: unknown) {
-        const errorMsg = getErrorMessage(error)
+        const errorObj = error as any
+        let errorMsg = getErrorMessage(error)
+        if (errorObj?.response?.message) {
+          errorMsg = errorObj.response.message
+        }
+        if (errorObj?.response?.code) {
+          errorMsg += ` (Code: ${errorObj.response.code})`
+        }
+        if (errorMsg.includes('Unsupported post request') || errorMsg.includes('does not exist')) {
+          errorMsg = 'Objeto não encontrado no Meta. Verifique o Pixel ID e as permissões.'
+        }
         setFailedLeads((prev) => [...prev, ...batch.map((lead) => ({ lead, error: errorMsg }))])
       }
 

@@ -5,7 +5,7 @@ export interface SystemLog {
   user_id: string
   type: string
   message: string
-  details: string
+  details: any
   payload: any
   created: string
   updated: string

@@ -86,13 +86,15 @@ routerAdd(
         }
 
         try {
-          const leadsNames = payloads.map((p) => p.name || p.id).join(', ')
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
           logRecord.set('type', 'Remarketing Error')
-          logRecord.set('message', errorMessage)
-          logRecord.set('details', `Leads: ${leadsNames} | Meta ID: ${pixelId}`)
+          logRecord.set('message', res.json?.error?.message || errorMessage)
+          logRecord.set('details', {
+            leads: payloads.map((p) => ({ name: p.name, id: p.id })),
+            metaId: pixelId,
+          })
           logRecord.set('payload', res.json || { raw: errorBody })
           $app.saveNoValidate(logRecord)
         } catch (err) {}
@@ -103,13 +105,15 @@ routerAdd(
       $app.logger().error('Meta CAPI Request Failed', 'error', err.message)
 
       try {
-        const leadsNames = payloads.map((p) => p.name || p.id).join(', ')
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
         logRecord.set('type', 'Remarketing Error')
         logRecord.set('message', err.message)
-        logRecord.set('details', `Leads: ${leadsNames} | Meta ID: ${pixelId}`)
+        logRecord.set('details', {
+          leads: payloads.map((p) => ({ name: p.name, id: p.id })),
+          metaId: pixelId,
+        })
         $app.saveNoValidate(logRecord)
       } catch (err2) {}
 

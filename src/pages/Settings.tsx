@@ -984,16 +984,29 @@ export default function Settings() {
                 </p>
               </div>
 
-              <div className="flex justify-end mt-2 md:col-span-2">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'h-5 text-[10px] px-2 font-medium mr-auto mt-1',
-                    connectionBadgeColor,
+              <div className="flex justify-end mt-2 md:col-span-2 items-center">
+                <div className="mr-auto mt-1 flex flex-col items-start gap-1">
+                  <Badge
+                    variant="outline"
+                    className={cn('h-5 text-[10px] px-2 font-medium', connectionBadgeColor)}
+                    title={
+                      lastErrorMsg ||
+                      (metaTokenStatus === 'invalid'
+                        ? 'Erro de validação do token/Pixel. Teste novamente para ver detalhes.'
+                        : '')
+                    }
+                  >
+                    {connectionBadgeText}
+                  </Badge>
+                  {metaTokenStatus === 'invalid' && lastErrorMsg && (
+                    <span
+                      className="text-[10px] text-destructive max-w-xs truncate"
+                      title={lastErrorMsg}
+                    >
+                      {lastErrorMsg}
+                    </span>
                   )}
-                >
-                  {connectionBadgeText}
-                </Badge>
+                </div>
                 <Button
                   type="button"
                   variant="outline"

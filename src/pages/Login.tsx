@@ -20,7 +20,7 @@ export default function Login() {
 
   useEffect(() => {
     if (user) {
-      navigate('/clientes', { replace: true })
+      navigate('/', { replace: true })
     }
   }, [user, navigate])
 
@@ -36,7 +36,7 @@ export default function Login() {
         variant: 'destructive',
       })
     } else {
-      navigate('/clientes', { replace: true })
+      navigate('/', { replace: true })
     }
   }
 

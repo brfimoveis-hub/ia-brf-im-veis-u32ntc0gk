@@ -33,6 +33,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signIn = async (email: string, password: string) => {
     try {
+      pb.authStore.clear()
       const authData = await pb.collection('users').authWithPassword(email, password)
       setUser(authData.record)
       return { error: null }
@@ -43,6 +44,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = () => {
     pb.authStore.clear()
+    setUser(null)
   }
 
   return (
