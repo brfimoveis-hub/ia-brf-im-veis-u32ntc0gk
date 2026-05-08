@@ -10,7 +10,7 @@ import { Users, Loader2 } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('brfimoveis@gmail.com')
-  const [password, setPassword] = useState('Skip@Pass123')
+  const [password, setPassword] = useState('Skip@Pass')
   const { signIn, user } = useAuth()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
