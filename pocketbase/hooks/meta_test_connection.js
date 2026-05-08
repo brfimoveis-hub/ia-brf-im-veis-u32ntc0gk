@@ -3,7 +3,9 @@ routerAdd(
   '/backend/v1/meta-test-connection',
   (e) => {
     const auth = e.auth
-    if (!auth) throw new UnauthorizedError('Unauthorized')
+    if (!auth) {
+      throw new UnauthorizedError('Unauthorized')
+    }
 
     const pixelId = auth.getString('meta_pixel_id')
     if (!pixelId) {

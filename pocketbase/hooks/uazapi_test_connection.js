@@ -3,7 +3,9 @@ routerAdd(
   '/backend/v1/uazapi-test-connection',
   (e) => {
     const auth = e.auth
-    if (!auth) throw new UnauthorizedError('Unauthorized')
+    if (!auth) {
+      throw new UnauthorizedError('Unauthorized')
+    }
 
     const body = e.requestInfo().body || {}
     if (!body.phone) {

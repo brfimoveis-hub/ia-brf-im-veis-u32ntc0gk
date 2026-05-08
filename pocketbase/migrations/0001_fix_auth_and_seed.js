@@ -1,9 +1,7 @@
 migrate(
   (app) => {
     // 1. Create system_logs if not exists
-    try {
-      app.findCollectionByNameOrId('system_logs')
-    } catch (_) {
+    if (!app.hasTable('system_logs')) {
       const sysLogs = new Collection({
         name: 'system_logs',
         type: 'base',
@@ -26,9 +24,7 @@ migrate(
     }
 
     // 2. Create customers if not exists
-    try {
-      app.findCollectionByNameOrId('customers')
-    } catch (_) {
+    if (!app.hasTable('customers')) {
       const customers = new Collection({
         name: 'customers',
         type: 'base',
@@ -52,9 +48,7 @@ migrate(
     }
 
     // 3. Create cadences if not exists
-    try {
-      app.findCollectionByNameOrId('cadences')
-    } catch (_) {
+    if (!app.hasTable('cadences')) {
       const cadences = new Collection({
         name: 'cadences',
         type: 'base',
@@ -96,7 +90,7 @@ migrate(
     // 5. Seed admin user
     try {
       app.findAuthRecordByEmail('_pb_users_auth_', 'brfimoveis@gmail.com')
-    } catch (_) {
+    } catch (e) {
       const record = new Record(users)
       record.setEmail('brfimoveis@gmail.com')
       record.setPassword('Skip@Pass')
