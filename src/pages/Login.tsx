@@ -29,8 +29,8 @@ export default function Login() {
     setLoading(false)
     if (error) {
       toast({
-        title: 'Erro no login',
-        description: 'Falha na autenticação. Por favor, verifique seu e-mail e senha.',
+        title: 'Credenciais inválidas',
+        description: 'Não foi possível autenticar. Por favor, verifique seu e-mail e senha.',
         variant: 'destructive',
       })
     }
