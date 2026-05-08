@@ -18,8 +18,8 @@ migrate(
         },
         { name: 'type', type: 'text', required: true },
         { name: 'message', type: 'text', required: true },
-        { name: 'details', type: 'json' },
-        { name: 'payload', type: 'json' },
+        { name: 'details', type: 'json', maxSize: 2000000 },
+        { name: 'payload', type: 'json', maxSize: 2000000 },
         { name: 'created', type: 'autodate', onCreate: true, onUpdate: false },
         { name: 'updated', type: 'autodate', onCreate: true, onUpdate: true },
       ],
@@ -27,7 +27,11 @@ migrate(
     app.save(collection)
   },
   (app) => {
-    const collection = app.findCollectionByNameOrId('system_logs')
-    app.delete(collection)
+    try {
+      const collection = app.findCollectionByNameOrId('system_logs')
+      app.delete(collection)
+    } catch (_) {
+      // ignore if it doesn't exist
+    }
   },
 )

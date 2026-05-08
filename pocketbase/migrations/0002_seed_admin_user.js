@@ -1,9 +1,9 @@
 migrate(
   (app) => {
-    const users = app.findCollectionByNameOrId('_pb_users_auth_')
+    const users = app.findCollectionByNameOrId('users')
 
     try {
-      app.findAuthRecordByEmail('_pb_users_auth_', 'brfimoveis@gmail.com')
+      app.findAuthRecordByEmail('users', 'brfimoveis@gmail.com')
       return // already seeded
     } catch (_) {}
 
@@ -12,11 +12,12 @@ migrate(
     record.setPassword('Skip@Pass')
     record.setVerified(true)
     record.set('name', 'Admin')
+
     app.save(record)
   },
   (app) => {
     try {
-      const record = app.findAuthRecordByEmail('_pb_users_auth_', 'brfimoveis@gmail.com')
+      const record = app.findAuthRecordByEmail('users', 'brfimoveis@gmail.com')
       app.delete(record)
     } catch (_) {}
   },
