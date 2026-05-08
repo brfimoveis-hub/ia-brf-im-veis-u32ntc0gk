@@ -2,7 +2,7 @@ migrate(
   (app) => {
     const users = app.findCollectionByNameOrId('_pb_users_auth_')
 
-    // Idempotent: skip if user already exists
+    // Idempotent: skip if admin user already exists
     try {
       app.findAuthRecordByEmail('_pb_users_auth_', 'brfimoveis@gmail.com')
       return // already seeded
