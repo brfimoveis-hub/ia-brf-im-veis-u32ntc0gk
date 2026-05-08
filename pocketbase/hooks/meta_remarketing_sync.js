@@ -81,7 +81,9 @@ routerAdd(
           .error('Meta CAPI Sync Error', 'status', String(res.statusCode), 'response', errorBody)
 
         let errorMessage = `Erro na API do Meta (Status ${res.statusCode})`
+        let apiErrMsg = errorMessage
         if (res.json && res.json.error && res.json.error.message) {
+          apiErrMsg = res.json.error.message
           errorMessage += `: ${res.json.error.message}`
         }
 
@@ -90,7 +92,7 @@ routerAdd(
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
           logRecord.set('type', 'Remarketing Error')
-          logRecord.set('message', res.json?.error?.message || errorMessage)
+          logRecord.set('message', apiErrMsg)
           logRecord.set('details', {
             leads: payloads.map((p) => ({ name: p.name, id: p.id })),
             metaId: pixelId,
