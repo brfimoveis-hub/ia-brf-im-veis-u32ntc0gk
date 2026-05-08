@@ -6,11 +6,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
-import { Users } from 'lucide-react'
+import { Users, Loader2 } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('brfimoveis@gmail.com')
-  const [password, setPassword] = useState('Skip@Pass')
+  const [password, setPassword] = useState('Skip@Pass123')
   const { signIn, user } = useAuth()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
@@ -56,6 +56,8 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+                title="Por favor, insira um endereço de e-mail válido."
               />
             </div>
             <div className="space-y-2">
@@ -69,7 +71,8 @@ export default function Login() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Entrando...' : 'Entrar'}
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? 'Autenticando...' : 'Entrar'}
             </Button>
           </form>
         </CardContent>
