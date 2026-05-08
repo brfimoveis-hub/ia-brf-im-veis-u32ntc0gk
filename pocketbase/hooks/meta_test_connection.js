@@ -79,9 +79,9 @@ routerAdd(
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user?.id || '')
-          logRecord.set('type', 'meta_error')
+          logRecord.set('type', 'Remarketing Error')
           logRecord.set('message', 'Falha na validação do Meta CAPI Token')
-          logRecord.set('details', errorMessage)
+          logRecord.set('details', `Erro Meta: ${errorMessage} | Pixel ID testado: ${pixelId}`)
           logRecord.set('payload', errorResponse)
           $app.save(logRecord)
         } catch (_) {}

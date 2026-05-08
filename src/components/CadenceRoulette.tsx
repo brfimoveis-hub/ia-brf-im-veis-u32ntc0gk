@@ -176,11 +176,14 @@ export function CadenceRoulette({
     }
   }, [globalIndex, leads.length, hasMore, isFetchingMore, loadMore])
 
-  // Scroll to active item when auto-advancing
+  // Scroll to active item when auto-advancing, with debounce to prevent system hangs
   useEffect(() => {
-    if (itemRefs.current[globalIndex] && !isPaused && !isEditingCadence && !isEditingNotes) {
-      itemRefs.current[globalIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
+    const timeoutId = setTimeout(() => {
+      if (itemRefs.current[globalIndex] && !isPaused && !isEditingCadence && !isEditingNotes) {
+        itemRefs.current[globalIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }, 150)
+    return () => clearTimeout(timeoutId)
   }, [globalIndex, isPaused, isEditingCadence, isEditingNotes])
 
   const nextCustomer = useCallback(() => {

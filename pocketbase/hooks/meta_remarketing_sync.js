@@ -43,6 +43,8 @@ routerAdd(
         user_data: userData,
         custom_data: {
           tags: p.tags || [],
+          lead_name: p.name || 'Desconhecido',
+          lead_id: p.id || '',
         },
       }
     })
@@ -82,12 +84,13 @@ routerAdd(
         }
 
         try {
+          const leadsNames = payloads.map((p) => p.name || p.id).join(', ')
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const logRecord = new Record(logsCol)
           logRecord.set('user_id', user.id)
-          logRecord.set('type', 'meta_error')
-          logRecord.set('message', 'Erro na Sincronização do Meta CAPI')
-          logRecord.set('details', errorMessage)
+          logRecord.set('type', 'Remarketing Error')
+          logRecord.set('message', errorMessage)
+          logRecord.set('details', `Leads: ${leadsNames} | Meta ID: ${pixelId}`)
           logRecord.set('payload', res.json || { raw: errorBody })
           $app.saveNoValidate(logRecord)
         } catch (_) {}
@@ -98,12 +101,13 @@ routerAdd(
       $app.logger().error('Meta CAPI Request Failed', 'error', err.message)
 
       try {
+        const leadsNames = payloads.map((p) => p.name || p.id).join(', ')
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
         logRecord.set('user_id', user.id)
-        logRecord.set('type', 'meta_error')
-        logRecord.set('message', 'Falha Crítica na Conexão Meta CAPI')
-        logRecord.set('details', err.message)
+        logRecord.set('type', 'Remarketing Error')
+        logRecord.set('message', err.message)
+        logRecord.set('details', `Leads: ${leadsNames} | Meta ID: ${pixelId}`)
         $app.saveNoValidate(logRecord)
       } catch (_) {}
 

@@ -104,6 +104,24 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (_) {}
 
+    const now = new Date()
+    const customer = $app.findRecordById('customers', customerId)
+    const tags = customer.get('tags') || []
+    const customerPhone = customer.getString('phone') || ''
+    const customerSource = customer.getString('source') || ''
+
+    let receiverPhone = ''
+    const sourceMatch = customerSource.match(/(?:Uazapi|Meta)\s*-\s*(\d+)/)
+    if (sourceMatch) {
+      receiverPhone = sourceMatch[1]
+    } else if (customerPhone.includes('48992098050') || customerSource.includes('48992098050')) {
+      receiverPhone = '48992098050'
+    } else if (customerPhone.includes('48991828050') || customerSource.includes('48991828050')) {
+      receiverPhone = '48991828050'
+    }
+    const isTargetLead =
+      customerPhone.includes('48992098050') || customerSource.includes('48992098050')
+
     // Delivery Scheduling Check
     const deliveryEnabled = userRecord ? userRecord.get('delivery_enabled') !== false : true
     const deliveryStart = userRecord
@@ -119,7 +137,6 @@ onRecordAfterCreateSuccess((e) => {
       } catch (_) {}
     }
 
-    const now = new Date()
     const brTime = new Date(now.getTime() - 3 * 3600 * 1000)
     const dayOfWeek = brTime.getUTCDay()
     const daysMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
@@ -131,26 +148,30 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
-    if (
-      !deliveryDays.includes(currentDay) ||
-      currentTimeStr < deliveryStart ||
-      currentTimeStr > deliveryEnd
-    ) {
-      $app.logger().info('Message deferred: outside business hours', 'customerId', customerId)
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', userId)
-        logRecord.set('type', 'diagnostic')
-        logRecord.set('message', 'Message deferred: outside business hours')
-        logRecord.set(
-          'details',
-          `Envio pausado. Horário permitido: ${deliveryStart}-${deliveryEnd}, dias: ${deliveryDays.join(',')}`,
-        )
-        logRecord.set('payload', { customer_id: customerId })
-        $app.saveNoValidate(logRecord)
-      } catch (_) {}
-      return e.next()
+    const is24_7Flow = receiverPhone.includes('992098050') || isTargetLead
+
+    if (!is24_7Flow) {
+      if (
+        !deliveryDays.includes(currentDay) ||
+        currentTimeStr < deliveryStart ||
+        currentTimeStr > deliveryEnd
+      ) {
+        $app.logger().info('Message deferred: outside business hours', 'customerId', customerId)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', userId)
+          logRecord.set('type', 'diagnostic')
+          logRecord.set('message', 'Message deferred: outside business hours (Remarketing Flow)')
+          logRecord.set(
+            'details',
+            `Envio pausado. Horário permitido: ${deliveryStart}-${deliveryEnd}, dias: ${deliveryDays.join(',')}`,
+          )
+          logRecord.set('payload', { customer_id: customerId })
+          $app.saveNoValidate(logRecord)
+        } catch (_) {}
+        return e.next()
+      }
     }
 
     // Interval / Cooldown check
@@ -190,23 +211,6 @@ onRecordAfterCreateSuccess((e) => {
         }
       }
     } catch (_) {}
-
-    const customer = $app.findRecordById('customers', customerId)
-    const tags = customer.get('tags') || []
-    const customerPhone = customer.getString('phone') || ''
-    const customerSource = customer.getString('source') || ''
-
-    let receiverPhone = ''
-    const sourceMatch = customerSource.match(/(?:Uazapi|Meta)\s*-\s*(\d+)/)
-    if (sourceMatch) {
-      receiverPhone = sourceMatch[1]
-    } else if (customerPhone.includes('48992098050') || customerSource.includes('48992098050')) {
-      receiverPhone = '48992098050'
-    } else if (customerPhone.includes('48991828050') || customerSource.includes('48991828050')) {
-      receiverPhone = '48991828050'
-    }
-    const isTargetLead =
-      customerPhone.includes('48992098050') || customerSource.includes('48992098050')
 
     if (tags.includes('ai_paused')) {
       if (isTargetLead) {

@@ -16,6 +16,14 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
+  const { user } = useAuth()
+
+  useEffect(() => {
+    if (user) {
+      navigate('/clientes', { replace: true })
+    }
+  }, [user, navigate])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -24,11 +32,11 @@ export default function Login() {
     if (error) {
       toast({
         title: 'Erro no login',
-        description: 'Verifique suas credenciais.',
+        description: 'Verifique suas credenciais. ' + (error.message || ''),
         variant: 'destructive',
       })
     } else {
-      navigate('/clientes')
+      navigate('/clientes', { replace: true })
     }
   }
 

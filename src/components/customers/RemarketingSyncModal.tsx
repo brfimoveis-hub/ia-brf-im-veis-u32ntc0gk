@@ -264,6 +264,7 @@ export function RemarketingSyncModal({
 
           return {
             id: l.id,
+            name: l.name || l.first_name || 'Sem nome',
             em: email ? await sha256(email) : undefined,
             ph: phone ? await sha256(phone) : undefined,
             tags: l.tags || [],

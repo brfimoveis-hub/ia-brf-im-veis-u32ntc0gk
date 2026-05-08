@@ -29,20 +29,23 @@ const PageLoader = () => (
 
 const ProtectedRoute = () => {
   const { user, loading } = useAuth()
-  if (loading) return null
+  if (loading) return <PageLoader />
   if (!user) return <Navigate to="/login" replace />
   return <Outlet />
 }
 
-const Root = () => (
-  <>
-    <ErrorBoundary fallback={null}>
-      <GTMTracker />
-      <MetaPixel />
-    </ErrorBoundary>
-    <Outlet />
-  </>
-)
+const Root = () => {
+  const { loading } = useAuth()
+  return (
+    <>
+      <ErrorBoundary fallback={null}>
+        <GTMTracker />
+        <MetaPixel />
+      </ErrorBoundary>
+      {loading ? <PageLoader /> : <Outlet />}
+    </>
+  )
+}
 
 const router = createBrowserRouter(
   [
