@@ -14,7 +14,6 @@ migrate(
           type: 'relation',
           required: false,
           collectionId: '_pb_users_auth_',
-          cascadeDelete: false,
           maxSelect: 1,
         },
         { name: 'type', type: 'text', required: true },
