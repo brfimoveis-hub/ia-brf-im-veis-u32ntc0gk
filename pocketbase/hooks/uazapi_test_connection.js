@@ -2,77 +2,65 @@ routerAdd(
   'POST',
   '/backend/v1/uazapi-test-connection',
   (e) => {
+    const user = e.auth
+    if (!user) {
+      return e.unauthorizedError('Unauthorized')
+    }
+
     const body = e.requestInfo().body || {}
     const phone = body.phone || '5548992098050'
-    const auth = e.auth
 
-    if (!auth) {
-      return e.unauthorizedError('Not authenticated')
-    }
-
-    const domain = auth.getString('uazapi_domain')
-    const token = auth.getString('uazapi_token')
+    let domain = user.getString('uazapi_domain')
+    let token = user.getString('uazapi_token')
 
     if (!domain || !token) {
-      return e.badRequestError('Credenciais Uazapi ausentes')
+      user.set('uazapi_status', 'error')
+      user.set('uazapi_error', 'Domínio e token são obrigatórios.')
+      $app.save(user)
+      return e.badRequestError('Domínio e token são obrigatórios.')
     }
 
-    let url = domain
-    if (url.endsWith('/')) url = url.slice(0, -1)
+    if (domain.endsWith('/')) {
+      domain = domain.slice(0, -1)
+    }
 
-    const endpoint = `${url}/message/sendText/${phone}`
-
-    let res
     try {
-      res = $http.send({
-        url: endpoint,
-        method: 'POST',
+      const res = $http.send({
+        url: `${domain}/instance/info`, // common endpoint to test connection
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
           apikey: token,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          number: phone,
-          options: {
-            delay: 1200,
-            presence: 'composing',
-          },
-          textMessage: {
-            text: 'Teste de integridade Uazapi.',
-          },
-        }),
-        timeout: 15,
+        timeout: 10,
       })
-    } catch (error) {
-      const errMsg = `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found. Verifique as credenciais e o domínio.`
-      auth.set('uazapi_status', 'error')
-      auth.set('uazapi_error', errMsg)
-      auth.set('meta_last_validated', new Date().toISOString())
-      $app.saveNoValidate(auth)
-      return e.badRequestError(errMsg)
-    }
 
-    if (res.statusCode === 404) {
-      const errMsg = `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found. Verifique as credenciais e o domínio.`
-      auth.set('uazapi_status', 'error')
-      auth.set('uazapi_error', errMsg)
-      auth.set('meta_last_validated', new Date().toISOString())
-      $app.saveNoValidate(auth)
-      return e.badRequestError(errMsg)
-    } else if (res.statusCode >= 200 && res.statusCode < 300) {
-      auth.set('uazapi_status', 'connected')
-      auth.set('uazapi_error', '')
-      auth.set('meta_last_validated', new Date().toISOString())
-      $app.saveNoValidate(auth)
-      return e.json(200, { success: true, message: 'Connected' })
-    } else {
-      const msg = res.json?.message || res.json?.error || `HTTP ${res.statusCode}`
-      const errMsg = `Erro Uazapi: ${msg}`
-      auth.set('uazapi_status', 'error')
-      auth.set('uazapi_error', errMsg)
-      auth.set('meta_last_validated', new Date().toISOString())
-      $app.saveNoValidate(auth)
-      return e.badRequestError(errMsg)
+      if (res.statusCode === 404 || res.statusCode === 405) {
+        user.set('uazapi_status', 'error')
+        user.set('uazapi_error', `Erro na API Uazapi: Status ${res.statusCode}`)
+        $app.save(user)
+        return e.json(res.statusCode, {
+          message: `Method Not Allowed or Not Found: ${res.statusCode}`,
+        })
+      }
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        user.set('uazapi_status', 'connected')
+        user.set('uazapi_error', '')
+        $app.save(user)
+        return e.json(200, { success: true })
+      } else {
+        user.set('uazapi_status', 'error')
+        user.set('uazapi_error', `Erro inesperado: ${res.statusCode}`)
+        $app.save(user)
+        return e.badRequestError(`Erro na API Uazapi: ${res.statusCode}`)
+      }
+    } catch (err) {
+      $app.logger().error('Uazapi test connection failed', 'error', err.message)
+      user.set('uazapi_status', 'error')
+      user.set('uazapi_error', 'Falha de conexão (Timeout ou DNS)')
+      $app.save(user)
+      return e.badRequestError('Falha de conexão. Verifique o domínio e o token.')
     }
   },
   $apis.requireAuth(),

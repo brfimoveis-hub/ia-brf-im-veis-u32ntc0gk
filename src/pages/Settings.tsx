@@ -119,8 +119,12 @@ const AVATAR_STYLES = [
   },
 ]
 
-export default function Settings() {
+export default function ConfiguracoesCore() {
   const { toast } = useToast()
+
+  useEffect(() => {
+    console.log('currentRoute', { component: 'ConfiguracoesCore', path: '/configuracoes' })
+  }, [])
   const { user } = useAuth()
 
   const [isSaving, setIsSaving] = useState(false)
@@ -522,8 +526,17 @@ export default function Settings() {
       let errorMsg = error.response?.message || getErrorMessage(error)
       const phoneToTest = metaCampaignPhone || '5548992098050'
 
-      if (status === 404 || errorMsg.includes('404') || errorMsg.includes("wasn't found")) {
-        errorMsg = `Falha na integridade da conexão Uazapi para o número ${phoneToTest}: The requested resource wasn't found. Verifique as credenciais e o domínio.`
+      if (
+        status === 404 ||
+        status === 405 ||
+        errorMsg.includes('404') ||
+        errorMsg.includes('405') ||
+        errorMsg.includes("wasn't found") ||
+        errorMsg.includes('Method Not Allowed') ||
+        errorMsg.includes('Status 404') ||
+        errorMsg.includes('Status 405')
+      ) {
+        errorMsg = `Erro de conexão (404/405): Verifique se o domínio e o token do Uazapi estão corretos. O servidor retornou: ${errorMsg}.`
       }
 
       await pb.collection('users').authRefresh()

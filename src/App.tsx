@@ -13,7 +13,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Customers = lazy(() => import('./pages/Customers'))
-const Settings = lazy(() => import('./pages/Settings'))
+const ConfiguracoesCore = lazy(() => import('./pages/Settings'))
 const Cadences = lazy(() => import('./pages/Cadences'))
 const Logs = lazy(() => import('./pages/Logs'))
 const NotFound = lazy(() => import('./pages/NotFound'))
@@ -144,7 +144,7 @@ const router = createBrowserRouter(
                   path: '/configuracoes',
                   element: (
                     <Suspense fallback={<PageLoader />}>
-                      <Settings />
+                      <ConfiguracoesCore />
                     </Suspense>
                   ),
                 },
