@@ -36,7 +36,7 @@ routerAdd(
         return e.json(200, {
           success: false,
           state: 'disconnected',
-          error: 'Instance not found. Please check if the number and endpoint are valid.',
+          error: `Instância não encontrada. Verifique se o número ${instanceNumber} e o endpoint são válidos.`,
         })
       }
 

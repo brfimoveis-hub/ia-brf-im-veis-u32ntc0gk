@@ -37,7 +37,7 @@ export default function Settings() {
   useEffect(() => {
     if (user) {
       setFormData({
-        domain: user.uazapi_domain || '',
+        domain: user.uazapi_domain || 'https://iabrfimveis.uazapi.com',
         adminToken: user.uazapi_admin_token || '',
         token: user.uazapi_token || '',
         instanceNumber: user.uazapi_instance_number || '5548992098050',
@@ -54,7 +54,7 @@ export default function Settings() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
-  const handleTestAndSave = async () => {
+  const handleSave = async () => {
     if (!formData.domain || !formData.token || !formData.instanceNumber) {
       toast({
         title: 'Atenção',
@@ -64,6 +64,34 @@ export default function Settings() {
       return
     }
 
+    setLoading(true)
+    try {
+      await pb.collection('users').update(user!.id, {
+        uazapi_domain: formData.domain,
+        uazapi_admin_token: formData.adminToken,
+        uazapi_token: formData.token,
+        uazapi_instance_number: formData.instanceNumber,
+      })
+
+      await pb.collection('users').authRefresh()
+      toast({
+        title: 'Configurações salvas',
+        description: 'Credenciais atualizadas com sucesso. Testando conexão...',
+      })
+
+      await testConnection()
+    } catch (err) {
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Não foi possível salvar as configurações.',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const testConnection = async () => {
     setTesting(true)
     setErrorMsg('')
     let currentStatus = 'disconnected'
@@ -83,7 +111,7 @@ export default function Settings() {
       if (res.success) {
         currentStatus = res.state
         setStatus(res.state as any)
-        toast({ title: 'Sucesso', description: 'Conexão testada com sucesso.' })
+        toast({ title: 'Conexão Estabelecida', description: 'Instância conectada com sucesso.' })
       } else {
         currentStatus = 'disconnected'
         currentError = res.error || 'Erro desconhecido'
@@ -101,7 +129,6 @@ export default function Settings() {
       setTesting(false)
     }
 
-    setLoading(true)
     try {
       const mappedStatus =
         currentStatus === 'connected'
@@ -111,24 +138,12 @@ export default function Settings() {
             : 'Disconnected'
 
       await pb.collection('users').update(user!.id, {
-        uazapi_domain: formData.domain,
-        uazapi_admin_token: formData.adminToken,
-        uazapi_token: formData.token,
-        uazapi_instance_number: formData.instanceNumber,
         uazapi_status: mappedStatus,
         uazapi_error: currentError,
       })
-
       await pb.collection('users').authRefresh()
-      toast({ title: 'Configurações salvas', description: 'Suas configurações foram atualizadas.' })
     } catch (err) {
-      toast({
-        title: 'Erro ao salvar',
-        description: 'Não foi possível salvar as configurações.',
-        variant: 'destructive',
-      })
-    } finally {
-      setLoading(false)
+      console.error('Error saving connection status', err)
     }
   }
 
@@ -229,7 +244,7 @@ export default function Settings() {
             variant="outline"
             onClick={() =>
               setFormData({
-                domain: user?.uazapi_domain || '',
+                domain: user?.uazapi_domain || 'https://iabrfimveis.uazapi.com',
                 adminToken: user?.uazapi_admin_token || '',
                 token: user?.uazapi_token || '',
                 instanceNumber: user?.uazapi_instance_number || '5548992098050',
@@ -239,13 +254,13 @@ export default function Settings() {
           >
             Descartar
           </Button>
-          <Button onClick={handleTestAndSave} disabled={loading || testing} className="gap-2">
+          <Button onClick={handleSave} disabled={loading || testing} className="gap-2">
             {loading || testing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Save className="h-4 w-4" />
             )}
-            Testar e Salvar
+            Salvar e Conectar
           </Button>
         </CardFooter>
       </Card>
