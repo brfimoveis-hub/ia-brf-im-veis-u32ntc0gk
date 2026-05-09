@@ -25,12 +25,16 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await signIn(email, password)
+    const sanitizedEmail = email.trim()
+    const { error } = await signIn(sanitizedEmail, password)
     setLoading(false)
     if (error) {
+      const isNetworkError = error.status === 0
       toast({
-        title: 'credenciais invalidas',
-        description: 'não foi possivel autenticar por favor verifique seu email e senha',
+        title: isNetworkError ? 'Erro de Conexão' : 'Credenciais inválidas',
+        description: isNetworkError
+          ? 'Não foi possível conectar ao servidor. Verifique sua conexão com a internet.'
+          : 'Não foi possível autenticar. Por favor, verifique seu e-mail e senha.',
         variant: 'destructive',
       })
     }

@@ -31,19 +31,22 @@ export default function ForgotPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    const sanitizedEmail = email.trim()
     try {
-      await pb.collection('users').requestPasswordReset(email)
+      await pb.collection('users').requestPasswordReset(sanitizedEmail)
       toast({
         title: 'Email enviado',
         description: 'Se houver uma conta para este email, um link de redefinição foi enviado.',
       })
       setEmail('')
     } catch (error: any) {
+      const errorMsg = getErrorMessage(error)
       toast({
         title: 'Erro ao solicitar redefinição',
         description:
-          getErrorMessage(error) ||
-          'Não foi possível enviar o email de redefinição. Verifique se o endereço está correto.',
+          errorMsg.toLowerCase().includes('not found') || error.status === 404
+            ? 'Usuário não encontrado. Verifique se o endereço está correto.'
+            : 'Não foi possível enviar o email de redefinição. Verifique se o endereço está correto.',
         variant: 'destructive',
       })
     } finally {
