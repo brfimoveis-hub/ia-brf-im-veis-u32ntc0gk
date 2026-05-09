@@ -522,9 +522,8 @@ export default function ConfiguracoesCore() {
         })
       }
     } catch (error: any) {
-      const status = error.status
+      const status = error.status || error.response?.code
       let errorMsg = error.response?.message || getErrorMessage(error)
-      const phoneToTest = metaCampaignPhone || '5548992098050'
 
       if (
         status === 404 ||
@@ -536,7 +535,16 @@ export default function ConfiguracoesCore() {
         errorMsg.includes('Status 404') ||
         errorMsg.includes('Status 405')
       ) {
-        errorMsg = `Erro de conexão (404/405): Verifique se o domínio e o token do Uazapi estão corretos. O servidor retornou: ${errorMsg}.`
+        errorMsg = `Erro de conexão (404/405): Verifique se o domínio, método HTTP e a instância estão corretos. O servidor retornou: ${errorMsg}.`
+      } else if (
+        status === 401 ||
+        status === 403 ||
+        errorMsg.includes('401') ||
+        errorMsg.includes('403') ||
+        errorMsg.includes('Unauthorized') ||
+        errorMsg.includes('Forbidden')
+      ) {
+        errorMsg = `Não Autorizado: Token inválido ou expirado. O servidor retornou: ${errorMsg}.`
       }
 
       await pb.collection('users').authRefresh()
