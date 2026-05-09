@@ -38,11 +38,16 @@ export default function Login() {
     setLoading(false)
     if (error) {
       const isNetworkError = error.status === 0
+      const fieldErrors = error.response?.data
+        ? Object.values(error.response.data)
+            .map((e: any) => e.message)
+            .join(', ')
+        : ''
       toast({
         title: isNetworkError ? 'Erro de Conexão' : 'Credenciais inválidas',
         description: isNetworkError
           ? 'Não foi possível conectar ao servidor. Verifique sua conexão com a internet.'
-          : 'Não foi possível autenticar. Por favor, verifique seu e-mail e senha.',
+          : fieldErrors || 'Não foi possível autenticar. Por favor, verifique seu e-mail e senha.',
         variant: 'destructive',
       })
     }

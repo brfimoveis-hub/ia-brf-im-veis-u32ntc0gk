@@ -38,6 +38,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           await pb.collection('users').authRefresh()
         } catch (error) {
           pb.authStore.clear()
+          setUser(null)
         }
       }
       setLoading(false)

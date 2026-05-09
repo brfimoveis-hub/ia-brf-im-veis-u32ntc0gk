@@ -320,11 +320,14 @@ export default function Settings() {
           description: 'As alterações foram aplicadas com sucesso.',
         })
       }, 500)
-    } catch (error) {
+    } catch (error: any) {
       setIsSaving(false)
+      const fieldErrors = Object.values(error.response?.data || {})
+        .map((e: any) => e.message)
+        .join(', ')
       toast({
         title: 'Erro ao salvar',
-        description: 'Verifique os dados e tente novamente.',
+        description: fieldErrors || 'Verifique os dados e tente novamente.',
         variant: 'destructive',
       })
     }
@@ -360,10 +363,14 @@ export default function Settings() {
         title: 'Configurações de IA salvas com sucesso!',
         description: 'A identidade e comportamento foram atualizados.',
       })
-    } catch (error) {
+    } catch (error: any) {
+      const fieldErrors = Object.values(error.response?.data || {})
+        .map((e: any) => e.message)
+        .join(', ')
       toast({
         title: 'Erro ao salvar',
-        description: 'Não foi possível salvar as configurações de IA. Verifique os dados.',
+        description:
+          fieldErrors || 'Não foi possível salvar as configurações de IA. Verifique os dados.',
         variant: 'destructive',
       })
     } finally {
@@ -443,10 +450,13 @@ export default function Settings() {
           variant: 'destructive',
         })
       }
-    } catch (error) {
+    } catch (error: any) {
+      const fieldErrors = Object.values(error.response?.data || {})
+        .map((e: any) => e.message)
+        .join(', ')
       toast({
         title: 'Erro ao salvar',
-        description: 'Verifique os dados e tente novamente.',
+        description: fieldErrors || 'Verifique os dados e tente novamente.',
         variant: 'destructive',
       })
     } finally {
