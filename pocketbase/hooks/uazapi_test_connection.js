@@ -36,12 +36,12 @@ routerAdd(
         errorMsg = `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found`
       } else if (res.statusCode < 200 || res.statusCode >= 300) {
         isError = true
-        errorMsg = `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found`
+        errorMsg = `Falha na integridade da conexão Uazapi para o número ${phone}: Erro HTTP ${res.statusCode}`
       }
     } catch (err) {
       $app.logger().error('Uazapi HTTP Error', 'err', err)
       isError = true
-      errorMsg = `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found`
+      errorMsg = `Falha na integridade da conexão Uazapi para o número ${phone}: O servidor está inalcançável ou ocorreu um erro de rede`
     }
 
     if (isError) {

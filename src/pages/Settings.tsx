@@ -227,7 +227,11 @@ export default function Settings() {
 
   useRealtime('users', (e) => {
     if (e.action === 'update' && e.record.id === user?.id) {
-      if (e.record.meta_token_status !== user?.meta_token_status) {
+      if (
+        e.record.meta_token_status !== user?.meta_token_status ||
+        e.record.uazapi_status !== user?.uazapi_status ||
+        e.record.uazapi_error !== user?.uazapi_error
+      ) {
         pb.collection('users')
           .authRefresh()
           .catch(() => {})
