@@ -36,12 +36,12 @@ routerAdd(
       })
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        user.set('uazapi_status', 'Connected')
+        user.set('uazapi_status', 'online')
         user.set('uazapi_error', '')
         $app.saveNoValidate(user)
         return e.json(200, res.json)
       } else {
-        user.set('uazapi_status', 'Error')
+        user.set('uazapi_status', 'error')
         let errMsg = `A API retornou status ${res.statusCode}`
         try {
           if (res.json && res.json.message) {
@@ -55,7 +55,7 @@ routerAdd(
 
         if (res.statusCode === 404 || res.statusCode === 405) {
           return e.badRequestError(
-            `Instância não encontrada (404/405): Verifique se o número ${phone} está correto e o endpoint é válido.`,
+            `Erro de conexão (404/405). Verifique se o domínio e a instância estão corretos. O servidor retornou instância não encontrada.`,
           )
         } else if (res.statusCode === 401 || res.statusCode === 403) {
           return e.badRequestError('Token não autorizado (401/403).')
@@ -64,7 +64,7 @@ routerAdd(
         return e.badRequestError(errMsg)
       }
     } catch (err) {
-      user.set('uazapi_status', 'Error')
+      user.set('uazapi_status', 'error')
       user.set('uazapi_error', 'Falha de conexão com o servidor Uazapi: ' + err.message)
       $app.saveNoValidate(user)
       return e.badRequestError('Falha ao comunicar com Uazapi')
