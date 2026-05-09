@@ -306,7 +306,7 @@ export default function Layout() {
                 <div
                   className={cn(
                     'flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] font-bold tracking-wide uppercase cursor-help transition-colors shadow-sm',
-                    user?.meta_campaign_phone
+                    user?.uazapi_status === 'Connected'
                       ? 'bg-green-500/10 border-green-500/20 text-green-600'
                       : 'bg-red-500/10 border-red-500/20 text-red-600',
                   )}
@@ -314,13 +314,17 @@ export default function Layout() {
                   <div
                     className={cn(
                       'w-1.5 h-1.5 rounded-full shadow-sm',
-                      user?.meta_campaign_phone ? 'bg-green-500' : 'bg-red-500',
+                      user?.uazapi_status === 'Connected' ? 'bg-green-500' : 'bg-red-500',
                     )}
                   />
                   UAZAPI
                 </div>
               </TooltipTrigger>
-              <TooltipContent>Status da Conexão Uazapi</TooltipContent>
+              <TooltipContent>
+                {user?.uazapi_status === 'Connected'
+                  ? 'Status da Conexão Uazapi: Operante'
+                  : user?.uazapi_error || 'Status da Conexão Uazapi: Falha'}
+              </TooltipContent>
             </Tooltip>
 
             <Tooltip>

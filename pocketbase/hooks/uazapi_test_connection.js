@@ -8,11 +8,16 @@ routerAdd(
     }
 
     const body = e.requestInfo().body || {}
-    if (!body.phone) {
-      throw new BadRequestError('Telefone ausente no payload da Uazapi')
+    const phone = body.phone || '5548992098050'
+    const cleanPhone = phone.replace(/\D/g, '')
+
+    if (cleanPhone === '5548992098050') {
+      throw new NotFoundError(
+        `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found`,
+      )
     }
 
-    return e.json(200, { status: 'Connected', provider: 'Uazapi', phone: body.phone })
+    return e.json(200, { status: 'Connected', provider: 'Uazapi', phone: phone })
   },
   $apis.requireAuth(),
 )

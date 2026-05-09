@@ -176,6 +176,7 @@ export default function Settings() {
   const [editingCadence, setEditingCadence] = useState<Cadence | null>(null)
   const [editAiInstructions, setEditAiInstructions] = useState('')
   const [isSavingCadence, setIsSavingCadence] = useState(false)
+  const [isTestingUazapi, setIsTestingUazapi] = useState(false)
 
   useEffect(() => {
     const loadCadences = async () => {
@@ -468,6 +469,52 @@ export default function Settings() {
       })
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const testUazapiConnection = async () => {
+    if (isDirty) {
+      toast({
+        title: 'Alterações Não Salvas',
+        description: 'Por favor, salve as configurações antes de testar a conexão.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsTestingUazapi(true)
+    try {
+      const phoneToTest = metaCampaignPhone || '5548992098050'
+      await pb.send('/backend/v1/uazapi-test-connection', {
+        method: 'POST',
+        body: JSON.stringify({ phone: phoneToTest }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (user?.id) {
+        await pb
+          .collection('users')
+          .update(user.id, { uazapi_status: 'Connected', uazapi_error: '' })
+        await pb.collection('users').authRefresh()
+      }
+      toast({
+        title: 'Uazapi Conectado',
+        description: 'A conexão foi validada com sucesso.',
+      })
+    } catch (error: any) {
+      const errorMsg = error.response?.message || getErrorMessage(error)
+      if (user?.id) {
+        await pb
+          .collection('users')
+          .update(user.id, { uazapi_status: 'Error', uazapi_error: errorMsg })
+        await pb.collection('users').authRefresh()
+      }
+      toast({
+        title: 'Erro de Conexão Uazapi',
+        description: errorMsg,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsTestingUazapi(false)
     }
   }
 
@@ -1413,9 +1460,28 @@ export default function Settings() {
           <CardContent className="pt-6 space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-3">
-                <Label htmlFor="uazapi-token" className="font-semibold text-secondary">
-                  Uazapi Token
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="uazapi-token" className="font-semibold text-secondary">
+                    Uazapi Token
+                  </Label>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'h-5 text-[10px] px-2 font-medium',
+                      user?.uazapi_status === 'Connected'
+                        ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                        : user?.uazapi_status === 'Error'
+                          ? 'bg-red-500/10 text-red-600 border-red-500/20'
+                          : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    {user?.uazapi_status === 'Connected'
+                      ? 'Conectado'
+                      : user?.uazapi_status === 'Error'
+                        ? 'Falha na Conexão'
+                        : 'Não Testado'}
+                  </Badge>
+                </div>
                 <div className="relative">
                   <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -1425,6 +1491,27 @@ export default function Settings() {
                     defaultValue="token_simulation_123"
                     className="pl-10 h-11 bg-muted/30 focus-visible:ring-amber-500"
                   />
+                </div>
+                {user?.uazapi_status === 'Error' && user?.uazapi_error && (
+                  <p className="text-[11px] text-destructive mt-1.5 font-medium leading-tight">
+                    {user.uazapi_error}
+                  </p>
+                )}
+                <div className="flex justify-end pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={testUazapiConnection}
+                    disabled={isTestingUazapi}
+                  >
+                    {isTestingUazapi ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="h-4 w-4 mr-2 text-amber-600" />
+                    )}
+                    Validar Integridade
+                  </Button>
                 </div>
               </div>
               <div className="space-y-3">

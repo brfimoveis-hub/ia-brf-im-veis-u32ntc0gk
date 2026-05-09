@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-09T13:48:24.610Z",
+  "generatedAt": "2026-05-09T14:04:41.059Z",
   "collections": [
     {
       "name": "users",
@@ -100,6 +100,18 @@
         },
         {
           "name": "meta_last_validated",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uazapi_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uazapi_error",
           "type": "text",
           "required": false,
           "system": false
