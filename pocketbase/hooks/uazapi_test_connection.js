@@ -33,7 +33,7 @@ routerAdd(
 
       if (res.statusCode === 404) {
         isError = true
-        errorMsg = `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found`
+        errorMsg = `The requested resource wasn't found`
       } else if (res.statusCode < 200 || res.statusCode >= 300) {
         isError = true
         errorMsg = `Falha na integridade da conexão Uazapi para o número ${phone}: Erro HTTP ${res.statusCode}`
@@ -46,7 +46,7 @@ routerAdd(
 
     if (isError) {
       try {
-        user.set('uazapi_status', 'Error')
+        user.set('uazapi_status', 'error')
         user.set('uazapi_error', errorMsg)
         $app.saveNoValidate(user)
       } catch (saveErr) {
@@ -56,14 +56,14 @@ routerAdd(
     }
 
     try {
-      user.set('uazapi_status', 'Connected')
+      user.set('uazapi_status', 'connected')
       user.set('uazapi_error', '')
       $app.saveNoValidate(user)
     } catch (saveErr) {
       $app.logger().error('Error saving user uazapi status', 'err', saveErr)
     }
 
-    return e.json(200, { status: 'Connected', provider: 'Uazapi', phone: phone })
+    return e.json(200, { status: 'connected', provider: 'Uazapi', phone: phone })
   },
   $apis.requireAuth(),
 )

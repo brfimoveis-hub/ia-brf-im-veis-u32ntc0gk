@@ -532,6 +532,10 @@ export default function Settings() {
     }
   }
 
+  useEffect(() => {
+    console.log('currentRoute', { component: 'ConfiguracoesCore', path: '/configuracoes' })
+  }, [])
+
   const hasAutoTestedUazapi = useRef(false)
   useEffect(() => {
     if (
@@ -1493,16 +1497,16 @@ export default function Settings() {
                     variant="outline"
                     className={cn(
                       'h-5 text-[10px] px-2 font-medium',
-                      user?.uazapi_status === 'Connected'
+                      user?.uazapi_status === 'connected' || user?.uazapi_status === 'Connected'
                         ? 'bg-green-500/10 text-green-600 border-green-500/20'
-                        : user?.uazapi_status === 'Error'
+                        : user?.uazapi_status === 'error' || user?.uazapi_status === 'Error'
                           ? 'bg-red-500/10 text-red-600 border-red-500/20'
                           : 'bg-muted text-muted-foreground',
                     )}
                   >
-                    {user?.uazapi_status === 'Connected'
-                      ? 'Conectado'
-                      : user?.uazapi_status === 'Error'
+                    {user?.uazapi_status === 'connected' || user?.uazapi_status === 'Connected'
+                      ? 'Verde (Conectado)'
+                      : user?.uazapi_status === 'error' || user?.uazapi_status === 'Error'
                         ? 'Falha na Conexão'
                         : 'Não Testado'}
                   </Badge>
@@ -1542,23 +1546,28 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {user?.uazapi_status === 'Error' && user?.uazapi_error && (
-                  <div className="p-3 border border-red-500/20 bg-red-500/10 rounded-md">
-                    <p className="text-xs text-red-600 font-medium leading-tight">
-                      {user.uazapi_error}
-                    </p>
-                  </div>
-                )}
+                {(user?.uazapi_status === 'error' || user?.uazapi_status === 'Error') &&
+                  user?.uazapi_error && (
+                    <div className="p-3 border border-red-500/20 bg-red-500/10 rounded-md">
+                      <p className="text-xs text-red-600 font-medium leading-tight">
+                        {user.uazapi_error}
+                      </p>
+                    </div>
+                  )}
 
                 <div className="flex justify-end pt-2">
                   <Button
                     type="button"
-                    variant={user?.uazapi_status === 'Error' ? 'default' : 'outline'}
+                    variant={
+                      user?.uazapi_status === 'error' || user?.uazapi_status === 'Error'
+                        ? 'default'
+                        : 'outline'
+                    }
                     size="sm"
                     onClick={() => testUazapiConnection(false)}
                     disabled={isTestingUazapi}
                     className={
-                      user?.uazapi_status === 'Error'
+                      user?.uazapi_status === 'error' || user?.uazapi_status === 'Error'
                         ? 'bg-red-600 hover:bg-red-700 text-white gap-2'
                         : 'gap-2'
                     }
@@ -1569,11 +1578,15 @@ export default function Settings() {
                       <ShieldCheck
                         className={cn(
                           'h-4 w-4',
-                          user?.uazapi_status === 'Error' ? 'text-white' : 'text-amber-600',
+                          user?.uazapi_status === 'error' || user?.uazapi_status === 'Error'
+                            ? 'text-white'
+                            : 'text-amber-600',
                         )}
                       />
                     )}
-                    {user?.uazapi_status === 'Error' ? 'Reconectar API' : 'Validar Integridade'}
+                    {user?.uazapi_status === 'error' || user?.uazapi_status === 'Error'
+                      ? 'Reconectar API'
+                      : 'Validar Integridade'}
                   </Button>
                 </div>
               </div>
