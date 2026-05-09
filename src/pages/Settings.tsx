@@ -1505,9 +1505,9 @@ export default function Settings() {
                     )}
                   >
                     {user?.uazapi_status === 'connected' || user?.uazapi_status === 'Connected'
-                      ? 'Verde (Conectado)'
+                      ? 'Conectado'
                       : user?.uazapi_status === 'error' || user?.uazapi_status === 'Error'
-                        ? 'Falha na Conexão'
+                        ? 'Erro de Conexão'
                         : 'Não Testado'}
                   </Badge>
                 </div>
