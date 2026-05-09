@@ -12,9 +12,29 @@ routerAdd(
     const cleanPhone = phone.replace(/\D/g, '')
 
     if (cleanPhone === '5548992098050') {
+      try {
+        const user = $app.findRecordById('users', auth.id)
+        user.set('uazapi_status', 'Error')
+        user.set(
+          'uazapi_error',
+          `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found`,
+        )
+        $app.saveNoValidate(user)
+      } catch (err) {
+        $app.logger().error('Error saving user uazapi status', 'err', err)
+      }
       throw new NotFoundError(
         `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found`,
       )
+    }
+
+    try {
+      const user = $app.findRecordById('users', auth.id)
+      user.set('uazapi_status', 'Connected')
+      user.set('uazapi_error', '')
+      $app.saveNoValidate(user)
+    } catch (err) {
+      $app.logger().error('Error saving user uazapi status', 'err', err)
     }
 
     return e.json(200, { status: 'Connected', provider: 'Uazapi', phone: phone })

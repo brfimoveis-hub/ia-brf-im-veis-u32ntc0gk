@@ -490,24 +490,14 @@ export default function Settings() {
         body: JSON.stringify({ phone: phoneToTest }),
         headers: { 'Content-Type': 'application/json' },
       })
-      if (user?.id) {
-        await pb
-          .collection('users')
-          .update(user.id, { uazapi_status: 'Connected', uazapi_error: '' })
-        await pb.collection('users').authRefresh()
-      }
+      await pb.collection('users').authRefresh()
       toast({
         title: 'Uazapi Conectado',
         description: 'A conexão foi validada com sucesso.',
       })
     } catch (error: any) {
       const errorMsg = error.response?.message || getErrorMessage(error)
-      if (user?.id) {
-        await pb
-          .collection('users')
-          .update(user.id, { uazapi_status: 'Error', uazapi_error: errorMsg })
-        await pb.collection('users').authRefresh()
-      }
+      await pb.collection('users').authRefresh()
       toast({
         title: 'Erro de Conexão Uazapi',
         description: errorMsg,
@@ -1500,17 +1490,27 @@ export default function Settings() {
                 <div className="flex justify-end pt-2">
                   <Button
                     type="button"
-                    variant="outline"
+                    variant={user?.uazapi_status === 'Error' ? 'default' : 'outline'}
                     size="sm"
                     onClick={testUazapiConnection}
                     disabled={isTestingUazapi}
+                    className={
+                      user?.uazapi_status === 'Error'
+                        ? 'bg-red-600 hover:bg-red-700 text-white gap-2'
+                        : 'gap-2'
+                    }
                   >
                     {isTestingUazapi ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <ShieldCheck className="h-4 w-4 mr-2 text-amber-600" />
+                      <ShieldCheck
+                        className={cn(
+                          'h-4 w-4',
+                          user?.uazapi_status === 'Error' ? 'text-white' : 'text-amber-600',
+                        )}
+                      />
                     )}
-                    Validar Integridade
+                    {user?.uazapi_status === 'Error' ? 'Reconectar API' : 'Validar Integridade'}
                   </Button>
                 </div>
               </div>
