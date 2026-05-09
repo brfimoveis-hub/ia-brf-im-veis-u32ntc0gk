@@ -36,6 +36,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useBlocker } from 'react-router-dom'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getCadences, updateCadence, type Cadence } from '@/services/cadences'
 import {
@@ -444,7 +445,7 @@ export default function Settings() {
           })
         } catch (testError: any) {
           await pb.collection('users').authRefresh()
-          const errorMsg = testError.response?.message || 'Verifique as credenciais.'
+          const errorMsg = getErrorMessage(testError)
           setLastErrorMsg(errorMsg)
           toast({
             title: 'Erro de Sincronização com o Meta',
@@ -459,12 +460,10 @@ export default function Settings() {
         })
       }
     } catch (error: any) {
-      const fieldErrors = Object.values(error.response?.data || {})
-        .map((e: any) => e.message)
-        .join(', ')
+      const msg = getErrorMessage(error)
       toast({
         title: 'Erro ao salvar',
-        description: fieldErrors || 'Verifique os dados e tente novamente.',
+        description: msg,
         variant: 'destructive',
       })
     } finally {
@@ -496,8 +495,7 @@ export default function Settings() {
           'O Pixel ID e Token CAPI foram validados com sucesso e estão comunicando com o Meta.',
       })
     } catch (error: any) {
-      const resData = error.response || {}
-      let errorMsg = resData.message || 'Verifique as credenciais.'
+      const errorMsg = getErrorMessage(error)
       setLastErrorMsg(errorMsg)
       await pb.collection('users').authRefresh()
       toast({
@@ -609,7 +607,8 @@ export default function Settings() {
       toast({ title: 'Regras de IA atualizadas na cadência' })
       setEditingCadence(null)
     } catch (error) {
-      toast({ title: 'Erro ao salvar', variant: 'destructive' })
+      const msg = getErrorMessage(error)
+      toast({ title: 'Erro ao salvar', description: msg, variant: 'destructive' })
     } finally {
       setIsSavingCadence(false)
     }
@@ -917,6 +916,7 @@ export default function Settings() {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 maxLength={300000}
+                spellCheck={false}
               />
               <div className="bg-indigo-500/5 rounded-lg p-3 flex items-start gap-2 border border-indigo-500/10">
                 <CheckCircle2 className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
@@ -1468,6 +1468,7 @@ export default function Settings() {
               onChange={(e) => setEditAiInstructions(e.target.value)}
               className="min-h-[200px] resize-y"
               maxLength={300000}
+              spellCheck={false}
             />
           </div>
           <DialogFooter>

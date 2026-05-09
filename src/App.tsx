@@ -20,6 +20,7 @@ const NotFound = lazy(() => import('./pages/NotFound'))
 const Login = lazy(() => import('./pages/Login'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const Index = lazy(() => import('./pages/Index'))
 
 const PageLoader = () => (
   <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
@@ -74,6 +75,14 @@ const router = createBrowserRouter(
       errorElement: <GlobalError />,
       children: [
         {
+          index: true,
+          element: (
+            <Suspense fallback={<PageLoader />}>
+              <Index />
+            </Suspense>
+          ),
+        },
+        {
           path: '/login',
           element: (
             <Suspense fallback={<PageLoader />}>
@@ -104,10 +113,6 @@ const router = createBrowserRouter(
               element: <Layout />,
               errorElement: <GlobalError />,
               children: [
-                {
-                  index: true,
-                  element: <Navigate to="/dashboard" replace />,
-                },
                 {
                   path: '/dashboard',
                   element: (
