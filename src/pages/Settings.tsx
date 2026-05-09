@@ -1,160 +1,251 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '@/hooks/use-auth'
-import pb from '@/lib/pocketbase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
 } from '@/components/ui/card'
-import { toast } from 'sonner'
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
-import { useRealtime } from '@/hooks/use-realtime'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Loader2, Save, Wifi, WifiOff } from 'lucide-react'
+import pb from '@/lib/pocketbase/client'
+import { useAuth } from '@/hooks/use-auth'
+import { useToast } from '@/hooks/use-toast'
 
 export default function Settings() {
   const { user } = useAuth()
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(false)
+  const [testing, setTesting] = useState(false)
 
-  const [domain, setDomain] = useState('https://iabrfimveis.uazapi.com')
-  const [token, setToken] = useState('')
-  const [phone, setPhone] = useState('5548992098050')
+  const [formData, setFormData] = useState({
+    domain: '',
+    adminToken: '',
+    token: '',
+    instanceNumber: '',
+  })
 
-  const [status, setStatus] = useState<string>('')
-  const [errorMsg, setErrorMsg] = useState<string>('')
-
-  const [isSaving, setIsSaving] = useState(false)
-  const [isTesting, setIsTesting] = useState(false)
+  const [status, setStatus] = useState<'connected' | 'connecting' | 'disconnected' | 'unknown'>(
+    'unknown',
+  )
+  const [errorMsg, setErrorMsg] = useState('')
 
   useEffect(() => {
     if (user) {
-      if (user.uazapi_domain) setDomain(user.uazapi_domain)
-      if (user.uazapi_token) setToken(user.uazapi_token)
-      if (user.meta_campaign_phone) setPhone(user.meta_campaign_phone)
-      setStatus(user.uazapi_status || '')
+      setFormData({
+        domain: user.uazapi_domain || '',
+        adminToken: user.uazapi_admin_token || '',
+        token: user.uazapi_token || '',
+        instanceNumber: user.uazapi_instance_number || '5548992098050',
+      })
+      if (user.uazapi_status === 'Connected') setStatus('connected')
+      else if (user.uazapi_status === 'Connecting') setStatus('connecting')
+      else if (user.uazapi_status === 'Disconnected') setStatus('disconnected')
+
       setErrorMsg(user.uazapi_error || '')
     }
   }, [user])
 
-  useRealtime('users', (e) => {
-    if (e.record.id === user?.id) {
-      setStatus(e.record.uazapi_status || '')
-      setErrorMsg(e.record.uazapi_error || '')
-    }
-  })
-
-  const handleSave = async () => {
-    if (!user) return
-    setIsSaving(true)
-    try {
-      await pb.collection('users').update(user.id, {
-        uazapi_domain: domain,
-        uazapi_token: token,
-        meta_campaign_phone: phone,
-      })
-      toast.success('Configurações salvas com sucesso')
-    } catch (error) {
-      toast.error('Erro ao salvar configurações')
-    } finally {
-      setIsSaving(false)
-    }
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
-  const handleTestConnection = async () => {
-    setIsTesting(true)
+  const handleTestAndSave = async () => {
+    if (!formData.domain || !formData.token || !formData.instanceNumber) {
+      toast({
+        title: 'Atenção',
+        description: 'Preencha o domínio, token e número da instância.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setTesting(true)
+    setErrorMsg('')
+    let currentStatus = 'disconnected'
+    let currentError = ''
+
     try {
-      if (!user) return
-
-      await pb.collection('users').update(user.id, {
-        uazapi_domain: domain,
-        uazapi_token: token,
-        meta_campaign_phone: phone,
-      })
-
-      await pb.send('/backend/v1/uazapi-test-connection', {
+      const res = await pb.send('/backend/v1/uazapi/test-connection', {
         method: 'POST',
-        body: JSON.stringify({ phone }),
-        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domain: formData.domain,
+          token: formData.token,
+          adminToken: formData.adminToken,
+          instanceNumber: formData.instanceNumber,
+        }),
       })
-      toast.success('Conexão estabelecida com sucesso!')
-    } catch (error: any) {
-      const msg = error?.response?.message || error?.message || 'Erro ao testar conexão'
-      toast.error(msg)
+
+      if (res.success) {
+        currentStatus = res.state
+        setStatus(res.state as any)
+        toast({ title: 'Sucesso', description: 'Conexão testada com sucesso.' })
+      } else {
+        currentStatus = 'disconnected'
+        currentError = res.error || 'Erro desconhecido'
+        setStatus('disconnected')
+        setErrorMsg(currentError)
+        toast({ title: 'Falha na conexão', description: currentError, variant: 'destructive' })
+      }
+    } catch (err: any) {
+      currentStatus = 'disconnected'
+      currentError = 'Erro ao tentar conectar com a API'
+      setStatus('disconnected')
+      setErrorMsg(currentError)
+      toast({ title: 'Erro', description: currentError, variant: 'destructive' })
     } finally {
-      setIsTesting(false)
+      setTesting(false)
+    }
+
+    setLoading(true)
+    try {
+      const mappedStatus =
+        currentStatus === 'connected'
+          ? 'Connected'
+          : currentStatus === 'connecting'
+            ? 'Connecting'
+            : 'Disconnected'
+
+      await pb.collection('users').update(user!.id, {
+        uazapi_domain: formData.domain,
+        uazapi_admin_token: formData.adminToken,
+        uazapi_token: formData.token,
+        uazapi_instance_number: formData.instanceNumber,
+        uazapi_status: mappedStatus,
+        uazapi_error: currentError,
+      })
+
+      await pb.collection('users').authRefresh()
+      toast({ title: 'Configurações salvas', description: 'Suas configurações foram atualizadas.' })
+    } catch (err) {
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Não foi possível salvar as configurações.',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <div className="container mx-auto py-10 px-4 max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Configurações da IA</h1>
+        <p className="text-muted-foreground mt-2">
+          Gerencie as integrações e parâmetros de operação da sua Inteligência Artificial.
+        </p>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Configurações Uazapi</CardTitle>
-          <CardDescription>Gerencie as credenciais de integração com a API Uazapi.</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Integração Uazapi (WhatsApp)</CardTitle>
+              <CardDescription>
+                Configure as credenciais da API para envio e recebimento de mensagens.
+              </CardDescription>
+            </div>
+            {status === 'connected' && (
+              <Badge className="bg-green-500 hover:bg-green-600 gap-1.5">
+                <Wifi className="h-3.5 w-3.5" /> Conectado
+              </Badge>
+            )}
+            {status === 'connecting' && (
+              <Badge
+                variant="outline"
+                className="text-amber-500 border-amber-500/20 bg-amber-500/10 gap-1.5"
+              >
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Conectando
+              </Badge>
+            )}
+            {status === 'disconnected' && (
+              <Badge variant="destructive" className="gap-1.5">
+                <WifiOff className="h-3.5 w-3.5" /> Desconectado
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="domain">Domínio Uazapi</Label>
-            <Input
-              id="domain"
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              placeholder="https://iabrfimveis.uazapi.com"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="token">Admin Token</Label>
-            <Input
-              id="token"
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Insira o seu token"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="phone">Número da Instância (WhatsApp)</Label>
-            <Input
-              id="phone"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="5548992098050"
-            />
-          </div>
+          {errorMsg && (
+            <div className="p-3 bg-destructive/10 text-destructive text-sm rounded-md border border-destructive/20 font-medium">
+              {errorMsg}
+            </div>
+          )}
 
-          <div className="mt-6 p-4 rounded-lg bg-muted flex flex-col gap-2">
-            <h3 className="font-medium text-sm text-muted-foreground mb-1">Status da Conexão</h3>
-            <div className="flex items-center gap-2">
-              {status === 'online' ? (
-                <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span className="font-semibold">Online</span>
-                </div>
-              ) : status === 'error' ? (
-                <div className="flex flex-col gap-1 text-red-600">
-                  <div className="flex items-center gap-2">
-                    <XCircle className="h-5 w-5" />
-                    <span className="font-semibold">Erro</span>
-                  </div>
-                  {errorMsg && <p className="text-sm mt-1">{errorMsg}</p>}
-                </div>
-              ) : (
-                <div className="text-muted-foreground font-medium">Não testado / Desconhecido</div>
-              )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="domain">Domínio da API</Label>
+              <Input
+                id="domain"
+                name="domain"
+                placeholder="Ex: https://iabrfimveis.uazapi.com"
+                value={formData.domain}
+                onChange={handleChange}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="instanceNumber">Número da Instância</Label>
+              <Input
+                id="instanceNumber"
+                name="instanceNumber"
+                placeholder="Ex: 5548992098050"
+                value={formData.instanceNumber}
+                onChange={handleChange}
+              />
+            </div>
+            <div className="space-y-2 col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="adminToken">Admin Token</Label>
+                <Input
+                  id="adminToken"
+                  name="adminToken"
+                  type="password"
+                  placeholder="Token Administrativo"
+                  value={formData.adminToken}
+                  onChange={handleChange}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="token">Instance Token</Label>
+                <Input
+                  id="token"
+                  name="token"
+                  type="password"
+                  placeholder="Token da Instância"
+                  value={formData.token}
+                  onChange={handleChange}
+                />
+              </div>
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex justify-between">
-          <Button variant="outline" onClick={handleSave} disabled={isSaving}>
-            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Salvar
+        <CardFooter className="flex justify-end gap-2 border-t pt-4">
+          <Button
+            variant="outline"
+            onClick={() =>
+              setFormData({
+                domain: user?.uazapi_domain || '',
+                adminToken: user?.uazapi_admin_token || '',
+                token: user?.uazapi_token || '',
+                instanceNumber: user?.uazapi_instance_number || '5548992098050',
+              })
+            }
+            disabled={loading || testing}
+          >
+            Descartar
           </Button>
-          <Button onClick={handleTestConnection} disabled={isTesting || !domain || !token}>
-            {isTesting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Testar Conexão
+          <Button onClick={handleTestAndSave} disabled={loading || testing} className="gap-2">
+            {loading || testing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Testar e Salvar
           </Button>
         </CardFooter>
       </Card>
