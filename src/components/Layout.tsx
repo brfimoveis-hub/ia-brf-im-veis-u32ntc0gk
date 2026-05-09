@@ -34,15 +34,14 @@ import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 
 const menuItems = [
-  { title: 'CRM Pipeline', url: '/', icon: Kanban },
+  { title: 'CRM Pipeline', url: '/dashboard', icon: Kanban },
   { title: 'Base de Clientes', url: '/clientes', icon: Users },
-  { title: 'Base de Conhecimento', url: '/conhecimento', icon: BookOpen },
   { title: 'Cadências', url: '/cadencias', icon: ListOrdered },
-  { title: 'Configurações', url: '/configuracoes', icon: SettingsIcon },
+  { title: 'Configurações da IA', url: '/configuracoes', icon: SettingsIcon },
   { title: 'Logs', url: '/logs', icon: Activity },
 ]
 
-const ROULETTE_ROUTES = ['/', '/clientes', '/conhecimento', '/cadencias']
+const ROULETTE_ROUTES = ['/dashboard', '/clientes', '/cadencias']
 const ROULETTE_INTERVAL = 30000 // 30 seconds
 
 export default function Layout() {

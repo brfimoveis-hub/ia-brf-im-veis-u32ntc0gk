@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useState, useEffect } from 'react'
 import { createBrowserRouter, RouterProvider, Navigate, Outlet } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
@@ -11,11 +11,9 @@ import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-// Break circular dependencies completely by using lazy-loaded routes
-const Index = lazy(() => import('./pages/Index'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Customers = lazy(() => import('./pages/Customers'))
 const Settings = lazy(() => import('./pages/Settings'))
-const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'))
 const Cadences = lazy(() => import('./pages/Cadences'))
 const Logs = lazy(() => import('./pages/Logs'))
 const NotFound = lazy(() => import('./pages/NotFound'))
@@ -31,7 +29,27 @@ const PageLoader = () => (
 
 const ProtectedRoute = () => {
   const { user, loading } = useAuth()
-  if (loading) return <PageLoader />
+  const [verifying, setVerifying] = useState(true)
+
+  useEffect(() => {
+    if (!loading) {
+      if (user) {
+        const verifyState = async () => {
+          try {
+            // Mock verification delay to ensure AI settings and API states are stabilized
+            await new Promise((resolve) => setTimeout(resolve, 300))
+          } finally {
+            setVerifying(false)
+          }
+        }
+        verifyState()
+      } else {
+        setVerifying(false)
+      }
+    }
+  }, [user, loading])
+
+  if (loading || verifying) return <PageLoader />
   if (!user) return <Navigate to="/login" replace />
   return <Outlet />
 }
@@ -88,9 +106,13 @@ const router = createBrowserRouter(
               children: [
                 {
                   index: true,
+                  element: <Navigate to="/dashboard" replace />,
+                },
+                {
+                  path: '/dashboard',
                   element: (
                     <Suspense fallback={<PageLoader />}>
-                      <Index />
+                      <Dashboard />
                     </Suspense>
                   ),
                 },
@@ -99,14 +121,6 @@ const router = createBrowserRouter(
                   element: (
                     <Suspense fallback={<PageLoader />}>
                       <Customers />
-                    </Suspense>
-                  ),
-                },
-                {
-                  path: '/conhecimento',
-                  element: (
-                    <Suspense fallback={<PageLoader />}>
-                      <KnowledgeBase />
                     </Suspense>
                   ),
                 },

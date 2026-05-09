@@ -28,7 +28,7 @@ const formatPhoneLocal = (phone: string) => {
   return phone
 }
 
-export default function Index() {
+export default function Dashboard() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)

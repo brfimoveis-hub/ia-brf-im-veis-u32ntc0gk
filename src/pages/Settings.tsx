@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
@@ -16,9 +16,21 @@ import {
   Facebook,
   Loader2,
   Activity,
-  AlertTriangle,
-  AlertCircle,
   FileText,
+  Globe,
+  Tags,
+  Bot,
+  Paperclip,
+  Upload,
+  Trash2,
+  MapPin,
+  Briefcase,
+  Headset,
+  Volume2,
+  Info,
+  Mic,
+  User,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -26,6 +38,12 @@ import pb from '@/lib/pocketbase/client'
 import { useBlocker } from 'react-router-dom'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getCadences, updateCadence, type Cadence } from '@/services/cadences'
+import {
+  getFirstKnowledgeBaseEntry,
+  createKnowledgeBaseEntry,
+  updateKnowledgeBaseEntry,
+  KnowledgeBaseEntry,
+} from '@/services/knowledge_base'
 import {
   Dialog,
   DialogContent,
@@ -46,18 +64,66 @@ import { DiagnosticCenter } from '@/components/DiagnosticCenter'
 import { RecentPerformance } from '@/components/RecentPerformance'
 import { LeadOriginsDashboard } from '@/components/LeadOriginsDashboard'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+
+const VOICE_PROFILES = [
+  {
+    id: 'bia_executiva',
+    name: 'Bia Executiva',
+    tone: 'Madura, pausada e autoritária',
+    stability: 75,
+    clarity: 80,
+  },
+  {
+    id: 'bia_amiga',
+    name: 'Bia Amiga',
+    tone: 'Jovem, dinâmica e entusiasmada',
+    stability: 45,
+    clarity: 90,
+  },
+  {
+    id: 'bia_consultora',
+    name: 'Bia Consultora',
+    tone: 'Equilibrada, empática e segura',
+    stability: 60,
+    clarity: 85,
+  },
+]
+
+const AVATAR_STYLES = [
+  {
+    id: 'foco_regional',
+    name: 'Foco Regional',
+    description:
+      'Visual de corretora local, fundo com praias ou centros urbanos de Biguaçu/Floripa',
+    query: 'female%20realtor%20beach',
+    icon: MapPin,
+  },
+  {
+    id: 'foco_luxo',
+    name: 'Foco Luxo',
+    description:
+      'Trajes executivos mais formais, fundo de escritório moderno ou decorado do Villa dos Açores',
+    query: 'female%20executive%20modern%20office',
+    icon: Briefcase,
+  },
+  {
+    id: 'foco_agilidade',
+    name: 'Foco Agilidade',
+    description:
+      'Visual moderno, com fone de ouvido estilo "central de inteligência", reforçando o suporte 24h',
+    query: 'modern%20female%20support%20agent%20headset',
+    icon: Headset,
+  },
+]
 
 export default function Settings() {
   const { toast } = useToast()
   const { user } = useAuth()
-  const [isSaving, setIsSaving] = useState(false)
-  const [isSavingMeta, setIsSavingMeta] = useState(false)
-  const [isSavingAI, setIsSavingAI] = useState(false)
 
-  const [prompt, setPrompt] = useState('')
-  const [aiName, setAiName] = useState('')
-  const [aiVoiceId, setAiVoiceId] = useState('')
-  const [aiAvatarFile, setAiAvatarFile] = useState<File | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isTestingConnection, setIsTestingConnection] = useState(false)
 
   // Meta Ads State
   const [metaPixelId, setMetaPixelId] = useState('')
@@ -66,17 +132,30 @@ export default function Settings() {
   const [metaTagsList, setMetaTagsList] = useState<{ id: string; name: string }[]>([])
   const [metaCampaignPhone, setMetaCampaignPhone] = useState('')
 
+  // AI Identity & Knowledge Base State
+  const [prompt, setPrompt] = useState('')
+  const [aiName, setAiName] = useState('Bia')
+  const [aiVoiceId, setAiVoiceId] = useState('bia_consultora')
+  const [aiAvatarStyle, setAiAvatarStyle] = useState('foco_luxo')
+  const [aiAvatarFile, setAiAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  const [kbEntry, setKbEntry] = useState<KnowledgeBaseEntry | null>(null)
+  const [site, setSite] = useState('')
+  const [tags, setTags] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // UI State
   const [newTagName, setNewTagName] = useState('')
   const [newTagId, setNewTagId] = useState('')
-  const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [gtmStatus, setGtmStatus] = useState<'checking' | 'active' | 'error'>('checking')
   const [lastFbTraceId, setLastFbTraceId] = useState('')
   const [lastErrorMsg, setLastErrorMsg] = useState('')
   const [lastErrorCode, setLastErrorCode] = useState<number | string>('')
-  const [missingScopes, setMissingScopes] = useState<string[]>([])
 
-  const [initialMeta, setInitialMeta] = useState({
+  const [initialState, setInitialState] = useState({
     pixel: '',
     test: '',
     capiToken: '',
@@ -84,8 +163,10 @@ export default function Settings() {
     prompt: '',
     aiName: '',
     aiVoiceId: '',
-    aiAvatar: '',
+    aiAvatarStyle: '',
     campaignPhone: '',
+    site: '',
+    kbTags: '',
   })
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -104,8 +185,20 @@ export default function Settings() {
         console.error('Failed to load cadences:', error)
       }
     }
+    const loadKb = async () => {
+      if (user?.id) {
+        const entry = await getFirstKnowledgeBaseEntry(user.id)
+        if (entry) {
+          setKbEntry(entry)
+          setSite(entry.site || '')
+          setTags(entry.tags || '')
+        }
+      }
+    }
+
     if (user) {
       loadCadences()
+      loadKb()
     }
   }, [user])
 
@@ -118,40 +211,12 @@ export default function Settings() {
     }
   })
 
-  const activeCadences = cadences.filter((c) => c.is_active)
-  const activeCadencesCount = activeCadences.length
-
-  const getCadenceIssues = (cadence: Cadence) => {
-    const issues = []
-    if (!cadence.title?.trim()) issues.push('Sem título')
-    if (!cadence.content?.trim()) issues.push('Sem conteúdo')
-    return issues
-  }
-
-  const intactCadencesCount = activeCadences.filter((c) => getCadenceIssues(c).length === 0).length
-
-  const handleSaveCadenceInstructions = async () => {
-    if (!editingCadence) return
-    setIsSavingCadence(true)
-    try {
-      await updateCadence(editingCadence.id, {
-        ai_instructions: editAiInstructions,
-      })
-      toast({
-        title: 'Regras de IA atualizadas',
-        description: 'As regras da cadência foram salvas com sucesso.',
-      })
-      setEditingCadence(null)
-    } catch (error) {
-      toast({
-        title: 'Erro ao salvar',
-        description: 'Ocorreu um erro ao atualizar a cadência.',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsSavingCadence(false)
+  useRealtime('knowledge_base', async (e) => {
+    if (user?.id && (e.record.user_id === user.id || e.record.id === kbEntry?.id)) {
+      const entry = await getFirstKnowledgeBaseEntry(user.id)
+      if (entry) setKbEntry(entry)
     }
-  }
+  })
 
   useRealtime('users', (e) => {
     if (e.action === 'update' && e.record.id === user?.id) {
@@ -183,7 +248,7 @@ export default function Settings() {
   }, [])
 
   useEffect(() => {
-    if (user && !isInitialized) {
+    if (user && !isInitialized && kbEntry !== undefined) {
       setMetaPixelId(user.meta_pixel_id || '')
       setMetaTestEventCode(user.meta_test_event_code || '')
       setMetaCapiToken(user.meta_capi_token || '')
@@ -191,33 +256,61 @@ export default function Settings() {
       setMetaTagsList(user.meta_tags_list || [])
 
       setPrompt(user.ai_instructions || '')
-      setAiName(user.ai_name || '')
-      setAiVoiceId(user.ai_voice_id || '')
+      setAiName(user.ai_name || 'Bia')
 
-      setInitialMeta({
+      let voice = 'bia_consultora'
+      let style = 'foco_luxo'
+      if (user.ai_voice_id) {
+        try {
+          if (user.ai_voice_id.startsWith('{')) {
+            const parsed = JSON.parse(user.ai_voice_id)
+            voice = parsed.voice || voice
+            style = parsed.avatarStyle || style
+          } else {
+            voice = user.ai_voice_id
+          }
+        } catch (e) {
+          voice = user.ai_voice_id
+        }
+      }
+      setAiVoiceId(voice)
+      setAiAvatarStyle(style)
+
+      if (user.ai_avatar) {
+        setAvatarPreview(pb.files.getURL(user, user.ai_avatar))
+      } else {
+        setAvatarPreview(null)
+      }
+
+      setInitialState({
         pixel: user.meta_pixel_id || '',
         test: user.meta_test_event_code || '',
         capiToken: user.meta_capi_token || '',
         tags: JSON.stringify(user.meta_tags_list || []),
         prompt: user.ai_instructions || '',
-        aiName: user.ai_name || '',
-        aiVoiceId: user.ai_voice_id || '',
-        aiAvatar: user.ai_avatar || '',
+        aiName: user.ai_name || 'Bia',
+        aiVoiceId: voice,
+        aiAvatarStyle: style,
         campaignPhone: user.meta_campaign_phone || '',
+        site: kbEntry?.site || '',
+        kbTags: kbEntry?.tags || '',
       })
       setIsInitialized(true)
     }
-  }, [user, isInitialized])
+  }, [user, isInitialized, kbEntry])
 
   const isDirty =
-    metaPixelId !== initialMeta.pixel ||
-    metaTestEventCode !== initialMeta.test ||
-    metaCapiToken !== initialMeta.capiToken ||
-    metaCampaignPhone !== initialMeta.campaignPhone ||
-    JSON.stringify(metaTagsList) !== initialMeta.tags ||
-    prompt !== initialMeta.prompt ||
-    aiName !== initialMeta.aiName ||
-    aiVoiceId !== initialMeta.aiVoiceId ||
+    metaPixelId !== initialState.pixel ||
+    metaTestEventCode !== initialState.test ||
+    metaCapiToken !== initialState.capiToken ||
+    metaCampaignPhone !== initialState.campaignPhone ||
+    JSON.stringify(metaTagsList) !== initialState.tags ||
+    prompt !== initialState.prompt ||
+    aiName !== initialState.aiName ||
+    aiVoiceId !== initialState.aiVoiceId ||
+    aiAvatarStyle !== initialState.aiAvatarStyle ||
+    site !== initialState.site ||
+    tags !== initialState.kbTags ||
     aiAvatarFile !== null
 
   const shouldBlock = useCallback(
@@ -267,7 +360,7 @@ export default function Settings() {
     return { cleanPixelId, cleanTestCode, cleanCapiToken, cleanCampaignPhone }
   }
 
-  const handleSave = async () => {
+  const handleSaveAll = async () => {
     setIsSaving(true)
     try {
       if (!user?.id) throw new Error('Usuário não autenticado')
@@ -279,188 +372,93 @@ export default function Settings() {
       formData.append('meta_capi_token', cleanCapiToken)
       formData.append('meta_campaign_phone', cleanCampaignPhone)
       formData.append('meta_tags_list', JSON.stringify(metaTagsList))
+
       formData.append('ai_instructions', prompt.substring(0, 100000))
       formData.append('ai_name', aiName)
-      formData.append('ai_voice_id', aiVoiceId)
+      const voiceJson = JSON.stringify({ voice: aiVoiceId, avatarStyle: aiAvatarStyle })
+      formData.append('ai_voice_id', voiceJson)
 
       if (aiAvatarFile) {
         formData.append('ai_avatar', aiAvatarFile)
       }
 
-      if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capiToken) {
+      let requiresTest = false
+      if (cleanPixelId !== initialState.pixel || cleanCapiToken !== initialState.capiToken) {
         formData.append('meta_token_status', 'untested')
         formData.append('meta_last_validated', '')
+        requiresTest = true
       }
 
       const updatedUser = await pb.collection('users').update(user.id, formData)
+
+      let newKb
+      if (kbEntry?.id) {
+        newKb = await updateKnowledgeBaseEntry(kbEntry.id, { site, tags })
+      } else {
+        newKb = await createKnowledgeBaseEntry({ user_id: user.id, site, tags })
+      }
+      setKbEntry(newKb)
+
       await pb.collection('users').authRefresh()
 
-      setInitialMeta({
+      setInitialState({
         pixel: updatedUser.meta_pixel_id || '',
         test: updatedUser.meta_test_event_code || '',
         capiToken: updatedUser.meta_capi_token || '',
         tags: JSON.stringify(updatedUser.meta_tags_list || []),
         prompt: updatedUser.ai_instructions || '',
-        aiName: updatedUser.ai_name || '',
-        aiVoiceId: updatedUser.ai_voice_id || '',
-        aiAvatar: updatedUser.ai_avatar || '',
+        aiName: updatedUser.ai_name || 'Bia',
+        aiVoiceId: aiVoiceId,
+        aiAvatarStyle: aiAvatarStyle,
         campaignPhone: updatedUser.meta_campaign_phone || '',
+        site: newKb.site || '',
+        kbTags: newKb.tags || '',
       })
       setAiAvatarFile(null)
 
-      setMetaPixelId(cleanPixelId)
-      setMetaTestEventCode(cleanTestCode)
-      setMetaCapiToken(cleanCapiToken)
-      setMetaCampaignPhone(cleanCampaignPhone)
-
-      setTimeout(() => {
-        setIsSaving(false)
+      if (requiresTest && cleanPixelId && cleanCapiToken) {
         toast({
-          title: 'Configurações de IA salvas com sucesso!',
-          description: 'As alterações foram aplicadas com sucesso.',
+          title: 'Configurações salvas!',
+          description: 'Validando conexão com o Meta Ads...',
         })
-      }, 500)
+        try {
+          await pb.send('/backend/v1/meta-test-connection', {
+            method: 'POST',
+            body: JSON.stringify({}),
+            headers: { 'Content-Type': 'application/json' },
+          })
+          await pb.collection('users').authRefresh()
+          toast({
+            title: 'Sincronização bem-sucedida',
+            description: 'O Pixel ID e Token CAPI foram validados e a IA está online.',
+          })
+        } catch (testError: any) {
+          await pb.collection('users').authRefresh()
+          const errorMsg = testError.response?.message || 'Verifique as credenciais.'
+          setLastErrorMsg(errorMsg)
+          toast({
+            title: 'Erro de Sincronização com o Meta',
+            description: `Falha na API: ${errorMsg}`,
+            variant: 'destructive',
+          })
+        }
+      } else {
+        toast({
+          title: 'Configurações salvas com sucesso!',
+          description: 'A identidade da IA e parâmetros foram atualizados.',
+        })
+      }
     } catch (error: any) {
+      const fieldErrors = Object.values(error.response?.data || {})
+        .map((e: any) => e.message)
+        .join(', ')
+      toast({
+        title: 'Erro ao salvar',
+        description: fieldErrors || 'Verifique os dados e tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
       setIsSaving(false)
-      const fieldErrors = Object.values(error.response?.data || {})
-        .map((e: any) => e.message)
-        .join(', ')
-      toast({
-        title: 'Erro ao salvar',
-        description: fieldErrors || 'Verifique os dados e tente novamente.',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleSaveAI = async () => {
-    setIsSavingAI(true)
-    try {
-      if (!user?.id) throw new Error('Usuário não autenticado')
-
-      const formData = new FormData()
-      formData.append('ai_instructions', prompt.substring(0, 100000))
-      formData.append('ai_name', aiName)
-      formData.append('ai_voice_id', aiVoiceId)
-
-      if (aiAvatarFile) {
-        formData.append('ai_avatar', aiAvatarFile)
-      }
-
-      const updatedUser = await pb.collection('users').update(user.id, formData)
-      await pb.collection('users').authRefresh()
-
-      setInitialMeta((prev) => ({
-        ...prev,
-        prompt: updatedUser.ai_instructions || '',
-        aiName: updatedUser.ai_name || '',
-        aiVoiceId: updatedUser.ai_voice_id || '',
-        aiAvatar: updatedUser.ai_avatar || '',
-      }))
-      setAiAvatarFile(null)
-
-      toast({
-        title: 'Configurações de IA salvas com sucesso!',
-        description: 'A identidade e comportamento foram atualizados.',
-      })
-    } catch (error: any) {
-      const fieldErrors = Object.values(error.response?.data || {})
-        .map((e: any) => e.message)
-        .join(', ')
-      toast({
-        title: 'Erro ao salvar',
-        description:
-          fieldErrors || 'Não foi possível salvar as configurações de IA. Verifique os dados.',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsSavingAI(false)
-    }
-  }
-
-  const handleSaveMeta = async () => {
-    setIsSavingMeta(true)
-    try {
-      if (!user?.id) throw new Error('Usuário não autenticado')
-      const { cleanPixelId, cleanTestCode, cleanCapiToken, cleanCampaignPhone } = getCleanMeta()
-
-      const updateData: any = {
-        meta_pixel_id: cleanPixelId,
-        meta_test_event_code: cleanTestCode,
-        meta_capi_token: cleanCapiToken,
-        meta_campaign_phone: cleanCampaignPhone,
-        meta_tags_list: metaTagsList,
-      }
-
-      if (cleanPixelId !== initialMeta.pixel || cleanCapiToken !== initialMeta.capiToken) {
-        updateData.meta_token_status = 'untested'
-        updateData.meta_last_validated = ''
-      }
-
-      const updatedUser = await pb.collection('users').update(user.id, updateData)
-      await pb.collection('users').authRefresh()
-
-      setInitialMeta((prev) => ({
-        ...prev,
-        pixel: updatedUser.meta_pixel_id || '',
-        test: updatedUser.meta_test_event_code || '',
-        capiToken: updatedUser.meta_capi_token || '',
-        campaignPhone: updatedUser.meta_campaign_phone || '',
-        tags: JSON.stringify(updatedUser.meta_tags_list || []),
-      }))
-
-      setMetaPixelId(cleanPixelId)
-      setMetaTestEventCode(cleanTestCode)
-      setMetaCapiToken(cleanCapiToken)
-      setMetaCampaignPhone(cleanCampaignPhone)
-
-      toast({
-        title: 'Configurações do Meta salvas!',
-        description: 'As alterações foram aplicadas com sucesso. Testando conexão...',
-      })
-
-      try {
-        await pb.send('/backend/v1/meta-test-connection', {
-          method: 'POST',
-          body: JSON.stringify({
-            pixelId: cleanPixelId,
-            capiToken: cleanCapiToken,
-          }),
-          headers: { 'Content-Type': 'application/json' },
-        })
-        await pb.collection('users').authRefresh()
-        setMissingScopes([])
-        toast({
-          title: 'Conexão bem-sucedida',
-          description:
-            'O Pixel ID e Token CAPI foram validados com sucesso e estão prontos para uso.',
-        })
-      } catch (testError: any) {
-        await pb.collection('users').authRefresh()
-        const resData = testError.response || {}
-        setLastFbTraceId(resData.fbtrace_id || '')
-        setLastErrorCode(resData.code || '')
-        const errorMsg = resData.message || 'Verifique as credenciais.'
-        setLastErrorMsg(errorMsg)
-        setMissingScopes(resData.missing_scopes || [])
-
-        toast({
-          title: 'Configurações salvas, mas falha no teste com o Meta',
-          description: `Erro da API Meta: ${errorMsg}`,
-          variant: 'destructive',
-        })
-      }
-    } catch (error: any) {
-      const fieldErrors = Object.values(error.response?.data || {})
-        .map((e: any) => e.message)
-        .join(', ')
-      toast({
-        title: 'Erro ao salvar',
-        description: fieldErrors || 'Verifique os dados e tente novamente.',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsSavingMeta(false)
     }
   }
 
@@ -476,13 +474,11 @@ export default function Settings() {
 
     setIsTestingConnection(true)
     try {
-      // Body is intentionally empty to pull directly from the DB's single source of truth
       await pb.send('/backend/v1/meta-test-connection', {
         method: 'POST',
         body: JSON.stringify({}),
         headers: { 'Content-Type': 'application/json' },
       })
-      setMissingScopes([])
       await pb.collection('users').authRefresh()
       toast({
         title: 'Conexão bem-sucedida',
@@ -491,22 +487,12 @@ export default function Settings() {
       })
     } catch (error: any) {
       const resData = error.response || {}
-
       let errorMsg = resData.message || 'Verifique as credenciais.'
-      let fbtraceId = resData.fbtrace_id || ''
-      let code = resData.code || ''
-      let mScopes = resData.missing_scopes || []
-
-      setLastFbTraceId(fbtraceId)
-      setLastErrorCode(code)
       setLastErrorMsg(errorMsg)
-      setMissingScopes(mScopes)
-
       await pb.collection('users').authRefresh()
-
       toast({
-        title: 'Erro de Conexão com o Meta',
-        description: `Falha na API: ${errorMsg} ${code ? `(Código: ${code})` : ''}`,
+        title: 'Erro de Sincronização',
+        description: `Falha na API: ${errorMsg}`,
         variant: 'destructive',
       })
     } finally {
@@ -514,10 +500,114 @@ export default function Settings() {
     }
   }
 
-  // Status Logic variables
-  const isPixelConfigured = metaPixelId.trim().length > 0
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0 || !user) return
 
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      let xmlContextToAdd = ''
+      for (const file of Array.from(files)) {
+        if (file.name.toLowerCase().endsWith('.xml')) {
+          try {
+            const text = await file.text()
+            const parser = new DOMParser()
+            const xmlDoc = parser.parseFromString(text, 'text/xml')
+            const elements = Array.from(xmlDoc.getElementsByTagName('*'))
+            const extractedText = elements
+              .map((el) => {
+                return Array.from(el.childNodes)
+                  .filter((node) => node.nodeType === Node.TEXT_NODE)
+                  .map((node) => node.textContent?.trim())
+                  .filter(Boolean)
+                  .join(' ')
+              })
+              .filter(Boolean)
+              .join('\n')
+            const finalContext = extractedText || text
+            xmlContextToAdd += `\n\n--- Conteúdo Estruturado (${file.name}) ---\n${finalContext}\n---------------------------\n`
+          } catch (e) {
+            console.error('Failed to parse XML file:', e)
+          }
+        }
+      }
+
+      if (kbEntry?.id) {
+        Array.from(files).forEach((file) => formData.append('attachments+', file))
+        if (xmlContextToAdd) {
+          const currentContent = kbEntry.content || ''
+          formData.append('content', currentContent + xmlContextToAdd)
+        }
+        const updatedEntry = await pb
+          .collection('knowledge_base')
+          .update<KnowledgeBaseEntry>(kbEntry.id, formData)
+        setKbEntry(updatedEntry)
+      } else {
+        formData.append('user_id', user.id)
+        formData.append('site', site)
+        formData.append('tags', tags)
+        if (xmlContextToAdd) {
+          formData.append('content', xmlContextToAdd)
+        }
+        Array.from(files).forEach((file) => formData.append('attachments', file))
+        const newEntry = await pb.collection('knowledge_base').create<KnowledgeBaseEntry>(formData)
+        setKbEntry(newEntry)
+      }
+
+      toast({ title: 'Arquivo enviado com sucesso e integrado à base de conhecimento' })
+    } catch (err) {
+      toast({ title: 'Erro ao enviar arquivo', variant: 'destructive' })
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleDeleteFile = async (filenameToDelete: string) => {
+    if (!kbEntry?.id || !user) return
+    try {
+      const formData = new FormData()
+      formData.append('attachments-', filenameToDelete)
+      const updatedEntry = await pb
+        .collection('knowledge_base')
+        .update<KnowledgeBaseEntry>(kbEntry.id, formData)
+      setKbEntry(updatedEntry)
+      toast({ title: 'Arquivo removido com sucesso' })
+    } catch (err) {
+      toast({ title: 'Erro ao remover arquivo', variant: 'destructive' })
+    }
+  }
+
+  const handleSaveCadenceInstructions = async () => {
+    if (!editingCadence) return
+    setIsSavingCadence(true)
+    try {
+      await updateCadence(editingCadence.id, {
+        ai_instructions: editAiInstructions,
+      })
+      toast({ title: 'Regras de IA atualizadas na cadência' })
+      setEditingCadence(null)
+    } catch (error) {
+      toast({ title: 'Erro ao salvar', variant: 'destructive' })
+    } finally {
+      setIsSavingCadence(false)
+    }
+  }
+
+  const activeCadences = cadences.filter((c) => c.is_active)
+  const activeCadencesCount = activeCadences.length
+  const getCadenceIssues = (cadence: Cadence) => {
+    const issues = []
+    if (!cadence.title?.trim()) issues.push('Sem título')
+    if (!cadence.content?.trim()) issues.push('Sem conteúdo')
+    return issues
+  }
+  const intactCadencesCount = activeCadences.filter((c) => getCadenceIssues(c).length === 0).length
+
+  // Meta Status Logic
   const metaTokenStatus = user?.meta_token_status || 'untested'
+  const isPixelConfigured = metaPixelId.trim().length > 0
 
   let connectionBadgeText = 'Não Testado'
   let connectionBadgeColor = 'bg-muted text-muted-foreground'
@@ -540,14 +630,11 @@ export default function Settings() {
     metaTokenStatus === 'expired' ||
     metaTokenStatus === 'untested'
   ) {
-    connectionBadgeText = metaTokenStatus === 'untested' ? 'Não Testado' : 'Erro de Validação'
+    connectionBadgeText = metaTokenStatus === 'untested' ? 'Não Testado' : 'Erro de Sincronização'
     connectionBadgeColor =
       metaTokenStatus === 'untested'
         ? 'bg-muted text-muted-foreground'
         : 'bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20 border'
-  } else {
-    connectionBadgeText = 'Não Testado'
-    connectionBadgeColor = 'bg-muted text-muted-foreground'
   }
 
   const gtmStatusText =
@@ -564,15 +651,14 @@ export default function Settings() {
         : 'bg-amber-500/10 text-amber-600 border-amber-500/20'
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-24">
+    <div className="max-w-5xl mx-auto space-y-6 pb-24">
       <div>
         <h2 className="text-3xl font-bold tracking-tight text-secondary">Configurações da IA</h2>
         <p className="text-muted-foreground mt-2 text-lg">
-          Gerencie o comportamento e o conhecimento do seu agente inteligente.
+          Gerenciamento unificado da identidade, conhecimento e integrações do agente inteligente.
         </p>
       </div>
 
-      {/* Recent Performance Carousel */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Activity className="h-5 w-5 text-primary" />
@@ -584,8 +670,351 @@ export default function Settings() {
       </div>
 
       <div className="grid gap-8">
-        {/* Lead Origins Dashboard */}
         <LeadOriginsDashboard />
+
+        {/* AI Identity Section */}
+        <Card className="border-border shadow-elevation overflow-hidden">
+          <div className="h-1 bg-purple-500 w-full"></div>
+          <CardHeader className="bg-muted/10 pb-4 border-b">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-purple-500/10 rounded-xl">
+                <User className="h-6 w-6 text-purple-500" />
+              </div>
+              <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-xl">Identidade da IA</CardTitle>
+                  <CardDescription>
+                    Personalize o nome, a foto e a voz da sua assistente virtual.
+                  </CardDescription>
+                </div>
+                <Badge
+                  variant={
+                    aiName.trim().length > 0 && prompt.trim().length > 0 ? 'default' : 'secondary'
+                  }
+                  className={cn(
+                    'whitespace-nowrap w-fit',
+                    aiName.trim().length > 0 && prompt.trim().length > 0
+                      ? 'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
+                      : '',
+                  )}
+                >
+                  <Activity className="w-3 h-3 mr-1.5" />
+                  {aiName.trim().length > 0 && prompt.trim().length > 0 ? 'IA Ativa' : 'IA Inativa'}
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="flex flex-col lg:flex-row gap-8 mb-8">
+              <div className="flex flex-col items-center space-y-4 lg:w-1/4">
+                <Avatar className="h-32 w-32 border-4 border-background shadow-md">
+                  <AvatarImage
+                    src={
+                      avatarPreview ||
+                      `https://img.usecurling.com/p/256/256?q=${AVATAR_STYLES.find((s) => s.id === aiAvatarStyle)?.query}&dpr=2`
+                    }
+                    className="object-cover bg-muted"
+                  />
+                  <AvatarFallback className="text-3xl bg-primary/10 text-primary font-medium">
+                    {aiName?.charAt(0)?.toUpperCase() || 'B'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="text-center w-full">
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/webp"
+                    className="hidden"
+                    ref={avatarInputRef}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        setAiAvatarFile(file)
+                        setAvatarPreview(URL.createObjectURL(file))
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="w-full max-w-[200px]"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Personalizado
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-8">
+                <div className="space-y-2">
+                  <Label htmlFor="ai_name" className="text-base font-semibold text-secondary">
+                    Nome da IA <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="ai_name"
+                    placeholder="Ex: Bia"
+                    value={aiName}
+                    onChange={(e) => setAiName(e.target.value)}
+                    className="max-w-md text-lg font-medium bg-muted/30"
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <Label className="text-base font-semibold text-secondary">
+                    Estilo Visual da IA (Avatar)
+                  </Label>
+                  <RadioGroup
+                    value={aiAvatarStyle}
+                    onValueChange={setAiAvatarStyle}
+                    className="grid grid-cols-1 xl:grid-cols-3 gap-4"
+                  >
+                    {AVATAR_STYLES.map((style) => (
+                      <div key={style.id}>
+                        <RadioGroupItem
+                          value={style.id}
+                          id={`avatar-${style.id}`}
+                          className="peer sr-only"
+                        />
+                        <Label
+                          htmlFor={`avatar-${style.id}`}
+                          className="flex flex-col rounded-xl border-2 border-muted bg-card p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer h-full transition-all"
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 bg-muted rounded-md text-foreground peer-data-[state=checked]:bg-primary peer-data-[state=checked]:text-primary-foreground transition-colors">
+                              <style.icon className="h-4 w-4" />
+                            </div>
+                            <span className="font-semibold text-sm">{style.name}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground leading-relaxed flex-1">
+                            {style.description}
+                          </span>
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-8 space-y-6">
+              <div className="space-y-4">
+                <Label className="text-base font-semibold text-secondary">Perfil de Voz</Label>
+                <RadioGroup
+                  value={aiVoiceId}
+                  onValueChange={setAiVoiceId}
+                  className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                >
+                  {VOICE_PROFILES.map((profile) => (
+                    <div key={profile.id}>
+                      <RadioGroupItem
+                        value={profile.id}
+                        id={`voice-${profile.id}`}
+                        className="peer sr-only"
+                      />
+                      <Label
+                        htmlFor={`voice-${profile.id}`}
+                        className="flex flex-col items-center text-center rounded-xl border-2 border-muted bg-card p-5 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer h-full transition-all relative overflow-hidden group"
+                      >
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="p-1.5 rounded-full bg-muted text-muted-foreground hover:text-foreground">
+                                <Info className="h-4 w-4" />
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="text-sm p-3 space-y-1" side="top">
+                              <p>
+                                <strong>Estabilidade:</strong> {profile.stability}%
+                              </p>
+                              <p>
+                                <strong>Clareza:</strong> {profile.clarity}%
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3 text-primary transition-colors peer-data-[state=checked]:bg-primary peer-data-[state=checked]:text-primary-foreground">
+                          <Volume2 className="h-6 w-6" />
+                        </div>
+                        <span className="font-semibold mb-1 text-base">{profile.name}</span>
+                        <span className="text-xs text-muted-foreground mb-4">{profile.tone}</span>
+                        <div className="w-full mt-auto pt-4 border-t flex justify-around text-xs text-muted-foreground">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="font-medium text-foreground text-sm">
+                              {profile.stability}%
+                            </span>
+                            <span className="text-[10px] uppercase tracking-wider">
+                              Estabilidade
+                            </span>
+                          </div>
+                          <div className="w-px h-8 bg-border"></div>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="font-medium text-foreground text-sm">
+                              {profile.clarity}%
+                            </span>
+                            <span className="text-[10px] uppercase tracking-wider">Clareza</span>
+                          </div>
+                        </div>
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* AI Knowledge Base Section */}
+        <Card className="border-border shadow-elevation overflow-hidden">
+          <div className="h-1 bg-indigo-500 w-full"></div>
+          <CardHeader className="bg-muted/10 pb-4 border-b">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-500/10 rounded-xl">
+                <BookOpen className="h-6 w-6 text-indigo-600" />
+              </div>
+              <div>
+                <CardTitle className="text-xl">Base de Conhecimento e Comportamento</CardTitle>
+                <CardDescription>
+                  Forneça o contexto, regras (Prompt) e documentos para guiar o atendimento.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-6">
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <Label htmlFor="system-prompt" className="text-base font-semibold text-secondary">
+                  Prompt do Sistema (Regras Principais) <span className="text-destructive">*</span>
+                </Label>
+                <span className="text-xs text-muted-foreground font-mono">
+                  {prompt.length.toLocaleString('pt-BR')} / 100.000
+                </span>
+              </div>
+              <Textarea
+                id="system-prompt"
+                placeholder="Ex: Você é um atendente..."
+                className="min-h-[250px] resize-y bg-card border-muted-foreground/20 font-mono text-sm shadow-inner focus-visible:ring-indigo-500"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                maxLength={100000}
+              />
+              <div className="bg-indigo-500/5 rounded-lg p-3 flex items-start gap-2 border border-indigo-500/10">
+                <CheckCircle2 className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  <strong className="text-indigo-600 font-semibold">Dica:</strong> Especifique o tom
+                  de voz, o idioma padrão, restrições de assunto e como a IA deve lidar com
+                  situações que não sabe responder. O CRM e as cadências herdam essas regras.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2 pt-4 border-t">
+              <div className="space-y-2">
+                <Label
+                  htmlFor="site"
+                  className="flex items-center gap-2 text-sm font-semibold text-secondary"
+                >
+                  <Globe className="h-4 w-4" />
+                  Site de Referência
+                </Label>
+                <Input
+                  id="site"
+                  placeholder="Ex: https://meusite.com.br"
+                  value={site}
+                  onChange={(e) => setSite(e.target.value)}
+                  className="bg-muted/30"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label
+                  htmlFor="tags"
+                  className="flex items-center gap-2 text-sm font-semibold text-secondary"
+                >
+                  <Tags className="h-4 w-4" />
+                  Tags de Contexto
+                </Label>
+                <Input
+                  id="tags"
+                  placeholder="Ex: Imóveis, Lançamento"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  className="bg-muted/30"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-6 border-t">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <Label className="flex items-center gap-2 text-base font-semibold text-secondary">
+                    <Paperclip className="h-4 w-4" />
+                    Arquivos Anexos (Documentação)
+                  </Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Faça upload de documentos (PDF, TXT, DOCX, XML) para a IA usar como contexto
+                    adicional.
+                  </p>
+                </div>
+                <div>
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept=".pdf,.txt,.doc,.docx,.xml,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/xml,text/xml"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    {uploading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
+                    )}
+                    {uploading ? 'Enviando...' : 'Subir Arquivos'}
+                  </Button>
+                </div>
+              </div>
+
+              {kbEntry?.attachments && kbEntry.attachments.length > 0 && (
+                <ul className="space-y-2 mt-4">
+                  {kbEntry.attachments.map((filename, i) => (
+                    <li
+                      key={i}
+                      className="flex items-center justify-between p-3 bg-muted/20 rounded-md border text-sm"
+                    >
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                        <a
+                          href={pb.files.getURL(kbEntry, filename)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:underline text-foreground truncate font-medium"
+                        >
+                          {filename}
+                        </a>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteFile(filename)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Cadence Audit */}
         <Card className="border-border shadow-elevation overflow-hidden">
@@ -666,7 +1095,7 @@ export default function Settings() {
                                 setEditAiInstructions(cadence.ai_instructions || '')
                               }}
                             >
-                              Editar Regras
+                              Editar Regras Específicas
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -676,215 +1105,10 @@ export default function Settings() {
                 </TableBody>
               </Table>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Cadence Management */}
-        <Card className="border-border shadow-elevation overflow-hidden">
-          <div className="h-1 bg-purple-500 w-full"></div>
-          <CardHeader className="bg-muted/10 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-500/10 rounded-xl">
-                <SettingsIcon className="h-6 w-6 text-purple-500" />
-              </div>
-              <div>
-                <CardTitle className="text-xl">Gerenciamento de Cadências (Pipeline CRM)</CardTitle>
-                <CardDescription>
-                  Configure os gatilhos e objetivos para as 10 fases do seu processo comercial
-                  automático.
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6 space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-3 p-4 border rounded-xl bg-muted/20">
-                <Label className="text-sm font-semibold text-secondary">
-                  Gatilho Fase 1 para 2 (Contato Inicial)
-                </Label>
-                <Input defaultValue="Cliente enviou a primeira mensagem (Lead Novo)" />
-                <p className="text-xs text-muted-foreground">
-                  Regra avaliada pela IA para iniciar a primeira tentativa de contato.
-                </p>
-              </div>
-              <div className="space-y-3 p-4 border rounded-xl bg-muted/20">
-                <Label className="text-sm font-semibold text-secondary">
-                  Gatilho Fase 4 para 5 (Qualificação)
-                </Label>
-                <Input defaultValue="IA identificou dor de negócio e confirmou budget" />
-                <p className="text-xs text-muted-foreground">
-                  Critério de sucesso estabelecido para marcar como Qualificado.
-                </p>
-              </div>
-            </div>
-            <Button variant="outline" className="w-full mt-2 font-medium">
-              Ver e editar todas as 10 configurações de cadência
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* AI Identity */}
-        <Card className="border-border shadow-elevation overflow-hidden">
-          <div className="h-1 bg-primary w-full"></div>
-          <CardHeader className="bg-muted/10 pb-4">
-            <div className="flex items-center gap-3 w-full">
-              <div className="p-2.5 bg-primary/10 rounded-xl">
-                <SettingsIcon className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <CardTitle className="text-xl">Identidade da IA</CardTitle>
-                  <CardDescription>
-                    Defina o nome, avatar e voz do seu agente inteligente.
-                  </CardDescription>
-                </div>
-                <Badge
-                  variant={
-                    aiName.trim().length > 0 && prompt.trim().length > 0 ? 'default' : 'secondary'
-                  }
-                  className={cn(
-                    'whitespace-nowrap w-fit',
-                    aiName.trim().length > 0 && prompt.trim().length > 0
-                      ? 'bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20 border'
-                      : '',
-                  )}
-                >
-                  <Activity className="w-3 h-3 mr-1.5" />
-                  {aiName.trim().length > 0 && prompt.trim().length > 0 ? 'IA Ativa' : 'IA Inativa'}
-                </Badge>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6 space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-              <Avatar className="h-20 w-20 border-2 border-muted shadow-sm shrink-0">
-                <AvatarImage
-                  src={
-                    aiAvatarFile
-                      ? URL.createObjectURL(aiAvatarFile)
-                      : user?.ai_avatar
-                        ? pb.files.getURL(user, user.ai_avatar)
-                        : 'https://img.usecurling.com/ppl/medium?gender=female&seed=22'
-                  }
-                />
-                <AvatarFallback className="text-xl font-semibold bg-primary/5 text-primary">
-                  {aiName ? aiName.charAt(0).toUpperCase() : 'IA'}
-                </AvatarFallback>
-              </Avatar>
-              <div className="space-y-1.5 w-full max-w-sm">
-                <Label htmlFor="ai-avatar-upload" className="text-sm font-semibold text-secondary">
-                  Avatar da IA
-                </Label>
-                <Input
-                  id="ai-avatar-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setAiAvatarFile(e.target.files?.[0] || null)}
-                  className="text-xs cursor-pointer bg-muted/30"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Imagem recomendada: 256x256px (JPG, PNG).
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-3">
-                <Label htmlFor="ai-name" className="text-sm font-semibold text-secondary">
-                  Nome da IA <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="ai-name"
-                  value={aiName}
-                  onChange={(e) => setAiName(e.target.value)}
-                  placeholder="Ex: Bia"
-                  className="bg-muted/30"
-                />
-              </div>
-              <div className="space-y-3">
-                <Label htmlFor="ai-voice" className="text-sm font-semibold text-secondary">
-                  ID da Voz (ElevenLabs, etc)
-                </Label>
-                <Input
-                  id="ai-voice"
-                  value={aiVoiceId}
-                  onChange={(e) => setAiVoiceId(e.target.value)}
-                  placeholder="Ex: pNInz6obpgDQGcFmaJcg"
-                  className="bg-muted/30"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end pt-4 border-t mt-4">
-              <Button onClick={handleSaveAI} disabled={isSavingAI} className="gap-2">
-                {isSavingAI ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {isSavingAI ? 'Salvando...' : 'Salvar Identidade'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* AI Personality */}
-        <Card className="border-border shadow-elevation overflow-hidden">
-          <div className="h-1 bg-indigo-500 w-full"></div>
-          <CardHeader className="bg-muted/10 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-indigo-500/10 rounded-xl">
-                <FileText className="h-6 w-6 text-indigo-600" />
-              </div>
-              <div>
-                <CardTitle className="text-xl">Personalidade e Comportamento</CardTitle>
-                <CardDescription>
-                  Defina o prompt do sistema que guiará as respostas da IA.
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6 space-y-4">
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <Label htmlFor="system-prompt" className="text-sm font-semibold text-secondary">
-                  Prompt do Sistema <span className="text-destructive">*</span>
-                </Label>
-                <span className="text-xs text-muted-foreground font-mono">
-                  {prompt.length.toLocaleString('pt-BR')} / 100.000
-                </span>
-              </div>
-              <Textarea
-                id="system-prompt"
-                placeholder="Ex: Você é um atendente..."
-                className="min-h-[250px] resize-y bg-card border-muted-foreground/20 font-mono text-sm shadow-inner focus-visible:ring-indigo-500"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                maxLength={100000}
-              />
-              <div className="bg-indigo-500/5 rounded-lg p-3 flex items-start gap-2 border border-indigo-500/10">
-                <CheckCircle2 className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  <strong className="text-indigo-600 font-semibold">Dica:</strong> Especifique o tom
-                  de voz, o idioma padrão, restrições de assunto e como a IA deve lidar com
-                  situações que não sabe responder.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-4 border-t mt-4">
-              <Button
-                onClick={handleSaveAI}
-                disabled={isSavingAI}
-                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
-              >
-                {isSavingAI ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {isSavingAI ? 'Salvando...' : 'Salvar Comportamento'}
-              </Button>
-            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              <strong>Nota:</strong> As cadências herdam o "Prompt do Sistema" por padrão. Regras
+              editadas aqui atuarão como exceções específicas para a etapa.
+            </p>
           </CardContent>
         </Card>
 
@@ -908,16 +1132,15 @@ export default function Settings() {
                 <Facebook className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <CardTitle className="text-xl">Integração Meta Ads</CardTitle>
+                <CardTitle className="text-xl">Integração Meta Ads & Ingestão</CardTitle>
                 <CardDescription>
-                  Configure o Pixel para rastreamento de eventos e remarketing.
+                  Configure o Pixel, CAPI e os dados de contato do WhatsApp.
                 </CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="pt-6 space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
-              {/* Pixel Configuration */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <Label htmlFor="meta-pixel-id" className="font-semibold text-secondary">
@@ -943,20 +1166,8 @@ export default function Settings() {
                   )}
                   inputMode="numeric"
                 />
-                {metaPixelId.length > 0 && !/^\d+$/.test(metaPixelId) && (
-                  <p className="text-xs text-red-500">
-                    O Pixel ID deve conter apenas números sem espaços.
-                  </p>
-                )}
-                {metaPixelId.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Se vazio, o sistema utilizará o ID padrão:{' '}
-                    <span className="font-mono text-foreground">1522162279584545</span>
-                  </p>
-                )}
               </div>
 
-              {/* Test Event Code Configuration */}
               <div className="space-y-3">
                 <Label
                   htmlFor="meta-test-code"
@@ -973,7 +1184,6 @@ export default function Settings() {
                 />
               </div>
 
-              {/* CAPI Token Configuration */}
               <div className="space-y-3 md:col-span-2">
                 <Label htmlFor="meta-capi-token" className="font-semibold text-secondary">
                   Token da API de Conversões (CAPI)
@@ -989,9 +1199,6 @@ export default function Settings() {
                     className="pl-10 h-11 bg-muted/30 focus-visible:ring-blue-600"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Necessário para sincronização de Remarketing via Meta CAPI.
-                </p>
               </div>
 
               <div className="flex justify-end mt-2 md:col-span-2 items-center">
@@ -999,23 +1206,19 @@ export default function Settings() {
                   <Badge
                     variant="outline"
                     className={cn('h-5 text-[10px] px-2 font-medium', connectionBadgeColor)}
-                    title={
-                      lastErrorMsg ||
-                      (metaTokenStatus === 'invalid'
-                        ? 'Erro de validação do token/Pixel. Teste novamente para ver detalhes.'
-                        : '')
-                    }
+                    title={lastErrorMsg || ''}
                   >
                     {connectionBadgeText}
                   </Badge>
-                  {metaTokenStatus === 'invalid' && lastErrorMsg && (
-                    <span
-                      className="text-[10px] text-destructive max-w-xs truncate"
-                      title={lastErrorMsg}
-                    >
-                      {lastErrorMsg}
-                    </span>
-                  )}
+                  {(metaTokenStatus === 'invalid' || metaTokenStatus === 'Erro de Validação') &&
+                    lastErrorMsg && (
+                      <span
+                        className="text-[10px] text-destructive max-w-xs truncate"
+                        title={lastErrorMsg}
+                      >
+                        {lastErrorMsg}
+                      </span>
+                    )}
                 </div>
                 <Button
                   type="button"
@@ -1056,15 +1259,7 @@ export default function Settings() {
                 <Button
                   variant="secondary"
                   onClick={() => {
-                    if (newTagName && newTagId) {
-                      if (!/^\d+$/.test(newTagId.trim())) {
-                        toast({
-                          title: 'Tag ID Inválido',
-                          description: 'O ID da tag deve conter apenas números.',
-                          variant: 'destructive',
-                        })
-                        return
-                      }
+                    if (newTagName && newTagId && /^\d+$/.test(newTagId.trim())) {
                       setMetaTagsList([...metaTagsList, { name: newTagName, id: newTagId.trim() }])
                       setNewTagName('')
                       setNewTagId('')
@@ -1082,16 +1277,16 @@ export default function Settings() {
                       key={index}
                       className="flex items-center justify-between p-2 text-sm border rounded-md bg-muted/20"
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 flex-1 overflow-hidden">
-                        <span className="font-medium truncate max-w-[200px]">{tag.name}</span>
-                        <span className="text-muted-foreground font-mono bg-muted/50 px-2 py-0.5 rounded text-xs w-fit">
+                      <div className="flex items-center gap-4 flex-1">
+                        <span className="font-medium truncate">{tag.name}</span>
+                        <span className="text-muted-foreground font-mono bg-muted/50 px-2 py-0.5 rounded text-xs">
                           {tag.id}
                         </span>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-red-500 hover:text-red-600 hover:bg-red-500/10 h-8 px-2"
+                        className="text-red-500 hover:bg-red-500/10 h-8 px-2"
                         onClick={() => setMetaTagsList(metaTagsList.filter((_, i) => i !== index))}
                         type="button"
                       >
@@ -1101,17 +1296,11 @@ export default function Settings() {
                   ))}
                 </div>
               )}
-              <p className="text-xs text-muted-foreground">
-                Estas tags são inicializadas automaticamente em todas as páginas para rastreamento
-                simultâneo.
-              </p>
             </div>
 
             <div className="space-y-3 pt-4 border-t">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium text-secondary">
-                  Telefone de Campanha Ativa (Ingestão de Leads)
-                </h3>
+                <h3 className="text-lg font-medium text-secondary">Telefone de Campanha Ativa</h3>
                 <Badge
                   variant="outline"
                   className={cn(
@@ -1130,11 +1319,6 @@ export default function Settings() {
                   {metaCampaignPhone ? 'Online' : 'Não Configurado'}
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Configure o número principal que está recebendo os leads das campanhas do Meta Ads.
-                O Webhook irá identificar as mensagens e criar novos contatos no CRM
-                automaticamente.
-              </p>
               <div className="space-y-3">
                 <Label htmlFor="meta-campaign-phone" className="font-semibold text-secondary">
                   Telefone da Campanha (WhatsApp)
@@ -1144,37 +1328,15 @@ export default function Settings() {
                   placeholder="Ex: 5511999999999"
                   value={metaCampaignPhone}
                   onChange={(e) => setMetaCampaignPhone(e.target.value.replace(/\D/g, ''))}
-                  className={cn(
-                    'bg-muted/30 focus-visible:ring-blue-600',
-                    !metaCampaignPhone && 'border-amber-500/50',
-                  )}
+                  className="bg-muted/30 focus-visible:ring-blue-600"
                   inputMode="numeric"
                 />
-                <p className="text-xs text-muted-foreground">
-                  O sistema verificará este número ao receber o payload do Meta e registrará novos
-                  leads automaticamente em seu painel.
-                </p>
               </div>
-            </div>
-
-            <div className="flex justify-end pt-4 border-t mt-4">
-              <Button
-                onClick={handleSaveMeta}
-                disabled={isSavingMeta}
-                className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {isSavingMeta ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                Salvar Configurações do Meta
-              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Google Tag Manager (GTM) Status Widget */}
+        {/* GTM */}
         <Card className="border-border shadow-elevation overflow-hidden">
           <div className="h-1 bg-green-500 w-full"></div>
           <CardHeader className="bg-muted/10 pb-4 border-b">
@@ -1197,9 +1359,6 @@ export default function Settings() {
                     GTM-MWML5KFQ
                   </span>
                 </h4>
-                <p className="text-sm text-muted-foreground">
-                  Monitoramento de eventos e tracking do sistema.
-                </p>
               </div>
               <Badge
                 variant="outline"
@@ -1216,7 +1375,7 @@ export default function Settings() {
 
         <DiagnosticCenter />
 
-        {/* Integrations & API */}
+        {/* Integrations */}
         <Card className="border-border shadow-elevation">
           <CardHeader className="bg-muted/10 pb-4 border-b">
             <div className="flex items-center gap-3">
@@ -1268,7 +1427,6 @@ export default function Settings() {
         </Card>
       </div>
 
-      {/* Cadence AI Rules Editor Dialog */}
       <Dialog
         open={!!editingCadence}
         onOpenChange={(open) => {
@@ -1279,21 +1437,12 @@ export default function Settings() {
           <DialogHeader>
             <DialogTitle>Editar Regras IA: {editingCadence?.title}</DialogTitle>
             <DialogDescription>
-              Defina as instruções exclusivas que a IA usará ao interagir com leads nesta fase da
-              cadência. O conteúdo e status não serão alterados.
+              Defina instruções exclusivas. Caso vazio, esta cadência herdará o{' '}
+              <strong>Prompt do Sistema</strong> definido na Base de Conhecimento.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <div className="flex justify-between items-center mb-2">
-              <Label htmlFor="cadence-ai-rules" className="text-sm font-semibold text-secondary">
-                Regras e Instruções da IA
-              </Label>
-              <span className="text-xs text-muted-foreground font-mono">
-                {editAiInstructions.length.toLocaleString('pt-BR')} / 100.000
-              </span>
-            </div>
             <Textarea
-              id="cadence-ai-rules"
               placeholder="Descreva como a IA deve se comportar nesta cadência..."
               value={editAiInstructions}
               onChange={(e) => setEditAiInstructions(e.target.value)}
@@ -1312,8 +1461,7 @@ export default function Settings() {
             <Button onClick={handleSaveCadenceInstructions} disabled={isSavingCadence}>
               {isSavingCadence ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Salvando...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...
                 </>
               ) : (
                 'Salvar Regras'
@@ -1323,16 +1471,15 @@ export default function Settings() {
         </DialogContent>
       </Dialog>
 
-      {/* Floating Save Button */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-xl border-t border-border flex justify-end md:pl-[var(--sidebar-width)] z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-        <div className="max-w-4xl w-full mx-auto flex justify-end items-center gap-4 px-4 md:px-0">
+        <div className="max-w-5xl w-full mx-auto flex justify-end items-center gap-4 px-4 md:px-0">
           {isDirty && (
             <span className="text-sm text-amber-500 font-medium hidden sm:inline-block">
               Alterações não salvas
             </span>
           )}
           <Button
-            onClick={handleSave}
+            onClick={handleSaveAll}
             disabled={isSaving}
             className="shadow-md px-8 h-11 hover:scale-105 transition-transform"
           >
@@ -1344,7 +1491,7 @@ export default function Settings() {
             ) : (
               <span className="flex items-center gap-2 font-medium">
                 <Save className="h-5 w-5" />
-                Salvar Alterações
+                Salvar Todas as Configurações da IA
               </span>
             )}
           </Button>
