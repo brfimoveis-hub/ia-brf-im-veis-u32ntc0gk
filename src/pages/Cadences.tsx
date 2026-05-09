@@ -98,6 +98,15 @@ export default function Cadences() {
       return
     }
 
+    if (formData.ai_instructions && formData.ai_instructions.length > 300000) {
+      toast({
+        title: 'Erro de validação',
+        description: 'O limite máximo é de 300.000 caracteres.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
       const fd = new FormData()
@@ -366,6 +375,7 @@ export default function Cadences() {
                     onChange={(e) => setFormData({ ...formData, ai_instructions: e.target.value })}
                     placeholder="Ex: 'Nesta etapa, envie o e-book se o lead demonstrar interesse e tente marcar uma reunião.'"
                     className="min-h-[100px] resize-y bg-primary/5 border-primary/20"
+                    maxLength={300000}
                   />
                 </div>
 

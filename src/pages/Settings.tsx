@@ -366,6 +366,16 @@ export default function Settings() {
       if (!user?.id) throw new Error('Usuário não autenticado')
       const { cleanPixelId, cleanTestCode, cleanCapiToken, cleanCampaignPhone } = getCleanMeta()
 
+      if (prompt.length > 300000) {
+        toast({
+          title: 'Erro de validação',
+          description: 'O limite máximo é de 300.000 caracteres.',
+          variant: 'destructive',
+        })
+        setIsSaving(false)
+        return
+      }
+
       const formData = new FormData()
       formData.append('meta_pixel_id', cleanPixelId)
       formData.append('meta_test_event_code', cleanTestCode)
@@ -373,7 +383,7 @@ export default function Settings() {
       formData.append('meta_campaign_phone', cleanCampaignPhone)
       formData.append('meta_tags_list', JSON.stringify(metaTagsList))
 
-      formData.append('ai_instructions', prompt.substring(0, 100000))
+      formData.append('ai_instructions', prompt)
       formData.append('ai_name', aiName)
       const voiceJson = JSON.stringify({ voice: aiVoiceId, avatarStyle: aiAvatarStyle })
       formData.append('ai_voice_id', voiceJson)
@@ -581,6 +591,16 @@ export default function Settings() {
 
   const handleSaveCadenceInstructions = async () => {
     if (!editingCadence) return
+
+    if (editAiInstructions.length > 300000) {
+      toast({
+        title: 'Erro de validação',
+        description: 'O limite máximo é de 300.000 caracteres.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSavingCadence(true)
     try {
       await updateCadence(editingCadence.id, {
@@ -887,7 +907,7 @@ export default function Settings() {
                   Prompt do Sistema (Regras Principais) <span className="text-destructive">*</span>
                 </Label>
                 <span className="text-xs text-muted-foreground font-mono">
-                  {prompt.length.toLocaleString('pt-BR')} / 100.000
+                  {prompt.length.toLocaleString('pt-BR')} / 300.000
                 </span>
               </div>
               <Textarea
@@ -896,7 +916,7 @@ export default function Settings() {
                 className="min-h-[250px] resize-y bg-card border-muted-foreground/20 font-mono text-sm shadow-inner focus-visible:ring-indigo-500"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                maxLength={100000}
+                maxLength={300000}
               />
               <div className="bg-indigo-500/5 rounded-lg p-3 flex items-start gap-2 border border-indigo-500/10">
                 <CheckCircle2 className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
@@ -1447,7 +1467,7 @@ export default function Settings() {
               value={editAiInstructions}
               onChange={(e) => setEditAiInstructions(e.target.value)}
               className="min-h-[200px] resize-y"
-              maxLength={100000}
+              maxLength={300000}
             />
           </div>
           <DialogFooter>
