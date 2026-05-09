@@ -40,6 +40,15 @@ routerAdd(
         })
       }
 
+      if (res.statusCode === 429) {
+        return e.json(200, {
+          success: false,
+          state: 'disconnected',
+          error:
+            'Limite de instâncias ou requisições atingido. Por favor, tente novamente mais tarde.',
+        })
+      }
+
       if (res.statusCode !== 200) {
         return e.json(200, {
           success: false,
