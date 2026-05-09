@@ -8,6 +8,7 @@ import { format } from 'date-fns'
 import { PHASES } from '@/components/customers/constants'
 import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import { LeadOriginsDashboard } from '@/components/LeadOriginsDashboard'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 
@@ -168,6 +169,8 @@ export default function Index() {
 
   return (
     <div className="flex flex-col h-full space-y-4 pt-2 animate-fade-in-up">
+      <LeadOriginsDashboard />
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">CRM Pipeline</h2>

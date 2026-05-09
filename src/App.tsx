@@ -87,7 +87,7 @@ const router = createBrowserRouter(
               errorElement: <GlobalError />,
               children: [
                 {
-                  path: '/',
+                  index: true,
                   element: (
                     <Suspense fallback={<PageLoader />}>
                       <Index />
