@@ -14,12 +14,12 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { KeyRound, Loader2, ArrowLeft } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
-import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { useAuth } from '@/hooks/use-auth'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
   const { toast } = useToast()
   const { signOut } = useAuth()
 
@@ -32,23 +32,32 @@ export default function ForgotPassword() {
     e.preventDefault()
     setLoading(true)
     const sanitizedEmail = email.trim()
+    setErrorMsg('')
     try {
+      await pb.send('/backend/v1/check-email', {
+        method: 'POST',
+        body: JSON.stringify({ email: sanitizedEmail }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+
       await pb.collection('users').requestPasswordReset(sanitizedEmail)
+
       toast({
         title: 'Email enviado',
-        description: 'Se houver uma conta para este email, um link de redefinição foi enviado.',
+        description: 'Um link de redefinição foi enviado para o seu email.',
       })
       setEmail('')
     } catch (error: any) {
-      const errorMsg = getErrorMessage(error)
-      toast({
-        title: 'Erro ao solicitar redefinição',
-        description:
-          errorMsg.toLowerCase().includes('not found') || error.status === 404
-            ? 'Usuário não encontrado. Verifique se o endereço está correto.'
-            : 'Não foi possível enviar o email de redefinição. Verifique se o endereço está correto.',
-        variant: 'destructive',
-      })
+      if (error.status === 404) {
+        setErrorMsg('Usuário não encontrado. Verifique se o endereço de email está correto.')
+      } else {
+        toast({
+          title: 'Erro ao solicitar redefinição',
+          description:
+            'Não foi possível enviar o email de redefinição. Tente novamente mais tarde.',
+          variant: 'destructive',
+        })
+      }
     } finally {
       setLoading(false)
     }
@@ -72,11 +81,16 @@ export default function ForgotPassword() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  setErrorMsg('')
+                }}
                 required
                 pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
                 title="Por favor, insira um endereço de e-mail válido."
+                className={errorMsg ? 'border-destructive' : ''}
               />
+              {errorMsg && <p className="text-sm text-destructive font-medium">{errorMsg}</p>}
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

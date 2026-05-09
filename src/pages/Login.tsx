@@ -11,16 +11,24 @@ import { Users, Loader2 } from 'lucide-react'
 export default function Login() {
   const [email, setEmail] = useState('brfimoveis@gmail.com')
   const [password, setPassword] = useState('Skip@Pass')
-  const { signIn, user } = useAuth()
+  const { signIn, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
-    if (user) {
+    if (!authLoading && user) {
       navigate('/', { replace: true })
     }
-  }, [user, navigate])
+  }, [user, authLoading, navigate])
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-muted/30">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
