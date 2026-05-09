@@ -156,6 +156,9 @@ export default function Settings() {
   const [lastErrorMsg, setLastErrorMsg] = useState('')
   const [lastErrorCode, setLastErrorCode] = useState<number | string>('')
 
+  const [uazapiDomain, setUazapiDomain] = useState('')
+  const [uazapiToken, setUazapiToken] = useState('')
+
   const [initialState, setInitialState] = useState({
     pixel: '',
     test: '',
@@ -168,6 +171,8 @@ export default function Settings() {
     campaignPhone: '',
     site: '',
     kbTags: '',
+    uazapiDomain: '',
+    uazapiToken: '',
   })
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -284,6 +289,9 @@ export default function Settings() {
         setAvatarPreview(null)
       }
 
+      setUazapiDomain(user.uazapi_domain || '')
+      setUazapiToken(user.uazapi_token || '')
+
       setInitialState({
         pixel: user.meta_pixel_id || '',
         test: user.meta_test_event_code || '',
@@ -296,6 +304,8 @@ export default function Settings() {
         campaignPhone: user.meta_campaign_phone || '',
         site: kbEntry?.site || '',
         kbTags: kbEntry?.tags || '',
+        uazapiDomain: user.uazapi_domain || '',
+        uazapiToken: user.uazapi_token || '',
       })
       setIsInitialized(true)
     }
@@ -313,6 +323,8 @@ export default function Settings() {
     aiAvatarStyle !== initialState.aiAvatarStyle ||
     site !== initialState.site ||
     tags !== initialState.kbTags ||
+    uazapiDomain !== initialState.uazapiDomain ||
+    uazapiToken !== initialState.uazapiToken ||
     aiAvatarFile !== null
 
   const shouldBlock = useCallback(
@@ -379,6 +391,8 @@ export default function Settings() {
       }
 
       const formData = new FormData()
+      formData.append('uazapi_domain', uazapiDomain.trim())
+      formData.append('uazapi_token', uazapiToken.trim())
       formData.append('meta_pixel_id', cleanPixelId)
       formData.append('meta_test_event_code', cleanTestCode)
       formData.append('meta_capi_token', cleanCapiToken)
@@ -425,6 +439,8 @@ export default function Settings() {
         campaignPhone: updatedUser.meta_campaign_phone || '',
         site: newKb.site || '',
         kbTags: newKb.tags || '',
+        uazapiDomain: updatedUser.uazapi_domain || '',
+        uazapiToken: updatedUser.uazapi_token || '',
       })
       setAiAvatarFile(null)
 
@@ -472,8 +488,8 @@ export default function Settings() {
     }
   }
 
-  const testUazapiConnection = async () => {
-    if (isDirty) {
+  const testUazapiConnection = async (silent = false) => {
+    if (!silent && isDirty) {
       toast({
         title: 'Alterações Não Salvas',
         description: 'Por favor, salve as configurações antes de testar a conexão.',
@@ -482,7 +498,7 @@ export default function Settings() {
       return
     }
 
-    setIsTestingUazapi(true)
+    if (!silent) setIsTestingUazapi(true)
     try {
       const phoneToTest = metaCampaignPhone || '5548992098050'
       await pb.send('/backend/v1/uazapi-test-connection', {
@@ -491,22 +507,39 @@ export default function Settings() {
         headers: { 'Content-Type': 'application/json' },
       })
       await pb.collection('users').authRefresh()
-      toast({
-        title: 'Uazapi Conectado',
-        description: 'A conexão foi validada com sucesso.',
-      })
+      if (!silent) {
+        toast({
+          title: 'Uazapi Conectado',
+          description: 'A conexão foi validada com sucesso.',
+        })
+      }
     } catch (error: any) {
       const errorMsg = error.response?.message || getErrorMessage(error)
       await pb.collection('users').authRefresh()
-      toast({
-        title: 'Erro de Conexão Uazapi',
-        description: errorMsg,
-        variant: 'destructive',
-      })
+      if (!silent) {
+        toast({
+          title: 'Erro de Conexão Uazapi',
+          description: errorMsg,
+          variant: 'destructive',
+        })
+      }
     } finally {
-      setIsTestingUazapi(false)
+      if (!silent) setIsTestingUazapi(false)
     }
   }
+
+  const hasAutoTestedUazapi = useRef(false)
+  useEffect(() => {
+    if (
+      isInitialized &&
+      !hasAutoTestedUazapi.current &&
+      user?.uazapi_domain &&
+      user?.uazapi_token
+    ) {
+      hasAutoTestedUazapi.current = true
+      testUazapiConnection(true)
+    }
+  }, [isInitialized, user?.uazapi_domain, user?.uazapi_token])
 
   const testMetaConnection = async () => {
     if (isDirty) {
@@ -1449,11 +1482,9 @@ export default function Settings() {
           </CardHeader>
           <CardContent className="pt-6 space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="uazapi-token" className="font-semibold text-secondary">
-                    Uazapi Token
-                  </Label>
+                  <h3 className="font-semibold text-secondary">Conexão Uazapi</h3>
                   <Badge
                     variant="outline"
                     className={cn(
@@ -1472,27 +1503,55 @@ export default function Settings() {
                         : 'Não Testado'}
                   </Badge>
                 </div>
-                <div className="relative">
-                  <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="uazapi-token"
-                    type="password"
-                    placeholder="••••••••••••••••"
-                    defaultValue="token_simulation_123"
-                    className="pl-10 h-11 bg-muted/30 focus-visible:ring-amber-500"
-                  />
+
+                <div className="space-y-3">
+                  <Label htmlFor="uazapi-domain" className="text-sm font-medium">
+                    Domínio / URL da API
+                  </Label>
+                  <div className="relative">
+                    <Globe className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="uazapi-domain"
+                      type="url"
+                      placeholder="https://iabrfimveis.uazapi.com"
+                      value={uazapiDomain}
+                      onChange={(e) => setUazapiDomain(e.target.value)}
+                      className="pl-10 h-11 bg-muted/30 focus-visible:ring-amber-500"
+                    />
+                  </div>
                 </div>
+
+                <div className="space-y-3">
+                  <Label htmlFor="uazapi-token" className="text-sm font-medium">
+                    Global API Key
+                  </Label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="uazapi-token"
+                      type="password"
+                      placeholder="SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj"
+                      value={uazapiToken}
+                      onChange={(e) => setUazapiToken(e.target.value)}
+                      className="pl-10 h-11 bg-muted/30 focus-visible:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
                 {user?.uazapi_status === 'Error' && user?.uazapi_error && (
-                  <p className="text-[11px] text-destructive mt-1.5 font-medium leading-tight">
-                    {user.uazapi_error}
-                  </p>
+                  <div className="p-3 border border-red-500/20 bg-red-500/10 rounded-md">
+                    <p className="text-xs text-red-600 font-medium leading-tight">
+                      {user.uazapi_error}
+                    </p>
+                  </div>
                 )}
+
                 <div className="flex justify-end pt-2">
                   <Button
                     type="button"
                     variant={user?.uazapi_status === 'Error' ? 'default' : 'outline'}
                     size="sm"
-                    onClick={testUazapiConnection}
+                    onClick={() => testUazapiConnection(false)}
                     disabled={isTestingUazapi}
                     className={
                       user?.uazapi_status === 'Error'

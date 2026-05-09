@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-09T14:13:28.317Z",
+  "generatedAt": "2026-05-09T14:52:13.247Z",
   "collections": [
     {
       "name": "users",
@@ -112,6 +112,18 @@
         },
         {
           "name": "uazapi_error",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uazapi_domain",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uazapi_token",
           "type": "text",
           "required": false,
           "system": false
