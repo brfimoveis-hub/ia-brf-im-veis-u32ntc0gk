@@ -502,7 +502,7 @@ export default function Settings() {
       return
     }
 
-    if (!silent) setIsTestingUazapi(true)
+    setIsTestingUazapi(true)
     try {
       const phoneToTest = metaCampaignPhone || '5548992098050'
       await pb.send('/backend/v1/uazapi-test-connection', {
@@ -518,23 +518,25 @@ export default function Settings() {
         })
       }
     } catch (error: any) {
-      const errorMsg = error.response?.message || getErrorMessage(error)
-      await pb.collection('users').authRefresh()
-      if (!silent) {
-        toast({
-          title: 'Erro de Conexão Uazapi',
-          description: errorMsg,
-          variant: 'destructive',
-        })
+      const status = error.status
+      let errorMsg = error.response?.message || getErrorMessage(error)
+      const phoneToTest = metaCampaignPhone || '5548992098050'
+
+      if (status === 404 || errorMsg.includes('404') || errorMsg.includes("wasn't found")) {
+        errorMsg = `Falha na integridade da conexão Uazapi para o número ${phoneToTest}: The requested resource wasn't found. Verifique as credenciais e o domínio.`
       }
+
+      await pb.collection('users').authRefresh()
+
+      toast({
+        title: 'Erro de Conexão Uazapi',
+        description: errorMsg,
+        variant: 'destructive',
+      })
     } finally {
-      if (!silent) setIsTestingUazapi(false)
+      setIsTestingUazapi(false)
     }
   }
-
-  useEffect(() => {
-    console.log('currentRoute', { component: 'ConfiguracoesCore', path: '/configuracoes' })
-  }, [])
 
   const hasAutoTestedUazapi = useRef(false)
   useEffect(() => {
