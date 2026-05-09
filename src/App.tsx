@@ -20,6 +20,8 @@ const Cadences = lazy(() => import('./pages/Cadences'))
 const Logs = lazy(() => import('./pages/Logs'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Login = lazy(() => import('./pages/Login'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 
 const PageLoader = () => (
   <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
@@ -58,6 +60,22 @@ const router = createBrowserRouter(
           element: (
             <Suspense fallback={<PageLoader />}>
               <Login />
+            </Suspense>
+          ),
+        },
+        {
+          path: '/forgot-password',
+          element: (
+            <Suspense fallback={<PageLoader />}>
+              <ForgotPassword />
+            </Suspense>
+          ),
+        },
+        {
+          path: '/reset-password',
+          element: (
+            <Suspense fallback={<PageLoader />}>
+              <ResetPassword />
             </Suspense>
           ),
         },
