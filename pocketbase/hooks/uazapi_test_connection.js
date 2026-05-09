@@ -42,10 +42,17 @@ routerAdd(
         return e.json(200, { success: true, message: 'Connected successfully', phone })
       } else {
         user.set('uazapi_status', 'error')
-        user.set(
-          'uazapi_error',
-          `A API retornou status HTTP ${res.statusCode}. Verifique as credenciais e o domínio.`,
-        )
+        if (res.statusCode === 404) {
+          user.set(
+            'uazapi_error',
+            `Falha na integridade da conexão Uazapi para o número ${phone}: The requested resource wasn't found. Verifique as credenciais e o domínio.`,
+          )
+        } else {
+          user.set(
+            'uazapi_error',
+            `A API retornou status HTTP ${res.statusCode}. Verifique as credenciais e o domínio.`,
+          )
+        }
         $app.save(user)
         return e.badRequestError(`Falha na conexão: API retornou ${res.statusCode}`)
       }

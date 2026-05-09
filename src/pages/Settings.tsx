@@ -545,7 +545,9 @@ export default function Settings() {
       user?.uazapi_token
     ) {
       hasAutoTestedUazapi.current = true
-      testUazapiConnection(true)
+      setTimeout(() => {
+        testUazapiConnection(true)
+      }, 500)
     }
   }, [isInitialized, user?.uazapi_domain, user?.uazapi_token])
 
