@@ -15,7 +15,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, CheckCircle2, XCircle, AlertCircle, RefreshCw } from 'lucide-react'
 
-export default function Settings() {
+export default function ConfiguracoesCore() {
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -43,9 +43,17 @@ export default function Settings() {
   }, [user])
 
   useEffect(() => {
+    console.log(
+      'System Log: currentRoute path is /configuracoes and the component is NOT Index. Rendered ConfiguracoesCore',
+    )
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+
     // Guarantee that handshake occurs only after the component has fully mounted
     const runInitialTest = async () => {
-      if (user?.uazapi_domain && user?.uazapi_instance_number && user?.uazapi_token) {
+      if (mounted && user?.uazapi_domain && user?.uazapi_instance_number && user?.uazapi_token) {
         await testConnection(
           user.uazapi_domain,
           user.uazapi_instance_number,
@@ -59,7 +67,10 @@ export default function Settings() {
       runInitialTest()
     }, 500)
 
-    return () => clearTimeout(timer)
+    return () => {
+      mounted = false
+      clearTimeout(timer)
+    }
   }, [
     user?.uazapi_domain,
     user?.uazapi_instance_number,
@@ -95,11 +106,16 @@ export default function Settings() {
         setStatus(res.state)
       } else {
         setStatus('disconnected')
-        setErrorMessage(res.error || 'Erro ao conectar com a instância.')
+        setErrorMessage(
+          res.error ||
+            `Instância não encontrada. Verifique se o número ${instanceNumber} e o endpoint são válidos.`,
+        )
       }
     } catch (err: any) {
       setStatus('disconnected')
-      setErrorMessage('Erro na comunicação com o servidor. Verifique o endpoint.')
+      setErrorMessage(
+        `Instância não encontrada. Verifique se o número ${instanceNumber} e o endpoint são válidos.`,
+      )
     } finally {
       setTesting(false)
     }
@@ -231,7 +247,7 @@ export default function Settings() {
                 <Label htmlFor="uazapi_instance_number">Número da Instância (DDI+DDD+NÚMERO)</Label>
                 <Input
                   id="uazapi_instance_number"
-                  placeholder="554899999999"
+                  placeholder="554892098050"
                   value={formData.uazapi_instance_number}
                   onChange={(e) =>
                     setFormData({ ...formData, uazapi_instance_number: e.target.value })
