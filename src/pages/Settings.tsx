@@ -2,52 +2,40 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SettingsAi } from './settings/SettingsAi'
 import { SettingsUazapi } from './settings/SettingsUazapi'
 import { SettingsCadences } from './settings/SettingsCadences'
+import { MessageSquare, Bot, ListOrdered } from 'lucide-react'
 
 export default function Settings() {
   return (
-    <div className="container mx-auto py-8 max-w-5xl px-4 animate-in fade-in duration-500">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
+    <div className="space-y-6 max-w-5xl mx-auto pb-10">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Configurações Gerais</h1>
         <p className="text-muted-foreground mt-2">
-          Gerencie suas preferências de IA, integrações e cadências.
+          Gerencie sua Inteligência Artificial, integrações e réguas de cadência de forma
+          centralizada.
         </p>
       </div>
-
       <Tabs defaultValue="ai" className="space-y-6">
-        <TabsList className="w-full justify-start overflow-x-auto bg-transparent border-b rounded-none h-auto p-0">
-          <TabsTrigger
-            value="ai"
-            className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4 py-3"
-          >
-            Inteligência Artificial
+        <TabsList className="grid w-full grid-cols-3 h-auto p-1">
+          <TabsTrigger value="ai" className="flex items-center justify-center gap-2 py-2">
+            <Bot className="h-4 w-4" />
+            <span className="hidden sm:inline">Perfis BIA</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="uazapi"
-            className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4 py-3"
-          >
-            WhatsApp (Uazapi)
+          <TabsTrigger value="uazapi" className="flex items-center justify-center gap-2 py-2">
+            <MessageSquare className="h-4 w-4" />
+            <span className="hidden sm:inline">Conexão Uazapi</span>
           </TabsTrigger>
-          <TabsTrigger
-            value="cadences"
-            className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4 py-3"
-          >
-            Cadências
+          <TabsTrigger value="cadences" className="flex items-center justify-center gap-2 py-2">
+            <ListOrdered className="h-4 w-4" />
+            <span className="hidden sm:inline">Cadências Inteligentes</span>
           </TabsTrigger>
         </TabsList>
-
-        <TabsContent value="ai" className="mt-6 focus-visible:outline-none focus-visible:ring-0">
+        <TabsContent value="ai" className="space-y-4 outline-none">
           <SettingsAi />
         </TabsContent>
-        <TabsContent
-          value="uazapi"
-          className="mt-6 focus-visible:outline-none focus-visible:ring-0"
-        >
+        <TabsContent value="uazapi" className="space-y-4 outline-none">
           <SettingsUazapi />
         </TabsContent>
-        <TabsContent
-          value="cadences"
-          className="mt-6 focus-visible:outline-none focus-visible:ring-0"
-        >
+        <TabsContent value="cadences" className="space-y-4 outline-none">
           <SettingsCadences />
         </TabsContent>
       </Tabs>
