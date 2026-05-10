@@ -12,25 +12,28 @@ import { Loader2, Upload, Sparkles } from 'lucide-react'
 
 const BIA_PRESETS = [
   {
-    id: 'bia_1',
-    name: 'Bia - Atendimento Inicial',
+    id: 'bia_executiva',
+    name: 'BIA Executiva',
     instructions:
-      'Você é a Bia, assistente virtual da BRF Imóveis. Seja extremamente educada, empática e prestativa. Seu objetivo é recepcionar os clientes, descobrir o nome deles e qual tipo de imóvel estão buscando (comprar ou alugar).',
-    voice_id: 'bia_reception_v1',
+      'Você é a BIA Executiva, assistente virtual de alto nível da BRF Imóveis. Seja formal, direta e orientada a resultados. Seu objetivo é atender clientes de alto padrão, focando em investimentos e imóveis premium.',
+    voice_id: 'bia_executiva_v1',
+    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=10',
   },
   {
-    id: 'bia_2',
-    name: 'Bia - Qualificação Avançada',
+    id: 'bia_regional',
+    name: 'BIA Regional',
     instructions:
-      'Você é a Bia, especialista em imóveis da BRF. Faça perguntas focadas para entender o orçamento do cliente, a região desejada, número de quartos e se ele já possui algum financiamento pré-aprovado.',
-    voice_id: 'bia_qual_v1',
+      'Você é a BIA Regional, assistente da BRF Imóveis com conhecimento profundo da região. Seja acolhedora e informal. Destaque os benefícios de cada bairro, infraestrutura local e proximidade de serviços.',
+    voice_id: 'bia_regional_v1',
+    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=11',
   },
   {
-    id: 'bia_3',
-    name: 'Bia - Agendamento de Visitas',
+    id: 'bia_profissional',
+    name: 'BIA Profissional',
     instructions:
-      'Você é a Bia, responsável por coordenar visitas aos imóveis da BRF. Seu foco é apresentar horários disponíveis, confirmar a disponibilidade do cliente e agendar a visita com o corretor responsável.',
-    voice_id: 'bia_schedule_v1',
+      'Você é a BIA Profissional, especialista técnica da BRF Imóveis. Seja clara, objetiva e foque em detalhes técnicos, financiamentos, documentação e viabilidade comercial.',
+    voice_id: 'bia_profissional_v1',
+    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=12',
   },
 ]
 
@@ -52,6 +55,24 @@ export function SettingsAi() {
     if (file) {
       setAvatarFile(file)
       setAvatarPreview(URL.createObjectURL(file))
+    }
+  }
+
+  const handleSelectPreset = async (preset: (typeof BIA_PRESETS)[0]) => {
+    setAiName(preset.name)
+    setAiInstructions(preset.instructions)
+    setAiVoiceId(preset.voice_id)
+    setAvatarPreview(preset.avatar_url)
+
+    try {
+      const res = await fetch(preset.avatar_url)
+      const blob = await res.blob()
+      const file = new File([blob], `${preset.id}.jpg`, { type: blob.type })
+      setAvatarFile(file)
+      toast.success(`Template "${preset.name}" carregado. Não esqueça de salvar.`)
+    } catch (e) {
+      console.error('Erro ao baixar avatar do preset', e)
+      toast.success(`Template "${preset.name}" carregado, mas sem foto.`)
     }
   }
 
@@ -130,12 +151,7 @@ export function SettingsAi() {
                   key={preset.id}
                   variant="outline"
                   className="flex flex-col items-start p-4 h-auto text-left space-y-1 hover:border-primary/50"
-                  onClick={() => {
-                    setAiName(preset.name)
-                    setAiInstructions(preset.instructions)
-                    setAiVoiceId(preset.voice_id)
-                    toast.success(`Template "${preset.name}" carregado.`)
-                  }}
+                  onClick={() => handleSelectPreset(preset)}
                 >
                   <span className="font-semibold flex items-center">
                     <Sparkles className="h-4 w-4 mr-2 text-primary" />

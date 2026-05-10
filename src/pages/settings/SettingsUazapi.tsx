@@ -31,7 +31,7 @@ export function SettingsUazapi() {
           setUazapiErrorDetail('')
         }
         const res = await fetch(
-          `https://iabrfimveis.uazapi.com/instance/connectionState/5548992098050`,
+          `https://iabrfimveis.uazapi.com/instance/connectionState/554992098050`,
           {
             headers: {
               apikey: uazapiToken,
@@ -72,7 +72,7 @@ export function SettingsUazapi() {
     try {
       await pb.collection('users').update(user.id, {
         uazapi_token: uazapiToken,
-        uazapi_instance_number: '5548992098050',
+        uazapi_instance_number: '554992098050',
         uazapi_domain: 'https://iabrfimveis.uazapi.com',
         uazapi_error: uazapiErrorDetail,
       })
@@ -126,7 +126,7 @@ export function SettingsUazapi() {
         <div className="grid gap-6 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Instância WhatsApp (Fixo)</Label>
-            <Input value="5548992098050" disabled className="bg-muted/50" />
+            <Input value="554992098050" disabled className="bg-muted/50" />
           </div>
           <div className="space-y-2">
             <Label>Endpoint Uazapi (Fixo)</Label>
