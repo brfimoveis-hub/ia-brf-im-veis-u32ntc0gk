@@ -8,7 +8,31 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from 'sonner'
-import { Loader2, Upload } from 'lucide-react'
+import { Loader2, Upload, Sparkles } from 'lucide-react'
+
+const BIA_PRESETS = [
+  {
+    id: 'bia_1',
+    name: 'Bia - Atendimento Inicial',
+    instructions:
+      'Você é a Bia, assistente virtual da BRF Imóveis. Seja extremamente educada, empática e prestativa. Seu objetivo é recepcionar os clientes, descobrir o nome deles e qual tipo de imóvel estão buscando (comprar ou alugar).',
+    voice_id: 'bia_reception_v1',
+  },
+  {
+    id: 'bia_2',
+    name: 'Bia - Qualificação Avançada',
+    instructions:
+      'Você é a Bia, especialista em imóveis da BRF. Faça perguntas focadas para entender o orçamento do cliente, a região desejada, número de quartos e se ele já possui algum financiamento pré-aprovado.',
+    voice_id: 'bia_qual_v1',
+  },
+  {
+    id: 'bia_3',
+    name: 'Bia - Agendamento de Visitas',
+    instructions:
+      'Você é a Bia, responsável por coordenar visitas aos imóveis da BRF. Seu foco é apresentar horários disponíveis, confirmar a disponibilidade do cliente e agendar a visita com o corretor responsável.',
+    voice_id: 'bia_schedule_v1',
+  },
+]
 
 export function SettingsAi() {
   const { user } = useAuth()
@@ -94,6 +118,35 @@ export function SettingsAi() {
               <Upload className="mr-2 h-4 w-4" />
               Alterar Foto
             </Button>
+          </div>
+        </div>
+
+        <div className="pt-4 border-t space-y-4">
+          <div className="space-y-3">
+            <Label>Versões da Bia (Templates)</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {BIA_PRESETS.map((preset) => (
+                <Button
+                  key={preset.id}
+                  variant="outline"
+                  className="flex flex-col items-start p-4 h-auto text-left space-y-1 hover:border-primary/50"
+                  onClick={() => {
+                    setAiName(preset.name)
+                    setAiInstructions(preset.instructions)
+                    setAiVoiceId(preset.voice_id)
+                    toast.success(`Template "${preset.name}" carregado.`)
+                  }}
+                >
+                  <span className="font-semibold flex items-center">
+                    <Sparkles className="h-4 w-4 mr-2 text-primary" />
+                    {preset.name}
+                  </span>
+                  <span className="text-xs text-muted-foreground line-clamp-2">
+                    {preset.instructions}
+                  </span>
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
 

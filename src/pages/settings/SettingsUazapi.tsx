@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 
 export function SettingsUazapi() {
   const { user } = useAuth()
@@ -14,6 +14,7 @@ export function SettingsUazapi() {
     'checking',
   )
   const [uazapiToken, setUazapiToken] = useState(user?.uazapi_token || '')
+  const [uazapiErrorDetail, setUazapiErrorDetail] = useState(user?.uazapi_error || '')
   const [isSaving, setIsSaving] = useState(false)
 
   // Connection Guard: validation fires automatically on mount or when token updates
@@ -25,8 +26,10 @@ export function SettingsUazapi() {
         return
       }
       try {
-        if (isMounted) setUazapiStatus('checking')
-        // Call Uazapi endpoint with fixed instance
+        if (isMounted) {
+          setUazapiStatus('checking')
+          setUazapiErrorDetail('')
+        }
         const res = await fetch(
           `https://iabrfimveis.uazapi.com/instance/connectionState/5548992098050`,
           {
@@ -37,14 +40,23 @@ export function SettingsUazapi() {
         )
         const data = await res.json()
         if (isMounted) {
-          if (data?.instance?.state === 'open') {
+          if (res.ok && data?.instance?.state === 'open') {
             setUazapiStatus('connected')
+            setUazapiErrorDetail('')
           } else {
             setUazapiStatus('disconnected')
+            const errorMsg =
+              data?.message ||
+              data?.error ||
+              (res.status === 401 ? 'Token inválido' : 'Instância desconectada ou não encontrada.')
+            setUazapiErrorDetail(errorMsg)
           }
         }
-      } catch (e) {
-        if (isMounted) setUazapiStatus('disconnected')
+      } catch (e: any) {
+        if (isMounted) {
+          setUazapiStatus('disconnected')
+          setUazapiErrorDetail(e.message || 'Falha na comunicação com a API.')
+        }
       }
     }
 
@@ -62,10 +74,9 @@ export function SettingsUazapi() {
         uazapi_token: uazapiToken,
         uazapi_instance_number: '5548992098050',
         uazapi_domain: 'https://iabrfimveis.uazapi.com',
+        uazapi_error: uazapiErrorDetail,
       })
       toast.success('Configurações Uazapi salvas com sucesso')
-      // Trigger effect by briefly unsetting if the value didn't change,
-      // but usually the user changes it or it triggers anyway on load
       setUazapiToken(uazapiToken)
     } catch (e) {
       toast.error('Erro ao salvar integrações Uazapi')
@@ -96,11 +107,21 @@ export function SettingsUazapi() {
             )}
             {uazapiStatus === 'disconnected' && (
               <span className="flex items-center text-destructive font-medium">
-                <XCircle className="h-4 w-4 mr-2" /> Desconectado / Instância não encontrada
+                <XCircle className="h-4 w-4 mr-2" /> Desconectado
               </span>
             )}
           </div>
         </div>
+
+        {uazapiStatus === 'disconnected' && uazapiErrorDetail && (
+          <div className="flex items-start p-4 bg-destructive/10 text-destructive rounded-lg mb-4">
+            <AlertTriangle className="h-5 w-5 mr-3 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-sm">Falha na conexão</p>
+              <p className="text-sm opacity-90">{uazapiErrorDetail}</p>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-6 md:grid-cols-2">
           <div className="space-y-2">
