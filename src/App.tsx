@@ -174,14 +174,29 @@ const router = createBrowserRouter(
   },
 )
 
-const App = () => (
-  <AuthProvider>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <RouterProvider router={router} future={{ v7_startTransition: true }} />
-    </TooltipProvider>
-  </AuthProvider>
-)
+const App = () => {
+  useEffect(() => {
+    // Cache resilience: clear service worker cache and local session metadata
+    // to ensure the new route mapping takes effect immediately after a hard refresh.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          registration.unregister()
+        }
+      })
+    }
+    sessionStorage.clear()
+  }, [])
+
+  return (
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <RouterProvider router={router} future={{ v7_startTransition: true }} />
+      </TooltipProvider>
+    </AuthProvider>
+  )
+}
 
 export default App
