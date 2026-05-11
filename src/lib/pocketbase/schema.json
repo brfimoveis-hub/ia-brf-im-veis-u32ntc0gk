@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-11T13:13:12.881Z",
+  "generatedAt": "2026-05-11T13:26:50.024Z",
   "collections": [
     {
       "name": "users",
@@ -242,11 +242,36 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "google_campaign_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "google_adgroup_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_lead_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "campaign_name",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_customers_status ON customers (status)",
-        "CREATE INDEX idx_customers_phone ON customers (phone)"
+        "CREATE INDEX idx_customers_phone ON customers (phone)",
+        "CREATE INDEX `idx_customers_external_lead_id` ON `customers` (external_lead_id)"
       ]
     },
     {

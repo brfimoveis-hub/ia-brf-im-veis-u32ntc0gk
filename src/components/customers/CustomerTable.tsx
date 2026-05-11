@@ -155,6 +155,10 @@ export function CustomerTable({
                       }
                       let val = (lead as any)[col.key]
 
+                      if (col.key === 'email_1_value') {
+                        val = lead.email_1_value || lead.email || ''
+                      }
+
                       if (col.key === 'phone') {
                         const rawPhone =
                           lead.phone_1_value ||

@@ -53,6 +53,11 @@ export interface Customer {
   address_1_extended?: string
   website_1_label?: string
   website_1_value?: string
+
+  google_campaign_id?: string
+  google_adgroup_id?: string
+  external_lead_id?: string
+  campaign_name?: string
 }
 
 export const getCustomers = async (filter?: string): Promise<Customer[]> => {

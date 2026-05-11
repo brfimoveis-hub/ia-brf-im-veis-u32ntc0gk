@@ -17,6 +17,7 @@ export const COLUMNS = [
   { key: 'phone', label: 'Telefone' },
   { key: 'org_name', label: 'Organização' },
   { key: 'source', label: 'Origem (Source)' },
+  { key: 'campaign_name', label: 'Campanha' },
   { key: 'tags', label: 'Labels/Tags' },
   { key: 'notes', label: 'Observações' },
 ]

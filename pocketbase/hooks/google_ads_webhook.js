@@ -63,6 +63,23 @@ routerAdd('POST', '/backend/v1/google-ads-webhook', (e) => {
     customer.set('source', 'Google Ads')
     customer.set('status', 'Novo')
 
+    if (body.lead_id) customer.set('external_lead_id', body.lead_id)
+    if (body.campaign_id) customer.set('google_campaign_id', body.campaign_id)
+    if (body.adgroup_id) customer.set('google_adgroup_id', body.adgroup_id)
+
+    const customData = body.custom_column_data || []
+    let campaignName = ''
+    if (body.campaign_name) {
+      campaignName = body.campaign_name
+    } else {
+      for (const col of customData) {
+        if ((col.column_name || '').toLowerCase().includes('campaign')) {
+          campaignName = col.string_value
+        }
+      }
+    }
+    if (campaignName) customer.set('campaign_name', campaignName)
+
     $app.save(customer)
 
     const logsCol = $app.findCollectionByNameOrId('system_logs')
