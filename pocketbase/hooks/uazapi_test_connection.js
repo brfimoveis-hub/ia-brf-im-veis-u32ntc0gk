@@ -8,6 +8,10 @@ routerAdd(
     const adminToken = body.adminToken || ''
     const userToken = body.token || ''
 
+    if (domain && !domain.startsWith('http://') && !domain.startsWith('https://')) {
+      domain = 'https://' + domain
+    }
+
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
     if (domain.endsWith('/api')) domain = domain.slice(0, -4)
     if (domain.endsWith('/v1')) domain = domain.slice(0, -3)
@@ -34,8 +38,16 @@ routerAdd(
         return e.notFoundError('Instance not found')
       }
 
+      if (res.statusCode === 504) {
+        return e.json(504, { message: 'Timeout' })
+      }
+
       return e.json(res.statusCode, res.json || { statusCode: res.statusCode })
     } catch (err) {
+      const msg = err.message.toLowerCase()
+      if (msg.includes('timeout') || msg.includes('deadline exceeded')) {
+        return e.json(504, { message: 'Timeout' })
+      }
       return e.internalServerError(err.message)
     }
   },

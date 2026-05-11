@@ -24,6 +24,8 @@ export default function ConfiguracoesCore() {
   const [status, setStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking')
   const [errorDetail, setErrorDetail] = useState('')
 
+  const [name, setName] = useState('BRF Imóveis')
+  const [email, setEmail] = useState('brfimoveis@gmail.com')
   const [instanceNumber, setInstanceNumber] = useState('554892098050')
   const [domain, setDomain] = useState('https://iabrfimveis.uazapi.com')
   const [token, setToken] = useState('SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
@@ -33,6 +35,8 @@ export default function ConfiguracoesCore() {
 
   useEffect(() => {
     if (user) {
+      setName(user.name || 'BRF Imóveis')
+      setEmail(user.email || 'brfimoveis@gmail.com')
       setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
       setToken(user.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
       setInstanceNumber(user.uazapi_instance_number || '554892098050')
@@ -52,9 +56,7 @@ export default function ConfiguracoesCore() {
           body: { instance: instanceNumber, domain, token, adminToken },
         })
         .catch(async (e) => {
-          // Specifically catch 404 to satisfy the error reporting requirement
-          if (e.status === 404) throw e
-          // Fallback to the status proxy if the test-connection hook path differs slightly
+          if (e.status === 404 || e.status === 504) throw e
           return await pb.send(`/backend/v1/uazapi/status/${instanceNumber}`, { method: 'GET' })
         })
 
@@ -67,7 +69,9 @@ export default function ConfiguracoesCore() {
     } catch (e: any) {
       setStatus('disconnected')
       if (e.status === 404) {
-        setErrorDetail('Not Found.')
+        setErrorDetail('Not Found. Verifique o Endpoint URL e a Instância WhatsApp.')
+      } else if (e.status === 504) {
+        setErrorDetail('Timeout. Verifique o Endpoint URL.')
       } else {
         setErrorDetail(e.message || 'Erro de comunicação.')
       }
@@ -78,12 +82,19 @@ export default function ConfiguracoesCore() {
     if (!user) return
     setIsSaving(true)
     try {
-      await pb.collection('users').update(user.id, {
+      const payload: any = {
+        name,
         uazapi_domain: domain,
         uazapi_token: token,
         uazapi_instance_number: instanceNumber,
         uazapi_admin_token: adminToken,
-      })
+      }
+
+      if (email !== user.email) {
+        payload.email = email
+      }
+
+      await pb.collection('users').update(user.id, payload)
       toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
       await checkConnection()
     } catch (e: any) {
@@ -184,6 +195,28 @@ export default function ConfiguracoesCore() {
 
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
+              <Label htmlFor="nome">Nome</Label>
+              <Input
+                id="nome"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="BRF Imóveis"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="brfimoveis@gmail.com"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2 pt-2">
+            <div className="space-y-2">
               <Label>Instância WhatsApp (Número)</Label>
               <Input
                 value={instanceNumber}
@@ -194,6 +227,7 @@ export default function ConfiguracoesCore() {
             <div className="space-y-2">
               <Label>Endpoint Uazapi</Label>
               <Input
+                type="url"
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}
                 placeholder="https://iabrfimveis.uazapi.com"
