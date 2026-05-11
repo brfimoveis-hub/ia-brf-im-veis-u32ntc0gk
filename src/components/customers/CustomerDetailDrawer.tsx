@@ -440,17 +440,17 @@ export function CustomerDetailDrawer({
                             >
                               {!isClient && msg.sender === 'ai' && (
                                 <div className="flex items-center gap-1.5 mb-1.5 opacity-80">
-                                  {user?.ai_avatar ? (
-                                    <img
-                                      src={pb.files.getURL(user, user.ai_avatar)}
-                                      alt="AI"
-                                      className="h-4 w-4 rounded-full object-cover shadow-sm border border-primary/10"
-                                    />
-                                  ) : (
-                                    <Bot className="h-3.5 w-3.5 text-primary dark:text-green-400" />
-                                  )}
+                                  <img
+                                    src={
+                                      user?.ai_avatar
+                                        ? pb.files.getURL(user, user.ai_avatar)
+                                        : 'https://img.usecurling.com/p/256/256?q=elegant%20young%20woman%20smiling'
+                                    }
+                                    alt="AI"
+                                    className="h-4 w-4 rounded-full object-cover shadow-sm border border-primary/10"
+                                  />
                                   <span className="text-[10px] font-bold uppercase tracking-wider text-primary dark:text-green-400">
-                                    {user?.ai_name || 'Bia'}
+                                    {user?.ai_name || 'Bia Elegante'}
                                   </span>
                                 </div>
                               )}

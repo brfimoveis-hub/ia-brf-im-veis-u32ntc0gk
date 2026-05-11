@@ -12,53 +12,45 @@ import { Loader2, Upload, Sparkles, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const DEFAULT_PRESETS = {
+  bia_elegante: {
+    id: 'bia_elegante',
+    name: 'BIA Elegante',
+    instructions:
+      'Você é a BIA Elegante, uma assistente virtual sofisticada e amigável. Seu tom é acolhedor, profissional e moderno. Especializada em atendimento premium.',
+    voice_id: 'voice_harmonious_female_1',
+    avatar_url: 'https://img.usecurling.com/p/256/256?q=elegant%20young%20woman%20smiling',
+  },
+  bia_jovem: {
+    id: 'bia_jovem',
+    name: 'BIA Jovem',
+    instructions:
+      'Você é a BIA Jovem, com uma abordagem enérgica, acolhedora e muito moderna. Foca em criar empatia rápida com o cliente.',
+    voice_id: 'voice_harmonious_female_2',
+    avatar_url: 'https://img.usecurling.com/p/256/256?q=friendly%20young%20woman',
+  },
+  bia_acolhedora: {
+    id: 'bia_acolhedora',
+    name: 'BIA Acolhedora',
+    instructions:
+      'Você é a BIA Acolhedora, muito paciente e atenciosa. Sua prioridade é fazer o cliente se sentir seguro e bem guiado em cada etapa.',
+    voice_id: 'voice_harmonious_female_3',
+    avatar_url: 'https://img.usecurling.com/p/256/256?q=kind%20woman%20portrait',
+  },
+  bia_executiva: {
+    id: 'bia_executiva',
+    name: 'BIA Executiva',
+    instructions:
+      'Você é a BIA Executiva. Seu tom é altamente profissional, seguro e formal, focado em clareza para clientes corporativos e investidores.',
+    voice_id: 'voice_harmonious_female_4',
+    avatar_url: 'https://img.usecurling.com/p/256/256?q=professional%20woman%20suit',
+  },
   ia_mae_expert: {
     id: 'ia_mae_expert',
     name: 'IA Mãe Expert',
     instructions:
-      'Você é a IA Mãe Expert, especializada no mercado imobiliário de Biguaçu/SC. Conhecimento Base: Villa dos Açores (Planta LM311: 70,78 m², R$ 4.930,77/m², piscina, pet place). Foque em dados precisos e direcione leads qualificados para a conversão (Nível 5).',
-    voice_id: 'ia_mae_expert_v1',
-    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=10',
-  },
-  bia_materna: {
-    id: 'bia_materna',
-    name: 'BIA Materna',
-    instructions:
-      'Você é a BIA Materna, acolhedora e atenciosa. Seu foco é guiar o cliente com empatia, ideal para a versão Regional da BIA.',
-    voice_id: 'bia_materna_v1',
-    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=1',
-  },
-  bia_especialista: {
-    id: 'bia_especialista',
-    name: 'BIA Especialista',
-    instructions:
-      'Você é a BIA Especialista, dominando detalhes técnicos e financeiros. Ideal para a versão Profissional da BIA.',
-    voice_id: 'bia_especialista_v1',
-    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=2',
-  },
-  bia_dinamica: {
-    id: 'bia_dinamica',
-    name: 'BIA Dinâmica',
-    instructions:
-      'Você é a BIA Dinâmica, ágil e persuasiva. Foca em criar senso de urgência e apresentar oportunidades rápidas.',
-    voice_id: 'bia_dinamica_v1',
-    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=3',
-  },
-  bia_autoridade: {
-    id: 'bia_autoridade',
-    name: 'BIA Autoridade',
-    instructions:
-      'Você é a BIA Autoridade. Seu tom é formal e altamente confiável. Ideal para a versão Executiva da BIA.',
-    voice_id: 'bia_autoridade_v1',
-    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=4',
-  },
-  bia_consultiva: {
-    id: 'bia_consultiva',
-    name: 'BIA Consultiva',
-    instructions:
-      'Você é a BIA Consultiva. Analisa o cenário do cliente e sugere a melhor opção financeira para o Villa dos Açores.',
-    voice_id: 'bia_consultiva_v1',
-    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=5',
+      'Você é a IA Mãe Expert, especializada no mercado imobiliário. Foca em dados precisos e conversão rápida (Nível 5), mantendo uma postura elegante.',
+    voice_id: 'voice_harmonious_female_5',
+    avatar_url: 'https://img.usecurling.com/p/256/256?q=smart%20young%20woman%20glasses',
   },
 }
 
@@ -67,7 +59,7 @@ type ProfileId = keyof typeof DEFAULT_PRESETS
 export function SettingsAi() {
   const { user } = useAuth()
 
-  const [activeProfileId, setActiveProfileId] = useState<ProfileId>('ia_mae_expert')
+  const [activeProfileId, setActiveProfileId] = useState<ProfileId>('bia_elegante')
   const [profiles, setProfiles] = useState(DEFAULT_PRESETS)
 
   const [aiName, setAiName] = useState('')
@@ -83,7 +75,12 @@ export function SettingsAi() {
     const savedProfiles = localStorage.getItem('bia_profiles_custom')
     if (savedProfiles) {
       try {
-        setProfiles(JSON.parse(savedProfiles))
+        const parsed = JSON.parse(savedProfiles)
+        if (!parsed.bia_elegante) {
+          localStorage.removeItem('bia_profiles_custom')
+        } else {
+          setProfiles(parsed)
+        }
       } catch {
         /* intentionally ignored */
       }
@@ -92,20 +89,20 @@ export function SettingsAi() {
 
   useEffect(() => {
     if (user) {
-      setAiName(user.ai_name || profiles.ia_mae_expert.name)
-      setAiInstructions(user.ai_instructions || profiles.ia_mae_expert.instructions)
-      setAiVoiceId(user.ai_voice_id || profiles.ia_mae_expert.voice_id)
+      setAiName(user.ai_name || profiles.bia_elegante.name)
+      setAiInstructions(user.ai_instructions || profiles.bia_elegante.instructions)
+      setAiVoiceId(user.ai_voice_id || profiles.bia_elegante.voice_id)
 
       if (user.ai_avatar) {
         setAvatarPreview(pb.files.getURL(user, user.ai_avatar))
       } else {
-        setAvatarPreview(profiles.ia_mae_expert.avatar_url)
+        setAvatarPreview(profiles.bia_elegante.avatar_url)
       }
 
       const found = Object.values(profiles).find((p) => p.name === user.ai_name)
       if (found) setActiveProfileId(found.id as ProfileId)
     }
-  }, [user])
+  }, [user, profiles])
 
   const handleSelectProfile = (profileId: ProfileId) => {
     setActiveProfileId(profileId)
@@ -199,10 +196,10 @@ export function SettingsAi() {
   return (
     <Card className="border-border/50 shadow-sm">
       <CardHeader>
-        <CardTitle>Configuração do Core Expert (IA Mãe)</CardTitle>
+        <CardTitle>Configuração da Persona da IA</CardTitle>
         <CardDescription>
-          Selecione a "IA Mãe Expert" com conhecimento específico do mercado SC (Villa dos Açores)
-          ou outros perfis de cadência.
+          Selecione um perfil visual e vocal para sua assistente virtual. Nossas novas personas
+          oferecem uma imagem mais moderna, acolhedora e elegante.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -330,7 +327,7 @@ export function SettingsAi() {
             ) : (
               <CheckCircle2 className="mr-2 h-5 w-5" />
             )}
-            Ativar Core da IA Mãe
+            Salvar Persona da IA
           </Button>
         </div>
       </CardContent>

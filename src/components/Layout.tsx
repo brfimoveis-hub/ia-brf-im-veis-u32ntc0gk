@@ -393,11 +393,11 @@ export default function Layout() {
                 src={
                   user?.ai_avatar
                     ? pb.files.getURL(user, user.ai_avatar)
-                    : 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=22'
+                    : 'https://img.usecurling.com/p/256/256?q=elegant%20young%20woman%20smiling'
                 }
-                alt={user?.ai_name || 'User'}
+                alt={user?.ai_name || 'BIA Elegante'}
               />
-              <AvatarFallback>UA</AvatarFallback>
+              <AvatarFallback>AI</AvatarFallback>
             </Avatar>
           </div>
         </header>
