@@ -35,6 +35,7 @@ export default function ConfiguracoesCore() {
   const [instanceNumber, setInstanceNumber] = useState('')
   const [domain, setDomain] = useState('')
   const [token, setToken] = useState('')
+  const [adminToken, setAdminToken] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{ domain?: string; instance?: string }>(
     {},
@@ -82,21 +83,25 @@ export default function ConfiguracoesCore() {
       // Setup Uazapi
       setName(user.name || 'BRF Imóveis')
       setEmail(user.email || 'brfimoveis@gmail.com')
-      setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
-      setToken(user.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
-      setInstanceNumber(user.uazapi_instance_number || '554892098050')
+      setDomain(user.uazapi_domain || '')
+      setToken(user.uazapi_token || '')
+      setAdminToken(user.uazapi_admin_token || '')
+      setInstanceNumber(user.uazapi_instance_number || '')
 
       if (user.uazapi_status === 'Conectado') {
         setStatus('connected')
       } else if (user.uazapi_status === 'Desconectado') {
         setStatus('disconnected')
         setErrorDetail(user.uazapi_error || '')
-      } else {
+      } else if (user.uazapi_instance_number && user.uazapi_domain) {
         checkConnection(
-          user.uazapi_instance_number || '554892098050',
-          user.uazapi_domain || 'https://iabrfimveis.uazapi.com',
-          user.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj',
+          user.uazapi_instance_number,
+          user.uazapi_domain,
+          user.uazapi_token || '',
+          user.uazapi_admin_token || '',
         )
+      } else {
+        setStatus('disconnected')
       }
 
       // Setup Meta
@@ -151,14 +156,14 @@ export default function ConfiguracoesCore() {
     return Object.keys(errors).length === 0
   }
 
-  const checkConnection = async (inst: string, dom: string, tok: string) => {
+  const checkConnection = async (inst: string, dom: string, tok: string, adminTok?: string) => {
     if (!user) return
     setStatus('checking')
     setErrorDetail('')
     try {
       const data = await pb.send(`/backend/v1/uazapi/test-connection`, {
         method: 'POST',
-        body: { instance: inst, domain: dom, token: tok },
+        body: { instance: inst, domain: dom, token: tok, admin_token: adminTok },
       })
       if (data?.error) throw new Error(data.error)
 
@@ -212,13 +217,14 @@ export default function ConfiguracoesCore() {
         name,
         uazapi_domain: domain,
         uazapi_token: token,
+        uazapi_admin_token: adminToken,
         uazapi_instance_number: instanceNumber,
       }
       if (email !== user.email) payload.email = email
 
       await pb.collection('users').update(user.id, payload)
       toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
-      await checkConnection(instanceNumber, domain, token)
+      await checkConnection(instanceNumber, domain, token, adminToken)
     } catch (e: any) {
       toast({ title: 'Erro', description: 'Não foi possível salvar.', variant: 'destructive' })
     } finally {
@@ -586,23 +592,7 @@ export default function ConfiguracoesCore() {
 
               <div className="grid gap-6 md:grid-cols-2 pt-2">
                 <div className="space-y-2">
-                  <Label>Instância WhatsApp (Número)</Label>
-                  <Input
-                    value={instanceNumber}
-                    onChange={(e) => {
-                      setInstanceNumber(e.target.value)
-                      if (validationErrors.instance)
-                        setValidationErrors({ ...validationErrors, instance: undefined })
-                    }}
-                    placeholder="554892098050"
-                    className={validationErrors.instance ? 'border-destructive' : ''}
-                  />
-                  {validationErrors.instance && (
-                    <p className="text-xs text-destructive">{validationErrors.instance}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label>Endpoint Uazapi</Label>
+                  <Label>Endpoint Uazapi (Domain)</Label>
                   <Input
                     type="url"
                     value={domain}
@@ -611,24 +601,50 @@ export default function ConfiguracoesCore() {
                       if (validationErrors.domain)
                         setValidationErrors({ ...validationErrors, domain: undefined })
                     }}
-                    placeholder="https://iabrfimveis.uazapi.com"
+                    placeholder="https://sua-instancia.uazapi.com"
                     className={validationErrors.domain ? 'border-destructive' : ''}
                   />
                   {validationErrors.domain && (
                     <p className="text-xs text-destructive">{validationErrors.domain}</p>
                   )}
                 </div>
+                <div className="space-y-2">
+                  <Label>Instância WhatsApp (Número)</Label>
+                  <Input
+                    value={instanceNumber}
+                    onChange={(e) => {
+                      setInstanceNumber(e.target.value)
+                      if (validationErrors.instance)
+                        setValidationErrors({ ...validationErrors, instance: undefined })
+                    }}
+                    placeholder="5548999999999"
+                    className={validationErrors.instance ? 'border-destructive' : ''}
+                  />
+                  {validationErrors.instance && (
+                    <p className="text-xs text-destructive">{validationErrors.instance}</p>
+                  )}
+                </div>
               </div>
 
               <div className="grid gap-6 md:grid-cols-2 pt-2">
                 <div className="space-y-2">
-                  <Label htmlFor="uazapiToken">Token de Acesso (API Key / Admin Token)</Label>
+                  <Label htmlFor="uazapiToken">Instance Token</Label>
                   <Input
                     id="uazapiToken"
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     type="password"
-                    placeholder="Insira o Token"
+                    placeholder="Insira o Token da Instância"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="uazapiAdminToken">Admin Token</Label>
+                  <Input
+                    id="uazapiAdminToken"
+                    value={adminToken}
+                    onChange={(e) => setAdminToken(e.target.value)}
+                    type="password"
+                    placeholder="Insira o Admin Token"
                   />
                 </div>
               </div>
