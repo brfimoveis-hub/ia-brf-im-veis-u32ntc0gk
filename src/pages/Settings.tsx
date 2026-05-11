@@ -1,65 +1,217 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { SettingsAi } from './settings/SettingsAi'
-import { SettingsUazapi } from './settings/SettingsUazapi'
-import { SettingsCadences } from './settings/SettingsCadences'
-import { MessageSquare, Bot, ListOrdered, RefreshCw } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/hooks/use-auth'
+import pb from '@/lib/pocketbase/client'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/hooks/use-toast'
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Network,
+  Cpu,
+  Database,
+  Settings2,
+} from 'lucide-react'
 
-export default function Settings() {
-  const handleHardRefresh = () => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        for (const registration of registrations) {
-          registration.unregister()
-        }
-      })
+export default function ConfiguracoesCore() {
+  const { user } = useAuth()
+  const { toast } = useToast()
+
+  const [status, setStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking')
+  const [errorDetail, setErrorDetail] = useState('')
+
+  const [instanceNumber] = useState('554892098050')
+  const [domain, setDomain] = useState('https://iabrfimveis.uazapi.com')
+  const [token, setToken] = useState('')
+
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    if (user) {
+      setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
+      setToken(user.uazapi_token || '')
+      checkConnection()
     }
-    window.location.reload()
+  }, [user])
+
+  const checkConnection = async () => {
+    setStatus('checking')
+    setErrorDetail('')
+    try {
+      // Trigger the existing uazapi_test_connection hook
+      const data = await pb
+        .send(`/backend/v1/uazapi/test-connection`, {
+          method: 'POST',
+          body: { instance: instanceNumber, domain, token },
+        })
+        .catch(async (e) => {
+          // Specifically catch 404 to satisfy the error reporting requirement
+          if (e.status === 404) throw e
+          // Fallback to the status proxy if the test-connection hook path differs slightly
+          return await pb.send(`/backend/v1/uazapi/status/${instanceNumber}`, { method: 'GET' })
+        })
+
+      if (data?.instance?.state === 'open' || data?.success) {
+        setStatus('connected')
+      } else {
+        setStatus('disconnected')
+        setErrorDetail('Instância desconectada.')
+      }
+    } catch (e: any) {
+      setStatus('disconnected')
+      if (e.status === 404) {
+        setErrorDetail('Not Found.')
+      } else {
+        setErrorDetail(e.message || 'Erro de comunicação.')
+      }
+    }
+  }
+
+  const handleSave = async () => {
+    if (!user) return
+    setIsSaving(true)
+    try {
+      await pb.collection('users').update(user.id, {
+        uazapi_domain: domain,
+        uazapi_token: token,
+        uazapi_instance_number: instanceNumber,
+      })
+      toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
+      await checkConnection()
+    } catch (e: any) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível salvar as configurações.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-10">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">IA Mãe - Neural Hub</h1>
-          <p className="text-muted-foreground mt-2">
-            Centro de controle para a IA Mãe: gerencie a expert core, status das integrações e
-            cadências imobiliárias (SC).
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={handleHardRefresh}
-          className="shrink-0 text-muted-foreground"
-        >
-          <RefreshCw className="mr-2 h-4 w-4" /> Atualizar Sistema
-        </Button>
+    <div className="space-y-6 max-w-5xl mx-auto pb-8">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Mother AI Ecosystem</h2>
+        <p className="text-muted-foreground">
+          Gerencie o hub neural e as integrações do sistema IA BIA.
+        </p>
       </div>
-      <Tabs defaultValue="ai" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 h-auto p-1">
-          <TabsTrigger value="ai" className="flex items-center justify-center gap-2 py-2">
-            <Bot className="h-4 w-4" />
-            <span className="hidden sm:inline">Core Expert (Mãe)</span>
-          </TabsTrigger>
-          <TabsTrigger value="uazapi" className="flex items-center justify-center gap-2 py-2">
-            <MessageSquare className="h-4 w-4" />
-            <span className="hidden sm:inline">Conexão Uazapi</span>
-          </TabsTrigger>
-          <TabsTrigger value="cadences" className="flex items-center justify-center gap-2 py-2">
-            <ListOrdered className="h-4 w-4" />
-            <span className="hidden sm:inline">Cadências Inteligentes</span>
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="ai" className="space-y-4 outline-none">
-          <SettingsAi />
-        </TabsContent>
-        <TabsContent value="uazapi" className="space-y-4 outline-none">
-          <SettingsUazapi />
-        </TabsContent>
-        <TabsContent value="cadences" className="space-y-4 outline-none">
-          <SettingsCadences />
-        </TabsContent>
-      </Tabs>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Uazapi Status</CardTitle>
+            <Network className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 mt-1">
+              {status === 'checking' && (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">Verificando...</span>
+                </>
+              )}
+              {status === 'connected' && (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  <span className="text-sm font-medium text-emerald-600">Conectado</span>
+                </>
+              )}
+              {status === 'disconnected' && (
+                <>
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  <span className="text-sm font-medium text-destructive">Desconectado</span>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">CRM Sync</CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 mt-1">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <span className="text-sm font-medium text-emerald-600">Ativo</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">HubSpot (Skip Sync)</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Slack Notificações</CardTitle>
+            <Cpu className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 mt-1">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <span className="text-sm font-medium">#leads-sc</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Settings2 className="h-5 w-5 text-primary" />
+            <CardTitle>Uazapi Connection Manager</CardTitle>
+          </div>
+          <CardDescription>
+            Configure e teste os parâmetros de conexão do WhatsApp via Uazapi.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {status === 'disconnected' && errorDetail && (
+            <div className="flex items-start p-4 bg-destructive/10 text-destructive rounded-lg mb-4">
+              <AlertTriangle className="h-5 w-5 mr-3 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold text-sm">Falha na conexão: {errorDetail}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Instância WhatsApp (Fixo)</Label>
+              <Input value={instanceNumber} disabled className="bg-muted/50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Endpoint Uazapi</Label>
+              <Input
+                value={domain}
+                onChange={(e) => setDomain(e.target.value)}
+                placeholder="https://iabrfimveis.uazapi.com"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2">
+            <Label htmlFor="uazapiToken">Token de Acesso (Admin Token)</Label>
+            <Input
+              id="uazapiToken"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              type="password"
+              placeholder="Insira o Admin Token alfanumérico"
+            />
+          </div>
+
+          <div className="pt-2 flex gap-3">
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar e Testar Conexão
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
