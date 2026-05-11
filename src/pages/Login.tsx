@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,14 +13,17 @@ export default function Login() {
   const [password, setPassword] = useState('Skip@Pass')
   const { signIn, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
+  const from = location.state?.from?.pathname || '/dashboard'
+
   useEffect(() => {
     if (!authLoading && user) {
-      navigate('/configuracoes', { replace: true })
+      navigate(from, { replace: true })
     }
-  }, [user, authLoading, navigate])
+  }, [user, authLoading, navigate, from])
 
   if (authLoading) {
     return (

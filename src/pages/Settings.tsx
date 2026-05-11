@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
+import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -33,6 +34,18 @@ export default function ConfiguracoesCore() {
 
   const [isSaving, setIsSaving] = useState(false)
 
+  useRealtime('users', (e) => {
+    if (e.action === 'update' && user && e.record.id === user.id) {
+      if (e.record.uazapi_status === 'Conectado') {
+        setStatus('connected')
+        setErrorDetail('')
+      } else if (e.record.uazapi_status === 'Desconectado') {
+        setStatus('disconnected')
+        setErrorDetail(e.record.uazapi_error || 'Desconectado')
+      }
+    }
+  })
+
   useEffect(() => {
     if (user) {
       setName(user.name || 'BRF Imóveis')
@@ -41,15 +54,24 @@ export default function ConfiguracoesCore() {
       setToken(user.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
       setInstanceNumber(user.uazapi_instance_number || '554892098050')
       setAdminToken(user.uazapi_admin_token || '')
-      checkConnection()
+
+      if (user.uazapi_status === 'Conectado') {
+        setStatus('connected')
+      } else if (user.uazapi_status === 'Desconectado') {
+        setStatus('disconnected')
+        setErrorDetail(user.uazapi_error || '')
+      } else {
+        checkConnection()
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   const checkConnection = async () => {
+    if (!user) return
     setStatus('checking')
     setErrorDetail('')
     try {
-      // Trigger the existing uazapi_test_connection hook
       const data = await pb
         .send(`/backend/v1/uazapi/test-connection`, {
           method: 'POST',
@@ -60,21 +82,58 @@ export default function ConfiguracoesCore() {
           return await pb.send(`/backend/v1/uazapi/status/${instanceNumber}`, { method: 'GET' })
         })
 
-      if (data?.instance?.state === 'open' || data?.success) {
+      if (
+        data?.instance?.state === 'open' ||
+        data?.success ||
+        data?.instance?.state === 'connecting'
+      ) {
         setStatus('connected')
+        await pb
+          .collection('users')
+          .update(user.id, { uazapi_status: 'Conectado', uazapi_error: '' })
       } else {
         setStatus('disconnected')
         setErrorDetail('Instância desconectada.')
+        await pb
+          .collection('users')
+          .update(user.id, {
+            uazapi_status: 'Desconectado',
+            uazapi_error: 'Instância desconectada.',
+          })
       }
     } catch (e: any) {
       setStatus('disconnected')
+      let errMsg = e.message || 'Erro de comunicação.'
+
       if (e.status === 404) {
-        setErrorDetail('Not Found. Verifique o Endpoint URL e a Instância WhatsApp.')
+        errMsg = 'Not Found. Verifique o Endpoint URL e a Instância WhatsApp.'
+
+        let formattedDomain = domain
+        if (
+          formattedDomain &&
+          !formattedDomain.startsWith('http://') &&
+          !formattedDomain.startsWith('https://')
+        ) {
+          formattedDomain = 'https://' + formattedDomain
+        }
+        if (formattedDomain.endsWith('/')) formattedDomain = formattedDomain.slice(0, -1)
+        if (formattedDomain.endsWith('/api')) formattedDomain = formattedDomain.slice(0, -4)
+        if (formattedDomain.endsWith('/v1')) formattedDomain = formattedDomain.slice(0, -3)
+        const reqUrl = formattedDomain + '/instance/connectionState/' + instanceNumber
+
+        await pb.collection('system_logs').create({
+          type: 'uazapi_error',
+          message: 'Endpoint URL Not Found during test connection',
+          details: { url: reqUrl, status: 404 },
+        })
       } else if (e.status === 504) {
-        setErrorDetail('Timeout. Verifique o Endpoint URL.')
-      } else {
-        setErrorDetail(e.message || 'Erro de comunicação.')
+        errMsg = 'Timeout. Verifique o Endpoint URL.'
       }
+
+      setErrorDetail(errMsg)
+      await pb
+        .collection('users')
+        .update(user.id, { uazapi_status: 'Desconectado', uazapi_error: errMsg })
     }
   }
 
@@ -94,8 +153,11 @@ export default function ConfiguracoesCore() {
         payload.email = email
       }
 
+      // First persist the values to the database (partial update)
       await pb.collection('users').update(user.id, payload)
       toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
+
+      // Then trigger test connection
       await checkConnection()
     } catch (e: any) {
       toast({

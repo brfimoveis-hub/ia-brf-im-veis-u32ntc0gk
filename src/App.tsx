@@ -1,5 +1,11 @@
 import { Suspense, lazy, useState, useEffect } from 'react'
-import { createBrowserRouter, RouterProvider, Navigate, Outlet } from 'react-router-dom'
+import {
+  createBrowserRouter,
+  RouterProvider,
+  Navigate,
+  Outlet,
+  useLocation,
+} from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -29,9 +35,10 @@ const PageLoader = () => (
 
 const ProtectedRoute = () => {
   const { user, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) return <PageLoader />
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />
   return <Outlet />
 }
 
