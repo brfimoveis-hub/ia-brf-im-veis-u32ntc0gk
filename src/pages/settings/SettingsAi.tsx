@@ -12,6 +12,14 @@ import { Loader2, Upload, Sparkles, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const DEFAULT_PRESETS = {
+  ia_mae_expert: {
+    id: 'ia_mae_expert',
+    name: 'IA Mãe Expert',
+    instructions:
+      'Você é a IA Mãe Expert, especializada no mercado imobiliário de Biguaçu/SC. Conhecimento Base: Villa dos Açores (Planta LM311: 70,78 m², R$ 4.930,77/m², piscina, pet place). Foque em dados precisos e direcione leads qualificados para a conversão (Nível 5).',
+    voice_id: 'ia_mae_expert_v1',
+    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=10',
+  },
   bia_materna: {
     id: 'bia_materna',
     name: 'BIA Materna',
@@ -59,7 +67,7 @@ type ProfileId = keyof typeof DEFAULT_PRESETS
 export function SettingsAi() {
   const { user } = useAuth()
 
-  const [activeProfileId, setActiveProfileId] = useState<ProfileId>('bia_materna')
+  const [activeProfileId, setActiveProfileId] = useState<ProfileId>('ia_mae_expert')
   const [profiles, setProfiles] = useState(DEFAULT_PRESETS)
 
   const [aiName, setAiName] = useState('')
@@ -84,14 +92,14 @@ export function SettingsAi() {
 
   useEffect(() => {
     if (user) {
-      setAiName(user.ai_name || profiles.bia_materna.name)
-      setAiInstructions(user.ai_instructions || profiles.bia_materna.instructions)
-      setAiVoiceId(user.ai_voice_id || profiles.bia_materna.voice_id)
+      setAiName(user.ai_name || profiles.ia_mae_expert.name)
+      setAiInstructions(user.ai_instructions || profiles.ia_mae_expert.instructions)
+      setAiVoiceId(user.ai_voice_id || profiles.ia_mae_expert.voice_id)
 
       if (user.ai_avatar) {
         setAvatarPreview(pb.files.getURL(user, user.ai_avatar))
       } else {
-        setAvatarPreview(profiles.bia_materna.avatar_url)
+        setAvatarPreview(profiles.ia_mae_expert.avatar_url)
       }
 
       const found = Object.values(profiles).find((p) => p.name === user.ai_name)
@@ -191,10 +199,10 @@ export function SettingsAi() {
   return (
     <Card className="border-border/50 shadow-sm">
       <CardHeader>
-        <CardTitle>Gerenciamento de Personas BIA</CardTitle>
+        <CardTitle>Configuração do Core Expert (IA Mãe)</CardTitle>
         <CardDescription>
-          Escolha e customize um dos perfis. O perfil que for salvo será o ativo em sua instância
-          Uazapi.
+          Selecione a "IA Mãe Expert" com conhecimento específico do mercado SC (Villa dos Açores)
+          ou outros perfis de cadência.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -316,7 +324,7 @@ export function SettingsAi() {
             ) : (
               <CheckCircle2 className="mr-2 h-5 w-5" />
             )}
-            Ativar Perfil BIA
+            Ativar Core da IA Mãe
           </Button>
         </div>
       </CardContent>

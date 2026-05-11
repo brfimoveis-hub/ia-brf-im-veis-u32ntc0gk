@@ -13,7 +13,7 @@ routerAdd(
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        apikey: adminToken,
+        AdminToken: adminToken,
       },
       timeout: 15,
     })

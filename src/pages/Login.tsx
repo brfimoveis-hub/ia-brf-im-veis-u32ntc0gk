@@ -18,7 +18,7 @@ export default function Login() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      navigate('/', { replace: true })
+      navigate('/configuracoes', { replace: true })
     }
   }, [user, authLoading, navigate])
 

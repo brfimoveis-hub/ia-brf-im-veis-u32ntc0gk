@@ -22,7 +22,7 @@ routerAdd(
       'Content-Type': 'application/json',
     }
     if (apikey) {
-      headers['apikey'] = apikey
+      headers['AdminToken'] = apikey
     }
 
     try {

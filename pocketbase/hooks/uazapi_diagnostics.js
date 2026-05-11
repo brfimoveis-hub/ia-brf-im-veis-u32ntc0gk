@@ -10,7 +10,7 @@ routerAdd(
     const proxyRes = $http.send({
       url: `${domain}/instance/fetchInstances`,
       method: 'GET',
-      headers: { 'Content-Type': 'application/json', apikey: adminToken },
+      headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
       timeout: 10,
     })
 
@@ -22,7 +22,7 @@ routerAdd(
     const stateRes = $http.send({
       url: `${domain}/instance/connectionState/${instance}`,
       method: 'GET',
-      headers: { 'Content-Type': 'application/json', apikey: adminToken },
+      headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
       timeout: 10,
     })
 
@@ -34,7 +34,7 @@ routerAdd(
     const whRes = $http.send({
       url: `${domain}/webhook/find/${instance}`,
       method: 'GET',
-      headers: { 'Content-Type': 'application/json', apikey: adminToken },
+      headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
       timeout: 10,
     })
 

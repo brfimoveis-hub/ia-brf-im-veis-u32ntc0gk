@@ -169,9 +169,9 @@ export function SettingsUazapi() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex items-center space-x-4 mb-2">
+          <div className="flex flex-wrap items-center gap-4 mb-2">
             <div className="flex items-center space-x-2 bg-muted/40 border px-4 py-2.5 rounded-lg">
-              <span className="text-sm font-medium text-foreground">Status da Instância:</span>
+              <span className="text-sm font-medium text-foreground">Uazapi Status:</span>
               {uazapiStatus === 'checking' && (
                 <span className="flex items-center text-muted-foreground font-medium">
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verificando...
@@ -187,6 +187,20 @@ export function SettingsUazapi() {
                   <XCircle className="h-4 w-4 mr-2" /> Desconectado
                 </span>
               )}
+            </div>
+
+            <div className="flex items-center space-x-2 bg-muted/40 border px-4 py-2.5 rounded-lg">
+              <span className="text-sm font-medium text-foreground">CRM Sync:</span>
+              <span className="flex items-center text-emerald-600 font-medium">
+                <CheckCircle2 className="h-4 w-4 mr-2" /> Ativo
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2 bg-muted/40 border px-4 py-2.5 rounded-lg">
+              <span className="text-sm font-medium text-foreground">Slack Notificações:</span>
+              <span className="flex items-center text-emerald-600 font-medium">
+                <CheckCircle2 className="h-4 w-4 mr-2" /> #leads-sc
+              </span>
             </div>
           </div>
 

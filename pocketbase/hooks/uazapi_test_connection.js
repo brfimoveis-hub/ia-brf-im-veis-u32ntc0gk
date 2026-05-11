@@ -14,8 +14,8 @@ routerAdd(
     const reqUrl = url + '/instance/connectionState/' + instance
 
     const headers = {}
-    if (adminToken) headers['apikey'] = adminToken
-    if (userToken) headers['Authorization'] = 'Bearer ' + userToken
+    if (adminToken) headers['AdminToken'] = adminToken
+    if (userToken) headers['AdminToken'] = userToken
 
     try {
       const res = $http.send({

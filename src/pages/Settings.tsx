@@ -21,10 +21,10 @@ export default function Settings() {
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Configurações Gerais</h1>
+          <h1 className="text-3xl font-bold tracking-tight">IA Mãe - Neural Hub</h1>
           <p className="text-muted-foreground mt-2">
-            Gerencie sua Inteligência Artificial, integrações e réguas de cadência de forma
-            centralizada.
+            Centro de controle para a IA Mãe: gerencie a expert core, status das integrações e
+            cadências imobiliárias (SC).
           </p>
         </div>
         <Button
@@ -39,7 +39,7 @@ export default function Settings() {
         <TabsList className="grid w-full grid-cols-3 h-auto p-1">
           <TabsTrigger value="ai" className="flex items-center justify-center gap-2 py-2">
             <Bot className="h-4 w-4" />
-            <span className="hidden sm:inline">Perfis BIA</span>
+            <span className="hidden sm:inline">Core Expert (Mãe)</span>
           </TabsTrigger>
           <TabsTrigger value="uazapi" className="flex items-center justify-center gap-2 py-2">
             <MessageSquare className="h-4 w-4" />
