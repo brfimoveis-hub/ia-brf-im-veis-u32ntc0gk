@@ -19,6 +19,8 @@ import {
   Database,
   Settings2,
   MessageSquare,
+  Megaphone,
+  Copy,
 } from 'lucide-react'
 
 export default function ConfiguracoesCore() {
@@ -376,11 +378,71 @@ export default function ConfiguracoesCore() {
       </div>
 
       <Tabs defaultValue="meta" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-[750px]">
+        <TabsList className="grid w-full grid-cols-4 max-w-[900px] overflow-x-auto">
           <TabsTrigger value="meta">WhatsApp API Oficial (Meta)</TabsTrigger>
           <TabsTrigger value="uazapi">Uazapi (Legado)</TabsTrigger>
           <TabsTrigger value="ai">IA BIA</TabsTrigger>
+          <TabsTrigger value="google-ads">Google Ads</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="google-ads">
+          <Card className="border-border/50 shadow-sm mt-4">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Megaphone className="h-5 w-5 text-primary" />
+                <CardTitle>Google Ads Integration</CardTitle>
+              </div>
+              <CardDescription>
+                Configure o Webhook para receber leads diretamente do Google Ads.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>URL do Webhook</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={`https://ia-uazapi-6d79e.shrd00.internal.goskip.dev/backend/v1/google-ads-webhook?uid=${user?.id || ''}`}
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        navigator.clipboard.writeText(
+                          `https://ia-uazapi-6d79e.shrd00.internal.goskip.dev/backend/v1/google-ads-webhook?uid=${user?.id || ''}`,
+                        )
+                        toast({ title: 'URL Copiada!' })
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Google Ads Key (Chave de Segurança)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input readOnly value={user?.google_ads_webhook_key || ''} />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        navigator.clipboard.writeText(user?.google_ads_webhook_key || '')
+                        toast({ title: 'Chave Copiada!' })
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Cole esta URL e Chave nas configurações de exportação de Webhook do Formulário
+                    de Lead no Google Ads.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="meta">
           <Card className="border-border/50 shadow-sm mt-4">
