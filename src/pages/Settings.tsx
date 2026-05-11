@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
@@ -25,14 +25,18 @@ export default function ConfiguracoesCore() {
   const [status, setStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking')
   const [errorDetail, setErrorDetail] = useState('')
 
-  const [name, setName] = useState('BRF Imóveis')
-  const [email, setEmail] = useState('brfimoveis@gmail.com')
-  const [instanceNumber, setInstanceNumber] = useState('554892098050')
-  const [domain, setDomain] = useState('https://iabrfimveis.uazapi.com')
-  const [token, setToken] = useState('SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
-  const [adminToken, setAdminToken] = useState('')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [instanceNumber, setInstanceNumber] = useState('')
+  const [domain, setDomain] = useState('')
+  const [token, setToken] = useState('')
 
   const [isSaving, setIsSaving] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<{ domain?: string; instance?: string }>(
+    {},
+  )
+
+  const initialized = useRef(false)
 
   useRealtime('users', (e) => {
     if (e.action === 'update' && user && e.record.id === user.id) {
@@ -47,13 +51,12 @@ export default function ConfiguracoesCore() {
   })
 
   useEffect(() => {
-    if (user) {
+    if (user && !initialized.current) {
       setName(user.name || 'BRF Imóveis')
       setEmail(user.email || 'brfimoveis@gmail.com')
       setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
       setToken(user.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
       setInstanceNumber(user.uazapi_instance_number || '554892098050')
-      setAdminToken(user.uazapi_admin_token || '')
 
       if (user.uazapi_status === 'Conectado') {
         setStatus('connected')
@@ -61,26 +64,54 @@ export default function ConfiguracoesCore() {
         setStatus('disconnected')
         setErrorDetail(user.uazapi_error || '')
       } else {
-        checkConnection()
+        checkConnection(
+          user.uazapi_instance_number || '554892098050',
+          user.uazapi_domain || 'https://iabrfimveis.uazapi.com',
+          user.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj',
+        )
       }
+      initialized.current = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  const checkConnection = async () => {
+  const validateFields = () => {
+    const errors: { domain?: string; instance?: string } = {}
+    if (!instanceNumber || instanceNumber.trim() === '') {
+      errors.instance = 'A Instância WhatsApp é obrigatória.'
+    }
+
+    if (!domain || domain.trim() === '') {
+      errors.domain = 'O Endpoint Uazapi é obrigatório.'
+    } else {
+      try {
+        let testUrl = domain
+        if (!domain.startsWith('http://') && !domain.startsWith('https://')) {
+          testUrl = 'https://' + domain
+        }
+        new URL(testUrl)
+      } catch (_) {
+        errors.domain = 'Formato de URL inválido.'
+      }
+    }
+
+    setValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const checkConnection = async (inst: string, dom: string, tok: string) => {
     if (!user) return
     setStatus('checking')
     setErrorDetail('')
     try {
-      const data = await pb
-        .send(`/backend/v1/uazapi/test-connection`, {
-          method: 'POST',
-          body: { instance: instanceNumber, domain, token, adminToken },
-        })
-        .catch(async (e) => {
-          if (e.status === 404 || e.status === 504) throw e
-          return await pb.send(`/backend/v1/uazapi/status/${instanceNumber}`, { method: 'GET' })
-        })
+      const data = await pb.send(`/backend/v1/uazapi/test-connection`, {
+        method: 'POST',
+        body: { instance: inst, domain: dom, token: tok },
+      })
+
+      if (data?.error) {
+        throw new Error(data.error)
+      }
 
       if (
         data?.instance?.state === 'open' ||
@@ -94,40 +125,21 @@ export default function ConfiguracoesCore() {
       } else {
         setStatus('disconnected')
         setErrorDetail('Instância desconectada.')
-        await pb
-          .collection('users')
-          .update(user.id, {
-            uazapi_status: 'Desconectado',
-            uazapi_error: 'Instância desconectada.',
-          })
+        await pb.collection('users').update(user.id, {
+          uazapi_status: 'Desconectado',
+          uazapi_error: 'Instância desconectada.',
+        })
       }
     } catch (e: any) {
       setStatus('disconnected')
       let errMsg = e.message || 'Erro de comunicação.'
 
-      if (e.status === 404) {
-        errMsg = 'Not Found. Verifique o Endpoint URL e a Instância WhatsApp.'
-
-        let formattedDomain = domain
-        if (
-          formattedDomain &&
-          !formattedDomain.startsWith('http://') &&
-          !formattedDomain.startsWith('https://')
-        ) {
-          formattedDomain = 'https://' + formattedDomain
-        }
-        if (formattedDomain.endsWith('/')) formattedDomain = formattedDomain.slice(0, -1)
-        if (formattedDomain.endsWith('/api')) formattedDomain = formattedDomain.slice(0, -4)
-        if (formattedDomain.endsWith('/v1')) formattedDomain = formattedDomain.slice(0, -3)
-        const reqUrl = formattedDomain + '/instance/connectionState/' + instanceNumber
-
-        await pb.collection('system_logs').create({
-          type: 'uazapi_error',
-          message: 'Endpoint URL Not Found during test connection',
-          details: { url: reqUrl, status: 404 },
-        })
+      if (e.status === 400 && e.response?.error) {
+        errMsg = e.response.error
       } else if (e.status === 504) {
         errMsg = 'Timeout. Verifique o Endpoint URL.'
+      } else if (e.response?.message) {
+        errMsg = e.response.message
       }
 
       setErrorDetail(errMsg)
@@ -139,6 +151,15 @@ export default function ConfiguracoesCore() {
 
   const handleSave = async () => {
     if (!user) return
+    if (!validateFields()) {
+      toast({
+        title: 'Dados inválidos',
+        description: 'Corrija os erros do formulário antes de salvar.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
       const payload: any = {
@@ -146,19 +167,16 @@ export default function ConfiguracoesCore() {
         uazapi_domain: domain,
         uazapi_token: token,
         uazapi_instance_number: instanceNumber,
-        uazapi_admin_token: adminToken,
       }
 
       if (email !== user.email) {
         payload.email = email
       }
 
-      // First persist the values to the database (partial update)
       await pb.collection('users').update(user.id, payload)
       toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
 
-      // Then trigger test connection
-      await checkConnection()
+      await checkConnection(instanceNumber, domain, token)
     } catch (e: any) {
       toast({
         title: 'Erro',
@@ -282,24 +300,40 @@ export default function ConfiguracoesCore() {
               <Label>Instância WhatsApp (Número)</Label>
               <Input
                 value={instanceNumber}
-                onChange={(e) => setInstanceNumber(e.target.value)}
+                onChange={(e) => {
+                  setInstanceNumber(e.target.value)
+                  if (validationErrors.instance)
+                    setValidationErrors({ ...validationErrors, instance: undefined })
+                }}
                 placeholder="554892098050"
+                className={validationErrors.instance ? 'border-destructive' : ''}
               />
+              {validationErrors.instance && (
+                <p className="text-xs text-destructive">{validationErrors.instance}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Endpoint Uazapi</Label>
               <Input
                 type="url"
                 value={domain}
-                onChange={(e) => setDomain(e.target.value)}
+                onChange={(e) => {
+                  setDomain(e.target.value)
+                  if (validationErrors.domain)
+                    setValidationErrors({ ...validationErrors, domain: undefined })
+                }}
                 placeholder="https://iabrfimveis.uazapi.com"
+                className={validationErrors.domain ? 'border-destructive' : ''}
               />
+              {validationErrors.domain && (
+                <p className="text-xs text-destructive">{validationErrors.domain}</p>
+              )}
             </div>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 pt-2">
             <div className="space-y-2">
-              <Label htmlFor="uazapiToken">Token de Acesso (API Key)</Label>
+              <Label htmlFor="uazapiToken">Token de Acesso (API Key / Admin Token)</Label>
               <Input
                 id="uazapiToken"
                 value={token}
@@ -307,16 +341,10 @@ export default function ConfiguracoesCore() {
                 type="password"
                 placeholder="Insira o Token alfanumérico"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="uazapiAdminToken">Admin Token (Opcional)</Label>
-              <Input
-                id="uazapiAdminToken"
-                value={adminToken}
-                onChange={(e) => setAdminToken(e.target.value)}
-                type="password"
-                placeholder="Insira o Admin Token alfanumérico"
-              />
+              <p className="text-xs text-muted-foreground">
+                Este token é usado como <code>AdminToken</code> para verificar o status e conectar a
+                instância.
+              </p>
             </div>
           </div>
 
