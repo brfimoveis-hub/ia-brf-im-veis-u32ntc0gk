@@ -33,11 +33,18 @@ export function SettingsUazapi() {
     setUazapiStatus('checking')
     setUazapiErrorDetail('')
     try {
-      const res = await fetch(`${DOMAIN}/instance/connectionState/${INSTANCE_NUMBER}`, {
-        headers: { apikey: tokenToCheck },
+      const data = await pb.send('/backend/v1/uazapi/proxy', {
+        method: 'POST',
+        body: JSON.stringify({
+          domain: DOMAIN,
+          endpoint: `/instance/connectionState/${INSTANCE_NUMBER}`,
+          method: 'GET',
+          apikey: tokenToCheck,
+        }),
+        headers: { 'Content-Type': 'application/json' },
       })
-      const data = await res.json()
-      if (res.ok && data?.instance?.state === 'open') {
+
+      if (data?.instance?.state === 'open') {
         setUazapiStatus('connected')
         setUazapiErrorDetail('')
       } else {
@@ -45,24 +52,29 @@ export function SettingsUazapi() {
         const errorMsg =
           data?.message ||
           data?.error ||
-          (res.status === 401
+          (data?.statusCode === 401
             ? 'Token inválido (Erro 401)'
-            : res.status === 404
+            : data?.statusCode === 404
               ? 'Instância não encontrada (Erro 404)'
-              : res.status === 504
-                ? 'Gateway Timeout (Erro 504)'
-                : 'Instância desconectada.')
+              : 'Instância desconectada.')
         setUazapiErrorDetail(errorMsg)
       }
     } catch (e: any) {
       setUazapiStatus('disconnected')
-      setUazapiErrorDetail(e.message || 'Falha na comunicação com a API.')
+      setUazapiErrorDetail(e.message || 'Falha na comunicação com a API (Proxy).')
     }
   }
 
   useEffect(() => {
-    checkConnection(uazapiToken)
-  }, [uazapiToken])
+    if (user && !uazapiToken) {
+      setUazapiToken(user.uazapi_token || '')
+    }
+    if (uazapiToken) {
+      checkConnection(uazapiToken)
+    } else {
+      setUazapiStatus('disconnected')
+    }
+  }, [uazapiToken, user])
 
   const handleSave = async () => {
     if (!user) return
@@ -89,84 +101,154 @@ export function SettingsUazapi() {
     const logs: { step: string; status: 'pending' | 'success' | 'error'; message: string }[] = []
 
     logs.push({
-      step: 'Verificação de URL e SSL',
+      step: 'Verificação de URL e SSL via Proxy',
       status: 'pending',
       message: 'Verificando conectividade básica com o domínio...',
     })
     setTroubleshootLogs([...logs])
     try {
-      const res = await fetch(`${DOMAIN}/instance/fetchInstances`, {
-        headers: { apikey: ADMIN_TOKEN },
+      const data = await pb.send('/backend/v1/uazapi/proxy', {
+        method: 'POST',
+        body: JSON.stringify({
+          domain: DOMAIN,
+          endpoint: '/instance/fetchInstances',
+          method: 'GET',
+          apikey: ADMIN_TOKEN,
+        }),
+        headers: { 'Content-Type': 'application/json' },
       })
-      if (res.ok) {
+
+      if (!data?.error && data?.statusCode !== 401 && data?.statusCode !== 404) {
         logs[0] = {
-          step: 'Verificação de URL e SSL',
+          step: 'Verificação de URL e SSL via Proxy',
           status: 'success',
           message: 'Domínio alcançável e SSL válido.',
         }
       } else {
         logs[0] = {
-          step: 'Verificação de URL e SSL',
+          step: 'Verificação de URL e SSL via Proxy',
           status: 'error',
-          message: `Erro HTTP ${res.status}: Verifique se o Admin Token é válido ou se há erro 504.`,
+          message: `Erro HTTP ${data?.statusCode || 500}: Verifique se o Admin Token é válido.`,
         }
       }
     } catch (e: any) {
       logs[0] = {
-        step: 'Verificação de URL e SSL',
+        step: 'Verificação de URL e SSL via Proxy',
         status: 'error',
-        message: `Falha de rede: ${e.message}. Possível erro 502/504 ou problema de SSL.`,
+        message: `Falha de rede (Proxy): ${e.message}.`,
       }
     }
     setTroubleshootLogs([...logs])
 
     logs.push({
-      step: 'Verificação de Instância',
+      step: 'Verificação de Instância via Proxy',
       status: 'pending',
       message: `Buscando estado da instância ${INSTANCE_NUMBER}...`,
     })
     setTroubleshootLogs([...logs])
     if (!uazapiToken) {
       logs[1] = {
-        step: 'Verificação de Instância',
+        step: 'Verificação de Instância via Proxy',
         status: 'error',
         message: 'API Key (Token) não fornecida. Insira a API Key para verificar.',
       }
     } else {
       try {
-        const res = await fetch(`${DOMAIN}/instance/connectionState/${INSTANCE_NUMBER}`, {
-          headers: { apikey: uazapiToken },
+        const data = await pb.send('/backend/v1/uazapi/proxy', {
+          method: 'POST',
+          body: JSON.stringify({
+            domain: DOMAIN,
+            endpoint: `/instance/connectionState/${INSTANCE_NUMBER}`,
+            method: 'GET',
+            apikey: uazapiToken,
+          }),
+          headers: { 'Content-Type': 'application/json' },
         })
-        const data = await res.json()
-        if (res.ok) {
+
+        if (!data?.error && data?.statusCode !== 401 && data?.statusCode !== 404) {
           if (data?.instance?.state === 'open') {
             logs[1] = {
-              step: 'Verificação de Instância',
+              step: 'Verificação de Instância via Proxy',
               status: 'success',
               message: 'Instância online e estado open.',
             }
           } else {
             logs[1] = {
-              step: 'Verificação de Instância',
+              step: 'Verificação de Instância via Proxy',
               status: 'error',
               message: `Instância não está open. Estado: ${data?.instance?.state || 'desconhecido'}`,
             }
           }
         } else {
-          let errMsg = `Erro HTTP ${res.status}. `
-          if (res.status === 401) errMsg += 'Unauthorized (Token Inválido).'
-          else if (res.status === 404) errMsg += 'Not Found. A instância não foi encontrada.'
-          logs[1] = { step: 'Verificação de Instância', status: 'error', message: errMsg }
+          let errMsg = `Erro HTTP ${data?.statusCode || 500}. `
+          if (data?.statusCode === 401) errMsg += 'Unauthorized (Token Inválido).'
+          else if (data?.statusCode === 404) errMsg += 'Not Found. A instância não foi encontrada.'
+          logs[1] = { step: 'Verificação de Instância via Proxy', status: 'error', message: errMsg }
         }
       } catch (e: any) {
         logs[1] = {
-          step: 'Verificação de Instância',
+          step: 'Verificação de Instância via Proxy',
           status: 'error',
-          message: `Erro de rede: ${e.message}`,
+          message: `Erro de rede (Proxy): ${e.message}`,
         }
       }
     }
     setTroubleshootLogs([...logs])
+
+    logs.push({
+      step: 'Verificação de Webhook Ativo',
+      status: 'pending',
+      message: `Buscando webhooks configurados na instância...`,
+    })
+    setTroubleshootLogs([...logs])
+    if (!uazapiToken) {
+      logs[2] = {
+        step: 'Verificação de Webhook Ativo',
+        status: 'error',
+        message: 'API Key (Token) ausente.',
+      }
+    } else {
+      try {
+        const data = await pb.send('/backend/v1/uazapi/proxy', {
+          method: 'POST',
+          body: JSON.stringify({
+            domain: DOMAIN,
+            endpoint: `/webhook/find/${INSTANCE_NUMBER}`,
+            method: 'GET',
+            apikey: uazapiToken,
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+
+        if (data && data.url) {
+          logs[2] = {
+            step: 'Verificação de Webhook Ativo',
+            status: 'success',
+            message: `Webhook configurado e apontando para ${data.url}`,
+          }
+        } else if (data && data.webhooks && data.webhooks.length > 0) {
+          logs[2] = {
+            step: 'Verificação de Webhook Ativo',
+            status: 'success',
+            message: `Webhook configurado (multi).`,
+          }
+        } else {
+          logs[2] = {
+            step: 'Verificação de Webhook Ativo',
+            status: 'error',
+            message: `Nenhum webhook ativo encontrado na instância. A comunicação bidirecional não funcionará.`,
+          }
+        }
+      } catch (e: any) {
+        logs[2] = {
+          step: 'Verificação de Webhook Ativo',
+          status: 'error',
+          message: `Erro ao buscar webhook: ${e.message}`,
+        }
+      }
+    }
+    setTroubleshootLogs([...logs])
+
     setIsTroubleshooting(false)
   }
 
@@ -254,8 +336,8 @@ export function SettingsUazapi() {
             <CardTitle className="text-lg">Diagnóstico Técnico (Troubleshooting)</CardTitle>
           </div>
           <CardDescription>
-            Execute uma verificação profunda para validar conectividade e SSL baseada no Guia
-            Técnico.
+            Execute uma verificação profunda para validar conectividade, SSL e Webhook usando o
+            proxy do servidor.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
