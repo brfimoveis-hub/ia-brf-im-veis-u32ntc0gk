@@ -24,16 +24,19 @@ export default function ConfiguracoesCore() {
   const [status, setStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking')
   const [errorDetail, setErrorDetail] = useState('')
 
-  const [instanceNumber] = useState('554892098050')
+  const [instanceNumber, setInstanceNumber] = useState('554892098050')
   const [domain, setDomain] = useState('https://iabrfimveis.uazapi.com')
-  const [token, setToken] = useState('')
+  const [token, setToken] = useState('SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
+  const [adminToken, setAdminToken] = useState('')
 
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     if (user) {
       setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
-      setToken(user.uazapi_token || '')
+      setToken(user.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
+      setInstanceNumber(user.uazapi_instance_number || '554892098050')
+      setAdminToken(user.uazapi_admin_token || '')
       checkConnection()
     }
   }, [user])
@@ -46,7 +49,7 @@ export default function ConfiguracoesCore() {
       const data = await pb
         .send(`/backend/v1/uazapi/test-connection`, {
           method: 'POST',
-          body: { instance: instanceNumber, domain, token },
+          body: { instance: instanceNumber, domain, token, adminToken },
         })
         .catch(async (e) => {
           // Specifically catch 404 to satisfy the error reporting requirement
@@ -79,6 +82,7 @@ export default function ConfiguracoesCore() {
         uazapi_domain: domain,
         uazapi_token: token,
         uazapi_instance_number: instanceNumber,
+        uazapi_admin_token: adminToken,
       })
       toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
       await checkConnection()
@@ -180,8 +184,12 @@ export default function ConfiguracoesCore() {
 
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>Instância WhatsApp (Fixo)</Label>
-              <Input value={instanceNumber} disabled className="bg-muted/50" />
+              <Label>Instância WhatsApp (Número)</Label>
+              <Input
+                value={instanceNumber}
+                onChange={(e) => setInstanceNumber(e.target.value)}
+                placeholder="554892098050"
+              />
             </div>
             <div className="space-y-2">
               <Label>Endpoint Uazapi</Label>
@@ -193,15 +201,27 @@ export default function ConfiguracoesCore() {
             </div>
           </div>
 
-          <div className="space-y-2 pt-2">
-            <Label htmlFor="uazapiToken">Token de Acesso (Admin Token)</Label>
-            <Input
-              id="uazapiToken"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              type="password"
-              placeholder="Insira o Admin Token alfanumérico"
-            />
+          <div className="grid gap-6 md:grid-cols-2 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="uazapiToken">Token de Acesso (API Key)</Label>
+              <Input
+                id="uazapiToken"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                type="password"
+                placeholder="Insira o Token alfanumérico"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="uazapiAdminToken">Admin Token (Opcional)</Label>
+              <Input
+                id="uazapiAdminToken"
+                value={adminToken}
+                onChange={(e) => setAdminToken(e.target.value)}
+                type="password"
+                placeholder="Insira o Admin Token alfanumérico"
+              />
+            </div>
           </div>
 
           <div className="pt-2 flex gap-3">

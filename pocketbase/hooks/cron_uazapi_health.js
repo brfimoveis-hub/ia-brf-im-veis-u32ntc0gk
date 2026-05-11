@@ -11,14 +11,19 @@ cronAdd('uazapi_health_check', '*/5 * * * *', () => {
     if (domain.endsWith('/api')) domain = domain.slice(0, -4)
     if (domain.endsWith('/v1')) domain = domain.slice(0, -3)
 
+    const userAdminToken = user.getString('uazapi_admin_token')
+    const userApiKey = user.getString('uazapi_token')
+
+    const headers = { 'Content-Type': 'application/json' }
+    if (userAdminToken) headers['AdminToken'] = userAdminToken
+    if (userApiKey) headers['apikey'] = userApiKey
+    if (!userAdminToken && !userApiKey) headers['apikey'] = adminToken
+
     try {
       const res = $http.send({
         url: `${domain}/instance/connectionState/${instance}`,
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          AdminToken: adminToken,
-        },
+        headers: headers,
         timeout: 10,
       })
 

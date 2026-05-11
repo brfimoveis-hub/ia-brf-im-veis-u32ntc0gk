@@ -11,6 +11,15 @@ routerAdd(
     if (domain.endsWith('/api')) domain = domain.slice(0, -4)
     if (domain.endsWith('/v1')) domain = domain.slice(0, -3)
 
+    const userRecord = e.auth
+    const userAdminToken = userRecord ? userRecord.getString('uazapi_admin_token') : ''
+    const userApiKey = userRecord ? userRecord.getString('uazapi_token') : ''
+
+    const headers = { 'Content-Type': 'application/json' }
+    if (userAdminToken) headers['AdminToken'] = userAdminToken
+    if (userApiKey) headers['apikey'] = userApiKey
+    if (!userAdminToken && !userApiKey) headers['apikey'] = adminToken
+
     const logsCol = $app.findCollectionByNameOrId('system_logs')
 
     const pingStartTime = new Date().getTime()
@@ -20,7 +29,7 @@ routerAdd(
       stateRes = $http.send({
         url: `${domain}/instance/connectionState/${instance}`,
         method: 'GET',
-        headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
+        headers: headers,
         timeout: 10,
       })
     } catch (err) {
@@ -46,7 +55,7 @@ routerAdd(
       proxyRes = $http.send({
         url: `${domain}/instance/fetchInstances`,
         method: 'GET',
-        headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
+        headers: headers,
         timeout: 10,
       })
     } catch (err) {
@@ -68,7 +77,7 @@ routerAdd(
       whRes = $http.send({
         url: `${domain}/webhook/find/${instance}`,
         method: 'GET',
-        headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
+        headers: headers,
         timeout: 10,
       })
     } catch (err) {
