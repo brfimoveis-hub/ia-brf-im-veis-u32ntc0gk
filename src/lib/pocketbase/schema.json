@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-11T02:43:25.401Z",
+  "generatedAt": "2026-05-11T12:31:42.858Z",
   "collections": [
     {
       "name": "users",
@@ -136,6 +136,36 @@
         },
         {
           "name": "uazapi_instance_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_whatsapp_business_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_whatsapp_phone_number_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_whatsapp_access_token",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_whatsapp_verify_token",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_whatsapp_status",
           "type": "text",
           "required": false,
           "system": false

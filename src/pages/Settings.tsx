@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import {
   Loader2,
@@ -16,25 +17,41 @@ import {
   Cpu,
   Database,
   Settings2,
+  MessageSquare,
 } from 'lucide-react'
 
 export default function ConfiguracoesCore() {
   const { user } = useAuth()
   const { toast } = useToast()
 
+  // Uazapi States
   const [status, setStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking')
   const [errorDetail, setErrorDetail] = useState('')
-
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [instanceNumber, setInstanceNumber] = useState('')
   const [domain, setDomain] = useState('')
   const [token, setToken] = useState('')
-
   const [isSaving, setIsSaving] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{ domain?: string; instance?: string }>(
     {},
   )
+
+  // Meta States
+  const [metaStatus, setMetaStatus] = useState<'checking' | 'connected' | 'disconnected' | 'idle'>(
+    'idle',
+  )
+  const [metaErrorDetail, setMetaErrorDetail] = useState('')
+  const [metaBusinessId, setMetaBusinessId] = useState('')
+  const [metaPhoneId, setMetaPhoneId] = useState('')
+  const [metaAccessToken, setMetaAccessToken] = useState('')
+  const [metaVerifyToken, setMetaVerifyToken] = useState('')
+  const [isSavingMeta, setIsSavingMeta] = useState(false)
+  const [metaValidationErrors, setMetaValidationErrors] = useState<{
+    businessId?: string
+    phoneId?: string
+    token?: string
+  }>({})
 
   const initialized = useRef(false)
 
@@ -47,11 +64,19 @@ export default function ConfiguracoesCore() {
         setStatus('disconnected')
         setErrorDetail(e.record.uazapi_error || 'Desconectado')
       }
+
+      if (e.record.meta_whatsapp_status === 'Conectado') {
+        setMetaStatus('connected')
+        setMetaErrorDetail('')
+      } else if (e.record.meta_whatsapp_status === 'Desconectado') {
+        setMetaStatus('disconnected')
+      }
     }
   })
 
   useEffect(() => {
     if (user && !initialized.current) {
+      // Setup Uazapi
       setName(user.name || 'BRF Imóveis')
       setEmail(user.email || 'brfimoveis@gmail.com')
       setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
@@ -70,17 +95,42 @@ export default function ConfiguracoesCore() {
           user.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj',
         )
       }
+
+      // Setup Meta
+      setMetaBusinessId(user.meta_whatsapp_business_id || '')
+      setMetaPhoneId(user.meta_whatsapp_phone_number_id || '')
+      setMetaAccessToken(user.meta_whatsapp_access_token || '')
+      setMetaVerifyToken(user.meta_whatsapp_verify_token || '')
+
+      if (user.meta_whatsapp_status === 'Conectado') {
+        setMetaStatus('connected')
+      } else if (user.meta_whatsapp_status === 'Desconectado') {
+        setMetaStatus('disconnected')
+      } else if (
+        user.meta_whatsapp_business_id &&
+        user.meta_whatsapp_phone_number_id &&
+        user.meta_whatsapp_access_token
+      ) {
+        checkMetaConnection(
+          user.meta_whatsapp_business_id,
+          user.meta_whatsapp_phone_number_id,
+          user.meta_whatsapp_access_token,
+        )
+      } else {
+        setMetaStatus('idle')
+      }
+
       initialized.current = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
+  // --- Uazapi Handlers ---
   const validateFields = () => {
     const errors: { domain?: string; instance?: string } = {}
     if (!instanceNumber || instanceNumber.trim() === '') {
       errors.instance = 'A Instância WhatsApp é obrigatória.'
     }
-
     if (!domain || domain.trim() === '') {
       errors.domain = 'O Endpoint Uazapi é obrigatório.'
     } else {
@@ -94,7 +144,6 @@ export default function ConfiguracoesCore() {
         errors.domain = 'Formato de URL inválido.'
       }
     }
-
     setValidationErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -108,10 +157,7 @@ export default function ConfiguracoesCore() {
         method: 'POST',
         body: { instance: inst, domain: dom, token: tok },
       })
-
-      if (data?.error) {
-        throw new Error(data.error)
-      }
+      if (data?.error) throw new Error(data.error)
 
       if (
         data?.instance?.state === 'open' ||
@@ -133,14 +179,9 @@ export default function ConfiguracoesCore() {
     } catch (e: any) {
       setStatus('disconnected')
       let errMsg = e.message || 'Erro de comunicação.'
-
-      if (e.status === 400 && e.response?.error) {
-        errMsg = e.response.error
-      } else if (e.status === 504) {
-        errMsg = 'Timeout. Verifique o Endpoint URL.'
-      } else if (e.response?.message) {
-        errMsg = e.response.message
-      }
+      if (e.status === 400 && e.response?.error) errMsg = e.response.error
+      else if (e.status === 504) errMsg = 'Timeout. Verifique o Endpoint URL.'
+      else if (e.response?.message) errMsg = e.response.message
 
       setErrorDetail(errMsg)
       await pb
@@ -154,7 +195,7 @@ export default function ConfiguracoesCore() {
     if (!validateFields()) {
       toast({
         title: 'Dados inválidos',
-        description: 'Corrija os erros do formulário antes de salvar.',
+        description: 'Corrija os erros do formulário.',
         variant: 'destructive',
       })
       return
@@ -168,23 +209,74 @@ export default function ConfiguracoesCore() {
         uazapi_token: token,
         uazapi_instance_number: instanceNumber,
       }
-
-      if (email !== user.email) {
-        payload.email = email
-      }
+      if (email !== user.email) payload.email = email
 
       await pb.collection('users').update(user.id, payload)
       toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
-
       await checkConnection(instanceNumber, domain, token)
+    } catch (e: any) {
+      toast({ title: 'Erro', description: 'Não foi possível salvar.', variant: 'destructive' })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // --- Meta Handlers ---
+  const checkMetaConnection = async (busId: string, phoneId: string, accToken: string) => {
+    if (!user) return
+    setMetaStatus('checking')
+    setMetaErrorDetail('')
+    try {
+      await pb.send(`/backend/v1/meta/test-connection`, {
+        method: 'POST',
+        body: { business_id: busId, phone_number_id: phoneId, access_token: accToken },
+      })
+      setMetaStatus('connected')
+      await pb.collection('users').update(user.id, { meta_whatsapp_status: 'Conectado' })
+    } catch (e: any) {
+      setMetaStatus('disconnected')
+      let errMsg = e.message || 'Erro de comunicação com a Meta.'
+      setMetaErrorDetail(errMsg)
+      await pb.collection('users').update(user.id, { meta_whatsapp_status: 'Desconectado' })
+    }
+  }
+
+  const handleSaveMeta = async () => {
+    if (!user) return
+    const errors: any = {}
+    if (!metaBusinessId) errors.businessId = 'Obrigatório.'
+    if (!metaPhoneId) errors.phoneId = 'Obrigatório.'
+    if (!metaAccessToken) errors.token = 'Obrigatório.'
+    setMetaValidationErrors(errors)
+
+    if (Object.keys(errors).length > 0) {
+      toast({
+        title: 'Dados inválidos',
+        description: 'Preencha todos os campos obrigatórios da Meta.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsSavingMeta(true)
+    try {
+      const payload: any = {
+        meta_whatsapp_business_id: metaBusinessId,
+        meta_whatsapp_phone_number_id: metaPhoneId,
+        meta_whatsapp_access_token: metaAccessToken,
+        meta_whatsapp_verify_token: metaVerifyToken,
+      }
+      await pb.collection('users').update(user.id, payload)
+      toast({ title: 'Configurações Meta salvas', description: 'Testando conexão...' })
+      await checkMetaConnection(metaBusinessId, metaPhoneId, metaAccessToken)
     } catch (e: any) {
       toast({
         title: 'Erro',
-        description: 'Não foi possível salvar as configurações.',
+        description: 'Não foi possível salvar as configurações da Meta.',
         variant: 'destructive',
       })
     } finally {
-      setIsSaving(false)
+      setIsSavingMeta(false)
     }
   }
 
@@ -200,29 +292,56 @@ export default function ConfiguracoesCore() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Uazapi Status</CardTitle>
-            <Network className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">WhatsApp Status</CardTitle>
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2 mt-1">
-              {status === 'checking' && (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  <span className="text-sm font-medium text-muted-foreground">Verificando...</span>
-                </>
-              )}
-              {status === 'connected' && (
-                <>
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  <span className="text-sm font-medium text-emerald-600">Conectado</span>
-                </>
-              )}
-              {status === 'disconnected' && (
-                <>
-                  <XCircle className="h-4 w-4 text-destructive" />
-                  <span className="text-sm font-medium text-destructive">Desconectado</span>
-                </>
-              )}
+            <div className="flex flex-col gap-2 mt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Meta API:</span>
+                <div className="flex items-center gap-1">
+                  {metaStatus === 'checking' && (
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  )}
+                  {metaStatus === 'connected' && (
+                    <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                  )}
+                  {metaStatus === 'disconnected' && (
+                    <XCircle className="h-3 w-3 text-destructive" />
+                  )}
+                  {metaStatus === 'idle' && <Network className="h-3 w-3 text-muted-foreground" />}
+                  <span
+                    className={`text-xs font-medium ${metaStatus === 'connected' ? 'text-emerald-600' : metaStatus === 'disconnected' ? 'text-destructive' : 'text-muted-foreground'}`}
+                  >
+                    {metaStatus === 'checking'
+                      ? 'Verificando...'
+                      : metaStatus === 'connected'
+                        ? 'Conectado'
+                        : metaStatus === 'disconnected'
+                          ? 'Desconectado'
+                          : 'Inativo'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Uazapi:</span>
+                <div className="flex items-center gap-1">
+                  {status === 'checking' && (
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  )}
+                  {status === 'connected' && <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
+                  {status === 'disconnected' && <XCircle className="h-3 w-3 text-destructive" />}
+                  <span
+                    className={`text-xs font-medium ${status === 'connected' ? 'text-emerald-600' : status === 'disconnected' ? 'text-destructive' : 'text-muted-foreground'}`}
+                  >
+                    {status === 'checking'
+                      ? 'Verificando...'
+                      : status === 'connected'
+                        ? 'Conectado'
+                        : 'Desconectado'}
+                  </span>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -253,109 +372,211 @@ export default function ConfiguracoesCore() {
         </Card>
       </div>
 
-      <Card className="border-border/50 shadow-sm">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Settings2 className="h-5 w-5 text-primary" />
-            <CardTitle>Uazapi Connection Manager</CardTitle>
-          </div>
-          <CardDescription>
-            Configure e teste os parâmetros de conexão do WhatsApp via Uazapi.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {status === 'disconnected' && errorDetail && (
-            <div className="flex items-start p-4 bg-destructive/10 text-destructive rounded-lg mb-4">
-              <AlertTriangle className="h-5 w-5 mr-3 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <p className="font-semibold text-sm">Falha na conexão: {errorDetail}</p>
+      <Tabs defaultValue="meta" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-[500px]">
+          <TabsTrigger value="meta">WhatsApp API Oficial (Meta)</TabsTrigger>
+          <TabsTrigger value="uazapi">Uazapi (Legado)</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="meta">
+          <Card className="border-border/50 shadow-sm mt-4">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-primary" />
+                <CardTitle>Meta Cloud API Configuration</CardTitle>
               </div>
-            </div>
-          )}
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="nome">Nome</Label>
-              <Input
-                id="nome"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="BRF Imóveis"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="brfimoveis@gmail.com"
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2 pt-2">
-            <div className="space-y-2">
-              <Label>Instância WhatsApp (Número)</Label>
-              <Input
-                value={instanceNumber}
-                onChange={(e) => {
-                  setInstanceNumber(e.target.value)
-                  if (validationErrors.instance)
-                    setValidationErrors({ ...validationErrors, instance: undefined })
-                }}
-                placeholder="554892098050"
-                className={validationErrors.instance ? 'border-destructive' : ''}
-              />
-              {validationErrors.instance && (
-                <p className="text-xs text-destructive">{validationErrors.instance}</p>
+              <CardDescription>
+                Configure as credenciais da API Oficial do WhatsApp (Meta).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {metaStatus === 'disconnected' && metaErrorDetail && (
+                <div className="flex items-start p-4 bg-destructive/10 text-destructive rounded-lg mb-4">
+                  <AlertTriangle className="h-5 w-5 mr-3 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-sm">Falha na conexão: {metaErrorDetail}</p>
+                  </div>
+                </div>
               )}
-            </div>
-            <div className="space-y-2">
-              <Label>Endpoint Uazapi</Label>
-              <Input
-                type="url"
-                value={domain}
-                onChange={(e) => {
-                  setDomain(e.target.value)
-                  if (validationErrors.domain)
-                    setValidationErrors({ ...validationErrors, domain: undefined })
-                }}
-                placeholder="https://iabrfimveis.uazapi.com"
-                className={validationErrors.domain ? 'border-destructive' : ''}
-              />
-              {validationErrors.domain && (
-                <p className="text-xs text-destructive">{validationErrors.domain}</p>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>ID da Conta Business</Label>
+                  <Input
+                    value={metaBusinessId}
+                    onChange={(e) => {
+                      setMetaBusinessId(e.target.value)
+                      if (metaValidationErrors.businessId)
+                        setMetaValidationErrors({ ...metaValidationErrors, businessId: undefined })
+                    }}
+                    placeholder="1029384756"
+                    className={metaValidationErrors.businessId ? 'border-destructive' : ''}
+                  />
+                  {metaValidationErrors.businessId && (
+                    <p className="text-xs text-destructive">{metaValidationErrors.businessId}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>ID do Número de Telefone</Label>
+                  <Input
+                    value={metaPhoneId}
+                    onChange={(e) => {
+                      setMetaPhoneId(e.target.value)
+                      if (metaValidationErrors.phoneId)
+                        setMetaValidationErrors({ ...metaValidationErrors, phoneId: undefined })
+                    }}
+                    placeholder="1098765432"
+                    className={metaValidationErrors.phoneId ? 'border-destructive' : ''}
+                  />
+                  {metaValidationErrors.phoneId && (
+                    <p className="text-xs text-destructive">{metaValidationErrors.phoneId}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2 pt-2">
+                <div className="space-y-2">
+                  <Label>Token de Acesso (Permanente)</Label>
+                  <Input
+                    value={metaAccessToken}
+                    onChange={(e) => {
+                      setMetaAccessToken(e.target.value)
+                      if (metaValidationErrors.token)
+                        setMetaValidationErrors({ ...metaValidationErrors, token: undefined })
+                    }}
+                    type="password"
+                    placeholder="EAA..."
+                    className={metaValidationErrors.token ? 'border-destructive' : ''}
+                  />
+                  {metaValidationErrors.token && (
+                    <p className="text-xs text-destructive">{metaValidationErrors.token}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Token de Verificação (Webhook)</Label>
+                  <Input
+                    value={metaVerifyToken}
+                    onChange={(e) => setMetaVerifyToken(e.target.value)}
+                    placeholder="meu_token_secreto"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use ao configurar o Webhook no painel da Meta.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <Button onClick={handleSaveMeta} disabled={isSavingMeta}>
+                  {isSavingMeta && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Salvar e Testar Conexão
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="uazapi">
+          <Card className="border-border/50 shadow-sm mt-4">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-5 w-5 text-primary" />
+                <CardTitle>Uazapi Connection Manager</CardTitle>
+              </div>
+              <CardDescription>
+                Configure e teste os parâmetros de conexão do WhatsApp via Uazapi.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {status === 'disconnected' && errorDetail && (
+                <div className="flex items-start p-4 bg-destructive/10 text-destructive rounded-lg mb-4">
+                  <AlertTriangle className="h-5 w-5 mr-3 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-sm">Falha na conexão: {errorDetail}</p>
+                  </div>
+                </div>
               )}
-            </div>
-          </div>
 
-          <div className="grid gap-6 md:grid-cols-2 pt-2">
-            <div className="space-y-2">
-              <Label htmlFor="uazapiToken">Token de Acesso (API Key / Admin Token)</Label>
-              <Input
-                id="uazapiToken"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                type="password"
-                placeholder="Insira o Token alfanumérico"
-              />
-              <p className="text-xs text-muted-foreground">
-                Este token é usado como <code>AdminToken</code> para verificar o status e conectar a
-                instância.
-              </p>
-            </div>
-          </div>
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="nome">Nome</Label>
+                  <Input
+                    id="nome"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="BRF Imóveis"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">E-mail</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="brfimoveis@gmail.com"
+                  />
+                </div>
+              </div>
 
-          <div className="pt-2 flex gap-3">
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Salvar e Testar Conexão
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              <div className="grid gap-6 md:grid-cols-2 pt-2">
+                <div className="space-y-2">
+                  <Label>Instância WhatsApp (Número)</Label>
+                  <Input
+                    value={instanceNumber}
+                    onChange={(e) => {
+                      setInstanceNumber(e.target.value)
+                      if (validationErrors.instance)
+                        setValidationErrors({ ...validationErrors, instance: undefined })
+                    }}
+                    placeholder="554892098050"
+                    className={validationErrors.instance ? 'border-destructive' : ''}
+                  />
+                  {validationErrors.instance && (
+                    <p className="text-xs text-destructive">{validationErrors.instance}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Endpoint Uazapi</Label>
+                  <Input
+                    type="url"
+                    value={domain}
+                    onChange={(e) => {
+                      setDomain(e.target.value)
+                      if (validationErrors.domain)
+                        setValidationErrors({ ...validationErrors, domain: undefined })
+                    }}
+                    placeholder="https://iabrfimveis.uazapi.com"
+                    className={validationErrors.domain ? 'border-destructive' : ''}
+                  />
+                  {validationErrors.domain && (
+                    <p className="text-xs text-destructive">{validationErrors.domain}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2 pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="uazapiToken">Token de Acesso (API Key / Admin Token)</Label>
+                  <Input
+                    id="uazapiToken"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    type="password"
+                    placeholder="Insira o Token"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <Button onClick={handleSave} disabled={isSaving}>
+                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Salvar e Testar Conexão
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
