@@ -66,7 +66,8 @@ routerAdd(
       if (msg.includes('not found')) {
         return e.json(400, {
           message: 'Instance not found',
-          error: 'Verifique o Endpoint URL. O servidor retornou 404 Not Found.',
+          error:
+            'Verifique o Endpoint URL e a Instância WhatsApp. O servidor retornou 404 Not Found.',
         })
       }
       return e.internalServerError(err.message)

@@ -167,6 +167,12 @@ export default function ConfiguracoesCore() {
       })
       if (data?.error) throw new Error(data.error)
 
+      try {
+        await pb.send(`/backend/v1/uazapi/diagnostics/${inst}`, { method: 'GET' })
+      } catch (_) {
+        // Silently ignore diagnostics errors
+      }
+
       if (
         data?.instance?.state === 'open' ||
         data?.success ||
@@ -189,7 +195,8 @@ export default function ConfiguracoesCore() {
       let errMsg = e.message || 'Erro de comunicação.'
       if (e.status === 400 && e.response?.error) errMsg = e.response.error
       else if (e.status === 404)
-        errMsg = 'Endpoint não encontrado (404). Verifique a rota da API ou conexão com a Uazapi.'
+        errMsg =
+          'Verifique o Endpoint URL e a Instância WhatsApp. O servidor retornou 404 Not Found.'
       else if (e.status === 504) errMsg = 'Timeout. Verifique o Endpoint URL.'
       else if (e.response?.message) errMsg = e.response.message
 
