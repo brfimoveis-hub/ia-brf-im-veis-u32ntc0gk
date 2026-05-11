@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-11T01:21:59.761Z",
+  "generatedAt": "2026-05-11T01:31:19.475Z",
   "collections": [
     {
       "name": "users",
@@ -314,6 +314,18 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "details",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payload",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []

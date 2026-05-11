@@ -21,26 +21,15 @@ export function SettingsUazapi() {
     { step: string; status: 'pending' | 'success' | 'error'; message: string }[]
   >([])
 
-  const ADMIN_TOKEN = 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
   const INSTANCE_NUMBER = '554892098050'
   const DOMAIN = 'https://iabrfimveis.uazapi.com'
 
-  const checkConnection = async (tokenToCheck: string) => {
-    if (!tokenToCheck) {
-      setUazapiStatus('disconnected')
-      return
-    }
+  const checkConnection = async () => {
     setUazapiStatus('checking')
     setUazapiErrorDetail('')
     try {
-      const data = await pb.send('/backend/v1/uazapi/proxy', {
-        method: 'POST',
-        body: JSON.stringify({
-          domain: DOMAIN,
-          endpoint: `/instance/connectionState/${INSTANCE_NUMBER}`,
-          method: 'GET',
-          apikey: tokenToCheck,
-        }),
+      const data = await pb.send(`/backend/v1/uazapi/status/${INSTANCE_NUMBER}`, {
+        method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       })
 
@@ -53,7 +42,7 @@ export function SettingsUazapi() {
           data?.message ||
           data?.error ||
           (data?.statusCode === 401
-            ? 'Token inválido (Erro 401)'
+            ? 'Token inválido/Unauthorized (Erro 401)'
             : data?.statusCode === 404
               ? 'Instância não encontrada (Erro 404)'
               : 'Instância desconectada.')
@@ -61,7 +50,7 @@ export function SettingsUazapi() {
       }
     } catch (e: any) {
       setUazapiStatus('disconnected')
-      setUazapiErrorDetail(e.message || 'Falha na comunicação com a API (Proxy).')
+      setUazapiErrorDetail(e.message || 'Falha na comunicação com o Proxy Uazapi.')
     }
   }
 
@@ -69,12 +58,8 @@ export function SettingsUazapi() {
     if (user && !uazapiToken) {
       setUazapiToken(user.uazapi_token || '')
     }
-    if (uazapiToken) {
-      checkConnection(uazapiToken)
-    } else {
-      setUazapiStatus('disconnected')
-    }
-  }, [uazapiToken, user])
+    checkConnection()
+  }, [user])
 
   const handleSave = async () => {
     if (!user) return
@@ -82,13 +67,12 @@ export function SettingsUazapi() {
     try {
       await pb.collection('users').update(user.id, {
         uazapi_token: uazapiToken,
-        uazapi_admin_token: ADMIN_TOKEN,
         uazapi_instance_number: INSTANCE_NUMBER,
         uazapi_domain: DOMAIN,
         uazapi_error: uazapiErrorDetail,
       })
       toast.success('Configurações Uazapi salvas com sucesso')
-      checkConnection(uazapiToken)
+      checkConnection()
     } catch (e) {
       toast.error('Erro ao salvar integrações Uazapi')
     } finally {
@@ -101,154 +85,77 @@ export function SettingsUazapi() {
     const logs: { step: string; status: 'pending' | 'success' | 'error'; message: string }[] = []
 
     logs.push({
-      step: 'Verificação de URL e SSL via Proxy',
+      step: 'Iniciando Diagnóstico Back-to-Back (Port 443)',
       status: 'pending',
-      message: 'Verificando conectividade básica com o domínio...',
+      message: 'Buscando estado da instância e webhooks via servidor...',
     })
     setTroubleshootLogs([...logs])
+
     try {
-      const data = await pb.send('/backend/v1/uazapi/proxy', {
-        method: 'POST',
-        body: JSON.stringify({
-          domain: DOMAIN,
-          endpoint: '/instance/fetchInstances',
-          method: 'GET',
-          apikey: ADMIN_TOKEN,
-        }),
+      const data = await pb.send(`/backend/v1/uazapi/diagnostics/${INSTANCE_NUMBER}`, {
+        method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       })
 
-      if (!data?.error && data?.statusCode !== 401 && data?.statusCode !== 404) {
+      if (data.proxy?.statusCode === 200 && !data.proxy?.data?.error) {
         logs[0] = {
-          step: 'Verificação de URL e SSL via Proxy',
+          step: 'Conectividade e SSL (Gateway)',
           status: 'success',
-          message: 'Domínio alcançável e SSL válido.',
+          message: 'Domínio alcançável na porta 443 e SSL validado.',
         }
       } else {
         logs[0] = {
-          step: 'Verificação de URL e SSL via Proxy',
+          step: 'Conectividade e SSL (Gateway)',
           status: 'error',
-          message: `Erro HTTP ${data?.statusCode || 500}: Verifique se o Admin Token é válido.`,
+          message: `Erro HTTP ${data.proxy?.statusCode}. Verifique as permissões de rede.`,
         }
+      }
+
+      const stateData = data.state?.data
+      if (stateData?.instance?.state === 'open') {
+        logs.push({
+          step: 'Estado da Instância',
+          status: 'success',
+          message: `Instância ${INSTANCE_NUMBER} está online e aberta.`,
+        })
+      } else {
+        logs.push({
+          step: 'Estado da Instância',
+          status: 'error',
+          message: `Instância não está open. Estado: ${stateData?.instance?.state || 'desconhecido'}`,
+        })
+      }
+
+      const whData = data.webhook?.data
+      if (whData && whData.url) {
+        logs.push({
+          step: 'Verificação de Webhook',
+          status: 'success',
+          message: `Webhook configurado e apontando para ${whData.url}`,
+        })
+      } else if (whData && whData.webhooks && whData.webhooks.length > 0) {
+        logs.push({
+          step: 'Verificação de Webhook',
+          status: 'success',
+          message: 'Webhooks configurados corretamente (multi).',
+        })
+      } else {
+        logs.push({
+          step: 'Verificação de Webhook',
+          status: 'warning',
+          message:
+            'Nenhum webhook ativo encontrado na instância. A comunicação bidirecional não funcionará.',
+        })
       }
     } catch (e: any) {
       logs[0] = {
-        step: 'Verificação de URL e SSL via Proxy',
+        step: 'Diagnóstico Back-to-Back Falhou',
         status: 'error',
-        message: `Falha de rede (Proxy): ${e.message}.`,
+        message: `Falha na execução: ${e.message}`,
       }
     }
-    setTroubleshootLogs([...logs])
 
-    logs.push({
-      step: 'Verificação de Instância via Proxy',
-      status: 'pending',
-      message: `Buscando estado da instância ${INSTANCE_NUMBER}...`,
-    })
     setTroubleshootLogs([...logs])
-    if (!uazapiToken) {
-      logs[1] = {
-        step: 'Verificação de Instância via Proxy',
-        status: 'error',
-        message: 'API Key (Token) não fornecida. Insira a API Key para verificar.',
-      }
-    } else {
-      try {
-        const data = await pb.send('/backend/v1/uazapi/proxy', {
-          method: 'POST',
-          body: JSON.stringify({
-            domain: DOMAIN,
-            endpoint: `/instance/connectionState/${INSTANCE_NUMBER}`,
-            method: 'GET',
-            apikey: uazapiToken,
-          }),
-          headers: { 'Content-Type': 'application/json' },
-        })
-
-        if (!data?.error && data?.statusCode !== 401 && data?.statusCode !== 404) {
-          if (data?.instance?.state === 'open') {
-            logs[1] = {
-              step: 'Verificação de Instância via Proxy',
-              status: 'success',
-              message: 'Instância online e estado open.',
-            }
-          } else {
-            logs[1] = {
-              step: 'Verificação de Instância via Proxy',
-              status: 'error',
-              message: `Instância não está open. Estado: ${data?.instance?.state || 'desconhecido'}`,
-            }
-          }
-        } else {
-          let errMsg = `Erro HTTP ${data?.statusCode || 500}. `
-          if (data?.statusCode === 401) errMsg += 'Unauthorized (Token Inválido).'
-          else if (data?.statusCode === 404) errMsg += 'Not Found. A instância não foi encontrada.'
-          logs[1] = { step: 'Verificação de Instância via Proxy', status: 'error', message: errMsg }
-        }
-      } catch (e: any) {
-        logs[1] = {
-          step: 'Verificação de Instância via Proxy',
-          status: 'error',
-          message: `Erro de rede (Proxy): ${e.message}`,
-        }
-      }
-    }
-    setTroubleshootLogs([...logs])
-
-    logs.push({
-      step: 'Verificação de Webhook Ativo',
-      status: 'pending',
-      message: `Buscando webhooks configurados na instância...`,
-    })
-    setTroubleshootLogs([...logs])
-    if (!uazapiToken) {
-      logs[2] = {
-        step: 'Verificação de Webhook Ativo',
-        status: 'error',
-        message: 'API Key (Token) ausente.',
-      }
-    } else {
-      try {
-        const data = await pb.send('/backend/v1/uazapi/proxy', {
-          method: 'POST',
-          body: JSON.stringify({
-            domain: DOMAIN,
-            endpoint: `/webhook/find/${INSTANCE_NUMBER}`,
-            method: 'GET',
-            apikey: uazapiToken,
-          }),
-          headers: { 'Content-Type': 'application/json' },
-        })
-
-        if (data && data.url) {
-          logs[2] = {
-            step: 'Verificação de Webhook Ativo',
-            status: 'success',
-            message: `Webhook configurado e apontando para ${data.url}`,
-          }
-        } else if (data && data.webhooks && data.webhooks.length > 0) {
-          logs[2] = {
-            step: 'Verificação de Webhook Ativo',
-            status: 'success',
-            message: `Webhook configurado (multi).`,
-          }
-        } else {
-          logs[2] = {
-            step: 'Verificação de Webhook Ativo',
-            status: 'error',
-            message: `Nenhum webhook ativo encontrado na instância. A comunicação bidirecional não funcionará.`,
-          }
-        }
-      } catch (e: any) {
-        logs[2] = {
-          step: 'Verificação de Webhook Ativo',
-          status: 'error',
-          message: `Erro ao buscar webhook: ${e.message}`,
-        }
-      }
-    }
-    setTroubleshootLogs([...logs])
-
     setIsTroubleshooting(false)
   }
 
@@ -313,11 +220,6 @@ export function SettingsUazapi() {
               type="password"
               placeholder="Insira a API Key da sua instância"
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Admin Token (Fixo)</Label>
-            <Input value={ADMIN_TOKEN} disabled type="password" className="bg-muted/50" />
           </div>
 
           <div className="pt-2 flex gap-3">

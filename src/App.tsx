@@ -11,15 +11,15 @@ import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Customers = lazy(() => import('./pages/Customers'))
-const ConfiguracoesCore = lazy(() => import('./pages/Settings'))
-const Cadences = lazy(() => import('./pages/Cadences'))
-const Logs = lazy(() => import('./pages/Logs'))
-const NotFound = lazy(() => import('./pages/NotFound'))
-const Login = lazy(() => import('./pages/Login'))
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
-const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+import Dashboard from './pages/Dashboard'
+import Customers from './pages/Customers'
+import ConfiguracoesCore from './pages/Settings'
+import Cadences from './pages/Cadences'
+import Logs from './pages/Logs'
+import NotFound from './pages/NotFound'
+import Login from './pages/Login'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 
 const PageLoader = () => (
   <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
@@ -79,27 +79,15 @@ const router = createBrowserRouter(
         },
         {
           path: '/login',
-          element: (
-            <Suspense fallback={<PageLoader />}>
-              <Login />
-            </Suspense>
-          ),
+          element: <Login />,
         },
         {
           path: '/forgot-password',
-          element: (
-            <Suspense fallback={<PageLoader />}>
-              <ForgotPassword />
-            </Suspense>
-          ),
+          element: <ForgotPassword />,
         },
         {
           path: '/reset-password',
-          element: (
-            <Suspense fallback={<PageLoader />}>
-              <ResetPassword />
-            </Suspense>
-          ),
+          element: <ResetPassword />,
         },
         {
           element: <ProtectedRoute />,
@@ -110,43 +98,23 @@ const router = createBrowserRouter(
               children: [
                 {
                   path: '/dashboard',
-                  element: (
-                    <Suspense fallback={<PageLoader />}>
-                      <Dashboard />
-                    </Suspense>
-                  ),
+                  element: <Dashboard />,
                 },
                 {
                   path: '/clientes',
-                  element: (
-                    <Suspense fallback={<PageLoader />}>
-                      <Customers />
-                    </Suspense>
-                  ),
+                  element: <Customers />,
                 },
                 {
                   path: '/cadencias',
-                  element: (
-                    <Suspense fallback={<PageLoader />}>
-                      <Cadences />
-                    </Suspense>
-                  ),
+                  element: <Cadences />,
                 },
                 {
                   path: '/logs',
-                  element: (
-                    <Suspense fallback={<PageLoader />}>
-                      <Logs />
-                    </Suspense>
-                  ),
+                  element: <Logs />,
                 },
                 {
                   path: '/configuracoes',
-                  element: (
-                    <Suspense fallback={<PageLoader />}>
-                      <ConfiguracoesCore />
-                    </Suspense>
-                  ),
+                  element: <ConfiguracoesCore />,
                 },
               ],
             },
@@ -154,11 +122,7 @@ const router = createBrowserRouter(
         },
         {
           path: '*',
-          element: (
-            <Suspense fallback={<PageLoader />}>
-              <NotFound />
-            </Suspense>
-          ),
+          element: <NotFound />,
         },
       ],
     },

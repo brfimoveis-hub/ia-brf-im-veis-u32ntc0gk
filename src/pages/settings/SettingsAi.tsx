@@ -12,29 +12,45 @@ import { Loader2, Upload, Sparkles, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const DEFAULT_PRESETS = {
-  bia_executiva: {
-    id: 'bia_executiva',
-    name: 'BIA Executiva',
+  bia_materna: {
+    id: 'bia_materna',
+    name: 'BIA Materna',
     instructions:
-      'Você é a BIA Executiva, assistente virtual de alto nível da BRF Imóveis. Seja formal, direta e orientada a resultados. Seu objetivo é atender clientes de alto padrão, focando em investimentos no Villa dos Açores (Planta LM311 de 70,78 m²). Destaque a rentabilidade, o valor competitivo do m² (R$ 4.930,77) e a valorização com a obra.',
-    voice_id: 'bia_executiva_v1',
-    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=10',
+      'Você é a BIA Materna, acolhedora e atenciosa. Seu foco é guiar o cliente com empatia, ideal para a versão Regional da BIA.',
+    voice_id: 'bia_materna_v1',
+    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=1',
   },
-  bia_regional: {
-    id: 'bia_regional',
-    name: 'BIA Regional',
+  bia_especialista: {
+    id: 'bia_especialista',
+    name: 'BIA Especialista',
     instructions:
-      'Você é a BIA Regional, assistente da BRF Imóveis com conhecimento profundo da região de Biguaçu e Rio Caveiras. Seja acolhedora e informal. Destaque os benefícios do bairro Rio Caveiras, infraestrutura local e a qualidade de vida no Villa dos Açores (com piscina e pet place).',
-    voice_id: 'bia_regional_v1',
-    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=11',
+      'Você é a BIA Especialista, dominando detalhes técnicos e financeiros. Ideal para a versão Profissional da BIA.',
+    voice_id: 'bia_especialista_v1',
+    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=2',
   },
-  bia_profissional: {
-    id: 'bia_profissional',
-    name: 'BIA Profissional',
+  bia_dinamica: {
+    id: 'bia_dinamica',
+    name: 'BIA Dinâmica',
     instructions:
-      'Você é a BIA Profissional, especialista técnica da BRF Imóveis. Seja clara, objetiva e foque em detalhes técnicos da Planta LM311 (70,78 m²), financiamentos, documentação, escritura, ITBI e viabilidade comercial do Villa dos Açores.',
-    voice_id: 'bia_profissional_v1',
-    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=12',
+      'Você é a BIA Dinâmica, ágil e persuasiva. Foca em criar senso de urgência e apresentar oportunidades rápidas.',
+    voice_id: 'bia_dinamica_v1',
+    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=3',
+  },
+  bia_autoridade: {
+    id: 'bia_autoridade',
+    name: 'BIA Autoridade',
+    instructions:
+      'Você é a BIA Autoridade. Seu tom é formal e altamente confiável. Ideal para a versão Executiva da BIA.',
+    voice_id: 'bia_autoridade_v1',
+    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=4',
+  },
+  bia_consultiva: {
+    id: 'bia_consultiva',
+    name: 'BIA Consultiva',
+    instructions:
+      'Você é a BIA Consultiva. Analisa o cenário do cliente e sugere a melhor opção financeira para o Villa dos Açores.',
+    voice_id: 'bia_consultiva_v1',
+    avatar_url: 'https://img.usecurling.com/ppl/thumbnail?gender=female&seed=5',
   },
 }
 
@@ -43,7 +59,7 @@ type ProfileId = keyof typeof DEFAULT_PRESETS
 export function SettingsAi() {
   const { user } = useAuth()
 
-  const [activeProfileId, setActiveProfileId] = useState<ProfileId>('bia_executiva')
+  const [activeProfileId, setActiveProfileId] = useState<ProfileId>('bia_materna')
   const [profiles, setProfiles] = useState(DEFAULT_PRESETS)
 
   const [aiName, setAiName] = useState('')
@@ -68,14 +84,14 @@ export function SettingsAi() {
 
   useEffect(() => {
     if (user) {
-      setAiName(user.ai_name || profiles.bia_executiva.name)
-      setAiInstructions(user.ai_instructions || profiles.bia_executiva.instructions)
-      setAiVoiceId(user.ai_voice_id || profiles.bia_executiva.voice_id)
+      setAiName(user.ai_name || profiles.bia_materna.name)
+      setAiInstructions(user.ai_instructions || profiles.bia_materna.instructions)
+      setAiVoiceId(user.ai_voice_id || profiles.bia_materna.voice_id)
 
       if (user.ai_avatar) {
         setAvatarPreview(pb.files.getURL(user, user.ai_avatar))
       } else {
-        setAvatarPreview(profiles.bia_executiva.avatar_url)
+        setAvatarPreview(profiles.bia_materna.avatar_url)
       }
 
       const found = Object.values(profiles).find((p) => p.name === user.ai_name)
