@@ -33,19 +33,7 @@ const ProtectedRoute = () => {
 
   useEffect(() => {
     if (!loading) {
-      if (user) {
-        const verifyState = async () => {
-          try {
-            // Mock verification delay to ensure AI settings and API states are stabilized
-            await new Promise((resolve) => setTimeout(resolve, 300))
-          } finally {
-            setVerifying(false)
-          }
-        }
-        verifyState()
-      } else {
-        setVerifying(false)
-      }
+      setVerifying(false)
     }
   }, [user, loading])
 

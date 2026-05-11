@@ -3,40 +3,77 @@ routerAdd(
   '/backend/v1/uazapi/diagnostics/{instance}',
   (e) => {
     const instance = e.request.pathValue('instance')
-    const domain = 'https://iabrfimveis.uazapi.com'
+    let domain = 'https://iabrfimveis.uazapi.com'
     const adminToken =
       $secrets.get('UAZAPI_ADMIN_TOKEN') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
 
-    const proxyRes = $http.send({
-      url: `${domain}/instance/fetchInstances`,
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
-      timeout: 10,
-    })
+    if (domain.endsWith('/')) domain = domain.slice(0, -1)
+    if (domain.endsWith('/api')) domain = domain.slice(0, -4)
+    if (domain.endsWith('/v1')) domain = domain.slice(0, -3)
+
+    const logsCol = $app.findCollectionByNameOrId('system_logs')
+
+    const pingStartTime = new Date().getTime()
+
+    let stateRes = null
+    try {
+      stateRes = $http.send({
+        url: `${domain}/instance/connectionState/${instance}`,
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
+        timeout: 10,
+      })
+    } catch (err) {
+      stateRes = { statusCode: 0, message: err.message }
+    }
+
+    const pingDuration = new Date().getTime() - pingStartTime
+
+    try {
+      const pingLog = new Record(logsCol)
+      pingLog.set('type', 'diagnostic_ping')
+      pingLog.set('message', `Ping to Uazapi status path`)
+      pingLog.set('details', {
+        url: `${domain}/instance/connectionState/${instance}`,
+        statusCode: stateRes.statusCode,
+        durationMs: pingDuration,
+      })
+      $app.saveNoValidate(pingLog)
+    } catch (_) {}
+
+    let proxyRes = null
+    try {
+      proxyRes = $http.send({
+        url: `${domain}/instance/fetchInstances`,
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
+        timeout: 10,
+      })
+    } catch (err) {
+      proxyRes = { statusCode: 0 }
+    }
 
     let proxyJson = {}
     try {
       proxyJson = proxyRes.json || {}
     } catch (_) {}
 
-    const stateRes = $http.send({
-      url: `${domain}/instance/connectionState/${instance}`,
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
-      timeout: 10,
-    })
-
     let stateJson = {}
     try {
       stateJson = stateRes.json || {}
     } catch (_) {}
 
-    const whRes = $http.send({
-      url: `${domain}/webhook/find/${instance}`,
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
-      timeout: 10,
-    })
+    let whRes = null
+    try {
+      whRes = $http.send({
+        url: `${domain}/webhook/find/${instance}`,
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', AdminToken: adminToken },
+        timeout: 10,
+      })
+    } catch (err) {
+      whRes = { statusCode: 0 }
+    }
 
     let whJson = {}
     try {

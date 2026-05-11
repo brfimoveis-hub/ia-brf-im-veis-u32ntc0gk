@@ -3,9 +3,13 @@ cronAdd('uazapi_health_check', '*/5 * * * *', () => {
 
   for (const user of users) {
     const instance = user.getString('uazapi_instance_number')
-    const domain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
+    let domain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
     const adminToken =
       $secrets.get('UAZAPI_ADMIN_TOKEN') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+
+    if (domain.endsWith('/')) domain = domain.slice(0, -1)
+    if (domain.endsWith('/api')) domain = domain.slice(0, -4)
+    if (domain.endsWith('/v1')) domain = domain.slice(0, -3)
 
     try {
       const res = $http.send({
