@@ -2,17 +2,38 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SettingsAi } from './settings/SettingsAi'
 import { SettingsUazapi } from './settings/SettingsUazapi'
 import { SettingsCadences } from './settings/SettingsCadences'
-import { MessageSquare, Bot, ListOrdered } from 'lucide-react'
+import { MessageSquare, Bot, ListOrdered, RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export default function Settings() {
+  const handleHardRefresh = () => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          registration.unregister()
+        }
+      })
+    }
+    window.location.reload()
+  }
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações Gerais</h1>
-        <p className="text-muted-foreground mt-2">
-          Gerencie sua Inteligência Artificial, integrações e réguas de cadência de forma
-          centralizada.
-        </p>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Configurações Gerais</h1>
+          <p className="text-muted-foreground mt-2">
+            Gerencie sua Inteligência Artificial, integrações e réguas de cadência de forma
+            centralizada.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleHardRefresh}
+          className="shrink-0 text-muted-foreground"
+        >
+          <RefreshCw className="mr-2 h-4 w-4" /> Atualizar Sistema
+        </Button>
       </div>
       <Tabs defaultValue="ai" className="space-y-6">
         <TabsList className="grid w-full grid-cols-3 h-auto p-1">
