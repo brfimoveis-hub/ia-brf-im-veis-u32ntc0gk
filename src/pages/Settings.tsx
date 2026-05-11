@@ -3,6 +3,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SettingsAi } from './settings/SettingsAi'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -180,6 +181,8 @@ export default function ConfiguracoesCore() {
       setStatus('disconnected')
       let errMsg = e.message || 'Erro de comunicação.'
       if (e.status === 400 && e.response?.error) errMsg = e.response.error
+      else if (e.status === 404)
+        errMsg = 'Endpoint não encontrado (404). Verifique a rota da API ou conexão com a Uazapi.'
       else if (e.status === 504) errMsg = 'Timeout. Verifique o Endpoint URL.'
       else if (e.response?.message) errMsg = e.response.message
 
@@ -373,9 +376,10 @@ export default function ConfiguracoesCore() {
       </div>
 
       <Tabs defaultValue="meta" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-[500px]">
+        <TabsList className="grid w-full grid-cols-3 max-w-[750px]">
           <TabsTrigger value="meta">WhatsApp API Oficial (Meta)</TabsTrigger>
           <TabsTrigger value="uazapi">Uazapi (Legado)</TabsTrigger>
+          <TabsTrigger value="ai">IA BIA</TabsTrigger>
         </TabsList>
 
         <TabsContent value="meta">
@@ -466,7 +470,7 @@ export default function ConfiguracoesCore() {
               </div>
 
               <div className="pt-2 flex gap-3">
-                <Button onClick={handleSaveMeta} disabled={isSavingMeta}>
+                <Button type="button" onClick={handleSaveMeta} disabled={isSavingMeta}>
                   {isSavingMeta && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Salvar e Testar Conexão
                 </Button>
@@ -568,13 +572,19 @@ export default function ConfiguracoesCore() {
               </div>
 
               <div className="pt-2 flex gap-3">
-                <Button onClick={handleSave} disabled={isSaving}>
+                <Button type="button" onClick={handleSave} disabled={isSaving}>
                   {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Salvar e Testar Conexão
                 </Button>
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="ai">
+          <div className="mt-4">
+            <SettingsAi />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

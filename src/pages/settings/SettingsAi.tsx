@@ -318,7 +318,13 @@ export function SettingsAi() {
         </div>
 
         <div className="pt-4 border-t flex justify-end">
-          <Button onClick={handleSave} disabled={isSaving} size="lg" className="w-full sm:w-auto">
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            size="lg"
+            className="w-full sm:w-auto"
+          >
             {isSaving ? (
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
             ) : (
