@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, memo } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import {
@@ -54,6 +54,65 @@ const DEFAULT_PRESETS = {
 }
 
 type ProfileId = keyof typeof DEFAULT_PRESETS
+
+const MAX_INSTRUCTIONS_LENGTH = 400000
+
+const OptimizedTextarea = memo(
+  ({
+    id,
+    value,
+    onChange,
+    placeholder,
+    className,
+    maxLength,
+  }: {
+    id?: string
+    value: string
+    onChange: (val: string) => void
+    placeholder?: string
+    className?: string
+    maxLength: number
+  }) => {
+    const [localValue, setLocalValue] = useState(value)
+
+    useEffect(() => {
+      setLocalValue(value)
+    }, [value])
+
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setLocalValue(e.target.value)
+    }
+
+    const handleBlur = () => {
+      if (localValue !== value) {
+        onChange(localValue)
+      }
+    }
+
+    return (
+      <div className="space-y-1 w-full">
+        <Textarea
+          id={id}
+          value={localValue}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          placeholder={placeholder}
+          className={className}
+          maxLength={maxLength}
+        />
+        <div
+          className={cn(
+            'text-right text-xs font-medium',
+            localValue.length >= maxLength ? 'text-destructive' : 'text-muted-foreground',
+          )}
+        >
+          {localValue.length.toLocaleString('pt-BR')} / {maxLength.toLocaleString('pt-BR')}
+        </div>
+      </div>
+    )
+  },
+)
+OptimizedTextarea.displayName = 'OptimizedTextarea'
 
 export function SettingsAi() {
   const { user } = useAuth()
@@ -183,6 +242,25 @@ export function SettingsAi() {
 
   const handleSave = async () => {
     if (!user) return
+
+    if (aiInstructions.length > MAX_INSTRUCTIONS_LENGTH) {
+      toast({
+        title: 'Erro de Validação',
+        description: `As instruções da IA Mãe excedem o limite de ${MAX_INSTRUCTIONS_LENGTH.toLocaleString('pt-BR')} caracteres.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (biaInstructions.length > MAX_INSTRUCTIONS_LENGTH) {
+      toast({
+        title: 'Erro de Validação',
+        description: `As instruções da Persona excedem o limite de ${MAX_INSTRUCTIONS_LENGTH.toLocaleString('pt-BR')} caracteres.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
       const formData = new FormData()
@@ -254,7 +332,8 @@ export function SettingsAi() {
 
       toast({
         title: 'Sucesso',
-        description: 'Configurações da IA salvas com sucesso!',
+        description:
+          'Configurações da IA salvas com sucesso! A nova capacidade de processamento está ativa.',
       })
     } catch (err) {
       console.error(err)
@@ -278,7 +357,8 @@ export function SettingsAi() {
           </div>
           <CardDescription>
             Defina o conhecimento central e diretrizes globais de negócio. Isso alimenta a
-            inteligência de todas as interações e sobrepõe-se à persona.
+            inteligência de todas as interações e sobrepõe-se à persona. Suporta até{' '}
+            {MAX_INSTRUCTIONS_LENGTH.toLocaleString('pt-BR')} caracteres.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -290,12 +370,13 @@ export function SettingsAi() {
               Descreva como a IA deve tratar o negócio, produtos, objeções frequentes e regras de
               funil.
             </p>
-            <Textarea
+            <OptimizedTextarea
               id="aiInstructions"
               value={aiInstructions}
-              onChange={(e) => setAiInstructions(e.target.value)}
+              onChange={setAiInstructions}
               placeholder="Ex: Somos a construtora BRF. Nossos empreendimentos possuem alto padrão..."
               className="min-h-[180px] resize-y"
+              maxLength={MAX_INSTRUCTIONS_LENGTH}
             />
           </div>
 
@@ -475,12 +556,13 @@ export function SettingsAi() {
 
               <div className="space-y-2">
                 <Label htmlFor="biaInstructions">Instruções da Persona (Bia)</Label>
-                <Textarea
+                <OptimizedTextarea
                   id="biaInstructions"
                   value={biaInstructions}
-                  onChange={(e) => handleFieldChange('bia_instructions', e.target.value)}
+                  onChange={(val) => handleFieldChange('bia_instructions', val)}
                   placeholder="Instruções de tom de voz e comportamento da IA..."
                   className="min-h-[120px] resize-y"
+                  maxLength={MAX_INSTRUCTIONS_LENGTH}
                 />
               </div>
             </div>

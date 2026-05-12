@@ -17,13 +17,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
-  const from = location.state?.from?.pathname || '/dashboard'
-
   useEffect(() => {
     if (!authLoading && user) {
+      const from = location.state?.from?.pathname || '/dashboard'
       navigate(from, { replace: true })
     }
-  }, [user, authLoading, navigate, from])
+  }, [user, authLoading, navigate, location])
 
   if (authLoading) {
     return (

@@ -44,8 +44,12 @@ const ProtectedRoute = () => {
 
 const GuestRoute = () => {
   const { user, loading } = useAuth()
+  const location = useLocation()
   if (loading) return <PageLoader />
-  if (user) return <Navigate to="/dashboard" replace />
+  if (user) {
+    const from = location.state?.from?.pathname || '/dashboard'
+    return <Navigate to={from} replace />
+  }
   return <Outlet />
 }
 
