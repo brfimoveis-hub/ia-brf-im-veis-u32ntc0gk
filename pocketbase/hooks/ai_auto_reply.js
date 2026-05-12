@@ -5,6 +5,43 @@ onRecordAfterCreateSuccess((e) => {
     return e.next()
   }
 
+  function callMetaWithRetry(url, method, headers, bodyData, maxRetries = 3) {
+    let attempt = 0
+    let res = null
+    const backoffs = [1000, 3000, 9000]
+    while (attempt <= maxRetries) {
+      try {
+        res = $http.send({
+          url,
+          method,
+          headers,
+          body: bodyData,
+          timeout: 20,
+        })
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          return res
+        }
+      } catch (e) {}
+      if (attempt < maxRetries) {
+        const sleepMs = backoffs[attempt] || 9000
+        const start = new Date().getTime()
+        while (new Date().getTime() - start < sleepMs) {}
+      }
+      attempt++
+    }
+
+    try {
+      const logsCol = $app.findCollectionByNameOrId('system_logs')
+      const newLog = new Record(logsCol)
+      newLog.set('type', 'api_failure')
+      newLog.set('message', `Falha Meta API ou Externa (${url}) após ${maxRetries} tentativas.`)
+      newLog.set('payload', JSON.stringify({ statusCode: res?.statusCode, body: res?.json }))
+      $app.saveNoValidate(newLog)
+    } catch (e) {}
+
+    return res
+  }
+
   let acquiredLock = false
   const customerId = e.record.getString('customer_id')
 
@@ -81,7 +118,7 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (err) {}
 
-    const userId = e.record.getString('user_id')
+    let userId = e.record.getString('user_id')
     let userRecord = null
     try {
       if (userId) userRecord = $app.findRecordById('users', userId)
@@ -294,31 +331,14 @@ onRecordAfterCreateSuccess((e) => {
 
     let channelContext = ''
     if (receiverPhone.includes('991828050')) {
-      channelContext = `\n[PERFIL DE ATENDIMENTO: REMARKETING]\nO cliente veio de uma campanha de remarketing (já nos conhece ou interagiu antes).\nDIRETRIZES DE REMARKETING:\n- Aborde de forma mais direta, focando em reengajamento.\n- Trabalhe ativamente objeções (preço, tempo, localização).\n- Se for Villa dos Açores e houver objeção de preço, argumente que o valor é excelente (R$ 4.930,77/m²) e a localização estratégica em Biguaçu.\n`
+      channelContext = `\n[PERFIL DE ATENDIMENTO: REMARKETING]\nO cliente veio de uma campanha de remarketing (já nos conhece ou interagiu antes).\nDIRETRIZES DE REMARKETING:\n- Aborde de forma mais direta, focando em reengajamento.\n- Trabalhe ativamente objeções.\n`
     } else {
       channelContext = `\n[PERFIL DE ATENDIMENTO: GERAL]\nO cliente é um lead novo (primeiro contato).\nDIRETRIZES GERAIS:\n- Faça a qualificação inicial.\n`
     }
 
-    const leadCreatedStr = customer.getString('created')
     let crmPhaseContext = ''
-    if (leadCreatedStr) {
-      const leadCreated = new Date(leadCreatedStr)
-      const daysSinceCreated = Math.floor(
-        (now.getTime() - leadCreated.getTime()) / (1000 * 3600 * 24),
-      )
 
-      if (daysSinceCreated <= 7) {
-        crmPhaseContext = `\n[FASE ATUAL DO LEAD: D0-D7 QUALIFICAÇÃO]\nObjetivo: Apresentar o empreendimento Villa dos Açores e qualificar o lead (entender necessidades, renda e urgência).`
-      } else if (daysSinceCreated <= 21) {
-        crmPhaseContext = `\n[FASE ATUAL DO LEAD: D8-D21 APRESENTAÇÃO]\nObjetivo: Compartilhar detalhes da planta LM311, vídeos explicativos (sugira enviar vídeo do Veed.io) e focar nos detalhes do m².`
-      } else if (daysSinceCreated <= 45) {
-        crmPhaseContext = `\n[FASE ATUAL DO LEAD: D22-D45 SIMULAÇÃO]\nObjetivo: Focar em facilidades para autônomos, simulação de parcelamento, financiamento Caixa e entrada flexível.`
-      } else {
-        crmPhaseContext = `\n[FASE ATUAL DO LEAD: D46-D60+ NEGOCIAÇÃO]\nObjetivo: Agendar visita ao local ou iniciar fechamento de proposta.`
-      }
-    }
-
-    const propertyContext = `\n[DADOS DO EMPREENDIMENTO]\nEmpreendimento: Villa dos Açores\nLocalização: Biguaçu / Rio Caveiras\nPreço M²: R$ 4.930,77/m²\nPlanta Principal: LM311\n`
+    const propertyContext = `\n[DADOS DO EMPREENDIMENTO]\nEmpreendimento: Villa dos Açores\nLocalização: Biguaçu / Rio Caveiras\n`
 
     let filesContextText = ''
     if (userRecord) {
@@ -335,8 +355,6 @@ onRecordAfterCreateSuccess((e) => {
                 filesContextText += `\n--- Arquivo: ${f} ---\n${str}\n`
               }
             } catch (err) {}
-          } else {
-            filesContextText += `\n--- Arquivo: ${f} (Conteúdo complementar na IA Mãe) ---\n`
           }
         })
       }
@@ -345,7 +363,29 @@ onRecordAfterCreateSuccess((e) => {
     const combinedContextText = `${contextText}\n${filesContextText}`.trim()
 
     const messages = []
-    const systemPrompt = `Você é ${aiName}.\nSua identidade e instruções específicas (Persona):\n${personaInstructions}\n\nInstruções da IA Mãe (Base de Conhecimento Global):\n${motherAiInstructions}\n${channelContext}\n${crmPhaseContext}\n${propertyContext}\n\nDIRETRIZES RIGOROSAS:\n1. Responda de forma fluida, coerente e humana.\n2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.\n3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.\n4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.\n5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.\n6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. NUNCA invente informações (alucinação).\n7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas ou mudou de fase, você DEVE incluir as tags [PHASE: Nova_Fase] e [STATUS: Novo_Status] no final da sua resposta.\nOs status válidos são: "Base de Clientes/Novo LYD", "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Qualificado", "Engajamento", "Visita", "Objeção", "Demo Agend.", "Demo Realiz.", "Proposta", "Negociação", "Fechamento".\nAs fases (phase) válidas são: "Lead", "Atendimento", "Visita", "Proposta", "Fechamento".\n8. TRANSBORDO (HANDOVER): Se o cliente pedir para falar com um humano, agendar visita presencial, ou suporte inicial, inclua a tag [HANDOVER: Bernadete] no final de sua resposta. Se for negociação avançada de valores finais ou fechamento financeiro, inclua [HANDOVER: Mauro].\n\nCONTEXTO RECUPERADO:\n${combinedContextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
+    const systemPrompt = `Você é ${aiName}.
+Sua identidade e instruções específicas (Persona):
+${personaInstructions}
+
+Instruções da IA Mãe (Base de Conhecimento Global):
+${motherAiInstructions}
+${channelContext}
+${crmPhaseContext}
+${propertyContext}
+
+DIRETRIZES RIGOROSAS:
+1. Responda de forma fluida, coerente e humana.
+2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.
+3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções".
+4. NUNCA inicie a resposta com frases sistêmicas ou analíticas. Vá direto ao ponto.
+5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
+6. Aja estritamente de acordo com as instruções (roteiro/script). NUNCA invente informações.
+7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas, você DEVE incluir as tags [PHASE: Nova_Fase] e [STATUS: Novo_Status] no final da sua resposta.
+8. TRANSBORDO (HANDOVER): Se o cliente pedir para falar com um humano, agendar visita presencial, ou suporte inicial, inclua a tag [HANDOVER: Bernadete] no final de sua resposta. Se for negociação avançada, inclua [HANDOVER: Mauro].
+9. MULTIMODALIDADE: Se a mensagem for um cumprimento inicial de alto impacto, ou se o usuário pediu especificamente algo visual (como ver o apartamento), você PODE incluir a tag [VIDEO] no final do texto. Se a sua resposta for uma explicação longa, ou se o cliente mandou um áudio antes (você também deve responder em áudio), inclua a tag [AUDIO] no final do texto para que o sistema sintetize sua voz. Use de forma ponderada e situacional.
+
+CONTEXTO RECUPERADO:
+${combinedContextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
 
     messages.push({ role: 'system', content: systemPrompt })
 
@@ -391,6 +431,43 @@ onRecordAfterCreateSuccess((e) => {
     ) {
       responseText = chatRes.json.choices[0].message.content.trim()
 
+      if (motherAiInstructions) {
+        try {
+          const validationRes = $http.send({
+            url: 'https://api.openai.com/v1/chat/completions',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [
+                {
+                  role: 'system',
+                  content: `Você é a IA Mãe, o sistema mestre de supervisão. Avalie se a resposta gerada pela Persona Bia obedece às diretrizes globais de negócio: "${motherAiInstructions}". Responda APENAS com "APROVADO" se estiver correta e dentro das regras, ou reescreva a mensagem corrigindo os desvios e mantendo o mesmo tom original, preservando também as tags sistêmicas se houver.`,
+                },
+                { role: 'user', content: responseText },
+              ],
+              temperature: 0.1,
+              max_tokens: 500,
+            }),
+            timeout: 20,
+          })
+
+          if (
+            validationRes.statusCode === 200 &&
+            validationRes.json &&
+            validationRes.json.choices?.[0]?.message?.content
+          ) {
+            const motherFeedback = validationRes.json.choices[0].message.content.trim()
+            if (motherFeedback !== 'APROVADO' && !motherFeedback.startsWith('APROVADO')) {
+              responseText = motherFeedback
+              $app.logger().info('IA Mãe corrigiu a resposta da Bia', 'customerId', customerId)
+            }
+          }
+        } catch (err) {
+          $app.logger().error('Mother AI validation failed', 'error', String(err))
+        }
+      }
+
       const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
       if (statusMatch && statusMatch[1]) {
         detectedStatus = statusMatch[1].trim()
@@ -412,8 +489,6 @@ onRecordAfterCreateSuccess((e) => {
       responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
       responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
       responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
-      responseText = responseText.replace(/(\(Recuperando.*?\))|(\[Recuperando.*?\])/gi, '').trim()
-      responseText = responseText.replace(/(\(Analisando.*?\))|(\[Analisando.*?\])/gi, '').trim()
     } else {
       $app.logger().error('OpenAI Chat failed', 'status', String(chatRes.statusCode))
     }
@@ -432,9 +507,6 @@ onRecordAfterCreateSuccess((e) => {
         const lastMsg = currentLastMsgs[0]
         if (lastMsg.id !== e.record.id) {
           isDuplicate = true
-          $app
-            .logger()
-            .info('Prevented auto-reply: conversation already advanced', 'newMsgId', lastMsg.id)
         }
       }
 
@@ -453,15 +525,24 @@ onRecordAfterCreateSuccess((e) => {
 
           if (lastContent === newContent) {
             isDuplicate = true
-            $app
-              .logger()
-              .info('Prevented loop: exact same AI response generated', 'customerId', customerId)
           }
         }
       }
     } catch (err) {}
 
     if (!isDuplicate) {
+      let sendAudio = false
+      let sendVideo = false
+
+      if (responseText.includes('[AUDIO]')) {
+        sendAudio = true
+        responseText = responseText.replace(/\[AUDIO\]/gi, '').trim()
+      }
+      if (responseText.includes('[VIDEO]')) {
+        sendVideo = true
+        responseText = responseText.replace(/\[VIDEO\]/gi, '').trim()
+      }
+
       const reply = new Record($app.findCollectionByNameOrId('conversations'))
       reply.set('user_id', userId)
       reply.set('customer_id', customerId)
@@ -550,74 +631,183 @@ onRecordAfterCreateSuccess((e) => {
       let uazapiUrl = $secrets.get('UAZAPI_URL') || ''
       let uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
 
-      try {
-        const customerRecord = $app.findRecordById('customers', customerId)
-        const source = customerRecord.getString('source') || ''
-        const phone = customerRecord.getString('phone') || ''
+      let metaToken = userRecord ? userRecord.getString('meta_whatsapp_access_token') : ''
+      let metaPhoneId = userRecord ? userRecord.getString('meta_whatsapp_phone_number_id') : ''
 
-        if (
-          source.includes('Uazapi') ||
-          source.includes('48992098050') ||
-          phone.includes('48992098050') ||
-          (uazapiUrl && uazapiKey)
-        ) {
+      if (!metaToken || !metaPhoneId) {
+        try {
+          const usersWithMeta = $app.findRecordsByFilter(
+            'users',
+            "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+            '-created',
+            1,
+            0,
+          )
+          if (usersWithMeta.length > 0) {
+            metaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
+            metaPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
+          }
+        } catch (e) {}
+      }
+
+      const cleanPhone = customerPhone.replace(/\D/g, '')
+
+      if (metaToken && metaPhoneId) {
+        if (responseText) {
+          callMetaWithRetry(
+            `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+            'POST',
+            { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+            JSON.stringify({
+              messaging_product: 'whatsapp',
+              to: cleanPhone,
+              type: 'text',
+              text: { body: responseText },
+            }),
+          )
+        }
+
+        if (sendAudio) {
+          try {
+            const ttsRes = callMetaWithRetry(
+              'https://api.openai.com/v1/audio/speech',
+              'POST',
+              { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+              JSON.stringify({
+                model: 'tts-1',
+                input: responseText || 'Olá',
+                voice: userRecord?.getString('ai_voice_id') || 'nova',
+              }),
+            )
+
+            if (ttsRes && ttsRes.statusCode === 200 && ttsRes.body) {
+              const boundary = '----Boundary' + $security.randomString(16)
+              const headerStr = `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n`
+              const footerStr = `\r\n--${boundary}--\r\n`
+
+              const headerBytes = new Uint8Array(headerStr.length)
+              for (let i = 0; i < headerStr.length; i++) headerBytes[i] = headerStr.charCodeAt(i)
+              const footerBytes = new Uint8Array(footerStr.length)
+              for (let i = 0; i < footerStr.length; i++) footerBytes[i] = footerStr.charCodeAt(i)
+
+              const bodyBytes = new Uint8Array(
+                headerBytes.length + ttsRes.body.length + footerBytes.length,
+              )
+              bodyBytes.set(headerBytes, 0)
+              bodyBytes.set(ttsRes.body, headerBytes.length)
+              bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
+
+              const mediaRes = callMetaWithRetry(
+                `https://graph.facebook.com/v19.0/${metaPhoneId}/media`,
+                'POST',
+                {
+                  Authorization: `Bearer ${metaToken}`,
+                  'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                },
+                bodyBytes.buffer,
+              )
+
+              if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json?.id) {
+                callMetaWithRetry(
+                  `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+                  'POST',
+                  { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                  JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: cleanPhone,
+                    type: 'audio',
+                    audio: { id: mediaRes.json.id },
+                  }),
+                )
+              }
+            }
+          } catch (err) {
+            $app.logger().error('Audio TTS/Upload failed', 'error', String(err))
+          }
+        }
+
+        if (sendVideo) {
+          try {
+            const avatarRes = $http.send({
+              url: 'https://api.heygen.com/v1/video.generate',
+              method: 'POST',
+              headers: { Authorization: `Bearer MOCK`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: responseText, avatar_id: 'bia_default' }),
+              timeout: 5,
+            })
+            const videoUrl = 'https://www.w3schools.com/html/mov_bbb.mp4'
+
+            callMetaWithRetry(
+              `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+              'POST',
+              { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+              JSON.stringify({
+                messaging_product: 'whatsapp',
+                to: cleanPhone,
+                type: 'video',
+                video: { link: videoUrl, caption: 'Assista a esta apresentação!' },
+              }),
+            )
+          } catch (err) {
+            $app.logger().error('Video generation failed', 'error', String(err))
+          }
+        }
+      } else if (uazapiUrl && uazapiKey && customerPhone) {
+        try {
+          const source = customer.getString('source') || ''
+          const phone = customer.getString('phone') || ''
+
           let instanceName = '48992098050'
           if (source.includes('Uazapi - ')) {
             instanceName = source.replace('Uazapi - ', '').trim()
-          } else if (source.includes('Meta - ')) {
-            instanceName = source.replace('Meta - ', '').trim()
           }
 
-          if (uazapiUrl && uazapiKey && phone) {
-            const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
+          const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
 
-            let uazapiAttempt = 0
-            const uazapiMaxRetries = 3
-            let uazapiRes = null
-            const backoffs = [1000, 3000, 9000]
-            const randomDelay = Math.floor(Math.random() * (180000 - 60000 + 1)) + 60000
+          let uazapiAttempt = 0
+          const uazapiMaxRetries = 3
+          let uazapiRes = null
+          const backoffs = [1000, 3000, 9000]
+          const randomDelay = Math.floor(Math.random() * (180000 - 60000 + 1)) + 60000
 
-            while (uazapiAttempt <= uazapiMaxRetries) {
-              try {
-                uazapiRes = $http.send({
-                  url: `${cleanUrl}/message/sendText/${instanceName}`,
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
-                  body: JSON.stringify({
-                    number: phone,
-                    options: { delay: randomDelay, presence: 'composing' },
-                    textMessage: { text: responseText },
-                  }),
-                  timeout: 15,
-                })
+          while (uazapiAttempt <= uazapiMaxRetries) {
+            try {
+              uazapiRes = $http.send({
+                url: `${cleanUrl}/message/sendText/${instanceName}`,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
+                body: JSON.stringify({
+                  number: phone,
+                  options: { delay: randomDelay, presence: 'composing' },
+                  textMessage: { text: responseText },
+                }),
+                timeout: 15,
+              })
 
-                if (uazapiRes && (uazapiRes.statusCode === 200 || uazapiRes.statusCode === 201))
-                  break
-                if (
-                  uazapiRes &&
-                  uazapiRes.statusCode !== 404 &&
-                  uazapiRes.statusCode !== 504 &&
-                  uazapiRes.statusCode !== 500 &&
-                  uazapiRes.statusCode !== 0
-                ) {
-                  break
-                }
-              } catch (e) {}
-
-              if (uazapiAttempt < uazapiMaxRetries) {
-                const sleepMs = backoffs[uazapiAttempt] || 9000
-                const start = new Date().getTime()
-                while (new Date().getTime() - start < sleepMs) {}
+              if (uazapiRes && (uazapiRes.statusCode === 200 || uazapiRes.statusCode === 201)) break
+              if (
+                uazapiRes &&
+                uazapiRes.statusCode !== 404 &&
+                uazapiRes.statusCode !== 504 &&
+                uazapiRes.statusCode !== 500 &&
+                uazapiRes.statusCode !== 0
+              ) {
+                break
               }
-              uazapiAttempt++
+            } catch (e) {}
+
+            if (uazapiAttempt < uazapiMaxRetries) {
+              const sleepMs = backoffs[uazapiAttempt] || 9000
+              const start = new Date().getTime()
+              while (new Date().getTime() - start < sleepMs) {}
             }
+            uazapiAttempt++
           }
+        } catch (err) {
+          $app.logger().error('Error routing message to Uazapi', 'error', String(err))
         }
-      } catch (err) {
-        $app.logger().error('Error routing message to Uazapi', 'error', String(err))
       }
 
-      // Handover Logic
       if (detectedHandover) {
         let summary = 'A IA transferiu este lead para o atendimento humano.'
         try {
@@ -665,7 +855,19 @@ onRecordAfterCreateSuccess((e) => {
             } catch (e) {}
           }
 
-          if (uazapiUrl && uazapiKey) {
+          if (metaToken && metaPhoneId) {
+            callMetaWithRetry(
+              `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+              'POST',
+              { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+              JSON.stringify({
+                messaging_product: 'whatsapp',
+                to: agentPhone,
+                type: 'text',
+                text: { body: summaryText },
+              }),
+            )
+          } else if (uazapiUrl && uazapiKey) {
             try {
               const cleanUrlHandover = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
 
@@ -673,8 +875,6 @@ onRecordAfterCreateSuccess((e) => {
               let instanceName = '48992098050'
               if (source.includes('Uazapi - '))
                 instanceName = source.replace('Uazapi - ', '').trim()
-              else if (source.includes('Meta - '))
-                instanceName = source.replace('Meta - ', '').trim()
 
               $http.send({
                 url: `${cleanUrlHandover}/message/sendText/${instanceName}`,

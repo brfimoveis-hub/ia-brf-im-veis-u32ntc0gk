@@ -32,7 +32,7 @@ const DEFAULT_PRESETS = {
     name: 'BIA Elegante',
     instructions:
       'Você é a BIA Elegante, uma assistente virtual sofisticada e amigável. Seu tom é acolhedor, profissional e moderno. Especializada em atendimento premium.',
-    voice_id: 'voice_harmonious_female_1',
+    voice_id: 'nova',
     avatar_url: 'https://img.usecurling.com/p/256/256?q=elegant%20young%20woman%20smiling',
   },
   bia_jovem: {
@@ -40,7 +40,7 @@ const DEFAULT_PRESETS = {
     name: 'BIA Jovem',
     instructions:
       'Você é a BIA Jovem, com uma abordagem enérgica, acolhedora e muito moderna. Foca em criar empatia rápida com o cliente.',
-    voice_id: 'voice_harmonious_female_2',
+    voice_id: 'shimmer',
     avatar_url: 'https://img.usecurling.com/p/256/256?q=friendly%20young%20woman',
   },
   bia_executiva: {
@@ -48,7 +48,7 @@ const DEFAULT_PRESETS = {
     name: 'BIA Executiva',
     instructions:
       'Você é a BIA Executiva. Seu tom é altamente profissional, seguro e formal, focado em clareza para clientes corporativos e investidores.',
-    voice_id: 'voice_harmonious_female_4',
+    voice_id: 'alloy',
     avatar_url: 'https://img.usecurling.com/p/256/256?q=professional%20woman%20suit',
   },
 }
