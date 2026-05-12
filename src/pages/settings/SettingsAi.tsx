@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { toast } from 'sonner'
+import { useToast } from '@/hooks/use-toast'
 import {
   Loader2,
   Upload,
@@ -57,6 +57,7 @@ type ProfileId = keyof typeof DEFAULT_PRESETS
 
 export function SettingsAi() {
   const { user } = useAuth()
+  const { toast } = useToast()
 
   const [activeProfileId, setActiveProfileId] = useState<ProfileId>('bia_elegante')
   const [profiles, setProfiles] = useState(DEFAULT_PRESETS)
@@ -76,6 +77,7 @@ export function SettingsAi() {
   const [isSaving, setIsSaving] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
+  const initialized = useRef(false)
 
   useEffect(() => {
     const savedProfiles = localStorage.getItem('bia_profiles_custom')
@@ -94,7 +96,7 @@ export function SettingsAi() {
   }, [])
 
   useEffect(() => {
-    if (user) {
+    if (user && !initialized.current) {
       setAiName(user.ai_name || profiles.bia_elegante.name)
       setBiaInstructions(user.bia_instructions || profiles.bia_elegante.instructions)
       setAiInstructions(user.ai_instructions || '')
@@ -109,6 +111,8 @@ export function SettingsAi() {
 
       const found = Object.values(profiles).find((p) => p.name === user.ai_name)
       if (found) setActiveProfileId(found.id as ProfileId)
+
+      initialized.current = true
     }
   }, [user, profiles])
 
@@ -248,10 +252,17 @@ export function SettingsAi() {
       setFilesToRemove([])
       setExistingFiles(updatedUser.ai_knowledge_files || [])
 
-      toast.success('Configurações da IA salvas com sucesso!')
+      toast({
+        title: 'Sucesso',
+        description: 'Configurações da IA salvas com sucesso!',
+      })
     } catch (err) {
       console.error(err)
-      toast.error('Erro ao salvar as configurações da IA')
+      toast({
+        title: 'Erro',
+        description: 'Erro ao salvar as configurações da IA',
+        variant: 'destructive',
+      })
     } finally {
       setIsSaving(false)
     }
@@ -273,7 +284,7 @@ export function SettingsAi() {
         <CardContent className="space-y-6">
           <div className="space-y-3">
             <Label htmlFor="aiInstructions" className="text-base font-semibold">
-              Diretrizes e Regras Globais
+              Instruções da IA Mãe
             </Label>
             <p className="text-sm text-muted-foreground">
               Descreva como a IA deve tratar o negócio, produtos, objeções frequentes e regras de
@@ -289,11 +300,9 @@ export function SettingsAi() {
           </div>
 
           <div className="space-y-3 pt-4 border-t">
-            <Label className="text-base font-semibold">
-              Arquivos de Conhecimento (PDF, TXT, CSV, XLSX)
-            </Label>
+            <Label className="text-base font-semibold">Arquivos de Conhecimento</Label>
             <p className="text-sm text-muted-foreground">
-              Faça o upload de tabelas de preços, e-books e scripts.
+              Faça o upload de tabelas de preços, e-books e scripts (PDF, TXT, CSV, XLSX).
             </p>
 
             <div className="flex flex-col gap-4">
@@ -465,7 +474,7 @@ export function SettingsAi() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="biaInstructions">Instruções Específicas da Persona</Label>
+                <Label htmlFor="biaInstructions">Instruções da Persona (Bia)</Label>
                 <Textarea
                   id="biaInstructions"
                   value={biaInstructions}
