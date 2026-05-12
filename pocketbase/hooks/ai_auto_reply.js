@@ -245,15 +245,18 @@ onRecordAfterCreateSuccess((e) => {
 
     const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
     const actualAiName = userRecord ? userRecord.getString('ai_name') : ''
-    const aiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
+    const biaInstructions = userRecord ? userRecord.getString('bia_instructions') : ''
+    const motherAiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
+
+    const personaInstructions = biaInstructions.trim()
+      ? biaInstructions
+      : motherAiInstructions || 'Seja prestativa e educada.'
 
     const isNameMissing = !actualAiName.trim()
-    const isInstructionsMissing = !aiInstructions.trim()
 
-    if (isNameMissing || isInstructionsMissing) {
+    if (isNameMissing) {
       const reasons = []
       if (isNameMissing) reasons.push('AI Name missing')
-      if (isInstructionsMissing) reasons.push('AI Instructions missing')
 
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
@@ -398,8 +401,32 @@ onRecordAfterCreateSuccess((e) => {
       channelContext = `\n[PERFIL DE ATENDIMENTO: GERAL]\nO cliente é um lead novo (primeiro contato).\nDIRETRIZES GERAIS:\n- Faça a qualificação inicial.\n- Se houver interesse no Villa dos Açores, pergunte sobre as preferências dele (ex: prefere suíte ou foca mais na área de lazer/piscina?).\n`
     }
 
+    let filesContextText = ''
+    if (userRecord) {
+      const files = userRecord.get('ai_knowledge_files') || []
+      if (files.length > 0) {
+        const pbUrl = $secrets.get('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
+        files.forEach((f) => {
+          if (f.endsWith('.txt') || f.endsWith('.csv')) {
+            const fileUrl = `${pbUrl}/api/files/${userRecord.collectionId}/${userRecord.id}/${f}`
+            try {
+              const res = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
+              if (res.statusCode === 200 && res.body) {
+                const str = String.fromCharCode.apply(null, res.body)
+                filesContextText += `\n--- Arquivo: ${f} ---\n${str}\n`
+              }
+            } catch (err) {}
+          } else {
+            filesContextText += `\n--- Arquivo: ${f} (Conteúdo complementar na IA Mãe) ---\n`
+          }
+        })
+      }
+    }
+
+    const combinedContextText = `${contextText}\n${filesContextText}`.trim()
+
     const messages = []
-    const systemPrompt = `Você é ${aiName}.\nSua identidade e instruções principais:\n${aiInstructions || 'Seja prestativa, educada e direta.'}\n${channelContext}\nDIRETRIZES RIGOROSAS:\n1. Responda de forma fluida, coerente e humana.\n2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.\n3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.\n4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.\n5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.\n6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).\n7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas ou mudou de fase (ex: agendou visita, demonstrou objeção, fechou negócio), você DEVE incluir as tags [PHASE: Nova_Fase] e [STATUS: Novo_Status] no final da sua resposta.\nOs status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Engajamento", "Visita", "Objeção", "Proposta", "Negociação", "Fechamento".\nAs fases (phase) válidas são: "Lead", "Atendimento", "Visita", "Proposta", "Fechamento".\n\nCONTEXTO RECUPERADO:\n${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
+    const systemPrompt = `Você é ${aiName}.\nSua identidade e instruções específicas (Persona):\n${personaInstructions}\n\nInstruções da IA Mãe (Base de Conhecimento Global):\n${motherAiInstructions}\n${channelContext}\nDIRETRIZES RIGOROSAS:\n1. Responda de forma fluida, coerente e humana.\n2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.\n3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.\n4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.\n5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.\n6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).\n7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas ou mudou de fase (ex: agendou visita, demonstrou objeção, fechou negócio), você DEVE incluir as tags [PHASE: Nova_Fase] e [STATUS: Novo_Status] no final da sua resposta.\nOs status válidos são: "Base de Clientes/Novo LYD", "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Qualificado", "Engajamento", "Visita", "Objeção", "Demo Agend.", "Demo Realiz.", "Proposta", "Negociação", "Fechamento".\nAs fases (phase) válidas são: "Lead", "Atendimento", "Visita", "Proposta", "Fechamento".\n\nCONTEXTO RECUPERADO:\n${combinedContextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
 
     messages.push({ role: 'system', content: systemPrompt })
 

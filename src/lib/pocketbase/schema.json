@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-12T12:27:03.906Z",
+  "generatedAt": "2026-05-12T12:46:40.197Z",
   "collections": [
     {
       "name": "users",
@@ -172,6 +172,18 @@
         },
         {
           "name": "google_ads_webhook_key",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_knowledge_files",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bia_instructions",
           "type": "text",
           "required": false,
           "system": false

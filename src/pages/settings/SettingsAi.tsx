@@ -1,14 +1,29 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from 'sonner'
-import { Loader2, Upload, Sparkles, CheckCircle2 } from 'lucide-react'
+import {
+  Loader2,
+  Upload,
+  Sparkles,
+  CheckCircle2,
+  FileText,
+  Trash2,
+  BrainCircuit,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const DEFAULT_PRESETS = {
@@ -28,14 +43,6 @@ const DEFAULT_PRESETS = {
     voice_id: 'voice_harmonious_female_2',
     avatar_url: 'https://img.usecurling.com/p/256/256?q=friendly%20young%20woman',
   },
-  bia_acolhedora: {
-    id: 'bia_acolhedora',
-    name: 'BIA Acolhedora',
-    instructions:
-      'Você é a BIA Acolhedora, muito paciente e atenciosa. Sua prioridade é fazer o cliente se sentir seguro e bem guiado em cada etapa.',
-    voice_id: 'voice_harmonious_female_3',
-    avatar_url: 'https://img.usecurling.com/p/256/256?q=kind%20woman%20portrait',
-  },
   bia_executiva: {
     id: 'bia_executiva',
     name: 'BIA Executiva',
@@ -43,14 +50,6 @@ const DEFAULT_PRESETS = {
       'Você é a BIA Executiva. Seu tom é altamente profissional, seguro e formal, focado em clareza para clientes corporativos e investidores.',
     voice_id: 'voice_harmonious_female_4',
     avatar_url: 'https://img.usecurling.com/p/256/256?q=professional%20woman%20suit',
-  },
-  ia_mae_expert: {
-    id: 'ia_mae_expert',
-    name: 'IA Mãe Expert',
-    instructions:
-      'Você é a IA Mãe Expert, especializada no mercado imobiliário. Foca em dados precisos e conversão rápida (Nível 5), mantendo uma postura elegante.',
-    voice_id: 'voice_harmonious_female_5',
-    avatar_url: 'https://img.usecurling.com/p/256/256?q=smart%20young%20woman%20glasses',
   },
 }
 
@@ -63,13 +62,20 @@ export function SettingsAi() {
   const [profiles, setProfiles] = useState(DEFAULT_PRESETS)
 
   const [aiName, setAiName] = useState('')
+  const [biaInstructions, setBiaInstructions] = useState('')
   const [aiInstructions, setAiInstructions] = useState('')
   const [aiVoiceId, setAiVoiceId] = useState('')
+
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
 
+  const [knowledgeFiles, setKnowledgeFiles] = useState<File[]>([])
+  const [existingFiles, setExistingFiles] = useState<string[]>([])
+  const [filesToRemove, setFilesToRemove] = useState<string[]>([])
+
   const [isSaving, setIsSaving] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+  const docInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const savedProfiles = localStorage.getItem('bia_profiles_custom')
@@ -82,7 +88,7 @@ export function SettingsAi() {
           setProfiles(parsed)
         }
       } catch {
-        /* intentionally ignored */
+        // ignore
       }
     }
   }, [])
@@ -90,8 +96,10 @@ export function SettingsAi() {
   useEffect(() => {
     if (user) {
       setAiName(user.ai_name || profiles.bia_elegante.name)
-      setAiInstructions(user.ai_instructions || profiles.bia_elegante.instructions)
+      setBiaInstructions(user.bia_instructions || profiles.bia_elegante.instructions)
+      setAiInstructions(user.ai_instructions || '')
       setAiVoiceId(user.ai_voice_id || profiles.bia_elegante.voice_id)
+      setExistingFiles(user.ai_knowledge_files || [])
 
       if (user.ai_avatar) {
         setAvatarPreview(pb.files.getURL(user, user.ai_avatar))
@@ -108,13 +116,13 @@ export function SettingsAi() {
     setActiveProfileId(profileId)
     const profile = profiles[profileId]
     setAiName(profile.name)
-    setAiInstructions(profile.instructions)
+    setBiaInstructions(profile.instructions)
     setAiVoiceId(profile.voice_id)
     setAvatarPreview(profile.avatar_url)
     setAvatarFile(null)
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       setAvatarFile(file)
@@ -135,9 +143,25 @@ export function SettingsAi() {
     }
   }
 
+  const handleDocsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files)
+      setKnowledgeFiles((prev) => [...prev, ...newFiles])
+    }
+  }
+
+  const removeNewFile = (index: number) => {
+    setKnowledgeFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const removeExistingFile = (filename: string) => {
+    setExistingFiles((prev) => prev.filter((f) => f !== filename))
+    setFilesToRemove((prev) => [...prev, filename])
+  }
+
   const handleFieldChange = (field: string, value: string) => {
     if (field === 'name') setAiName(value)
-    if (field === 'instructions') setAiInstructions(value)
+    if (field === 'bia_instructions') setBiaInstructions(value)
     if (field === 'voice_id') setAiVoiceId(value)
 
     setProfiles((prev) => {
@@ -159,6 +183,7 @@ export function SettingsAi() {
     try {
       const formData = new FormData()
       formData.append('ai_name', aiName)
+      formData.append('bia_instructions', biaInstructions)
       formData.append('ai_instructions', aiInstructions)
       formData.append('ai_voice_id', aiVoiceId)
 
@@ -178,18 +203,26 @@ export function SettingsAi() {
         }
       }
 
+      knowledgeFiles.forEach((file) => {
+        formData.append('ai_knowledge_files', file)
+      })
+
+      filesToRemove.forEach((filename) => {
+        formData.append('ai_knowledge_files-', filename)
+      })
+
       const updatedUser = await pb.collection('users').update(user.id, formData)
 
       try {
         await pb.collection('system_logs').create({
           user_id: user.id,
           type: 'ai_evolution',
-          message: 'AI Persona Updated',
+          message: 'AI Persona & Mother AI Updated',
           details: `Persona mudou para: ${aiName}`,
-          payload: { ai_name: aiName, ai_voice_id: aiVoiceId },
+          payload: { ai_name: aiName, bia_instructions: biaInstructions },
         })
       } catch {
-        /* intentionally ignored */
+        // ignore
       }
 
       pb.authStore.save(pb.authStore.token, updatedUser)
@@ -211,136 +244,240 @@ export function SettingsAi() {
         })
       }
 
-      toast.success('Perfil BIA ativado e salvo com sucesso!')
+      setKnowledgeFiles([])
+      setFilesToRemove([])
+      setExistingFiles(updatedUser.ai_knowledge_files || [])
+
+      toast.success('Configurações da IA salvas com sucesso!')
     } catch (err) {
-      toast.error('Erro ao salvar o perfil BIA')
+      console.error(err)
+      toast.error('Erro ao salvar as configurações da IA')
     } finally {
       setIsSaving(false)
     }
   }
 
   return (
-    <Card className="border-border/50 shadow-sm">
-      <CardHeader>
-        <CardTitle>Configuração da Persona da IA</CardTitle>
-        <CardDescription>
-          Selecione um perfil visual e vocal para sua assistente virtual. Nossas novas personas
-          oferecem uma imagem mais moderna, acolhedora e elegante.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {Object.values(profiles).map((profile) => (
-            <Card
-              key={profile.id}
-              className={cn(
-                'cursor-pointer transition-all',
-                activeProfileId === profile.id
-                  ? 'border-primary shadow-md ring-1 ring-primary/30'
-                  : 'border-border/50 hover:border-primary/50',
-              )}
-              onClick={() => handleSelectProfile(profile.id as ProfileId)}
-            >
-              <CardContent className="p-4 flex flex-col items-center text-center space-y-3">
-                <Avatar
-                  className={cn(
-                    'h-16 w-16 border-2',
-                    activeProfileId === profile.id ? 'border-primary' : 'border-transparent',
-                  )}
-                >
-                  <AvatarImage src={profile.avatar_url} className="object-cover" />
-                  <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="font-semibold flex items-center justify-center gap-1.5 text-sm">
-                    {activeProfileId === profile.id && (
-                      <CheckCircle2 className="h-4 w-4 text-primary" />
-                    )}
-                    {profile.name}
-                  </h3>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <div className="pt-6 border-t space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium text-lg flex items-center">
-              <Sparkles className="mr-2 h-5 w-5 text-primary" />
-              Customizando: {profiles[activeProfileId].name}
-            </h3>
+    <div className="space-y-6">
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <BrainCircuit className="h-6 w-6 text-primary" />
+            <CardTitle>IA Mãe - Base de Conhecimento</CardTitle>
+          </div>
+          <CardDescription>
+            Defina o conhecimento central e diretrizes globais de negócio. Isso alimenta a
+            inteligência de todas as interações e sobrepõe-se à persona.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-3">
+            <Label htmlFor="aiInstructions" className="text-base font-semibold">
+              Diretrizes e Regras Globais
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Descreva como a IA deve tratar o negócio, produtos, objeções frequentes e regras de
+              funil.
+            </p>
+            <Textarea
+              id="aiInstructions"
+              value={aiInstructions}
+              onChange={(e) => setAiInstructions(e.target.value)}
+              placeholder="Ex: Somos a construtora BRF. Nossos empreendimentos possuem alto padrão..."
+              className="min-h-[180px] resize-y"
+            />
           </div>
 
-          <div className="flex flex-col space-y-4 sm:flex-row sm:space-x-6 sm:space-y-0 items-center sm:items-start">
-            <Avatar className="h-24 w-24 border shadow-sm">
-              <AvatarImage src={avatarPreview || ''} alt="AI Avatar" className="object-cover" />
-              <AvatarFallback className="text-xl bg-primary/10 text-primary">
-                {aiName?.charAt(0) || 'IA'}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col space-y-3 text-center sm:text-left">
-              <div>
-                <Label className="text-base">Foto de Perfil</Label>
-                <p className="text-sm text-muted-foreground">
-                  Esta imagem representará a IA nas conversas.
-                </p>
-              </div>
+          <div className="space-y-3 pt-4 border-t">
+            <Label className="text-base font-semibold">
+              Arquivos de Conhecimento (PDF, TXT, CSV, XLSX)
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Faça o upload de tabelas de preços, e-books e scripts.
+            </p>
+
+            <div className="flex flex-col gap-4">
               <input
                 type="file"
-                accept="image/*"
+                multiple
+                accept=".pdf,.txt,.csv,.xlsx"
                 className="hidden"
-                ref={fileInputRef}
-                onChange={handleFileChange}
+                ref={docInputRef}
+                onChange={handleDocsChange}
               />
               <Button
                 variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-fit mx-auto sm:mx-0"
-                size="sm"
+                onClick={() => docInputRef.current?.click()}
+                className="w-fit border-dashed border-2 hover:bg-muted/50"
               >
-                <Upload className="mr-2 h-4 w-4" />
-                Carregar Imagem
+                <Upload className="mr-2 h-4 w-4" /> Adicionar Arquivos
               </Button>
+
+              <div className="grid gap-2 mt-2">
+                {existingFiles.map((filename) => (
+                  <div
+                    key={filename}
+                    className="flex items-center justify-between p-2 rounded-md bg-secondary/30 border text-sm"
+                  >
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{filename}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive/90"
+                      onClick={() => removeExistingFile(filename)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+
+                {knowledgeFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-2 rounded-md bg-primary/5 border border-primary/20 text-sm"
+                  >
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <FileText className="h-4 w-4 shrink-0 text-primary" />
+                      <span className="truncate font-medium">{file.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        ({(file.size / 1024).toFixed(1)} KB)
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive/90"
+                      onClick={() => removeNewFile(index)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          <div className="grid gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="aiName">Nome de Exibição</Label>
-                <Input
-                  id="aiName"
-                  value={aiName}
-                  onChange={(e) => handleFieldChange('name', e.target.value)}
-                  placeholder="Ex: BIA Executiva"
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkles className="h-6 w-6 text-primary" />
+            <CardTitle>Comportamento e Persona da BIA</CardTitle>
+          </div>
+          <CardDescription>
+            Selecione e ajuste o tom de voz e a imagem da sua assistente virtual.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {Object.values(profiles).map((profile) => (
+              <Card
+                key={profile.id}
+                className={cn(
+                  'cursor-pointer transition-all',
+                  activeProfileId === profile.id
+                    ? 'border-primary shadow-md ring-1 ring-primary/30 bg-primary/5'
+                    : 'border-border/50 hover:border-primary/50',
+                )}
+                onClick={() => handleSelectProfile(profile.id as ProfileId)}
+              >
+                <CardContent className="p-4 flex flex-col items-center text-center space-y-3">
+                  <Avatar
+                    className={cn(
+                      'h-16 w-16 border-2',
+                      activeProfileId === profile.id ? 'border-primary' : 'border-transparent',
+                    )}
+                  >
+                    <AvatarImage src={profile.avatar_url} className="object-cover" />
+                    <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="font-semibold flex items-center justify-center gap-1.5 text-sm">
+                      {activeProfileId === profile.id && (
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
+                      )}
+                      {profile.name}
+                    </h3>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="pt-6 border-t space-y-6">
+            <div className="flex flex-col space-y-4 sm:flex-row sm:space-x-6 sm:space-y-0 items-center sm:items-start">
+              <Avatar className="h-24 w-24 border shadow-sm">
+                <AvatarImage src={avatarPreview || ''} alt="AI Avatar" className="object-cover" />
+                <AvatarFallback className="text-xl bg-primary/10 text-primary">
+                  {aiName?.charAt(0) || 'IA'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col space-y-3 text-center sm:text-left">
+                <div>
+                  <Label className="text-base">Foto de Perfil</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Esta imagem representará a IA nas conversas.
+                  </p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  ref={avatarInputRef}
+                  onChange={handleAvatarChange}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="aiVoiceId">ID da Voz</Label>
-                <Input
-                  id="aiVoiceId"
-                  value={aiVoiceId}
-                  onChange={(e) => handleFieldChange('voice_id', e.target.value)}
-                  placeholder="Ex: pJ23x..."
-                />
+                <Button
+                  variant="outline"
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="w-fit mx-auto sm:mx-0"
+                  size="sm"
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Carregar Imagem
+                </Button>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="aiInstructions">Instruções de Comportamento (Prompt)</Label>
-              <Textarea
-                id="aiInstructions"
-                value={aiInstructions}
-                onChange={(e) => handleFieldChange('instructions', e.target.value)}
-                placeholder="Instruções para o comportamento da IA..."
-                className="min-h-[150px] resize-y"
-              />
+            <div className="grid gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="aiName">Nome da Persona</Label>
+                  <Input
+                    id="aiName"
+                    value={aiName}
+                    onChange={(e) => handleFieldChange('name', e.target.value)}
+                    placeholder="Ex: BIA Executiva"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="aiVoiceId">ID da Voz (Síntese)</Label>
+                  <Input
+                    id="aiVoiceId"
+                    value={aiVoiceId}
+                    onChange={(e) => handleFieldChange('voice_id', e.target.value)}
+                    placeholder="Ex: pJ23x..."
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="biaInstructions">Instruções Específicas da Persona</Label>
+                <Textarea
+                  id="biaInstructions"
+                  value={biaInstructions}
+                  onChange={(e) => handleFieldChange('bia_instructions', e.target.value)}
+                  placeholder="Instruções de tom de voz e comportamento da IA..."
+                  className="min-h-[120px] resize-y"
+                />
+              </div>
             </div>
           </div>
-        </div>
-
-        <div className="pt-4 border-t flex justify-end">
+        </CardContent>
+        <CardFooter className="bg-muted/30 pt-4 flex justify-end">
           <Button
             type="button"
             onClick={handleSave}
@@ -353,10 +490,10 @@ export function SettingsAi() {
             ) : (
               <CheckCircle2 className="mr-2 h-5 w-5" />
             )}
-            Salvar Persona da IA
+            Salvar Configurações
           </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </CardFooter>
+      </Card>
+    </div>
   )
 }
