@@ -164,9 +164,35 @@ export function SettingsAi() {
 
       if (avatarFile) {
         formData.append('ai_avatar', avatarFile)
+      } else if (
+        avatarPreview &&
+        avatarPreview.startsWith('http') &&
+        !avatarPreview.includes(pb.baseUrl)
+      ) {
+        try {
+          const res = await fetch(avatarPreview)
+          const blob = await res.blob()
+          formData.append('ai_avatar', new File([blob], 'avatar.jpg', { type: blob.type }))
+        } catch (e) {
+          console.error('Failed to fetch preset avatar', e)
+        }
       }
 
       const updatedUser = await pb.collection('users').update(user.id, formData)
+
+      try {
+        await pb.collection('system_logs').create({
+          user_id: user.id,
+          type: 'ai_evolution',
+          message: 'AI Persona Updated',
+          details: `Persona mudou para: ${aiName}`,
+          payload: { ai_name: aiName, ai_voice_id: aiVoiceId },
+        })
+      } catch {
+        /* intentionally ignored */
+      }
+
+      pb.authStore.save(pb.authStore.token, updatedUser)
 
       if (updatedUser.ai_avatar) {
         const newAvatarUrl = pb.files.getURL(updatedUser, updatedUser.ai_avatar)

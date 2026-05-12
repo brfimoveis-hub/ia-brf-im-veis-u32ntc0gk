@@ -399,7 +399,7 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     const messages = []
-    const systemPrompt = `Você é ${aiName}.\nSua identidade e instruções principais:\n${aiInstructions || 'Seja prestativa, educada e direta.'}\n${channelContext}\nDIRETRIZES RIGOROSAS:\n1. Responda de forma fluida, coerente e humana.\n2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.\n3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.\n4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.\n5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.\n6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).\n7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas (ex: agendou visita, informou orçamento, demonstrou objeção), você DEVE incluir a tag [STATUS: Novo_Status] no final da sua resposta. Os status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Engajamento", "Visita", "Objeção", "Proposta", "Negociação", "Fechamento".\n\nCONTEXTO RECUPERADO:\n${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
+    const systemPrompt = `Você é ${aiName}.\nSua identidade e instruções principais:\n${aiInstructions || 'Seja prestativa, educada e direta.'}\n${channelContext}\nDIRETRIZES RIGOROSAS:\n1. Responda de forma fluida, coerente e humana.\n2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.\n3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.\n4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.\n5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.\n6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).\n7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas ou mudou de fase (ex: agendou visita, demonstrou objeção, fechou negócio), você DEVE incluir as tags [PHASE: Nova_Fase] e [STATUS: Novo_Status] no final da sua resposta.\nOs status válidos são: "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Engajamento", "Visita", "Objeção", "Proposta", "Negociação", "Fechamento".\nAs fases (phase) válidas são: "Lead", "Atendimento", "Visita", "Proposta", "Fechamento".\n\nCONTEXTO RECUPERADO:\n${contextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
 
     messages.push({ role: 'system', content: systemPrompt })
 
@@ -443,10 +443,18 @@ onRecordAfterCreateSuccess((e) => {
     ) {
       responseText = chatRes.json.choices[0].message.content.trim()
 
+      let detectedPhase = ''
+
       const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
       if (statusMatch && statusMatch[1]) {
         detectedStatus = statusMatch[1].trim()
         responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+      }
+
+      const phaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
+      if (phaseMatch && phaseMatch[1]) {
+        detectedPhase = phaseMatch[1].trim()
+        responseText = responseText.replace(/\[PHASE:\s*.*?\]/gi, '').trim()
       }
 
       responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
@@ -559,9 +567,44 @@ onRecordAfterCreateSuccess((e) => {
           targetStatus = 'Contato 1'
         }
 
-        if (targetStatus) {
+        let crmUpdated = false
+        if (targetStatus && targetStatus !== custStatusLower) {
           custToUpdate.set('status', targetStatus)
+          crmUpdated = true
+        }
+
+        const validPhases = ['Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento']
+        let targetPhase = ''
+        if (detectedPhase && validPhases.includes(detectedPhase)) {
+          targetPhase = detectedPhase
+        } else if (targetStatus === 'Fechamento') {
+          targetPhase = 'Fechamento'
+        }
+
+        if (targetPhase && custToUpdate.getString('phase') !== targetPhase) {
+          custToUpdate.set('phase', targetPhase)
+          crmUpdated = true
+        }
+
+        if (crmUpdated) {
           $app.save(custToUpdate)
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const logRecord = new Record(logsCol)
+            logRecord.set('user_id', userId)
+            logRecord.set('type', 'crm_update')
+            logRecord.set('message', 'Lead Evolution: CRM Phase/Status Updated by AI')
+            logRecord.set(
+              'details',
+              `Status mudou para: ${targetStatus || custStatusLower}. Phase mudou para: ${targetPhase || custToUpdate.getString('phase')}.`,
+            )
+            logRecord.set('payload', {
+              customer_id: customerId,
+              status: targetStatus,
+              phase: targetPhase,
+            })
+            $app.saveNoValidate(logRecord)
+          } catch (e) {}
         }
       } catch (err) {
         $app.logger().error('Failed to update customer status', 'error', String(err))
@@ -653,17 +696,30 @@ onRecordAfterCreateSuccess((e) => {
               const timeUnix = Math.floor(new Date().getTime() / 1000)
 
               targetPixels.forEach((pixelId) => {
-                const payload = {
-                  data: [
-                    {
-                      event_name: 'Lead',
-                      event_time: timeUnix,
-                      action_source: 'system_generated',
-                      user_data: { ph: [hashPhone] },
-                      custom_data: { currency: 'BRL', value: 0.0, content_name: 'ai_reply' },
-                    },
-                  ],
+                const events = []
+
+                // General AI Reply (Lead)
+                events.push({
+                  event_name: 'Lead',
+                  event_time: timeUnix,
+                  action_source: 'system_generated',
+                  user_data: { ph: [hashPhone] },
+                  custom_data: { currency: 'BRL', value: 0.0, content_name: 'ai_reply' },
+                })
+
+                // Fechamento Event (Purchase)
+                const isClosing = detectedStatus === 'Fechamento' || detectedPhase === 'Fechamento'
+                if (isClosing) {
+                  events.push({
+                    event_name: 'Purchase',
+                    event_time: timeUnix,
+                    action_source: 'system_generated',
+                    user_data: { ph: [hashPhone] },
+                    custom_data: { currency: 'BRL', value: 0.0, content_name: 'ai_fechamento' },
+                  })
                 }
+
+                const payload = { data: events }
                 if (testCode) payload.test_event_code = testCode
 
                 $http.send({
@@ -674,6 +730,20 @@ onRecordAfterCreateSuccess((e) => {
                   timeout: 5,
                 })
               })
+
+              const isClosingAny = detectedStatus === 'Fechamento' || detectedPhase === 'Fechamento'
+              if (isClosingAny) {
+                try {
+                  const logsCol = $app.findCollectionByNameOrId('system_logs')
+                  const logRecord = new Record(logsCol)
+                  logRecord.set('user_id', userId)
+                  logRecord.set('type', 'crm_update')
+                  logRecord.set('message', 'Meta CAPI Event Sent: Purchase (Fechamento)')
+                  logRecord.set('details', `Evento de fechamento enviado para pixels.`)
+                  logRecord.set('payload', { customer_id: customerId })
+                  $app.saveNoValidate(logRecord)
+                } catch (e) {}
+              }
             }
           }
         }

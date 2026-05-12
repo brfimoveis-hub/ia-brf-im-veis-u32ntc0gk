@@ -97,6 +97,23 @@ onRecordAfterUpdateSuccess((e) => {
       15,
       0,
     )
+
+    // Prevent double AI trigger if the AI just replied and updated the status itself
+    if (historyRecords.length > 0 && historyRecords[0].getString('sender') === 'ai') {
+      const msSinceAiMsg =
+        new Date().getTime() - new Date(historyRecords[0].getString('created')).getTime()
+      if (msSinceAiMsg < 10000) {
+        $app
+          .logger()
+          .info(
+            'AI Status Trigger skipped: Status was just updated by AI auto-reply',
+            'customerId',
+            customerId,
+          )
+        return e.next()
+      }
+    }
+
     historyRecords.reverse()
   } catch (_) {}
 
