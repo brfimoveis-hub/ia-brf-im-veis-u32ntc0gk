@@ -42,6 +42,13 @@ const ProtectedRoute = () => {
   return <Outlet />
 }
 
+const GuestRoute = () => {
+  const { user, loading } = useAuth()
+  if (loading) return <PageLoader />
+  if (user) return <Navigate to="/dashboard" replace />
+  return <Outlet />
+}
+
 const Root = () => {
   const { loading } = useAuth()
   return (
@@ -66,16 +73,21 @@ const router = createBrowserRouter(
           element: <Navigate to="/dashboard" replace />,
         },
         {
-          path: '/login',
-          element: <Login />,
-        },
-        {
-          path: '/forgot-password',
-          element: <ForgotPassword />,
-        },
-        {
-          path: '/reset-password',
-          element: <ResetPassword />,
+          element: <GuestRoute />,
+          children: [
+            {
+              path: '/login',
+              element: <Login />,
+            },
+            {
+              path: '/forgot-password',
+              element: <ForgotPassword />,
+            },
+            {
+              path: '/reset-password',
+              element: <ResetPassword />,
+            },
+          ],
         },
         {
           element: <ProtectedRoute />,

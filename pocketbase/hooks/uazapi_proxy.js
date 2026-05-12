@@ -99,7 +99,7 @@ routerAdd(
           res.statusCode === 0 ||
           res.statusCode === 500)
       ) {
-        const backoff = Math.pow(2, attempt) * 100
+        const backoff = attempt === 1 ? 1000 : attempt === 2 ? 3000 : 9000
         sleep(backoff)
       } else {
         break

@@ -87,19 +87,6 @@ onRecordAfterCreateSuccess((e) => {
       if (userId) userRecord = $app.findRecordById('users', userId)
     } catch (err) {}
 
-    try {
-      if (userId) {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', userId)
-        logRecord.set('type', 'diagnostic')
-        logRecord.set('message', 'AI Processing Initiated')
-        logRecord.set('details', `Iniciando verificação de regras para resposta automática.`)
-        logRecord.set('payload', { customer_id: customerId })
-        $app.saveNoValidate(logRecord)
-      }
-    } catch (err) {}
-
     const now = new Date()
     const customer = $app.findRecordById('customers', customerId)
     const tags = customer.get('tags') || []
@@ -120,15 +107,15 @@ onRecordAfterCreateSuccess((e) => {
 
     const deliveryEnabled = userRecord ? userRecord.get('delivery_enabled') !== false : true
     const deliveryStart = userRecord
-      ? userRecord.getString('delivery_start_time') || '08:00'
-      : '08:00'
+      ? userRecord.getString('delivery_start_time') || '09:00'
+      : '09:00'
     const deliveryEnd = userRecord ? userRecord.getString('delivery_end_time') || '18:00' : '18:00'
     const deliveryInterval = userRecord ? userRecord.getInt('delivery_interval') || 5 : 5
     let deliveryDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
     if (userRecord && userRecord.get('delivery_days')) {
       try {
         const parsed = userRecord.get('delivery_days')
-        if (Array.isArray(parsed)) deliveryDays = parsed
+        if (Array.isArray(parsed) && parsed.length > 0) deliveryDays = parsed
       } catch (err) {}
     }
 
@@ -157,19 +144,6 @@ onRecordAfterCreateSuccess((e) => {
         currentTimeStr > deliveryEnd
       ) {
         $app.logger().info('Message deferred: outside business hours', 'customerId', customerId)
-        try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const logRecord = new Record(logsCol)
-          logRecord.set('user_id', userId)
-          logRecord.set('type', 'diagnostic')
-          logRecord.set('message', 'Message deferred: outside business hours (Remarketing Flow)')
-          logRecord.set(
-            'details',
-            `Envio pausado. Horário permitido: ${deliveryStart}-${deliveryEnd}, dias: ${deliveryDays.join(',')}`,
-          )
-          logRecord.set('payload', { customer_id: customerId })
-          $app.saveNoValidate(logRecord)
-        } catch (err) {}
         return e.next()
       }
     }
@@ -193,52 +167,17 @@ onRecordAfterCreateSuccess((e) => {
               'customerId',
               customerId,
             )
-          try {
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const logRecord = new Record(logsCol)
-            logRecord.set('user_id', userId)
-            logRecord.set('type', 'diagnostic')
-            logRecord.set('message', `Message deferred: interval cooldown`)
-            logRecord.set(
-              'details',
-              `Aguardando intervalo mínimo de ${deliveryInterval} minutos entre mensagens automáticas.`,
-            )
-            logRecord.set('payload', { customer_id: customerId })
-            $app.saveNoValidate(logRecord)
-          } catch (err) {}
           return e.next()
         }
       }
     } catch (err) {}
 
     if (tags.includes('ai_paused')) {
-      if (isTargetLead) {
-        try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const logRecord = new Record(logsCol)
-          logRecord.set('user_id', e.record.getString('user_id'))
-          logRecord.set('type', 'diagnostic_error')
-          logRecord.set('message', 'AI trigger skipped: AI is paused for this customer')
-          logRecord.set('details', `Lead 48992098050 com tag ai_paused.`)
-          logRecord.set('payload', { customer_id: customerId })
-          $app.saveNoValidate(logRecord)
-        } catch (err) {}
-      }
       return e.next()
     }
 
     const apiKey = $secrets.get('OPENAI_API_KEY')
     if (!apiKey) {
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', userId || '')
-        logRecord.set('type', 'diagnostic_error')
-        logRecord.set('message', 'AI trigger skipped: missing API Key')
-        logRecord.set('details', `OPENAI_API_KEY ausente ou inválida.`)
-        logRecord.set('payload', { customer_id: customerId })
-        $app.saveNoValidate(logRecord)
-      } catch (err) {}
       $app.logger().warn('OPENAI_API_KEY missing for ai auto reply')
       return e.next()
     }
@@ -255,32 +194,7 @@ onRecordAfterCreateSuccess((e) => {
     const isNameMissing = !actualAiName.trim()
 
     if (isNameMissing) {
-      const reasons = []
-      if (isNameMissing) reasons.push('AI Name missing')
-
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', userId || '')
-        logRecord.set('type', 'diagnostic_error')
-        logRecord.set('message', 'AI trigger skipped: ' + reasons.join(' and '))
-        logRecord.set(
-          'details',
-          `A IA não pode responder porque a configuração está incompleta. Pendências: ${reasons.join(', ')}`,
-        )
-        logRecord.set('payload', { customer_id: customerId, reasons: reasons })
-        $app.saveNoValidate(logRecord)
-      } catch (err) {}
-
-      $app
-        .logger()
-        .warn(
-          'AI auto reply skipped due to inactive identity',
-          'customerId',
-          customerId,
-          'reasons',
-          reasons.join(', '),
-        )
+      $app.logger().warn('AI auto reply skipped due to inactive identity', 'customerId', customerId)
       return e.next()
     }
 
@@ -302,20 +216,6 @@ onRecordAfterCreateSuccess((e) => {
         const cContent = c.getString('content')
         const cInst = c.getString('ai_instructions')
         activeCadenceText = `\n\n### CADÊNCIA ATUAL (${cTitle}):\nProcedimento: ${cContent}\nDiretriz Específica: ${cInst}`
-      } else {
-        try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const logRecord = new Record(logsCol)
-          logRecord.set('user_id', userId || '')
-          logRecord.set('type', 'diagnostic_warning')
-          logRecord.set('message', 'Cadência não encontrada para Auto Reply')
-          logRecord.set(
-            'details',
-            `Nenhuma cadência ativa encontrada para a fase '${currentStatus}'.`,
-          )
-          logRecord.set('payload', { customer_id: customerId, status: currentStatus })
-          $app.saveNoValidate(logRecord)
-        } catch (err) {}
       }
     } catch (err) {}
 
@@ -372,8 +272,6 @@ onRecordAfterCreateSuccess((e) => {
             }
           })
         }
-      } else {
-        $app.logger().error('RAG search failed', 'status', String(ragRes.statusCode))
       }
     }
 
@@ -398,8 +296,29 @@ onRecordAfterCreateSuccess((e) => {
     if (receiverPhone.includes('991828050')) {
       channelContext = `\n[PERFIL DE ATENDIMENTO: REMARKETING]\nO cliente veio de uma campanha de remarketing (já nos conhece ou interagiu antes).\nDIRETRIZES DE REMARKETING:\n- Aborde de forma mais direta, focando em reengajamento.\n- Trabalhe ativamente objeções (preço, tempo, localização).\n- Se for Villa dos Açores e houver objeção de preço, argumente que o valor é excelente (R$ 4.930,77/m²) e a localização estratégica em Biguaçu.\n`
     } else {
-      channelContext = `\n[PERFIL DE ATENDIMENTO: GERAL]\nO cliente é um lead novo (primeiro contato).\nDIRETRIZES GERAIS:\n- Faça a qualificação inicial.\n- Se houver interesse no Villa dos Açores, pergunte sobre as preferências dele (ex: prefere suíte ou foca mais na área de lazer/piscina?).\n`
+      channelContext = `\n[PERFIL DE ATENDIMENTO: GERAL]\nO cliente é um lead novo (primeiro contato).\nDIRETRIZES GERAIS:\n- Faça a qualificação inicial.\n`
     }
+
+    const leadCreatedStr = customer.getString('created')
+    let crmPhaseContext = ''
+    if (leadCreatedStr) {
+      const leadCreated = new Date(leadCreatedStr)
+      const daysSinceCreated = Math.floor(
+        (now.getTime() - leadCreated.getTime()) / (1000 * 3600 * 24),
+      )
+
+      if (daysSinceCreated <= 7) {
+        crmPhaseContext = `\n[FASE ATUAL DO LEAD: D0-D7 QUALIFICAÇÃO]\nObjetivo: Apresentar o empreendimento Villa dos Açores e qualificar o lead (entender necessidades, renda e urgência).`
+      } else if (daysSinceCreated <= 21) {
+        crmPhaseContext = `\n[FASE ATUAL DO LEAD: D8-D21 APRESENTAÇÃO]\nObjetivo: Compartilhar detalhes da planta LM311, vídeos explicativos (sugira enviar vídeo do Veed.io) e focar nos detalhes do m².`
+      } else if (daysSinceCreated <= 45) {
+        crmPhaseContext = `\n[FASE ATUAL DO LEAD: D22-D45 SIMULAÇÃO]\nObjetivo: Focar em facilidades para autônomos, simulação de parcelamento, financiamento Caixa e entrada flexível.`
+      } else {
+        crmPhaseContext = `\n[FASE ATUAL DO LEAD: D46-D60+ NEGOCIAÇÃO]\nObjetivo: Agendar visita ao local ou iniciar fechamento de proposta.`
+      }
+    }
+
+    const propertyContext = `\n[DADOS DO EMPREENDIMENTO]\nEmpreendimento: Villa dos Açores\nLocalização: Biguaçu / Rio Caveiras\nPreço M²: R$ 4.930,77/m²\nPlanta Principal: LM311\n`
 
     let filesContextText = ''
     if (userRecord) {
@@ -426,7 +345,7 @@ onRecordAfterCreateSuccess((e) => {
     const combinedContextText = `${contextText}\n${filesContextText}`.trim()
 
     const messages = []
-    const systemPrompt = `Você é ${aiName}.\nSua identidade e instruções específicas (Persona):\n${personaInstructions}\n\nInstruções da IA Mãe (Base de Conhecimento Global):\n${motherAiInstructions}\n${channelContext}\nDIRETRIZES RIGOROSAS:\n1. Responda de forma fluida, coerente e humana.\n2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.\n3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.\n4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.\n5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.\n6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. Se a resposta exigir conhecimentos que não constam nas instruções ou no contexto, contorne educadamente. NUNCA invente informações (alucinação).\n7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas ou mudou de fase (ex: agendou visita, demonstrou objeção, fechou negócio), você DEVE incluir as tags [PHASE: Nova_Fase] e [STATUS: Novo_Status] no final da sua resposta.\nOs status válidos são: "Base de Clientes/Novo LYD", "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Qualificado", "Engajamento", "Visita", "Objeção", "Demo Agend.", "Demo Realiz.", "Proposta", "Negociação", "Fechamento".\nAs fases (phase) válidas são: "Lead", "Atendimento", "Visita", "Proposta", "Fechamento".\n\nCONTEXTO RECUPERADO:\n${combinedContextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
+    const systemPrompt = `Você é ${aiName}.\nSua identidade e instruções específicas (Persona):\n${personaInstructions}\n\nInstruções da IA Mãe (Base de Conhecimento Global):\n${motherAiInstructions}\n${channelContext}\n${crmPhaseContext}\n${propertyContext}\n\nDIRETRIZES RIGOROSAS:\n1. Responda de forma fluida, coerente e humana.\n2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.\n3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções". NUNCA comece frases com parênteses ou colchetes descrevendo suas ações.\n4. NUNCA inicie a resposta com frases como "(Aplicando instruções...)", "Com base no contexto...", ou similares. Vá direto ao ponto.\n5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.\n6. Aja estritamente de acordo com as instruções (roteiro/script) e o Foco Regional definidos na sua identidade. NUNCA invente informações (alucinação).\n7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas ou mudou de fase, você DEVE incluir as tags [PHASE: Nova_Fase] e [STATUS: Novo_Status] no final da sua resposta.\nOs status válidos são: "Base de Clientes/Novo LYD", "Lead Novo", "Contato 1", "Contato 2", "Qualificação", "Qualificado", "Engajamento", "Visita", "Objeção", "Demo Agend.", "Demo Realiz.", "Proposta", "Negociação", "Fechamento".\nAs fases (phase) válidas são: "Lead", "Atendimento", "Visita", "Proposta", "Fechamento".\n8. TRANSBORDO (HANDOVER): Se o cliente pedir para falar com um humano, agendar visita presencial, ou suporte inicial, inclua a tag [HANDOVER: Bernadete] no final de sua resposta. Se for negociação avançada de valores finais ou fechamento financeiro, inclua [HANDOVER: Mauro].\n\nCONTEXTO RECUPERADO:\n${combinedContextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
 
     messages.push({ role: 'system', content: systemPrompt })
 
@@ -459,6 +378,8 @@ onRecordAfterCreateSuccess((e) => {
     let responseText =
       'Desculpe, estou com uma instabilidade no momento e não consegui gerar uma resposta.'
     let detectedStatus = ''
+    let detectedPhase = ''
+    let detectedHandover = ''
 
     if (
       chatRes.statusCode === 200 &&
@@ -469,8 +390,6 @@ onRecordAfterCreateSuccess((e) => {
       chatRes.json.choices[0].message.content
     ) {
       responseText = chatRes.json.choices[0].message.content.trim()
-
-      let detectedPhase = ''
 
       const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
       if (statusMatch && statusMatch[1]) {
@@ -484,6 +403,12 @@ onRecordAfterCreateSuccess((e) => {
         responseText = responseText.replace(/\[PHASE:\s*.*?\]/gi, '').trim()
       }
 
+      const handoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
+      if (handoverMatch && handoverMatch[1]) {
+        detectedHandover = handoverMatch[1].trim()
+        responseText = responseText.replace(/\[HANDOVER:\s*.*?\]/gi, '').trim()
+      }
+
       responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
       responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
       responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
@@ -491,22 +416,6 @@ onRecordAfterCreateSuccess((e) => {
       responseText = responseText.replace(/(\(Analisando.*?\))|(\[Analisando.*?\])/gi, '').trim()
     } else {
       $app.logger().error('OpenAI Chat failed', 'status', String(chatRes.statusCode))
-      try {
-        if (userId) {
-          const logCollection = $app.findCollectionByNameOrId('system_logs')
-          const logRecord = new Record(logCollection)
-          logRecord.set('user_id', userId)
-          logRecord.set('type', 'diagnostic_error')
-          logRecord.set('message', 'Falha na comunicação com OpenAI Chat')
-          logRecord.set(
-            'details',
-            'Ocorreu um erro ao tentar gerar a resposta da IA. Status HTTP: ' + chatRes.statusCode,
-          )
-          const errorRaw = chatRes.json ? JSON.stringify(chatRes.json) : 'error'
-          logRecord.set('payload', { status: chatRes.statusCode, raw: errorRaw })
-          $app.save(logRecord)
-        }
-      } catch (err) {}
     }
 
     let isDuplicate = false
@@ -615,35 +524,36 @@ onRecordAfterCreateSuccess((e) => {
 
         if (crmUpdated) {
           $app.save(custToUpdate)
-          try {
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const logRecord = new Record(logsCol)
-            logRecord.set('user_id', userId)
-            logRecord.set('type', 'crm_update')
-            logRecord.set('message', 'Lead Evolution: CRM Phase/Status Updated by AI')
-            logRecord.set(
-              'details',
-              `Status mudou para: ${targetStatus || custStatusLower}. Phase mudou para: ${targetPhase || custToUpdate.getString('phase')}.`,
-            )
-            logRecord.set('payload', {
-              customer_id: customerId,
-              status: targetStatus,
-              phase: targetPhase,
-            })
-            $app.saveNoValidate(logRecord)
-          } catch (e) {}
+
+          if (targetStatus === 'Qualificado') {
+            const slackWebhook = $secrets.get('SLACK_WEBHOOK_URL')
+            if (slackWebhook) {
+              try {
+                $http.send({
+                  url: slackWebhook,
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    text: `🚀 *Novo Lead Qualificado!*\n*Nome:* ${custToUpdate.getString('name')}\n*Telefone:* ${custToUpdate.getString('phone')}`,
+                    channel: '#leads-sc',
+                  }),
+                  timeout: 10,
+                })
+              } catch (err) {}
+            }
+          }
         }
       } catch (err) {
         $app.logger().error('Failed to update customer status', 'error', String(err))
       }
 
+      let uazapiUrl = $secrets.get('UAZAPI_URL') || ''
+      let uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
+
       try {
         const customerRecord = $app.findRecordById('customers', customerId)
         const source = customerRecord.getString('source') || ''
         const phone = customerRecord.getString('phone') || ''
-
-        const uazapiUrl = $secrets.get('UAZAPI_URL') || ''
-        const uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
 
         if (
           source.includes('Uazapi') ||
@@ -660,163 +570,130 @@ onRecordAfterCreateSuccess((e) => {
 
           if (uazapiUrl && uazapiKey && phone) {
             const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
-            $http.send({
-              url: `${cleanUrl}/message/sendText/${instanceName}`,
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
-              body: JSON.stringify({
-                number: phone,
-                options: { delay: 1200, presence: 'composing' },
-                textMessage: { text: responseText },
-              }),
-              timeout: 15,
-            })
 
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const logRecord = new Record(logsCol)
-            logRecord.set('user_id', userId)
-            logRecord.set('type', 'diagnostic')
-            logRecord.set('message', 'Mensagem enviada via Uazapi')
-            logRecord.set(
-              'details',
-              `Resposta da IA enviada para ${phone} via instância ${instanceName}`,
-            )
-            logRecord.set('payload', { phone: phone, instanceName: instanceName })
-            $app.saveNoValidate(logRecord)
-          }
-        }
-      } catch (err) {
-        $app.logger().error('Error routing message to Uazapi', 'error', String(err))
-        try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const logRecord = new Record(logsCol)
-          logRecord.set('user_id', userId)
-          logRecord.set('type', 'diagnostic_error')
-          logRecord.set('message', 'Falha ao enviar resposta via Uazapi')
-          logRecord.set('details', String(err))
-          $app.saveNoValidate(logRecord)
-        } catch (err2) {}
-      }
+            let uazapiAttempt = 0
+            const uazapiMaxRetries = 3
+            let uazapiRes = null
+            const backoffs = [1000, 3000, 9000]
+            const randomDelay = Math.floor(Math.random() * (180000 - 60000 + 1)) + 60000
 
-      try {
-        if (userId) {
-          const userRecord = $app.findRecordById('users', userId)
-          const capiToken = userRecord.getString('meta_capi_token')
-          const mainPixelId = userRecord.getString('meta_pixel_id')
-          const tagsList = userRecord.get('meta_tags_list') || []
-          const testCode = userRecord.getString('meta_test_event_code')
-
-          let targetPixels = []
-          if (mainPixelId) targetPixels.push(mainPixelId)
-          if (tagsList && Array.isArray(tagsList)) {
-            tagsList.forEach((t) => {
-              if (t.id && !targetPixels.includes(t.id)) targetPixels.push(t.id)
-            })
-          }
-
-          if (capiToken && targetPixels.length > 0) {
-            const customerRecord = $app.findRecordById('customers', customerId)
-            const phoneVal = customerRecord.getString('phone') || ''
-            const phoneNorm = phoneVal.replace(/\D/g, '')
-            if (phoneNorm) {
-              const hashPhone = $security.sha256(phoneNorm)
-              const timeUnix = Math.floor(new Date().getTime() / 1000)
-
-              targetPixels.forEach((pixelId) => {
-                const events = []
-
-                // General AI Reply (Lead)
-                events.push({
-                  event_name: 'Lead',
-                  event_time: timeUnix,
-                  action_source: 'system_generated',
-                  user_data: { ph: [hashPhone] },
-                  custom_data: { currency: 'BRL', value: 0.0, content_name: 'ai_reply' },
-                })
-
-                // Fechamento Event (Purchase)
-                const isClosing = detectedStatus === 'Fechamento' || detectedPhase === 'Fechamento'
-                if (isClosing) {
-                  events.push({
-                    event_name: 'Purchase',
-                    event_time: timeUnix,
-                    action_source: 'system_generated',
-                    user_data: { ph: [hashPhone] },
-                    custom_data: { currency: 'BRL', value: 0.0, content_name: 'ai_fechamento' },
-                  })
-                }
-
-                const payload = { data: events }
-                if (testCode) payload.test_event_code = testCode
-
-                $http.send({
-                  url: `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`,
+            while (uazapiAttempt <= uazapiMaxRetries) {
+              try {
+                uazapiRes = $http.send({
+                  url: `${cleanUrl}/message/sendText/${instanceName}`,
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload),
-                  timeout: 5,
+                  headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
+                  body: JSON.stringify({
+                    number: phone,
+                    options: { delay: randomDelay, presence: 'composing' },
+                    textMessage: { text: responseText },
+                  }),
+                  timeout: 15,
                 })
-              })
 
-              const isClosingAny = detectedStatus === 'Fechamento' || detectedPhase === 'Fechamento'
-              if (isClosingAny) {
-                try {
-                  const logsCol = $app.findCollectionByNameOrId('system_logs')
-                  const logRecord = new Record(logsCol)
-                  logRecord.set('user_id', userId)
-                  logRecord.set('type', 'crm_update')
-                  logRecord.set('message', 'Meta CAPI Event Sent: Purchase (Fechamento)')
-                  logRecord.set('details', `Evento de fechamento enviado para pixels.`)
-                  logRecord.set('payload', { customer_id: customerId })
-                  $app.saveNoValidate(logRecord)
-                } catch (e) {}
+                if (uazapiRes && (uazapiRes.statusCode === 200 || uazapiRes.statusCode === 201))
+                  break
+                if (
+                  uazapiRes &&
+                  uazapiRes.statusCode !== 404 &&
+                  uazapiRes.statusCode !== 504 &&
+                  uazapiRes.statusCode !== 500 &&
+                  uazapiRes.statusCode !== 0
+                ) {
+                  break
+                }
+              } catch (e) {}
+
+              if (uazapiAttempt < uazapiMaxRetries) {
+                const sleepMs = backoffs[uazapiAttempt] || 9000
+                const start = new Date().getTime()
+                while (new Date().getTime() - start < sleepMs) {}
               }
+              uazapiAttempt++
             }
           }
         }
       } catch (err) {
-        $app.logger().error('CAPI Error in AI Reply', 'error', String(err))
+        $app.logger().error('Error routing message to Uazapi', 'error', String(err))
       }
 
-      try {
-        if (userId) {
-          const logCollection = $app.findCollectionByNameOrId('system_logs')
-          const logRecord = new Record(logCollection)
-          logRecord.set('user_id', userId)
-          logRecord.set('type', 'diagnostic')
-          logRecord.set('message', 'IA respondeu ao cliente com sucesso')
-
-          let detailsMsg = 'A inteligência artificial gerou e enviou uma resposta.'
-          if (contextText) {
-            detailsMsg +=
-              ' Baseada em contexto específico recuperado da Base de Conhecimento/Cadências.'
-          } else {
-            detailsMsg +=
-              ' Utilizou apenas as instruções principais (sem contexto específico adicional encontrado).'
+      // Handover Logic
+      if (detectedHandover) {
+        let summary = 'A IA transferiu este lead para o atendimento humano.'
+        try {
+          const summaryRes = $http.send({
+            url: 'https://api.openai.com/v1/chat/completions',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [
+                {
+                  role: 'system',
+                  content:
+                    'Resuma em poucas palavras o interesse ou objeção deste cliente com base nas últimas mensagens da conversa de vendas. Max 3 linhas.',
+                },
+                ...messages.slice(-6),
+              ],
+              temperature: 0.3,
+              max_tokens: 150,
+            }),
+            timeout: 15,
+          })
+          if (summaryRes.statusCode === 200 && summaryRes.json && summaryRes.json.choices[0]) {
+            summary = summaryRes.json.choices[0].message.content.trim()
           }
-          logRecord.set('details', detailsMsg)
-          logRecord.set('payload', { customer_id: customerId, context_used: !!contextText })
-          $app.save(logRecord)
-        }
-      } catch (err) {}
+        } catch (e) {}
+
+        try {
+          const customerRec = $app.findRecordById('customers', customerId)
+          const summaryText = `*🚨 Transbordo de Lead 🚨*\n*Lead:* ${customerRec.getString('name')} (${customerRec.getString('phone')})\n*Destino:* ${detectedHandover}\n*Resumo da Conversa:*\n${summary}`
+          const agentPhone = detectedHandover.toLowerCase().includes('mauro')
+            ? '5548999728050'
+            : '5548991958012'
+
+          const slackWebhook = $secrets.get('SLACK_WEBHOOK_URL')
+          if (slackWebhook) {
+            try {
+              $http.send({
+                url: slackWebhook,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: summaryText, channel: '#leads-sc' }),
+                timeout: 10,
+              })
+            } catch (e) {}
+          }
+
+          if (uazapiUrl && uazapiKey) {
+            try {
+              const cleanUrlHandover = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
+
+              let source = customerRec.getString('source') || ''
+              let instanceName = '48992098050'
+              if (source.includes('Uazapi - '))
+                instanceName = source.replace('Uazapi - ', '').trim()
+              else if (source.includes('Meta - '))
+                instanceName = source.replace('Meta - ', '').trim()
+
+              $http.send({
+                url: `${cleanUrlHandover}/message/sendText/${instanceName}`,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
+                body: JSON.stringify({
+                  number: agentPhone,
+                  options: { delay: 1000 },
+                  textMessage: { text: summaryText },
+                }),
+                timeout: 15,
+              })
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
     }
   } catch (err) {
     $app.logger().error('AI Auto Reply Error', 'error', String(err))
-    try {
-      const logsCol = $app.findCollectionByNameOrId('system_logs')
-      const logRecord = new Record(logsCol)
-      const userIdVal = e.record.getString('user_id') || ''
-      logRecord.set('user_id', userIdVal)
-      logRecord.set('type', 'diagnostic_error')
-      logRecord.set('message', 'Falha na Execução do AI Auto Reply')
-      logRecord.set('details', String(err))
-      logRecord.set('payload', {
-        error: String(err),
-        record_id: e.record.id,
-        customer_id: customerId || 'unknown',
-      })
-      $app.saveNoValidate(logRecord)
-    } catch (err2) {}
   } finally {
     if (acquiredLock) {
       try {
@@ -831,11 +708,7 @@ onRecordAfterCreateSuccess((e) => {
             txApp.save(customer)
           }
         })
-      } catch (err) {
-        $app
-          .logger()
-          .error('Failed to release lock', 'customerId', customerId, 'error', String(err))
-      }
+      } catch (err) {}
     }
   }
 

@@ -21,13 +21,29 @@ cronAdd('uazapi_health_check', '*/5 * * * *', () => {
 
     try {
       const res = $http.send({
-        url: `${domain}/instance/connectionState/${instance}`,
+        url: `${domain}/instance/status/${instance}`,
         method: 'GET',
         headers: headers,
         timeout: 10,
       })
 
       if (res.statusCode === 401 || res.statusCode === 403 || res.statusCode === 404) {
+        const slackWebhook = $secrets.get('SLACK_WEBHOOK_URL')
+        if (slackWebhook) {
+          try {
+            $http.send({
+              url: slackWebhook,
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text: `⚠️ *Uazapi Error*\nInstância: ${instance}\nStatus: ${res.statusCode} (Desconectada/Inválida)`,
+                channel: '#leads-sc',
+              }),
+              timeout: 10,
+            })
+          } catch (err) {}
+        }
+
         const col = $app.findCollectionByNameOrId('system_logs')
         const record = new Record(col)
         record.set('type', 'diagnostic_error')
