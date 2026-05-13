@@ -220,7 +220,7 @@ export default function ConfiguracoesCore() {
       let errMsg = e.message || 'Erro de comunicação.'
       if (e.status === 400 && e.response?.error) errMsg = e.response.error
       else if (e.status === 404)
-        errMsg = `Instância não encontrada no Uazapi. Verifique se o número ${inst} está correto no painel da Uazapi.`
+        errMsg = `Instância não encontrada no Uazapi. Verifique se o número ${inst} corresponde exatamente ao registrado no painel da Uazapi.`
       else if (e.status === 504) errMsg = 'Timeout. Verifique o Endpoint URL.'
       else if (e.response?.message) errMsg = e.response.message
 
@@ -280,7 +280,12 @@ export default function ConfiguracoesCore() {
         setQrCode(
           res.base64.startsWith('data:') ? res.base64 : `data:image/png;base64,${res.base64}`,
         )
-        startPolling(instanceNumber, domain, token, adminToken)
+        startPolling(
+          instanceNumber.replace(/\D/g, ''),
+          domain.trim(),
+          token.trim(),
+          adminToken.trim(),
+        )
         toast({ title: 'QR Code gerado', description: 'Escaneie o QR Code com seu WhatsApp.' })
       } else if (res.instance?.state === 'open') {
         setStatus('connected')
@@ -338,7 +343,12 @@ export default function ConfiguracoesCore() {
       await pb.send(`/backend/v1/uazapi/restart/${instanceNumber}`, { method: 'PUT' })
       toast({ title: 'Reiniciando', description: 'A instância está sendo reiniciada.' })
       setTimeout(() => {
-        checkConnection(instanceNumber, domain, token, adminToken)
+        checkConnection(
+          instanceNumber.replace(/\D/g, ''),
+          domain.trim(),
+          token.trim(),
+          adminToken.trim(),
+        )
       }, 5000)
     } catch (e: any) {
       toast({
@@ -364,19 +374,29 @@ export default function ConfiguracoesCore() {
 
     setIsSaving(true)
     try {
+      const cleanDomain = domain.trim()
+      const cleanToken = token.trim()
+      const cleanAdminToken = adminToken.trim()
+      const cleanInstanceNumber = instanceNumber.replace(/\D/g, '')
+
       const payload: any = {
         name,
-        uazapi_domain: domain,
-        uazapi_token: token,
-        uazapi_admin_token: adminToken,
-        uazapi_instance_number: instanceNumber,
+        uazapi_domain: cleanDomain,
+        uazapi_token: cleanToken,
+        uazapi_admin_token: cleanAdminToken,
+        uazapi_instance_number: cleanInstanceNumber,
       }
       if (email !== user.email) payload.email = email
+
+      setDomain(cleanDomain)
+      setToken(cleanToken)
+      setAdminToken(cleanAdminToken)
+      setInstanceNumber(cleanInstanceNumber)
 
       const updatedUser = await pb.collection('users').update(user.id, payload)
       pb.authStore.save(pb.authStore.token, updatedUser)
       toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
-      await checkConnection(instanceNumber, domain, token, adminToken)
+      await checkConnection(cleanInstanceNumber, cleanDomain, cleanToken, cleanAdminToken)
     } catch (e: any) {
       toast({ title: 'Erro', description: 'Não foi possível salvar.', variant: 'destructive' })
     } finally {
@@ -817,7 +837,14 @@ export default function ConfiguracoesCore() {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => checkConnection(instanceNumber, domain, token, adminToken)}
+                  onClick={() =>
+                    checkConnection(
+                      instanceNumber.replace(/\D/g, ''),
+                      domain.trim(),
+                      token.trim(),
+                      adminToken.trim(),
+                    )
+                  }
                   disabled={status === 'checking' || isSaving || !instanceNumber}
                 >
                   {status === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

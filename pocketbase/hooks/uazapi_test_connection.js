@@ -45,18 +45,47 @@ routerAdd(
       // destroying the frontend session and forcing a redirect to /login.
       if (res.statusCode === 401 || res.statusCode === 403) {
         const uazapiErrorMsg = res.json && (res.json.message || res.json.error)
+        let customErrorMsg = 'Acesso negado no Uazapi (Token inválido).'
+
+        if (uazapiErrorMsg && String(uazapiErrorMsg).toLowerCase().includes('oauth')) {
+          customErrorMsg = `Erro de Autenticação (OAuth): Verifique se o Instance Token e o Admin Token não contêm espaços ou caracteres ocultos. Mensagem do Uazapi: ${uazapiErrorMsg}`
+        } else if (uazapiErrorMsg) {
+          customErrorMsg = `Acesso negado: ${uazapiErrorMsg}`
+        }
+
+        $app
+          .logger()
+          .error(
+            'Uazapi 401/403 Error',
+            'instance',
+            instance,
+            'domain',
+            domain,
+            'error',
+            uazapiErrorMsg,
+          )
+
         return e.json(400, {
           message: 'Unauthorized at target',
-          error: uazapiErrorMsg
-            ? `Acesso negado: ${uazapiErrorMsg}`
-            : 'Acesso negado no Uazapi (Token inválido).',
+          error: customErrorMsg,
         })
       }
 
       if (res.statusCode === 404) {
+        $app
+          .logger()
+          .error(
+            'Uazapi 404 Instance Not Found',
+            'instance',
+            instance,
+            'domain',
+            domain,
+            'payload',
+            JSON.stringify(body),
+          )
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} está correto no painel da Uazapi.`,
+          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} corresponde exatamente ao registrado no painel da Uazapi.`,
         })
       }
 
@@ -71,9 +100,12 @@ routerAdd(
         return e.json(504, { message: 'Timeout' })
       }
       if (msg.includes('not found')) {
+        $app
+          .logger()
+          .error('Uazapi 404 Exception', 'instance', instance, 'domain', domain, 'message', msg)
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} está correto no painel da Uazapi.`,
+          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} corresponde exatamente ao registrado no painel da Uazapi.`,
         })
       }
       return e.internalServerError(err.message)
