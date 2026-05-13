@@ -173,10 +173,17 @@ export default function ConfiguracoesCore() {
     setStatus('checking')
     setErrorDetail('')
     try {
-      const data = await pb.send(`/backend/v1/uazapi/test-connection`, {
-        method: 'POST',
-        body: { instance: inst, domain: dom, token: tok, admin_token: adminTok },
-      })
+      // First try calling the specific uazapi_status hook as required
+      let data
+      try {
+        data = await pb.send(`/backend/v1/uazapi/status/${inst}`, { method: 'GET' })
+      } catch (err: any) {
+        // Fallback to test-connection if status hook fails or is structured differently
+        data = await pb.send(`/backend/v1/uazapi/test-connection`, {
+          method: 'POST',
+          body: { instance: inst, domain: dom, token: tok, admin_token: adminTok },
+        })
+      }
       if (data?.error) throw new Error(data.error)
 
       try {
@@ -188,7 +195,8 @@ export default function ConfiguracoesCore() {
       if (
         data?.instance?.state === 'open' ||
         data?.success ||
-        data?.instance?.state === 'connecting'
+        data?.instance?.state === 'connecting' ||
+        data?.state === 'open'
       ) {
         setStatus('connected')
         await pb
@@ -207,8 +215,7 @@ export default function ConfiguracoesCore() {
       let errMsg = e.message || 'Erro de comunicação.'
       if (e.status === 400 && e.response?.error) errMsg = e.response.error
       else if (e.status === 404)
-        errMsg =
-          'Verifique o Endpoint URL e a Instância WhatsApp. O servidor retornou 404 Not Found.'
+        errMsg = 'Instância não encontrada no Uazapi. Verifique o número da instância.'
       else if (e.status === 504) errMsg = 'Timeout. Verifique o Endpoint URL.'
       else if (e.response?.message) errMsg = e.response.message
 
@@ -789,7 +796,16 @@ export default function ConfiguracoesCore() {
               <div className="pt-2 flex gap-3">
                 <Button type="button" onClick={handleSave} disabled={isSaving}>
                   {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Salvar e Testar Conexão
+                  Salvar
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => checkConnection(instanceNumber, domain, token, adminToken)}
+                  disabled={status === 'checking' || isSaving || !instanceNumber}
+                >
+                  {status === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Verificar Conexão
                 </Button>
               </div>
 
