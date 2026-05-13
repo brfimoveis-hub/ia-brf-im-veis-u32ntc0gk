@@ -41,6 +41,13 @@ export default function ConfiguracoesCore() {
     {},
   )
 
+  // QR Code States
+  const [qrCode, setQrCode] = useState<string | null>(null)
+  const [isGeneratingQr, setIsGeneratingQr] = useState(false)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [isRestarting, setIsRestarting] = useState(false)
+  const pollingRef = useRef<NodeJS.Timeout | null>(null)
+
   // Meta States
   const [metaStatus, setMetaStatus] = useState<'checking' | 'connected' | 'disconnected' | 'idle'>(
     'idle',
@@ -64,6 +71,8 @@ export default function ConfiguracoesCore() {
       if (e.record.uazapi_status === 'Conectado') {
         setStatus('connected')
         setErrorDetail('')
+        setQrCode(null)
+        if (pollingRef.current) clearInterval(pollingRef.current)
       } else if (e.record.uazapi_status === 'Desconectado') {
         setStatus('disconnected')
         setErrorDetail(e.record.uazapi_error || 'Desconectado')
@@ -129,6 +138,10 @@ export default function ConfiguracoesCore() {
       }
 
       initialized.current = true
+    }
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
@@ -204,6 +217,110 @@ export default function ConfiguracoesCore() {
       await pb
         .collection('users')
         .update(user.id, { uazapi_status: 'Desconectado', uazapi_error: errMsg })
+    }
+  }
+
+  const startPolling = (inst: string, dom: string, tok: string, adminTok?: string) => {
+    if (pollingRef.current) clearInterval(pollingRef.current)
+    pollingRef.current = setInterval(async () => {
+      try {
+        const data = await pb.send(`/backend/v1/uazapi/test-connection`, {
+          method: 'POST',
+          body: { instance: inst, domain: dom, token: tok, admin_token: adminTok },
+        })
+        if (data?.instance?.state === 'open' || data?.success) {
+          setStatus('connected')
+          setQrCode(null)
+          if (pollingRef.current) clearInterval(pollingRef.current)
+          if (user) {
+            await pb
+              .collection('users')
+              .update(user.id, { uazapi_status: 'Conectado', uazapi_error: '' })
+          }
+        }
+      } catch (e) {
+        // ignore polling errors
+      }
+    }, 5000)
+  }
+
+  const generateQrCode = async () => {
+    if (!user) return
+    if (!validateFields()) {
+      toast({
+        title: 'Dados inválidos',
+        description: 'Preencha a instância e o domínio.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setIsGeneratingQr(true)
+    setQrCode(null)
+    try {
+      const res = await pb.send(`/backend/v1/uazapi/qrcode/${instanceNumber}`, { method: 'GET' })
+      if (res.base64) {
+        setQrCode(
+          res.base64.startsWith('data:') ? res.base64 : `data:image/png;base64,${res.base64}`,
+        )
+        startPolling(instanceNumber, domain, token, adminToken)
+        toast({ title: 'QR Code gerado', description: 'Escaneie o QR Code com seu WhatsApp.' })
+      } else if (res.instance?.state === 'open') {
+        setStatus('connected')
+        toast({ title: 'Já conectado', description: 'A instância já está conectada.' })
+      } else {
+        toast({
+          title: 'Erro',
+          description: 'Não foi possível obter o QR Code.',
+          variant: 'destructive',
+        })
+      }
+    } catch (e: any) {
+      toast({
+        title: 'Erro',
+        description: e.message || 'Erro ao gerar QR Code.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsGeneratingQr(false)
+    }
+  }
+
+  const disconnectInstance = async () => {
+    if (!user) return
+    setIsDisconnecting(true)
+    try {
+      await pb.send(`/backend/v1/uazapi/disconnect/${instanceNumber}`, { method: 'DELETE' })
+      setStatus('disconnected')
+      setQrCode(null)
+      toast({ title: 'Desconectado', description: 'A instância foi desconectada.' })
+    } catch (e: any) {
+      toast({
+        title: 'Erro',
+        description: e.message || 'Erro ao desconectar.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsDisconnecting(false)
+    }
+  }
+
+  const restartInstance = async () => {
+    if (!user) return
+    setIsRestarting(true)
+    try {
+      await pb.send(`/backend/v1/uazapi/restart/${instanceNumber}`, { method: 'PUT' })
+      toast({ title: 'Reiniciando', description: 'A instância está sendo reiniciada.' })
+      setTimeout(() => {
+        checkConnection(instanceNumber, domain, token, adminToken)
+      }, 5000)
+    } catch (e: any) {
+      toast({
+        title: 'Erro',
+        description: e.message || 'Erro ao reiniciar.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsRestarting(false)
     }
   }
 
@@ -661,6 +778,83 @@ export default function ConfiguracoesCore() {
                   {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Salvar e Testar Conexão
                 </Button>
+              </div>
+
+              <div className="mt-8 border-t pt-6">
+                <h3 className="text-lg font-medium mb-4">Conexão do Dispositivo</h3>
+
+                {status === 'connected' ? (
+                  <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-emerald-50/50">
+                    <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-3" />
+                    <h4 className="text-xl font-semibold text-emerald-700">WhatsApp Conectado</h4>
+                    <p className="text-sm text-muted-foreground mt-1 mb-6 text-center max-w-sm">
+                      Sua instância <strong className="text-foreground">{instanceNumber}</strong>{' '}
+                      está ativa e pronta para enviar e receber mensagens.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Button variant="outline" onClick={restartInstance} disabled={isRestarting}>
+                        {isRestarting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Reiniciar
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={disconnectInstance}
+                        disabled={isDisconnecting}
+                      >
+                        {isDisconnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Desconectar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/30">
+                    {qrCode ? (
+                      <div className="flex flex-col items-center space-y-4">
+                        <div className="bg-white p-4 rounded-xl shadow-sm">
+                          <img
+                            src={qrCode}
+                            alt="QR Code para conectar ao WhatsApp"
+                            className="w-64 h-64"
+                          />
+                        </div>
+                        <p className="text-sm text-muted-foreground text-center">
+                          Abra o WhatsApp no seu celular, vá em{' '}
+                          <strong>Aparelhos Conectados</strong> e escaneie o código acima.
+                        </p>
+                        <Button
+                          variant="outline"
+                          onClick={generateQrCode}
+                          disabled={isGeneratingQr}
+                        >
+                          {isGeneratingQr ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Atualizar QR Code
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center space-y-4 text-center">
+                        <div className="h-24 w-24 rounded-full bg-muted flex items-center justify-center mb-2">
+                          <MessageSquare className="h-10 w-10 text-muted-foreground/50" />
+                        </div>
+                        <h4 className="text-lg font-medium">Instância Desconectada</h4>
+                        <p className="text-sm text-muted-foreground max-w-md">
+                          Gere um novo QR Code para conectar seu número de WhatsApp e ativar os
+                          recursos de IA.
+                        </p>
+                        <Button
+                          onClick={generateQrCode}
+                          disabled={isGeneratingQr || !instanceNumber || !domain}
+                        >
+                          {isGeneratingQr ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Gerar QR Code
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
