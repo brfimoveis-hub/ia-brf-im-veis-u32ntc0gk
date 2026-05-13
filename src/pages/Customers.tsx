@@ -43,9 +43,9 @@ import { useAuth } from '@/hooks/use-auth'
 import { Link } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 
-const CustomerImportDialog = lazy(() =>
-  import('@/components/customers/CustomerImportDialog').then((m) => ({
-    default: m.CustomerImportDialog,
+const GoogleContactsImportDialog = lazy(() =>
+  import('@/components/customers/GoogleContactsImportDialog').then((m) => ({
+    default: m.GoogleContactsImportDialog,
   })),
 )
 const LeadDialog = lazy(() =>
@@ -272,7 +272,7 @@ export default function Customers() {
             <Play className="h-4 w-4" /> Roleta Mágica
           </Button>
           <Button variant="default" onClick={() => setImportDialogOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" /> Importar CSV/VCF
+            <Upload className="h-4 w-4" /> Importar Google Contatos (CSV)
           </Button>
           <Button
             onClick={() => {
@@ -446,7 +446,7 @@ export default function Customers() {
 
       <Suspense fallback={null}>
         {importDialogOpen && (
-          <CustomerImportDialog
+          <GoogleContactsImportDialog
             open={importDialogOpen}
             onOpenChange={setImportDialogOpen}
             onSuccess={() => {

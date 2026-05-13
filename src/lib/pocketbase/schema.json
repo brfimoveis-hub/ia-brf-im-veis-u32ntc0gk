@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-13T15:46:32.193Z",
+  "generatedAt": "2026-05-13T19:12:12.276Z",
   "collections": [
     {
       "name": "users",
@@ -39,84 +39,6 @@
           "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
-          "name": "meta_pixel_id",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "meta_test_event_code",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "meta_capi_token",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "meta_campaign_phone",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "meta_tags_list",
-          "type": "json",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "ai_instructions",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "ai_name",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "ai_voice_id",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "ai_avatar",
-          "type": "file",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "meta_token_status",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "meta_last_validated",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "uazapi_status",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "uazapi_error",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
           "name": "uazapi_domain",
           "type": "text",
           "required": false,
@@ -136,6 +58,24 @@
         },
         {
           "name": "uazapi_instance_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uazapi_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "uazapi_error",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_whatsapp_status",
           "type": "text",
           "required": false,
           "system": false
@@ -165,25 +105,19 @@
           "system": false
         },
         {
-          "name": "meta_whatsapp_status",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
           "name": "google_ads_webhook_key",
           "type": "text",
           "required": false,
           "system": false
         },
         {
-          "name": "ai_knowledge_files",
-          "type": "file",
+          "name": "meta_pixel_id",
+          "type": "text",
           "required": false,
           "system": false
         },
         {
-          "name": "bia_instructions",
+          "name": "meta_capi_token",
           "type": "text",
           "required": false,
           "system": false
@@ -206,14 +140,15 @@
       },
       "fields": [
         {
-          "name": "name",
-          "type": "text",
-          "required": true,
-          "system": false
+          "name": "user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         },
         {
-          "name": "email",
-          "type": "email",
+          "name": "name",
+          "type": "text",
           "required": false,
           "system": false
         },
@@ -224,19 +159,62 @@
           "system": false
         },
         {
-          "name": "status",
+          "name": "email",
           "type": "text",
           "required": false,
           "system": false
         },
         {
-          "name": "phase",
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "lead",
+            "contact",
+            "closed",
+            "Visita",
+            "Fechamento",
+            "Demo Realiz.",
+            "Engajamento",
+            "Qualificação",
+            "Novo"
+          ]
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "embedding",
+          "type": "vector",
+          "required": false,
+          "system": false,
+          "vectorDimensions": 1536,
+          "vectorDistance": "l2"
+        },
+        {
+          "name": "first_name",
           "type": "text",
           "required": false,
           "system": false
         },
         {
           "name": "source",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_1_value",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_1_value",
           "type": "text",
           "required": false,
           "system": false
@@ -254,37 +232,9 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
-        },
-        {
-          "name": "google_campaign_id",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "google_adgroup_id",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "external_lead_id",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "campaign_name",
-          "type": "text",
-          "required": false,
-          "system": false
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_customers_status ON customers (status)",
-        "CREATE INDEX idx_customers_phone ON customers (phone)",
-        "CREATE INDEX `idx_customers_external_lead_id` ON `customers` (external_lead_id)"
-      ]
+      "indexes": []
     },
     {
       "name": "cadences",
@@ -298,14 +248,39 @@
       },
       "fields": [
         {
+          "name": "user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
           "name": "title",
           "type": "text",
-          "required": true,
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "steps",
+          "type": "json",
+          "required": false,
           "system": false
         },
         {
           "name": "content",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "order",
+          "type": "number",
           "required": false,
           "system": false
         },
@@ -322,6 +297,18 @@
           "system": false
         },
         {
+          "name": "ebook_file",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price_table_file",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
           "name": "created",
           "type": "autodate",
           "required": false,
@@ -334,25 +321,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
-        },
-        {
-          "name": "order",
-          "type": "number",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "user_id",
-          "type": "relation",
-          "required": false,
-          "system": false,
-          "collectionRef": "users"
         }
       ],
       "indexes": []
     },
     {
-      "name": "system_logs",
+      "name": "leads",
       "type": "base",
       "apiRules": {
         "list": "@request.auth.id != ''",
@@ -363,13 +337,20 @@
       },
       "fields": [
         {
-          "name": "type",
+          "name": "source",
           "type": "text",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
-          "name": "message",
+          "name": "assigned_to",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "status",
           "type": "text",
           "required": false,
           "system": false
@@ -387,18 +368,6 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
-        },
-        {
-          "name": "details",
-          "type": "json",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "payload",
-          "type": "json",
-          "required": false,
-          "system": false
         }
       ],
       "indexes": []

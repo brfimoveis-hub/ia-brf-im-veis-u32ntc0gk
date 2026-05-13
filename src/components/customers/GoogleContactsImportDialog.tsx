@@ -75,23 +75,16 @@ const mapRow = (item: any) => {
     return ''
   }
 
-  const name = getVal([
-    'name',
-    'given name',
-    'first name',
-    'nome',
-    'nome próprio',
-    'display name',
-    'nome de exibição',
-  ])
+  const name = getVal(['name', 'nome', 'display name', 'nome de exibição'])
+  const givenName = getVal(['given name', 'first name', 'nome próprio'])
   const lastName = getVal(['family name', 'last name', 'sobrenome'])
-  const email = getVal(['e-mail', 'email', 'e-mail 1 - value', 'correio eletrônico'])
+  const email = getVal(['e-mail 1 - value', 'e-mail', 'email', 'correio eletrônico'])
   const phone = getVal([
+    'phone 1 - value',
     'phone',
     'mobile',
     'telefone',
     'celular',
-    'phone 1 - value',
     'telefone 1 - valor',
   ])
   const orgName = getVal(['organization 1 - name', 'empresa', 'company'])
@@ -116,6 +109,7 @@ const mapRow = (item: any) => {
   return {
     ...item,
     NormalizedName: name,
+    NormalizedGivenName: givenName,
     NormalizedLastName: lastName,
     NormalizedEmail: fallbackEmail,
     NormalizedPhone: fallbackPhone,
@@ -161,11 +155,7 @@ export function GoogleContactsImportDialog({
     let ignored = 0
     const mappedData = data.map(mapRow)
     const validData = mappedData.filter((item) => {
-      const isValid =
-        item.NormalizedName ||
-        item.NormalizedLastName ||
-        item.NormalizedEmail ||
-        item.NormalizedPhone
+      const isValid = item.NormalizedEmail || item.NormalizedPhone
       if (!isValid && Object.keys(item).length > 0) ignored++
       return isValid
     })
@@ -174,7 +164,7 @@ export function GoogleContactsImportDialog({
       toast({
         title: 'Aviso',
         description:
-          'Verifique se o seu arquivo CSV utiliza vírgula ou ponto-e-vírgula e se contém uma coluna de Nome ou Telefone.',
+          'Verifique se o seu arquivo CSV utiliza vírgula ou ponto-e-vírgula e se contém pelo menos uma coluna com Email ou Telefone válidos.',
         variant: 'destructive',
       })
       setParsedData(null)
@@ -286,11 +276,16 @@ export function GoogleContactsImportDialog({
         })
 
         const promises = batch.map(async (item) => {
-          let givenName = (item.NormalizedName || '').trim()
+          let givenName = (item.NormalizedGivenName || '').trim()
           const middleName = (item['Additional Name'] || '').trim()
           let familyName = (item.NormalizedLastName || '').trim()
 
-          const fullName = [givenName, familyName].filter(Boolean).join(' ')
+          const rawName = (item.NormalizedName || '').trim()
+
+          let fullName = rawName
+          if (!fullName) {
+            fullName = [givenName, middleName, familyName].filter(Boolean).join(' ')
+          }
 
           if (fullName && !givenName && !familyName) {
             const parts = fullName.split(' ')
@@ -298,8 +293,7 @@ export function GoogleContactsImportDialog({
             familyName = parts.length > 1 ? parts.slice(1).join(' ') : ''
           }
 
-          const nameRaw = fullName || [givenName, middleName, familyName].filter(Boolean).join(' ')
-          const name = nameRaw || 'Sem nome'
+          const name = fullName || 'Sem nome'
 
           const emailLabel = (item['E-mail 1 - Type'] || '').trim()
           const emailValue = (item.NormalizedEmail || '').trim()
@@ -316,7 +310,7 @@ export function GoogleContactsImportDialog({
           const birthday = (item['Birthday'] || '').trim()
           const notes = (item['Notes'] || '').trim()
 
-          if (!nameRaw && !emailValue && !phoneValue) return Promise.resolve('skipped')
+          if (!emailValue && !phoneValue) return Promise.resolve('skipped')
 
           let existingId = null
           if (emailValue && emailMap.has(emailValue)) existingId = emailMap.get(emailValue)
@@ -338,13 +332,13 @@ export function GoogleContactsImportDialog({
             org_title: orgTitle,
             birthday,
             notes,
-            source: 'Importação Manual',
+            source: 'Google Contacts',
           }
 
           if (existingId) {
             return updateCustomer(existingId, payload)
           } else {
-            payload.status = '1'
+            payload.status = 'Novo'
             payload.tags = ['Importado']
             const created = await createCustomerWithRetry(payload)
             if (emailValue) emailMap.set(emailValue, created.id)

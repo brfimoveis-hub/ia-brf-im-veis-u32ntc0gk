@@ -1,6 +1,703 @@
-import{E as e,O as t,b as n,c as r,l as i,o as a,t as o,w as ee}from"./button-BukrqzEL.js";import{t as te,u as ne}from"./scroll-area-CxGaoANU.js";import{A as s,D as re,E as ie,M as ae,O as c,S as oe,T as l,_ as se,f as u,g as ce,h as d,k as f,l as le,n as ue,r as de,t as fe,u as pe,v as me,w as he,y as ge}from"./index-CH3lbLrq.js";var _e=i(`chevron-left`,[[`path`,{d:`m15 18-6-6 6-6`,key:`1wnfg3`}]]),ve=i(`layers`,[[`path`,{d:`M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z`,key:`zw3jo`}],[`path`,{d:`M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12`,key:`1wduqc`}],[`path`,{d:`M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17`,key:`kqbvx6`}]]),ye=i(`pause`,[[`rect`,{x:`14`,y:`3`,width:`5`,height:`18`,rx:`1`,key:`kaeet6`}],[`rect`,{x:`5`,y:`3`,width:`5`,height:`18`,rx:`1`,key:`1wsw3u`}]]),p=i(`sticky-note`,[[`path`,{d:`M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z`,key:`1dfntj`}],[`path`,{d:`M15 3v5a1 1 0 0 0 1 1h5`,key:`6s6qgf`}]]),m=t(e(),1),h=n();function g({search:e=``,phaseFilter:t=`all`,sourceFilter:n=``,onCustomerUpdated:i}={}){let[g,_]=(0,m.useState)([]),[v,y]=(0,m.useState)([]),[b,be]=(0,m.useState)(0),[x,S]=(0,m.useState)(1),[C,xe]=(0,m.useState)(!0),[w,T]=(0,m.useState)(0),[E,D]=(0,m.useState)(0),[O,k]=(0,m.useState)(0),[A,j]=(0,m.useState)(!1),[M,N]=(0,m.useState)(!1),[P,Se]=(0,m.useState)(!1),[F,Ce]=(0,m.useState)(!1),[I,L]=(0,m.useState)(!0),[R,z]=(0,m.useState)(!1),[B,V]=(0,m.useState)(!1),[H,U]=(0,m.useState)(``),[we,Te]=(0,m.useState)(``),W=(0,m.useRef)([]),G=(0,m.useRef)(null),{toast:K}=ee(),q=ne(({currentLocation:e,nextLocation:t})=>(A||M)&&e.pathname!==t.pathname);(0,m.useEffect)(()=>{q.state===`blocked`&&K({title:`Edição em andamento`,description:`Salve ou cancele as alterações antes de sair da página.`,variant:`destructive`})},[q.state,K]),(0,m.useEffect)(()=>{let e=e=>{(A||M)&&(e.preventDefault(),e.returnValue=``)};return window.addEventListener(`beforeunload`,e),()=>window.removeEventListener(`beforeunload`,e)},[A,M]),(0,m.useEffect)(()=>{fe().then(e=>{_(e),D(t=>t>=e.length?0:t)}).catch(()=>K({title:`Erro`,description:`Falha ao carregar cadências.`,variant:`destructive`}))},[K]);let J=(0,m.useCallback)(async(r,i=!1)=>{try{i?L(!0):z(!0);let a=await le(r,100,e,t,n);y(e=>{if(i)return a.items;let t=a.items.filter(t=>!e.some(e=>e.id===t.id));return[...e,...t]}),be(a.totalItems),xe(r<a.totalPages),i&&T(0)}catch{i||K({title:`Erro`,description:`Falha ao carregar mais clientes.`,variant:`destructive`})}finally{L(!1),z(!1),Ce(!0)}},[e,t,n,100,K]);(0,m.useEffect)(()=>{S(1),J(1,!0)},[e,t,n,J]);let Y=(0,m.useCallback)(()=>{if(!R&&C){let e=x+1;S(e),J(e,!1)}},[R,C,x,J]),Ee=(0,m.useCallback)(e=>{I||(G.current&&G.current.disconnect(),G.current=new IntersectionObserver(e=>{e[0].isIntersecting&&Y()},{rootMargin:`100px`}),e&&G.current.observe(e))},[I,Y]);(0,m.useEffect)(()=>{v.length>0&&w>=v.length-5&&C&&!R&&Y()},[w,v.length,C,R,Y]),(0,m.useEffect)(()=>{let e=setTimeout(()=>{W.current[w]&&!P&&!A&&!M&&W.current[w]?.scrollIntoView({behavior:`smooth`,block:`center`})},150);return()=>clearTimeout(e)},[w,P,A,M]);let X=(0,m.useCallback)(()=>{if(b===0)return;let e=new CustomEvent(`roulette-next`,{cancelable:!0});window.dispatchEvent(e),!e.defaultPrevented&&(T(e=>e>=b-1?0:e+1),k(e=>e+1))},[b]),De=(0,m.useRef)(X);(0,m.useEffect)(()=>{De.current=X},[X]),(0,m.useEffect)(()=>{if(!F||I||P||A||M||b===0)return;let e=setInterval(()=>De.current(),15e3);return()=>clearInterval(e)},[F,I,P,A,M,b,O]);let Z=g[E],Oe=v[w],ke=()=>{Z&&(U(Z.content),j(!0))},Ae=(e,t)=>{T(t),k(e=>e+1),Te(e.notes||``),N(!0)},je=async()=>{if(Z){if(!H.trim()){K({title:`Aviso`,description:`O conteúdo da mensagem é obrigatório.`,variant:`destructive`});return}V(!0);try{let e=await ue(Z.id,{content:H});_(t=>t.map(t=>t.id===e.id?e:t)),j(!1),K({title:`Sucesso`,description:`Mensagem sugerida atualizada com sucesso.`}),q.state===`blocked`&&!M&&q.proceed?.()}catch{K({title:`Erro`,description:`Falha ao atualizar cadência.`,variant:`destructive`})}finally{V(!1)}}},Me=async()=>{if(Oe){V(!0);try{let e=await pe(Oe.id,{notes:we});y(t=>t.map(t=>t.id===e.id?e:t)),i&&i(e),N(!1),K({title:`Sucesso`,description:`Anotações do cliente atualizadas.`}),q.state===`blocked`&&!A&&q.proceed?.()}catch{K({title:`Erro`,description:`Falha ao atualizar cliente.`,variant:`destructive`})}finally{V(!1)}}},Ne=()=>{j(!1),q.state===`blocked`&&!M&&q.proceed?.()},Pe=()=>{N(!1),q.state===`blocked`&&!A&&q.proceed?.()},Fe=()=>D(e=>(e+1)%g.length),Ie=()=>D(e=>(e-1+g.length)%g.length);if(!F||I&&v.length===0)return(0,h.jsxs)(d,{className:`h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed`,children:[(0,h.jsx)(l,{className:`h-8 w-8 animate-spin mb-4 text-primary/50`}),(0,h.jsx)(`p`,{children:`Iniciando Roleta Inteligente com carregamento contínuo...`})]});if(!I&&v.length===0)return(0,h.jsxs)(d,{className:`h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed`,children:[(0,h.jsx)(ve,{className:`h-8 w-8 mb-4 text-primary/50`}),(0,h.jsx)(`p`,{children:`Nenhum cliente encontrado para a roleta com os filtros atuais.`})]});let Q=Z?.title.split(`|`).map(e=>e.trim())||[],Le=Q[0]||Z?.title||`Sem cadência`,Re=Q[1]||``,$=Q[2]||``;return(0,h.jsxs)(d,{className:a(`shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative transition-opacity duration-200 flex flex-col h-[700px]`,I&&`pointer-events-none`),children:[I&&v.length>0&&(0,h.jsxs)(`div`,{className:`absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-[1px]`,children:[(0,h.jsx)(l,{className:`h-8 w-8 animate-spin text-primary mb-2`}),(0,h.jsx)(`p`,{className:`text-sm font-medium text-primary`,children:`Carregando dados...`})]}),(0,h.jsx)(`div`,{className:`absolute top-0 left-0 w-full h-1 bg-muted z-10`,children:!I&&!P&&!A&&!M&&b>1&&(0,h.jsx)(`div`,{className:`h-full bg-primary animate-[progress_15s_linear]`,style:{width:`100%`,animationFillMode:`forwards`}},O)}),(0,h.jsxs)(me,{className:`flex flex-row items-center justify-between pb-4 shrink-0 border-b border-border/40 bg-background/50 backdrop-blur-sm z-10`,children:[(0,h.jsxs)(`div`,{children:[(0,h.jsx)(ge,{className:`text-secondary flex items-center gap-2 text-xl`,children:`Roleta Inteligente: Villa dos Açores`}),(0,h.jsx)(se,{children:`Pipeline da Bia - Ciclo de Cadência`})]}),(0,h.jsx)(`div`,{className:`flex items-center gap-2 z-10`,children:(0,h.jsxs)(o,{variant:P?`secondary`:`ghost`,size:`sm`,className:`gap-2 shadow-sm border border-border/50`,onClick:()=>Se(!P),disabled:A||M||b<=1,title:P?`Retomar Rotação`:`Pausar Rotação`,children:[P?(0,h.jsx)(ie,{className:`h-4 w-4`}):(0,h.jsx)(ye,{className:`h-4 w-4`}),(0,h.jsx)(`span`,{className:`hidden sm:inline-block`,children:P?`Retomar`:`Pausar`})]})})]}),(0,h.jsxs)(ce,{className:`p-0 flex flex-col flex-1 overflow-hidden`,children:[(0,h.jsxs)(`div`,{className:`p-4 bg-muted/10 border-b border-border/40 shrink-0`,children:[g.length>0&&(0,h.jsxs)(`div`,{className:`flex flex-wrap items-center gap-2 mb-3`,children:[(0,h.jsxs)(`div`,{className:`flex items-center mr-2`,children:[(0,h.jsx)(`span`,{className:`text-xs font-semibold text-muted-foreground mr-2`,children:`Cadência:`}),(0,h.jsx)(o,{variant:`outline`,size:`icon`,className:`h-6 w-6 rounded-r-none border-r-0`,onClick:Ie,disabled:A||M,children:(0,h.jsx)(_e,{className:`h-3 w-3`})}),(0,h.jsxs)(`div`,{className:`h-6 px-2 flex items-center border-y border-input bg-background text-xs font-medium`,children:[E+1,`/`,g.length]}),(0,h.jsx)(o,{variant:`outline`,size:`icon`,className:`h-6 w-6 rounded-l-none border-l-0`,onClick:Fe,disabled:A||M,children:(0,h.jsx)(ae,{className:`h-3 w-3`})})]}),(0,h.jsx)(u,{variant:`outline`,className:`bg-primary/5 text-primary border-primary/20 shadow-sm text-[10px] py-0`,children:Le}),Re&&(0,h.jsxs)(u,{variant:`outline`,className:`bg-primary/5 text-primary border-primary/20 shadow-sm text-[10px] py-0`,children:[`Gatilho: `,Re]}),$&&(0,h.jsxs)(u,{variant:`outline`,className:`bg-primary/5 text-primary border-primary/20 shadow-sm text-[10px] py-0`,children:[`Canal: `,$]})]}),A?(0,h.jsxs)(`div`,{className:`space-y-3 animate-in fade-in zoom-in-95 duration-200`,children:[(0,h.jsx)(`div`,{className:`flex items-center justify-between`,children:(0,h.jsxs)(`span`,{className:`text-sm font-semibold text-secondary flex items-center gap-1.5`,children:[(0,h.jsx)(f,{className:`w-4 h-4`}),` ÁREA EDITÁVEL - Mensagem Sugerida`]})}),(0,h.jsx)(de,{className:`min-h-[100px] resize-none bg-background/80 shadow-inner border-primary/30 focus-visible:ring-primary/50 text-sm`,value:H,onChange:e=>U(e.target.value),placeholder:`Conteúdo da mensagem sugerida...`,disabled:B}),(0,h.jsxs)(`div`,{className:`flex justify-end gap-2`,children:[(0,h.jsxs)(o,{variant:`ghost`,size:`sm`,onClick:Ne,disabled:B,children:[(0,h.jsx)(r,{className:`w-4 h-4 mr-2`}),` Cancelar`]}),(0,h.jsxs)(o,{size:`sm`,onClick:je,disabled:B,children:[B?(0,h.jsx)(s,{className:`w-4 h-4 mr-2 animate-spin`}):(0,h.jsx)(he,{className:`w-4 h-4 mr-2`}),`Salvar Alterações`]})]})]}):Z?(0,h.jsxs)(`div`,{className:`group relative animate-in fade-in duration-300`,children:[(0,h.jsx)(`div`,{className:`absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity z-10`,children:(0,h.jsxs)(o,{variant:`secondary`,size:`sm`,onClick:ke,className:`shadow-sm border border-border/50 h-7 text-xs`,children:[(0,h.jsx)(c,{className:`w-3 h-3 mr-1.5`}),` Editar Mensagem`]})}),(0,h.jsxs)(`div`,{className:`bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-3 cursor-text hover:border-primary/40 transition-colors shadow-sm group-hover:shadow relative`,onClick:ke,children:[(0,h.jsx)(`div`,{className:`absolute top-0 left-0 w-1 h-full bg-primary/20 rounded-l-lg`}),(0,h.jsxs)(`h4`,{className:`text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5`,children:[(0,h.jsx)(f,{className:`w-3.5 h-3.5`}),` Mensagem Sugerida`]}),(0,h.jsx)(te,{className:`h-[60px] w-full pr-4`,children:(0,h.jsx)(`div`,{className:`text-sm text-secondary/90 font-medium whitespace-pre-wrap leading-relaxed`,children:Z.content})})]})]}):(0,h.jsx)(`div`,{className:`p-3 text-center text-sm text-muted-foreground border rounded-lg bg-muted/20`,children:`Nenhuma mensagem de cadência configurada.`})]}),(0,h.jsxs)(`div`,{className:`flex-1 overflow-y-auto p-4 space-y-3 relative scroll-smooth bg-background/30`,children:[v.map((e,t)=>{let n=t===w,r=M&&n;return(0,h.jsxs)(`div`,{ref:e=>{W.current[t]=e,t===v.length-1&&Ee(e)},className:a(`bg-background/90 backdrop-blur-sm border rounded-xl p-4 transition-all duration-300 cursor-pointer`,n?`border-primary shadow-md ring-1 ring-primary/20 relative`:`border-border/60 shadow-sm hover:border-primary/40 opacity-70 hover:opacity-100`),onClick:()=>{!M&&!A&&(T(t),k(e=>e+1))},children:[n&&(0,h.jsx)(`div`,{className:`absolute -left-[1px] top-1/2 -translate-y-1/2 w-1 h-12 bg-primary rounded-r-md`}),(0,h.jsxs)(`div`,{className:`flex flex-col sm:flex-row gap-4 items-start justify-between pl-2`,children:[(0,h.jsxs)(`div`,{className:`space-y-1`,children:[(0,h.jsxs)(`div`,{className:`flex items-center gap-2`,children:[(0,h.jsx)(oe,{className:a(`h-4 w-4`,n?`text-primary`:`text-muted-foreground`)}),(0,h.jsx)(`h3`,{className:a(`font-semibold`,n?`text-primary`:`text-secondary`),children:e.name||`Cliente Sem Nome`}),(0,h.jsx)(u,{variant:`secondary`,className:`text-[10px]`,children:e.status})]}),(e.phone||e.phone_1_value)&&(0,h.jsxs)(`div`,{className:`flex items-center gap-2 text-sm text-muted-foreground pl-6`,children:[(0,h.jsx)(re,{className:`h-3.5 w-3.5`}),(0,h.jsx)(`span`,{children:e.phone||e.phone_1_value})]})]}),(0,h.jsx)(`div`,{className:`w-full sm:w-[55%]`,onClick:e=>r&&e.stopPropagation(),children:r?(0,h.jsxs)(`div`,{className:`space-y-2 animate-in fade-in`,children:[(0,h.jsx)(`div`,{className:`flex items-center justify-between`,children:(0,h.jsxs)(`span`,{className:`text-xs font-semibold text-secondary flex items-center gap-1.5`,children:[(0,h.jsx)(p,{className:`w-3.5 h-3.5`}),` Anotações`]})}),(0,h.jsx)(de,{className:`min-h-[80px] text-sm resize-none bg-background focus-visible:ring-primary/50`,value:we,onChange:e=>Te(e.target.value),placeholder:`Anotações do cliente...`,disabled:B}),(0,h.jsxs)(`div`,{className:`flex justify-end gap-2`,children:[(0,h.jsx)(o,{variant:`ghost`,size:`sm`,onClick:Pe,disabled:B,className:`h-7 text-xs`,children:`Cancelar`}),(0,h.jsxs)(o,{size:`sm`,onClick:Me,disabled:B,className:`h-7 text-xs`,children:[B&&(0,h.jsx)(s,{className:`w-3 h-3 mr-1.5 animate-spin`}),`Salvar`]})]})]}):(0,h.jsxs)(`div`,{className:`relative cursor-text group/notes`,onClick:n=>{n.stopPropagation(),Ae(e,t)},children:[(0,h.jsx)(`div`,{className:`absolute right-1 top-1 opacity-0 group-hover/notes:opacity-100 transition-opacity`,children:(0,h.jsx)(o,{variant:`ghost`,size:`icon`,className:`h-6 w-6`,children:(0,h.jsx)(c,{className:`w-3 h-3`})})}),(0,h.jsxs)(`span`,{className:`text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-1`,children:[(0,h.jsx)(p,{className:`w-3.5 h-3.5`}),` Anotações`]}),(0,h.jsx)(`div`,{className:a(`text-sm p-2 rounded border transition-colors`,n?`bg-primary/5 border-primary/20 text-secondary`:`bg-muted/30 border-transparent group-hover/notes:border-border/50 text-secondary/80`),children:e.notes?(0,h.jsx)(`span`,{className:`line-clamp-2`,children:e.notes}):(0,h.jsx)(`span`,{className:`italic opacity-50`,children:`Sem anotações. Clique para adicionar.`})})]})})]})]},e.id)}),R&&(0,h.jsx)(`div`,{className:`py-4 flex justify-center items-center`,children:(0,h.jsx)(s,{className:`h-6 w-6 animate-spin text-primary/60`})}),!C&&v.length>0&&(0,h.jsxs)(`div`,{className:`py-6 text-center text-sm text-muted-foreground flex flex-col items-center gap-2`,children:[(0,h.jsx)(`div`,{className:`w-12 h-1 bg-border rounded-full opacity-50 mb-2`}),`Todos os `,b,` clientes foram carregados.`]})]})]}),(0,h.jsx)(`style`,{children:`
+import {
+  E as e,
+  O as t,
+  b as n,
+  c as r,
+  l as i,
+  o as a,
+  t as o,
+  w as ee,
+} from './button-BukrqzEL.js'
+import { t as te, u as ne } from './scroll-area-CxGaoANU.js'
+import {
+  A as s,
+  D as re,
+  E as ie,
+  M as ae,
+  O as c,
+  S as oe,
+  T as l,
+  _ as se,
+  f as u,
+  g as ce,
+  h as d,
+  k as f,
+  l as le,
+  n as ue,
+  r as de,
+  t as fe,
+  u as pe,
+  v as me,
+  w as he,
+  y as ge,
+} from './index-CH3lbLrq.js'
+var _e = i(`chevron-left`, [[`path`, { d: `m15 18-6-6 6-6`, key: `1wnfg3` }]]),
+  ve = i(`layers`, [
+    [
+      `path`,
+      {
+        d: `M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z`,
+        key: `zw3jo`,
+      },
+    ],
+    [
+      `path`,
+      {
+        d: `M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12`,
+        key: `1wduqc`,
+      },
+    ],
+    [
+      `path`,
+      {
+        d: `M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17`,
+        key: `kqbvx6`,
+      },
+    ],
+  ]),
+  ye = i(`pause`, [
+    [`rect`, { x: `14`, y: `3`, width: `5`, height: `18`, rx: `1`, key: `kaeet6` }],
+    [`rect`, { x: `5`, y: `3`, width: `5`, height: `18`, rx: `1`, key: `1wsw3u` }],
+  ]),
+  p = i(`sticky-note`, [
+    [
+      `path`,
+      {
+        d: `M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z`,
+        key: `1dfntj`,
+      },
+    ],
+    [`path`, { d: `M15 3v5a1 1 0 0 0 1 1h5`, key: `6s6qgf` }],
+  ]),
+  m = t(e(), 1),
+  h = n()
+function g({
+  search: e = ``,
+  phaseFilter: t = `all`,
+  sourceFilter: n = ``,
+  onCustomerUpdated: i,
+} = {}) {
+  let [g, _] = (0, m.useState)([]),
+    [v, y] = (0, m.useState)([]),
+    [b, be] = (0, m.useState)(0),
+    [x, S] = (0, m.useState)(1),
+    [C, xe] = (0, m.useState)(!0),
+    [w, T] = (0, m.useState)(0),
+    [E, D] = (0, m.useState)(0),
+    [O, k] = (0, m.useState)(0),
+    [A, j] = (0, m.useState)(!1),
+    [M, N] = (0, m.useState)(!1),
+    [P, Se] = (0, m.useState)(!1),
+    [F, Ce] = (0, m.useState)(!1),
+    [I, L] = (0, m.useState)(!0),
+    [R, z] = (0, m.useState)(!1),
+    [B, V] = (0, m.useState)(!1),
+    [H, U] = (0, m.useState)(``),
+    [we, Te] = (0, m.useState)(``),
+    W = (0, m.useRef)([]),
+    G = (0, m.useRef)(null),
+    { toast: K } = ee(),
+    q = ne(({ currentLocation: e, nextLocation: t }) => (A || M) && e.pathname !== t.pathname)
+  ;((0, m.useEffect)(() => {
+    q.state === `blocked` &&
+      K({
+        title: `Edição em andamento`,
+        description: `Salve ou cancele as alterações antes de sair da página.`,
+        variant: `destructive`,
+      })
+  }, [q.state, K]),
+    (0, m.useEffect)(() => {
+      let e = (e) => {
+        ;(A || M) && (e.preventDefault(), (e.returnValue = ``))
+      }
+      return (
+        window.addEventListener(`beforeunload`, e),
+        () => window.removeEventListener(`beforeunload`, e)
+      )
+    }, [A, M]),
+    (0, m.useEffect)(() => {
+      fe()
+        .then((e) => {
+          ;(_(e), D((t) => (t >= e.length ? 0 : t)))
+        })
+        .catch(() =>
+          K({ title: `Erro`, description: `Falha ao carregar cadências.`, variant: `destructive` }),
+        )
+    }, [K]))
+  let J = (0, m.useCallback)(
+    async (r, i = !1) => {
+      try {
+        i ? L(!0) : z(!0)
+        let a = await le(r, 100, e, t, n)
+        ;(y((e) => {
+          if (i) return a.items
+          let t = a.items.filter((t) => !e.some((e) => e.id === t.id))
+          return [...e, ...t]
+        }),
+          be(a.totalItems),
+          xe(r < a.totalPages),
+          i && T(0))
+      } catch {
+        i ||
+          K({
+            title: `Erro`,
+            description: `Falha ao carregar mais clientes.`,
+            variant: `destructive`,
+          })
+      } finally {
+        ;(L(!1), z(!1), Ce(!0))
+      }
+    },
+    [e, t, n, 100, K],
+  )
+  ;(0, m.useEffect)(() => {
+    ;(S(1), J(1, !0))
+  }, [e, t, n, J])
+  let Y = (0, m.useCallback)(() => {
+      if (!R && C) {
+        let e = x + 1
+        ;(S(e), J(e, !1))
+      }
+    }, [R, C, x, J]),
+    Ee = (0, m.useCallback)(
+      (e) => {
+        I ||
+          (G.current && G.current.disconnect(),
+          (G.current = new IntersectionObserver(
+            (e) => {
+              e[0].isIntersecting && Y()
+            },
+            { rootMargin: `100px` },
+          )),
+          e && G.current.observe(e))
+      },
+      [I, Y],
+    )
+  ;((0, m.useEffect)(() => {
+    v.length > 0 && w >= v.length - 5 && C && !R && Y()
+  }, [w, v.length, C, R, Y]),
+    (0, m.useEffect)(() => {
+      let e = setTimeout(() => {
+        W.current[w] &&
+          !P &&
+          !A &&
+          !M &&
+          W.current[w]?.scrollIntoView({ behavior: `smooth`, block: `center` })
+      }, 150)
+      return () => clearTimeout(e)
+    }, [w, P, A, M]))
+  let X = (0, m.useCallback)(() => {
+      if (b === 0) return
+      let e = new CustomEvent(`roulette-next`, { cancelable: !0 })
+      ;(window.dispatchEvent(e),
+        !e.defaultPrevented && (T((e) => (e >= b - 1 ? 0 : e + 1)), k((e) => e + 1)))
+    }, [b]),
+    De = (0, m.useRef)(X)
+  ;((0, m.useEffect)(() => {
+    De.current = X
+  }, [X]),
+    (0, m.useEffect)(() => {
+      if (!F || I || P || A || M || b === 0) return
+      let e = setInterval(() => De.current(), 15e3)
+      return () => clearInterval(e)
+    }, [F, I, P, A, M, b, O]))
+  let Z = g[E],
+    Oe = v[w],
+    ke = () => {
+      Z && (U(Z.content), j(!0))
+    },
+    Ae = (e, t) => {
+      ;(T(t), k((e) => e + 1), Te(e.notes || ``), N(!0))
+    },
+    je = async () => {
+      if (Z) {
+        if (!H.trim()) {
+          K({
+            title: `Aviso`,
+            description: `O conteúdo da mensagem é obrigatório.`,
+            variant: `destructive`,
+          })
+          return
+        }
+        V(!0)
+        try {
+          let e = await ue(Z.id, { content: H })
+          ;(_((t) => t.map((t) => (t.id === e.id ? e : t))),
+            j(!1),
+            K({ title: `Sucesso`, description: `Mensagem sugerida atualizada com sucesso.` }),
+            q.state === `blocked` && !M && q.proceed?.())
+        } catch {
+          K({ title: `Erro`, description: `Falha ao atualizar cadência.`, variant: `destructive` })
+        } finally {
+          V(!1)
+        }
+      }
+    },
+    Me = async () => {
+      if (Oe) {
+        V(!0)
+        try {
+          let e = await pe(Oe.id, { notes: we })
+          ;(y((t) => t.map((t) => (t.id === e.id ? e : t))),
+            i && i(e),
+            N(!1),
+            K({ title: `Sucesso`, description: `Anotações do cliente atualizadas.` }),
+            q.state === `blocked` && !A && q.proceed?.())
+        } catch {
+          K({ title: `Erro`, description: `Falha ao atualizar cliente.`, variant: `destructive` })
+        } finally {
+          V(!1)
+        }
+      }
+    },
+    Ne = () => {
+      ;(j(!1), q.state === `blocked` && !M && q.proceed?.())
+    },
+    Pe = () => {
+      ;(N(!1), q.state === `blocked` && !A && q.proceed?.())
+    },
+    Fe = () => D((e) => (e + 1) % g.length),
+    Ie = () => D((e) => (e - 1 + g.length) % g.length)
+  if (!F || (I && v.length === 0))
+    return (0, h.jsxs)(d, {
+      className: `h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed`,
+      children: [
+        (0, h.jsx)(l, { className: `h-8 w-8 animate-spin mb-4 text-primary/50` }),
+        (0, h.jsx)(`p`, { children: `Iniciando Roleta Inteligente com carregamento contínuo...` }),
+      ],
+    })
+  if (!I && v.length === 0)
+    return (0, h.jsxs)(d, {
+      className: `h-[400px] flex flex-col items-center justify-center text-muted-foreground border-dashed`,
+      children: [
+        (0, h.jsx)(ve, { className: `h-8 w-8 mb-4 text-primary/50` }),
+        (0, h.jsx)(`p`, {
+          children: `Nenhum cliente encontrado para a roleta com os filtros atuais.`,
+        }),
+      ],
+    })
+  let Q = Z?.title.split(`|`).map((e) => e.trim()) || [],
+    Le = Q[0] || Z?.title || `Sem cadência`,
+    Re = Q[1] || ``,
+    $ = Q[2] || ``
+  return (0, h.jsxs)(d, {
+    className: a(
+      `shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative transition-opacity duration-200 flex flex-col h-[700px]`,
+      I && `pointer-events-none`,
+    ),
+    children: [
+      I &&
+        v.length > 0 &&
+        (0, h.jsxs)(`div`, {
+          className: `absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-[1px]`,
+          children: [
+            (0, h.jsx)(l, { className: `h-8 w-8 animate-spin text-primary mb-2` }),
+            (0, h.jsx)(`p`, {
+              className: `text-sm font-medium text-primary`,
+              children: `Carregando dados...`,
+            }),
+          ],
+        }),
+      (0, h.jsx)(`div`, {
+        className: `absolute top-0 left-0 w-full h-1 bg-muted z-10`,
+        children:
+          !I &&
+          !P &&
+          !A &&
+          !M &&
+          b > 1 &&
+          (0, h.jsx)(
+            `div`,
+            {
+              className: `h-full bg-primary animate-[progress_15s_linear]`,
+              style: { width: `100%`, animationFillMode: `forwards` },
+            },
+            O,
+          ),
+      }),
+      (0, h.jsxs)(me, {
+        className: `flex flex-row items-center justify-between pb-4 shrink-0 border-b border-border/40 bg-background/50 backdrop-blur-sm z-10`,
+        children: [
+          (0, h.jsxs)(`div`, {
+            children: [
+              (0, h.jsx)(ge, {
+                className: `text-secondary flex items-center gap-2 text-xl`,
+                children: `Roleta Inteligente: Villa dos Açores`,
+              }),
+              (0, h.jsx)(se, { children: `Pipeline da Bia - Ciclo de Cadência` }),
+            ],
+          }),
+          (0, h.jsx)(`div`, {
+            className: `flex items-center gap-2 z-10`,
+            children: (0, h.jsxs)(o, {
+              variant: P ? `secondary` : `ghost`,
+              size: `sm`,
+              className: `gap-2 shadow-sm border border-border/50`,
+              onClick: () => Se(!P),
+              disabled: A || M || b <= 1,
+              title: P ? `Retomar Rotação` : `Pausar Rotação`,
+              children: [
+                P
+                  ? (0, h.jsx)(ie, { className: `h-4 w-4` })
+                  : (0, h.jsx)(ye, { className: `h-4 w-4` }),
+                (0, h.jsx)(`span`, {
+                  className: `hidden sm:inline-block`,
+                  children: P ? `Retomar` : `Pausar`,
+                }),
+              ],
+            }),
+          }),
+        ],
+      }),
+      (0, h.jsxs)(ce, {
+        className: `p-0 flex flex-col flex-1 overflow-hidden`,
+        children: [
+          (0, h.jsxs)(`div`, {
+            className: `p-4 bg-muted/10 border-b border-border/40 shrink-0`,
+            children: [
+              g.length > 0 &&
+                (0, h.jsxs)(`div`, {
+                  className: `flex flex-wrap items-center gap-2 mb-3`,
+                  children: [
+                    (0, h.jsxs)(`div`, {
+                      className: `flex items-center mr-2`,
+                      children: [
+                        (0, h.jsx)(`span`, {
+                          className: `text-xs font-semibold text-muted-foreground mr-2`,
+                          children: `Cadência:`,
+                        }),
+                        (0, h.jsx)(o, {
+                          variant: `outline`,
+                          size: `icon`,
+                          className: `h-6 w-6 rounded-r-none border-r-0`,
+                          onClick: Ie,
+                          disabled: A || M,
+                          children: (0, h.jsx)(_e, { className: `h-3 w-3` }),
+                        }),
+                        (0, h.jsxs)(`div`, {
+                          className: `h-6 px-2 flex items-center border-y border-input bg-background text-xs font-medium`,
+                          children: [E + 1, `/`, g.length],
+                        }),
+                        (0, h.jsx)(o, {
+                          variant: `outline`,
+                          size: `icon`,
+                          className: `h-6 w-6 rounded-l-none border-l-0`,
+                          onClick: Fe,
+                          disabled: A || M,
+                          children: (0, h.jsx)(ae, { className: `h-3 w-3` }),
+                        }),
+                      ],
+                    }),
+                    (0, h.jsx)(u, {
+                      variant: `outline`,
+                      className: `bg-primary/5 text-primary border-primary/20 shadow-sm text-[10px] py-0`,
+                      children: Le,
+                    }),
+                    Re &&
+                      (0, h.jsxs)(u, {
+                        variant: `outline`,
+                        className: `bg-primary/5 text-primary border-primary/20 shadow-sm text-[10px] py-0`,
+                        children: [`Gatilho: `, Re],
+                      }),
+                    $ &&
+                      (0, h.jsxs)(u, {
+                        variant: `outline`,
+                        className: `bg-primary/5 text-primary border-primary/20 shadow-sm text-[10px] py-0`,
+                        children: [`Canal: `, $],
+                      }),
+                  ],
+                }),
+              A
+                ? (0, h.jsxs)(`div`, {
+                    className: `space-y-3 animate-in fade-in zoom-in-95 duration-200`,
+                    children: [
+                      (0, h.jsx)(`div`, {
+                        className: `flex items-center justify-between`,
+                        children: (0, h.jsxs)(`span`, {
+                          className: `text-sm font-semibold text-secondary flex items-center gap-1.5`,
+                          children: [
+                            (0, h.jsx)(f, { className: `w-4 h-4` }),
+                            ` ÁREA EDITÁVEL - Mensagem Sugerida`,
+                          ],
+                        }),
+                      }),
+                      (0, h.jsx)(de, {
+                        className: `min-h-[100px] resize-none bg-background/80 shadow-inner border-primary/30 focus-visible:ring-primary/50 text-sm`,
+                        value: H,
+                        onChange: (e) => U(e.target.value),
+                        placeholder: `Conteúdo da mensagem sugerida...`,
+                        disabled: B,
+                      }),
+                      (0, h.jsxs)(`div`, {
+                        className: `flex justify-end gap-2`,
+                        children: [
+                          (0, h.jsxs)(o, {
+                            variant: `ghost`,
+                            size: `sm`,
+                            onClick: Ne,
+                            disabled: B,
+                            children: [(0, h.jsx)(r, { className: `w-4 h-4 mr-2` }), ` Cancelar`],
+                          }),
+                          (0, h.jsxs)(o, {
+                            size: `sm`,
+                            onClick: je,
+                            disabled: B,
+                            children: [
+                              B
+                                ? (0, h.jsx)(s, { className: `w-4 h-4 mr-2 animate-spin` })
+                                : (0, h.jsx)(he, { className: `w-4 h-4 mr-2` }),
+                              `Salvar Alterações`,
+                            ],
+                          }),
+                        ],
+                      }),
+                    ],
+                  })
+                : Z
+                  ? (0, h.jsxs)(`div`, {
+                      className: `group relative animate-in fade-in duration-300`,
+                      children: [
+                        (0, h.jsx)(`div`, {
+                          className: `absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity z-10`,
+                          children: (0, h.jsxs)(o, {
+                            variant: `secondary`,
+                            size: `sm`,
+                            onClick: ke,
+                            className: `shadow-sm border border-border/50 h-7 text-xs`,
+                            children: [
+                              (0, h.jsx)(c, { className: `w-3 h-3 mr-1.5` }),
+                              ` Editar Mensagem`,
+                            ],
+                          }),
+                        }),
+                        (0, h.jsxs)(`div`, {
+                          className: `bg-background/80 backdrop-blur-sm border border-border/50 rounded-lg p-3 cursor-text hover:border-primary/40 transition-colors shadow-sm group-hover:shadow relative`,
+                          onClick: ke,
+                          children: [
+                            (0, h.jsx)(`div`, {
+                              className: `absolute top-0 left-0 w-1 h-full bg-primary/20 rounded-l-lg`,
+                            }),
+                            (0, h.jsxs)(`h4`, {
+                              className: `text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5`,
+                              children: [
+                                (0, h.jsx)(f, { className: `w-3.5 h-3.5` }),
+                                ` Mensagem Sugerida`,
+                              ],
+                            }),
+                            (0, h.jsx)(te, {
+                              className: `h-[60px] w-full pr-4`,
+                              children: (0, h.jsx)(`div`, {
+                                className: `text-sm text-secondary/90 font-medium whitespace-pre-wrap leading-relaxed`,
+                                children: Z.content,
+                              }),
+                            }),
+                          ],
+                        }),
+                      ],
+                    })
+                  : (0, h.jsx)(`div`, {
+                      className: `p-3 text-center text-sm text-muted-foreground border rounded-lg bg-muted/20`,
+                      children: `Nenhuma mensagem de cadência configurada.`,
+                    }),
+            ],
+          }),
+          (0, h.jsxs)(`div`, {
+            className: `flex-1 overflow-y-auto p-4 space-y-3 relative scroll-smooth bg-background/30`,
+            children: [
+              v.map((e, t) => {
+                let n = t === w,
+                  r = M && n
+                return (0, h.jsxs)(
+                  `div`,
+                  {
+                    ref: (e) => {
+                      ;((W.current[t] = e), t === v.length - 1 && Ee(e))
+                    },
+                    className: a(
+                      `bg-background/90 backdrop-blur-sm border rounded-xl p-4 transition-all duration-300 cursor-pointer`,
+                      n
+                        ? `border-primary shadow-md ring-1 ring-primary/20 relative`
+                        : `border-border/60 shadow-sm hover:border-primary/40 opacity-70 hover:opacity-100`,
+                    ),
+                    onClick: () => {
+                      !M && !A && (T(t), k((e) => e + 1))
+                    },
+                    children: [
+                      n &&
+                        (0, h.jsx)(`div`, {
+                          className: `absolute -left-[1px] top-1/2 -translate-y-1/2 w-1 h-12 bg-primary rounded-r-md`,
+                        }),
+                      (0, h.jsxs)(`div`, {
+                        className: `flex flex-col sm:flex-row gap-4 items-start justify-between pl-2`,
+                        children: [
+                          (0, h.jsxs)(`div`, {
+                            className: `space-y-1`,
+                            children: [
+                              (0, h.jsxs)(`div`, {
+                                className: `flex items-center gap-2`,
+                                children: [
+                                  (0, h.jsx)(oe, {
+                                    className: a(
+                                      `h-4 w-4`,
+                                      n ? `text-primary` : `text-muted-foreground`,
+                                    ),
+                                  }),
+                                  (0, h.jsx)(`h3`, {
+                                    className: a(
+                                      `font-semibold`,
+                                      n ? `text-primary` : `text-secondary`,
+                                    ),
+                                    children: e.name || `Cliente Sem Nome`,
+                                  }),
+                                  (0, h.jsx)(u, {
+                                    variant: `secondary`,
+                                    className: `text-[10px]`,
+                                    children: e.status,
+                                  }),
+                                ],
+                              }),
+                              (e.phone || e.phone_1_value) &&
+                                (0, h.jsxs)(`div`, {
+                                  className: `flex items-center gap-2 text-sm text-muted-foreground pl-6`,
+                                  children: [
+                                    (0, h.jsx)(re, { className: `h-3.5 w-3.5` }),
+                                    (0, h.jsx)(`span`, { children: e.phone || e.phone_1_value }),
+                                  ],
+                                }),
+                            ],
+                          }),
+                          (0, h.jsx)(`div`, {
+                            className: `w-full sm:w-[55%]`,
+                            onClick: (e) => r && e.stopPropagation(),
+                            children: r
+                              ? (0, h.jsxs)(`div`, {
+                                  className: `space-y-2 animate-in fade-in`,
+                                  children: [
+                                    (0, h.jsx)(`div`, {
+                                      className: `flex items-center justify-between`,
+                                      children: (0, h.jsxs)(`span`, {
+                                        className: `text-xs font-semibold text-secondary flex items-center gap-1.5`,
+                                        children: [
+                                          (0, h.jsx)(p, { className: `w-3.5 h-3.5` }),
+                                          ` Anotações`,
+                                        ],
+                                      }),
+                                    }),
+                                    (0, h.jsx)(de, {
+                                      className: `min-h-[80px] text-sm resize-none bg-background focus-visible:ring-primary/50`,
+                                      value: we,
+                                      onChange: (e) => Te(e.target.value),
+                                      placeholder: `Anotações do cliente...`,
+                                      disabled: B,
+                                    }),
+                                    (0, h.jsxs)(`div`, {
+                                      className: `flex justify-end gap-2`,
+                                      children: [
+                                        (0, h.jsx)(o, {
+                                          variant: `ghost`,
+                                          size: `sm`,
+                                          onClick: Pe,
+                                          disabled: B,
+                                          className: `h-7 text-xs`,
+                                          children: `Cancelar`,
+                                        }),
+                                        (0, h.jsxs)(o, {
+                                          size: `sm`,
+                                          onClick: Me,
+                                          disabled: B,
+                                          className: `h-7 text-xs`,
+                                          children: [
+                                            B &&
+                                              (0, h.jsx)(s, {
+                                                className: `w-3 h-3 mr-1.5 animate-spin`,
+                                              }),
+                                            `Salvar`,
+                                          ],
+                                        }),
+                                      ],
+                                    }),
+                                  ],
+                                })
+                              : (0, h.jsxs)(`div`, {
+                                  className: `relative cursor-text group/notes`,
+                                  onClick: (n) => {
+                                    ;(n.stopPropagation(), Ae(e, t))
+                                  },
+                                  children: [
+                                    (0, h.jsx)(`div`, {
+                                      className: `absolute right-1 top-1 opacity-0 group-hover/notes:opacity-100 transition-opacity`,
+                                      children: (0, h.jsx)(o, {
+                                        variant: `ghost`,
+                                        size: `icon`,
+                                        className: `h-6 w-6`,
+                                        children: (0, h.jsx)(c, { className: `w-3 h-3` }),
+                                      }),
+                                    }),
+                                    (0, h.jsxs)(`span`, {
+                                      className: `text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-1`,
+                                      children: [
+                                        (0, h.jsx)(p, { className: `w-3.5 h-3.5` }),
+                                        ` Anotações`,
+                                      ],
+                                    }),
+                                    (0, h.jsx)(`div`, {
+                                      className: a(
+                                        `text-sm p-2 rounded border transition-colors`,
+                                        n
+                                          ? `bg-primary/5 border-primary/20 text-secondary`
+                                          : `bg-muted/30 border-transparent group-hover/notes:border-border/50 text-secondary/80`,
+                                      ),
+                                      children: e.notes
+                                        ? (0, h.jsx)(`span`, {
+                                            className: `line-clamp-2`,
+                                            children: e.notes,
+                                          })
+                                        : (0, h.jsx)(`span`, {
+                                            className: `italic opacity-50`,
+                                            children: `Sem anotações. Clique para adicionar.`,
+                                          }),
+                                    }),
+                                  ],
+                                }),
+                          }),
+                        ],
+                      }),
+                    ],
+                  },
+                  e.id,
+                )
+              }),
+              R &&
+                (0, h.jsx)(`div`, {
+                  className: `py-4 flex justify-center items-center`,
+                  children: (0, h.jsx)(s, { className: `h-6 w-6 animate-spin text-primary/60` }),
+                }),
+              !C &&
+                v.length > 0 &&
+                (0, h.jsxs)(`div`, {
+                  className: `py-6 text-center text-sm text-muted-foreground flex flex-col items-center gap-2`,
+                  children: [
+                    (0, h.jsx)(`div`, {
+                      className: `w-12 h-1 bg-border rounded-full opacity-50 mb-2`,
+                    }),
+                    `Todos os `,
+                    b,
+                    ` clientes foram carregados.`,
+                  ],
+                }),
+            ],
+          }),
+        ],
+      }),
+      (0, h.jsx)(`style`, {
+        children: `
         @keyframes progress {
           0% { width: 0%; }
           100% { width: 100%; }
         }
-      `})]})}export{g as CadenceRoulette};
+      `,
+      }),
+    ],
+  })
+}
+export { g as CadenceRoulette }
