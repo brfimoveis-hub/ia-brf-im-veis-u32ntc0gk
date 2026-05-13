@@ -3,7 +3,6 @@ import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { SettingsAi } from './settings/SettingsAi'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -233,9 +232,14 @@ export default function ConfiguracoesCore() {
           setQrCode(null)
           if (pollingRef.current) clearInterval(pollingRef.current)
           if (user) {
-            await pb
-              .collection('users')
-              .update(user.id, { uazapi_status: 'Conectado', uazapi_error: '' })
+            await pb.collection('users').update(user.id, {
+              uazapi_status: 'Conectado',
+              uazapi_error: '',
+              uazapi_instance_number: inst,
+              uazapi_domain: dom,
+              uazapi_token: tok,
+              uazapi_admin_token: adminTok || '',
+            })
           }
         }
       } catch (e) {
@@ -275,11 +279,20 @@ export default function ConfiguracoesCore() {
         })
       }
     } catch (e: any) {
+      let errMsg =
+        'Erro ao gerar QR Code. Verifique se o Uazapi está online e as credenciais estão corretas.'
+      if (e.status === 404)
+        errMsg = 'Instância não encontrada no Uazapi. Verifique o número da instância.'
+      else if (e.status === 504)
+        errMsg = 'Tempo esgotado ao contatar o Uazapi. O serviço pode estar offline.'
+      else if (e.response?.message) errMsg = e.response.message
+
       toast({
-        title: 'Erro',
-        description: e.message || 'Erro ao gerar QR Code.',
+        title: 'Erro no Uazapi',
+        description: errMsg,
         variant: 'destructive',
       })
+      setErrorDetail(errMsg)
     } finally {
       setIsGeneratingQr(false)
     }
@@ -861,9 +874,15 @@ export default function ConfiguracoesCore() {
         </TabsContent>
 
         <TabsContent value="ai">
-          <div className="mt-4">
-            <SettingsAi />
-          </div>
+          <Card className="border-border/50 shadow-sm mt-4">
+            <CardHeader>
+              <CardTitle>Configurações da IA</CardTitle>
+              <CardDescription>Gerencie as instruções e comportamentos da IA.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Em breve...</p>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
