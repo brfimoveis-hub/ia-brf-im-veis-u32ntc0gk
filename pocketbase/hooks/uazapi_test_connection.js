@@ -48,8 +48,7 @@ routerAdd(
       if (res.statusCode === 404) {
         return e.json(400, {
           message: 'Instance not found',
-          error:
-            'Verifique o Endpoint URL e a Instância WhatsApp. O servidor retornou 404 Not Found.',
+          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} está correto no painel da Uazapi.`,
         })
       }
 
@@ -66,8 +65,7 @@ routerAdd(
       if (msg.includes('not found')) {
         return e.json(400, {
           message: 'Instance not found',
-          error:
-            'Verifique o Endpoint URL e a Instância WhatsApp. O servidor retornou 404 Not Found.',
+          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} está correto no painel da Uazapi.`,
         })
       }
       return e.internalServerError(err.message)

@@ -26,7 +26,12 @@ routerAdd(
       jsonRes.statusCode = res.statusCode
 
       // Same protection to avoid killing PB sessions by proxying a 401 error code.
-      if (res.statusCode === 401 || res.statusCode === 403 || res.statusCode === 404) {
+      if (res.statusCode === 401 || res.statusCode === 403) {
+        return e.json(400, jsonRes)
+      }
+
+      if (res.statusCode === 404) {
+        jsonRes.error = `Instância não encontrada no Uazapi. Verifique se o número ${instance} está correto no painel da Uazapi.`
         return e.json(400, jsonRes)
       }
 

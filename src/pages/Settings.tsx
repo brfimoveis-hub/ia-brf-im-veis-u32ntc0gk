@@ -148,7 +148,8 @@ export default function ConfiguracoesCore() {
   // --- Uazapi Handlers ---
   const validateFields = () => {
     const errors: { domain?: string; instance?: string } = {}
-    if (!instanceNumber || instanceNumber.trim() === '') {
+    const cleanInstance = instanceNumber.replace(/\D/g, '')
+    if (!cleanInstance || cleanInstance.trim() === '') {
       errors.instance = 'A Instância WhatsApp é obrigatória.'
     }
     if (!domain || domain.trim() === '') {
@@ -215,7 +216,7 @@ export default function ConfiguracoesCore() {
       let errMsg = e.message || 'Erro de comunicação.'
       if (e.status === 400 && e.response?.error) errMsg = e.response.error
       else if (e.status === 404)
-        errMsg = 'Instância não encontrada no Uazapi. Verifique o número da instância.'
+        errMsg = `Instância não encontrada no Uazapi. Verifique se o número ${inst} está correto no painel da Uazapi.`
       else if (e.status === 504) errMsg = 'Timeout. Verifique o Endpoint URL.'
       else if (e.response?.message) errMsg = e.response.message
 
@@ -289,7 +290,7 @@ export default function ConfiguracoesCore() {
       let errMsg =
         'Erro ao gerar QR Code. Verifique se o Uazapi está online e as credenciais estão corretas.'
       if (e.status === 404)
-        errMsg = 'Instância não encontrada no Uazapi. Verifique o número da instância.'
+        errMsg = `Instância não encontrada no Uazapi. Verifique se o número ${instanceNumber} está correto no painel da Uazapi.`
       else if (e.status === 504)
         errMsg = 'Tempo esgotado ao contatar o Uazapi. O serviço pode estar offline.'
       else if (e.response?.message) errMsg = e.response.message
@@ -757,11 +758,12 @@ export default function ConfiguracoesCore() {
                   <Input
                     value={instanceNumber}
                     onChange={(e) => {
-                      setInstanceNumber(e.target.value)
+                      const cleanVal = e.target.value.replace(/\D/g, '')
+                      setInstanceNumber(cleanVal)
                       if (validationErrors.instance)
                         setValidationErrors({ ...validationErrors, instance: undefined })
                     }}
-                    placeholder="5548999999999"
+                    placeholder="554892098050"
                     className={validationErrors.instance ? 'border-destructive' : ''}
                   />
                   {validationErrors.instance && (
