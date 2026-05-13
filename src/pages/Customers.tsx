@@ -93,6 +93,7 @@ export default function Customers() {
   const { user } = useAuth()
 
   const isMetaConfigured = Boolean(user?.meta_pixel_id?.trim() && user?.meta_capi_token?.trim())
+  const isWhatsAppConnected = user?.meta_whatsapp_status === 'Conectado'
 
   const observer = useRef<IntersectionObserver | null>(null)
   const lastElementRef = useCallback(
@@ -286,23 +287,47 @@ export default function Customers() {
         </div>
       </div>
 
-      {!isMetaConfigured && (
-        <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 text-sm text-destructive font-medium">
-            <AlertCircle className="h-4 w-4" />
-            <span>
-              Configuração do Meta Ads Pendente. O ID do Pixel ou o Token CAPI estão ausentes.
-            </span>
-          </div>
-          <Link to="/configuracoes">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 border-destructive/30 hover:bg-destructive/20 hover:text-destructive bg-background"
-            >
-              Configurar Agora
-            </Button>
-          </Link>
+      {(!isMetaConfigured || !isWhatsAppConnected) && (
+        <div className="flex flex-col gap-2 shrink-0">
+          {!isWhatsAppConnected && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-destructive font-medium">
+                <AlertCircle className="h-4 w-4" />
+                <span>
+                  Integração Meta WhatsApp Desconectada. As mensagens automáticas não estão sendo
+                  enviadas.
+                </span>
+              </div>
+              <Link to="/configuracoes">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border-destructive/30 hover:bg-destructive/20 hover:text-destructive bg-background"
+                >
+                  Reconectar
+                </Button>
+              </Link>
+            </div>
+          )}
+          {!isMetaConfigured && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-destructive font-medium">
+                <AlertCircle className="h-4 w-4" />
+                <span>
+                  Configuração do Meta Ads Pendente. O ID do Pixel ou o Token CAPI estão ausentes.
+                </span>
+              </div>
+              <Link to="/configuracoes">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border-destructive/30 hover:bg-destructive/20 hover:text-destructive bg-background"
+                >
+                  Configurar Agora
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
       )}
 

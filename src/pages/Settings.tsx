@@ -85,6 +85,9 @@ export default function ConfiguracoesCore() {
         setMetaErrorDetail('')
       } else if (e.record.meta_whatsapp_status === 'Desconectado') {
         setMetaStatus('disconnected')
+        if (e.record.uazapi_error) {
+          setMetaErrorDetail(e.record.uazapi_error)
+        }
       }
     }
   })
@@ -125,6 +128,9 @@ export default function ConfiguracoesCore() {
         setMetaStatus('connected')
       } else if (user.meta_whatsapp_status === 'Desconectado') {
         setMetaStatus('disconnected')
+        if (user.uazapi_error) {
+          setMetaErrorDetail(user.uazapi_error)
+        }
       } else if (
         user.meta_whatsapp_business_id &&
         user.meta_whatsapp_phone_number_id &&
@@ -420,7 +426,7 @@ export default function ConfiguracoesCore() {
       setMetaStatus('connected')
       const updatedUser = await pb
         .collection('users')
-        .update(user.id, { meta_whatsapp_status: 'Conectado' })
+        .update(user.id, { meta_whatsapp_status: 'Conectado', uazapi_error: '' })
       pb.authStore.save(pb.authStore.token, updatedUser)
     } catch (e: any) {
       setMetaStatus('disconnected')
@@ -438,7 +444,7 @@ export default function ConfiguracoesCore() {
       setMetaErrorDetail(errMsg)
       const updatedUser = await pb
         .collection('users')
-        .update(user.id, { meta_whatsapp_status: 'Desconectado' })
+        .update(user.id, { meta_whatsapp_status: 'Desconectado', uazapi_error: errMsg })
       pb.authStore.save(pb.authStore.token, updatedUser)
     }
   }
