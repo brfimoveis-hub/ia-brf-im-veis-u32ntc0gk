@@ -20,6 +20,8 @@ import {
   MessageSquare,
   Megaphone,
   Copy,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 
 export default function ConfiguracoesCore() {
@@ -57,6 +59,7 @@ export default function ConfiguracoesCore() {
   const [metaAccessToken, setMetaAccessToken] = useState('')
   const [metaVerifyToken, setMetaVerifyToken] = useState('')
   const [isSavingMeta, setIsSavingMeta] = useState(false)
+  const [showMetaToken, setShowMetaToken] = useState(false)
   const [metaValidationErrors, setMetaValidationErrors] = useState<{
     businessId?: string
     phoneId?: string
@@ -421,7 +424,17 @@ export default function ConfiguracoesCore() {
       pb.authStore.save(pb.authStore.token, updatedUser)
     } catch (e: any) {
       setMetaStatus('disconnected')
-      let errMsg = e.message || 'Erro de comunicação com a Meta.'
+
+      let errMsg =
+        'Erro de comunicação com a Meta. Verifique se o Token não está expirado e se os IDs estão corretos.'
+      if (e.response?.message && e.response?.message !== 'Something went wrong.') {
+        errMsg = e.response.message
+      } else if (e.response?.data?.message) {
+        errMsg = e.response.data.message
+      } else if (e.message && e.message !== 'Something went wrong.') {
+        errMsg = e.message
+      }
+
       setMetaErrorDetail(errMsg)
       const updatedUser = await pb
         .collection('users')
@@ -457,8 +470,10 @@ export default function ConfiguracoesCore() {
       }
       const updatedUser = await pb.collection('users').update(user.id, payload)
       pb.authStore.save(pb.authStore.token, updatedUser)
-      toast({ title: 'Configurações Meta salvas', description: 'Testando conexão...' })
-      await checkMetaConnection(metaBusinessId, metaPhoneId, metaAccessToken)
+      toast({
+        title: 'Configurações Meta salvas',
+        description: 'Suas credenciais foram atualizadas com sucesso.',
+      })
     } catch (e: any) {
       toast({
         title: 'Erro',
@@ -688,17 +703,28 @@ export default function ConfiguracoesCore() {
               <div className="grid gap-6 md:grid-cols-2 pt-2">
                 <div className="space-y-2">
                   <Label>Token de Acesso (Permanente)</Label>
-                  <Input
-                    value={metaAccessToken}
-                    onChange={(e) => {
-                      setMetaAccessToken(e.target.value)
-                      if (metaValidationErrors.token)
-                        setMetaValidationErrors({ ...metaValidationErrors, token: undefined })
-                    }}
-                    type="password"
-                    placeholder="EAA..."
-                    className={metaValidationErrors.token ? 'border-destructive' : ''}
-                  />
+                  <div className="relative">
+                    <Input
+                      value={metaAccessToken}
+                      onChange={(e) => {
+                        setMetaAccessToken(e.target.value)
+                        if (metaValidationErrors.token)
+                          setMetaValidationErrors({ ...metaValidationErrors, token: undefined })
+                      }}
+                      type={showMetaToken ? 'text' : 'password'}
+                      placeholder="EAA..."
+                      className={metaValidationErrors.token ? 'border-destructive pr-10' : 'pr-10'}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground"
+                      onClick={() => setShowMetaToken(!showMetaToken)}
+                    >
+                      {showMetaToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
                   {metaValidationErrors.token && (
                     <p className="text-xs text-destructive">{metaValidationErrors.token}</p>
                   )}
@@ -719,7 +745,22 @@ export default function ConfiguracoesCore() {
               <div className="pt-2 flex gap-3">
                 <Button type="button" onClick={handleSaveMeta} disabled={isSavingMeta}>
                   {isSavingMeta && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Salvar e Testar Conexão
+                  Salvar
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => checkMetaConnection(metaBusinessId, metaPhoneId, metaAccessToken)}
+                  disabled={
+                    metaStatus === 'checking' ||
+                    isSavingMeta ||
+                    !metaBusinessId ||
+                    !metaPhoneId ||
+                    !metaAccessToken
+                  }
+                >
+                  {metaStatus === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Verificar Conexão
                 </Button>
               </div>
             </CardContent>

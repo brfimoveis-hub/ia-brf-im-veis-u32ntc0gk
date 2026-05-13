@@ -268,15 +268,13 @@ function G({ open: e, onOpenChange: t }) {
       if (n) {
         k(!0)
         try {
-          ;(await o
-            .collection(`users`)
-            .update(n.id, {
-              delivery_enabled: i,
-              delivery_start_time: s,
-              delivery_end_time: d,
-              delivery_interval: v,
-              delivery_days: w,
-            }),
+          ;(await o.collection(`users`).update(n.id, {
+            delivery_enabled: i,
+            delivery_start_time: s,
+            delivery_end_time: d,
+            delivery_interval: v,
+            delivery_days: w,
+          }),
             r({ title: `Configurações salvas com sucesso` }),
             t(!1))
         } catch (e) {

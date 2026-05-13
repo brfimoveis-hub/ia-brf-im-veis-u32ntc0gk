@@ -18810,18 +18810,16 @@ function bp({
                               if (((s += e.synced), F(s), r.length > 0)) {
                                 let e = r[r.length - 1]
                                 M(
-                                  await m
-                                    .collection(`system_logs`)
-                                    .create({
-                                      type: `remarketing_log`,
-                                      message: `Remarketing sync batch processed`,
-                                      details: `Synced up to ${e.name}`,
-                                      payload: {
-                                        last_customer_id: e.id,
-                                        last_customer_name: e.name,
-                                      },
-                                      user_id: o?.id,
-                                    }),
+                                  await m.collection(`system_logs`).create({
+                                    type: `remarketing_log`,
+                                    message: `Remarketing sync batch processed`,
+                                    details: `Synced up to ${e.name}`,
+                                    payload: {
+                                      last_customer_id: e.id,
+                                      last_customer_name: e.name,
+                                    },
+                                    user_id: o?.id,
+                                  }),
                                 )
                               }
                             } catch (e) {
@@ -20635,18 +20633,16 @@ function jh({ leads: e, onUpdateStatus: t, onEdit: n, onTriggerRoleta: r, onImpo
                                 (0, B.jsxs)(`div`, {
                                   className: `flex gap-1 flex-wrap justify-end`,
                                   children: [
-                                    e.tags
-                                      .slice(0, 2)
-                                      .map((e, t) =>
-                                        (0, B.jsx)(
-                                          `span`,
-                                          {
-                                            className: `text-[10px] font-medium bg-secondary/50 text-secondary-foreground px-1.5 py-0.5 rounded-sm`,
-                                            children: e,
-                                          },
-                                          t,
-                                        ),
+                                    e.tags.slice(0, 2).map((e, t) =>
+                                      (0, B.jsx)(
+                                        `span`,
+                                        {
+                                          className: `text-[10px] font-medium bg-secondary/50 text-secondary-foreground px-1.5 py-0.5 rounded-sm`,
+                                          children: e,
+                                        },
+                                        t,
                                       ),
+                                    ),
                                     e.tags.length > 2 &&
                                       (0, B.jsxs)(`span`, {
                                         className: `text-[10px] font-medium bg-muted text-muted-foreground px-1.5 py-0.5 rounded-sm`,
@@ -21632,12 +21628,10 @@ function ug() {
             m.authStore.save(m.authStore.token, t)
           } else {
             ;(r(`disconnected`), a(`Instância desconectada.`))
-            let t = await m
-              .collection(`users`)
-              .update(e.id, {
-                uazapi_status: `Desconectado`,
-                uazapi_error: `Instância desconectada.`,
-              })
+            let t = await m.collection(`users`).update(e.id, {
+              uazapi_status: `Desconectado`,
+              uazapi_error: `Instância desconectada.`,
+            })
             m.authStore.save(m.authStore.token, t)
           }
         } catch (t) {
@@ -21693,16 +21687,14 @@ function ug() {
               (c?.instance?.state === `open` || c?.success) &&
               (r(`connected`), E(null), N.current && clearInterval(N.current), e)
             ) {
-              let r = await m
-                .collection(`users`)
-                .update(e.id, {
-                  uazapi_status: `Conectado`,
-                  uazapi_error: ``,
-                  uazapi_instance_number: t,
-                  uazapi_domain: n,
-                  uazapi_token: i,
-                  uazapi_admin_token: a || ``,
-                })
+              let r = await m.collection(`users`).update(e.id, {
+                uazapi_status: `Conectado`,
+                uazapi_error: ``,
+                uazapi_instance_number: t,
+                uazapi_domain: n,
+                uazapi_token: i,
+                uazapi_admin_token: a || ``,
+              })
               m.authStore.save(m.authStore.token, r)
             }
           } catch {}
