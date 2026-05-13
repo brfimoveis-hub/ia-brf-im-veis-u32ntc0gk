@@ -6,6 +6,7 @@ routerAdd(
     let domain = body.domain || 'https://iabrfimveis.uazapi.com'
     const instance = body.instance || '554892098050'
     const userToken = body.token || ''
+    const adminToken = body.admin_token || ''
 
     if (domain && !domain.startsWith('http://') && !domain.startsWith('https://')) {
       domain = 'https://' + domain
@@ -20,11 +21,15 @@ routerAdd(
     const headers = { 'Content-Type': 'application/json' }
 
     if (userToken) {
-      headers['AdminToken'] = userToken
+      headers['Authorization'] = 'Bearer ' + userToken
       headers['apikey'] = userToken
     } else {
-      headers['AdminToken'] = 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+      headers['Authorization'] = 'Bearer SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
       headers['apikey'] = 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+    }
+
+    if (adminToken) {
+      headers['AdminToken'] = adminToken
     }
 
     try {
@@ -39,9 +44,12 @@ routerAdd(
       // If we return 401, the PocketBase JS SDK auto-clears the auth token,
       // destroying the frontend session and forcing a redirect to /login.
       if (res.statusCode === 401 || res.statusCode === 403) {
+        const uazapiErrorMsg = res.json && (res.json.message || res.json.error)
         return e.json(400, {
           message: 'Unauthorized at target',
-          error: 'Acesso negado no Uazapi (Token inválido).',
+          error: uazapiErrorMsg
+            ? `Acesso negado: ${uazapiErrorMsg}`
+            : 'Acesso negado no Uazapi (Token inválido).',
         })
       }
 

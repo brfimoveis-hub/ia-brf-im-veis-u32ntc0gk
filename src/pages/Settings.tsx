@@ -202,16 +202,18 @@ export default function ConfiguracoesCore() {
         data?.state === 'open'
       ) {
         setStatus('connected')
-        await pb
+        const updatedUser = await pb
           .collection('users')
           .update(user.id, { uazapi_status: 'Conectado', uazapi_error: '' })
+        pb.authStore.save(pb.authStore.token, updatedUser)
       } else {
         setStatus('disconnected')
         setErrorDetail('Instância desconectada.')
-        await pb.collection('users').update(user.id, {
+        const updatedUser = await pb.collection('users').update(user.id, {
           uazapi_status: 'Desconectado',
           uazapi_error: 'Instância desconectada.',
         })
+        pb.authStore.save(pb.authStore.token, updatedUser)
       }
     } catch (e: any) {
       setStatus('disconnected')
@@ -223,9 +225,10 @@ export default function ConfiguracoesCore() {
       else if (e.response?.message) errMsg = e.response.message
 
       setErrorDetail(errMsg)
-      await pb
+      const updatedUser = await pb
         .collection('users')
         .update(user.id, { uazapi_status: 'Desconectado', uazapi_error: errMsg })
+      pb.authStore.save(pb.authStore.token, updatedUser)
     }
   }
 
@@ -242,7 +245,7 @@ export default function ConfiguracoesCore() {
           setQrCode(null)
           if (pollingRef.current) clearInterval(pollingRef.current)
           if (user) {
-            await pb.collection('users').update(user.id, {
+            const updatedUser = await pb.collection('users').update(user.id, {
               uazapi_status: 'Conectado',
               uazapi_error: '',
               uazapi_instance_number: inst,
@@ -250,6 +253,7 @@ export default function ConfiguracoesCore() {
               uazapi_token: tok,
               uazapi_admin_token: adminTok || '',
             })
+            pb.authStore.save(pb.authStore.token, updatedUser)
           }
         }
       } catch (e) {
@@ -369,7 +373,8 @@ export default function ConfiguracoesCore() {
       }
       if (email !== user.email) payload.email = email
 
-      await pb.collection('users').update(user.id, payload)
+      const updatedUser = await pb.collection('users').update(user.id, payload)
+      pb.authStore.save(pb.authStore.token, updatedUser)
       toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
       await checkConnection(instanceNumber, domain, token, adminToken)
     } catch (e: any) {
@@ -390,12 +395,18 @@ export default function ConfiguracoesCore() {
         body: { business_id: busId, phone_number_id: phoneId, access_token: accToken },
       })
       setMetaStatus('connected')
-      await pb.collection('users').update(user.id, { meta_whatsapp_status: 'Conectado' })
+      const updatedUser = await pb
+        .collection('users')
+        .update(user.id, { meta_whatsapp_status: 'Conectado' })
+      pb.authStore.save(pb.authStore.token, updatedUser)
     } catch (e: any) {
       setMetaStatus('disconnected')
       let errMsg = e.message || 'Erro de comunicação com a Meta.'
       setMetaErrorDetail(errMsg)
-      await pb.collection('users').update(user.id, { meta_whatsapp_status: 'Desconectado' })
+      const updatedUser = await pb
+        .collection('users')
+        .update(user.id, { meta_whatsapp_status: 'Desconectado' })
+      pb.authStore.save(pb.authStore.token, updatedUser)
     }
   }
 
@@ -424,7 +435,8 @@ export default function ConfiguracoesCore() {
         meta_whatsapp_access_token: metaAccessToken,
         meta_whatsapp_verify_token: metaVerifyToken,
       }
-      await pb.collection('users').update(user.id, payload)
+      const updatedUser = await pb.collection('users').update(user.id, payload)
+      pb.authStore.save(pb.authStore.token, updatedUser)
       toast({ title: 'Configurações Meta salvas', description: 'Testando conexão...' })
       await checkMetaConnection(metaBusinessId, metaPhoneId, metaAccessToken)
     } catch (e: any) {
