@@ -91,10 +91,10 @@ export default function ConfiguracoesCore() {
       // Setup Uazapi
       setName(user.name || 'BRF Imóveis')
       setEmail(user.email || 'brfimoveis@gmail.com')
-      setDomain(user.uazapi_domain || '')
+      setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
       setToken(user.uazapi_token || '')
       setAdminToken(user.uazapi_admin_token || '')
-      setInstanceNumber(user.uazapi_instance_number || '')
+      setInstanceNumber(user.uazapi_instance_number || '554892098050')
 
       if (user.uazapi_status === 'Conectado') {
         setStatus('connected')
@@ -174,16 +174,18 @@ export default function ConfiguracoesCore() {
     setStatus('checking')
     setErrorDetail('')
     try {
-      // First try calling the specific uazapi_status hook as required
+      // Clear trailing slashes from domain
+      const cleanDom = dom.endsWith('/') ? dom.slice(0, -1) : dom
+
       let data
       try {
-        data = await pb.send(`/backend/v1/uazapi/status/${inst}`, { method: 'GET' })
-      } catch (err: any) {
-        // Fallback to test-connection if status hook fails or is structured differently
         data = await pb.send(`/backend/v1/uazapi/test-connection`, {
           method: 'POST',
-          body: { instance: inst, domain: dom, token: tok, admin_token: adminTok },
+          body: { instance: inst, domain: cleanDom, token: tok, admin_token: adminTok },
         })
+      } catch (err: any) {
+        // Fallback to status hook
+        data = await pb.send(`/backend/v1/uazapi/status/${inst}`, { method: 'GET' })
       }
       if (data?.error) throw new Error(data.error)
 

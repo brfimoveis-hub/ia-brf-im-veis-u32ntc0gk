@@ -154,6 +154,7 @@ const App = () => {
       })
     }
     sessionStorage.clear()
+    localStorage.removeItem('vite-plugin-react-router-cache') // bypass any stale cached routes
   }, [])
 
   return (
