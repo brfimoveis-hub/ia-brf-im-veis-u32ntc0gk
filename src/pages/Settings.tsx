@@ -23,6 +23,8 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react'
+import { SettingsAi } from './settings/SettingsAi'
+import { SettingsSocial } from './settings/SettingsSocial'
 
 export default function ConfiguracoesCore() {
   const { user } = useAuth()
@@ -584,11 +586,12 @@ export default function ConfiguracoesCore() {
       </div>
 
       <Tabs defaultValue="meta" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 max-w-[900px] overflow-x-auto">
+        <TabsList className="grid w-full grid-cols-5 max-w-[1000px] overflow-x-auto">
           <TabsTrigger value="meta">WhatsApp API Oficial (Meta)</TabsTrigger>
           <TabsTrigger value="uazapi">Uazapi (Legado)</TabsTrigger>
           <TabsTrigger value="ai">IA BIA</TabsTrigger>
           <TabsTrigger value="google-ads">Google Ads</TabsTrigger>
+          <TabsTrigger value="social">Web & Social</TabsTrigger>
         </TabsList>
 
         <TabsContent value="google-ads">
@@ -980,15 +983,13 @@ export default function ConfiguracoesCore() {
         </TabsContent>
 
         <TabsContent value="ai">
-          <Card className="border-border/50 shadow-sm mt-4">
-            <CardHeader>
-              <CardTitle>Configurações da IA</CardTitle>
-              <CardDescription>Gerencie as instruções e comportamentos da IA.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Em breve...</p>
-            </CardContent>
-          </Card>
+          <div className="mt-4">
+            <SettingsAi />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="social">
+          <SettingsSocial />
         </TabsContent>
       </Tabs>
     </div>

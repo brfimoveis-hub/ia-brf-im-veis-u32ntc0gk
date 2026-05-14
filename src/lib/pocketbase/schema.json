@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-14T11:14:27.028Z",
+  "generatedAt": "2026-05-14T11:20:17.585Z",
   "collections": [
     {
       "name": "users",
@@ -29,19 +29,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "uazapi_domain",
@@ -123,6 +118,60 @@
         },
         {
           "name": "meta_capi_token",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bia_instructions",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_instructions",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_voice_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_avatar",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_knowledge_files",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "website_url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "instagram_username",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "youtube_url",
           "type": "text",
           "required": false,
           "system": false
@@ -229,19 +278,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": []
@@ -323,19 +367,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": []
@@ -375,19 +414,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": []
