@@ -121,10 +121,10 @@ export default function Settings() {
       // Setup Uazapi
       setName(user.name || 'brfimoveis_2')
       setEmail(user.email || 'brfimoveis@gmail.com')
-      setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
-      setToken(user.uazapi_token || '')
-      setAdminToken(user.uazapi_admin_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
-      setInstanceNumber(user.uazapi_instance_number || 'zRuJNw')
+      setDomain(user.uazapi_domain || 'rqqga0')
+      setToken(user.uazapi_token || 'c41be398-c7b7-4ba6-b70b-e61a36873e5c')
+      setAdminToken(user.uazapi_admin_token || '64582e1c-d189-4ea6-8c6c-61f652991b64')
+      setInstanceNumber(user.uazapi_instance_number || 'CcZPx1')
 
       if (user.uazapi_status === 'Conectado') {
         setStatus('connected')
@@ -187,12 +187,12 @@ export default function Settings() {
   const validateFields = () => {
     const errors: { domain?: string; instance?: string; adminToken?: string } = {}
 
-    if (!domain || !domain.startsWith('http')) {
-      errors.domain = 'Insira uma URL válida (ex: https://iabrfimveis.uazapi.com).'
+    if (!domain) {
+      errors.domain = 'O Domínio é obrigatório.'
     }
 
-    if (!adminToken || adminToken.length !== 50 || !/^[a-zA-Z0-9]+$/.test(adminToken)) {
-      errors.adminToken = 'O Token deve ter exatamente 50 caracteres alfanuméricos.'
+    if (!adminToken) {
+      errors.adminToken = 'O Admin Token é obrigatório.'
     }
 
     if (!instanceNumber) {
@@ -208,7 +208,7 @@ export default function Settings() {
     setStatus('checking')
     setErrorDetail('')
     try {
-      const data = await pb.send(`/backend/v1/uazapi/connect`, {
+      const data = await pb.send(`/backend/v1/uazapi/test-connection`, {
         method: 'POST',
         body: { instance_name: inst, domain: dom, admin_token: adminTok },
       })
@@ -255,7 +255,7 @@ export default function Settings() {
     if (pollingRef.current) clearInterval(pollingRef.current)
     pollingRef.current = setInterval(async () => {
       try {
-        const data = await pb.send(`/backend/v1/uazapi/connect`, {
+        const data = await pb.send(`/backend/v1/uazapi/test-connection`, {
           method: 'POST',
           body: { instance_name: inst, domain: dom, admin_token: adminTok },
         })
@@ -1063,7 +1063,7 @@ export default function Settings() {
                       if (validationErrors.domain)
                         setValidationErrors({ ...validationErrors, domain: undefined })
                     }}
-                    placeholder="https://iabrfimveis.uazapi.com"
+                    placeholder="rqqga0"
                     className={validationErrors.domain ? 'border-destructive' : ''}
                   />
                   {validationErrors.domain && (
@@ -1080,12 +1080,21 @@ export default function Settings() {
                         setValidationErrors({ ...validationErrors, adminToken: undefined })
                     }}
                     type="password"
-                    placeholder="50 caracteres alfanuméricos"
+                    placeholder="Obrigatório"
                     className={validationErrors.adminToken ? 'border-destructive' : ''}
                   />
                   {validationErrors.adminToken && (
                     <p className="text-xs text-destructive">{validationErrors.adminToken}</p>
                   )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Token da API (Opcional)</Label>
+                  <Input
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    type="password"
+                    placeholder="c41be398-c7b7-4ba6-b70b-e61a36873e5c"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Nome da Instância (Identificação)</Label>
@@ -1104,7 +1113,7 @@ export default function Settings() {
                       if (validationErrors.instance)
                         setValidationErrors({ ...validationErrors, instance: undefined })
                     }}
-                    placeholder="zRuJNw"
+                    placeholder="CcZPx1"
                     className={validationErrors.instance ? 'border-destructive' : ''}
                   />
                   {validationErrors.instance && (
@@ -1164,6 +1173,26 @@ export default function Settings() {
                   )}
                   Reiniciar Instância
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    checkConnection(
+                      instanceNumber.trim(),
+                      domain.trim(),
+                      token.trim(),
+                      adminToken.trim(),
+                    )
+                  }
+                  disabled={status === 'checking'}
+                >
+                  {status === 'checking' ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Refresh Status
+                </Button>
                 <Button variant="outline" size="sm">
                   <Globe2 className="mr-2 h-4 w-4" />
                   Webhook Global
@@ -1190,7 +1219,7 @@ export default function Settings() {
                       <td className="px-4 py-3 font-medium">5548992098050</td>
                       <td className="px-4 py-3 text-muted-foreground">{name || 'brfimoveis_2'}</td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {instanceNumber || 'zRuJNw'}
+                        {instanceNumber || 'CcZPx1'}
                       </td>
                       <td className="px-4 py-3">
                         {status === 'connected' ? (
