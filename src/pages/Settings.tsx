@@ -123,11 +123,12 @@ export default function Settings() {
       setEmail(user.email || '')
 
       const defaultDomain = 'https://api.uazapi.com'
-      const defaultAdminToken = '64582e1c-d189-4ea6-8c6c-61f652991b64'
+      const defaultToken = '64582e1c-d189-4ea6-8c6c-61f652991b64'
+      const defaultAdminToken = 'c41be398-c7b7-4ba6-b70b-e61a36873e5c'
       const defaultInstance = 'CcZPx1'
 
       setDomain(user.uazapi_domain || defaultDomain)
-      setToken(user.uazapi_token || '')
+      setToken(user.uazapi_token || defaultToken)
       setAdminToken(user.uazapi_admin_token || defaultAdminToken)
       setInstanceNumber(user.uazapi_instance_number || defaultInstance)
 
@@ -577,12 +578,15 @@ export default function Settings() {
         'Erro de comunicação com a Meta. Verifique se o Token não está expirado e se os IDs estão corretos.'
 
       const rawError = e.response?.data || e.response || e
-      const isGraphException =
-        rawError?.error?.code === 100 && rawError?.error?.error_subcode === 33
+      const isGraphException = rawError?.error?.code === 100 || e.status === 100
+      const isUnsupportedGet =
+        rawError?.error?.message?.includes('Unsupported get request') ||
+        e.message?.includes('Unsupported get request') ||
+        e.response?.message?.includes('Unsupported get request')
 
-      if (isGraphException) {
+      if (isGraphException || isUnsupportedGet) {
         errMsg =
-          'O ID da Conta do WhatsApp Business é inválido ou faltam permissões. Verifique o Meta Business Manager.'
+          'WABA ID not found or missing permissions. Please verify your Meta Business configuration.'
       } else if (e.response?.message && e.response?.message !== 'Something went wrong.') {
         errMsg = e.response.message
       } else if (e.response?.data?.message) {
@@ -1108,6 +1112,7 @@ export default function Settings() {
                       onClick={() => {
                         setInstanceNumber('rqqga0')
                         setAdminToken('c41be398-c7b7-4ba6-b70b-e61a36873e5c')
+                        setToken('64582e1c-d189-4ea6-8c6c-61f652991b64')
                         toast({
                           title: 'Instância 1 Selecionada',
                           description: 'Preenchido com rqqga0. Clique em Salvar Configuração.',
@@ -1121,7 +1126,8 @@ export default function Settings() {
                       variant="secondary"
                       onClick={() => {
                         setInstanceNumber('CcZPx1')
-                        setAdminToken('64582e1c-d189-4ea6-8c6c-61f652991b64')
+                        setAdminToken('c41be398-c7b7-4ba6-b70b-e61a36873e5c')
+                        setToken('64582e1c-d189-4ea6-8c6c-61f652991b64')
                         toast({
                           title: 'Instância 2 Selecionada',
                           description: 'Preenchido com CcZPx1. Clique em Salvar Configuração.',

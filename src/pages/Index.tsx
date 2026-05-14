@@ -8,6 +8,11 @@ export default function Index() {
 
   useEffect(() => {
     if (!loading) {
+      // Prevent Index from hijacking other routes due to cache or fallback bugs
+      if (window.location.pathname !== '/' && window.location.pathname !== '/index') {
+        return
+      }
+
       if (user) {
         navigate('/dashboard', { replace: true })
       } else {
