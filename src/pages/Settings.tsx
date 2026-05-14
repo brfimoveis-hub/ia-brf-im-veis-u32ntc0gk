@@ -591,7 +591,7 @@ export default function ConfiguracoesCore() {
           <TabsTrigger value="uazapi">Uazapi (Legado)</TabsTrigger>
           <TabsTrigger value="ai">IA BIA</TabsTrigger>
           <TabsTrigger value="google-ads">Google Ads</TabsTrigger>
-          <TabsTrigger value="social">Web & Social</TabsTrigger>
+          <TabsTrigger value="social">Web & Marketing</TabsTrigger>
         </TabsList>
 
         <TabsContent value="google-ads">
