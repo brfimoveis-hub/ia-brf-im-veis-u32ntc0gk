@@ -26,6 +26,7 @@ import NotFound from './pages/NotFound'
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import Index from './pages/Index'
 
 const PageLoader = () => (
   <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
@@ -74,7 +75,7 @@ const router = createBrowserRouter(
       children: [
         {
           index: true,
-          element: <Navigate to="/dashboard" replace />,
+          element: <Index />,
         },
         {
           element: <GuestRoute />,
