@@ -77,7 +77,7 @@ const router = createBrowserRouter(
           element: <GuestRoute />,
           children: [
             {
-              index: true,
+              path: '/',
               element: <Index />,
             },
             {
@@ -145,8 +145,6 @@ const router = createBrowserRouter(
 
 const App = () => {
   useEffect(() => {
-    // Cache resilience: clear service worker cache and local session metadata
-    // to ensure the new route mapping takes effect immediately after a hard refresh.
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then((registrations) => {
         for (const registration of registrations) {
@@ -155,7 +153,7 @@ const App = () => {
       })
     }
     sessionStorage.clear()
-    localStorage.removeItem('vite-plugin-react-router-cache') // bypass any stale cached routes
+    localStorage.removeItem('vite-plugin-react-router-cache')
   }, [])
 
   return (

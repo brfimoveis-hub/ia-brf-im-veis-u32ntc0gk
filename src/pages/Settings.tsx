@@ -119,12 +119,12 @@ export default function Settings() {
   useEffect(() => {
     if (user && !initialized.current) {
       // Setup Uazapi
-      setName(user.name || 'brfimoveis_2')
-      setEmail(user.email || 'brfimoveis@gmail.com')
-      setDomain(user.uazapi_domain || 'rqqga0')
-      setToken(user.uazapi_token || 'c41be398-c7b7-4ba6-b70b-e61a36873e5c')
-      setAdminToken(user.uazapi_admin_token || '64582e1c-d189-4ea6-8c6c-61f652991b64')
-      setInstanceNumber(user.uazapi_instance_number || 'CcZPx1')
+      setName(user.name || '')
+      setEmail(user.email || '')
+      setDomain(user.uazapi_domain || '')
+      setToken(user.uazapi_token || '')
+      setAdminToken(user.uazapi_admin_token || '')
+      setInstanceNumber(user.uazapi_instance_number || '')
 
       if (user.uazapi_status === 'Conectado') {
         setStatus('connected')
@@ -1054,6 +1054,40 @@ export default function Settings() {
               )}
 
               <div className="grid gap-6 md:grid-cols-2">
+                <div className="col-span-2 p-4 bg-muted/30 rounded-lg border flex flex-col gap-3">
+                  <Label>Instâncias Uazapi Disponíveis</Label>
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setInstanceNumber('rqqga0')
+                        setAdminToken('c41be398-c7b7-4ba6-b70b-e61a36873e5c')
+                        toast({
+                          title: 'Instância 1 Selecionada',
+                          description: 'Preenchido com rqqga0. Clique em Salvar Configuração.',
+                        })
+                      }}
+                    >
+                      Selecionar Instância 1 (rqqga0)
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setInstanceNumber('CcZPx1')
+                        setAdminToken('64582e1c-d189-4ea6-8c6c-61f652991b64')
+                        toast({
+                          title: 'Instância 2 Selecionada',
+                          description: 'Preenchido com CcZPx1. Clique em Salvar Configuração.',
+                        })
+                      }}
+                    >
+                      Selecionar Instância 2 (CcZPx1)
+                    </Button>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Server URL</Label>
                   <Input
@@ -1063,7 +1097,7 @@ export default function Settings() {
                       if (validationErrors.domain)
                         setValidationErrors({ ...validationErrors, domain: undefined })
                     }}
-                    placeholder="rqqga0"
+                    placeholder="https://api.uazapi.com"
                     className={validationErrors.domain ? 'border-destructive' : ''}
                   />
                   {validationErrors.domain && (
@@ -1097,14 +1131,14 @@ export default function Settings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Nome da Instância (Identificação)</Label>
+                  <Label>Nome de Exibição (Identificação)</Label>
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="brfimoveis_2"
+                    placeholder="Minha Instância"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 col-span-2 md:col-span-1">
                   <Label>ID da Instância (Lógica)</Label>
                   <Input
                     value={instanceNumber}
@@ -1113,7 +1147,7 @@ export default function Settings() {
                       if (validationErrors.instance)
                         setValidationErrors({ ...validationErrors, instance: undefined })
                     }}
-                    placeholder="CcZPx1"
+                    placeholder="CcZPx1 ou rqqga0"
                     className={validationErrors.instance ? 'border-destructive' : ''}
                   />
                   {validationErrors.instance && (
@@ -1217,9 +1251,9 @@ export default function Settings() {
                   <tbody className="divide-y">
                     <tr className="bg-background">
                       <td className="px-4 py-3 font-medium">5548992098050</td>
-                      <td className="px-4 py-3 text-muted-foreground">{name || 'brfimoveis_2'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{name || 'Instância'}</td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {instanceNumber || 'CcZPx1'}
+                        {instanceNumber || 'Nenhuma'}
                       </td>
                       <td className="px-4 py-3">
                         {status === 'connected' ? (
