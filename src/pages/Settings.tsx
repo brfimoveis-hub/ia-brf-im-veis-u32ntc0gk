@@ -31,7 +31,7 @@ import {
 import { SettingsAi } from './settings/SettingsAi'
 import { SettingsSocial } from './settings/SettingsSocial'
 
-export default function ConfiguracoesCore() {
+export default function Settings() {
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -119,12 +119,12 @@ export default function ConfiguracoesCore() {
   useEffect(() => {
     if (user && !initialized.current) {
       // Setup Uazapi
-      setName(user.name || 'brfimoveis')
+      setName(user.name || 'brfimoveis_2')
       setEmail(user.email || 'brfimoveis@gmail.com')
       setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
       setToken(user.uazapi_token || '')
       setAdminToken(user.uazapi_admin_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
-      setInstanceNumber(user.uazapi_instance_number || 'BRF 1')
+      setInstanceNumber(user.uazapi_instance_number || 'zRuJNw')
 
       if (user.uazapi_status === 'Conectado') {
         setStatus('connected')
@@ -1043,6 +1043,12 @@ export default function ConfiguracoesCore() {
                   <AlertTriangle className="h-5 w-5 mr-3 shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <p className="font-semibold text-sm">Falha na conexão: {errorDetail}</p>
+                    {errorDetail.toLowerCase().includes('unauthorized') && (
+                      <p className="text-xs mt-1">
+                        Verifique o seu <strong>Admin Token</strong> abaixo e salve as configurações
+                        para tentar novamente.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1086,7 +1092,7 @@ export default function ConfiguracoesCore() {
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="brfimoveis"
+                    placeholder="brfimoveis_2"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1098,7 +1104,7 @@ export default function ConfiguracoesCore() {
                       if (validationErrors.instance)
                         setValidationErrors({ ...validationErrors, instance: undefined })
                     }}
-                    placeholder="BRF 1"
+                    placeholder="zRuJNw"
                     className={validationErrors.instance ? 'border-destructive' : ''}
                   />
                   {validationErrors.instance && (
@@ -1126,7 +1132,7 @@ export default function ConfiguracoesCore() {
                   </CardDescription>
                 </div>
                 <div className="text-sm font-medium bg-muted px-3 py-1.5 rounded-md border text-muted-foreground">
-                  2 total de instâncias
+                  1 instância ativa
                 </div>
               </div>
             </CardHeader>
@@ -1181,10 +1187,10 @@ export default function ConfiguracoesCore() {
                   </thead>
                   <tbody className="divide-y">
                     <tr className="bg-background">
-                      <td className="px-4 py-3 font-medium">554891828050</td>
-                      <td className="px-4 py-3 text-muted-foreground">{name || 'brfimoveis'}</td>
+                      <td className="px-4 py-3 font-medium">5548992098050</td>
+                      <td className="px-4 py-3 text-muted-foreground">{name || 'brfimoveis_2'}</td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {instanceNumber || 'BRF 1'}
+                        {instanceNumber || 'zRuJNw'}
                       </td>
                       <td className="px-4 py-3">
                         {status === 'connected' ? (
@@ -1216,21 +1222,6 @@ export default function ConfiguracoesCore() {
                         >
                           {isDisconnecting && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
                           Desconectar
-                        </Button>
-                      </td>
-                    </tr>
-                    <tr className="bg-background opacity-60">
-                      <td className="px-4 py-3 font-medium">5548992098050</td>
-                      <td className="px-4 py-3 text-muted-foreground">brfimoveis_2</td>
-                      <td className="px-4 py-3 text-muted-foreground">zRuJNw</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-destructive/10 text-destructive">
-                          Disconnected
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="sm" disabled>
-                          QR Code
                         </Button>
                       </td>
                     </tr>
