@@ -23,6 +23,10 @@ import {
   Eye,
   EyeOff,
   Target,
+  RefreshCw,
+  Power,
+  Globe2,
+  Wallet,
 } from 'lucide-react'
 import { SettingsAi } from './settings/SettingsAi'
 import { SettingsSocial } from './settings/SettingsSocial'
@@ -108,21 +112,12 @@ export default function ConfiguracoesCore() {
   useEffect(() => {
     if (user && !initialized.current) {
       // Setup Uazapi
-      setName(user.name || 'BRF Imóveis')
+      setName(user.name || 'brfimoveis')
       setEmail(user.email || 'brfimoveis@gmail.com')
-      let defaultDomain = user.uazapi_domain || 'iabrfimveis'
-      if (defaultDomain.includes('://')) {
-        try {
-          const url = new URL(defaultDomain)
-          defaultDomain = url.hostname.split('.')[0] || 'iabrfimveis'
-        } catch {
-          /* intentionally ignored */
-        }
-      }
-      setDomain(defaultDomain)
+      setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
       setToken(user.uazapi_token || '')
       setAdminToken(user.uazapi_admin_token || '')
-      setInstanceNumber(user.uazapi_instance_number || 'brf-principal')
+      setInstanceNumber(user.uazapi_instance_number || 'BRF 1')
 
       if (user.uazapi_status === 'Conectado') {
         setStatus('connected')
@@ -130,17 +125,9 @@ export default function ConfiguracoesCore() {
         setStatus('disconnected')
         setErrorDetail(user.uazapi_error || '')
       } else if (user.uazapi_instance_number && user.uazapi_domain) {
-        let savedDomain = user.uazapi_domain
-        if (savedDomain.includes('://')) {
-          try {
-            savedDomain = new URL(savedDomain).hostname.split('.')[0]
-          } catch {
-            /* intentionally ignored */
-          }
-        }
         checkConnection(
           user.uazapi_instance_number,
-          savedDomain,
+          user.uazapi_domain,
           user.uazapi_token || '',
           user.uazapi_admin_token || '',
         )
@@ -190,16 +177,16 @@ export default function ConfiguracoesCore() {
   const validateFields = () => {
     const errors: { domain?: string; instance?: string; adminToken?: string } = {}
 
-    if (!instanceNumber || !/^[a-zA-Z0-9-]+$/.test(instanceNumber)) {
-      errors.instance = 'Apenas caracteres alfanuméricos e hífens.'
-    }
-
-    if (!domain || !/^[a-zA-Z0-9-]+$/.test(domain)) {
-      errors.domain = 'Apenas caracteres alfanuméricos e hífens.'
+    if (!domain || !domain.startsWith('http')) {
+      errors.domain = 'Insira uma URL válida (ex: https://iabrfimveis.uazapi.com).'
     }
 
     if (!adminToken || adminToken.length !== 50 || !/^[a-zA-Z0-9]+$/.test(adminToken)) {
-      errors.adminToken = 'Exatamente 50 caracteres alfanuméricos.'
+      errors.adminToken = 'O Token deve ter exatamente 50 caracteres alfanuméricos.'
+    }
+
+    if (!instanceNumber) {
+      errors.instance = 'O ID da Instância é obrigatório.'
     }
 
     setValidationErrors(errors)
@@ -211,11 +198,9 @@ export default function ConfiguracoesCore() {
     setStatus('checking')
     setErrorDetail('')
     try {
-      const fullDomain = `https://${dom}.uazapi.com`
-
       const data = await pb.send(`/backend/v1/uazapi/v2/connect`, {
         method: 'POST',
-        body: { instance_name: inst, domain: fullDomain, admin_token: adminTok },
+        body: { instance_name: inst, domain: dom, admin_token: adminTok },
       })
 
       if (data?.status === 'connected') {
@@ -255,10 +240,9 @@ export default function ConfiguracoesCore() {
     if (pollingRef.current) clearInterval(pollingRef.current)
     pollingRef.current = setInterval(async () => {
       try {
-        const fullDomain = `https://${dom}.uazapi.com`
         const data = await pb.send(`/backend/v1/uazapi/v2/connect`, {
           method: 'POST',
-          body: { instance_name: inst, domain: fullDomain, admin_token: adminTok },
+          body: { instance_name: inst, domain: dom, admin_token: adminTok },
         })
         if (data?.status === 'connected') {
           setStatus('connected')
@@ -269,7 +253,7 @@ export default function ConfiguracoesCore() {
               uazapi_status: 'Conectado',
               uazapi_error: '',
               uazapi_instance_number: inst,
-              uazapi_domain: fullDomain,
+              uazapi_domain: dom,
               uazapi_token: tok,
               uazapi_admin_token: adminTok || '',
             })
@@ -287,7 +271,7 @@ export default function ConfiguracoesCore() {
     if (!validateFields()) {
       toast({
         title: 'Dados inválidos',
-        description: 'Verifique os campos.',
+        description: 'Verifique as configurações globais antes de gerar o QR Code.',
         variant: 'destructive',
       })
       return
@@ -295,7 +279,7 @@ export default function ConfiguracoesCore() {
     setIsGeneratingQr(true)
     setQrCode(null)
     try {
-      const fullDomain = `https://${domain.trim()}.uazapi.com`
+      const fullDomain = domain.trim()
       const res = await pb.send(`/backend/v1/uazapi/v2/connect`, {
         method: 'POST',
         body: {
@@ -310,7 +294,7 @@ export default function ConfiguracoesCore() {
 
       if (base64) {
         setQrCode(base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`)
-        startPolling(instanceNumber.trim(), domain.trim(), token.trim(), adminToken.trim())
+        startPolling(instanceNumber.trim(), fullDomain, token.trim(), adminToken.trim())
         toast({
           title: 'QR Code gerado',
           description: pairing
@@ -374,12 +358,7 @@ export default function ConfiguracoesCore() {
       await pb.send(`/backend/v1/uazapi/restart/${instanceNumber}`, { method: 'PUT' })
       toast({ title: 'Reiniciando', description: 'A instância está sendo reiniciada.' })
       setTimeout(() => {
-        checkConnection(
-          instanceNumber.replace(/\D/g, ''),
-          domain.trim(),
-          token.trim(),
-          adminToken.trim(),
-        )
+        checkConnection(instanceNumber.trim(), domain.trim(), token.trim(), adminToken.trim())
       }, 5000)
     } catch (e: any) {
       toast({
@@ -409,11 +388,10 @@ export default function ConfiguracoesCore() {
       const cleanToken = token.trim()
       const cleanAdminToken = adminToken.trim()
       const cleanInstanceNumber = instanceNumber.trim()
-      const fullDomain = `https://${cleanDomain}.uazapi.com`
 
       const payload: any = {
         name,
-        uazapi_domain: fullDomain,
+        uazapi_domain: cleanDomain,
         uazapi_token: cleanToken,
         uazapi_admin_token: cleanAdminToken,
         uazapi_instance_number: cleanInstanceNumber,
@@ -824,10 +802,10 @@ export default function ConfiguracoesCore() {
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Settings2 className="h-5 w-5 text-primary" />
-                <CardTitle>Uazapi Connection Manager</CardTitle>
+                <CardTitle>Configuração Global Uazapi</CardTitle>
               </div>
               <CardDescription>
-                Configure e teste os parâmetros de conexão do WhatsApp via Uazapi.
+                Defina a URL do Servidor, Token de Administração e sua Instância.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -842,51 +820,48 @@ export default function ConfiguracoesCore() {
 
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="nome">Nome</Label>
+                  <Label>Server URL</Label>
                   <Input
-                    id="nome"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="BRF Imóveis"
+                    value={domain}
+                    onChange={(e) => {
+                      setDomain(e.target.value)
+                      if (validationErrors.domain)
+                        setValidationErrors({ ...validationErrors, domain: undefined })
+                    }}
+                    placeholder="https://iabrfimveis.uazapi.com"
+                    className={validationErrors.domain ? 'border-destructive' : ''}
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">E-mail</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="brfimoveis@gmail.com"
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2 pt-2">
-                <div className="space-y-2">
-                  <Label>Endpoint Uazapi (Subdomain)</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="text"
-                      value={domain}
-                      onChange={(e) => {
-                        setDomain(e.target.value)
-                        if (validationErrors.domain)
-                          setValidationErrors({ ...validationErrors, domain: undefined })
-                      }}
-                      placeholder="minha-instancia"
-                      className={validationErrors.domain ? 'border-destructive' : ''}
-                    />
-                    <span className="text-sm text-muted-foreground whitespace-nowrap">
-                      .uazapi.com
-                    </span>
-                  </div>
                   {validationErrors.domain && (
                     <p className="text-xs text-destructive">{validationErrors.domain}</p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Nome da Instância (Lógica)</Label>
+                  <Label>Admin Token</Label>
+                  <Input
+                    value={adminToken}
+                    onChange={(e) => {
+                      setAdminToken(e.target.value)
+                      if (validationErrors.adminToken)
+                        setValidationErrors({ ...validationErrors, adminToken: undefined })
+                    }}
+                    type="password"
+                    placeholder="50 caracteres alfanuméricos"
+                    className={validationErrors.adminToken ? 'border-destructive' : ''}
+                  />
+                  {validationErrors.adminToken && (
+                    <p className="text-xs text-destructive">{validationErrors.adminToken}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Nome da Instância (Identificação)</Label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="brfimoveis"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>ID da Instância (Lógica)</Label>
                   <Input
                     value={instanceNumber}
                     onChange={(e) => {
@@ -894,7 +869,7 @@ export default function ConfiguracoesCore() {
                       if (validationErrors.instance)
                         setValidationErrors({ ...validationErrors, instance: undefined })
                     }}
-                    placeholder="brf-principal"
+                    placeholder="BRF 1"
                     className={validationErrors.instance ? 'border-destructive' : ''}
                   />
                   {validationErrors.instance && (
@@ -903,45 +878,51 @@ export default function ConfiguracoesCore() {
                 </div>
               </div>
 
-              <div className="grid gap-6 md:grid-cols-2 pt-2">
-                <div className="space-y-2">
-                  <Label htmlFor="uazapiToken">Instance Token</Label>
-                  <Input
-                    id="uazapiToken"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    type="password"
-                    placeholder="Insira o Token da Instância"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="uazapiAdminToken">Admin Token</Label>
-                  <Input
-                    id="uazapiAdminToken"
-                    value={adminToken}
-                    onChange={(e) => {
-                      setAdminToken(e.target.value)
-                      if (validationErrors.adminToken)
-                        setValidationErrors({ ...validationErrors, adminToken: undefined })
-                    }}
-                    type="password"
-                    placeholder="Insira o Admin Token de 50 caracteres"
-                    className={validationErrors.adminToken ? 'border-destructive' : ''}
-                  />
-                  {validationErrors.adminToken && (
-                    <p className="text-xs text-destructive">{validationErrors.adminToken}</p>
-                  )}
-                </div>
-              </div>
-
               <div className="pt-2 flex gap-3">
                 <Button type="button" onClick={handleSave} disabled={isSaving}>
                   {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Salvar
+                  Salvar Configuração
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/50 shadow-sm mt-6">
+            <CardHeader>
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle>Instâncias Uazapi</CardTitle>
+                  <CardDescription>
+                    Limite de dispositivos (instâncias) que podem ser conectados: 2
+                  </CardDescription>
+                </div>
+                <div className="text-sm font-medium bg-muted px-3 py-1.5 rounded-md border text-muted-foreground">
+                  2 total de instâncias
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3 flex-wrap mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={restartInstance}
+                  disabled={isRestarting || !instanceNumber}
+                >
+                  {isRestarting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Power className="mr-2 h-4 w-4" />
+                  )}
+                  Reiniciar API
+                </Button>
+                <Button variant="outline" size="sm">
+                  <Globe2 className="mr-2 h-4 w-4" />
+                  Webhook Global
                 </Button>
                 <Button
-                  type="button"
-                  variant="secondary"
+                  variant="outline"
+                  size="sm"
                   onClick={() =>
                     checkConnection(
                       instanceNumber.trim(),
@@ -950,89 +931,106 @@ export default function ConfiguracoesCore() {
                       adminToken.trim(),
                     )
                   }
-                  disabled={status === 'checking' || isSaving || !instanceNumber}
+                  disabled={status === 'checking' || !instanceNumber}
                 >
-                  {status === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Verificar Conexão
+                  {status === 'checking' ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Atualizar
+                </Button>
+                <Button variant="outline" size="sm">
+                  <Wallet className="mr-2 h-4 w-4" />
+                  Financeiro
                 </Button>
               </div>
 
-              <div className="mt-8 border-t pt-6">
-                <h3 className="text-lg font-medium mb-4">Conexão do Dispositivo</h3>
-
-                {status === 'connected' ? (
-                  <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-emerald-50/50">
-                    <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-3" />
-                    <h4 className="text-xl font-semibold text-emerald-700">WhatsApp Conectado</h4>
-                    <p className="text-sm text-muted-foreground mt-1 mb-6 text-center max-w-sm">
-                      Sua instância <strong className="text-foreground">{instanceNumber}</strong>{' '}
-                      está ativa e pronta para enviar e receber mensagens.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Button variant="outline" onClick={restartInstance} disabled={isRestarting}>
-                        {isRestarting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Reiniciar
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={disconnectInstance}
-                        disabled={isDisconnecting}
-                      >
-                        {isDisconnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Desconectar
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/30">
-                    {qrCode ? (
-                      <div className="flex flex-col items-center space-y-4">
-                        <div className="bg-white p-4 rounded-xl shadow-sm">
-                          <img
-                            src={qrCode}
-                            alt="QR Code para conectar ao WhatsApp"
-                            className="w-64 h-64"
-                          />
-                        </div>
-                        <p className="text-sm text-muted-foreground text-center">
-                          Abra o WhatsApp no seu celular, vá em{' '}
-                          <strong>Aparelhos Conectados</strong> e escaneie o código acima.
-                        </p>
+              <div className="border rounded-md overflow-hidden">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-muted/50 text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Número</th>
+                      <th className="px-4 py-3 font-medium">Nome</th>
+                      <th className="px-4 py-3 font-medium">Instância</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    <tr className="bg-background">
+                      <td className="px-4 py-3 font-medium">554891828050</td>
+                      <td className="px-4 py-3 text-muted-foreground">{name || 'brfimoveis'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {instanceNumber || 'BRF 1'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {status === 'connected' ? (
+                          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-700">
+                            Connected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-destructive/10 text-destructive">
+                            Disconnected
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
                         <Button
-                          variant="outline"
+                          variant="ghost"
+                          size="sm"
                           onClick={generateQrCode}
-                          disabled={isGeneratingQr}
+                          disabled={isGeneratingQr || status === 'connected'}
                         >
-                          {isGeneratingQr ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : null}
-                          Atualizar QR Code
+                          {isGeneratingQr && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+                          QR Code
                         </Button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center space-y-4 text-center">
-                        <div className="h-24 w-24 rounded-full bg-muted flex items-center justify-center mb-2">
-                          <MessageSquare className="h-10 w-10 text-muted-foreground/50" />
-                        </div>
-                        <h4 className="text-lg font-medium">Instância Desconectada</h4>
-                        <p className="text-sm text-muted-foreground max-w-md">
-                          Gere um novo QR Code para conectar seu número de WhatsApp e ativar os
-                          recursos de IA.
-                        </p>
                         <Button
-                          onClick={generateQrCode}
-                          disabled={isGeneratingQr || !instanceNumber || !domain}
+                          variant="ghost"
+                          size="sm"
+                          onClick={disconnectInstance}
+                          disabled={isDisconnecting || status === 'disconnected'}
+                          className="text-destructive hover:text-destructive/90 hover:bg-destructive/10 ml-2"
                         >
-                          {isGeneratingQr ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : null}
-                          Gerar QR Code
+                          {isDisconnecting && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+                          Desconectar
                         </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      </td>
+                    </tr>
+                    <tr className="bg-background opacity-60">
+                      <td className="px-4 py-3 font-medium">5548992098050</td>
+                      <td className="px-4 py-3 text-muted-foreground">brfimoveis_2</td>
+                      <td className="px-4 py-3 text-muted-foreground">zRuJNw</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-destructive/10 text-destructive">
+                          Disconnected
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button variant="ghost" size="sm" disabled>
+                          QR Code
+                        </Button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
+
+              {qrCode && (
+                <div className="mt-6 flex flex-col items-center p-6 border rounded-lg bg-muted/30">
+                  <p className="text-sm mb-4 font-medium text-center">
+                    Escaneie o QR Code abaixo com seu WhatsApp para conectar a instância{' '}
+                    <strong className="text-foreground">{instanceNumber}</strong>
+                  </p>
+                  <div className="bg-white p-4 rounded-xl shadow-sm">
+                    <img
+                      src={qrCode}
+                      alt="QR Code para conectar ao WhatsApp"
+                      className="w-56 h-56"
+                    />
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
