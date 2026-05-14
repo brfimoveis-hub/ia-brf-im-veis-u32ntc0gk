@@ -51,9 +51,28 @@ export function SettingsSocial() {
       })
       return
     }
+
+    if (!/^\d+$/.test(metaPixelId)) {
+      toast({
+        title: 'Pixel ID Inválido',
+        description: 'O Pixel ID deve conter apenas números.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!/^EAA[a-zA-Z0-9]+$/.test(metaCapiToken)) {
+      toast({
+        title: 'Token CAPI Inválido',
+        description: 'O token deve começar com "EAA" e ser alfanumérico.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsTestingCapi(true)
     try {
-      await pb.send('/backend/v1/meta-test-connection', {
+      await pb.send('/backend/v1/meta/test-capi', {
         method: 'POST',
         body: { pixelId: metaPixelId, capiToken: metaCapiToken },
       })
@@ -66,7 +85,8 @@ export function SettingsSocial() {
     } catch (error) {
       toast({
         title: 'Erro na conexão CAPI',
-        description: 'Verifique suas credenciais e tente novamente.',
+        description:
+          'Verifique suas credenciais e tente novamente. Certifique-se de que o Token e o Pixel ID são válidos.',
         variant: 'destructive',
       })
     } finally {
@@ -79,13 +99,21 @@ export function SettingsSocial() {
     setIsSaving(true)
     setFieldErrors({})
     try {
-      const updatedUser = await pb.collection('users').update(user.id, {
+      const isCapiChanged =
+        user.meta_pixel_id !== metaPixelId || user.meta_capi_token !== metaCapiToken
+      const payload: any = {
         website_url: websiteUrl,
         instagram_username: instagramUsername,
         youtube_url: youtubeUrl,
         meta_pixel_id: metaPixelId,
         meta_capi_token: metaCapiToken,
-      })
+      }
+
+      if (isCapiChanged) {
+        payload.meta_token_status = 'invalid'
+      }
+
+      const updatedUser = await pb.collection('users').update(user.id, payload)
       pb.authStore.save(pb.authStore.token, updatedUser)
       toast({
         title: 'Configurações salvas',
