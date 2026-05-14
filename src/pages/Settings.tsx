@@ -40,14 +40,15 @@ export default function Settings() {
   const [errorDetail, setErrorDetail] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [instanceNumber, setInstanceNumber] = useState('CcZPx1')
-  const [domain, setDomain] = useState('https://api.uazapi.com')
-  const [token, setToken] = useState('')
-  const [adminToken, setAdminToken] = useState('64582e1c-d189-4ea6-8c6c-61f652991b64')
+  const [connectedNumber, setConnectedNumber] = useState('554891828050')
+  const INSTANCE_ID = 'CcZPx1'
+  const [domain, setDomain] = useState('https://free.uazapi.com')
+  const [token, setToken] = useState('64582e1c-d189-4ea6-8c6c-61f652991b64')
+  const [adminToken, setAdminToken] = useState('c41be398-c7b7-4ba6-b70b-e61a36873e5c')
   const [isSaving, setIsSaving] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{
     domain?: string
-    instance?: string
+    connectedNumber?: string
     adminToken?: string
   }>({})
 
@@ -122,15 +123,15 @@ export default function Settings() {
       setName(user.name || '')
       setEmail(user.email || '')
 
-      const defaultDomain = 'https://api.uazapi.com'
+      const defaultDomain = 'https://free.uazapi.com'
       const defaultToken = '64582e1c-d189-4ea6-8c6c-61f652991b64'
       const defaultAdminToken = 'c41be398-c7b7-4ba6-b70b-e61a36873e5c'
-      const defaultInstance = 'CcZPx1'
+      const defaultNumber = '554891828050'
 
       setDomain(user.uazapi_domain || defaultDomain)
       setToken(user.uazapi_token || defaultToken)
       setAdminToken(user.uazapi_admin_token || defaultAdminToken)
-      setInstanceNumber(user.uazapi_instance_number || defaultInstance)
+      setConnectedNumber(user.uazapi_instance_number || defaultNumber)
 
       const generateQrCodeAuto = async (inst: string, dom: string, adminTok: string) => {
         setIsGeneratingQr(true)
@@ -147,7 +148,7 @@ export default function Settings() {
           const base64 = res.data?.qrcode?.base64 || res.data?.base64 || res.data?.code
           if (base64) {
             setQrCode(base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`)
-            startPolling(inst, dom, user.uazapi_token || '', adminTok)
+            startPolling(inst, dom, user.uazapi_token || defaultToken, adminTok)
           }
         } catch (e: any) {
           console.error('Auto QR code error', e)
@@ -161,17 +162,16 @@ export default function Settings() {
       } else if (user.uazapi_status === 'Desconectado') {
         setStatus('disconnected')
         setErrorDetail(user.uazapi_error || '')
-        const instanceToUse = user.uazapi_instance_number || defaultInstance
         const domainToUse = user.uazapi_domain || defaultDomain
         const adminTokToUse = user.uazapi_admin_token || defaultAdminToken
-        if (instanceToUse && domainToUse && adminTokToUse) {
-          generateQrCodeAuto(instanceToUse, domainToUse, adminTokToUse)
+        if (domainToUse && adminTokToUse) {
+          generateQrCodeAuto(INSTANCE_ID, domainToUse, adminTokToUse)
         }
-      } else if (user.uazapi_instance_number && user.uazapi_domain) {
+      } else if (user.uazapi_domain) {
         checkConnection(
-          user.uazapi_instance_number,
-          user.uazapi_domain,
-          user.uazapi_token || '',
+          INSTANCE_ID,
+          user.uazapi_domain || defaultDomain,
+          user.uazapi_token || defaultToken,
           user.uazapi_admin_token || defaultAdminToken,
         )
       } else {
@@ -221,7 +221,7 @@ export default function Settings() {
 
   // --- Uazapi Handlers ---
   const validateFields = () => {
-    const errors: { domain?: string; instance?: string; adminToken?: string } = {}
+    const errors: { domain?: string; connectedNumber?: string; adminToken?: string } = {}
 
     if (!domain) {
       errors.domain = 'O Domínio é obrigatório.'
@@ -231,8 +231,8 @@ export default function Settings() {
       errors.adminToken = 'O Admin Token é obrigatório.'
     }
 
-    if (!instanceNumber) {
-      errors.instance = 'O ID da Instância é obrigatório.'
+    if (!connectedNumber) {
+      errors.connectedNumber = 'O Número Conectado é obrigatório.'
     }
 
     setValidationErrors(errors)
@@ -303,7 +303,6 @@ export default function Settings() {
             const updatedUser = await pb.collection('users').update(user.id, {
               uazapi_status: 'Conectado',
               uazapi_error: '',
-              uazapi_instance_number: inst,
               uazapi_domain: dom,
               uazapi_token: tok,
               uazapi_admin_token: adminTok || '',
@@ -334,7 +333,7 @@ export default function Settings() {
       const res = await pb.send(`/backend/v1/uazapi/qrcode`, {
         method: 'POST',
         body: {
-          instance_name: instanceNumber.trim(),
+          instance_name: INSTANCE_ID,
           domain: fullDomain,
           admin_token: adminToken.trim(),
         },
@@ -345,7 +344,7 @@ export default function Settings() {
 
       if (base64) {
         setQrCode(base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`)
-        startPolling(instanceNumber.trim(), fullDomain, token.trim(), adminToken.trim())
+        startPolling(INSTANCE_ID, fullDomain, token.trim(), adminToken.trim())
         toast({
           title: 'QR Code gerado',
           description: pairing
@@ -368,7 +367,7 @@ export default function Settings() {
       const errStr = String(e.response?.error || e.response?.message || e.message)
 
       if (e.status === 404)
-        errMsg = `Instância não encontrada no Uazapi. Verifique se o nome ${instanceNumber} está correto.`
+        errMsg = `Instância não encontrada no Uazapi. Verifique se o nome ${INSTANCE_ID} está correto.`
       else if (e.status === 504)
         errMsg = 'Tempo esgotado ao contatar o Uazapi. O serviço pode estar offline.'
       else if (e.status === 401 || errStr.includes('Unauthorized')) {
@@ -400,7 +399,7 @@ export default function Settings() {
     setIsReconnecting(true)
     try {
       const payload = {
-        instance_name: instanceNumber.trim(),
+        instance_name: INSTANCE_ID,
         domain: domain.trim(),
         admin_token: adminToken.trim(),
       }
@@ -409,7 +408,7 @@ export default function Settings() {
         title: 'Conexão iniciada',
         description: 'O comando de conexão foi enviado ao Uazapi.',
       })
-      checkConnection(instanceNumber.trim(), domain.trim(), token.trim(), adminToken.trim())
+      checkConnection(INSTANCE_ID, domain.trim(), token.trim(), adminToken.trim())
     } catch (e: any) {
       let errMsg = e.message || 'Erro de comunicação.'
       const errStr = String(e.response?.error || e.response?.message || e.message)
@@ -440,13 +439,13 @@ export default function Settings() {
         .send(`/backend/v1/uazapi/disconnect`, {
           method: 'POST',
           body: {
-            instance_name: instanceNumber.trim(),
+            instance_name: INSTANCE_ID,
             domain: domain.trim(),
             admin_token: adminToken.trim(),
           },
         })
         .catch(() =>
-          pb.send(`/backend/v1/uazapi/disconnect/${instanceNumber.trim()}`, {
+          pb.send(`/backend/v1/uazapi/disconnect/${INSTANCE_ID}`, {
             method: 'DELETE',
             body: {
               domain: domain.trim(),
@@ -484,13 +483,13 @@ export default function Settings() {
         .send(`/backend/v1/uazapi/restart`, {
           method: 'POST',
           body: {
-            instance_name: instanceNumber.trim(),
+            instance_name: INSTANCE_ID,
             domain: domain.trim(),
             admin_token: adminToken.trim(),
           },
         })
         .catch(() =>
-          pb.send(`/backend/v1/uazapi/restart/${instanceNumber.trim()}`, {
+          pb.send(`/backend/v1/uazapi/restart/${INSTANCE_ID}`, {
             method: 'PUT',
             body: {
               domain: domain.trim(),
@@ -500,7 +499,7 @@ export default function Settings() {
         )
       toast({ title: 'Reiniciando', description: 'A instância está sendo reiniciada.' })
       setTimeout(() => {
-        checkConnection(instanceNumber.trim(), domain.trim(), token.trim(), adminToken.trim())
+        checkConnection(INSTANCE_ID, domain.trim(), token.trim(), adminToken.trim())
       }, 5000)
     } catch (e: any) {
       toast({
@@ -529,26 +528,26 @@ export default function Settings() {
       const cleanDomain = domain.trim()
       const cleanToken = token.trim()
       const cleanAdminToken = adminToken.trim()
-      const cleanInstanceNumber = instanceNumber.trim()
+      const cleanConnectedNumber = connectedNumber.trim()
 
       const payload: any = {
         name,
         uazapi_domain: cleanDomain,
         uazapi_token: cleanToken,
         uazapi_admin_token: cleanAdminToken,
-        uazapi_instance_number: cleanInstanceNumber,
+        uazapi_instance_number: cleanConnectedNumber,
       }
       if (email !== user.email) payload.email = email
 
       setDomain(cleanDomain)
       setToken(cleanToken)
       setAdminToken(cleanAdminToken)
-      setInstanceNumber(cleanInstanceNumber)
+      setConnectedNumber(cleanConnectedNumber)
 
       const updatedUser = await pb.collection('users').update(user.id, payload)
       pb.authStore.save(pb.authStore.token, updatedUser)
       toast({ title: 'Configurações salvas', description: 'Testando conexão...' })
-      await checkConnection(cleanInstanceNumber, cleanDomain, cleanToken, cleanAdminToken)
+      await checkConnection(INSTANCE_ID, cleanDomain, cleanToken, cleanAdminToken)
     } catch (e: any) {
       toast({ title: 'Erro', description: 'Não foi possível salvar.', variant: 'destructive' })
     } finally {
@@ -1103,42 +1102,6 @@ export default function Settings() {
               )}
 
               <div className="grid gap-6 md:grid-cols-2">
-                <div className="col-span-2 p-4 bg-muted/30 rounded-lg border flex flex-col gap-3">
-                  <Label>Instâncias Uazapi Disponíveis</Label>
-                  <div className="flex flex-wrap gap-3">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setInstanceNumber('rqqga0')
-                        setAdminToken('c41be398-c7b7-4ba6-b70b-e61a36873e5c')
-                        setToken('64582e1c-d189-4ea6-8c6c-61f652991b64')
-                        toast({
-                          title: 'Instância 1 Selecionada',
-                          description: 'Preenchido com rqqga0. Clique em Salvar Configuração.',
-                        })
-                      }}
-                    >
-                      Selecionar Instância 1 (rqqga0)
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setInstanceNumber('CcZPx1')
-                        setAdminToken('c41be398-c7b7-4ba6-b70b-e61a36873e5c')
-                        setToken('64582e1c-d189-4ea6-8c6c-61f652991b64')
-                        toast({
-                          title: 'Instância 2 Selecionada',
-                          description: 'Preenchido com CcZPx1. Clique em Salvar Configuração.',
-                        })
-                      }}
-                    >
-                      Selecionar Instância 2 (CcZPx1)
-                    </Button>
-                  </div>
-                </div>
-
                 <div className="space-y-2">
                   <Label>Server URL</Label>
                   <Input
@@ -1148,7 +1111,7 @@ export default function Settings() {
                       if (validationErrors.domain)
                         setValidationErrors({ ...validationErrors, domain: undefined })
                     }}
-                    placeholder="https://api.uazapi.com"
+                    placeholder="https://free.uazapi.com"
                     className={validationErrors.domain ? 'border-destructive' : ''}
                   />
                   {validationErrors.domain && (
@@ -1189,20 +1152,41 @@ export default function Settings() {
                     placeholder="Minha Instância"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label>Instance ID</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={INSTANCE_ID}
+                      readOnly
+                      className="bg-muted text-muted-foreground"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        navigator.clipboard.writeText(INSTANCE_ID)
+                        toast({ title: 'ID Copiado!' })
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
                 <div className="space-y-2 col-span-2 md:col-span-1">
-                  <Label>ID da Instância (Lógica)</Label>
+                  <Label>Número Conectado (Ex: 554891828050)</Label>
                   <Input
-                    value={instanceNumber}
+                    value={connectedNumber}
                     onChange={(e) => {
-                      setInstanceNumber(e.target.value)
-                      if (validationErrors.instance)
-                        setValidationErrors({ ...validationErrors, instance: undefined })
+                      setConnectedNumber(e.target.value)
+                      if (validationErrors.connectedNumber)
+                        setValidationErrors({ ...validationErrors, connectedNumber: undefined })
                     }}
-                    placeholder="CcZPx1 ou rqqga0"
-                    className={validationErrors.instance ? 'border-destructive' : ''}
+                    placeholder="554891828050"
+                    className={validationErrors.connectedNumber ? 'border-destructive' : ''}
                   />
-                  {validationErrors.instance && (
-                    <p className="text-xs text-destructive">{validationErrors.instance}</p>
+                  {validationErrors.connectedNumber && (
+                    <p className="text-xs text-destructive">{validationErrors.connectedNumber}</p>
                   )}
                 </div>
               </div>
@@ -1236,7 +1220,7 @@ export default function Settings() {
                   variant="outline"
                   size="sm"
                   onClick={connectInstance}
-                  disabled={isReconnecting || !instanceNumber}
+                  disabled={isReconnecting}
                 >
                   {isReconnecting ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1249,7 +1233,7 @@ export default function Settings() {
                   variant="outline"
                   size="sm"
                   onClick={restartInstance}
-                  disabled={isRestarting || !instanceNumber}
+                  disabled={isRestarting}
                 >
                   {isRestarting ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1262,12 +1246,7 @@ export default function Settings() {
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    checkConnection(
-                      instanceNumber.trim(),
-                      domain.trim(),
-                      token.trim(),
-                      adminToken.trim(),
-                    )
+                    checkConnection(INSTANCE_ID, domain.trim(), token.trim(), adminToken.trim())
                   }
                   disabled={status === 'checking'}
                 >
@@ -1276,7 +1255,7 @@ export default function Settings() {
                   ) : (
                     <RefreshCw className="mr-2 h-4 w-4" />
                   )}
-                  Refresh Status
+                  Test Connection
                 </Button>
                 <Button variant="outline" size="sm">
                   <Globe2 className="mr-2 h-4 w-4" />
@@ -1301,11 +1280,11 @@ export default function Settings() {
                   </thead>
                   <tbody className="divide-y">
                     <tr className="bg-background">
-                      <td className="px-4 py-3 font-medium">5548992098050</td>
-                      <td className="px-4 py-3 text-muted-foreground">{name || 'Instância'}</td>
+                      <td className="px-4 py-3 font-medium">{connectedNumber || '554891828050'}</td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {instanceNumber || 'Nenhuma'}
+                        {name || 'Instância Uazapi'}
                       </td>
+                      <td className="px-4 py-3 text-muted-foreground">{INSTANCE_ID}</td>
                       <td className="px-4 py-3">
                         {status === 'connected' ? (
                           <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-700">
@@ -1347,7 +1326,7 @@ export default function Settings() {
                 <div className="mt-6 flex flex-col items-center p-6 border rounded-lg bg-muted/30">
                   <p className="text-sm mb-4 font-medium text-center">
                     Escaneie o QR Code abaixo com seu WhatsApp para conectar a instância{' '}
-                    <strong className="text-foreground">{instanceNumber}</strong>
+                    <strong className="text-foreground">{INSTANCE_ID}</strong>
                   </p>
                   <div className="bg-white p-4 rounded-xl shadow-sm">
                     <img

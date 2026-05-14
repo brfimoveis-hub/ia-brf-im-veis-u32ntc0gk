@@ -120,7 +120,6 @@ const router = createBrowserRouter(
                 {
                   path: '/configuracoes',
                   element: <Settings />,
-                  id: 'settings',
                 },
                 {
                   path: '/configuracoes/*',
@@ -158,16 +157,6 @@ const App = () => {
       })
     }
     localStorage.removeItem('vite-plugin-react-router-cache')
-
-    // Hard cache invalidation for configuration route to prevent Index hijacking
-    const currentPath = window.location.pathname
-    if (
-      currentPath.includes('/configuracoes') &&
-      sessionStorage.getItem('reloaded_config_v2') !== 'true'
-    ) {
-      sessionStorage.setItem('reloaded_config_v2', 'true')
-      window.location.reload()
-    }
   }, [])
 
   return (

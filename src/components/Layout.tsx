@@ -385,7 +385,7 @@ export default function Layout() {
                 <span className="relative inline-flex rounded-full h-2 w-2 sm:h-2.5 sm:w-2.5 bg-primary"></span>
               </span>
               <span className="text-xs sm:text-sm font-semibold tracking-tight text-secondary">
-                {user?.uazapi_instance_number || 'CcZPx1'}
+                {user?.uazapi_instance_number || '554891828050'}
               </span>
             </div>
             <Avatar className="h-8 w-8 cursor-pointer ring-2 ring-transparent hover:ring-primary transition-all shadow-sm">
