@@ -295,7 +295,7 @@ export default function ConfiguracoesCore() {
     setQrCode(null)
     try {
       const fullDomain = domain.trim()
-      const res = await pb.send(`/backend/v1/uazapi/connect`, {
+      const res = await pb.send(`/backend/v1/uazapi/qrcode`, {
         method: 'POST',
         body: {
           instance_name: instanceNumber.trim(),
@@ -351,8 +351,16 @@ export default function ConfiguracoesCore() {
     }
   }
 
-  const reconnectUazapi = async () => {
+  const connectInstance = async () => {
     if (!user) return
+    if (!validateFields()) {
+      toast({
+        title: 'Dados inválidos',
+        description: 'Verifique as configurações antes de conectar.',
+        variant: 'destructive',
+      })
+      return
+    }
     setIsReconnecting(true)
     try {
       const payload = {
@@ -361,7 +369,10 @@ export default function ConfiguracoesCore() {
         admin_token: adminToken.trim(),
       }
       await pb.send('/backend/v1/uazapi/connect', { method: 'POST', body: payload })
-      toast({ title: 'Reconexão iniciada', description: 'O comando foi enviado ao Uazapi.' })
+      toast({
+        title: 'Conexão iniciada',
+        description: 'O comando de conexão foi enviado ao Uazapi.',
+      })
       checkConnection(instanceNumber.trim(), domain.trim(), token.trim(), adminToken.trim())
     } catch (e: any) {
       let errMsg = e.message || 'Erro de comunicação.'
@@ -369,7 +380,7 @@ export default function ConfiguracoesCore() {
       if (e.status === 401 || errStr.includes('Unauthorized')) {
         errMsg = 'Unauthorized: Verifique seu Admin Token e o Domain fornecido.'
       }
-      toast({ title: 'Erro ao Reconectar', description: errMsg, variant: 'destructive' })
+      toast({ title: 'Erro ao Conectar', description: errMsg, variant: 'destructive' })
       setErrorDetail(errMsg)
       setStatus('disconnected')
     } finally {
@@ -379,9 +390,34 @@ export default function ConfiguracoesCore() {
 
   const disconnectInstance = async () => {
     if (!user) return
+    if (!validateFields()) {
+      toast({
+        title: 'Dados inválidos',
+        description: 'Verifique as configurações antes de desconectar.',
+        variant: 'destructive',
+      })
+      return
+    }
     setIsDisconnecting(true)
     try {
-      await pb.send(`/backend/v1/uazapi/disconnect/${instanceNumber}`, { method: 'DELETE' })
+      await pb
+        .send(`/backend/v1/uazapi/disconnect`, {
+          method: 'POST',
+          body: {
+            instance_name: instanceNumber.trim(),
+            domain: domain.trim(),
+            admin_token: adminToken.trim(),
+          },
+        })
+        .catch(() =>
+          pb.send(`/backend/v1/uazapi/disconnect/${instanceNumber.trim()}`, {
+            method: 'DELETE',
+            body: {
+              domain: domain.trim(),
+              admin_token: adminToken.trim(),
+            },
+          }),
+        )
       setStatus('disconnected')
       setQrCode(null)
       toast({ title: 'Desconectado', description: 'A instância foi desconectada.' })
@@ -398,9 +434,34 @@ export default function ConfiguracoesCore() {
 
   const restartInstance = async () => {
     if (!user) return
+    if (!validateFields()) {
+      toast({
+        title: 'Dados inválidos',
+        description: 'Verifique as configurações antes de reiniciar.',
+        variant: 'destructive',
+      })
+      return
+    }
     setIsRestarting(true)
     try {
-      await pb.send(`/backend/v1/uazapi/restart/${instanceNumber}`, { method: 'PUT' })
+      await pb
+        .send(`/backend/v1/uazapi/restart`, {
+          method: 'POST',
+          body: {
+            instance_name: instanceNumber.trim(),
+            domain: domain.trim(),
+            admin_token: adminToken.trim(),
+          },
+        })
+        .catch(() =>
+          pb.send(`/backend/v1/uazapi/restart/${instanceNumber.trim()}`, {
+            method: 'PUT',
+            body: {
+              domain: domain.trim(),
+              admin_token: adminToken.trim(),
+            },
+          }),
+        )
       toast({ title: 'Reiniciando', description: 'A instância está sendo reiniciada.' })
       setTimeout(() => {
         checkConnection(instanceNumber.trim(), domain.trim(), token.trim(), adminToken.trim())
@@ -1074,6 +1135,19 @@ export default function ConfiguracoesCore() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={connectInstance}
+                  disabled={isReconnecting || !instanceNumber}
+                >
+                  {isReconnecting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Conectar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={restartInstance}
                   disabled={isRestarting || !instanceNumber}
                 >
@@ -1082,24 +1156,11 @@ export default function ConfiguracoesCore() {
                   ) : (
                     <Power className="mr-2 h-4 w-4" />
                   )}
-                  Reiniciar API
+                  Reiniciar Instância
                 </Button>
                 <Button variant="outline" size="sm">
                   <Globe2 className="mr-2 h-4 w-4" />
                   Webhook Global
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={reconnectUazapi}
-                  disabled={isReconnecting || !instanceNumber}
-                >
-                  {isReconnecting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Reconnect Instance
                 </Button>
                 <Button variant="outline" size="sm">
                   <Wallet className="mr-2 h-4 w-4" />
@@ -1144,7 +1205,7 @@ export default function ConfiguracoesCore() {
                           disabled={isGeneratingQr || status === 'connected'}
                         >
                           {isGeneratingQr && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
-                          QR Code
+                          Gerar QR Code
                         </Button>
                         <Button
                           variant="ghost"
