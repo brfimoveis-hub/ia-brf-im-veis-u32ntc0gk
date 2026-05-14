@@ -56,6 +56,7 @@ export default function ConfiguracoesCore() {
   const [isGeneratingQr, setIsGeneratingQr] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [isRestarting, setIsRestarting] = useState(false)
+  const [isReconnecting, setIsReconnecting] = useState(false)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
 
   // Meta States
@@ -75,7 +76,13 @@ export default function ConfiguracoesCore() {
     token?: string
   }>({})
 
+  // Meta CAPI States
   const [capiStatus, setCapiStatus] = useState<'connected' | 'disconnected'>('disconnected')
+  const [metaPixelId, setMetaPixelId] = useState('')
+  const [metaCapiToken, setMetaCapiToken] = useState('')
+  const [showCapiToken, setShowCapiToken] = useState(false)
+  const [isSavingCapi, setIsSavingCapi] = useState(false)
+  const [isTestingCapi, setIsTestingCapi] = useState(false)
 
   const initialized = useRef(false)
 
@@ -162,6 +169,9 @@ export default function ConfiguracoesCore() {
         setMetaStatus('idle')
       }
 
+      // Setup Meta CAPI
+      setMetaPixelId(user.meta_pixel_id || '')
+      setMetaCapiToken(user.meta_capi_token || '')
       setCapiStatus((user as any).meta_token_status === 'valid' ? 'connected' : 'disconnected')
 
       initialized.current = true
@@ -198,7 +208,7 @@ export default function ConfiguracoesCore() {
     setStatus('checking')
     setErrorDetail('')
     try {
-      const data = await pb.send(`/backend/v1/uazapi/v2/connect`, {
+      const data = await pb.send(`/backend/v1/uazapi/connect`, {
         method: 'POST',
         body: { instance_name: inst, domain: dom, admin_token: adminTok },
       })
@@ -225,8 +235,13 @@ export default function ConfiguracoesCore() {
     } catch (e: any) {
       setStatus('disconnected')
       let errMsg = e.message || 'Erro de comunicação.'
+      const errStr = String(e.response?.error || e.response?.message || e.message)
+
       if (e.status === 400 && e.response?.message) errMsg = e.response.message
       else if (e.status === 504) errMsg = 'Timeout. Verifique o Endpoint URL.'
+      else if (e.status === 401 || errStr.includes('Unauthorized')) {
+        errMsg = 'Unauthorized: Verifique seu Admin Token e o Domain fornecido.'
+      }
 
       setErrorDetail(errMsg)
       const updatedUser = await pb
@@ -240,7 +255,7 @@ export default function ConfiguracoesCore() {
     if (pollingRef.current) clearInterval(pollingRef.current)
     pollingRef.current = setInterval(async () => {
       try {
-        const data = await pb.send(`/backend/v1/uazapi/v2/connect`, {
+        const data = await pb.send(`/backend/v1/uazapi/connect`, {
           method: 'POST',
           body: { instance_name: inst, domain: dom, admin_token: adminTok },
         })
@@ -280,7 +295,7 @@ export default function ConfiguracoesCore() {
     setQrCode(null)
     try {
       const fullDomain = domain.trim()
-      const res = await pb.send(`/backend/v1/uazapi/v2/connect`, {
+      const res = await pb.send(`/backend/v1/uazapi/connect`, {
         method: 'POST',
         body: {
           instance_name: instanceNumber.trim(),
@@ -314,11 +329,15 @@ export default function ConfiguracoesCore() {
     } catch (e: any) {
       let errMsg =
         'Erro ao gerar QR Code. Verifique se o Uazapi está online e as credenciais estão corretas.'
+      const errStr = String(e.response?.error || e.response?.message || e.message)
+
       if (e.status === 404)
         errMsg = `Instância não encontrada no Uazapi. Verifique se o nome ${instanceNumber} está correto.`
       else if (e.status === 504)
         errMsg = 'Tempo esgotado ao contatar o Uazapi. O serviço pode estar offline.'
-      else if (e.response?.message) errMsg = e.response.message
+      else if (e.status === 401 || errStr.includes('Unauthorized')) {
+        errMsg = 'Unauthorized: Verifique seu Admin Token e o Domain fornecido.'
+      } else if (e.response?.message) errMsg = e.response.message
       else if (e.message) errMsg = e.message
 
       toast({
@@ -329,6 +348,32 @@ export default function ConfiguracoesCore() {
       setErrorDetail(errMsg)
     } finally {
       setIsGeneratingQr(false)
+    }
+  }
+
+  const reconnectUazapi = async () => {
+    if (!user) return
+    setIsReconnecting(true)
+    try {
+      const payload = {
+        instance_name: instanceNumber.trim(),
+        domain: domain.trim(),
+        admin_token: adminToken.trim(),
+      }
+      await pb.send('/backend/v1/uazapi/connect', { method: 'POST', body: payload })
+      toast({ title: 'Reconexão iniciada', description: 'O comando foi enviado ao Uazapi.' })
+      checkConnection(instanceNumber.trim(), domain.trim(), token.trim(), adminToken.trim())
+    } catch (e: any) {
+      let errMsg = e.message || 'Erro de comunicação.'
+      const errStr = String(e.response?.error || e.response?.message || e.message)
+      if (e.status === 401 || errStr.includes('Unauthorized')) {
+        errMsg = 'Unauthorized: Verifique seu Admin Token e o Domain fornecido.'
+      }
+      toast({ title: 'Erro ao Reconectar', description: errMsg, variant: 'destructive' })
+      setErrorDetail(errMsg)
+      setStatus('disconnected')
+    } finally {
+      setIsReconnecting(false)
     }
   }
 
@@ -492,6 +537,66 @@ export default function ConfiguracoesCore() {
     }
   }
 
+  // --- Meta CAPI Handlers ---
+  const handleSaveMetaCapi = async () => {
+    if (!user) return
+    setIsSavingCapi(true)
+    try {
+      const payload = {
+        meta_pixel_id: metaPixelId.trim(),
+        meta_capi_token: metaCapiToken.trim(),
+      }
+      const updatedUser = await pb.collection('users').update(user.id, payload)
+      pb.authStore.save(pb.authStore.token, updatedUser)
+      toast({
+        title: 'Meta CAPI Salvo',
+        description: 'As configurações de Pixel e Conversions API foram salvas.',
+      })
+    } catch (e: any) {
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível salvar as configurações do Meta CAPI.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingCapi(false)
+    }
+  }
+
+  const testMetaCapiConnection = async () => {
+    if (!user) return
+    setIsTestingCapi(true)
+    try {
+      await pb.send('/backend/v1/meta_capi_test', {
+        method: 'POST',
+        body: { pixel_id: metaPixelId.trim(), access_token: metaCapiToken.trim() },
+      })
+      setCapiStatus('connected')
+      const updatedUser = await pb
+        .collection('users')
+        .update(user.id, { meta_token_status: 'valid' })
+      pb.authStore.save(pb.authStore.token, updatedUser)
+      toast({ title: 'Meta CAPI Conectado', description: 'Teste de conexão bem-sucedido.' })
+    } catch (e: any) {
+      setCapiStatus('disconnected')
+      let errMsg = 'Erro na validação do CAPI.'
+      if (e.response?.message) errMsg = e.response.message
+      else if (e.message) errMsg = e.message
+
+      const updatedUser = await pb
+        .collection('users')
+        .update(user.id, { meta_token_status: 'invalid' })
+      pb.authStore.save(pb.authStore.token, updatedUser)
+      toast({
+        title: 'Erro de Conexão CAPI',
+        description: errMsg,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsTestingCapi(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-8">
       <div>
@@ -607,9 +712,10 @@ export default function ConfiguracoesCore() {
       </div>
 
       <Tabs defaultValue="meta" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 max-w-[1000px] overflow-x-auto">
-          <TabsTrigger value="meta">WhatsApp API Oficial (Meta)</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-6 max-w-[1200px] overflow-x-auto">
+          <TabsTrigger value="meta">WhatsApp (Meta)</TabsTrigger>
           <TabsTrigger value="uazapi">Uazapi (Legado)</TabsTrigger>
+          <TabsTrigger value="meta-capi">Meta CAPI</TabsTrigger>
           <TabsTrigger value="ai">IA BIA</TabsTrigger>
           <TabsTrigger value="google-ads">Google Ads</TabsTrigger>
           <TabsTrigger value="social">Web & Marketing</TabsTrigger>
@@ -797,6 +903,68 @@ export default function ConfiguracoesCore() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="meta-capi">
+          <Card className="border-border/50 shadow-sm mt-4">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                <CardTitle>Meta CAPI Configuration</CardTitle>
+              </div>
+              <CardDescription>
+                Configure o Pixel ID e o Token da Conversions API (CAPI).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Meta Pixel ID</Label>
+                  <Input
+                    value={metaPixelId}
+                    onChange={(e) => setMetaPixelId(e.target.value)}
+                    placeholder="Ex: 1029384756"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Conversions API Token</Label>
+                  <div className="relative">
+                    <Input
+                      type={showCapiToken ? 'text' : 'password'}
+                      value={metaCapiToken}
+                      onChange={(e) => setMetaCapiToken(e.target.value)}
+                      placeholder="EAAL..."
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3 py-2 text-muted-foreground hover:bg-transparent"
+                      onClick={() => setShowCapiToken(!showCapiToken)}
+                    >
+                      {showCapiToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-2 flex gap-3">
+                <Button type="button" onClick={handleSaveMetaCapi} disabled={isSavingCapi}>
+                  {isSavingCapi && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Salvar
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={testMetaCapiConnection}
+                  disabled={isTestingCapi || !metaPixelId || !metaCapiToken}
+                >
+                  {isTestingCapi && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Test Connection
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="uazapi">
           <Card className="border-border/50 shadow-sm mt-4">
             <CardHeader>
@@ -923,22 +1091,15 @@ export default function ConfiguracoesCore() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    checkConnection(
-                      instanceNumber.trim(),
-                      domain.trim(),
-                      token.trim(),
-                      adminToken.trim(),
-                    )
-                  }
-                  disabled={status === 'checking' || !instanceNumber}
+                  onClick={reconnectUazapi}
+                  disabled={isReconnecting || !instanceNumber}
                 >
-                  {status === 'checking' ? (
+                  {isReconnecting ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <RefreshCw className="mr-2 h-4 w-4" />
                   )}
-                  Atualizar
+                  Reconnect Instance
                 </Button>
                 <Button variant="outline" size="sm">
                   <Wallet className="mr-2 h-4 w-4" />
