@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
+import { useRealtime } from '@/hooks/use-realtime'
+import pb from '@/lib/pocketbase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Users, MessageSquare, Bot, Activity, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -6,6 +9,43 @@ import { Button } from '@/components/ui/button'
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const [customerCount, setCustomerCount] = useState(0)
+  const [cadenceCount, setCadenceCount] = useState(0)
+  const [iaInteractions, setIaInteractions] = useState(0)
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const customersRes = await pb.collection('customers').getList(1, 1, { fields: 'id' })
+        setCustomerCount(customersRes.totalItems)
+
+        const cadencesRes = await pb
+          .collection('cadences')
+          .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
+        setCadenceCount(cadencesRes.totalItems)
+
+        const iaRes = await pb.collection('leads').getList(1, 1, { fields: 'id' })
+        setIaInteractions(iaRes.totalItems)
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    if (user) {
+      fetchStats()
+    }
+  }, [user])
+
+  useRealtime('customers', (e) => {
+    if (e.action === 'create') setCustomerCount((prev) => prev + 1)
+    if (e.action === 'delete') setCustomerCount((prev) => Math.max(0, prev - 1))
+  })
+
+  useRealtime('cadences', () => {
+    pb.collection('cadences')
+      .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
+      .then((res) => setCadenceCount(res.totalItems))
+      .catch(console.error)
+  })
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-8">
@@ -23,7 +63,7 @@ export default function Dashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
+            <div className="text-2xl font-bold">{customerCount}</div>
             <p className="text-xs text-muted-foreground">Na base de dados</p>
           </CardContent>
         </Card>
@@ -33,7 +73,7 @@ export default function Dashboard() {
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
+            <div className="text-2xl font-bold">{cadenceCount}</div>
             <p className="text-xs text-muted-foreground">Ativas</p>
           </CardContent>
         </Card>
@@ -59,8 +99,8 @@ export default function Dashboard() {
             <Bot className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
-            <p className="text-xs text-muted-foreground">Total hoje</p>
+            <div className="text-2xl font-bold">{iaInteractions}</div>
+            <p className="text-xs text-muted-foreground">Leads Totais</p>
           </CardContent>
         </Card>
       </div>

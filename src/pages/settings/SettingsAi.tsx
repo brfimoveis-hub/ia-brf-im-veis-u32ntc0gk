@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useToast } from '@/hooks/use-toast'
+import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import {
   Loader2,
   Upload,
@@ -134,6 +135,7 @@ export function SettingsAi() {
   const [filesToRemove, setFilesToRemove] = useState<string[]>([])
 
   const [isSaving, setIsSaving] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
   const initialized = useRef(false)
@@ -262,6 +264,7 @@ export function SettingsAi() {
     }
 
     setIsSaving(true)
+    setFieldErrors({})
     try {
       const formData = new FormData()
       formData.append('ai_name', aiName)
@@ -337,9 +340,11 @@ export function SettingsAi() {
       })
     } catch (err) {
       console.error(err)
+      const errors = extractFieldErrors(err)
+      setFieldErrors(errors)
       toast({
         title: 'Erro',
-        description: 'Erro ao salvar as configurações da IA',
+        description: 'Verifique os erros nos campos e tente novamente.',
         variant: 'destructive',
       })
     } finally {
@@ -375,9 +380,12 @@ export function SettingsAi() {
               value={aiInstructions}
               onChange={setAiInstructions}
               placeholder="Ex: Somos a construtora BRF. Nossos empreendimentos possuem alto padrão..."
-              className="min-h-[180px] resize-y"
+              className={`min-h-[180px] resize-y ${fieldErrors.ai_instructions ? 'border-destructive' : ''}`}
               maxLength={MAX_INSTRUCTIONS_LENGTH}
             />
+            {fieldErrors.ai_instructions && (
+              <p className="text-xs text-destructive">{fieldErrors.ai_instructions}</p>
+            )}
           </div>
 
           <div className="space-y-3 pt-4 border-t">
@@ -541,7 +549,11 @@ export function SettingsAi() {
                     value={aiName}
                     onChange={(e) => handleFieldChange('name', e.target.value)}
                     placeholder="Ex: BIA Executiva"
+                    className={fieldErrors.ai_name ? 'border-destructive' : ''}
                   />
+                  {fieldErrors.ai_name && (
+                    <p className="text-xs text-destructive">{fieldErrors.ai_name}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="aiVoiceId">ID da Voz (Síntese)</Label>
@@ -550,7 +562,11 @@ export function SettingsAi() {
                     value={aiVoiceId}
                     onChange={(e) => handleFieldChange('voice_id', e.target.value)}
                     placeholder="Ex: pJ23x..."
+                    className={fieldErrors.ai_voice_id ? 'border-destructive' : ''}
                   />
+                  {fieldErrors.ai_voice_id && (
+                    <p className="text-xs text-destructive">{fieldErrors.ai_voice_id}</p>
+                  )}
                 </div>
               </div>
 
@@ -561,9 +577,12 @@ export function SettingsAi() {
                   value={biaInstructions}
                   onChange={(val) => handleFieldChange('bia_instructions', val)}
                   placeholder="Instruções de tom de voz e comportamento da IA..."
-                  className="min-h-[120px] resize-y"
+                  className={`min-h-[120px] resize-y ${fieldErrors.bia_instructions ? 'border-destructive' : ''}`}
                   maxLength={MAX_INSTRUCTIONS_LENGTH}
                 />
+                {fieldErrors.bia_instructions && (
+                  <p className="text-xs text-destructive">{fieldErrors.bia_instructions}</p>
+                )}
               </div>
             </div>
           </div>

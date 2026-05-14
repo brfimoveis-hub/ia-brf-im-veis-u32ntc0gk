@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
+import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import { Loader2, Globe, Instagram, Youtube, CheckCircle2, Target } from 'lucide-react'
 
 export function SettingsSocial() {
@@ -25,6 +26,7 @@ export function SettingsSocial() {
   const [metaPixelId, setMetaPixelId] = useState('')
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const initialized = useRef(false)
 
   useEffect(() => {
@@ -41,6 +43,7 @@ export function SettingsSocial() {
   const handleSave = async () => {
     if (!user) return
     setIsSaving(true)
+    setFieldErrors({})
     try {
       const updatedUser = await pb.collection('users').update(user.id, {
         website_url: websiteUrl,
@@ -55,9 +58,11 @@ export function SettingsSocial() {
         description: 'Suas conexões e configurações de marketing foram atualizadas.',
       })
     } catch (error) {
+      const errors = extractFieldErrors(error)
+      setFieldErrors(errors)
       toast({
         title: 'Erro',
-        description: 'Não foi possível salvar as configurações.',
+        description: 'Verifique os erros nos campos e tente novamente.',
         variant: 'destructive',
       })
     } finally {
@@ -88,7 +93,11 @@ export function SettingsSocial() {
                 value={websiteUrl}
                 onChange={(e) => setWebsiteUrl(e.target.value)}
                 placeholder="https://www.brfimoveis.com.br"
+                className={fieldErrors.website_url ? 'border-destructive' : ''}
               />
+              {fieldErrors.website_url && (
+                <p className="text-xs text-destructive">{fieldErrors.website_url}</p>
+              )}
               <p className="text-xs text-muted-foreground">
                 A IA poderá ler o conteúdo público deste site.
               </p>
@@ -103,12 +112,15 @@ export function SettingsSocial() {
                   @
                 </div>
                 <Input
-                  className="rounded-l-none"
+                  className={`rounded-l-none ${fieldErrors.instagram_username ? 'border-destructive' : ''}`}
                   value={instagramUsername}
                   onChange={(e) => setInstagramUsername(e.target.value)}
                   placeholder="brfimoveis"
                 />
               </div>
+              {fieldErrors.instagram_username && (
+                <p className="text-xs text-destructive">{fieldErrors.instagram_username}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -119,7 +131,11 @@ export function SettingsSocial() {
                 value={youtubeUrl}
                 onChange={(e) => setYoutubeUrl(e.target.value)}
                 placeholder="https://youtube.com/@brfimoveis"
+                className={fieldErrors.youtube_url ? 'border-destructive' : ''}
               />
+              {fieldErrors.youtube_url && (
+                <p className="text-xs text-destructive">{fieldErrors.youtube_url}</p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -143,7 +159,11 @@ export function SettingsSocial() {
                 value={metaPixelId}
                 onChange={(e) => setMetaPixelId(e.target.value)}
                 placeholder="Ex: 123456789012345"
+                className={fieldErrors.meta_pixel_id ? 'border-destructive' : ''}
               />
+              {fieldErrors.meta_pixel_id && (
+                <p className="text-xs text-destructive">{fieldErrors.meta_pixel_id}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -153,7 +173,11 @@ export function SettingsSocial() {
                 value={metaCapiToken}
                 onChange={(e) => setMetaCapiToken(e.target.value)}
                 placeholder="Ex: EAAB..."
+                className={fieldErrors.meta_capi_token ? 'border-destructive' : ''}
               />
+              {fieldErrors.meta_capi_token && (
+                <p className="text-xs text-destructive">{fieldErrors.meta_capi_token}</p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Token de acesso gerado no Gerenciador de Eventos da Meta.
               </p>
