@@ -202,15 +202,10 @@ export default function ConfiguracoesCore() {
     try {
       const fullDomain = `https://${dom}.uazapi.com`
 
-      let data
-      try {
-        data = await pb.send(`/backend/v1/uazapi/v2/connect`, {
-          method: 'POST',
-          body: { instance_name: inst, domain: fullDomain, admin_token: adminTok },
-        })
-      } catch (err: any) {
-        throw err
-      }
+      const data = await pb.send(`/backend/v1/uazapi/v2/connect`, {
+        method: 'POST',
+        body: { instance_name: inst, domain: fullDomain, admin_token: adminTok },
+      })
 
       if (data?.status === 'connected') {
         setStatus('connected')
