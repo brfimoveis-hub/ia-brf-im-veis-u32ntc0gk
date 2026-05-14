@@ -22,6 +22,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Target,
 } from 'lucide-react'
 import { SettingsAi } from './settings/SettingsAi'
 import { SettingsSocial } from './settings/SettingsSocial'
@@ -70,6 +71,8 @@ export default function ConfiguracoesCore() {
     token?: string
   }>({})
 
+  const [capiStatus, setCapiStatus] = useState<'connected' | 'disconnected'>('disconnected')
+
   const initialized = useRef(false)
 
   useRealtime('users', (e) => {
@@ -92,6 +95,12 @@ export default function ConfiguracoesCore() {
         if (e.record.uazapi_error) {
           setMetaErrorDetail(e.record.uazapi_error)
         }
+      }
+
+      if (e.record.meta_token_status === 'valid') {
+        setCapiStatus('connected')
+      } else {
+        setCapiStatus('disconnected')
       }
     }
   })
@@ -165,6 +174,8 @@ export default function ConfiguracoesCore() {
       } else {
         setMetaStatus('idle')
       }
+
+      setCapiStatus((user as any).meta_token_status === 'valid' ? 'connected' : 'disconnected')
 
       initialized.current = true
     }
@@ -512,7 +523,7 @@ export default function ConfiguracoesCore() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">WhatsApp Status</CardTitle>
@@ -591,6 +602,28 @@ export default function ConfiguracoesCore() {
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
               <span className="text-sm font-medium">#leads-sc</span>
             </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Meta CAPI</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 mt-1">
+              {capiStatus === 'connected' ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  <span className="text-sm font-medium text-emerald-600">Conectado</span>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  <span className="text-sm font-medium text-destructive">Desconectado</span>
+                </>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Conversions API</p>
           </CardContent>
         </Card>
       </div>

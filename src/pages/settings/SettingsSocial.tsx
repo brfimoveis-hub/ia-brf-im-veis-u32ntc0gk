@@ -26,6 +26,7 @@ export function SettingsSocial() {
   const [metaPixelId, setMetaPixelId] = useState('')
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [isTestingCapi, setIsTestingCapi] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const initialized = useRef(false)
 
@@ -39,6 +40,39 @@ export function SettingsSocial() {
       initialized.current = true
     }
   }, [user])
+
+  const handleTestCapi = async () => {
+    if (!user) return
+    if (!metaPixelId || !metaCapiToken) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Preencha o Pixel ID e o Token da CAPI primeiro.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setIsTestingCapi(true)
+    try {
+      await pb.send('/backend/v1/meta-test-connection', {
+        method: 'POST',
+        body: { pixelId: metaPixelId, capiToken: metaCapiToken },
+      })
+      const updatedUser = await pb.collection('users').getOne(user.id)
+      pb.authStore.save(pb.authStore.token, updatedUser)
+      toast({
+        title: 'Conexão CAPI estabelecida',
+        description: 'Sua integração Meta CAPI foi validada com sucesso!',
+      })
+    } catch (error) {
+      toast({
+        title: 'Erro na conexão CAPI',
+        description: 'Verifique suas credenciais e tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsTestingCapi(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!user) return
@@ -182,10 +216,31 @@ export function SettingsSocial() {
                 Token de acesso gerado no Gerenciador de Eventos da Meta.
               </p>
             </div>
+            <div className="flex items-center gap-2 pt-2">
+              <div
+                className={`px-2 py-1 rounded-md border text-xs font-medium ${(user as any)?.meta_token_status === 'valid' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-destructive/10 text-destructive border-destructive/20'}`}
+              >
+                Status:{' '}
+                {(user as any)?.meta_token_status === 'valid' ? 'Conectado' : 'Desconectado'}
+              </div>
+            </div>
           </div>
         </CardContent>
-        <CardFooter className="bg-muted/30 pt-4 flex justify-end">
-          <Button type="button" onClick={handleSave} disabled={isSaving}>
+        <CardFooter className="bg-muted/30 pt-4 flex justify-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleTestCapi}
+            disabled={isTestingCapi || isSaving}
+          >
+            {isTestingCapi ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Target className="mr-2 h-4 w-4" />
+            )}
+            Testar Conexão CAPI
+          </Button>
+          <Button type="button" onClick={handleSave} disabled={isSaving || isTestingCapi}>
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
