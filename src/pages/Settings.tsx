@@ -43,7 +43,7 @@ export default function ConfiguracoesCore() {
   const [instanceNumber, setInstanceNumber] = useState('')
   const [domain, setDomain] = useState('')
   const [token, setToken] = useState('')
-  const [adminToken, setAdminToken] = useState('')
+  const [adminToken, setAdminToken] = useState('SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
   const [isSaving, setIsSaving] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{
     domain?: string
@@ -116,7 +116,7 @@ export default function ConfiguracoesCore() {
       setEmail(user.email || 'brfimoveis@gmail.com')
       setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
       setToken(user.uazapi_token || '')
-      setAdminToken(user.uazapi_admin_token || '')
+      setAdminToken(user.uazapi_admin_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
       setInstanceNumber(user.uazapi_instance_number || 'BRF 1')
 
       if (user.uazapi_status === 'Conectado') {
