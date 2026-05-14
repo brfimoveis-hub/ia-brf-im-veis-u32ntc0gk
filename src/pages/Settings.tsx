@@ -40,9 +40,11 @@ export default function ConfiguracoesCore() {
   const [token, setToken] = useState('')
   const [adminToken, setAdminToken] = useState('')
   const [isSaving, setIsSaving] = useState(false)
-  const [validationErrors, setValidationErrors] = useState<{ domain?: string; instance?: string }>(
-    {},
-  )
+  const [validationErrors, setValidationErrors] = useState<{
+    domain?: string
+    instance?: string
+    adminToken?: string
+  }>({})
 
   // QR Code States
   const [qrCode, setQrCode] = useState<string | null>(null)
@@ -99,10 +101,19 @@ export default function ConfiguracoesCore() {
       // Setup Uazapi
       setName(user.name || 'BRF Imóveis')
       setEmail(user.email || 'brfimoveis@gmail.com')
-      setDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
+      let defaultDomain = user.uazapi_domain || 'iabrfimveis'
+      if (defaultDomain.includes('://')) {
+        try {
+          const url = new URL(defaultDomain)
+          defaultDomain = url.hostname.split('.')[0] || 'iabrfimveis'
+        } catch {
+          /* intentionally ignored */
+        }
+      }
+      setDomain(defaultDomain)
       setToken(user.uazapi_token || '')
       setAdminToken(user.uazapi_admin_token || '')
-      setInstanceNumber(user.uazapi_instance_number || '554892098050')
+      setInstanceNumber(user.uazapi_instance_number || 'brf-principal')
 
       if (user.uazapi_status === 'Conectado') {
         setStatus('connected')
@@ -110,9 +121,17 @@ export default function ConfiguracoesCore() {
         setStatus('disconnected')
         setErrorDetail(user.uazapi_error || '')
       } else if (user.uazapi_instance_number && user.uazapi_domain) {
+        let savedDomain = user.uazapi_domain
+        if (savedDomain.includes('://')) {
+          try {
+            savedDomain = new URL(savedDomain).hostname.split('.')[0]
+          } catch {
+            /* intentionally ignored */
+          }
+        }
         checkConnection(
           user.uazapi_instance_number,
-          user.uazapi_domain,
+          savedDomain,
           user.uazapi_token || '',
           user.uazapi_admin_token || '',
         )
@@ -158,24 +177,20 @@ export default function ConfiguracoesCore() {
 
   // --- Uazapi Handlers ---
   const validateFields = () => {
-    const errors: { domain?: string; instance?: string } = {}
-    const cleanInstance = instanceNumber.replace(/\D/g, '')
-    if (!cleanInstance || cleanInstance.trim() === '') {
-      errors.instance = 'A Instância WhatsApp é obrigatória.'
+    const errors: { domain?: string; instance?: string; adminToken?: string } = {}
+
+    if (!instanceNumber || !/^[a-zA-Z0-9-]+$/.test(instanceNumber)) {
+      errors.instance = 'Apenas caracteres alfanuméricos e hífens.'
     }
-    if (!domain || domain.trim() === '') {
-      errors.domain = 'O Endpoint Uazapi é obrigatório.'
-    } else {
-      try {
-        let testUrl = domain
-        if (!domain.startsWith('http://') && !domain.startsWith('https://')) {
-          testUrl = 'https://' + domain
-        }
-        new URL(testUrl)
-      } catch (_) {
-        errors.domain = 'Formato de URL inválido.'
-      }
+
+    if (!domain || !/^[a-zA-Z0-9-]+$/.test(domain)) {
+      errors.domain = 'Apenas caracteres alfanuméricos e hífens.'
     }
+
+    if (!adminToken || adminToken.length !== 50 || !/^[a-zA-Z0-9]+$/.test(adminToken)) {
+      errors.adminToken = 'Exatamente 50 caracteres alfanuméricos.'
+    }
+
     setValidationErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -185,33 +200,19 @@ export default function ConfiguracoesCore() {
     setStatus('checking')
     setErrorDetail('')
     try {
-      // Clear trailing slashes from domain
-      const cleanDom = dom.endsWith('/') ? dom.slice(0, -1) : dom
+      const fullDomain = `https://${dom}.uazapi.com`
 
       let data
       try {
-        data = await pb.send(`/backend/v1/uazapi/test-connection`, {
+        data = await pb.send(`/backend/v1/uazapi/v2/connect`, {
           method: 'POST',
-          body: { instance: inst, domain: cleanDom, token: tok, admin_token: adminTok },
+          body: { instance_name: inst, domain: fullDomain, admin_token: adminTok },
         })
       } catch (err: any) {
-        // Fallback to status hook
-        data = await pb.send(`/backend/v1/uazapi/status/${inst}`, { method: 'GET' })
-      }
-      if (data?.error) throw new Error(data.error)
-
-      try {
-        await pb.send(`/backend/v1/uazapi/diagnostics/${inst}`, { method: 'GET' })
-      } catch (_) {
-        // Silently ignore diagnostics errors
+        throw err
       }
 
-      if (
-        data?.instance?.state === 'open' ||
-        data?.success ||
-        data?.instance?.state === 'connecting' ||
-        data?.state === 'open'
-      ) {
+      if (data?.status === 'connected') {
         setStatus('connected')
         const updatedUser = await pb
           .collection('users')
@@ -219,21 +220,22 @@ export default function ConfiguracoesCore() {
         pb.authStore.save(pb.authStore.token, updatedUser)
       } else {
         setStatus('disconnected')
-        setErrorDetail('Instância desconectada.')
+        const base64 = data?.data?.qrcode?.base64 || data?.data?.base64 || data?.data?.code
+        if (base64) {
+          setQrCode(base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`)
+          startPolling(inst, dom, tok, adminTok)
+        }
         const updatedUser = await pb.collection('users').update(user.id, {
           uazapi_status: 'Desconectado',
-          uazapi_error: 'Instância desconectada.',
+          uazapi_error: 'Instância desconectada. Leia o QR Code.',
         })
         pb.authStore.save(pb.authStore.token, updatedUser)
       }
     } catch (e: any) {
       setStatus('disconnected')
       let errMsg = e.message || 'Erro de comunicação.'
-      if (e.status === 400 && e.response?.error) errMsg = e.response.error
-      else if (e.status === 404)
-        errMsg = `Instância não encontrada no Uazapi. Verifique se o número ${inst} corresponde exatamente ao registrado no painel da Uazapi.`
+      if (e.status === 400 && e.response?.message) errMsg = e.response.message
       else if (e.status === 504) errMsg = 'Timeout. Verifique o Endpoint URL.'
-      else if (e.response?.message) errMsg = e.response.message
 
       setErrorDetail(errMsg)
       const updatedUser = await pb
@@ -247,11 +249,12 @@ export default function ConfiguracoesCore() {
     if (pollingRef.current) clearInterval(pollingRef.current)
     pollingRef.current = setInterval(async () => {
       try {
-        const data = await pb.send(`/backend/v1/uazapi/test-connection`, {
+        const fullDomain = `https://${dom}.uazapi.com`
+        const data = await pb.send(`/backend/v1/uazapi/v2/connect`, {
           method: 'POST',
-          body: { instance: inst, domain: dom, token: tok, admin_token: adminTok },
+          body: { instance_name: inst, domain: fullDomain, admin_token: adminTok },
         })
-        if (data?.instance?.state === 'open' || data?.success) {
+        if (data?.status === 'connected') {
           setStatus('connected')
           setQrCode(null)
           if (pollingRef.current) clearInterval(pollingRef.current)
@@ -260,7 +263,7 @@ export default function ConfiguracoesCore() {
               uazapi_status: 'Conectado',
               uazapi_error: '',
               uazapi_instance_number: inst,
-              uazapi_domain: dom,
+              uazapi_domain: fullDomain,
               uazapi_token: tok,
               uazapi_admin_token: adminTok || '',
             })
@@ -278,7 +281,7 @@ export default function ConfiguracoesCore() {
     if (!validateFields()) {
       toast({
         title: 'Dados inválidos',
-        description: 'Preencha a instância e o domínio.',
+        description: 'Verifique os campos.',
         variant: 'destructive',
       })
       return
@@ -286,19 +289,29 @@ export default function ConfiguracoesCore() {
     setIsGeneratingQr(true)
     setQrCode(null)
     try {
-      const res = await pb.send(`/backend/v1/uazapi/qrcode/${instanceNumber}`, { method: 'GET' })
-      if (res.base64) {
-        setQrCode(
-          res.base64.startsWith('data:') ? res.base64 : `data:image/png;base64,${res.base64}`,
-        )
-        startPolling(
-          instanceNumber.replace(/\D/g, ''),
-          domain.trim(),
-          token.trim(),
-          adminToken.trim(),
-        )
-        toast({ title: 'QR Code gerado', description: 'Escaneie o QR Code com seu WhatsApp.' })
-      } else if (res.instance?.state === 'open') {
+      const fullDomain = `https://${domain.trim()}.uazapi.com`
+      const res = await pb.send(`/backend/v1/uazapi/v2/connect`, {
+        method: 'POST',
+        body: {
+          instance_name: instanceNumber.trim(),
+          domain: fullDomain,
+          admin_token: adminToken.trim(),
+        },
+      })
+
+      const base64 = res.data?.qrcode?.base64 || res.data?.base64 || res.data?.code
+      const pairing = res.data?.pairingCode || res.data?.pairing_code
+
+      if (base64) {
+        setQrCode(base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`)
+        startPolling(instanceNumber.trim(), domain.trim(), token.trim(), adminToken.trim())
+        toast({
+          title: 'QR Code gerado',
+          description: pairing
+            ? `Código de pareamento: ${pairing}`
+            : 'Escaneie o QR Code com seu WhatsApp.',
+        })
+      } else if (res.status === 'connected') {
         setStatus('connected')
         toast({ title: 'Já conectado', description: 'A instância já está conectada.' })
       } else {
@@ -312,10 +325,11 @@ export default function ConfiguracoesCore() {
       let errMsg =
         'Erro ao gerar QR Code. Verifique se o Uazapi está online e as credenciais estão corretas.'
       if (e.status === 404)
-        errMsg = `Instância não encontrada no Uazapi. Verifique se o número ${instanceNumber} está correto no painel da Uazapi.`
+        errMsg = `Instância não encontrada no Uazapi. Verifique se o nome ${instanceNumber} está correto.`
       else if (e.status === 504)
         errMsg = 'Tempo esgotado ao contatar o Uazapi. O serviço pode estar offline.'
       else if (e.response?.message) errMsg = e.response.message
+      else if (e.message) errMsg = e.message
 
       toast({
         title: 'Erro no Uazapi',
@@ -388,11 +402,12 @@ export default function ConfiguracoesCore() {
       const cleanDomain = domain.trim()
       const cleanToken = token.trim()
       const cleanAdminToken = adminToken.trim()
-      const cleanInstanceNumber = instanceNumber.replace(/\D/g, '')
+      const cleanInstanceNumber = instanceNumber.trim()
+      const fullDomain = `https://${cleanDomain}.uazapi.com`
 
       const payload: any = {
         name,
-        uazapi_domain: cleanDomain,
+        uazapi_domain: fullDomain,
         uazapi_token: cleanToken,
         uazapi_admin_token: cleanAdminToken,
         uazapi_instance_number: cleanInstanceNumber,
@@ -821,33 +836,37 @@ export default function ConfiguracoesCore() {
 
               <div className="grid gap-6 md:grid-cols-2 pt-2">
                 <div className="space-y-2">
-                  <Label>Endpoint Uazapi (Domain)</Label>
-                  <Input
-                    type="url"
-                    value={domain}
-                    onChange={(e) => {
-                      setDomain(e.target.value)
-                      if (validationErrors.domain)
-                        setValidationErrors({ ...validationErrors, domain: undefined })
-                    }}
-                    placeholder="https://sua-instancia.uazapi.com"
-                    className={validationErrors.domain ? 'border-destructive' : ''}
-                  />
+                  <Label>Endpoint Uazapi (Subdomain)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="text"
+                      value={domain}
+                      onChange={(e) => {
+                        setDomain(e.target.value)
+                        if (validationErrors.domain)
+                          setValidationErrors({ ...validationErrors, domain: undefined })
+                      }}
+                      placeholder="minha-instancia"
+                      className={validationErrors.domain ? 'border-destructive' : ''}
+                    />
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
+                      .uazapi.com
+                    </span>
+                  </div>
                   {validationErrors.domain && (
                     <p className="text-xs text-destructive">{validationErrors.domain}</p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Instância WhatsApp (Número)</Label>
+                  <Label>Nome da Instância (Lógica)</Label>
                   <Input
                     value={instanceNumber}
                     onChange={(e) => {
-                      const cleanVal = e.target.value.replace(/\D/g, '')
-                      setInstanceNumber(cleanVal)
+                      setInstanceNumber(e.target.value)
                       if (validationErrors.instance)
                         setValidationErrors({ ...validationErrors, instance: undefined })
                     }}
-                    placeholder="554892098050"
+                    placeholder="brf-principal"
                     className={validationErrors.instance ? 'border-destructive' : ''}
                   />
                   {validationErrors.instance && (
@@ -872,10 +891,18 @@ export default function ConfiguracoesCore() {
                   <Input
                     id="uazapiAdminToken"
                     value={adminToken}
-                    onChange={(e) => setAdminToken(e.target.value)}
+                    onChange={(e) => {
+                      setAdminToken(e.target.value)
+                      if (validationErrors.adminToken)
+                        setValidationErrors({ ...validationErrors, adminToken: undefined })
+                    }}
                     type="password"
-                    placeholder="Insira o Admin Token"
+                    placeholder="Insira o Admin Token de 50 caracteres"
+                    className={validationErrors.adminToken ? 'border-destructive' : ''}
                   />
+                  {validationErrors.adminToken && (
+                    <p className="text-xs text-destructive">{validationErrors.adminToken}</p>
+                  )}
                 </div>
               </div>
 
@@ -889,7 +916,7 @@ export default function ConfiguracoesCore() {
                   variant="secondary"
                   onClick={() =>
                     checkConnection(
-                      instanceNumber.replace(/\D/g, ''),
+                      instanceNumber.trim(),
                       domain.trim(),
                       token.trim(),
                       adminToken.trim(),

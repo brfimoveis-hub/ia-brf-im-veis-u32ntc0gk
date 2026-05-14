@@ -35,9 +35,11 @@ export default function Dashboard() {
     }
   }, [user])
 
-  useRealtime('customers', (e) => {
-    if (e.action === 'create') setCustomerCount((prev) => prev + 1)
-    if (e.action === 'delete') setCustomerCount((prev) => Math.max(0, prev - 1))
+  useRealtime('customers', () => {
+    pb.collection('customers')
+      .getList(1, 1, { fields: 'id' })
+      .then((res) => setCustomerCount(res.totalItems))
+      .catch(console.error)
   })
 
   useRealtime('cadences', () => {
