@@ -120,6 +120,7 @@ const router = createBrowserRouter(
                 {
                   path: '/configuracoes',
                   element: <Settings />,
+                  id: 'settings',
                 },
               ],
             },
@@ -152,7 +153,6 @@ const App = () => {
         }
       })
     }
-    sessionStorage.clear()
     localStorage.removeItem('vite-plugin-react-router-cache')
   }, [])
 

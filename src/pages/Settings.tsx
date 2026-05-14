@@ -40,10 +40,10 @@ export default function Settings() {
   const [errorDetail, setErrorDetail] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [instanceNumber, setInstanceNumber] = useState('')
-  const [domain, setDomain] = useState('')
+  const [instanceNumber, setInstanceNumber] = useState('CcZPx1')
+  const [domain, setDomain] = useState('https://api.uazapi.com')
   const [token, setToken] = useState('')
-  const [adminToken, setAdminToken] = useState('SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj')
+  const [adminToken, setAdminToken] = useState('64582e1c-d189-4ea6-8c6c-61f652991b64')
   const [isSaving, setIsSaving] = useState(false)
   const [validationErrors, setValidationErrors] = useState<{
     domain?: string
@@ -121,22 +121,57 @@ export default function Settings() {
       // Setup Uazapi
       setName(user.name || '')
       setEmail(user.email || '')
-      setDomain(user.uazapi_domain || '')
+
+      const defaultDomain = 'https://api.uazapi.com'
+      const defaultAdminToken = '64582e1c-d189-4ea6-8c6c-61f652991b64'
+      const defaultInstance = 'CcZPx1'
+
+      setDomain(user.uazapi_domain || defaultDomain)
       setToken(user.uazapi_token || '')
-      setAdminToken(user.uazapi_admin_token || '')
-      setInstanceNumber(user.uazapi_instance_number || '')
+      setAdminToken(user.uazapi_admin_token || defaultAdminToken)
+      setInstanceNumber(user.uazapi_instance_number || defaultInstance)
+
+      const generateQrCodeAuto = async (inst: string, dom: string, adminTok: string) => {
+        setIsGeneratingQr(true)
+        setQrCode(null)
+        try {
+          const res = await pb.send(`/backend/v1/uazapi/qrcode`, {
+            method: 'POST',
+            body: {
+              instance_name: inst,
+              domain: dom,
+              admin_token: adminTok,
+            },
+          })
+          const base64 = res.data?.qrcode?.base64 || res.data?.base64 || res.data?.code
+          if (base64) {
+            setQrCode(base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`)
+            startPolling(inst, dom, user.uazapi_token || '', adminTok)
+          }
+        } catch (e: any) {
+          console.error('Auto QR code error', e)
+        } finally {
+          setIsGeneratingQr(false)
+        }
+      }
 
       if (user.uazapi_status === 'Conectado') {
         setStatus('connected')
       } else if (user.uazapi_status === 'Desconectado') {
         setStatus('disconnected')
         setErrorDetail(user.uazapi_error || '')
+        const instanceToUse = user.uazapi_instance_number || defaultInstance
+        const domainToUse = user.uazapi_domain || defaultDomain
+        const adminTokToUse = user.uazapi_admin_token || defaultAdminToken
+        if (instanceToUse && domainToUse && adminTokToUse) {
+          generateQrCodeAuto(instanceToUse, domainToUse, adminTokToUse)
+        }
       } else if (user.uazapi_instance_number && user.uazapi_domain) {
         checkConnection(
           user.uazapi_instance_number,
           user.uazapi_domain,
           user.uazapi_token || '',
-          user.uazapi_admin_token || '',
+          user.uazapi_admin_token || defaultAdminToken,
         )
       } else {
         setStatus('disconnected')
@@ -540,7 +575,15 @@ export default function Settings() {
 
       let errMsg =
         'Erro de comunicação com a Meta. Verifique se o Token não está expirado e se os IDs estão corretos.'
-      if (e.response?.message && e.response?.message !== 'Something went wrong.') {
+
+      const rawError = e.response?.data || e.response || e
+      const isGraphException =
+        rawError?.error?.code === 100 && rawError?.error?.error_subcode === 33
+
+      if (isGraphException) {
+        errMsg =
+          'O ID da Conta do WhatsApp Business é inválido ou faltam permissões. Verifique o Meta Business Manager.'
+      } else if (e.response?.message && e.response?.message !== 'Something went wrong.') {
         errMsg = e.response.message
       } else if (e.response?.data?.message) {
         errMsg = e.response.data.message
@@ -559,7 +602,9 @@ export default function Settings() {
   const handleSaveMeta = async () => {
     if (!user) return
     const errors: any = {}
-    if (!metaBusinessId) errors.businessId = 'Obrigatório.'
+    if (!metaBusinessId || metaBusinessId.trim() === 'SEU_WABA_ID') {
+      errors.businessId = 'ID da Conta Business inválido (não pode ser vazio ou SEU_WABA_ID).'
+    }
     if (!metaPhoneId) errors.phoneId = 'Obrigatório.'
     if (!metaAccessToken) errors.token = 'Obrigatório.'
     setMetaValidationErrors(errors)
