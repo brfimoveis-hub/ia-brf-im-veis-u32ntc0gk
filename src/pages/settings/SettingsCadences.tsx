@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -15,6 +15,7 @@ import {
   type Cadence,
 } from '@/services/cadences'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export function SettingsCadences() {
   const [cadences, setCadences] = useState<Cadence[]>([])
@@ -27,6 +28,10 @@ export function SettingsCadences() {
   useEffect(() => {
     loadCadences()
   }, [])
+
+  useRealtime('cadences', () => {
+    loadCadences()
+  })
 
   const loadCadences = async () => {
     setLoading(true)

@@ -21,8 +21,9 @@ import { PHASES, COLUMNS } from './constants'
 import { cn, formatPhone } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
 import { RemarketingSyncModal } from './RemarketingSyncModal'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CustomerDetailDrawer } from './CustomerDetailDrawer'
+import { useRealtime } from '@/hooks/use-realtime'
 
 interface CustomerTableProps {
   leads: Customer[]
@@ -34,13 +35,31 @@ interface CustomerTableProps {
 }
 
 export function CustomerTable({
-  leads,
+  leads: initialLeads,
   loading,
   error,
   onEdit,
   onDelete,
   lastElementRef,
 }: CustomerTableProps) {
+  const [leads, setLeads] = useState<Customer[]>(initialLeads)
+
+  useEffect(() => {
+    setLeads(initialLeads)
+  }, [initialLeads])
+
+  useRealtime('customers', (e) => {
+    if (e.action === 'create') {
+      setLeads((prev) => [e.record as unknown as Customer, ...prev])
+    } else if (e.action === 'update') {
+      setLeads((prev) =>
+        prev.map((m) => (m.id === e.record.id ? (e.record as unknown as Customer) : m)),
+      )
+    } else if (e.action === 'delete') {
+      setLeads((prev) => prev.filter((m) => m.id !== e.record.id))
+    }
+  })
+
   const [searchParams] = useSearchParams()
   const searchTerm = searchParams.get('search') || searchParams.get('q') || ''
   const phaseFilter = searchParams.get('phase') || searchParams.get('status') || ''

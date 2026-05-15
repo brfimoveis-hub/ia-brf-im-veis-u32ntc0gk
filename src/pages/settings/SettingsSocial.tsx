@@ -14,7 +14,15 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
-import { Loader2, Globe, Instagram, Youtube, CheckCircle2, Target } from 'lucide-react'
+import {
+  Loader2,
+  Globe,
+  Instagram,
+  Youtube,
+  CheckCircle2,
+  Target,
+  MessageSquare,
+} from 'lucide-react'
 
 export function SettingsSocial() {
   const { user } = useAuth()
@@ -26,8 +34,15 @@ export function SettingsSocial() {
   const [metaPixelId, setMetaPixelId] = useState('')
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [googleAdsWebhookKey, setGoogleAdsWebhookKey] = useState('')
+
+  const [uazapiDomain, setUazapiDomain] = useState('https://iabrfimveis.uazapi.com')
+  const [uazapiAdminToken, setUazapiAdminToken] = useState('')
+  const [uazapiInstanceNumber, setUazapiInstanceNumber] = useState('')
+  const [uazapiStatus, setUazapiStatus] = useState('')
+
   const [isSaving, setIsSaving] = useState(false)
   const [isTestingCapi, setIsTestingCapi] = useState(false)
+  const [isTestingUazapi, setIsTestingUazapi] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const initialized = useRef(false)
 
@@ -39,7 +54,14 @@ export function SettingsSocial() {
       setMetaPixelId(user.meta_pixel_id || '')
       setMetaCapiToken(user.meta_capi_token || '')
       setGoogleAdsWebhookKey(user.google_ads_webhook_key || '')
+      setUazapiDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
+      setUazapiAdminToken(user.uazapi_admin_token || '')
+      setUazapiInstanceNumber(user.uazapi_instance_number || '')
       initialized.current = true
+    }
+
+    if (user) {
+      setUazapiStatus(user.uazapi_status || '')
     }
   }, [user])
 
@@ -96,6 +118,58 @@ export function SettingsSocial() {
     }
   }
 
+  const handleTestUazapi = async () => {
+    if (!user) return
+    if (!uazapiDomain || !uazapiAdminToken || !uazapiInstanceNumber) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Preencha o Domínio, Admin Token e a Instância do Uazapi primeiro.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsTestingUazapi(true)
+    try {
+      await pb.send('/backend/v1/uazapi/test-connection', {
+        method: 'POST',
+        body: {
+          domain: uazapiDomain,
+          adminToken: uazapiAdminToken,
+          instance: uazapiInstanceNumber,
+        },
+      })
+
+      const updatedUser = await pb.collection('users').update(user.id, {
+        uazapi_status: 'connected',
+        uazapi_domain: uazapiDomain,
+        uazapi_admin_token: uazapiAdminToken,
+        uazapi_instance_number: uazapiInstanceNumber,
+      })
+      pb.authStore.save(pb.authStore.token, updatedUser)
+      setUazapiStatus('connected')
+
+      toast({
+        title: 'Conexão Uazapi estabelecida',
+        description: 'Sua instância do WhatsApp foi validada com sucesso!',
+      })
+    } catch (error) {
+      const updatedUser = await pb.collection('users').update(user.id, {
+        uazapi_status: 'disconnected',
+      })
+      pb.authStore.save(pb.authStore.token, updatedUser)
+      setUazapiStatus('disconnected')
+
+      toast({
+        title: 'Erro na conexão Uazapi',
+        description: 'Verifique suas credenciais e certifique-se de que a instância está ativa.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsTestingUazapi(false)
+    }
+  }
+
   const handleSave = async () => {
     if (!user) return
     setIsSaving(true)
@@ -110,6 +184,9 @@ export function SettingsSocial() {
         meta_pixel_id: metaPixelId,
         meta_capi_token: metaCapiToken,
         google_ads_webhook_key: googleAdsWebhookKey,
+        uazapi_domain: uazapiDomain,
+        uazapi_admin_token: uazapiAdminToken,
+        uazapi_instance_number: uazapiInstanceNumber,
       }
 
       if (isCapiChanged) {
@@ -269,21 +346,105 @@ export function SettingsSocial() {
             </div>
           </div>
         </CardContent>
-        <CardFooter className="bg-muted/30 pt-4 flex justify-end gap-3">
+      </Card>
+
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <MessageSquare className="h-6 w-6 text-primary" />
+            <CardTitle>Integração WhatsApp (Uazapi)</CardTitle>
+          </div>
+          <CardDescription>
+            Conecte suas instâncias do Uazapi para habilitar o envio e recebimento de mensagens pela
+            IA.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Domínio do Servidor (Uazapi)</Label>
+              <Input
+                value={uazapiDomain}
+                onChange={(e) => setUazapiDomain(e.target.value)}
+                placeholder="https://iabrfimveis.uazapi.com"
+                className={fieldErrors.uazapi_domain ? 'border-destructive' : ''}
+              />
+              {fieldErrors.uazapi_domain && (
+                <p className="text-xs text-destructive">{fieldErrors.uazapi_domain}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Admin Token</Label>
+              <Input
+                type="password"
+                value={uazapiAdminToken}
+                onChange={(e) => setUazapiAdminToken(e.target.value)}
+                placeholder="Token Administrativo..."
+                className={fieldErrors.uazapi_admin_token ? 'border-destructive' : ''}
+              />
+              {fieldErrors.uazapi_admin_token && (
+                <p className="text-xs text-destructive">{fieldErrors.uazapi_admin_token}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Instância (BRF 1, zRuJNw, etc.)</Label>
+              <Input
+                value={uazapiInstanceNumber}
+                onChange={(e) => setUazapiInstanceNumber(e.target.value)}
+                placeholder="Ex: BRF 1"
+                className={fieldErrors.uazapi_instance_number ? 'border-destructive' : ''}
+              />
+              {fieldErrors.uazapi_instance_number && (
+                <p className="text-xs text-destructive">{fieldErrors.uazapi_instance_number}</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <div
+                className={`px-2 py-1 rounded-md border text-xs font-medium ${uazapiStatus === 'connected' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-destructive/10 text-destructive border-destructive/20'}`}
+              >
+                Status: {uazapiStatus === 'connected' ? 'Conectado' : 'Desconectado'}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter className="bg-muted/30 pt-4 flex flex-col sm:flex-row justify-end gap-3">
           <Button
             type="button"
             variant="outline"
             onClick={handleTestCapi}
-            disabled={isTestingCapi || isSaving}
+            disabled={isTestingCapi || isSaving || isTestingUazapi}
+            className="w-full sm:w-auto"
           >
             {isTestingCapi ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Target className="mr-2 h-4 w-4" />
             )}
-            Testar Conexão CAPI
+            Testar CAPI
           </Button>
-          <Button type="button" onClick={handleSave} disabled={isSaving || isTestingCapi}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleTestUazapi}
+            disabled={isTestingUazapi || isSaving || isTestingCapi}
+            className="w-full sm:w-auto"
+          >
+            {isTestingUazapi ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <MessageSquare className="mr-2 h-4 w-4" />
+            )}
+            Testar WhatsApp
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving || isTestingCapi || isTestingUazapi}
+            className="w-full sm:w-auto"
+          >
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
