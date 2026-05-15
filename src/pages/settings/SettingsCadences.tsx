@@ -56,29 +56,25 @@ export function SettingsCadences() {
       toast.error('O título é obrigatório')
       return
     }
-    
-    let parsedSteps = editingCadence.steps;
+
+    let parsedSteps = editingCadence.steps
     if (stepsJson) {
       try {
-        parsedSteps = JSON.parse(stepsJson);
+        parsedSteps = JSON.parse(stepsJson)
       } catch (e) {
-        toast.error('O JSON dos passos é inválido.');
-        return;
+        toast.error('O JSON dos passos é inválido.')
+        return
       }
     }
 
     setIsSaving(true)
     try {
-      const dataToSave = { ...editingCadence, steps: parsedSteps };
+      const dataToSave = { ...editingCadence, steps: parsedSteps }
       if (editingCadence.id) {
         await updateCadence(editingCadence.id, dataToSave)
         toast.success('Cadência atualizada com sucesso')
       } else {
         await createCadence(dataToSave)
-        await updateCadence(editingCadence.id, editingCadence)
-        toast.success('Cadência atualizada com sucesso')
-      } else {
-        await createCadence(editingCadence)
         toast.success('Cadência criada com sucesso')
       }
       setIsDialogOpen(false)
