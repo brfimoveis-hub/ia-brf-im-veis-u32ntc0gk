@@ -19,7 +19,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 import Dashboard from './pages/Dashboard'
 import Customers from './pages/Customers'
-import Settings from './pages/Settings'
+import ConfiguracoesCore from './pages/ConfiguracoesCore'
 import Cadences from './pages/Cadences'
 import Logs from './pages/Logs'
 import NotFound from './pages/NotFound'
@@ -119,11 +119,11 @@ const router = createBrowserRouter(
                 },
                 {
                   path: '/configuracoes',
-                  element: <Settings />,
+                  element: <ConfiguracoesCore />,
                 },
                 {
                   path: '/configuracoes/*',
-                  element: <Settings />,
+                  element: <ConfiguracoesCore />,
                 },
               ],
             },
