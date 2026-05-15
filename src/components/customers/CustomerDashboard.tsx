@@ -13,12 +13,20 @@ import { Users, TrendingUp } from 'lucide-react'
 
 export function CustomerDashboard({ leads }: { leads: Customer[] }) {
   const funnelData = PHASES.map((phase) => {
-    const currentCount = leads.filter(
-      (l) =>
-        l.status === phase.title ||
-        (l.status === '' && phase.title === 'Base de Clientes/Novo LYD') ||
-        (l.status === 'Lead Novo' && phase.title === 'Base de Clientes/Novo LYD'),
-    ).length
+    const currentCount = leads.filter((l) => {
+      const s = l.status?.trim() || 'Novo'
+      if (phase.title === 'Base de Clientes/Novo LYD') {
+        return s === 'Novo' || s === 'Lead Novo' || s === 'lead' || s === ''
+      }
+      if (phase.title === 'Fechamento') {
+        return s === 'Fechamento' || s === 'closed'
+      }
+      if (phase.title === 'Qualificação') return s === 'Qualificação'
+      if (phase.title === 'Engajamento') return s === 'Engajamento' || s === 'contact'
+      if (phase.title === 'Demo Realiz.') return s === 'Demo Realiz.'
+      if (phase.title === 'Visita') return s === 'Visita'
+      return false
+    }).length
     return {
       phase: phase.title,
       currentCount,

@@ -49,6 +49,13 @@ export default function Dashboard() {
       .catch(console.error)
   })
 
+  useRealtime('leads', () => {
+    pb.collection('leads')
+      .getList(1, 1, { fields: 'id' })
+      .then((res) => setIaInteractions(res.totalItems))
+      .catch(console.error)
+  })
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-8">
       <div>

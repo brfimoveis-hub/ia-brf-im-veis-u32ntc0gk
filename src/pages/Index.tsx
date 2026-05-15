@@ -8,15 +8,13 @@ export default function Index() {
 
   useEffect(() => {
     if (!loading) {
-      // Prevent Index from hijacking other routes due to cache or fallback bugs
-      if (window.location.pathname !== '/' && window.location.pathname !== '/index') {
-        return
-      }
-
-      if (user) {
-        navigate('/dashboard', { replace: true })
-      } else {
-        navigate('/login', { replace: true })
+      // Ensure we only redirect if we are exactly on the index page
+      if (window.location.pathname === '/' || window.location.pathname === '/index') {
+        if (user) {
+          navigate('/dashboard', { replace: true })
+        } else {
+          navigate('/login', { replace: true })
+        }
       }
     }
   }, [user, loading, navigate])

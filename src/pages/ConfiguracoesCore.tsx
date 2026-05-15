@@ -215,7 +215,10 @@ export default function ConfiguracoesCore() {
           clearInterval(pollingRefs.current[instId])
           if (user) {
             pb.collection('users')
-              .update(user.id, { uazapi_status: 'Connected' })
+              .update(user.id, {
+                uazapi_status: 'Connected',
+                uazapi_instance_number: data.data?.owner || '',
+              })
               .catch(() => {})
           }
         }

@@ -7,6 +7,7 @@ export interface Cadence {
   content: string
   order: number
   is_active: boolean
+  steps?: any
   ai_instructions?: string
   ebook_file?: string
   price_table_file?: string

@@ -25,6 +25,7 @@ export function SettingsSocial() {
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [metaPixelId, setMetaPixelId] = useState('')
   const [metaCapiToken, setMetaCapiToken] = useState('')
+  const [googleAdsWebhookKey, setGoogleAdsWebhookKey] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [isTestingCapi, setIsTestingCapi] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -37,6 +38,7 @@ export function SettingsSocial() {
       setYoutubeUrl(user.youtube_url || '')
       setMetaPixelId(user.meta_pixel_id || '')
       setMetaCapiToken(user.meta_capi_token || '')
+      setGoogleAdsWebhookKey(user.google_ads_webhook_key || '')
       initialized.current = true
     }
   }, [user])
@@ -107,6 +109,7 @@ export function SettingsSocial() {
         youtube_url: youtubeUrl,
         meta_pixel_id: metaPixelId,
         meta_capi_token: metaCapiToken,
+        google_ads_webhook_key: googleAdsWebhookKey,
       }
 
       if (isCapiChanged) {
@@ -243,6 +246,18 @@ export function SettingsSocial() {
               <p className="text-xs text-muted-foreground">
                 Token de acesso gerado no Gerenciador de Eventos da Meta.
               </p>
+            </div>
+            <div className="space-y-2 pt-2">
+              <Label>Google Ads Webhook Key (GCLID)</Label>
+              <Input
+                value={googleAdsWebhookKey}
+                onChange={(e) => setGoogleAdsWebhookKey(e.target.value)}
+                placeholder="Ex: XXXX-YYYY-ZZZZ"
+                className={fieldErrors.google_ads_webhook_key ? 'border-destructive' : ''}
+              />
+              {fieldErrors.google_ads_webhook_key && (
+                <p className="text-xs text-destructive">{fieldErrors.google_ads_webhook_key}</p>
+              )}
             </div>
             <div className="flex items-center gap-2 pt-2">
               <div

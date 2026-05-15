@@ -21,6 +21,7 @@ export function SettingsCadences() {
   const [loading, setLoading] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingCadence, setEditingCadence] = useState<Partial<Cadence> | null>(null)
+  const [stepsJson, setStepsJson] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
@@ -42,8 +43,10 @@ export function SettingsCadences() {
   const handleOpenDialog = (cadence?: Cadence) => {
     if (cadence) {
       setEditingCadence(cadence)
+      setStepsJson(cadence.steps ? JSON.stringify(cadence.steps, null, 2) : '')
     } else {
       setEditingCadence({ title: '', content: '', ai_instructions: '', is_active: true, order: 0 })
+      setStepsJson('')
     }
     setIsDialogOpen(true)
   }
@@ -53,9 +56,25 @@ export function SettingsCadences() {
       toast.error('O título é obrigatório')
       return
     }
+    
+    let parsedSteps = editingCadence.steps;
+    if (stepsJson) {
+      try {
+        parsedSteps = JSON.parse(stepsJson);
+      } catch (e) {
+        toast.error('O JSON dos passos é inválido.');
+        return;
+      }
+    }
+
     setIsSaving(true)
     try {
+      const dataToSave = { ...editingCadence, steps: parsedSteps };
       if (editingCadence.id) {
+        await updateCadence(editingCadence.id, dataToSave)
+        toast.success('Cadência atualizada com sucesso')
+      } else {
+        await createCadence(dataToSave)
         await updateCadence(editingCadence.id, editingCadence)
         toast.success('Cadência atualizada com sucesso')
       } else {
@@ -179,6 +198,15 @@ export function SettingsCadences() {
                 }
                 className="min-h-[150px] resize-y"
                 placeholder="Instruções adicionais que a IA deve seguir especificamente nesta etapa..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Passos da Cadência (JSON)</Label>
+              <Textarea
+                value={stepsJson}
+                onChange={(e) => setStepsJson(e.target.value)}
+                className="min-h-[150px] font-mono text-sm resize-y"
+                placeholder='[{"type": "delay", "hours": 24}, {"type": "message", "text": "Olá!"}]'
               />
             </div>
             <div className="flex items-center space-x-3 p-3 bg-muted/40 rounded-lg border">

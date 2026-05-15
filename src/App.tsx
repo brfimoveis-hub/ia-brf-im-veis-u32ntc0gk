@@ -74,12 +74,12 @@ const router = createBrowserRouter(
       errorElement: <GlobalError />,
       children: [
         {
+          path: '/',
+          element: <Index />,
+        },
+        {
           element: <GuestRoute />,
           children: [
-            {
-              path: '/',
-              element: <Index />,
-            },
             {
               path: '/login',
               element: <Login />,
