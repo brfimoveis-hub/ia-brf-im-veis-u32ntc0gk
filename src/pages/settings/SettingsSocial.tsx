@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   Target,
   MessageSquare,
+  Smartphone,
 } from 'lucide-react'
 
 export function SettingsSocial() {
@@ -40,9 +41,15 @@ export function SettingsSocial() {
   const [uazapiInstanceNumber, setUazapiInstanceNumber] = useState('')
   const [uazapiStatus, setUazapiStatus] = useState('')
 
+  const [metaWhatsappBusinessId, setMetaWhatsappBusinessId] = useState('')
+  const [metaWhatsappPhoneNumberId, setMetaWhatsappPhoneNumberId] = useState('')
+  const [metaWhatsappAccessToken, setMetaWhatsappAccessToken] = useState('')
+  const [metaWhatsappStatus, setMetaWhatsappStatus] = useState('')
+
   const [isSaving, setIsSaving] = useState(false)
   const [isTestingCapi, setIsTestingCapi] = useState(false)
   const [isTestingUazapi, setIsTestingUazapi] = useState(false)
+  const [isTestingMetaWhatsapp, setIsTestingMetaWhatsapp] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const initialized = useRef(false)
 
@@ -57,11 +64,17 @@ export function SettingsSocial() {
       setUazapiDomain(user.uazapi_domain || 'https://iabrfimveis.uazapi.com')
       setUazapiAdminToken(user.uazapi_admin_token || '')
       setUazapiInstanceNumber(user.uazapi_instance_number || '')
+
+      setMetaWhatsappBusinessId(user.meta_whatsapp_business_id || '')
+      setMetaWhatsappPhoneNumberId(user.meta_whatsapp_phone_number_id || '')
+      setMetaWhatsappAccessToken(user.meta_whatsapp_access_token || '')
+
       initialized.current = true
     }
 
     if (user) {
       setUazapiStatus(user.uazapi_status || '')
+      setMetaWhatsappStatus(user.meta_whatsapp_status || '')
     }
   }, [user])
 
@@ -170,6 +183,58 @@ export function SettingsSocial() {
     }
   }
 
+  const handleTestMetaWhatsapp = async () => {
+    if (!user) return
+    if (!metaWhatsappBusinessId || !metaWhatsappPhoneNumberId || !metaWhatsappAccessToken) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Preencha o Business ID, Phone Number ID e Access Token primeiro.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsTestingMetaWhatsapp(true)
+    try {
+      await pb.send('/backend/v1/meta_test_connection', {
+        method: 'POST',
+        body: {
+          business_id: metaWhatsappBusinessId,
+          phone_number_id: metaWhatsappPhoneNumberId,
+          access_token: metaWhatsappAccessToken,
+        },
+      })
+
+      const updatedUser = await pb.collection('users').update(user.id, {
+        meta_whatsapp_status: 'connected',
+        meta_whatsapp_business_id: metaWhatsappBusinessId,
+        meta_whatsapp_phone_number_id: metaWhatsappPhoneNumberId,
+        meta_whatsapp_access_token: metaWhatsappAccessToken,
+      })
+      pb.authStore.save(pb.authStore.token, updatedUser)
+      setMetaWhatsappStatus('connected')
+
+      toast({
+        title: 'Conexão Bem-sucedida',
+        description: 'Sua integração com o Meta WhatsApp Business API foi validada com sucesso!',
+      })
+    } catch (error: any) {
+      const updatedUser = await pb.collection('users').update(user.id, {
+        meta_whatsapp_status: 'disconnected',
+      })
+      pb.authStore.save(pb.authStore.token, updatedUser)
+      setMetaWhatsappStatus('disconnected')
+
+      toast({
+        title: 'Erro na conexão Meta WhatsApp',
+        description: error.message || 'Verifique suas credenciais e tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsTestingMetaWhatsapp(false)
+    }
+  }
+
   const handleSave = async () => {
     if (!user) return
     setIsSaving(true)
@@ -187,6 +252,9 @@ export function SettingsSocial() {
         uazapi_domain: uazapiDomain,
         uazapi_admin_token: uazapiAdminToken,
         uazapi_instance_number: uazapiInstanceNumber,
+        meta_whatsapp_business_id: metaWhatsappBusinessId,
+        meta_whatsapp_phone_number_id: metaWhatsappPhoneNumberId,
+        meta_whatsapp_access_token: metaWhatsappAccessToken,
       }
 
       if (isCapiChanged) {
@@ -346,6 +414,101 @@ export function SettingsSocial() {
             </div>
           </div>
         </CardContent>
+        <CardFooter className="bg-muted/30 pt-4 flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleTestCapi}
+            disabled={isTestingCapi || isSaving || isTestingUazapi || isTestingMetaWhatsapp}
+          >
+            {isTestingCapi ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Target className="mr-2 h-4 w-4" />
+            )}
+            Testar CAPI
+          </Button>
+        </CardFooter>
+      </Card>
+
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <Smartphone className="h-6 w-6 text-primary" />
+            <CardTitle>Integração WhatsApp Oficial (Meta API)</CardTitle>
+          </div>
+          <CardDescription>
+            Conecte a API Oficial do WhatsApp Business para comunicação com seus clientes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Business Account ID</Label>
+              <Input
+                value={metaWhatsappBusinessId}
+                onChange={(e) => setMetaWhatsappBusinessId(e.target.value)}
+                placeholder="Ex: 27018364624521397"
+                className={fieldErrors.meta_whatsapp_business_id ? 'border-destructive' : ''}
+              />
+              {fieldErrors.meta_whatsapp_business_id && (
+                <p className="text-xs text-destructive">{fieldErrors.meta_whatsapp_business_id}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Phone Number ID</Label>
+              <Input
+                value={metaWhatsappPhoneNumberId}
+                onChange={(e) => setMetaWhatsappPhoneNumberId(e.target.value)}
+                placeholder="Ex: 554892098050"
+                className={fieldErrors.meta_whatsapp_phone_number_id ? 'border-destructive' : ''}
+              />
+              {fieldErrors.meta_whatsapp_phone_number_id && (
+                <p className="text-xs text-destructive">
+                  {fieldErrors.meta_whatsapp_phone_number_id}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Access Token</Label>
+              <Input
+                type="password"
+                value={metaWhatsappAccessToken}
+                onChange={(e) => setMetaWhatsappAccessToken(e.target.value)}
+                placeholder="Ex: EAAzbADOLSAoBRX..."
+                className={fieldErrors.meta_whatsapp_access_token ? 'border-destructive' : ''}
+              />
+              {fieldErrors.meta_whatsapp_access_token && (
+                <p className="text-xs text-destructive">{fieldErrors.meta_whatsapp_access_token}</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <div
+                className={`px-2 py-1 rounded-md border text-xs font-medium ${metaWhatsappStatus === 'connected' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-destructive/10 text-destructive border-destructive/20'}`}
+              >
+                Status: {metaWhatsappStatus === 'connected' ? 'Conectado' : 'Desconectado'}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter className="bg-muted/30 pt-4 flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleTestMetaWhatsapp}
+            disabled={isTestingMetaWhatsapp || isSaving || isTestingCapi || isTestingUazapi}
+          >
+            {isTestingMetaWhatsapp ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+            )}
+            Verificar Conexão
+          </Button>
+        </CardFooter>
       </Card>
 
       <Card className="border-border/50 shadow-sm">
@@ -354,10 +517,7 @@ export function SettingsSocial() {
             <MessageSquare className="h-6 w-6 text-primary" />
             <CardTitle>Integração WhatsApp (Uazapi)</CardTitle>
           </div>
-          <CardDescription>
-            Conecte suas instâncias do Uazapi para habilitar o envio e recebimento de mensagens pela
-            IA.
-          </CardDescription>
+          <CardDescription>Conecte suas instâncias não-oficiais do Uazapi.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-4">
@@ -410,40 +570,24 @@ export function SettingsSocial() {
             </div>
           </div>
         </CardContent>
-        <CardFooter className="bg-muted/30 pt-4 flex flex-col sm:flex-row justify-end gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleTestCapi}
-            disabled={isTestingCapi || isSaving || isTestingUazapi}
-            className="w-full sm:w-auto"
-          >
-            {isTestingCapi ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Target className="mr-2 h-4 w-4" />
-            )}
-            Testar CAPI
-          </Button>
+        <CardFooter className="bg-muted/30 pt-4 flex justify-end gap-3">
           <Button
             type="button"
             variant="outline"
             onClick={handleTestUazapi}
-            disabled={isTestingUazapi || isSaving || isTestingCapi}
-            className="w-full sm:w-auto"
+            disabled={isTestingUazapi || isSaving || isTestingCapi || isTestingMetaWhatsapp}
           >
             {isTestingUazapi ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <MessageSquare className="mr-2 h-4 w-4" />
             )}
-            Testar WhatsApp
+            Testar Uazapi
           </Button>
           <Button
             type="button"
             onClick={handleSave}
-            disabled={isSaving || isTestingCapi || isTestingUazapi}
-            className="w-full sm:w-auto"
+            disabled={isSaving || isTestingCapi || isTestingUazapi || isTestingMetaWhatsapp}
           >
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -13,7 +13,7 @@ routerAdd(
 
     // Verify the credentials with a Graph API call
     const res = $http.send({
-      url: 'https://graph.facebook.com/v19.0/' + phone_number_id,
+      url: 'https://graph.facebook.com/v21.0/' + phone_number_id,
       method: 'GET',
       headers: {
         Authorization: 'Bearer ' + access_token,
@@ -26,6 +26,16 @@ routerAdd(
       return e.json(200, { status: 'connected', data: res.json })
     } else {
       const errorMsg = res.json?.error?.message || 'Erro ao validar credenciais na Meta API.'
+
+      if (
+        errorMsg.includes('Unsupported get request') ||
+        errorMsg.includes('Object with ID does not exist')
+      ) {
+        return e.badRequestError(
+          'O Phone Number ID pode estar incorreto ou o Access Token não possui as permissões whatsapp_business_management ou whatsapp_business_messaging.',
+        )
+      }
+
       return e.badRequestError(errorMsg)
     }
   },
