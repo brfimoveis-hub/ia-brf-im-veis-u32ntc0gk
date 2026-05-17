@@ -488,6 +488,16 @@ export default function ConfiguracoesCore() {
         errorMsg = `Erro de Autenticação: ${errorMsg}`
       }
 
+      if (
+        errorMsg.includes('Unsupported post request') ||
+        errorMsg.includes('Object with ID') ||
+        errorMsg.includes('Object ID does not exist') ||
+        errorMsg.includes('does not exist')
+      ) {
+        errorMsg =
+          'Erro de Mismatch: Verifique se o Pixel ID e o Token da CAPI estão corretos. O ID do Objeto informado não existe ou a requisição não é suportada.'
+      }
+
       pb.collection('users')
         .update(user.id, {
           uazapi_error: errorMsg,
@@ -870,7 +880,7 @@ export default function ConfiguracoesCore() {
             <CardContent className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Meta User ID (Business ID)</Label>
+                  <Label>ID da Conta de Negócios</Label>
                   <Input
                     value={metaBusinessId}
                     onChange={(e) => setMetaBusinessId(e.target.value)}
@@ -878,7 +888,7 @@ export default function ConfiguracoesCore() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Meta Pixel ID</Label>
+                  <Label>Pixel ID</Label>
                   <Input
                     value={metaPixelId}
                     onChange={(e) => setMetaPixelId(e.target.value)}
@@ -886,7 +896,7 @@ export default function ConfiguracoesCore() {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Meta CAPI Token</Label>
+                  <Label>Token de Acesso (CAPI)</Label>
                   <div className="relative">
                     <Input
                       type={showCapiToken ? 'text' : 'password'}
