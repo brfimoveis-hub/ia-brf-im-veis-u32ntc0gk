@@ -97,7 +97,7 @@ export default function ConfiguracoesCore() {
       } else if (e.record.meta_whatsapp_status === 'Desconectado') {
         setMetaStatus('disconnected')
       }
-      if (e.record.meta_token_status === 'valid') {
+      if (e.record.meta_token_status === 'connected' || e.record.meta_token_status === 'valid') {
         setCapiStatus('connected')
       } else {
         setCapiStatus('disconnected')
@@ -147,7 +147,12 @@ export default function ConfiguracoesCore() {
 
       setMetaPixelId(user.meta_pixel_id || '')
       setMetaCapiToken(user.meta_capi_token || '')
-      setCapiStatus((user as any).meta_token_status === 'valid' ? 'connected' : 'disconnected')
+      setCapiStatus(
+        (user as any).meta_token_status === 'connected' ||
+          (user as any).meta_token_status === 'valid'
+          ? 'connected'
+          : 'disconnected',
+      )
 
       initialized.current = true
     }
@@ -448,26 +453,35 @@ export default function ConfiguracoesCore() {
     if (!user) return
     setIsTestingCapi(true)
     try {
-      await pb.send('/backend/v1/meta_capi_test', {
+      await pb.send('/backend/v1/meta_test_connection', {
         method: 'POST',
-        body: { pixel_id: metaPixelId.trim(), access_token: metaCapiToken.trim() },
+        body: {
+          business_id: metaBusinessId.trim(),
+          pixel_id: metaPixelId.trim(),
+          access_token: metaCapiToken.trim(),
+        },
       })
       setCapiStatus('connected')
-      await pb.collection('users').update(user.id, { meta_token_status: 'valid' })
+      await pb.collection('users').update(user.id, { meta_token_status: 'connected' })
       toast({
         title: 'Conexão Estabelecida com Sucesso',
         description: 'Teste de conexão bem-sucedido.',
       })
     } catch (e: any) {
       setCapiStatus('disconnected')
-      let errorMsg = e.response?.message || e.message || 'Falha na validação do CAPI.'
+      let errorMsg = e.response?.message || e.message || 'Falha de Handshake'
       if (
         errorMsg.includes('190') ||
         errorMsg.includes('invalidated') ||
         errorMsg.includes('OAuthException')
       ) {
-        errorMsg = 'O Token de Acesso da Meta é inválido ou expirou. Atualize suas credenciais.'
+        errorMsg = 'Token Inválido. Atualize suas credenciais.'
       }
+
+      await pb
+        .collection('users')
+        .update(user.id, { meta_token_status: 'error' })
+        .catch(() => {})
       toast({ title: 'Erro na validação', description: errorMsg, variant: 'destructive' })
     } finally {
       setIsTestingCapi(false)
