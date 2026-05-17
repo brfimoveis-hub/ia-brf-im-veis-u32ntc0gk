@@ -130,7 +130,7 @@ export default function ConfiguracoesCore() {
         checkConnection(inst.id, uDomain, uToken, uAdminToken)
       })
 
-      setMetaBusinessId(user.meta_whatsapp_business_id || '')
+      setMetaBusinessId(user.meta_whatsapp_business_id || '27018364624521397')
       setMetaPhoneId(user.meta_whatsapp_phone_number_id || '')
       setMetaAccessToken(user.meta_whatsapp_access_token || '')
       setMetaVerifyToken(user.meta_whatsapp_verify_token || '')
@@ -151,7 +151,7 @@ export default function ConfiguracoesCore() {
         setMetaStatus('idle')
       }
 
-      setMetaPixelId(user.meta_pixel_id || '')
+      setMetaPixelId(user.meta_pixel_id || '1522162279584545')
       setMetaCapiToken(user.meta_capi_token || '')
       setCapiStatus(
         (user as any).meta_token_status === 'connected' ||
@@ -847,7 +847,7 @@ export default function ConfiguracoesCore() {
                   <Input
                     value={metaPixelId}
                     onChange={(e) => setMetaPixelId(e.target.value)}
-                    placeholder="Ex: 1029384756"
+                    placeholder="Ex: 1522162279584545"
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
