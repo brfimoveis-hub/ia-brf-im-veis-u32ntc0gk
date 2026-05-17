@@ -22,6 +22,17 @@ onRecordAfterCreateSuccess((e) => {
     )
     if (cadences.length > 0) {
       cadenceRecord = cadences[0]
+    } else if (status === 'Novo' || status === 'lead' || status === 'Base de Clientes/Novo LYD') {
+      const firstCadences = $app.findRecordsByFilter(
+        'cadences',
+        `user_id = '${userId}' && is_active = true`,
+        'order',
+        1,
+        0,
+      )
+      if (firstCadences.length > 0) {
+        cadenceRecord = firstCadences[0]
+      }
     }
   } catch (err) {
     $app.logger().error('Error fetching cadence for customer create', err)
@@ -45,12 +56,21 @@ onRecordAfterCreateSuccess((e) => {
 
   const cadenceContent = cadenceRecord ? cadenceRecord.getString('content') : ''
   const cadenceInstructions = cadenceRecord ? cadenceRecord.getString('ai_instructions') : ''
+  let cadenceStepsJson = ''
+  try {
+    if (cadenceRecord) {
+      const steps = cadenceRecord.get('steps')
+      if (steps) cadenceStepsJson = JSON.stringify(steps)
+    }
+  } catch (_) {}
 
   let aiInstructions = baseInstructions
-  if (cadenceContent || cadenceInstructions) {
+  if (cadenceContent || cadenceInstructions || cadenceStepsJson) {
     aiInstructions += `\n\nDIRETRIZES DA FASE ATUAL (${status}):\n`
     if (cadenceContent) aiInstructions += `Procedimento/Conteúdo: ${cadenceContent}\n`
     if (cadenceInstructions) aiInstructions += `Instruções Específicas: ${cadenceInstructions}\n`
+    if (cadenceStepsJson) aiInstructions += `Passos da Cadência (JSON): ${cadenceStepsJson}\n`
+    aiInstructions += `\nIMPORTANTE: Com base nos passos da cadência, conduza o lead para o próximo passo. Quando o lead atingir o objetivo de uma nova fase, inclua no final da sua resposta a tag [STATUS: Nova_Fase] para atualizar o CRM.\n`
   }
 
   if (!aiInstructions.trim()) {

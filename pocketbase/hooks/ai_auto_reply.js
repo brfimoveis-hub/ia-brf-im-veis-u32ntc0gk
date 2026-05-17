@@ -240,19 +240,39 @@ onRecordAfterCreateSuccess((e) => {
     let activeCadenceText = ''
 
     try {
-      const cadences = $app.findRecordsByFilter(
+      let cadences = $app.findRecordsByFilter(
         'cadences',
         `user_id = '${userId}' && is_active = true && title = '${currentStatus.replace(/'/g, "''")}'`,
         '-created',
         1,
         0,
       )
+      if (
+        cadences.length === 0 &&
+        (currentStatus === 'Novo' ||
+          currentStatus === 'lead' ||
+          currentStatus === 'Base de Clientes/Novo LYD')
+      ) {
+        cadences = $app.findRecordsByFilter(
+          'cadences',
+          `user_id = '${userId}' && is_active = true`,
+          'order',
+          1,
+          0,
+        )
+      }
+
       if (cadences.length > 0) {
         const c = cadences[0]
         const cTitle = c.getString('title')
         const cContent = c.getString('content')
         const cInst = c.getString('ai_instructions')
+        let cSteps = ''
+        const stepsData = c.get('steps')
+        if (stepsData) cSteps = JSON.stringify(stepsData)
+
         activeCadenceText = `\n\n### CADÊNCIA ATUAL (${cTitle}):\nProcedimento: ${cContent}\nDiretriz Específica: ${cInst}`
+        if (cSteps) activeCadenceText += `\nPassos Estruturados (JSON): ${cSteps}`
       }
     } catch (err) {}
 
@@ -380,7 +400,7 @@ DIRETRIZES RIGOROSAS:
 4. NUNCA inicie a resposta com frases sistêmicas ou analíticas. Vá direto ao ponto.
 5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
 6. Aja estritamente de acordo com as instruções (roteiro/script). NUNCA invente informações.
-7. Se você perceber que o cliente atingiu um novo estágio no funil de vendas, você DEVE incluir as tags [PHASE: Nova_Fase] e [STATUS: Novo_Status] no final da sua resposta.
+7. EVOLUÇÃO DE CADÊNCIA: Acompanhe os 'Passos Estruturados' da cadência atual (se fornecidos no contexto). Se o cliente atender aos requisitos de evolução, ou atingir um novo estágio no funil de vendas, você DEVE incluir a tag [STATUS: Nome_Da_Nova_Cadencia_Ou_Fase] no final da sua resposta para movê-lo no CRM.
 8. TRANSBORDO (HANDOVER): Se o cliente pedir para falar com um humano, agendar visita presencial, ou suporte inicial, inclua a tag [HANDOVER: Bernadete] no final de sua resposta. Se for negociação avançada, inclua [HANDOVER: Mauro].
 9. MULTIMODALIDADE: Se a mensagem for um cumprimento inicial de alto impacto, ou se o usuário pediu especificamente algo visual (como ver o apartamento), você PODE incluir a tag [VIDEO] no final do texto. Se a sua resposta for uma explicação longa, ou se o cliente mandou um áudio antes (você também deve responder em áudio), inclua a tag [AUDIO] no final do texto para que o sistema sintetize sua voz. Use de forma ponderada e situacional.
 

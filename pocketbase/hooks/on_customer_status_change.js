@@ -51,12 +51,21 @@ onRecordAfterUpdateSuccess((e) => {
 
   const cadenceContent = cadenceRecord ? cadenceRecord.getString('content') : ''
   const cadenceInstructions = cadenceRecord ? cadenceRecord.getString('ai_instructions') : ''
+  let cadenceStepsJson = ''
+  try {
+    if (cadenceRecord) {
+      const steps = cadenceRecord.get('steps')
+      if (steps) cadenceStepsJson = JSON.stringify(steps)
+    }
+  } catch (_) {}
 
   let aiInstructions = baseInstructions
-  if (cadenceContent || cadenceInstructions) {
+  if (cadenceContent || cadenceInstructions || cadenceStepsJson) {
     aiInstructions += `\n\nDIRETRIZES DA FASE ATUAL (${newStatus}):\n`
     if (cadenceContent) aiInstructions += `Procedimento/Conteúdo: ${cadenceContent}\n`
     if (cadenceInstructions) aiInstructions += `Instruções Específicas: ${cadenceInstructions}\n`
+    if (cadenceStepsJson) aiInstructions += `Passos da Cadência (JSON): ${cadenceStepsJson}\n`
+    aiInstructions += `\nIMPORTANTE: Com base nos passos da cadência, conduza o lead para o próximo passo. Quando o lead atingir o objetivo de uma nova fase, você poderá incluir a tag [STATUS: Nova_Fase] nas próximas mensagens para atualizar o CRM.\n`
   }
 
   if (!aiInstructions.trim()) {

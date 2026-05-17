@@ -133,7 +133,11 @@ export function LeadDialog({
       const fieldErrors = extractFieldErrors(err)
       setErrors(fieldErrors)
       if (Object.keys(fieldErrors).length === 0) {
-        toast({ title: 'Erro ao salvar', variant: 'destructive' })
+        toast({
+          title: 'Erro ao salvar',
+          description: err.message || 'Ocorreu um erro.',
+          variant: 'destructive',
+        })
       }
     } finally {
       setLoading(false)
@@ -206,6 +210,26 @@ export function LeadDialog({
               className={errors.email ? 'border-red-500' : ''}
             />
             {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="status">Fase / Status</Label>
+            <select
+              id="status"
+              className={`flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${errors.status ? 'border-red-500' : ''}`}
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+            >
+              <option value="Novo">Novo</option>
+              <option value="lead">Lead</option>
+              <option value="Qualificação">Qualificação</option>
+              <option value="Engajamento">Engajamento</option>
+              <option value="Demo Realiz.">Demo Realiz.</option>
+              <option value="Visita">Visita</option>
+              <option value="Proposta">Proposta</option>
+              <option value="Negociação">Negociação</option>
+              <option value="Fechamento">Fechamento</option>
+            </select>
+            {errors.status && <p className="text-sm text-red-500">{errors.status}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="source">Origem</Label>
