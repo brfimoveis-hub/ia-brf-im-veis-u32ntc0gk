@@ -36,7 +36,7 @@ export default function ConfiguracoesCore() {
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const defaultDomain = 'https://iabrfimveis.uazapi.com'
+  const defaultDomain = 'https://ia-uazapi-6d79e.goskip.app/backend/v1/meta-webhook'
   const defaultAdminToken = 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
 
   const [domain, setDomain] = useState(defaultDomain)
@@ -685,6 +685,7 @@ export default function ConfiguracoesCore() {
                   <Label>Server URL</Label>
                   <Input
                     value={domain}
+                    placeholder="https://ia-uazapi-6d79e.goskip.app/backend/v1/meta-webhook"
                     onChange={(e) => setDomain(e.target.value)}
                     className={validationErrors.domain ? 'border-destructive' : ''}
                   />
@@ -926,7 +927,7 @@ export default function ConfiguracoesCore() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2">Pixel ID / Dataset ID</Label>
+                  <Label className="flex items-center gap-2">Pixel ID (Dataset)</Label>
                   <Input
                     value={metaPixelId}
                     onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
