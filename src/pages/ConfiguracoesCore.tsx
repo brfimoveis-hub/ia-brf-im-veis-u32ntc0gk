@@ -477,12 +477,15 @@ export default function ConfiguracoesCore() {
     } catch (e: any) {
       setCapiStatus('disconnected')
       let errorMsg = e.response?.message || e.message || 'Falha de Handshake'
+
+      // Remove default overriding so specific Meta error is shown
       if (
-        errorMsg.includes('190') ||
-        errorMsg.includes('invalidated') ||
-        errorMsg.includes('OAuthException')
+        (errorMsg.includes('190') ||
+          errorMsg.includes('invalidated') ||
+          errorMsg.includes('OAuthException')) &&
+        !errorMsg.includes('Unsupported post request')
       ) {
-        errorMsg = 'Token Inválido. Atualize suas credenciais.'
+        errorMsg = `Erro de Autenticação: ${errorMsg}`
       }
 
       pb.collection('users')
