@@ -8,7 +8,7 @@ export const testMetaCapiConnectionService = async (
   pixelId: string,
   accessToken: string,
 ) => {
-  return pb.send('/backend/v1/meta_capi_test_connection', {
+  return pb.send('/backend/v1/meta_test_connection', {
     method: 'POST',
     body: {
       business_id: businessId.trim(),

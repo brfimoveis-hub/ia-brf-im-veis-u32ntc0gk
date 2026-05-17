@@ -21,6 +21,7 @@ import {
   Target,
   RefreshCw,
   Power,
+  Info,
 } from 'lucide-react'
 import { SettingsAi } from './settings/SettingsAi'
 import { SettingsSocial } from './settings/SettingsSocial'
@@ -446,8 +447,38 @@ export default function ConfiguracoesCore() {
     }
   }
 
+  const validateCapiInputs = () => {
+    if (metaBusinessId && !/^\d+$/.test(metaBusinessId)) {
+      toast({
+        title: 'Erro de Validação',
+        description: 'O ID da Conta de Negócios deve conter apenas números.',
+        variant: 'destructive',
+      })
+      return false
+    }
+    if (metaPixelId && !/^\d+$/.test(metaPixelId)) {
+      toast({
+        title: 'Erro de Validação',
+        description: 'O Pixel ID deve conter apenas números.',
+        variant: 'destructive',
+      })
+      return false
+    }
+    if (metaBusinessId && metaPixelId && metaBusinessId === metaPixelId) {
+      toast({
+        title: 'Erro de Validação',
+        description: 'O Business ID e o Pixel ID não podem ser iguais. Verifique os valores.',
+        variant: 'destructive',
+      })
+      return false
+    }
+    return true
+  }
+
   const handleSaveMetaCapi = async () => {
     if (!user) return
+    if (!validateCapiInputs()) return
+
     setIsSavingCapi(true)
     try {
       await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken, metaBusinessId)
@@ -464,6 +495,8 @@ export default function ConfiguracoesCore() {
 
   const testMetaCapiConnection = async () => {
     if (!user) return
+    if (!validateCapiInputs()) return
+
     setIsTestingCapi(true)
     setCapiErrorDetail('')
     try {
@@ -472,7 +505,8 @@ export default function ConfiguracoesCore() {
       setCapiStatus('connected')
       toast({
         title: 'Conexão Estabelecida com Sucesso',
-        description: 'Teste de conexão bem-sucedido.',
+        description:
+          'Teste de conexão bem-sucedido. A API de Conversões está configurada corretamente.',
       })
     } catch (e: any) {
       setCapiStatus('disconnected')
@@ -880,23 +914,33 @@ export default function ConfiguracoesCore() {
             <CardContent className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>ID da Conta de Negócios</Label>
+                  <Label className="flex items-center gap-2">
+                    ID da Conta de Negócios (Business ID)
+                  </Label>
                   <Input
                     value={metaBusinessId}
-                    onChange={(e) => setMetaBusinessId(e.target.value)}
+                    onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
                     placeholder="Ex: 27018364624521397"
                   />
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />O ID numérico da sua conta Business
+                    Manager da Meta.
+                  </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Pixel ID</Label>
+                  <Label className="flex items-center gap-2">Meta Pixel ID</Label>
                   <Input
                     value={metaPixelId}
-                    onChange={(e) => setMetaPixelId(e.target.value)}
+                    onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
                     placeholder="Ex: 1522162279584545"
                   />
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />O ID numérico do seu Dataset (Pixel)
+                    de eventos. Não confunda com o Business ID.
+                  </p>
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Token de Acesso (CAPI)</Label>
+                  <Label className="flex items-center gap-2">Token de Acesso (CAPI)</Label>
                   <div className="relative">
                     <Input
                       type={showCapiToken ? 'text' : 'password'}
@@ -915,6 +959,11 @@ export default function ConfiguracoesCore() {
                       {showCapiToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                    Token permanente gerado no Gerenciador de Eventos da Meta para a Conversions
+                    API.
+                  </p>
                 </div>
               </div>
               <div className="pt-2 flex gap-3">
