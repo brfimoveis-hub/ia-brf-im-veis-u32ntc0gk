@@ -55,7 +55,8 @@ export const executeCapiVerification = async (
     await updateMetaCapiStatus(userId, 'connected')
     return { success: true }
   } catch (error: any) {
-    await updateMetaCapiStatus(userId, 'error').catch(() => {})
+    const errorMsg = error.response?.message || error.message || 'error'
+    await updateMetaCapiStatus(userId, errorMsg).catch(() => {})
     throw error
   }
 }

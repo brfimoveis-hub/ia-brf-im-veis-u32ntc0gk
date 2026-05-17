@@ -118,11 +118,16 @@ const router = createBrowserRouter(
                 },
                 {
                   path: 'configuracoes',
-                  element: <ConfiguracoesCore />,
-                },
-                {
-                  path: 'configuracoes/*',
-                  element: <ConfiguracoesCore />,
+                  children: [
+                    {
+                      index: true,
+                      element: <ConfiguracoesCore />,
+                    },
+                    {
+                      path: '*',
+                      element: <ConfiguracoesCore />,
+                    },
+                  ],
                 },
               ],
             },

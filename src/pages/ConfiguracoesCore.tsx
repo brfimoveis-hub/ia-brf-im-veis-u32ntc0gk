@@ -160,12 +160,13 @@ export default function ConfiguracoesCore() {
         (user as any).meta_token_status === 'valid'
       setCapiStatus(isCapiConnected ? 'connected' : 'disconnected')
 
-      if (!isCapiConnected && (user as any).meta_token_status) {
-        setCapiErrorDetail(
-          (user as any).meta_token_status !== 'error'
-            ? (user as any).meta_token_status
-            : 'Erro de validação do token',
-        )
+      if (!isCapiConnected && ((user as any).meta_token_status || (user as any).uazapi_error)) {
+        const tokenStatus = (user as any).meta_token_status
+        const errorDetail =
+          tokenStatus && tokenStatus !== 'error'
+            ? tokenStatus
+            : (user as any).uazapi_error || 'Erro de validação do token'
+        setCapiErrorDetail(errorDetail)
       } else {
         setCapiErrorDetail('')
       }
@@ -466,6 +467,7 @@ export default function ConfiguracoesCore() {
     setIsTestingCapi(true)
     setCapiErrorDetail('')
     try {
+      await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken, metaBusinessId)
       await executeCapiVerification(user.id, metaBusinessId, metaPixelId, metaCapiToken)
       setCapiStatus('connected')
       toast({
@@ -482,6 +484,14 @@ export default function ConfiguracoesCore() {
       ) {
         errorMsg = 'Token Inválido. Atualize suas credenciais.'
       }
+
+      pb.collection('users')
+        .update(user.id, {
+          uazapi_error: errorMsg,
+          meta_token_status: errorMsg,
+        })
+        .catch(() => {})
+
       setCapiErrorDetail(errorMsg)
 
       toast({ title: 'Erro na validação', description: errorMsg, variant: 'destructive' })
