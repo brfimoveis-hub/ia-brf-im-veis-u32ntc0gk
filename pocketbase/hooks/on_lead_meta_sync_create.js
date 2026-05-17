@@ -1,5 +1,5 @@
 onRecordAfterCreateSuccess((e) => {
-  const userId = e.record.getString('user_id')
+  const userId = e.record.getString('assigned_to')
 
   let pixelId = $secrets.get('META_PIXEL_ID')
   let capiToken = $secrets.get('META_ACCESS_TOKEN')
@@ -14,11 +14,9 @@ onRecordAfterCreateSuccess((e) => {
   }
 
   if (pixelId && capiToken) {
-    const email = e.record.getString('email') || e.record.getString('email_1_value')
-    const phone = e.record.getString('phone') || e.record.getString('phone_1_value')
-    const fn =
-      e.record.getString('first_name') ||
-      (e.record.getString('name') ? e.record.getString('name').split(' ')[0] : '')
+    const email = e.record.getString('email')
+    const phone = e.record.getString('phone')
+    const fn = e.record.getString('name') ? e.record.getString('name').split(' ')[0] : ''
     const ln = e.record.getString('name')
       ? e.record.getString('name').split(' ').slice(1).join(' ')
       : ''
@@ -49,7 +47,7 @@ onRecordAfterCreateSuccess((e) => {
             event_id: $security.randomString(32),
             user_data: userData,
             custom_data: {
-              status: e.record.getString('status') || 'Novo',
+              source: e.record.getString('source') || 'API',
             },
           },
         ],
@@ -73,7 +71,7 @@ onRecordAfterCreateSuccess((e) => {
         if (res.statusCode >= 400) {
           $app
             .logger()
-            .error('CAPI Create Error', 'status', res.statusCode, 'body', res.json || res.body)
+            .error('CAPI Lead Create Error', 'status', res.statusCode, 'body', res.json || res.body)
         }
       } catch (err) {
         $app.logger().error('CAPI Request Failed', 'error', err.message)
@@ -82,4 +80,4 @@ onRecordAfterCreateSuccess((e) => {
   }
 
   e.next()
-}, 'customers')
+}, 'leads')

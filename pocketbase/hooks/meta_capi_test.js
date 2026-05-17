@@ -25,11 +25,14 @@ routerAdd(
       test_event_code: 'TEST54321',
     }
 
-    const url = `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`
+    const url = `https://graph.facebook.com/v21.0/${pixelId}/events`
     const res = $http.send({
       url: url,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${capiToken}`,
+      },
       body: JSON.stringify(payload),
       timeout: 15,
     })

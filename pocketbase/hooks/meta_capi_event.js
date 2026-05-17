@@ -2,25 +2,30 @@ onRecordAfterUpdateSuccess((e) => {
   const newStatus = e.record.getString('status')
   const oldStatus = e.record.original().getString('status')
 
-  // Only fire on status change
   if (newStatus && newStatus !== oldStatus) {
     const userId = e.record.getString('user_id')
-    if (!userId) return e.next()
 
-    let user
-    try {
-      user = $app.findRecordById('users', userId)
-    } catch (err) {
-      return e.next()
+    let pixelId = $secrets.get('META_PIXEL_ID')
+    let capiToken = $secrets.get('META_ACCESS_TOKEN')
+    let testCode = $secrets.get('META_TEST_EVENT_CODE')
+
+    if ((!pixelId || !capiToken) && userId) {
+      try {
+        const user = $app.findRecordById('users', userId)
+        pixelId = pixelId || user.getString('meta_pixel_id')
+        capiToken = capiToken || user.getString('meta_capi_token')
+      } catch (err) {}
     }
 
-    const pixelId = user.getString('meta_pixel_id')
-    const capiToken = user.getString('meta_capi_token')
-
     if (pixelId && capiToken) {
-      const email = e.record.getString('email')
-      const phone = e.record.getString('phone')
-      const fn = e.record.getString('first_name')
+      const email = e.record.getString('email') || e.record.getString('email_1_value')
+      const phone = e.record.getString('phone') || e.record.getString('phone_1_value')
+      const fn =
+        e.record.getString('first_name') ||
+        (e.record.getString('name') ? e.record.getString('name').split(' ')[0] : '')
+      const ln = e.record.getString('name')
+        ? e.record.getString('name').split(' ').slice(1).join(' ')
+        : ''
 
       const userData = {}
 
@@ -33,8 +38,10 @@ onRecordAfterUpdateSuccess((e) => {
       if (fn) {
         userData.fn = [$security.sha256(fn.trim().toLowerCase())]
       }
+      if (ln) {
+        userData.ln = [$security.sha256(ln.trim().toLowerCase())]
+      }
 
-      // Meta requires at least one user data field for identification
       if (!userData.em && !userData.ph && !userData.fn) {
         return e.next()
       }
@@ -42,9 +49,11 @@ onRecordAfterUpdateSuccess((e) => {
       const payload = {
         data: [
           {
-            event_name: 'LeadStatusUpdate',
+            event_name: newStatus,
             event_time: Math.floor(Date.now() / 1000),
-            action_source: 'system_generated',
+            action_source: 'website',
+            event_source_url: 'https://brfiacrminteligente.goskip.app',
+            event_id: $security.randomString(32),
             user_data: userData,
             custom_data: {
               status: newStatus,
@@ -53,12 +62,17 @@ onRecordAfterUpdateSuccess((e) => {
         ],
       }
 
-      const url = `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`
+      if (testCode) payload.test_event_code = testCode
+
+      const url = `https://graph.facebook.com/v21.0/${pixelId}/events`
       try {
         const res = $http.send({
           url: url,
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${capiToken}`,
+          },
           body: JSON.stringify(payload),
           timeout: 10,
         })

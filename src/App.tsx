@@ -109,6 +109,10 @@ const router = createBrowserRouter(
                   element: <ClientesCore />,
                 },
                 {
+                  path: '/clientes/*',
+                  element: <ClientesCore />,
+                },
+                {
                   path: '/cadencias',
                   element: <Cadences />,
                 },
