@@ -363,7 +363,20 @@ export default function ConfiguracoesCore() {
       })
     } catch (e: any) {
       setMetaStatus('disconnected')
-      const msg = e.response?.message || e.message || 'Erro ao conectar com a Meta'
+      let msg = e.response?.message || e.message || 'Erro ao conectar com a Meta'
+
+      const errString = JSON.stringify(e)
+      if (
+        msg.includes('190') ||
+        msg.includes('OAuthException') ||
+        msg.includes('invalidated') ||
+        errString.includes('190') ||
+        errString.includes('OAuthException') ||
+        errString.includes('invalidated')
+      ) {
+        msg = 'Session Expired - Please Update Token'
+      }
+
       setMetaErrorDetail(msg)
       await pb.collection('users').update(user.id, { meta_whatsapp_status: 'Desconectado' })
       toast({
