@@ -8,32 +8,23 @@ onRecordAfterCreateSuccess((e) => {
   const status = lead.getString('status') || 'Novo'
   const notes = lead.getString('notes')
 
-  if (!assignedTo) {
-    $app.logger().warn('Lead created without assigned_to', 'lead_id', lead.id)
-    return e.next()
-  }
-
   let existingCustomer = null
   try {
     if (phone) {
-      const records = $app.findRecordsByFilter(
-        'customers',
-        `user_id = '${assignedTo}' && (phone = '${phone.replace(/'/g, "''")}' || phone_1_value = '${phone.replace(/'/g, "''")}')`,
-        '-created',
-        1,
-        0,
-      )
+      const filterStr = assignedTo
+        ? `user_id = '${assignedTo}' && (phone = '${phone.replace(/'/g, "''")}' || phone_1_value = '${phone.replace(/'/g, "''")}')`
+        : `(phone = '${phone.replace(/'/g, "''")}' || phone_1_value = '${phone.replace(/'/g, "''")}')`
+
+      const records = $app.findRecordsByFilter('customers', filterStr, '-created', 1, 0)
       if (records.length > 0) existingCustomer = records[0]
     }
 
     if (!existingCustomer && email) {
-      const records = $app.findRecordsByFilter(
-        'customers',
-        `user_id = '${assignedTo}' && (email = '${email.replace(/'/g, "''")}' || email_1_value = '${email.replace(/'/g, "''")}')`,
-        '-created',
-        1,
-        0,
-      )
+      const filterStr = assignedTo
+        ? `user_id = '${assignedTo}' && (email = '${email.replace(/'/g, "''")}' || email_1_value = '${email.replace(/'/g, "''")}')`
+        : `(email = '${email.replace(/'/g, "''")}' || email_1_value = '${email.replace(/'/g, "''")}')`
+
+      const records = $app.findRecordsByFilter('customers', filterStr, '-created', 1, 0)
       if (records.length > 0) existingCustomer = records[0]
     }
   } catch (err) {
@@ -44,6 +35,8 @@ onRecordAfterCreateSuccess((e) => {
 
   if (existingCustomer) {
     existingCustomer.set('status', status)
+    if (assignedTo && !existingCustomer.getString('user_id'))
+      existingCustomer.set('user_id', assignedTo)
     if (source && !existingCustomer.getString('source')) existingCustomer.set('source', source)
     if (notes) {
       const oldNotes = existingCustomer.getString('notes')
@@ -52,7 +45,7 @@ onRecordAfterCreateSuccess((e) => {
     $app.save(existingCustomer)
   } else {
     const newCustomer = new Record(customersCol)
-    newCustomer.set('user_id', assignedTo)
+    if (assignedTo) newCustomer.set('user_id', assignedTo)
     newCustomer.set('name', name)
     newCustomer.set('first_name', name.split(' ')[0] || '')
     if (phone) {
