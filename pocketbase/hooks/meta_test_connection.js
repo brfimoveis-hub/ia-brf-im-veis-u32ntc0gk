@@ -12,8 +12,12 @@ routerAdd(
     }
 
     // Verify the credentials with a Graph API call
+    // Added ?fields to correctly request the WhatsApp phone number node without "Unsupported get request"
     const res = $http.send({
-      url: 'https://graph.facebook.com/v21.0/' + phone_number_id,
+      url:
+        'https://graph.facebook.com/v21.0/' +
+        phone_number_id +
+        '?fields=display_phone_number,name,quality_rating',
       method: 'GET',
       headers: {
         Authorization: 'Bearer ' + access_token,

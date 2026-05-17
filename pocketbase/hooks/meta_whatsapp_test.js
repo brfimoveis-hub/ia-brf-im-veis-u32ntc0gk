@@ -9,7 +9,7 @@ routerAdd(
       throw new BadRequestError('business_id, phone_number_id, and access_token are required')
     }
 
-    const url = `https://graph.facebook.com/v19.0/${phone_number_id}`
+    const url = `https://graph.facebook.com/v21.0/${phone_number_id}?fields=display_phone_number,name,quality_rating`
 
     try {
       const res = $http.send({
@@ -17,6 +17,7 @@ routerAdd(
         method: 'GET',
         headers: {
           Authorization: `Bearer ${access_token}`,
+          'Content-Type': 'application/json',
         },
         timeout: 15,
       })

@@ -73,22 +73,22 @@ const router = createBrowserRouter(
       errorElement: <GlobalError />,
       children: [
         {
-          path: '/',
+          index: true,
           element: <Navigate to="/dashboard" replace />,
         },
         {
           element: <GuestRoute />,
           children: [
             {
-              path: '/login',
+              path: 'login',
               element: <Login />,
             },
             {
-              path: '/forgot-password',
+              path: 'forgot-password',
               element: <ForgotPassword />,
             },
             {
-              path: '/reset-password',
+              path: 'reset-password',
               element: <ResetPassword />,
             },
           ],
@@ -101,31 +101,23 @@ const router = createBrowserRouter(
               errorElement: <GlobalError />,
               children: [
                 {
-                  path: '/dashboard',
+                  path: 'dashboard',
                   element: <Dashboard />,
                 },
                 {
-                  path: '/clientes',
+                  path: 'clientes/*',
                   element: <ClientesCore />,
                 },
                 {
-                  path: '/clientes/*',
-                  element: <ClientesCore />,
-                },
-                {
-                  path: '/cadencias',
+                  path: 'cadencias',
                   element: <Cadences />,
                 },
                 {
-                  path: '/logs',
+                  path: 'logs',
                   element: <Logs />,
                 },
                 {
-                  path: '/configuracoes',
-                  element: <ConfiguracoesCore />,
-                },
-                {
-                  path: '/configuracoes/*',
+                  path: 'configuracoes/*',
                   element: <ConfiguracoesCore />,
                 },
               ],
