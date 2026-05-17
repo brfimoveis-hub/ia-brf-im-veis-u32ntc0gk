@@ -120,6 +120,10 @@ const router = createBrowserRouter(
                   path: 'configuracoes',
                   element: <ConfiguracoesCore />,
                 },
+                {
+                  path: 'configuracoes/*',
+                  element: <ConfiguracoesCore />,
+                },
               ],
             },
           ],

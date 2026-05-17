@@ -106,6 +106,11 @@ export default function ConfiguracoesCore() {
   })
 
   useEffect(() => {
+    // Deep State Reset to ensure UI reflects current connection state without stale routing cache
+    localStorage.removeItem('vite-plugin-react-router-cache')
+    localStorage.removeItem('meta_session_cache')
+    sessionStorage.removeItem('meta_session_cache')
+
     if (user && !initialized.current) {
       const uDomain = user.uazapi_domain || defaultDomain
       const uToken = user.uazapi_token || ''
@@ -365,7 +370,7 @@ export default function ConfiguracoesCore() {
       setMetaStatus('disconnected')
       let msg = e.response?.message || e.message || 'Erro ao conectar com a Meta'
 
-      const errString = JSON.stringify(e)
+      const errString = typeof e === 'object' ? JSON.stringify(e) : String(e)
       if (
         msg.includes('190') ||
         msg.includes('OAuthException') ||
@@ -375,11 +380,14 @@ export default function ConfiguracoesCore() {
         errString.includes('invalidated') ||
         msg.toLowerCase().includes('the session has been invalidated')
       ) {
-        msg = 'A sessão foi invalidada. Por favor, atualize o seu Token de Acesso.'
+        msg = 'Token de Acesso da Meta é inválido ou a sessão expirou. Atualize suas credenciais.'
       }
 
       setMetaErrorDetail(msg)
-      await pb.collection('users').update(user.id, { meta_whatsapp_status: 'Desconectado' })
+      await pb
+        .collection('users')
+        .update(user.id, { meta_whatsapp_status: 'Desconectado' })
+        .catch(() => {})
       toast({
         title: 'Erro na conexão',
         description: msg,
@@ -452,7 +460,14 @@ export default function ConfiguracoesCore() {
       })
     } catch (e: any) {
       setCapiStatus('disconnected')
-      const errorMsg = e.response?.message || e.message || 'Falha na validação do CAPI.'
+      let errorMsg = e.response?.message || e.message || 'Falha na validação do CAPI.'
+      if (
+        errorMsg.includes('190') ||
+        errorMsg.includes('invalidated') ||
+        errorMsg.includes('OAuthException')
+      ) {
+        errorMsg = 'O Token de Acesso da Meta é inválido ou expirou. Atualize suas credenciais.'
+      }
       toast({ title: 'Erro na validação', description: errorMsg, variant: 'destructive' })
     } finally {
       setIsTestingCapi(false)
@@ -735,8 +750,12 @@ export default function ConfiguracoesCore() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Meta WhatsApp Phone Number ID</Label>
-                  <Input value={metaPhoneId} onChange={(e) => setMetaPhoneId(e.target.value)} />
+                  <Label>Meta User ID (Phone Number ID)</Label>
+                  <Input
+                    value={metaPhoneId}
+                    onChange={(e) => setMetaPhoneId(e.target.value)}
+                    placeholder="Ex: 27018364624521397"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Token de Acesso (Permanente)</Label>
