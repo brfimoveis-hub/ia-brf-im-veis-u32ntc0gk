@@ -75,7 +75,12 @@ export const getPaginatedCustomers = async (
   phaseFilter: string = 'all',
   sourceFilter: string = '',
 ): Promise<ListResult<Customer>> => {
-  const filters: string[] = ['created >= "2024-04-28 00:00:00.000Z"']
+  const filters: string[] = []
+
+  if (pb.authStore.record?.id) {
+    filters.push(`user_id = "${pb.authStore.record.id}"`)
+  }
+
   if (search) {
     const safeSearch = search.replace(/"/g, '\\"')
     filters.push(

@@ -15,6 +15,7 @@ export function CustomerDashboard({ leads }: { leads: Customer[] }) {
   const funnelData = PHASES.map((phase) => {
     const currentCount = leads.filter((l) => {
       const s = l.status?.trim() || 'Novo'
+      if (phase.aliases && phase.aliases.includes(s)) return true
       if (phase.title === 'Base de Clientes/Novo LYD') {
         return s === 'Novo' || s === 'Lead Novo' || s === 'lead' || s === ''
       }

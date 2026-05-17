@@ -11,13 +11,19 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { getPaginatedCustomers, Customer } from '@/services/customers'
+import { getPaginatedCustomers, Customer, deleteCustomer } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
-import { Loader2, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Loader2, Search, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { CustomerDashboard } from '@/components/customers/CustomerDashboard'
+import { CustomerTable } from '@/components/customers/CustomerTable'
+import { LeadDialog } from '@/components/customers/LeadDialog'
+import { useToast } from '@/hooks/use-toast'
 
 export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const { toast } = useToast()
   const [allLeads, setAllLeads] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -25,6 +31,7 @@ export default function Customers() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const [phaseFilter, setPhaseFilter] = useState('all')
+  const [error, setError] = useState(false)
 
   const fetchCustomers = async (
     currentPage: number,
@@ -39,8 +46,10 @@ export default function Customers() {
       setTotalItems(result.totalItems)
 
       setAllLeads(result.items)
+      setError(false)
     } catch (err) {
       console.error(err)
+      setError(true)
     } finally {
       setLoading(false)
     }
@@ -57,13 +66,38 @@ export default function Customers() {
     fetchCustomers(page, search, phaseFilter)
   })
 
+  const handleEdit = (customer: Customer) => {
+    setSelectedCustomer(customer)
+    setIsDialogOpen(true)
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteCustomer(id)
+      toast({ title: 'Cliente excluído com sucesso' })
+      fetchCustomers(page, search, phaseFilter)
+    } catch (err) {
+      toast({ title: 'Erro ao excluir cliente', variant: 'destructive' })
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-8">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Base de Clientes</h2>
-        <p className="text-muted-foreground">
-          Gerenciamento de leads e contatos ({totalItems.toLocaleString('pt-BR')} registros).
-        </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Base de Clientes</h2>
+          <p className="text-muted-foreground">
+            Gerenciamento de leads e contatos ({totalItems.toLocaleString('pt-BR')} registros).
+          </p>
+        </div>
+        <Button
+          onClick={() => {
+            setSelectedCustomer(null)
+            setIsDialogOpen(true)
+          }}
+        >
+          <Plus className="mr-2 h-4 w-4" /> Novo Lead
+        </Button>
       </div>
 
       <CustomerDashboard leads={allLeads} />
@@ -113,44 +147,13 @@ export default function Customers() {
             </div>
           ) : (
             <>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Data</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {customers.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                          Nenhum cliente encontrado.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      customers.map((c) => (
-                        <TableRow key={c.id}>
-                          <TableCell className="font-medium">
-                            {c.name || c.first_name || 'Sem nome'}
-                          </TableCell>
-                          <TableCell>{c.email || c.email_1_value || '-'}</TableCell>
-                          <TableCell>{c.phone || c.phone_1_value || '-'}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">{c.status || 'Novo'}</Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground text-sm">
-                            {new Date(c.created).toLocaleDateString('pt-BR')}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <CustomerTable
+                leads={customers}
+                loading={loading}
+                error={error}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
               <div className="flex items-center justify-between mt-4">
                 <div className="text-sm text-muted-foreground">
                   Mostrando {(page - 1) * 50 + 1} a {Math.min(page * 50, totalItems)} de{' '}
@@ -182,6 +185,17 @@ export default function Customers() {
           )}
         </CardContent>
       </Card>
+
+      <LeadDialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          setIsDialogOpen(open)
+          if (!open) {
+            fetchCustomers(page, search, phaseFilter)
+          }
+        }}
+        defaultValues={selectedCustomer}
+      />
     </div>
   )
 }

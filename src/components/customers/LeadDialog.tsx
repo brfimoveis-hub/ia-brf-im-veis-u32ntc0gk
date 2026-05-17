@@ -30,7 +30,9 @@ export function LeadDialog({
     last_name: '',
     phone: '',
     email: '',
-    status: '1',
+    status: 'Novo',
+    source: '',
+    notes: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
@@ -46,10 +48,21 @@ export function LeadDialog({
           last_name: defaultValues.last_name || '',
           phone: defaultValues.phone || '',
           email: defaultValues.email || '',
-          status: defaultValues.status || '1',
+          status: defaultValues.status || 'Novo',
+          source: defaultValues.source || '',
+          notes: defaultValues.notes || '',
         })
       } else {
-        setFormData({ name: '', first_name: '', last_name: '', phone: '', email: '', status: '1' })
+        setFormData({
+          name: '',
+          first_name: '',
+          last_name: '',
+          phone: '',
+          email: '',
+          status: 'Novo',
+          source: '',
+          notes: '',
+        })
       }
     }
   }, [defaultValues, open])
@@ -193,6 +206,24 @@ export function LeadDialog({
               className={errors.email ? 'border-red-500' : ''}
             />
             {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="source">Origem</Label>
+            <Input
+              id="source"
+              value={formData.source}
+              onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+              placeholder="Ex: Facebook Ads, Indicação"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="notes">Anotações</Label>
+            <Input
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="Observações importantes"
+            />
           </div>
           <DialogFooter className="pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
