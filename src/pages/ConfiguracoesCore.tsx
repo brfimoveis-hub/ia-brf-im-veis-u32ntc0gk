@@ -423,6 +423,7 @@ export default function ConfiguracoesCore() {
       await pb.collection('users').update(user.id, {
         meta_pixel_id: metaPixelId.trim(),
         meta_capi_token: metaCapiToken.trim(),
+        meta_whatsapp_business_id: metaBusinessId.trim(),
       })
       toast({
         title: 'Meta CAPI Salvo',
@@ -445,10 +446,14 @@ export default function ConfiguracoesCore() {
       })
       setCapiStatus('connected')
       await pb.collection('users').update(user.id, { meta_token_status: 'valid' })
-      toast({ title: 'Meta CAPI Conectado', description: 'Teste de conexão bem-sucedido.' })
+      toast({
+        title: 'Conexão Estabelecida com Sucesso',
+        description: 'Teste de conexão bem-sucedido.',
+      })
     } catch (e: any) {
       setCapiStatus('disconnected')
-      toast({ title: 'Erro', description: 'Falha na validação do CAPI.', variant: 'destructive' })
+      const errorMsg = e.response?.message || e.message || 'Falha na validação do CAPI.'
+      toast({ title: 'Erro na validação', description: errorMsg, variant: 'destructive' })
     } finally {
       setIsTestingCapi(false)
     }
@@ -792,6 +797,14 @@ export default function ConfiguracoesCore() {
             <CardContent className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
+                  <Label>Meta User ID (Business ID)</Label>
+                  <Input
+                    value={metaBusinessId}
+                    onChange={(e) => setMetaBusinessId(e.target.value)}
+                    placeholder="Ex: 27018364624521397"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label>Meta Pixel ID</Label>
                   <Input
                     value={metaPixelId}
@@ -799,7 +812,7 @@ export default function ConfiguracoesCore() {
                     placeholder="Ex: 1029384756"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <Label>Meta CAPI Token</Label>
                   <div className="relative">
                     <Input
@@ -830,8 +843,8 @@ export default function ConfiguracoesCore() {
                   onClick={testMetaCapiConnection}
                   disabled={isTestingCapi || !metaPixelId || !metaCapiToken}
                 >
-                  {isTestingCapi && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Test
-                  Connection
+                  {isTestingCapi && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Verificar
+                  Conexão
                 </Button>
               </div>
             </CardContent>
