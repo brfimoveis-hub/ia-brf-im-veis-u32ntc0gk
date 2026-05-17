@@ -372,9 +372,10 @@ export default function ConfiguracoesCore() {
         msg.includes('invalidated') ||
         errString.includes('190') ||
         errString.includes('OAuthException') ||
-        errString.includes('invalidated')
+        errString.includes('invalidated') ||
+        msg.toLowerCase().includes('the session has been invalidated')
       ) {
-        msg = 'Session Expired - Please Update Token'
+        msg = 'A sessão foi invalidada. Por favor, atualize o seu Token de Acesso.'
       }
 
       setMetaErrorDetail(msg)
@@ -397,6 +398,11 @@ export default function ConfiguracoesCore() {
         meta_whatsapp_access_token: metaAccessToken,
         meta_whatsapp_verify_token: metaVerifyToken,
       })
+
+      // Clear session cache related to Meta to prevent invalid session errors
+      localStorage.removeItem('meta_session_cache')
+      sessionStorage.removeItem('meta_session_cache')
+
       toast({ title: 'Meta configurada', description: 'Suas credenciais foram atualizadas.' })
       checkMetaConnection(metaBusinessId, metaPhoneId, metaAccessToken)
     } catch (e) {
