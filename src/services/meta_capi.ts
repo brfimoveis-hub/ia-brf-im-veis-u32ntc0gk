@@ -40,3 +40,22 @@ export const saveMetaCapiSettings = async (
     meta_whatsapp_business_id: metaBusinessId.trim(),
   })
 }
+
+/**
+ * Execute the CAPI verification independently from UI lifecycle.
+ */
+export const executeCapiVerification = async (
+  userId: string,
+  businessId: string,
+  pixelId: string,
+  accessToken: string,
+) => {
+  try {
+    await testMetaCapiConnectionService(businessId, pixelId, accessToken)
+    await updateMetaCapiStatus(userId, 'connected')
+    return { success: true }
+  } catch (error: any) {
+    await updateMetaCapiStatus(userId, 'error').catch(() => {})
+    throw error
+  }
+}

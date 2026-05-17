@@ -28,6 +28,7 @@ import {
   testMetaCapiConnectionService,
   updateMetaCapiStatus,
   saveMetaCapiSettings,
+  executeCapiVerification,
 } from '@/services/meta_capi'
 
 export default function ConfiguracoesCore() {
@@ -454,9 +455,8 @@ export default function ConfiguracoesCore() {
     if (!user) return
     setIsTestingCapi(true)
     try {
-      await testMetaCapiConnectionService(metaBusinessId, metaPixelId, metaCapiToken)
+      await executeCapiVerification(user.id, metaBusinessId, metaPixelId, metaCapiToken)
       setCapiStatus('connected')
-      await updateMetaCapiStatus(user.id, 'connected')
       toast({
         title: 'Conexão Estabelecida com Sucesso',
         description: 'Teste de conexão bem-sucedido.',
@@ -472,7 +472,6 @@ export default function ConfiguracoesCore() {
         errorMsg = 'Token Inválido. Atualize suas credenciais.'
       }
 
-      await updateMetaCapiStatus(user.id, 'error').catch(() => {})
       toast({ title: 'Erro na validação', description: errorMsg, variant: 'destructive' })
     } finally {
       setIsTestingCapi(false)
@@ -485,10 +484,9 @@ export default function ConfiguracoesCore() {
     if (user && capiStatus === 'connected' && metaPixelId && metaCapiToken) {
       watchdog = setInterval(async () => {
         try {
-          await testMetaCapiConnectionService(metaBusinessId, metaPixelId, metaCapiToken)
+          await executeCapiVerification(user.id, metaBusinessId, metaPixelId, metaCapiToken)
         } catch (e) {
           setCapiStatus('disconnected')
-          await updateMetaCapiStatus(user.id, 'error').catch(() => {})
         }
       }, 120000) // Verifica a cada 2 minutos
     }
