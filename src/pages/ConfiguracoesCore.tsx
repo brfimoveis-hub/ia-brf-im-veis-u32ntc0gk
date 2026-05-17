@@ -351,14 +351,26 @@ export default function ConfiguracoesCore() {
     setMetaStatus('checking')
     setMetaErrorDetail('')
     try {
-      await pb.send(`/backend/v1/meta/test-connection`, {
+      await pb.send(`/backend/v1/meta_test_connection`, {
         method: 'POST',
         body: { business_id: busId, phone_number_id: phoneId, access_token: accToken },
       })
       setMetaStatus('connected')
+      await pb.collection('users').update(user.id, { meta_whatsapp_status: 'Conectado' })
+      toast({
+        title: 'Conexão Bem-sucedida',
+        description: 'As credenciais da Meta são válidas e a conexão foi estabelecida.',
+      })
     } catch (e: any) {
       setMetaStatus('disconnected')
-      setMetaErrorDetail(e.response?.message || e.message || 'Erro ao conectar com a Meta')
+      const msg = e.response?.message || e.message || 'Erro ao conectar com a Meta'
+      setMetaErrorDetail(msg)
+      await pb.collection('users').update(user.id, { meta_whatsapp_status: 'Desconectado' })
+      toast({
+        title: 'Erro na conexão',
+        description: msg,
+        variant: 'destructive',
+      })
     }
   }
 
@@ -737,7 +749,9 @@ export default function ConfiguracoesCore() {
                 <Button
                   variant="secondary"
                   onClick={() => checkMetaConnection(metaBusinessId, metaPhoneId, metaAccessToken)}
+                  disabled={metaStatus === 'checking'}
                 >
+                  {metaStatus === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Verificar Conexão
                 </Button>
               </div>
