@@ -62,9 +62,20 @@ export interface Customer {
 
 export const getCustomers = async (filter?: string): Promise<Customer[]> => {
   const options: any = { sort: '-created' }
-  if (filter) {
-    options.filter = filter
+  const filters: string[] = []
+
+  if (pb.authStore.record?.id) {
+    filters.push(`user_id = "${pb.authStore.record.id}"`)
   }
+
+  if (filter) {
+    filters.push(`(${filter})`)
+  }
+
+  if (filters.length > 0) {
+    options.filter = filters.join(' && ')
+  }
+
   return pb.collection('customers').getFullList<Customer>(options)
 }
 

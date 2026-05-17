@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-17T13:06:37.714Z",
+  "generatedAt": "2026-05-17T13:12:45.518Z",
   "collections": [
     {
       "name": "users",
@@ -452,6 +452,54 @@
           "type": "text",
           "required": false,
           "system": false
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "conversations",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && customer_id.user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && customer_id.user_id = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && customer_id.user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && customer_id.user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "customer_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "customers"
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "sender",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["customer", "agent", "ai", "system"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": []

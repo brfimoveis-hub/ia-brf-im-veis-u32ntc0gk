@@ -54,15 +54,6 @@ export function CustomerTable({
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
 
-  if (error) {
-    return (
-      <div className="h-32 flex flex-col items-center justify-center text-muted-foreground">
-        <AlertCircle className="h-8 w-8 text-destructive mb-2" />
-        <p>Erro ao carregar clientes. Tente novamente mais tarde.</p>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-4">
       {hasFilter && leads.length > 0 && (

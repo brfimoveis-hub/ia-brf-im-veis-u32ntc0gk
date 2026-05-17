@@ -67,7 +67,13 @@ export function CustomerDetailDrawer({
     setLoading(true)
     setError(null)
 
-    Promise.all([getCustomer(customerId), getConversations(customerId)])
+    Promise.all([
+      getCustomer(customerId),
+      getConversations(customerId).catch((err) => {
+        console.warn('Failed to load conversations:', err)
+        return [] as Conversation[]
+      }),
+    ])
       .then(([cust, convs]) => {
         if (mounted) {
           setCustomer(cust)
@@ -77,9 +83,11 @@ export function CustomerDetailDrawer({
         }
       })
       .catch((err) => {
-        console.error(err)
+        console.error('Error in loadData:', err)
         if (mounted) {
-          setError('Erro ao carregar os detalhes do cliente ou histórico de conversas.')
+          setError(
+            'Erro ao carregar os detalhes do cliente. Verifique sua conexão e tente novamente.',
+          )
           setLoading(false)
         }
       })

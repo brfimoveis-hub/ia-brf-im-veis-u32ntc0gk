@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { getPaginatedCustomers, Customer, deleteCustomer } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
-import { Loader2, Search, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { Loader2, Search, ChevronLeft, ChevronRight, Plus, AlertCircle } from 'lucide-react'
 import { CustomerDashboard } from '@/components/customers/CustomerDashboard'
 import { CustomerTable } from '@/components/customers/CustomerTable'
 import { LeadDialog } from '@/components/customers/LeadDialog'
@@ -141,6 +141,22 @@ export default function ClientesCore() {
           {loading && customers.length === 0 ? (
             <div className="flex justify-center p-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center p-12 space-y-4 text-center">
+              <div className="bg-destructive/10 p-4 rounded-full">
+                <AlertCircle className="h-8 w-8 text-destructive" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Erro ao carregar clientes</h3>
+                <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                  Não foi possível carregar a lista de clientes. Verifique sua conexão com a
+                  internet e tente novamente.
+                </p>
+              </div>
+              <Button onClick={() => fetchCustomers(page, search, phaseFilter)}>
+                Tentar Novamente
+              </Button>
             </div>
           ) : (
             <>
