@@ -1,16 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { getPaginatedCustomers, Customer, deleteCustomer } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Loader2, Search, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
@@ -19,7 +10,7 @@ import { CustomerTable } from '@/components/customers/CustomerTable'
 import { LeadDialog } from '@/components/customers/LeadDialog'
 import { useToast } from '@/hooks/use-toast'
 
-export default function Customers() {
+export default function ClientesCore() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -63,6 +54,12 @@ export default function Customers() {
   }, [page, search, phaseFilter])
 
   useRealtime('customers', () => {
+    fetchCustomers(page, search, phaseFilter)
+  })
+
+  // Escuta os leads novos para atualizar a tabela caso um lead seja adicionado
+  // O hook on_lead_create já garante que ele é inserido em customers na base de dados
+  useRealtime('leads', () => {
     fetchCustomers(page, search, phaseFilter)
   })
 

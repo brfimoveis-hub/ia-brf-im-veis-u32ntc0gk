@@ -18,7 +18,7 @@ import { GlobalError } from '@/components/GlobalError'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 import Dashboard from './pages/Dashboard'
-import Customers from './pages/Customers'
+import ClientesCore from './pages/ClientesCore'
 import ConfiguracoesCore from './pages/ConfiguracoesCore'
 import Cadences from './pages/Cadences'
 import Logs from './pages/Logs'
@@ -106,7 +106,7 @@ const router = createBrowserRouter(
                 },
                 {
                   path: '/clientes',
-                  element: <Customers />,
+                  element: <ClientesCore />,
                 },
                 {
                   path: '/cadencias',

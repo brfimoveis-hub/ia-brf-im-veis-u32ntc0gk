@@ -17,7 +17,13 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { MoreHorizontal, Edit, Trash2, AlertCircle, RefreshCw } from 'lucide-react'
 import { Customer } from '@/services/customers'
-import { PHASES, COLUMNS } from './constants'
+import { PHASES } from './constants'
+
+const COLUMNS = [
+  { key: 'name', label: 'Nome' },
+  { key: 'phone', label: 'Telefone' },
+  { key: 'email', label: 'E-mail' },
+]
 import { cn, formatPhone } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
 import { RemarketingSyncModal } from './RemarketingSyncModal'
@@ -177,45 +183,12 @@ export function CustomerTable({
                       }
                       let val = (lead as any)[col.key]
 
-                      if (col.key === 'email_1_value') {
-                        val = lead.email_1_value || lead.email || ''
-                      }
-
-                      if (col.key === 'phone') {
-                        const rawPhone =
-                          lead.phone_1_value ||
-                          lead.phone ||
-                          lead.phone_2_value ||
-                          lead.phone_3_value ||
-                          lead.phone_4_value ||
-                          ''
-                        val = formatPhone(rawPhone)
-                      }
-
-                      if (col.key === 'name') {
-                        const concatenatedName = [lead.first_name, lead.middle_name, lead.last_name]
-                          .filter(Boolean)
-                          .join(' ')
-                          .trim()
-
-                        const isPlaceholder =
-                          !val ||
-                          val === 'Sem Nome' ||
-                          val === 'Sem nome' ||
-                          val === '—' ||
-                          val.trim() === ''
-
-                        if (isPlaceholder) {
-                          if (concatenatedName !== '') {
-                            val = concatenatedName
-                          } else if (lead.email && lead.email.trim() !== '') {
-                            val = lead.email
-                          } else if (lead.phone && lead.phone.trim() !== '') {
-                            val = lead.phone
-                          } else {
-                            val = 'Sem nome'
-                          }
-                        }
+                      if (col.key === 'email') {
+                        val = lead.email || '—'
+                      } else if (col.key === 'phone') {
+                        val = lead.phone ? formatPhone(lead.phone) : '—'
+                      } else if (col.key === 'name') {
+                        val = lead.name && lead.name.trim() !== '' ? lead.name : 'Sem nome'
                       }
 
                       return (
@@ -226,7 +199,7 @@ export function CustomerTable({
                             col.key === 'name' && 'font-medium text-foreground',
                           )}
                         >
-                          {val || '—'}
+                          {val}
                         </TableCell>
                       )
                     })}
