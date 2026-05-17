@@ -53,10 +53,56 @@ const GuestRoute = () => {
   return <Outlet />
 }
 
+const RouteTracker = () => {
+  const location = useLocation()
+
+  useEffect(() => {
+    const path = location.pathname
+    let component = 'Unknown'
+
+    if (path === '/' || path === '/dashboard') {
+      component = 'Index'
+    } else if (path.startsWith('/configuracoes')) {
+      component = 'ConfiguracoesCore'
+    } else if (path.startsWith('/clientes')) {
+      component = 'ClientesCore'
+    } else if (path.startsWith('/cadencias')) {
+      component = 'Cadences'
+    } else if (path.startsWith('/logs')) {
+      component = 'Logs'
+    }
+
+    const routeData = { path, component }
+
+    // Persist to match expected state structure and resolve specific state conflicts
+    localStorage.setItem('currentRoute', JSON.stringify(routeData))
+
+    // Also patch potential nested store formats just in case
+    try {
+      const existing = localStorage.getItem('route-store')
+      if (existing) {
+        const parsed = JSON.parse(existing)
+        localStorage.setItem(
+          'route-store',
+          JSON.stringify({
+            ...parsed,
+            state: { ...parsed.state, currentRoute: routeData },
+          }),
+        )
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }, [location])
+
+  return null
+}
+
 const Root = () => {
   const { loading } = useAuth()
   return (
     <>
+      <RouteTracker />
       <ErrorBoundary fallback={null}>
         <GTMTracker />
         <MetaPixel />
@@ -101,27 +147,27 @@ const router = createBrowserRouter(
               errorElement: <GlobalError />,
               children: [
                 {
-                  path: '/dashboard',
+                  path: 'dashboard',
                   element: <Dashboard />,
                 },
                 {
-                  path: '/clientes/*',
+                  path: 'clientes/*',
                   element: <ClientesCore />,
                 },
                 {
-                  path: '/cadencias',
+                  path: 'cadencias',
                   element: <Cadences />,
                 },
                 {
-                  path: '/logs',
+                  path: 'logs',
                   element: <Logs />,
                 },
                 {
-                  path: '/configuracoes',
+                  path: 'configuracoes',
                   element: <ConfiguracoesCore />,
                 },
                 {
-                  path: '/configuracoes/*',
+                  path: 'configuracoes/*',
                   element: <ConfiguracoesCore />,
                 },
               ],

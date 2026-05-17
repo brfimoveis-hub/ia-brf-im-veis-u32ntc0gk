@@ -119,6 +119,12 @@ export default function ConfiguracoesCore() {
     localStorage.removeItem('meta_session_cache')
     sessionStorage.removeItem('meta_session_cache')
 
+    // Clear any dashboard-specific states to prevent 'instance not found' errors caused by state corruption
+    localStorage.removeItem('dashboard_state')
+    sessionStorage.removeItem('dashboard_state')
+    localStorage.removeItem('active_instance_cache')
+    sessionStorage.removeItem('active_instance_cache')
+
     if (user && !initialized.current) {
       const uDomain = user.uazapi_domain || defaultDomain
       const uToken = user.uazapi_token || ''
