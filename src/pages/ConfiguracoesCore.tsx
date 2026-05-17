@@ -24,6 +24,11 @@ import {
 } from 'lucide-react'
 import { SettingsAi } from './settings/SettingsAi'
 import { SettingsSocial } from './settings/SettingsSocial'
+import {
+  testMetaCapiConnectionService,
+  updateMetaCapiStatus,
+  saveMetaCapiSettings,
+} from '@/services/meta_capi'
 
 export default function ConfiguracoesCore() {
   const { user } = useAuth()
@@ -433,11 +438,7 @@ export default function ConfiguracoesCore() {
     if (!user) return
     setIsSavingCapi(true)
     try {
-      await pb.collection('users').update(user.id, {
-        meta_pixel_id: metaPixelId.trim(),
-        meta_capi_token: metaCapiToken.trim(),
-        meta_whatsapp_business_id: metaBusinessId.trim(),
-      })
+      await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken, metaBusinessId)
       toast({
         title: 'Meta CAPI Salvo',
         description: 'Configurações de Pixel e CAPI foram salvas.',
@@ -453,16 +454,9 @@ export default function ConfiguracoesCore() {
     if (!user) return
     setIsTestingCapi(true)
     try {
-      await pb.send('/backend/v1/meta_test_connection', {
-        method: 'POST',
-        body: {
-          business_id: metaBusinessId.trim(),
-          pixel_id: metaPixelId.trim(),
-          access_token: metaCapiToken.trim(),
-        },
-      })
+      await testMetaCapiConnectionService(metaBusinessId, metaPixelId, metaCapiToken)
       setCapiStatus('connected')
-      await pb.collection('users').update(user.id, { meta_token_status: 'connected' })
+      await updateMetaCapiStatus(user.id, 'connected')
       toast({
         title: 'Conexão Estabelecida com Sucesso',
         description: 'Teste de conexão bem-sucedido.',
@@ -478,15 +472,28 @@ export default function ConfiguracoesCore() {
         errorMsg = 'Token Inválido. Atualize suas credenciais.'
       }
 
-      await pb
-        .collection('users')
-        .update(user.id, { meta_token_status: 'error' })
-        .catch(() => {})
+      await updateMetaCapiStatus(user.id, 'error').catch(() => {})
       toast({ title: 'Erro na validação', description: errorMsg, variant: 'destructive' })
     } finally {
       setIsTestingCapi(false)
     }
   }
+
+  // Meta CAPI Watchdog: monitora a saúde da conexão em segundo plano de forma passiva
+  useEffect(() => {
+    let watchdog: NodeJS.Timeout
+    if (user && capiStatus === 'connected' && metaPixelId && metaCapiToken) {
+      watchdog = setInterval(async () => {
+        try {
+          await testMetaCapiConnectionService(metaBusinessId, metaPixelId, metaCapiToken)
+        } catch (e) {
+          setCapiStatus('disconnected')
+          await updateMetaCapiStatus(user.id, 'error').catch(() => {})
+        }
+      }, 120000) // Verifica a cada 2 minutos
+    }
+    return () => clearInterval(watchdog)
+  }, [user, capiStatus, metaPixelId, metaCapiToken, metaBusinessId])
 
   const overallUazapiStatus = instances.some((i) => i.status === 'connected')
     ? 'connected'
