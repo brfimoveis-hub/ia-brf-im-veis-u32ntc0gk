@@ -529,7 +529,7 @@ export default function ConfiguracoesCore() {
         errorMsg.includes('does not exist')
       ) {
         errorMsg =
-          'Erro de Mismatch: Verifique se o Pixel ID e o Token da CAPI estão corretos. O ID do Objeto informado não existe ou a requisição não é suportada.'
+          'Erro de Mismatch: Verifique se o Pixel ID e o Token de Acesso estão corretamente pareados. A requisição não é suportada ou o ID do Objeto não existe (você pode ter inserido um Business ID no lugar do Pixel ID).'
       }
 
       pb.collection('users')
@@ -914,9 +914,7 @@ export default function ConfiguracoesCore() {
             <CardContent className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    ID da Conta de Negócios (Business ID)
-                  </Label>
+                  <Label className="flex items-center gap-2">Meta Business ID</Label>
                   <Input
                     value={metaBusinessId}
                     onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
@@ -928,16 +926,25 @@ export default function ConfiguracoesCore() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2">Meta Pixel ID</Label>
+                  <Label className="flex items-center gap-2">Pixel ID / Dataset ID</Label>
                   <Input
                     value={metaPixelId}
                     onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
                     placeholder="Ex: 1522162279584545"
                   />
-                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
-                    <Info className="h-3 w-3 mt-0.5 shrink-0" />O ID numérico do seu Dataset (Pixel)
-                    de eventos. Não confunda com o Business ID.
-                  </p>
+                  {metaPixelId === '27018364624521397' ||
+                  (metaPixelId && metaPixelId === metaBusinessId) ? (
+                    <p className="text-[11px] text-amber-600 flex items-start gap-1 mt-1 font-medium">
+                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                      This looks like a Business ID. Please ensure you are entering the Pixel ID
+                      here.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                      <Info className="h-3 w-3 mt-0.5 shrink-0" />O ID numérico do seu Dataset
+                      (Pixel) de eventos. Não confunda com o Business ID.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label className="flex items-center gap-2">Token de Acesso (CAPI)</Label>

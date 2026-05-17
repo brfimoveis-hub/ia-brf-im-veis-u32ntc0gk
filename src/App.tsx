@@ -101,27 +101,27 @@ const router = createBrowserRouter(
               errorElement: <GlobalError />,
               children: [
                 {
-                  path: 'dashboard',
+                  path: '/dashboard',
                   element: <Dashboard />,
                 },
                 {
-                  path: 'clientes/*',
+                  path: '/clientes/*',
                   element: <ClientesCore />,
                 },
                 {
-                  path: 'cadencias',
+                  path: '/cadencias',
                   element: <Cadences />,
                 },
                 {
-                  path: 'logs',
+                  path: '/logs',
                   element: <Logs />,
                 },
                 {
-                  path: 'configuracoes',
+                  path: '/configuracoes',
                   element: <ConfiguracoesCore />,
                 },
                 {
-                  path: 'configuracoes/*',
+                  path: '/configuracoes/*',
                   element: <ConfiguracoesCore />,
                 },
               ],
@@ -156,6 +156,7 @@ const App = () => {
       })
     }
     localStorage.removeItem('vite-plugin-react-router-cache')
+    sessionStorage.removeItem('vite-plugin-react-router-cache')
   }, [])
 
   return (
