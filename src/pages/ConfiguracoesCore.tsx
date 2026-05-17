@@ -89,6 +89,7 @@ export default function ConfiguracoesCore() {
 
   // Meta CAPI States
   const [capiStatus, setCapiStatus] = useState<'connected' | 'disconnected'>('disconnected')
+  const [capiErrorDetail, setCapiErrorDetail] = useState('')
   const [metaPixelId, setMetaPixelId] = useState('')
   const [metaCapiToken, setMetaCapiToken] = useState('')
   const [showCapiToken, setShowCapiToken] = useState(false)
@@ -153,12 +154,21 @@ export default function ConfiguracoesCore() {
 
       setMetaPixelId(user.meta_pixel_id || '1522162279584545')
       setMetaCapiToken(user.meta_capi_token || '')
-      setCapiStatus(
+
+      const isCapiConnected =
         (user as any).meta_token_status === 'connected' ||
-          (user as any).meta_token_status === 'valid'
-          ? 'connected'
-          : 'disconnected',
-      )
+        (user as any).meta_token_status === 'valid'
+      setCapiStatus(isCapiConnected ? 'connected' : 'disconnected')
+
+      if (!isCapiConnected && (user as any).meta_token_status) {
+        setCapiErrorDetail(
+          (user as any).meta_token_status !== 'error'
+            ? (user as any).meta_token_status
+            : 'Erro de validação do token',
+        )
+      } else {
+        setCapiErrorDetail('')
+      }
 
       initialized.current = true
     }
@@ -454,6 +464,7 @@ export default function ConfiguracoesCore() {
   const testMetaCapiConnection = async () => {
     if (!user) return
     setIsTestingCapi(true)
+    setCapiErrorDetail('')
     try {
       await executeCapiVerification(user.id, metaBusinessId, metaPixelId, metaCapiToken)
       setCapiStatus('connected')
@@ -471,6 +482,7 @@ export default function ConfiguracoesCore() {
       ) {
         errorMsg = 'Token Inválido. Atualize suas credenciais.'
       }
+      setCapiErrorDetail(errorMsg)
 
       toast({ title: 'Erro na validação', description: errorMsg, variant: 'destructive' })
     } finally {
@@ -564,20 +576,30 @@ export default function ConfiguracoesCore() {
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2 mt-1">
-              {capiStatus === 'connected' ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  <span className="text-sm font-medium text-emerald-600">Conectado</span>
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-4 w-4 text-destructive" />
-                  <span className="text-sm font-medium text-destructive">Desconectado</span>
-                </>
+            <div className="flex flex-col gap-1 mt-1">
+              <div className="flex items-center gap-2">
+                {capiStatus === 'connected' ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    <span className="text-sm font-medium text-emerald-600">Conectado</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-4 w-4 text-destructive" />
+                    <span className="text-sm font-medium text-destructive">Desconectado</span>
+                  </>
+                )}
+              </div>
+              {capiStatus === 'disconnected' && capiErrorDetail && (
+                <p
+                  className="text-xs text-destructive mt-1 max-w-[200px] truncate"
+                  title={capiErrorDetail}
+                >
+                  {capiErrorDetail}
+                </p>
               )}
+              <p className="text-xs text-muted-foreground mt-1">Conversions API</p>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Conversions API</p>
           </CardContent>
         </Card>
       </div>
