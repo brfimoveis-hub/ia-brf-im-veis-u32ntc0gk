@@ -24,8 +24,8 @@ export const PHASES = [
 
 export const COLUMNS = [
   { key: 'name', label: 'Nome' },
-  { key: 'email_1_value', label: 'Email' },
   { key: 'phone', label: 'Telefone' },
+  { key: 'email_1_value', label: 'Email' },
   { key: 'source', label: 'Origem' },
   { key: 'tags', label: 'Tags' },
 ]
