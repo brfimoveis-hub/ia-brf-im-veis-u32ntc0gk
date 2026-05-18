@@ -171,7 +171,8 @@ export default function ConfiguracoesCore() {
         }
       })
 
-      setMetaBusinessId(user.meta_whatsapp_business_id || '')      setMetaPhoneId(user.meta_whatsapp_phone_number_id || '')
+      setMetaBusinessId(user.meta_whatsapp_business_id || '')
+      setMetaPhoneId(user.meta_whatsapp_phone_number_id || '')
       setMetaAccessToken(user.meta_whatsapp_access_token || '')
       setMetaVerifyToken(user.meta_whatsapp_verify_token || '')
 
@@ -191,7 +192,8 @@ export default function ConfiguracoesCore() {
         setMetaStatus('idle')
       }
 
-      setMetaPixelId(user.meta_pixel_id || '')      setMetaCapiToken(user.meta_capi_token || '')
+      setMetaPixelId(user.meta_pixel_id || '')
+      setMetaCapiToken(user.meta_capi_token || '')
 
       const isCapiConnected =
         (user as any).meta_token_status === 'connected' ||
@@ -937,7 +939,8 @@ export default function ConfiguracoesCore() {
                   )}
                   <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
                     <Info className="h-3 w-3 mt-0.5 shrink-0" />
-                    Encontrado no Business Manager da Meta ou no App Dashboard em WhatsApp &gt; Configurações da API.
+                    Encontrado no Business Manager da Meta ou no App Dashboard em WhatsApp &gt;
+                    Configurações da API.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -1075,8 +1078,8 @@ export default function ConfiguracoesCore() {
                     <p className="text-xs text-destructive mt-1">{capiValidationErrors.pixelId}</p>
                   )}
                   <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
-                    <Info className="h-3 w-3 mt-0.5 shrink-0" />O ID numérico do seu Dataset
-                    (Pixel) de eventos. Encontrado em Meta Events Manager &gt; Data Sources.
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />O ID numérico do seu Dataset (Pixel)
+                    de eventos. Encontrado em Meta Events Manager &gt; Data Sources.
                   </p>
                 </div>
                 <div className="space-y-2 md:col-span-2">
