@@ -426,9 +426,9 @@ export default function ConfiguracoesCore() {
       await pb.send(`/backend/v1/meta/test-connection`, {
         method: 'POST',
         body: {
-          business_id: busId?.trim() || '',
-          phone_number_id: phoneId?.trim() || '',
-          access_token: accToken?.trim() || '',
+          business_id: String(busId).trim(),
+          phone_number_id: String(phoneId).trim(),
+          access_token: String(accToken).trim(),
         },
       })
       setMetaStatus('connected')
@@ -439,7 +439,14 @@ export default function ConfiguracoesCore() {
       })
     } catch (e: any) {
       setMetaStatus('disconnected')
+
       let msg = e.response?.message || e.message || 'Erro ao conectar com a Meta'
+      const metaErr = e.response?.data?.error || e.response?.error || {}
+      if (metaErr.message) {
+        msg = metaErr.message
+      } else if (typeof e.response?.data === 'string') {
+        msg = e.response.data
+      }
 
       const errString = typeof e === 'object' ? JSON.stringify(e) : String(e)
       if (
@@ -583,9 +590,9 @@ export default function ConfiguracoesCore() {
       })
 
       const payload = {
-        business_id: metaBusinessId?.trim() || '',
-        pixel_id: metaPixelId?.trim() || '',
-        access_token: metaCapiToken?.trim() || '',
+        business_id: String(metaBusinessId).trim(),
+        pixel_id: String(metaPixelId).trim(),
+        access_token: String(metaCapiToken).trim(),
       }
 
       await pb.send('/backend/v1/meta_capi_test_connection', {
@@ -601,6 +608,13 @@ export default function ConfiguracoesCore() {
     } catch (e: any) {
       setCapiStatus('disconnected')
       let errorMsg = e.response?.message || e.message || 'Falha de Handshake'
+
+      const metaErr = e.response?.data?.error || e.response?.error || {}
+      if (metaErr.message) {
+        errorMsg = metaErr.message
+      } else if (typeof e.response?.data === 'string') {
+        errorMsg = e.response.data
+      }
 
       if (
         (errorMsg.includes('190') ||
@@ -793,7 +807,7 @@ export default function ConfiguracoesCore() {
                   <Input
                     value={domain}
                     placeholder="https://iabrfimveis.uazapi.com"
-                    onChange={(e) => setDomain(e.target.value)}
+                    onChange={(e) => setDomain(e.target.value.trim())}
                     className={validationErrors.domain ? 'border-destructive' : ''}
                   />
                   {validationErrors.domain && (
@@ -804,7 +818,7 @@ export default function ConfiguracoesCore() {
                   <Label>Admin Token</Label>
                   <Input
                     value={adminToken}
-                    onChange={(e) => setAdminToken(e.target.value)}
+                    onChange={(e) => setAdminToken(e.target.value.trim())}
                     type="password"
                     className={validationErrors.adminToken ? 'border-destructive' : ''}
                   />
@@ -814,7 +828,11 @@ export default function ConfiguracoesCore() {
                 </div>
                 <div className="space-y-2">
                   <Label>Token da API (Opcional)</Label>
-                  <Input value={token} onChange={(e) => setToken(e.target.value)} type="password" />
+                  <Input
+                    value={token}
+                    onChange={(e) => setToken(e.target.value.trim())}
+                    type="password"
+                  />
                 </div>
               </div>
               <Button onClick={handleSaveUazapi} disabled={isSaving}>
@@ -967,7 +985,7 @@ export default function ConfiguracoesCore() {
                   <Label className="flex items-center gap-2">Meta Business ID</Label>
                   <Input
                     value={metaBusinessId}
-                    onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, '').trim())}
                     placeholder="Ex: 27018364624521397"
                     className={metaValidationErrors.businessId ? 'border-destructive' : ''}
                   />
@@ -986,7 +1004,7 @@ export default function ConfiguracoesCore() {
                   <Label className="flex items-center gap-2">Phone Number ID</Label>
                   <Input
                     value={metaPhoneId}
-                    onChange={(e) => setMetaPhoneId(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setMetaPhoneId(e.target.value.replace(/\D/g, '').trim())}
                     placeholder="Ex: 27018364624521397"
                     className={metaValidationErrors.phoneId ? 'border-destructive' : ''}
                   />
@@ -1005,7 +1023,7 @@ export default function ConfiguracoesCore() {
                     <Input
                       type={showMetaToken ? 'text' : 'password'}
                       value={metaAccessToken}
-                      onChange={(e) => setMetaAccessToken(e.target.value)}
+                      onChange={(e) => setMetaAccessToken(e.target.value.trim())}
                       className={
                         'pr-10 ' + (metaValidationErrors.accessToken ? 'border-destructive' : '')
                       }
@@ -1035,7 +1053,7 @@ export default function ConfiguracoesCore() {
                   <Label className="flex items-center gap-2">Verify Token</Label>
                   <Input
                     value={metaVerifyToken}
-                    onChange={(e) => setMetaVerifyToken(e.target.value)}
+                    onChange={(e) => setMetaVerifyToken(e.target.value.trim())}
                     placeholder="Ex: meu_token_secreto"
                   />
                   <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
@@ -1098,7 +1116,7 @@ export default function ConfiguracoesCore() {
                   <Label className="flex items-center gap-2">Meta Business ID</Label>
                   <Input
                     value={metaBusinessId}
-                    onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, '').trim())}
                     placeholder="Ex: 27018364624521397"
                     className={capiValidationErrors.businessId ? 'border-destructive' : ''}
                   />
@@ -1116,7 +1134,7 @@ export default function ConfiguracoesCore() {
                   <Label className="flex items-center gap-2">Dataset/Pixel ID</Label>
                   <Input
                     value={metaPixelId}
-                    onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, '').trim())}
                     placeholder="Ex: 1522162279584545"
                     className={capiValidationErrors.pixelId ? 'border-destructive' : ''}
                   />
@@ -1134,7 +1152,7 @@ export default function ConfiguracoesCore() {
                     <Input
                       type={showCapiToken ? 'text' : 'password'}
                       value={metaCapiToken}
-                      onChange={(e) => setMetaCapiToken(e.target.value)}
+                      onChange={(e) => setMetaCapiToken(e.target.value.trim())}
                       placeholder="EAAL..."
                       className={
                         'pr-10 ' + (capiValidationErrors.accessToken ? 'border-destructive' : '')
