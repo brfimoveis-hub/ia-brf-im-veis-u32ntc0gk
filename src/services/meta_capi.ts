@@ -8,7 +8,7 @@ export const testMetaCapiConnectionService = async (
   pixelId: string,
   accessToken: string,
 ) => {
-  return pb.send('/backend/v1/meta_test_connection', {
+  return pb.send('/backend/v1/meta_capi_test_connection', {
     method: 'POST',
     body: {
       business_id: businessId.trim(),
@@ -32,12 +32,10 @@ export const saveMetaCapiSettings = async (
   userId: string,
   metaPixelId: string,
   metaCapiToken: string,
-  metaBusinessId: string,
 ) => {
   return pb.collection('users').update(userId, {
     meta_pixel_id: metaPixelId.trim(),
     meta_capi_token: metaCapiToken.trim(),
-    meta_whatsapp_business_id: metaBusinessId.trim(),
   })
 }
 

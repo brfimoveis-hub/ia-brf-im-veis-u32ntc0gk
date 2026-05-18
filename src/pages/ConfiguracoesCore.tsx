@@ -524,7 +524,7 @@ export default function ConfiguracoesCore() {
 
     setIsSavingCapi(true)
     try {
-      await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken, metaBusinessId)
+      await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken)
       toast({
         title: 'Meta CAPI Salvo',
         description: 'Configurações de Pixel e CAPI foram salvas.',
@@ -543,7 +543,7 @@ export default function ConfiguracoesCore() {
     setIsTestingCapi(true)
     setCapiErrorDetail('')
     try {
-      await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken, metaBusinessId)
+      await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken)
       await executeCapiVerification(user.id, metaBusinessId, metaPixelId, metaCapiToken)
       setCapiStatus('connected')
       toast({
@@ -683,12 +683,14 @@ export default function ConfiguracoesCore() {
                 {capiStatus === 'connected' ? (
                   <>
                     <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                    <span className="text-sm font-medium text-emerald-600">Conectado</span>
+                    <span className="text-sm font-medium text-emerald-600">Connected</span>
                   </>
                 ) : (
                   <>
                     <XCircle className="h-4 w-4 text-destructive" />
-                    <span className="text-sm font-medium text-destructive">Desconectado</span>
+                    <span className="text-sm font-medium text-destructive">
+                      {capiErrorDetail ? 'Connection Error' : 'Disconnected'}
+                    </span>
                   </>
                 )}
               </div>
@@ -982,6 +984,24 @@ export default function ConfiguracoesCore() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="bg-muted/50 p-4 rounded-lg border text-sm text-muted-foreground space-y-2">
+                <h4 className="font-semibold text-foreground mb-3">Guia de Configuração</h4>
+                <ol className="list-decimal list-inside space-y-2 ml-2">
+                  <li>
+                    <strong>Locating Pixel ID:</strong> Go to Meta Events Manager &gt; Data Sources
+                    &gt; Select your Pixel &gt; Settings tab &gt; Copy the 'Pixel ID'.
+                  </li>
+                  <li>
+                    <strong>Generating Access Token:</strong> In the same Settings tab, scroll down
+                    to 'Conversions API' &gt; Click 'Generate access token' under the 'Set up
+                    manually' section.
+                  </li>
+                  <li>
+                    <strong>Data Entry:</strong> Paste the Pixel ID and the generated Token into the
+                    fields below and click 'Save' or 'Test CAPI Connection'.
+                  </li>
+                </ol>
+              </div>
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">Meta Business ID</Label>
@@ -1052,8 +1072,8 @@ export default function ConfiguracoesCore() {
                   onClick={testMetaCapiConnection}
                   disabled={isTestingCapi || !metaPixelId || !metaCapiToken}
                 >
-                  {isTestingCapi && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Verificar
-                  Conexão
+                  {isTestingCapi && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Test CAPI
+                  Connection
                 </Button>
               </div>
             </CardContent>

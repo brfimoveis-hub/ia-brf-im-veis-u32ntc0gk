@@ -61,17 +61,18 @@ const RouteTracker = () => {
     const path = location.pathname
     let component = 'Unknown'
 
-    if (path.startsWith('/configuracoes')) {
+    const lowerPath = path.toLowerCase()
+    if (lowerPath.startsWith('/configuracoes')) {
       component = 'ConfiguracoesCore'
-    } else if (path === '/dashboard') {
+    } else if (lowerPath === '/dashboard') {
       component = 'Dashboard'
-    } else if (path === '/') {
+    } else if (lowerPath === '/') {
       component = 'Index'
-    } else if (path.startsWith('/clientes')) {
+    } else if (lowerPath.startsWith('/clientes')) {
       component = 'ClientesCore'
-    } else if (path.startsWith('/cadencias')) {
+    } else if (lowerPath.startsWith('/cadencias')) {
       component = 'Cadences'
-    } else if (path.startsWith('/logs')) {
+    } else if (lowerPath.startsWith('/logs')) {
       component = 'Logs'
     }
 
