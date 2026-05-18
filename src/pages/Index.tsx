@@ -6,12 +6,7 @@ export default function Index() {
     const saved = localStorage.getItem('currentRoute')
     if (saved) {
       const parsed = JSON.parse(saved)
-      if (
-        parsed &&
-        parsed.path &&
-        parsed.path !== '/' &&
-        !parsed.path.startsWith('/configuracoes')
-      ) {
+      if (parsed && parsed.path && parsed.path !== '/') {
         to = parsed.path
       }
     }

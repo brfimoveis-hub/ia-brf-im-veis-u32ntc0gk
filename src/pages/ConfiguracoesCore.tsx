@@ -425,7 +425,11 @@ export default function ConfiguracoesCore() {
     try {
       await pb.send(`/backend/v1/meta/test-connection`, {
         method: 'POST',
-        body: { business_id: busId, phone_number_id: phoneId, access_token: accToken },
+        body: {
+          business_id: busId?.trim() || '',
+          phone_number_id: phoneId?.trim() || '',
+          access_token: accToken?.trim() || '',
+        },
       })
       setMetaStatus('connected')
       await pb.collection('users').update(user.id, { meta_whatsapp_status: 'Conectado' })
@@ -465,13 +469,17 @@ export default function ConfiguracoesCore() {
 
   const validateMetaInputs = () => {
     const errors: { businessId?: string; phoneId?: string; accessToken?: string } = {}
-    if (metaBusinessId && !/^\d+$/.test(metaBusinessId)) {
+    if (!metaBusinessId?.trim()) {
+      errors.businessId = 'O Meta Business ID é obrigatório.'
+    } else if (!/^\d+$/.test(metaBusinessId)) {
       errors.businessId = 'O Meta Business ID deve conter apenas números.'
     }
-    if (metaPhoneId && !/^\d+$/.test(metaPhoneId)) {
+    if (!metaPhoneId?.trim()) {
+      errors.phoneId = 'O Phone Number ID é obrigatório.'
+    } else if (!/^\d+$/.test(metaPhoneId)) {
       errors.phoneId = 'O Phone Number ID deve conter apenas números.'
     }
-    if (!metaAccessToken.trim()) {
+    if (!metaAccessToken?.trim()) {
       errors.accessToken = 'O Access Token é obrigatório.'
     }
     setMetaValidationErrors(errors)
@@ -492,10 +500,10 @@ export default function ConfiguracoesCore() {
     setIsSavingMeta(true)
     try {
       await pb.collection('users').update(user.id, {
-        meta_whatsapp_business_id: metaBusinessId,
-        meta_whatsapp_phone_number_id: metaPhoneId,
-        meta_whatsapp_access_token: metaAccessToken,
-        meta_whatsapp_verify_token: metaVerifyToken,
+        meta_whatsapp_business_id: metaBusinessId?.trim() || '',
+        meta_whatsapp_phone_number_id: metaPhoneId?.trim() || '',
+        meta_whatsapp_access_token: metaAccessToken?.trim() || '',
+        meta_whatsapp_verify_token: metaVerifyToken?.trim() || '',
       })
 
       localStorage.removeItem('meta_session_cache')
@@ -516,13 +524,17 @@ export default function ConfiguracoesCore() {
 
   const validateCapiInputs = () => {
     const errors: { businessId?: string; pixelId?: string; accessToken?: string } = {}
-    if (metaBusinessId && !/^\d+$/.test(metaBusinessId)) {
+    if (!metaBusinessId?.trim()) {
+      errors.businessId = 'O Meta Business ID é obrigatório.'
+    } else if (!/^\d+$/.test(metaBusinessId)) {
       errors.businessId = 'O Meta Business ID deve conter apenas números.'
     }
-    if (metaPixelId && !/^\d+$/.test(metaPixelId)) {
+    if (!metaPixelId?.trim()) {
+      errors.pixelId = 'O Dataset/Pixel ID é obrigatório.'
+    } else if (!/^\d+$/.test(metaPixelId)) {
       errors.pixelId = 'O Dataset/Pixel ID deve conter apenas números.'
     }
-    if (!metaCapiToken.trim()) {
+    if (!metaCapiToken?.trim()) {
       errors.accessToken = 'O Access Token é obrigatório.'
     }
     setCapiValidationErrors(errors)
@@ -545,9 +557,9 @@ export default function ConfiguracoesCore() {
     setIsSavingCapi(true)
     try {
       await pb.collection('users').update(user.id, {
-        meta_whatsapp_business_id: metaBusinessId,
-        meta_pixel_id: metaPixelId,
-        meta_capi_token: metaCapiToken,
+        meta_whatsapp_business_id: metaBusinessId?.trim() || '',
+        meta_pixel_id: metaPixelId?.trim() || '',
+        meta_capi_token: metaCapiToken?.trim() || '',
       })
       toast({ title: 'Sucesso', description: 'Configurações atualizadas com sucesso!' })
     } catch (e) {
@@ -565,15 +577,15 @@ export default function ConfiguracoesCore() {
     setCapiErrorDetail('')
     try {
       await pb.collection('users').update(user.id, {
-        meta_whatsapp_business_id: metaBusinessId,
-        meta_pixel_id: metaPixelId,
-        meta_capi_token: metaCapiToken,
+        meta_whatsapp_business_id: metaBusinessId?.trim() || '',
+        meta_pixel_id: metaPixelId?.trim() || '',
+        meta_capi_token: metaCapiToken?.trim() || '',
       })
 
       const payload = {
-        business_id: metaBusinessId,
-        pixel_id: metaPixelId,
-        access_token: metaCapiToken,
+        business_id: metaBusinessId?.trim() || '',
+        pixel_id: metaPixelId?.trim() || '',
+        access_token: metaCapiToken?.trim() || '',
       }
 
       await pb.send('/backend/v1/meta_capi_test_connection', {
