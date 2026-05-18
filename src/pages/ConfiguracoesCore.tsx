@@ -423,7 +423,7 @@ export default function ConfiguracoesCore() {
     setMetaStatus('checking')
     setMetaErrorDetail('')
     try {
-      await pb.send(`/backend/v1/meta_test_connection`, {
+      await pb.send(`/backend/v1/meta/test-connection`, {
         method: 'POST',
         body: { business_id: busId, phone_number_id: phoneId, access_token: accToken },
       })
@@ -572,12 +572,11 @@ export default function ConfiguracoesCore() {
 
       const payload = {
         business_id: metaBusinessId,
-        phone_number_id: metaPhoneId,
-        dataset_id: metaPixelId,
+        pixel_id: metaPixelId,
         access_token: metaCapiToken,
       }
 
-      await pb.send('/backend/v1/meta_test_connection', {
+      await pb.send('/backend/v1/meta_capi_test_connection', {
         method: 'POST',
         body: payload,
       })
@@ -630,12 +629,11 @@ export default function ConfiguracoesCore() {
     if (user && capiStatus === 'connected' && metaPixelId && metaCapiToken) {
       watchdog = setInterval(async () => {
         try {
-          await pb.send('/backend/v1/meta_test_connection', {
+          await pb.send('/backend/v1/meta_capi_test_connection', {
             method: 'POST',
             body: {
               business_id: metaBusinessId,
-              phone_number_id: metaPhoneId,
-              dataset_id: metaPixelId,
+              pixel_id: metaPixelId,
               access_token: metaCapiToken,
             },
           })
@@ -645,7 +643,7 @@ export default function ConfiguracoesCore() {
       }, 120000)
     }
     return () => clearInterval(watchdog)
-  }, [user, capiStatus, metaPixelId, metaCapiToken, metaBusinessId, metaPhoneId])
+  }, [user, capiStatus, metaPixelId, metaCapiToken, metaBusinessId])
 
   const overallUazapiStatus =
     user?.uazapi_status?.toLowerCase() === 'connected' ||
