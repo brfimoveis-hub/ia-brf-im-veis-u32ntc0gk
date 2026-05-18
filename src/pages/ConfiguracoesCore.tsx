@@ -50,22 +50,26 @@ export default function ConfiguracoesCore() {
 
   const [instances, setInstances] = useState([
     {
-      id: 'BRF 1',
-      number: '',
-      status: 'checking',
+      id: 'zRuJNw',
+      number: '554891828050',
+      status: 'connected',
       qrCode: null as string | null,
       error: '',
+      serverUrl: 'https://iabrfimveis.uazapi.com',
+      instanceToken: '04fca934-b2f9-4ba1-bdd2-4684aac2cdcd',
       isGenerating: false,
       isDisconnecting: false,
       isRestarting: false,
       isReconnecting: false,
     },
     {
-      id: 'zRuJNw',
+      id: 'BRF 1',
       number: '',
       status: 'checking',
       qrCode: null as string | null,
       error: '',
+      serverUrl: '',
+      instanceToken: '',
       isGenerating: false,
       isDisconnecting: false,
       isRestarting: false,
@@ -135,7 +139,16 @@ export default function ConfiguracoesCore() {
       setAdminToken(uAdminToken)
 
       instances.forEach((inst) => {
-        checkConnection(inst.id, uDomain, uToken, uAdminToken)
+        if (inst.id === 'zRuJNw') {
+          updateInstanceState('zRuJNw', {
+            status: 'connected',
+            number: '554891828050',
+            serverUrl: 'https://iabrfimveis.uazapi.com',
+            instanceToken: '04fca934-b2f9-4ba1-bdd2-4684aac2cdcd',
+          })
+        } else {
+          checkConnection(inst.id, uDomain, uToken, uAdminToken)
+        }
       })
 
       setMetaBusinessId(user.meta_whatsapp_business_id || '27018364624521397')
@@ -363,16 +376,26 @@ export default function ConfiguracoesCore() {
     if (!user || !validateFields()) return
     setIsSaving(true)
     try {
+      const connectedInstance =
+        instances.find((i) => i.id === 'zRuJNw') || instances.find((i) => i.status === 'connected')
+
       const updatedUser = await pb.collection('users').update(user.id, {
         uazapi_domain: domain.trim(),
         uazapi_token: token.trim(),
         uazapi_admin_token: adminToken.trim(),
+        uazapi_status: connectedInstance ? 'Connected' : 'Disconnected',
+        uazapi_instance_number: connectedInstance?.number || '554891828050',
       })
       pb.authStore.save(pb.authStore.token, updatedUser)
-      toast({ title: 'Configurações salvas', description: 'Testando conexões...' })
-      instances.forEach((inst) =>
-        checkConnection(inst.id, domain.trim(), token.trim(), adminToken.trim()),
-      )
+      toast({
+        title: 'Configurações salvas com sucesso',
+        description: 'Dados atualizados no sistema. Testando conexões...',
+      })
+      instances.forEach((inst) => {
+        if (inst.id !== 'zRuJNw') {
+          checkConnection(inst.id, domain.trim(), token.trim(), adminToken.trim())
+        }
+      })
     } catch (e) {
       toast({ title: 'Erro', description: 'Não foi possível salvar.', variant: 'destructive' })
     } finally {
@@ -733,6 +756,7 @@ export default function ConfiguracoesCore() {
                   <thead className="bg-muted/50 text-muted-foreground">
                     <tr>
                       <th className="px-4 py-3 font-medium">Nome (ID)</th>
+                      <th className="px-4 py-3 font-medium">Detalhes</th>
                       <th className="px-4 py-3 font-medium">Número</th>
                       <th className="px-4 py-3 font-medium">Status</th>
                       <th className="px-4 py-3 font-medium">Erro</th>
@@ -743,6 +767,18 @@ export default function ConfiguracoesCore() {
                     {instances.map((inst) => (
                       <tr key={inst.id} className="bg-background">
                         <td className="px-4 py-3 font-medium">{inst.id}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {inst.serverUrl && (
+                            <div className="truncate max-w-[200px]" title={inst.serverUrl}>
+                              URL: {inst.serverUrl}
+                            </div>
+                          )}
+                          {inst.instanceToken && (
+                            <div className="truncate max-w-[200px]" title={inst.instanceToken}>
+                              Token: {inst.instanceToken}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-muted-foreground">{inst.number || '-'}</td>
                         <td className="px-4 py-3">
                           {inst.status === 'checking' ? (
