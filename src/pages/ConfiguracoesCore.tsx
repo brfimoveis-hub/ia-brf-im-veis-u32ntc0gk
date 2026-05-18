@@ -36,8 +36,9 @@ export default function ConfiguracoesCore() {
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const defaultDomain = 'https://ia-uazapi-6d79e.goskip.app/backend/v1/meta-webhook'
+  const defaultDomain = 'https://iabrfimveis.uazapi.com'
   const defaultAdminToken = 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+  const defaultWebhookUrl = 'https://ia-uazapi-6d79e.goskip.app/backend/v1/meta-webhook'
 
   const [domain, setDomain] = useState(defaultDomain)
   const [token, setToken] = useState('')
@@ -116,6 +117,18 @@ export default function ConfiguracoesCore() {
       }
     }
   })
+
+  const formatPhoneNumber = (number: string) => {
+    if (!number) return '-'
+    const cleaned = number.replace(/\D/g, '')
+    if (cleaned.length === 12) {
+      return `+${cleaned.slice(0, 2)} (${cleaned.slice(2, 4)}) ${cleaned.slice(4, 8)}-${cleaned.slice(8)}`
+    }
+    if (cleaned.length === 13) {
+      return `+${cleaned.slice(0, 2)} (${cleaned.slice(2, 4)}) ${cleaned.slice(4, 9)}-${cleaned.slice(9)}`
+    }
+    return number
+  }
 
   useEffect(() => {
     // Deep State Reset to ensure UI reflects current connection state without stale routing cache
@@ -711,10 +724,18 @@ export default function ConfiguracoesCore() {
             <CardContent className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Server URL</Label>
+                  <Label>Server URL (Webhook)</Label>
+                  <Input
+                    value={defaultWebhookUrl}
+                    readOnly
+                    className="bg-muted text-muted-foreground"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Uazapi API Domain</Label>
                   <Input
                     value={domain}
-                    placeholder="https://ia-uazapi-6d79e.goskip.app/backend/v1/meta-webhook"
+                    placeholder="https://iabrfimveis.uazapi.com"
                     onChange={(e) => setDomain(e.target.value)}
                     className={validationErrors.domain ? 'border-destructive' : ''}
                   />
@@ -723,6 +744,7 @@ export default function ConfiguracoesCore() {
                   )}
                 </div>
                 <div className="space-y-2">
+                  {' '}
                   <Label>Admin Token</Label>
                   <Input
                     value={adminToken}
@@ -779,7 +801,9 @@ export default function ConfiguracoesCore() {
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{inst.number || '-'}</td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {formatPhoneNumber(inst.number)}
+                        </td>
                         <td className="px-4 py-3">
                           {inst.status === 'checking' ? (
                             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

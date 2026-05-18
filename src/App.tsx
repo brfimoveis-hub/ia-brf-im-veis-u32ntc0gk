@@ -23,6 +23,7 @@ import ConfiguracoesCore from './pages/ConfiguracoesCore'
 import Cadences from './pages/Cadences'
 import Logs from './pages/Logs'
 import NotFound from './pages/NotFound'
+import Index from './pages/Index'
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
@@ -60,10 +61,10 @@ const RouteTracker = () => {
     const path = location.pathname
     let component = 'Unknown'
 
-    if (path === '/' || path === '/dashboard') {
-      component = 'Index'
-    } else if (path.startsWith('/configuracoes')) {
+    if (path.startsWith('/configuracoes')) {
       component = 'ConfiguracoesCore'
+    } else if (path === '/' || path === '/dashboard') {
+      component = 'Index'
     } else if (path.startsWith('/clientes')) {
       component = 'ClientesCore'
     } else if (path.startsWith('/cadencias')) {
@@ -120,7 +121,7 @@ const router = createBrowserRouter(
       children: [
         {
           index: true,
-          element: <Navigate to="/dashboard" replace />,
+          element: <Index />,
         },
         {
           element: <GuestRoute />,
