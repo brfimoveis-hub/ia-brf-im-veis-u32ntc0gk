@@ -171,8 +171,7 @@ export default function ConfiguracoesCore() {
         }
       })
 
-      setMetaBusinessId(user.meta_whatsapp_business_id || '27018364624521397')
-      setMetaPhoneId(user.meta_whatsapp_phone_number_id || '')
+      setMetaBusinessId(user.meta_whatsapp_business_id || '')      setMetaPhoneId(user.meta_whatsapp_phone_number_id || '')
       setMetaAccessToken(user.meta_whatsapp_access_token || '')
       setMetaVerifyToken(user.meta_whatsapp_verify_token || '')
 
@@ -192,8 +191,7 @@ export default function ConfiguracoesCore() {
         setMetaStatus('idle')
       }
 
-      setMetaPixelId(user.meta_pixel_id || '1522162279584545')
-      setMetaCapiToken(user.meta_capi_token || '')
+      setMetaPixelId(user.meta_pixel_id || '')      setMetaCapiToken(user.meta_capi_token || '')
 
       const isCapiConnected =
         (user as any).meta_token_status === 'connected' ||
@@ -470,16 +468,10 @@ export default function ConfiguracoesCore() {
   const validateMetaInputs = () => {
     const errors: { businessId?: string; phoneId?: string } = {}
     if (metaBusinessId && !/^\d+$/.test(metaBusinessId)) {
-      errors.businessId = 'O Business ID deve conter apenas números.'
+      errors.businessId = 'O Meta Business ID deve conter apenas números.'
     }
     if (metaPhoneId && !/^\d+$/.test(metaPhoneId)) {
       errors.phoneId = 'O Phone Number ID deve conter apenas números.'
-    }
-    if (metaBusinessId && metaPhoneId && metaBusinessId === metaPhoneId) {
-      errors.businessId =
-        'Business ID não pode ser igual ao Phone Number ID. Verifique se não foram invertidos.'
-      errors.phoneId =
-        'Phone Number ID não pode ser igual ao Business ID. Verifique se não foram invertidos.'
     }
     setMetaValidationErrors(errors)
     return Object.keys(errors).length === 0
@@ -524,26 +516,17 @@ export default function ConfiguracoesCore() {
   const validateCapiInputs = () => {
     const errors: { businessId?: string; pixelId?: string } = {}
     if (metaBusinessId && !/^\d+$/.test(metaBusinessId)) {
-      errors.businessId = 'O ID da Conta de Negócios deve conter apenas números.'
+      errors.businessId = 'O Meta Business ID deve conter apenas números.'
     }
     if (metaPixelId && !/^\d+$/.test(metaPixelId)) {
       errors.pixelId = 'O Pixel ID deve conter apenas números.'
-    }
-    if (metaBusinessId && metaPixelId && metaBusinessId === metaPixelId) {
-      errors.businessId =
-        'Business ID e Pixel ID não podem ser iguais. Verifique se não foram invertidos.'
-      errors.pixelId =
-        'Business ID e Pixel ID não podem ser iguais. Verifique se não foram invertidos.'
-    }
-    if (metaPhoneId && metaPixelId && metaPhoneId === metaPixelId) {
-      errors.pixelId = 'Pixel ID não pode ser igual ao Phone Number ID.'
     }
     setCapiValidationErrors(errors)
 
     if (Object.keys(errors).length > 0) {
       toast({
         title: 'Erro de Validação',
-        description: 'Verifique os valores informados para Pixel ID e Business ID.',
+        description: 'Verifique os valores informados para Pixel ID e Meta Business ID.',
         variant: 'destructive',
       })
       return false
@@ -601,7 +584,7 @@ export default function ConfiguracoesCore() {
         errorMsg.includes('does not exist') ||
         errorMsg.includes('Invalid parameter')
       ) {
-        errorMsg = `Erro da API Meta: ${errorMsg} (Verifique se os IDs informados não estão trocados).`
+        errorMsg = `Erro da API Meta: ${errorMsg}`
       }
 
       pb.collection('users')
@@ -940,11 +923,11 @@ export default function ConfiguracoesCore() {
               )}
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2">WhatsApp Business Account ID</Label>
+                  <Label className="flex items-center gap-2">Meta Business ID</Label>
                   <Input
                     value={metaBusinessId}
                     onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ex: 950541937872426"
+                    placeholder="Ex: 27018364624521397"
                     className={metaValidationErrors.businessId ? 'border-destructive' : ''}
                   />
                   {metaValidationErrors.businessId && (
@@ -954,8 +937,7 @@ export default function ConfiguracoesCore() {
                   )}
                   <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
                     <Info className="h-3 w-3 mt-0.5 shrink-0" />
-                    Encontrado no App Dashboard da Meta em WhatsApp &gt; Configurações da API &gt;
-                    Identificador da conta do WhatsApp Business.
+                    Encontrado no Business Manager da Meta ou no App Dashboard em WhatsApp &gt; Configurações da API.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -1068,7 +1050,7 @@ export default function ConfiguracoesCore() {
                   <Input
                     value={metaBusinessId}
                     onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ex: 950541937872426"
+                    placeholder="Ex: 27018364624521397"
                     className={capiValidationErrors.businessId ? 'border-destructive' : ''}
                   />
                   {capiValidationErrors.businessId && (
@@ -1092,22 +1074,10 @@ export default function ConfiguracoesCore() {
                   {capiValidationErrors.pixelId && (
                     <p className="text-xs text-destructive mt-1">{capiValidationErrors.pixelId}</p>
                   )}
-                  {metaPixelId && metaPixelId === metaBusinessId ? (
-                    <p className="text-[11px] text-destructive flex items-start gap-1 mt-1 font-medium">
-                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
-                      Pixel ID não pode ser o mesmo que o Business ID.
-                    </p>
-                  ) : metaPixelId && metaPixelId === metaPhoneId ? (
-                    <p className="text-[11px] text-destructive flex items-start gap-1 mt-1 font-medium">
-                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
-                      Pixel ID não pode ser o mesmo que o Phone Number ID.
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
-                      <Info className="h-3 w-3 mt-0.5 shrink-0" />O ID numérico do seu Dataset
-                      (Pixel) de eventos. Não confunda com o Business ID.
-                    </p>
-                  )}
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />O ID numérico do seu Dataset
+                    (Pixel) de eventos. Encontrado em Meta Events Manager &gt; Data Sources.
+                  </p>
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label className="flex items-center gap-2">CAPI Access Token</Label>
