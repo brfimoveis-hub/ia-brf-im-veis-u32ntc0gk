@@ -25,12 +25,6 @@ import {
 } from 'lucide-react'
 import { SettingsAi } from './settings/SettingsAi'
 import { SettingsSocial } from './settings/SettingsSocial'
-import {
-  testMetaCapiConnectionService,
-  updateMetaCapiStatus,
-  saveMetaCapiSettings,
-  executeCapiVerification,
-} from '@/services/meta_capi'
 
 export default function ConfiguracoesCore() {
   const { user } = useAuth()
@@ -95,6 +89,7 @@ export default function ConfiguracoesCore() {
   const [metaValidationErrors, setMetaValidationErrors] = useState<{
     businessId?: string
     phoneId?: string
+    accessToken?: string
   }>({})
 
   // Meta CAPI States
@@ -108,6 +103,7 @@ export default function ConfiguracoesCore() {
   const [capiValidationErrors, setCapiValidationErrors] = useState<{
     businessId?: string
     pixelId?: string
+    accessToken?: string
   }>({})
 
   useRealtime('users', (e) => {
@@ -468,12 +464,15 @@ export default function ConfiguracoesCore() {
   }
 
   const validateMetaInputs = () => {
-    const errors: { businessId?: string; phoneId?: string } = {}
+    const errors: { businessId?: string; phoneId?: string; accessToken?: string } = {}
     if (metaBusinessId && !/^\d+$/.test(metaBusinessId)) {
       errors.businessId = 'O Meta Business ID deve conter apenas números.'
     }
     if (metaPhoneId && !/^\d+$/.test(metaPhoneId)) {
       errors.phoneId = 'O Phone Number ID deve conter apenas números.'
+    }
+    if (!metaAccessToken.trim()) {
+      errors.accessToken = 'O Access Token é obrigatório.'
     }
     setMetaValidationErrors(errors)
     return Object.keys(errors).length === 0
@@ -516,19 +515,22 @@ export default function ConfiguracoesCore() {
   }
 
   const validateCapiInputs = () => {
-    const errors: { businessId?: string; pixelId?: string } = {}
+    const errors: { businessId?: string; pixelId?: string; accessToken?: string } = {}
     if (metaBusinessId && !/^\d+$/.test(metaBusinessId)) {
       errors.businessId = 'O Meta Business ID deve conter apenas números.'
     }
     if (metaPixelId && !/^\d+$/.test(metaPixelId)) {
       errors.pixelId = 'O Dataset/Pixel ID deve conter apenas números.'
     }
+    if (!metaCapiToken.trim()) {
+      errors.accessToken = 'O Access Token é obrigatório.'
+    }
     setCapiValidationErrors(errors)
 
     if (Object.keys(errors).length > 0) {
       toast({
         title: 'Erro de Validação',
-        description: 'Verifique os valores informados para Dataset/Pixel ID e Meta Business ID.',
+        description: 'Verifique os valores informados antes de prosseguir.',
         variant: 'destructive',
       })
       return false
@@ -542,7 +544,11 @@ export default function ConfiguracoesCore() {
 
     setIsSavingCapi(true)
     try {
-      await saveMetaCapiSettings(user.id, metaBusinessId, metaPixelId, metaCapiToken)
+      await pb.collection('users').update(user.id, {
+        meta_whatsapp_business_id: metaBusinessId,
+        meta_pixel_id: metaPixelId,
+        meta_capi_token: metaCapiToken,
+      })
       toast({ title: 'Sucesso', description: 'Configurações atualizadas com sucesso!' })
     } catch (e) {
       toast({ title: 'Erro', description: 'Falha ao salvar Meta CAPI.', variant: 'destructive' })
@@ -558,8 +564,23 @@ export default function ConfiguracoesCore() {
     setIsTestingCapi(true)
     setCapiErrorDetail('')
     try {
-      await saveMetaCapiSettings(user.id, metaBusinessId, metaPixelId, metaCapiToken)
-      await executeCapiVerification(user.id, metaBusinessId, metaPixelId, metaCapiToken)
+      await pb.collection('users').update(user.id, {
+        meta_whatsapp_business_id: metaBusinessId,
+        meta_pixel_id: metaPixelId,
+        meta_capi_token: metaCapiToken,
+      })
+
+      const payload = {
+        business_id: metaBusinessId,
+        phone_number_id: metaPhoneId,
+        dataset_id: metaPixelId,
+        access_token: metaCapiToken,
+      }
+
+      await pb.send('/backend/v1/meta_test_connection', {
+        method: 'POST',
+        body: payload,
+      })
       setCapiStatus('connected')
       toast({
         title: 'Conexão Estabelecida com Sucesso',
@@ -609,14 +630,22 @@ export default function ConfiguracoesCore() {
     if (user && capiStatus === 'connected' && metaPixelId && metaCapiToken) {
       watchdog = setInterval(async () => {
         try {
-          await executeCapiVerification(user.id, metaBusinessId, metaPixelId, metaCapiToken)
+          await pb.send('/backend/v1/meta_test_connection', {
+            method: 'POST',
+            body: {
+              business_id: metaBusinessId,
+              phone_number_id: metaPhoneId,
+              dataset_id: metaPixelId,
+              access_token: metaCapiToken,
+            },
+          })
         } catch (e) {
           setCapiStatus('disconnected')
         }
       }, 120000)
     }
     return () => clearInterval(watchdog)
-  }, [user, capiStatus, metaPixelId, metaCapiToken, metaBusinessId])
+  }, [user, capiStatus, metaPixelId, metaCapiToken, metaBusinessId, metaPhoneId])
 
   const overallUazapiStatus =
     user?.uazapi_status?.toLowerCase() === 'connected' ||
@@ -961,13 +990,15 @@ export default function ConfiguracoesCore() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2">Token de Acesso (Permanente)</Label>
+                  <Label className="flex items-center gap-2">Access Token</Label>
                   <div className="relative">
                     <Input
                       type={showMetaToken ? 'text' : 'password'}
                       value={metaAccessToken}
                       onChange={(e) => setMetaAccessToken(e.target.value)}
-                      className="pr-10"
+                      className={
+                        'pr-10 ' + (metaValidationErrors.accessToken ? 'border-destructive' : '')
+                      }
                     />
                     <Button
                       type="button"
@@ -979,6 +1010,11 @@ export default function ConfiguracoesCore() {
                       {showMetaToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
+                  {metaValidationErrors.accessToken && (
+                    <p className="text-xs text-destructive mt-1">
+                      {metaValidationErrors.accessToken}
+                    </p>
+                  )}
                   <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
                     <Info className="h-3 w-3 mt-0.5 shrink-0" />
                     Token gerado no Meta for Developers com permissões whatsapp_business_messaging e
@@ -1083,14 +1119,16 @@ export default function ConfiguracoesCore() {
                   </p>
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="flex items-center gap-2">Meta Conversions API Token</Label>
+                  <Label className="flex items-center gap-2">Access Token</Label>
                   <div className="relative">
                     <Input
                       type={showCapiToken ? 'text' : 'password'}
                       value={metaCapiToken}
                       onChange={(e) => setMetaCapiToken(e.target.value)}
                       placeholder="EAAL..."
-                      className="pr-10"
+                      className={
+                        'pr-10 ' + (capiValidationErrors.accessToken ? 'border-destructive' : '')
+                      }
                     />
                     <Button
                       type="button"
@@ -1102,6 +1140,11 @@ export default function ConfiguracoesCore() {
                       {showCapiToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
+                  {capiValidationErrors.accessToken && (
+                    <p className="text-xs text-destructive mt-1">
+                      {capiValidationErrors.accessToken}
+                    </p>
+                  )}
                   <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
                     <Info className="h-3 w-3 mt-0.5 shrink-0" />
                     Token permanente gerado no Gerenciador de Eventos da Meta para a Conversions

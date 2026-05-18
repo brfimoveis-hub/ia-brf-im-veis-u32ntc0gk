@@ -5,14 +5,15 @@ routerAdd(
     const body = e.requestInfo().body || {}
 
     // Verificação de Meta CAPI
-    if (body.pixel_id) {
-      const { business_id, pixel_id, access_token } = body
+    if (body.dataset_id || body.pixel_id) {
+      const { business_id, phone_number_id, access_token } = body
+      const dataset_id = body.dataset_id || body.pixel_id
 
-      if (!access_token || !pixel_id) {
-        return e.badRequestError('Pixel ID e Access Token são obrigatórios para CAPI.')
+      if (!access_token || !dataset_id) {
+        return e.badRequestError('Dataset ID e Access Token são obrigatórios para CAPI.')
       }
 
-      const testUrl = 'https://graph.facebook.com/v21.0/' + pixel_id + '/events'
+      const testUrl = 'https://graph.facebook.com/v21.0/' + dataset_id + '/events'
 
       const payload = {
         data: [
@@ -24,6 +25,7 @@ routerAdd(
               client_ip_address: e.request.remoteAddr,
               client_user_agent: e.request.header.get('User-Agent') || 'TestAgent',
               external_id: business_id ? [$security.sha256(business_id)] : undefined,
+              ph: phone_number_id ? [$security.sha256(phone_number_id)] : undefined,
             },
           },
         ],
