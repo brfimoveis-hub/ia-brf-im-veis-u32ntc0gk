@@ -521,14 +521,14 @@ export default function ConfiguracoesCore() {
       errors.businessId = 'O Meta Business ID deve conter apenas números.'
     }
     if (metaPixelId && !/^\d+$/.test(metaPixelId)) {
-      errors.pixelId = 'O Pixel ID deve conter apenas números.'
+      errors.pixelId = 'O Dataset/Pixel ID deve conter apenas números.'
     }
     setCapiValidationErrors(errors)
 
     if (Object.keys(errors).length > 0) {
       toast({
         title: 'Erro de Validação',
-        description: 'Verifique os valores informados para Pixel ID e Meta Business ID.',
+        description: 'Verifique os valores informados para Dataset/Pixel ID e Meta Business ID.',
         variant: 'destructive',
       })
       return false
@@ -542,7 +542,7 @@ export default function ConfiguracoesCore() {
 
     setIsSavingCapi(true)
     try {
-      await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken)
+      await saveMetaCapiSettings(user.id, metaBusinessId, metaPixelId, metaCapiToken)
       toast({ title: 'Sucesso', description: 'Configurações atualizadas com sucesso!' })
     } catch (e) {
       toast({ title: 'Erro', description: 'Falha ao salvar Meta CAPI.', variant: 'destructive' })
@@ -558,7 +558,7 @@ export default function ConfiguracoesCore() {
     setIsTestingCapi(true)
     setCapiErrorDetail('')
     try {
-      await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken)
+      await saveMetaCapiSettings(user.id, metaBusinessId, metaPixelId, metaCapiToken)
       await executeCapiVerification(user.id, metaBusinessId, metaPixelId, metaCapiToken)
       setCapiStatus('connected')
       toast({
@@ -1067,7 +1067,7 @@ export default function ConfiguracoesCore() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2">Pixel ID (Dataset)</Label>
+                  <Label className="flex items-center gap-2">Dataset/Pixel ID</Label>
                   <Input
                     value={metaPixelId}
                     onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
@@ -1083,7 +1083,7 @@ export default function ConfiguracoesCore() {
                   </p>
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="flex items-center gap-2">CAPI Access Token</Label>
+                  <Label className="flex items-center gap-2">Meta Conversions API Token</Label>
                   <div className="relative">
                     <Input
                       type={showCapiToken ? 'text' : 'password'}

@@ -30,10 +30,12 @@ export const updateMetaCapiStatus = async (userId: string, status: string) => {
  */
 export const saveMetaCapiSettings = async (
   userId: string,
+  businessId: string,
   metaPixelId: string,
   metaCapiToken: string,
 ) => {
   return pb.collection('users').update(userId, {
+    meta_whatsapp_business_id: businessId.trim(),
     meta_pixel_id: metaPixelId.trim(),
     meta_capi_token: metaCapiToken.trim(),
   })
