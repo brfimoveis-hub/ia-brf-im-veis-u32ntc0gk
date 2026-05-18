@@ -476,8 +476,10 @@ export default function ConfiguracoesCore() {
       errors.phoneId = 'O Phone Number ID deve conter apenas números.'
     }
     if (metaBusinessId && metaPhoneId && metaBusinessId === metaPhoneId) {
-      errors.businessId = 'Business ID não pode ser igual ao Phone Number ID.'
-      errors.phoneId = 'Phone Number ID não pode ser igual ao Business ID.'
+      errors.businessId =
+        'Business ID não pode ser igual ao Phone Number ID. Verifique se não foram invertidos.'
+      errors.phoneId =
+        'Phone Number ID não pode ser igual ao Business ID. Verifique se não foram invertidos.'
     }
     setMetaValidationErrors(errors)
     return Object.keys(errors).length === 0
@@ -506,7 +508,7 @@ export default function ConfiguracoesCore() {
       localStorage.removeItem('meta_session_cache')
       sessionStorage.removeItem('meta_session_cache')
 
-      toast({ title: 'Meta configurada', description: 'Suas credenciais foram atualizadas.' })
+      toast({ title: 'Sucesso', description: 'Configurações atualizadas com sucesso!' })
       checkMetaConnection(metaBusinessId, metaPhoneId, metaAccessToken)
     } catch (e) {
       toast({
@@ -528,8 +530,10 @@ export default function ConfiguracoesCore() {
       errors.pixelId = 'O Pixel ID deve conter apenas números.'
     }
     if (metaBusinessId && metaPixelId && metaBusinessId === metaPixelId) {
-      errors.businessId = 'Business ID e Pixel ID não podem ser iguais.'
-      errors.pixelId = 'Business ID e Pixel ID não podem ser iguais.'
+      errors.businessId =
+        'Business ID e Pixel ID não podem ser iguais. Verifique se não foram invertidos.'
+      errors.pixelId =
+        'Business ID e Pixel ID não podem ser iguais. Verifique se não foram invertidos.'
     }
     if (metaPhoneId && metaPixelId && metaPhoneId === metaPixelId) {
       errors.pixelId = 'Pixel ID não pode ser igual ao Phone Number ID.'
@@ -554,10 +558,7 @@ export default function ConfiguracoesCore() {
     setIsSavingCapi(true)
     try {
       await saveMetaCapiSettings(user.id, metaPixelId, metaCapiToken)
-      toast({
-        title: 'Meta CAPI Salvo',
-        description: 'Configurações de Pixel e CAPI foram salvas.',
-      })
+      toast({ title: 'Sucesso', description: 'Configurações atualizadas com sucesso!' })
     } catch (e) {
       toast({ title: 'Erro', description: 'Falha ao salvar Meta CAPI.', variant: 'destructive' })
     } finally {
@@ -939,7 +940,7 @@ export default function ConfiguracoesCore() {
               )}
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2">Meta WhatsApp Business ID</Label>
+                  <Label className="flex items-center gap-2">WhatsApp Business Account ID</Label>
                   <Input
                     value={metaBusinessId}
                     onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
@@ -1109,7 +1110,7 @@ export default function ConfiguracoesCore() {
                   )}
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="flex items-center gap-2">Token de Acesso (CAPI)</Label>
+                  <Label className="flex items-center gap-2">CAPI Access Token</Label>
                   <div className="relative">
                     <Input
                       type={showCapiToken ? 'text' : 'password'}
