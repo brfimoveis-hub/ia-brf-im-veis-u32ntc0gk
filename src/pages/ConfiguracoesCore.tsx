@@ -153,11 +153,12 @@ export default function ConfiguracoesCore() {
 
       instances.forEach((inst) => {
         if (inst.id === 'zRuJNw') {
+          const isConnected = user?.uazapi_status?.toLowerCase() === 'connected'
           updateInstanceState('zRuJNw', {
-            status: 'connected',
-            number: '554891828050',
-            serverUrl: 'https://iabrfimveis.uazapi.com',
-            instanceToken: '04fca934-b2f9-4ba1-bdd2-4684aac2cdcd',
+            status: isConnected ? 'connected' : 'disconnected',
+            number: user?.uazapi_instance_number || '554891828050',
+            serverUrl: user?.uazapi_domain || 'https://iabrfimveis.uazapi.com',
+            instanceToken: user?.uazapi_token || '04fca934-b2f9-4ba1-bdd2-4684aac2cdcd',
           })
         } else {
           checkConnection(inst.id, uDomain, uToken, uAdminToken)
@@ -604,9 +605,11 @@ export default function ConfiguracoesCore() {
     return () => clearInterval(watchdog)
   }, [user, capiStatus, metaPixelId, metaCapiToken, metaBusinessId])
 
-  const overallUazapiStatus = instances.some((i) => i.status === 'connected')
-    ? 'connected'
-    : 'disconnected'
+  const overallUazapiStatus =
+    user?.uazapi_status?.toLowerCase() === 'connected' ||
+    instances.some((i) => i.status === 'connected')
+      ? 'connected'
+      : 'disconnected'
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-8">

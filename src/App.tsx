@@ -63,7 +63,9 @@ const RouteTracker = () => {
 
     if (path.startsWith('/configuracoes')) {
       component = 'ConfiguracoesCore'
-    } else if (path === '/' || path === '/dashboard') {
+    } else if (path === '/dashboard') {
+      component = 'Dashboard'
+    } else if (path === '/') {
       component = 'Index'
     } else if (path.startsWith('/clientes')) {
       component = 'ClientesCore'
