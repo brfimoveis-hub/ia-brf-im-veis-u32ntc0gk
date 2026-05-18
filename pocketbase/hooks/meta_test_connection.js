@@ -79,10 +79,11 @@ routerAdd(
           errorMsg.includes('Object with ID does not exist')
         ) {
           return e.badRequestError(
-            'O Phone Number ID pode estar incorreto ou o Access Token não possui as permissões whatsapp_business_management ou whatsapp_business_messaging.',
+            `Falha na validação do Meta: ${errorMsg} (O Phone Number ID pode estar incorreto ou as permissões do token estão ausentes)`,
           )
         }
 
+        // Retorna a mensagem de erro exata da API da Meta em vez de substituir
         return e.badRequestError(errorMsg)
       }
     }

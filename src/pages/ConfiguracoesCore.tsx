@@ -92,6 +92,10 @@ export default function ConfiguracoesCore() {
   const [metaVerifyToken, setMetaVerifyToken] = useState('')
   const [isSavingMeta, setIsSavingMeta] = useState(false)
   const [showMetaToken, setShowMetaToken] = useState(false)
+  const [metaValidationErrors, setMetaValidationErrors] = useState<{
+    businessId?: string
+    phoneId?: string
+  }>({})
 
   // Meta CAPI States
   const [capiStatus, setCapiStatus] = useState<'connected' | 'disconnected'>('disconnected')
@@ -101,6 +105,10 @@ export default function ConfiguracoesCore() {
   const [showCapiToken, setShowCapiToken] = useState(false)
   const [isSavingCapi, setIsSavingCapi] = useState(false)
   const [isTestingCapi, setIsTestingCapi] = useState(false)
+  const [capiValidationErrors, setCapiValidationErrors] = useState<{
+    businessId?: string
+    pixelId?: string
+  }>({})
 
   useRealtime('users', (e) => {
     if (e.action === 'update' && user && e.record.id === user.id) {
@@ -131,12 +139,10 @@ export default function ConfiguracoesCore() {
   }
 
   useEffect(() => {
-    // Deep State Reset to ensure UI reflects current connection state without stale routing cache
     localStorage.removeItem('vite-plugin-react-router-cache')
     localStorage.removeItem('meta_session_cache')
     sessionStorage.removeItem('meta_session_cache')
 
-    // Clear any dashboard-specific states to prevent 'instance not found' errors caused by state corruption
     localStorage.removeItem('dashboard_state')
     sessionStorage.removeItem('dashboard_state')
     localStorage.removeItem('active_instance_cache')
@@ -211,7 +217,6 @@ export default function ConfiguracoesCore() {
     return () => {
       Object.values(pollingRefs.current).forEach(clearInterval)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   const validateFields = () => {
@@ -446,7 +451,7 @@ export default function ConfiguracoesCore() {
         errString.includes('invalidated') ||
         msg.toLowerCase().includes('the session has been invalidated')
       ) {
-        msg = 'Token de Acesso da Meta é inválido ou a sessão expirou. Atualize suas credenciais.'
+        msg = `Erro de Autenticação: ${msg}`
       }
 
       setMetaErrorDetail(msg)
@@ -462,8 +467,33 @@ export default function ConfiguracoesCore() {
     }
   }
 
+  const validateMetaInputs = () => {
+    const errors: { businessId?: string; phoneId?: string } = {}
+    if (metaBusinessId && !/^\d+$/.test(metaBusinessId)) {
+      errors.businessId = 'O Business ID deve conter apenas números.'
+    }
+    if (metaPhoneId && !/^\d+$/.test(metaPhoneId)) {
+      errors.phoneId = 'O Phone Number ID deve conter apenas números.'
+    }
+    if (metaBusinessId && metaPhoneId && metaBusinessId === metaPhoneId) {
+      errors.businessId = 'Business ID não pode ser igual ao Phone Number ID.'
+      errors.phoneId = 'Phone Number ID não pode ser igual ao Business ID.'
+    }
+    setMetaValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
   const handleSaveMeta = async () => {
     if (!user) return
+    if (!validateMetaInputs()) {
+      toast({
+        title: 'Erro de Validação',
+        description: 'Verifique os campos de ID do Meta antes de salvar.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsSavingMeta(true)
     try {
       await pb.collection('users').update(user.id, {
@@ -473,7 +503,6 @@ export default function ConfiguracoesCore() {
         meta_whatsapp_verify_token: metaVerifyToken,
       })
 
-      // Clear session cache related to Meta to prevent invalid session errors
       localStorage.removeItem('meta_session_cache')
       sessionStorage.removeItem('meta_session_cache')
 
@@ -491,26 +520,26 @@ export default function ConfiguracoesCore() {
   }
 
   const validateCapiInputs = () => {
+    const errors: { businessId?: string; pixelId?: string } = {}
     if (metaBusinessId && !/^\d+$/.test(metaBusinessId)) {
-      toast({
-        title: 'Erro de Validação',
-        description: 'O ID da Conta de Negócios deve conter apenas números.',
-        variant: 'destructive',
-      })
-      return false
+      errors.businessId = 'O ID da Conta de Negócios deve conter apenas números.'
     }
     if (metaPixelId && !/^\d+$/.test(metaPixelId)) {
-      toast({
-        title: 'Erro de Validação',
-        description: 'O Pixel ID deve conter apenas números.',
-        variant: 'destructive',
-      })
-      return false
+      errors.pixelId = 'O Pixel ID deve conter apenas números.'
     }
     if (metaBusinessId && metaPixelId && metaBusinessId === metaPixelId) {
+      errors.businessId = 'Business ID e Pixel ID não podem ser iguais.'
+      errors.pixelId = 'Business ID e Pixel ID não podem ser iguais.'
+    }
+    if (metaPhoneId && metaPixelId && metaPhoneId === metaPixelId) {
+      errors.pixelId = 'Pixel ID não pode ser igual ao Phone Number ID.'
+    }
+    setCapiValidationErrors(errors)
+
+    if (Object.keys(errors).length > 0) {
       toast({
         title: 'Erro de Validação',
-        description: 'O Business ID e o Pixel ID não podem ser iguais. Verifique os valores.',
+        description: 'Verifique os valores informados para Pixel ID e Business ID.',
         variant: 'destructive',
       })
       return false
@@ -555,7 +584,6 @@ export default function ConfiguracoesCore() {
       setCapiStatus('disconnected')
       let errorMsg = e.response?.message || e.message || 'Falha de Handshake'
 
-      // Remove default overriding so specific Meta error is shown
       if (
         (errorMsg.includes('190') ||
           errorMsg.includes('invalidated') ||
@@ -569,10 +597,10 @@ export default function ConfiguracoesCore() {
         errorMsg.includes('Unsupported post request') ||
         errorMsg.includes('Object with ID') ||
         errorMsg.includes('Object ID does not exist') ||
-        errorMsg.includes('does not exist')
+        errorMsg.includes('does not exist') ||
+        errorMsg.includes('Invalid parameter')
       ) {
-        errorMsg =
-          'Erro de Mismatch: Verifique se o Pixel ID e o Token de Acesso estão corretamente pareados. A requisição não é suportada ou o ID do Objeto não existe (você pode ter inserido um Business ID no lugar do Pixel ID).'
+        errorMsg = `Erro da API Meta: ${errorMsg} (Verifique se os IDs informados não estão trocados).`
       }
 
       pb.collection('users')
@@ -590,7 +618,6 @@ export default function ConfiguracoesCore() {
     }
   }
 
-  // Meta CAPI Watchdog: monitora a saúde da conexão em segundo plano de forma passiva
   useEffect(() => {
     let watchdog: NodeJS.Timeout
     if (user && capiStatus === 'connected' && metaPixelId && metaCapiToken) {
@@ -600,7 +627,7 @@ export default function ConfiguracoesCore() {
         } catch (e) {
           setCapiStatus('disconnected')
         }
-      }, 120000) // Verifica a cada 2 minutos
+      }, 120000)
     }
     return () => clearInterval(watchdog)
   }, [user, capiStatus, metaPixelId, metaCapiToken, metaBusinessId])
@@ -749,7 +776,6 @@ export default function ConfiguracoesCore() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  {' '}
                   <Label>Admin Token</Label>
                   <Input
                     value={adminToken}
@@ -913,22 +939,43 @@ export default function ConfiguracoesCore() {
               )}
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Meta WhatsApp Business ID</Label>
+                  <Label className="flex items-center gap-2">Meta WhatsApp Business ID</Label>
                   <Input
                     value={metaBusinessId}
-                    onChange={(e) => setMetaBusinessId(e.target.value)}
+                    onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Ex: 950541937872426"
+                    className={metaValidationErrors.businessId ? 'border-destructive' : ''}
                   />
+                  {metaValidationErrors.businessId && (
+                    <p className="text-xs text-destructive mt-1">
+                      {metaValidationErrors.businessId}
+                    </p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                    Encontrado no App Dashboard da Meta em WhatsApp &gt; Configurações da API &gt;
+                    Identificador da conta do WhatsApp Business.
+                  </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Meta User ID (Phone Number ID)</Label>
+                  <Label className="flex items-center gap-2">Phone Number ID</Label>
                   <Input
                     value={metaPhoneId}
-                    onChange={(e) => setMetaPhoneId(e.target.value)}
+                    onChange={(e) => setMetaPhoneId(e.target.value.replace(/\D/g, ''))}
                     placeholder="Ex: 27018364624521397"
+                    className={metaValidationErrors.phoneId ? 'border-destructive' : ''}
                   />
+                  {metaValidationErrors.phoneId && (
+                    <p className="text-xs text-destructive mt-1">{metaValidationErrors.phoneId}</p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                    Encontrado em WhatsApp &gt; Configurações da API &gt; Identificador do número de
+                    telefone.
+                  </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Token de Acesso (Permanente)</Label>
+                  <Label className="flex items-center gap-2">Token de Acesso (Permanente)</Label>
                   <div className="relative">
                     <Input
                       type={showMetaToken ? 'text' : 'password'}
@@ -946,13 +993,23 @@ export default function ConfiguracoesCore() {
                       {showMetaToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                    Token gerado no Meta for Developers com permissões whatsapp_business_messaging e
+                    whatsapp_business_management.
+                  </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Verify Token</Label>
+                  <Label className="flex items-center gap-2">Verify Token</Label>
                   <Input
                     value={metaVerifyToken}
                     onChange={(e) => setMetaVerifyToken(e.target.value)}
+                    placeholder="Ex: meu_token_secreto"
                   />
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                    <Info className="h-3 w-3 mt-0.5 shrink-0" />O token de verificação usado na
+                    configuração do Webhook.
+                  </p>
                 </div>
               </div>
               <div className="pt-2 flex gap-3">
@@ -962,7 +1019,9 @@ export default function ConfiguracoesCore() {
                 <Button
                   variant="secondary"
                   onClick={() => checkMetaConnection(metaBusinessId, metaPhoneId, metaAccessToken)}
-                  disabled={metaStatus === 'checking'}
+                  disabled={
+                    metaStatus === 'checking' || !metaBusinessId || !metaPhoneId || !metaAccessToken
+                  }
                 >
                   {metaStatus === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Verificar Conexão
@@ -1008,8 +1067,14 @@ export default function ConfiguracoesCore() {
                   <Input
                     value={metaBusinessId}
                     onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ex: 27018364624521397"
+                    placeholder="Ex: 950541937872426"
+                    className={capiValidationErrors.businessId ? 'border-destructive' : ''}
                   />
+                  {capiValidationErrors.businessId && (
+                    <p className="text-xs text-destructive mt-1">
+                      {capiValidationErrors.businessId}
+                    </p>
+                  )}
                   <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
                     <Info className="h-3 w-3 mt-0.5 shrink-0" />O ID numérico da sua conta Business
                     Manager da Meta.
@@ -1021,13 +1086,20 @@ export default function ConfiguracoesCore() {
                     value={metaPixelId}
                     onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
                     placeholder="Ex: 1522162279584545"
+                    className={capiValidationErrors.pixelId ? 'border-destructive' : ''}
                   />
-                  {metaPixelId === '27018364624521397' ||
-                  (metaPixelId && metaPixelId === metaBusinessId) ? (
-                    <p className="text-[11px] text-amber-600 flex items-start gap-1 mt-1 font-medium">
+                  {capiValidationErrors.pixelId && (
+                    <p className="text-xs text-destructive mt-1">{capiValidationErrors.pixelId}</p>
+                  )}
+                  {metaPixelId && metaPixelId === metaBusinessId ? (
+                    <p className="text-[11px] text-destructive flex items-start gap-1 mt-1 font-medium">
                       <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
-                      This looks like a Business ID. Please ensure you are entering the Pixel ID
-                      here.
+                      Pixel ID não pode ser o mesmo que o Business ID.
+                    </p>
+                  ) : metaPixelId && metaPixelId === metaPhoneId ? (
+                    <p className="text-[11px] text-destructive flex items-start gap-1 mt-1 font-medium">
+                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                      Pixel ID não pode ser o mesmo que o Phone Number ID.
                     </p>
                   ) : (
                     <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
