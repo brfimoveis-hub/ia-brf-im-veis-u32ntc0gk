@@ -37,8 +37,8 @@ export function SettingsMeta() {
   const loadData = async () => {
     if (!user) return
     try {
-      // Direct Database Synchronization
-      const record = await pb.collection('users').getOne(user.id)
+      // Direct Database Synchronization - Fresh fetch
+      const record = await pb.collection('users').getOne(user.id, { $autoCancel: false })
       setMetaPixelId(record.meta_pixel_id || '')
       setMetaCapiToken(record.meta_capi_token || '')
       setMetaWhatsappBusinessId(record.meta_whatsapp_business_id || '')
@@ -73,10 +73,26 @@ export function SettingsMeta() {
 
   const validateFields = () => {
     const errors: Record<string, string> = {}
-    if (!metaPixelId.trim()) errors.meta_pixel_id = 'Pixel ID is required'
-    if (!metaCapiToken.trim()) errors.meta_capi_token = 'CAPI Token is required'
-    if (!metaWhatsappPhoneNumberId.trim())
+    if (!metaPixelId.trim()) {
+      errors.meta_pixel_id = 'Pixel ID is required'
+    } else if (!/^\d+$/.test(metaPixelId.trim())) {
+      errors.meta_pixel_id = 'Pixel ID must be strictly numeric'
+    }
+
+    if (!metaCapiToken.trim()) {
+      errors.meta_capi_token = 'CAPI Token is required'
+    } else if (metaCapiToken !== metaCapiToken.trim()) {
+      errors.meta_capi_token = 'CAPI Token cannot contain leading or trailing spaces'
+    }
+
+    if (!metaWhatsappPhoneNumberId.trim()) {
       errors.meta_whatsapp_phone_number_id = 'Phone Number ID is required'
+    }
+
+    if (metaWhatsappBusinessId && !/^\d+$/.test(metaWhatsappBusinessId.trim())) {
+      errors.meta_whatsapp_business_id = 'Business ID must be strictly numeric'
+    }
+
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
   }

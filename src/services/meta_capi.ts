@@ -68,10 +68,23 @@ export const executeCapiVerification = async (
     const errorMsg =
       error.response?.message || error.message || 'Falha de comunicação com Meta CAPI'
 
-    const errorData = error.response?.data ? JSON.stringify(error.response.data) : ''
+    const errorData = error.response?.data ? error.response.data : {}
+    const metaErr = errorData.error || errorData
+
     let specificError = errorMsg
-    if (errorData.toLowerCase().includes('invalid parameter')) {
-      specificError = 'Invalid parameter error. Please check your Pixel ID and Token formats.'
+    if (metaErr.error_user_title) {
+      specificError = `${metaErr.error_user_title}: ${metaErr.error_user_msg}`
+    } else if (metaErr.error_user_msg) {
+      specificError = metaErr.error_user_msg
+    } else if (metaErr.message) {
+      specificError = metaErr.message
+    }
+
+    if (
+      metaErr.type === 'OAuthException' ||
+      JSON.stringify(errorData).toLowerCase().includes('invalid parameter')
+    ) {
+      specificError = `Erro de Parâmetro Inválido: ${specificError}`
     }
 
     await updateMetaCapiStatus(userId, specificError).catch(() => {})
