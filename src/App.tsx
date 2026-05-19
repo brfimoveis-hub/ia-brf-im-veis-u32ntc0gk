@@ -61,9 +61,11 @@ const RouteTracker = () => {
     let component = 'Unknown'
 
     const lowerPath = path.toLowerCase()
+
+    // Strict isolation for Configuration path
     if (lowerPath.startsWith('/configuracoes')) {
       component = 'ConfiguracoesCore'
-    } else if (lowerPath === '/dashboard') {
+    } else if (lowerPath.startsWith('/dashboard')) {
       component = 'Dashboard'
     } else if (lowerPath.startsWith('/clientes')) {
       component = 'ClientesCore'

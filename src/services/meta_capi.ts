@@ -9,9 +9,9 @@ export const testMetaCapiConnectionService = async (
   accessToken: string,
 ) => {
   const payload = {
-    business_id: businessId.replace(/\D/g, ''),
-    pixel_id: pixelId.replace(/\D/g, ''),
-    access_token: accessToken.replace(/\s/g, ''),
+    business_id: businessId.replace(/\D/g, '').trim(),
+    pixel_id: pixelId.replace(/\D/g, '').trim(),
+    access_token: accessToken.trim(),
   }
 
   // Diagnostic API Logging
@@ -45,9 +45,9 @@ export const saveMetaCapiSettings = async (
   metaCapiToken: string,
 ) => {
   return pb.collection('users').update(userId, {
-    meta_whatsapp_business_id: businessId.replace(/\D/g, ''),
-    meta_pixel_id: metaPixelId.replace(/\D/g, ''),
-    meta_capi_token: metaCapiToken.replace(/\s/g, ''),
+    meta_whatsapp_business_id: businessId.replace(/\D/g, '').trim(),
+    meta_pixel_id: metaPixelId.replace(/\D/g, '').trim(),
+    meta_capi_token: metaCapiToken.trim(),
   })
 }
 
@@ -68,7 +68,7 @@ export const executeCapiVerification = async (
     const errorMsg =
       error.response?.message || error.message || 'Falha de comunicação com Meta CAPI'
 
-    const errorData = error.response?.data ? error.response.data : {}
+    const errorData = error.response || {}
     const metaErr = errorData.error || errorData
 
     let specificError = errorMsg
@@ -80,11 +80,28 @@ export const executeCapiVerification = async (
       specificError = metaErr.message
     }
 
+    const errorString = JSON.stringify(errorData).toLowerCase()
+
     if (
-      metaErr.type === 'OAuthException' ||
-      JSON.stringify(errorData).toLowerCase().includes('invalid parameter')
+      errorString.includes('access_token') ||
+      errorString.includes('oauth') ||
+      metaErr.code === 190 ||
+      metaErr.type === 'OAuthException'
     ) {
-      specificError = `Erro de Parâmetro Inválido ou Permissão: Verifique se o Pixel ID e Token estão corretos e se o app tem as permissões adequadas. Detalhe: ${specificError}`
+      specificError = `Erro no Token de Acesso: O token fornecido é inválido, expirou ou não tem as permissões corretas. Detalhe: ${specificError}`
+    } else if (
+      errorString.includes('pixel') ||
+      errorString.includes('dataset') ||
+      (metaErr.message && metaErr.message.toLowerCase().includes(pixelId))
+    ) {
+      specificError = `Erro no Pixel ID: O Pixel ID '${pixelId}' é inválido ou o token não tem permissão para acessá-lo. Detalhe: ${specificError}`
+    } else if (
+      errorString.includes('business') ||
+      (metaErr.message && metaErr.message.toLowerCase().includes(businessId))
+    ) {
+      specificError = `Erro no Business ID: O Business ID '${businessId}' é inválido. Detalhe: ${specificError}`
+    } else if (errorString.includes('invalid parameter')) {
+      specificError = `Erro de Parâmetro Inválido: Verifique se o Pixel ID e Token estão corretos. Detalhe: ${specificError}`
     }
 
     await updateMetaCapiStatus(userId, specificError).catch(() => {})

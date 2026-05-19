@@ -15,7 +15,7 @@ export function MetaPixel() {
   const location = useLocation()
   const pixelId = user?.meta_pixel_id
   const metaTagsList = Array.isArray(user?.meta_tags_list) ? user?.meta_tags_list : []
-  const HARDCODED_PIXEL = '1522162279584545'
+  const HARDCODED_PIXEL = '1749919165726676'
   const mainPixel = pixelId || HARDCODED_PIXEL
   const allPixels = Array.from(
     new Set([mainPixel, ...metaTagsList.map((tag: any) => tag.id)].filter(Boolean)),
@@ -70,5 +70,19 @@ export function MetaPixel() {
     }
   }, [location.pathname, location.search, allPixels.join(',')])
 
-  return null
+  return (
+    <>
+      {allPixels.map((id) => (
+        <noscript key={id}>
+          <img
+            height="1"
+            width="1"
+            style={{ display: 'none' }}
+            src={`https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1`}
+            alt=""
+          />
+        </noscript>
+      ))}
+    </>
+  )
 }

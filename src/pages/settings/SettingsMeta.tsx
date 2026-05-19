@@ -113,15 +113,15 @@ export function SettingsMeta() {
     setIsSaving(true)
     setFieldErrors({})
     try {
-      const cleanBusinessId = metaWhatsappBusinessId.replace(/\D/g, '')
-      const cleanPixelId = metaPixelId.replace(/\D/g, '')
-      const cleanToken = metaCapiToken.replace(/\s/g, '')
+      const cleanBusinessId = metaWhatsappBusinessId.replace(/\D/g, '').trim()
+      const cleanPixelId = metaPixelId.replace(/\D/g, '').trim()
+      const cleanToken = metaCapiToken.trim()
 
       const payload: any = {
         meta_pixel_id: cleanPixelId,
         meta_capi_token: cleanToken,
         meta_whatsapp_business_id: cleanBusinessId,
-        meta_whatsapp_phone_number_id: metaWhatsappPhoneNumberId.replace(/\D/g, ''),
+        meta_whatsapp_phone_number_id: metaWhatsappPhoneNumberId.replace(/\D/g, '').trim(),
         meta_whatsapp_access_token: metaWhatsappAccessToken.trim(),
       }
 
@@ -140,17 +140,9 @@ export function SettingsMeta() {
       try {
         await executeCapiVerification(user.id, cleanBusinessId, cleanPixelId, cleanToken)
       } catch (verifyError: any) {
-        let specificError = verifyError.message || 'Verification failed.'
-        if (
-          verifyError.response?.data &&
-          JSON.stringify(verifyError.response.data).toLowerCase().includes('invalid parameter')
-        ) {
-          specificError =
-            'Invalid parameter error. Please check your Pixel ID and Token permissions.'
-        }
         toast({
           title: 'CAPI Verification Failed',
-          description: specificError,
+          description: verifyError.message || 'Verification failed.',
           variant: 'destructive',
         })
       }
@@ -180,9 +172,9 @@ export function SettingsMeta() {
 
     setIsTesting(true)
     try {
-      const cleanBusinessId = metaWhatsappBusinessId.replace(/\D/g, '')
-      const cleanPixelId = metaPixelId.replace(/\D/g, '')
-      const cleanToken = metaCapiToken.replace(/\s/g, '')
+      const cleanBusinessId = metaWhatsappBusinessId.replace(/\D/g, '').trim()
+      const cleanPixelId = metaPixelId.replace(/\D/g, '').trim()
+      const cleanToken = metaCapiToken.trim()
 
       await executeCapiVerification(user.id, cleanBusinessId, cleanPixelId, cleanToken)
       toast({
@@ -191,17 +183,9 @@ export function SettingsMeta() {
       })
       loadData()
     } catch (error: any) {
-      const errorMsg =
-        error.response?.message || error.message || 'Falha de comunicação com Meta CAPI'
-      const dataStr = error.response?.data ? JSON.stringify(error.response.data) : ''
-      let specificError = errorMsg
-      if (dataStr.toLowerCase().includes('invalid parameter')) {
-        specificError = 'Invalid parameter error. Please check your Pixel ID and Token permissions.'
-      }
-
       toast({
         title: 'CAPI Connection Failed',
-        description: specificError,
+        description: error.message || 'Falha de comunicação com Meta CAPI',
         variant: 'destructive',
       })
       loadData()

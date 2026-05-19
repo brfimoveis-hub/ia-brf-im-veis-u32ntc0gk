@@ -46,17 +46,11 @@ routerAdd(
       return e.json(200, { success: true, data: res.json })
     }
 
-    const errorMsg = res.json?.error?.message || `Erro da Meta API (Status ${res.statusCode})`
-
-    if (res.statusCode === 400) {
-      throw new BadRequestError(errorMsg)
-    } else if (res.statusCode === 401) {
-      throw new UnauthorizedError(errorMsg)
-    } else if (res.statusCode === 403) {
-      throw new ForbiddenError(errorMsg)
-    }
-
-    throw new BadRequestError(errorMsg)
+    // Return the full Meta error to the client so it can identify the field
+    return e.json(
+      res.statusCode,
+      res.json || { error: { message: `Erro da Meta API (Status ${res.statusCode})` } },
+    )
   },
   $apis.requireAuth(),
 )
