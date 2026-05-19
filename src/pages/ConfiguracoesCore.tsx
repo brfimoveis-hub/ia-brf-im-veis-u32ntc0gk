@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
@@ -29,6 +30,16 @@ import { SettingsSocial } from './settings/SettingsSocial'
 export default function ConfiguracoesCore() {
   const { user } = useAuth()
   const { toast } = useToast()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  const pathTab = location.pathname.split('/configuracoes/')[1] || 'uazapi'
+  const validTabs = ['uazapi', 'meta', 'meta-capi', 'ai', 'social']
+  const activeTab = validTabs.includes(pathTab) ? pathTab : 'uazapi'
+
+  const handleTabChange = (value: string) => {
+    navigate(`/configuracoes/${value}`)
+  }
 
   const defaultDomain = 'https://iabrfimveis.uazapi.com'
   const defaultAdminToken = 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
@@ -441,8 +452,10 @@ export default function ConfiguracoesCore() {
       setMetaStatus('disconnected')
 
       let msg = e.response?.message || e.message || 'Erro ao conectar com a Meta'
-      const metaErr = e.response?.data?.error || e.response?.error || {}
-      if (metaErr.message) {
+      const metaErr = e.response?.data?.error || e.response?.error || e.response?.data || {}
+      if (metaErr.error_user_msg) {
+        msg = metaErr.error_user_msg
+      } else if (metaErr.message) {
         msg = metaErr.message
       } else if (typeof e.response?.data === 'string') {
         msg = e.response.data
@@ -476,19 +489,28 @@ export default function ConfiguracoesCore() {
 
   const validateMetaInputs = () => {
     const errors: { businessId?: string; phoneId?: string; accessToken?: string } = {}
-    if (!metaBusinessId?.trim()) {
+    const bId = metaBusinessId?.trim() || ''
+    const pId = metaPhoneId?.trim() || ''
+    const token = metaAccessToken?.trim() || ''
+
+    if (!bId) {
       errors.businessId = 'O Meta Business ID é obrigatório.'
-    } else if (!/^\d+$/.test(metaBusinessId)) {
-      errors.businessId = 'O Meta Business ID deve conter apenas números.'
+    } else if (!/^\d{8,}$/.test(bId)) {
+      errors.businessId =
+        'Business ID inválido. Deve ser numérico e conter > 8 dígitos. Não use números de telefone.'
     }
-    if (!metaPhoneId?.trim()) {
+
+    if (!pId) {
       errors.phoneId = 'O Phone Number ID é obrigatório.'
-    } else if (!/^\d+$/.test(metaPhoneId)) {
-      errors.phoneId = 'O Phone Number ID deve conter apenas números.'
+    } else if (!/^\d{8,}$/.test(pId)) {
+      errors.phoneId =
+        'Phone Number ID inválido. Use o ID da Meta (ex: 123456789), não o seu número de telefone.'
     }
-    if (!metaAccessToken?.trim()) {
+
+    if (!token) {
       errors.accessToken = 'O Access Token é obrigatório.'
     }
+
     setMetaValidationErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -511,6 +533,8 @@ export default function ConfiguracoesCore() {
         meta_whatsapp_phone_number_id: metaPhoneId?.trim() || '',
         meta_whatsapp_access_token: metaAccessToken?.trim() || '',
         meta_whatsapp_verify_token: metaVerifyToken?.trim() || '',
+        meta_pixel_id: metaPixelId?.trim() || user.meta_pixel_id || '',
+        meta_capi_token: metaCapiToken?.trim() || user.meta_capi_token || '',
       })
 
       localStorage.removeItem('meta_session_cache')
@@ -531,19 +555,28 @@ export default function ConfiguracoesCore() {
 
   const validateCapiInputs = () => {
     const errors: { businessId?: string; pixelId?: string; accessToken?: string } = {}
-    if (!metaBusinessId?.trim()) {
+    const bId = metaBusinessId?.trim() || ''
+    const pId = metaPixelId?.trim() || ''
+    const token = metaCapiToken?.trim() || ''
+
+    if (!bId) {
       errors.businessId = 'O Meta Business ID é obrigatório.'
-    } else if (!/^\d+$/.test(metaBusinessId)) {
-      errors.businessId = 'O Meta Business ID deve conter apenas números.'
+    } else if (!/^\d{8,}$/.test(bId)) {
+      errors.businessId =
+        'Business ID inválido. Deve ser numérico e conter > 8 dígitos. Não use números de telefone.'
     }
-    if (!metaPixelId?.trim()) {
+
+    if (!pId) {
       errors.pixelId = 'O Dataset/Pixel ID é obrigatório.'
-    } else if (!/^\d+$/.test(metaPixelId)) {
-      errors.pixelId = 'O Dataset/Pixel ID deve conter apenas números.'
+    } else if (!/^\d{8,}$/.test(pId)) {
+      errors.pixelId =
+        'Pixel ID inválido. Deve ser numérico e conter > 8 dígitos. Não use números de telefone.'
     }
-    if (!metaCapiToken?.trim()) {
+
+    if (!token) {
       errors.accessToken = 'O Access Token é obrigatório.'
     }
+
     setCapiValidationErrors(errors)
 
     if (Object.keys(errors).length > 0) {
@@ -567,6 +600,8 @@ export default function ConfiguracoesCore() {
         meta_whatsapp_business_id: metaBusinessId?.trim() || '',
         meta_pixel_id: metaPixelId?.trim() || '',
         meta_capi_token: metaCapiToken?.trim() || '',
+        meta_whatsapp_phone_number_id:
+          metaPhoneId?.trim() || user.meta_whatsapp_phone_number_id || '',
       })
       toast({ title: 'Sucesso', description: 'Configurações atualizadas com sucesso!' })
     } catch (e) {
@@ -587,6 +622,8 @@ export default function ConfiguracoesCore() {
         meta_whatsapp_business_id: metaBusinessId?.trim() || '',
         meta_pixel_id: metaPixelId?.trim() || '',
         meta_capi_token: metaCapiToken?.trim() || '',
+        meta_whatsapp_phone_number_id:
+          metaPhoneId?.trim() || user.meta_whatsapp_phone_number_id || '',
       })
 
       const payload = {
@@ -609,8 +646,10 @@ export default function ConfiguracoesCore() {
       setCapiStatus('disconnected')
       let errorMsg = e.response?.message || e.message || 'Falha de Handshake'
 
-      const metaErr = e.response?.data?.error || e.response?.error || {}
-      if (metaErr.message) {
+      const metaErr = e.response?.data?.error || e.response?.error || e.response?.data || {}
+      if (metaErr.error_user_msg) {
+        errorMsg = metaErr.error_user_msg
+      } else if (metaErr.message) {
         errorMsg = metaErr.message
       } else if (typeof e.response?.data === 'string') {
         errorMsg = e.response.data
@@ -774,7 +813,7 @@ export default function ConfiguracoesCore() {
         </Card>
       </div>
 
-      <Tabs defaultValue="uazapi" className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-5 max-w-[1000px] overflow-x-auto">
           <TabsTrigger value="uazapi">Uazapi (Legado)</TabsTrigger>
           <TabsTrigger value="meta">WhatsApp (Meta)</TabsTrigger>
