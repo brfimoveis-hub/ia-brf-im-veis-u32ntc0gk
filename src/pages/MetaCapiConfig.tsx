@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/card'
 import { Loader2, CheckCircle2, XCircle, ChevronLeft } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useRealtime } from '@/hooks/use-realtime'
 import {
   Accordion,
   AccordionContent,
@@ -93,6 +94,14 @@ export function MetaCapiConfig() {
     return () => clearTimeout(timeout)
   }, [token, user?.id])
 
+  const [liveStatus, setLiveStatus] = useState(user?.meta_token_status || '')
+
+  useRealtime('users', (e) => {
+    if (e.record.id === user?.id) {
+      setLiveStatus(e.record.meta_token_status)
+    }
+  })
+
   useEffect(() => {
     // Context Purge: Clear any "ghost" states or cache from previous integration attempts
     sessionStorage.removeItem('meta-capi-cache')
@@ -108,11 +117,13 @@ export function MetaCapiConfig() {
           setBusinessId(freshUser.meta_whatsapp_business_id || '')
           setPixelId(freshUser.meta_pixel_id || '')
           setToken(freshUser.meta_capi_token || '')
+          setLiveStatus(freshUser.meta_token_status || '')
         } catch (error) {
           if (!mounted) return
           setBusinessId(user.meta_whatsapp_business_id || '')
           setPixelId(user.meta_pixel_id || '')
           setToken(user.meta_capi_token || '')
+          setLiveStatus(user.meta_token_status || '')
         }
       }
     }
@@ -240,36 +251,30 @@ export function MetaCapiConfig() {
           {user && (
             <div
               className={`p-3 rounded-md flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm font-medium ${
-                user.meta_token_status === 'active' || user.meta_token_status === 'valid'
+                liveStatus === 'active' || liveStatus === 'valid'
                   ? 'bg-green-500/10 text-green-600'
-                  : !user.meta_token_status ||
-                      user.meta_token_status === 'Pendente' ||
-                      user.meta_token_status === 'pending'
+                  : !liveStatus || liveStatus === 'Pendente' || liveStatus === 'pending'
                     ? 'bg-yellow-500/10 text-yellow-600'
                     : 'bg-red-500/10 text-red-600'
               }`}
             >
               <div className="flex items-center gap-2">
-                {user.meta_token_status === 'active' || user.meta_token_status === 'valid' ? (
+                {liveStatus === 'active' || liveStatus === 'valid' ? (
                   <CheckCircle2 className="h-4 w-4" />
-                ) : !user.meta_token_status ||
-                  user.meta_token_status === 'Pendente' ||
-                  user.meta_token_status === 'pending' ? (
+                ) : !liveStatus || liveStatus === 'Pendente' || liveStatus === 'pending' ? (
                   <Loader2 className="h-4 w-4" />
                 ) : (
                   <XCircle className="h-4 w-4" />
                 )}
                 <span>
                   Status Atual:{' '}
-                  {user.meta_token_status === 'active' || user.meta_token_status === 'valid'
+                  {liveStatus === 'active' || liveStatus === 'valid'
                     ? 'Ativo'
-                    : !user.meta_token_status ||
-                        user.meta_token_status === 'Pendente' ||
-                        user.meta_token_status === 'pending'
+                    : !liveStatus || liveStatus === 'Pendente' || liveStatus === 'pending'
                       ? 'Pendente'
-                      : user.meta_token_status.startsWith('Permissões insuficientes')
-                        ? user.meta_token_status
-                        : user.meta_token_status}
+                      : liveStatus.startsWith('Permissões insuficientes')
+                        ? liveStatus
+                        : liveStatus}
                 </span>
               </div>
               {user.created && (

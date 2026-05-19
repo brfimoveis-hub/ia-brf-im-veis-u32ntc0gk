@@ -153,10 +153,6 @@ const router = createBrowserRouter(
           element: <ProtectedRoute />,
           children: [
             {
-              path: 'configuracoes/meta-capi',
-              element: <MetaCapiConfig />,
-            },
-            {
               element: <Layout />,
               errorElement: <GlobalError />,
               children: [
@@ -175,6 +171,10 @@ const router = createBrowserRouter(
                 {
                   path: 'logs',
                   element: <Logs />,
+                },
+                {
+                  path: 'configuracoes/meta-capi',
+                  element: <MetaCapiConfig />,
                 },
                 {
                   path: 'configuracoes',
