@@ -54,7 +54,7 @@ export function MetaCapiConfig() {
       // 2. Test Connection
       await executeCapiVerification(user.id, businessId, pixelId, token)
 
-      await updateMetaCapiStatus(user.id, 'active')
+      await updateMetaCapiStatus(user.id, 'valid')
       toast.success('Configurações salvas e conexão verificada com sucesso!')
     } catch (error: any) {
       const errMsg = error.message || 'Erro desconhecido'
@@ -70,7 +70,9 @@ export function MetaCapiConfig() {
       } else if (
         errLower.includes('token') ||
         errLower.includes('oauth') ||
-        errLower.includes('permissão')
+        errLower.includes('permissão') ||
+        errLower.includes('permission') ||
+        errLower.includes('invalid token')
       ) {
         newFieldErrors.token = errMsg
       } else if (errLower.includes('business')) {

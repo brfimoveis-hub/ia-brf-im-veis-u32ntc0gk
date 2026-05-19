@@ -62,7 +62,7 @@ export const executeCapiVerification = async (
 ) => {
   try {
     await testMetaCapiConnectionService(businessId, pixelId, accessToken)
-    await updateMetaCapiStatus(userId, 'connected')
+    await updateMetaCapiStatus(userId, 'valid')
     return { success: true }
   } catch (error: any) {
     const errorMsg =
@@ -83,12 +83,18 @@ export const executeCapiVerification = async (
     const errorString = JSON.stringify(errorData).toLowerCase()
 
     if (
+      errorString.includes('permission denied') ||
+      (metaErr.message && metaErr.message.toLowerCase().includes('permission denied'))
+    ) {
+      specificError = `Erro de Permissão (Permission Denied): O token não possui as permissões necessárias para acessar este Pixel/Business. Detalhe: ${specificError}`
+    } else if (
       errorString.includes('access_token') ||
+      errorString.includes('invalid token') ||
       errorString.includes('oauth') ||
       metaErr.code === 190 ||
       metaErr.type === 'OAuthException'
     ) {
-      specificError = `Erro no Token de Acesso: O token fornecido é inválido, expirou ou não tem as permissões corretas. Detalhe: ${specificError}`
+      specificError = `Erro no Token de Acesso (Invalid Token): O token fornecido é inválido, expirou ou não tem as permissões corretas. Detalhe: ${specificError}`
     } else if (
       errorString.includes('pixel') ||
       errorString.includes('dataset') ||

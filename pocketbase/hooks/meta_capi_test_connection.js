@@ -5,18 +5,24 @@ routerAdd(
     const body = e.requestInfo().body || {}
     let pixelId = body.pixel_id
     let accessToken = body.access_token
+    let businessId = body.business_id
 
     const user = e.auth
     if (user) {
       pixelId = pixelId || user.getString('meta_pixel_id')
       accessToken = accessToken || user.getString('meta_capi_token')
+      if (!businessId) {
+        businessId = user.getString('meta_whatsapp_business_id')
+      }
     }
 
     if (!pixelId || !accessToken) {
       throw new BadRequestError('Pixel ID e Token de Acesso são obrigatórios.')
     }
 
-    const url = `https://graph.facebook.com/v20.0/${pixelId}/events`
+    $app.logger().info('CAPI Test Info', 'pixelId', pixelId, 'businessId', businessId)
+
+    const url = `https://graph.facebook.com/v21.0/${pixelId}/events`
 
     const payload = {
       data: [

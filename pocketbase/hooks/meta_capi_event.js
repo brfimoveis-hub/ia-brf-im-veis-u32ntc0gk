@@ -18,12 +18,12 @@ onRecordAfterUpdateSuccess((e) => {
     }
 
     if (pixelId && capiToken) {
-      const email = e.record.getString('email') || e.record.getString('email_1_value')
-      const phone = e.record.getString('phone') || e.record.getString('phone_1_value')
-      const fn =
+      let email = e.record.getString('email') || e.record.getString('email_1_value')
+      let phone = e.record.getString('phone') || e.record.getString('phone_1_value')
+      let fn =
         e.record.getString('first_name') ||
         (e.record.getString('name') ? e.record.getString('name').split(' ')[0] : '')
-      const ln = e.record.getString('name')
+      let ln = e.record.getString('name')
         ? e.record.getString('name').split(' ').slice(1).join(' ')
         : ''
 
@@ -33,12 +33,20 @@ onRecordAfterUpdateSuccess((e) => {
         userData.em = [$security.sha256(email.trim().toLowerCase())]
       }
       if (phone) {
-        userData.ph = [$security.sha256(phone.replace(/\D/g, ''))]
+        let cleanPhone = phone.replace(/\D/g, '')
+        // Meta prefers country codes. Assume 55 (BR) if length is exactly 10 or 11
+        if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+          cleanPhone = '55' + cleanPhone
+        }
+        userData.ph = [$security.sha256(cleanPhone)]
       }
       if (fn) {
+        // Remove diacritics as required by Meta CAPI best practices for hashing
+        fn = fn.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         userData.fn = [$security.sha256(fn.trim().toLowerCase())]
       }
       if (ln) {
+        ln = ln.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         userData.ln = [$security.sha256(ln.trim().toLowerCase())]
       }
 
