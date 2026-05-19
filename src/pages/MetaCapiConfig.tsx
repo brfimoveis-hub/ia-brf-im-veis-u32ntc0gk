@@ -72,9 +72,15 @@ export function MetaCapiConfig() {
         errLower.includes('oauth') ||
         errLower.includes('permissão') ||
         errLower.includes('permission') ||
-        errLower.includes('invalid token')
+        errLower.includes('invalid token') ||
+        errMsg ===
+          'Erro no Token de Acesso: O token fornecido é inválido, expirou ou não tem as permissões corretas.'
       ) {
-        newFieldErrors.token = errMsg
+        newFieldErrors.token =
+          errMsg ===
+          'Erro no Token de Acesso: O token fornecido é inválido, expirou ou não tem as permissões corretas.'
+            ? errMsg
+            : 'Erro no Token de Acesso: O token fornecido é inválido, expirou ou não tem as permissões corretas.'
       } else if (errLower.includes('business')) {
         newFieldErrors.businessId = errMsg
       } else {

@@ -51,8 +51,18 @@ onRecordAfterUpdateSuccess((e) => {
       }
 
       if (!userData.em && !userData.ph && !userData.fn) {
+        $app
+          .logger()
+          .warn(
+            'CAPI Event Match Warning: Insufficient parameters for event matching. See https://developers.facebook.com/docs/marketing-api/conversions-api/best-practices/#req-rec-params',
+          )
         return e.next()
       }
+
+      userData.client_ip_address = userData.client_ip_address || '192.168.1.1'
+      userData.client_user_agent =
+        userData.client_user_agent ||
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SkipCloud/1.0'
 
       const payload = {
         data: [
