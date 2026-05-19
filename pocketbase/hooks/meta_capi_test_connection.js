@@ -20,6 +20,23 @@ routerAdd(
       throw new BadRequestError('Pixel ID e Token de Acesso são obrigatórios.')
     }
 
+    const permUrl = `https://graph.facebook.com/v21.0/me/permissions?access_token=${accessToken}`
+    const permRes = $http.send({ url: permUrl, method: 'GET', timeout: 15 })
+
+    if (permRes.statusCode >= 400) {
+      throw new BadRequestError('Token de Acesso inválido ou expirado.')
+    }
+
+    const perms = permRes.json?.data || []
+    const grantedPerms = perms.filter((p) => p.status === 'granted').map((p) => p.permission)
+
+    const requiredPerms = ['ads_management', 'business_management', 'ads_read']
+    const missingPerms = requiredPerms.filter((p) => !grantedPerms.includes(p))
+
+    if (missingPerms.length > 0) {
+      throw new BadRequestError(`Permissões insuficientes. Faltam: ${missingPerms.join(', ')}`)
+    }
+
     $app.logger().info('CAPI Test Info', 'pixelId', pixelId, 'businessId', businessId)
 
     const url = `https://graph.facebook.com/v21.0/${pixelId}/events`
@@ -31,7 +48,10 @@ routerAdd(
           event_time: Math.floor(Date.now() / 1000),
           action_source: 'system_generated',
           user_data: {
+            client_ip_address: (e.request.remoteAddr || '127.0.0.1').split(':')[0],
             client_user_agent: e.request.header.get('User-Agent') || 'TestAgent',
+            em: [$security.sha256('test@example.com')],
+            ph: [$security.sha256('5511999999999')],
           },
         },
       ],

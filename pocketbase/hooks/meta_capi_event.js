@@ -50,11 +50,11 @@ onRecordAfterUpdateSuccess((e) => {
         userData.ln = [$security.sha256(ln.trim().toLowerCase())]
       }
 
-      if (!userData.em && !userData.ph && !userData.fn) {
+      if (!userData.em && !userData.ph) {
         $app
           .logger()
           .warn(
-            'CAPI Event Match Warning: Insufficient parameters for event matching. See https://developers.facebook.com/docs/marketing-api/conversions-api/best-practices/#req-rec-params',
+            'CAPI Event Match Warning: Missing mandatory email or phone for payload integrity. Event transmission blocked.',
           )
         return e.next()
       }

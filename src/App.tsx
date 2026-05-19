@@ -20,6 +20,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import Dashboard from './pages/Dashboard'
 import ClientesCore from './pages/ClientesCore'
 import ConfiguracoesCore from './pages/ConfiguracoesCore'
+import { MetaCapiConfig } from './pages/MetaCapiConfig'
 import Cadences from './pages/Cadences'
 import Logs from './pages/Logs'
 import NotFound from './pages/NotFound'
@@ -63,7 +64,9 @@ const RouteTracker = () => {
     const lowerPath = path.toLowerCase()
 
     // Strict isolation for Configuration path
-    if (lowerPath.startsWith('/configuracoes')) {
+    if (lowerPath === '/configuracoes/meta-capi') {
+      component = 'MetaCapiConfig'
+    } else if (lowerPath.startsWith('/configuracoes')) {
       component = 'ConfiguracoesCore'
     } else if (lowerPath.startsWith('/dashboard')) {
       component = 'Dashboard'
@@ -176,6 +179,10 @@ const router = createBrowserRouter(
                 {
                   path: 'configuracoes/*',
                   element: <ConfiguracoesCore />,
+                },
+                {
+                  path: 'configuracoes/meta-capi',
+                  element: <MetaCapiConfig />,
                 },
               ],
             },
