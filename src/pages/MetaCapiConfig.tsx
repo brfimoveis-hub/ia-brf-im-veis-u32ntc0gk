@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
+import pb from '@/lib/pocketbase/client'
 import {
   saveMetaCapiSettings,
   executeCapiVerification,
@@ -33,15 +34,29 @@ export function MetaCapiConfig() {
   }>({})
 
   useEffect(() => {
-    if (user) {
-      setBusinessId(user.meta_whatsapp_business_id || '950541937872426')
-      setPixelId(user.meta_pixel_id || '1522162279584545')
-      setToken(
-        user.meta_capi_token ||
-          'EAAzbADOLSAoBRWEHCILX1hxOWcVQDeniCi2IihlZCOBQefwScDmfzsplrZCgY2cpjRw7Nn9t1AZCvaqa1aqUZBmZBoZAYyjE7QTS63DTExDD388fSJkZBpphOQcaG479O919fJ1efZAjd0eY6NV95MBgpvKvStOabBX2rVFbnoH1JIGMoZANodamAjD0tUXyZBUFK39gZDZD',
-      )
+    let mounted = true
+    const loadFreshData = async () => {
+      if (user) {
+        try {
+          const freshAuth = await pb.collection('users').authRefresh()
+          if (!mounted) return
+          const freshUser = freshAuth.record
+          setBusinessId(freshUser.meta_whatsapp_business_id || '')
+          setPixelId(freshUser.meta_pixel_id || '')
+          setToken(freshUser.meta_capi_token || '')
+        } catch (error) {
+          if (!mounted) return
+          setBusinessId(user.meta_whatsapp_business_id || '')
+          setPixelId(user.meta_pixel_id || '')
+          setToken(user.meta_capi_token || '')
+        }
+      }
     }
-  }, [user])
+    loadFreshData()
+    return () => {
+      mounted = false
+    }
+  }, [user?.id])
 
   const handleSaveAndTest = async () => {
     if (!user) return
@@ -72,8 +87,13 @@ export function MetaCapiConfig() {
       await executeCapiVerification(user.id, businessId, pixelId, token)
 
       await updateMetaCapiStatus(user.id, 'valid')
+      await pb.collection('users').authRefresh()
       toast.success('Configurações salvas e conexão verificada com sucesso!')
     } catch (error: any) {
+      await pb
+        .collection('users')
+        .authRefresh()
+        .catch(() => {})
       const errMsg = error.message || 'Erro desconhecido'
       const errLower = errMsg.toLowerCase()
 

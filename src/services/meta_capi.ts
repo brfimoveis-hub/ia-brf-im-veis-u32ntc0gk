@@ -82,7 +82,9 @@ export const executeCapiVerification = async (
 
     const errorString = JSON.stringify(errorData).toLowerCase()
 
-    if (
+    if (errorMsg.includes('Faltam:')) {
+      specificError = errorMsg
+    } else if (
       errorString.includes('permissões insuficientes') ||
       (errorData.message && errorData.message.toLowerCase().includes('permissões insuficientes')) ||
       errorString.includes('permission denied') ||
