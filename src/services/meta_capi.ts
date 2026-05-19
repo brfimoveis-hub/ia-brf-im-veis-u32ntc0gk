@@ -90,7 +90,7 @@ export const executeCapiVerification = async (
       errorString.includes('permission denied') ||
       (metaErr.message && metaErr.message.toLowerCase().includes('permission denied'))
     ) {
-      specificError = `Permissões insuficientes. Faltam: ads_management, business_management, ads_read.`
+      specificError = `Permissões insuficientes. Faltam: ads_management, business_management, ads_read`
     } else if (
       errorString.includes('token de acesso inválido') ||
       (errorData.message && errorData.message.toLowerCase().includes('token de acesso inválido')) ||

@@ -40,6 +40,60 @@ export function MetaCapiConfig() {
   }>({})
 
   useEffect(() => {
+    // Real-time token validation
+    if (!token.trim()) {
+      setFieldErrors((prev) => {
+        const next = { ...prev }
+        if (next.token?.includes('Permissões insuficientes')) delete next.token
+        return next
+      })
+      return
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://graph.facebook.com/v19.0/me/permissions?access_token=${token}`,
+        )
+        if (res.ok) {
+          const data = await res.json()
+          const granted = data.data
+            .filter((p: any) => p.status === 'granted')
+            .map((p: any) => p.permission)
+          const required = ['ads_management', 'business_management', 'ads_read']
+          const missing = required.filter((r) => !granted.includes(r))
+
+          if (missing.length > 0) {
+            const errMsg = `Permissões insuficientes. Faltam: ${missing.join(', ')}`
+            setFieldErrors((prev) => ({ ...prev, token: errMsg }))
+
+            // Proactively update user status locally to reflect the error
+            if (user?.id) {
+              updateMetaCapiStatus(user.id, errMsg)
+                .then(() => {
+                  pb.collection('users')
+                    .authRefresh()
+                    .catch(() => {})
+                })
+                .catch(() => {})
+            }
+          } else {
+            setFieldErrors((prev) => {
+              const next = { ...prev }
+              if (next.token?.includes('Permissões insuficientes')) delete next.token
+              return next
+            })
+          }
+        }
+      } catch (err) {
+        // Ignore network errors in proactive check
+      }
+    }, 1000)
+
+    return () => clearTimeout(timeout)
+  }, [token, user?.id])
+
+  useEffect(() => {
     // Context Purge: Clear any "ghost" states or cache from previous integration attempts
     sessionStorage.removeItem('meta-capi-cache')
     localStorage.removeItem('meta-capi-draft-config')
@@ -80,7 +134,11 @@ export function MetaCapiConfig() {
     if (!token.trim()) {
       errors.token = 'Token de Acesso é obrigatório'
       valid = false
+    } else if (fieldErrors.token) {
+      errors.token = fieldErrors.token
+      valid = false
     }
+
     if (!valid) {
       setFieldErrors(errors)
       return
@@ -90,10 +148,31 @@ export function MetaCapiConfig() {
     setFieldErrors({})
 
     try {
-      // 1. Save settings
+      // 1. Proactive Graph API Token Validation
+      const res = await fetch(
+        `https://graph.facebook.com/v19.0/me/permissions?access_token=${token}`,
+      )
+      if (res.ok) {
+        const data = await res.json()
+        const granted = data.data
+          .filter((p: any) => p.status === 'granted')
+          .map((p: any) => p.permission)
+        const required = ['ads_management', 'business_management', 'ads_read']
+        const missing = required.filter((r) => !granted.includes(r))
+        if (missing.length > 0) {
+          const errMsg = `Permissões insuficientes. Faltam: ${missing.join(', ')}`
+          await updateMetaCapiStatus(user.id, errMsg).catch(() => {})
+          setFieldErrors({ token: errMsg })
+          toast.error(errMsg)
+          setLoading(false)
+          return
+        }
+      }
+
+      // 2. Save settings
       await saveMetaCapiSettings(user.id, businessId, pixelId, token)
 
-      // 2. Test Connection
+      // 3. Test Connection
       await executeCapiVerification(user.id, businessId, pixelId, token)
 
       await updateMetaCapiStatus(user.id, 'valid')
@@ -175,7 +254,9 @@ export function MetaCapiConfig() {
                 Status Atual:{' '}
                 {user.meta_token_status === 'active' || user.meta_token_status === 'valid'
                   ? 'Conectado e Operante'
-                  : user.meta_token_status}
+                  : user.meta_token_status.startsWith('Permissões insuficientes')
+                    ? user.meta_token_status
+                    : user.meta_token_status}
               </span>
             </div>
           )}
