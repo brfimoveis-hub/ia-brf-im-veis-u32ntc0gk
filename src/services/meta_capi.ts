@@ -44,11 +44,17 @@ export const saveMetaCapiSettings = async (
   metaPixelId: string,
   metaCapiToken: string,
 ) => {
-  return pb.collection('users').update(userId, {
+  const payload: any = {
     meta_whatsapp_business_id: businessId.replace(/\D/g, '').trim(),
     meta_pixel_id: metaPixelId.replace(/\D/g, '').trim(),
     meta_capi_token: metaCapiToken.trim(),
-  })
+  }
+
+  if (payload.meta_whatsapp_business_id) {
+    payload.meta_whatsapp_status = 'active'
+  }
+
+  return pb.collection('users').update(userId, payload)
 }
 
 /**

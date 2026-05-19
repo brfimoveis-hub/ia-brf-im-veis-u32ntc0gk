@@ -111,6 +111,14 @@ export function MetaCapiConfig() {
     const loadFreshData = async () => {
       if (user) {
         try {
+          // Idempotent State Reset: clear stale 'Pendente' state to force a fresh test
+          if (
+            user.meta_token_status?.toLowerCase() === 'pendente' ||
+            user.meta_token_status?.toLowerCase() === 'pending'
+          ) {
+            await updateMetaCapiStatus(user.id, '')
+          }
+
           const freshAuth = await pb.collection('users').authRefresh()
           if (!mounted) return
           const freshUser = freshAuth.record

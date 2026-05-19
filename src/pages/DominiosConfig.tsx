@@ -27,34 +27,43 @@ export function DominiosConfig() {
     if (user?.uazapi_domain) {
       setDomain(user.uazapi_domain)
       setDomainStatus(user.uazapi_domain.startsWith('https://') ? 'Ativo' : 'Pendente')
+    } else {
+      setDomainStatus('Pendente')
     }
-  }, [user])
+  }, [user?.uazapi_domain])
 
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
       if (e.record.uazapi_domain !== domain) {
-        setDomain(e.record.uazapi_domain)
+        setDomain(e.record.uazapi_domain || '')
       }
       setDomainStatus(e.record.uazapi_domain?.startsWith('https://') ? 'Ativo' : 'Pendente')
     }
   })
 
   const handleVerify = async () => {
-    if (!domain.trim().startsWith('https://')) {
-      setError(
-        "O URL inserido é inválido ou está sem o protocolo 'https'. Verifique se o URL está correto e tente novamente.",
-      )
+    let finalDomain = domain.trim()
+    if (finalDomain && !/^https?:\/\//i.test(finalDomain)) {
+      finalDomain = `https://${finalDomain}`
+    }
+
+    try {
+      new URL(finalDomain)
+    } catch (e) {
+      setError('O URL inserido é inválido. Verifique o formato do domínio e tente novamente.')
       setDomainStatus('Erro')
       return
     }
+
+    setDomain(finalDomain)
     setError('')
     setIsVerifying(true)
 
     try {
-      await pb.collection('users').update(user!.id, { uazapi_domain: domain.trim() })
+      await pb.collection('users').update(user!.id, { uazapi_domain: finalDomain })
       await pb.collection('users').authRefresh()
       setDomainStatus('Ativo')
-      toast.success('Domínio verificado com sucesso!')
+      toast.success('Domínio verificado e salvo com sucesso!')
     } catch (err) {
       setDomainStatus('Erro')
       toast.error('Erro ao salvar domínio.')

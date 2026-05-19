@@ -17,7 +17,7 @@ import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-import Dashboard from './pages/Dashboard'
+import Index from './pages/Index'
 import ClientesCore from './pages/ClientesCore'
 import ConfiguracoesCore from './pages/ConfiguracoesCore'
 import { MetaCapiConfig } from './pages/MetaCapiConfig'
@@ -158,7 +158,7 @@ const router = createBrowserRouter(
               children: [
                 {
                   path: 'dashboard',
-                  element: <Dashboard />,
+                  element: <Index />,
                 },
                 {
                   path: 'clientes/*',
