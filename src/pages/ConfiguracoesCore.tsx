@@ -1,5 +1,6 @@
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom'
 import { MetaCapiConfig } from './MetaCapiConfig'
+import { DominiosConfig } from './DominiosConfig'
 
 export default function ConfiguracoesCore() {
   const location = useLocation()
@@ -24,12 +25,22 @@ export default function ConfiguracoesCore() {
             >
               Meta CAPI
             </Link>
+            <Link
+              to="/configuracoes/dominios"
+              className={`justify-start ${
+                location.pathname.includes('/dominios')
+                  ? 'bg-muted hover:bg-muted font-semibold'
+                  : 'hover:bg-transparent hover:underline'
+              } inline-flex items-center rounded-md px-3 py-2 text-sm`}
+            >
+              Domínios
+            </Link>
           </nav>
         </aside>
         <div className="flex-1 min-h-0 overflow-auto px-4 lg:px-0">
           <Routes>
-            <Route path="/" element={<Navigate to="meta-capi" replace />} />
-            <Route path="meta-capi" element={<MetaCapiConfig />} />
+            <Route path="/" element={<Navigate to="dominios" replace />} />
+            <Route path="dominios" element={<DominiosConfig />} />
           </Routes>
         </div>
       </div>

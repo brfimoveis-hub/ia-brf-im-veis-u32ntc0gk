@@ -237,27 +237,51 @@ export function MetaCapiConfig() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 px-0 md:px-6">
-          {user?.meta_token_status && (
+          {user && (
             <div
-              className={`p-3 rounded-md flex items-center gap-2 text-sm font-medium ${
+              className={`p-3 rounded-md flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm font-medium ${
                 user.meta_token_status === 'active' || user.meta_token_status === 'valid'
                   ? 'bg-green-500/10 text-green-600'
-                  : 'bg-red-500/10 text-red-600'
+                  : !user.meta_token_status ||
+                      user.meta_token_status === 'Pendente' ||
+                      user.meta_token_status === 'pending'
+                    ? 'bg-yellow-500/10 text-yellow-600'
+                    : 'bg-red-500/10 text-red-600'
               }`}
             >
-              {user.meta_token_status === 'active' || user.meta_token_status === 'valid' ? (
-                <CheckCircle2 className="h-4 w-4" />
-              ) : (
-                <XCircle className="h-4 w-4" />
+              <div className="flex items-center gap-2">
+                {user.meta_token_status === 'active' || user.meta_token_status === 'valid' ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : !user.meta_token_status ||
+                  user.meta_token_status === 'Pendente' ||
+                  user.meta_token_status === 'pending' ? (
+                  <Loader2 className="h-4 w-4" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                <span>
+                  Status Atual:{' '}
+                  {user.meta_token_status === 'active' || user.meta_token_status === 'valid'
+                    ? 'Ativo'
+                    : !user.meta_token_status ||
+                        user.meta_token_status === 'Pendente' ||
+                        user.meta_token_status === 'pending'
+                      ? 'Pendente'
+                      : user.meta_token_status.startsWith('Permissões insuficientes')
+                        ? user.meta_token_status
+                        : user.meta_token_status}
+                </span>
+              </div>
+              {user.created && (
+                <span className="text-xs font-normal opacity-80 whitespace-nowrap sm:mt-0 mt-1">
+                  Criado em{' '}
+                  {new Intl.DateTimeFormat('pt-BR', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  }).format(new Date(user.created))}
+                </span>
               )}
-              <span>
-                Status Atual:{' '}
-                {user.meta_token_status === 'active' || user.meta_token_status === 'valid'
-                  ? 'Conectado e Operante'
-                  : user.meta_token_status.startsWith('Permissões insuficientes')
-                    ? user.meta_token_status
-                    : user.meta_token_status}
-              </span>
             </div>
           )}
 
