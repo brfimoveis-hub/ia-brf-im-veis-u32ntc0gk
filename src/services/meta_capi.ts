@@ -84,7 +84,7 @@ export const executeCapiVerification = async (
       metaErr.type === 'OAuthException' ||
       JSON.stringify(errorData).toLowerCase().includes('invalid parameter')
     ) {
-      specificError = `Erro de Parâmetro Inválido: Verifique se o Pixel ID e Token estão corretos. Detalhe: ${specificError}`
+      specificError = `Erro de Parâmetro Inválido ou Permissão: Verifique se o Pixel ID e Token estão corretos e se o app tem as permissões adequadas. Detalhe: ${specificError}`
     }
 
     await updateMetaCapiStatus(userId, specificError).catch(() => {})

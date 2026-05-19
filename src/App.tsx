@@ -23,7 +23,6 @@ import ConfiguracoesCore from './pages/ConfiguracoesCore'
 import Cadences from './pages/Cadences'
 import Logs from './pages/Logs'
 import NotFound from './pages/NotFound'
-import Index from './pages/Index'
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
@@ -66,20 +65,22 @@ const RouteTracker = () => {
       component = 'ConfiguracoesCore'
     } else if (lowerPath === '/dashboard') {
       component = 'Dashboard'
-    } else if (lowerPath === '/') {
-      component = 'Index'
     } else if (lowerPath.startsWith('/clientes')) {
       component = 'ClientesCore'
     } else if (lowerPath.startsWith('/cadencias')) {
       component = 'Cadences'
     } else if (lowerPath.startsWith('/logs')) {
       component = 'Logs'
+    } else if (lowerPath === '/') {
+      component = 'Root'
     }
 
     const routeData = { path, component }
 
     // Persist to match expected state structure and resolve specific state conflicts
-    localStorage.setItem('currentRoute', JSON.stringify(routeData))
+    if (component !== 'Root') {
+      localStorage.setItem('currentRoute', JSON.stringify(routeData))
+    }
 
     // Also patch potential nested store formats just in case
     try {
@@ -124,7 +125,7 @@ const router = createBrowserRouter(
       children: [
         {
           index: true,
-          element: <Index />,
+          element: <Navigate to="/dashboard" replace />,
         },
         {
           element: <GuestRoute />,

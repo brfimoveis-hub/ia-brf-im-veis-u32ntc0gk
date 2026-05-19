@@ -117,39 +117,49 @@ export function SettingsMeta() {
       const cleanPixelId = metaPixelId.replace(/\D/g, '')
       const cleanToken = metaCapiToken.replace(/\s/g, '')
 
-      // Pre-flight check
-      await executeCapiVerification(user.id, cleanBusinessId, cleanPixelId, cleanToken)
-
       const payload: any = {
         meta_pixel_id: cleanPixelId,
         meta_capi_token: cleanToken,
         meta_whatsapp_business_id: cleanBusinessId,
         meta_whatsapp_phone_number_id: metaWhatsappPhoneNumberId.replace(/\D/g, ''),
         meta_whatsapp_access_token: metaWhatsappAccessToken.trim(),
-        meta_token_status: 'connected',
       }
 
-      const updatedUser = await pb.collection('users').update(user.id, payload)
+      // Bypass cache and save directly first
+      const updatedUser = await pb
+        .collection('users')
+        .update(user.id, payload, { $autoCancel: false, requestKey: null })
       pb.authStore.save(pb.authStore.token, updatedUser)
+
       toast({
         title: 'Settings Saved',
-        description: 'Your Meta CAPI credentials have been validated and saved.',
+        description: 'Your Meta CAPI credentials have been successfully saved.',
       })
-      loadData()
-    } catch (error: any) {
-      let specificError =
-        error.message || 'Failed to save settings. Check your input and try again.'
-      if (
-        error.response?.data &&
-        JSON.stringify(error.response.data).toLowerCase().includes('invalid parameter')
-      ) {
-        specificError =
-          'Invalid parameter error. Please check your Pixel ID, Business ID, and Token permissions.'
+
+      // Try verification after saving
+      try {
+        await executeCapiVerification(user.id, cleanBusinessId, cleanPixelId, cleanToken)
+      } catch (verifyError: any) {
+        let specificError = verifyError.message || 'Verification failed.'
+        if (
+          verifyError.response?.data &&
+          JSON.stringify(verifyError.response.data).toLowerCase().includes('invalid parameter')
+        ) {
+          specificError =
+            'Invalid parameter error. Please check your Pixel ID and Token permissions.'
+        }
+        toast({
+          title: 'CAPI Verification Failed',
+          description: specificError,
+          variant: 'destructive',
+        })
       }
 
+      loadData()
+    } catch (error: any) {
       toast({
-        title: 'Error',
-        description: specificError,
+        title: 'Error Saving',
+        description: error.message || 'Failed to save settings. Please try again.',
         variant: 'destructive',
       })
     } finally {
