@@ -100,7 +100,10 @@ export const executeCapiVerification = async (
       (metaErr.message && metaErr.message.toLowerCase().includes(businessId))
     ) {
       specificError = `Erro no Business ID: O Business ID '${businessId}' é inválido. Detalhe: ${specificError}`
-    } else if (errorString.includes('invalid parameter')) {
+    } else if (
+      errorString.includes('invalid parameter') ||
+      (metaErr.message && metaErr.message.toLowerCase().includes('invalid parameter'))
+    ) {
       specificError = `Erro de Parâmetro Inválido: Verifique se o Pixel ID e Token estão corretos. Detalhe: ${specificError}`
     }
 
