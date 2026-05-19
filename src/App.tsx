@@ -180,11 +180,11 @@ const router = createBrowserRouter(
                   path: 'configuracoes/*',
                   element: <ConfiguracoesCore />,
                 },
-                {
-                  path: 'configuracoes/meta-capi',
-                  element: <MetaCapiConfig />,
-                },
               ],
+            },
+            {
+              path: 'configuracoes/meta-capi',
+              element: <MetaCapiConfig />,
             },
           ],
         },

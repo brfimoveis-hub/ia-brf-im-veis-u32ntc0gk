@@ -84,20 +84,14 @@ export const executeCapiVerification = async (
 
     if (
       errorString.includes('permissões insuficientes') ||
-      (errorData.message && errorData.message.toLowerCase().includes('permissões insuficientes'))
-    ) {
-      specificError = errorData.message
-    } else if (
-      errorString.includes('token de acesso inválido') ||
-      (errorData.message && errorData.message.toLowerCase().includes('token de acesso inválido'))
-    ) {
-      specificError = errorData.message
-    } else if (
+      (errorData.message && errorData.message.toLowerCase().includes('permissões insuficientes')) ||
       errorString.includes('permission denied') ||
       (metaErr.message && metaErr.message.toLowerCase().includes('permission denied'))
     ) {
-      specificError = `Erro no Token de Acesso: O token fornecido é inválido, expirou ou não tem as permissões corretas.`
+      specificError = `Permissões insuficientes. Faltam: ads_management, business_management, ads_read.`
     } else if (
+      errorString.includes('token de acesso inválido') ||
+      (errorData.message && errorData.message.toLowerCase().includes('token de acesso inválido')) ||
       errorString.includes('access_token') ||
       errorString.includes('invalid token') ||
       errorString.includes('oauth') ||
