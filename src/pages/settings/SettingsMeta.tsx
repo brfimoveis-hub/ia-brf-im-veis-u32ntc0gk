@@ -73,23 +73,25 @@ export function SettingsMeta() {
 
   const validateFields = () => {
     const errors: Record<string, string> = {}
-    if (!metaPixelId.trim()) {
+    const pId = metaPixelId.replace(/\D/g, '')
+    const bId = metaWhatsappBusinessId.replace(/\D/g, '')
+    const token = metaCapiToken.replace(/\s/g, '')
+
+    if (!pId) {
       errors.meta_pixel_id = 'Pixel ID is required'
-    } else if (!/^\d+$/.test(metaPixelId.trim())) {
+    } else if (!/^\d+$/.test(pId)) {
       errors.meta_pixel_id = 'Pixel ID must be strictly numeric'
     }
 
-    if (!metaCapiToken.trim()) {
+    if (!token) {
       errors.meta_capi_token = 'CAPI Token is required'
-    } else if (metaCapiToken !== metaCapiToken.trim()) {
-      errors.meta_capi_token = 'CAPI Token cannot contain leading or trailing spaces'
     }
 
     if (!metaWhatsappPhoneNumberId.trim()) {
       errors.meta_whatsapp_phone_number_id = 'Phone Number ID is required'
     }
 
-    if (metaWhatsappBusinessId && !/^\d+$/.test(metaWhatsappBusinessId.trim())) {
+    if (bId && !/^\d+$/.test(bId)) {
       errors.meta_whatsapp_business_id = 'Business ID must be strictly numeric'
     }
 
@@ -111,27 +113,43 @@ export function SettingsMeta() {
     setIsSaving(true)
     setFieldErrors({})
     try {
+      const cleanBusinessId = metaWhatsappBusinessId.replace(/\D/g, '')
+      const cleanPixelId = metaPixelId.replace(/\D/g, '')
+      const cleanToken = metaCapiToken.replace(/\s/g, '')
+
+      // Pre-flight check
+      await executeCapiVerification(user.id, cleanBusinessId, cleanPixelId, cleanToken)
+
       const payload: any = {
-        meta_pixel_id: metaPixelId.trim(),
-        meta_capi_token: metaCapiToken.trim(),
-        meta_whatsapp_business_id: metaWhatsappBusinessId.trim(),
-        meta_whatsapp_phone_number_id: metaWhatsappPhoneNumberId.trim(),
+        meta_pixel_id: cleanPixelId,
+        meta_capi_token: cleanToken,
+        meta_whatsapp_business_id: cleanBusinessId,
+        meta_whatsapp_phone_number_id: metaWhatsappPhoneNumberId.replace(/\D/g, ''),
         meta_whatsapp_access_token: metaWhatsappAccessToken.trim(),
+        meta_token_status: 'connected',
       }
 
       const updatedUser = await pb.collection('users').update(user.id, payload)
       pb.authStore.save(pb.authStore.token, updatedUser)
       toast({
         title: 'Settings Saved',
-        description: 'Your Meta CAPI and WhatsApp credentials have been saved.',
+        description: 'Your Meta CAPI credentials have been validated and saved.',
       })
       loadData()
-    } catch (error) {
-      const errors = extractFieldErrors(error)
-      setFieldErrors(errors)
+    } catch (error: any) {
+      let specificError =
+        error.message || 'Failed to save settings. Check your input and try again.'
+      if (
+        error.response?.data &&
+        JSON.stringify(error.response.data).toLowerCase().includes('invalid parameter')
+      ) {
+        specificError =
+          'Invalid parameter error. Please check your Pixel ID, Business ID, and Token permissions.'
+      }
+
       toast({
         title: 'Error',
-        description: 'Failed to save settings. Check your input and try again.',
+        description: specificError,
         variant: 'destructive',
       })
     } finally {
@@ -152,7 +170,11 @@ export function SettingsMeta() {
 
     setIsTesting(true)
     try {
-      await executeCapiVerification(user.id, metaWhatsappBusinessId, metaPixelId, metaCapiToken)
+      const cleanBusinessId = metaWhatsappBusinessId.replace(/\D/g, '')
+      const cleanPixelId = metaPixelId.replace(/\D/g, '')
+      const cleanToken = metaCapiToken.replace(/\s/g, '')
+
+      await executeCapiVerification(user.id, cleanBusinessId, cleanPixelId, cleanToken)
       toast({
         title: 'CAPI Connection Successful',
         description: 'Your Meta CAPI integration is working properly.',
@@ -164,7 +186,7 @@ export function SettingsMeta() {
       const dataStr = error.response?.data ? JSON.stringify(error.response.data) : ''
       let specificError = errorMsg
       if (dataStr.toLowerCase().includes('invalid parameter')) {
-        specificError = 'Invalid parameter error. Please check your Pixel ID and Token.'
+        specificError = 'Invalid parameter error. Please check your Pixel ID and Token permissions.'
       }
 
       toast({
@@ -258,7 +280,7 @@ export function SettingsMeta() {
               </Label>
               <Input
                 value={metaPixelId}
-                onChange={(e) => setMetaPixelId(e.target.value)}
+                onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
                 placeholder="1234567890"
                 className={fieldErrors.meta_pixel_id ? 'border-destructive' : ''}
               />
@@ -274,7 +296,7 @@ export function SettingsMeta() {
               <Input
                 type="password"
                 value={metaCapiToken}
-                onChange={(e) => setMetaCapiToken(e.target.value)}
+                onChange={(e) => setMetaCapiToken(e.target.value.replace(/\s/g, ''))}
                 placeholder="EAA..."
                 className={fieldErrors.meta_capi_token ? 'border-destructive' : ''}
               />
@@ -287,7 +309,7 @@ export function SettingsMeta() {
               <Label>Meta WhatsApp Business ID</Label>
               <Input
                 value={metaWhatsappBusinessId}
-                onChange={(e) => setMetaWhatsappBusinessId(e.target.value)}
+                onChange={(e) => setMetaWhatsappBusinessId(e.target.value.replace(/\D/g, ''))}
                 placeholder="Ex: 9876543210"
               />
             </div>

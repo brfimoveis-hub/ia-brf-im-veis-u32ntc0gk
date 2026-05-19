@@ -9,9 +9,9 @@ export const testMetaCapiConnectionService = async (
   accessToken: string,
 ) => {
   const payload = {
-    business_id: businessId.trim(),
-    pixel_id: pixelId.trim(),
-    access_token: accessToken.trim(),
+    business_id: businessId.replace(/\D/g, ''),
+    pixel_id: pixelId.replace(/\D/g, ''),
+    access_token: accessToken.replace(/\s/g, ''),
   }
 
   // Diagnostic API Logging
@@ -45,9 +45,9 @@ export const saveMetaCapiSettings = async (
   metaCapiToken: string,
 ) => {
   return pb.collection('users').update(userId, {
-    meta_whatsapp_business_id: businessId.trim(),
-    meta_pixel_id: metaPixelId.trim(),
-    meta_capi_token: metaCapiToken.trim(),
+    meta_whatsapp_business_id: businessId.replace(/\D/g, ''),
+    meta_pixel_id: metaPixelId.replace(/\D/g, ''),
+    meta_capi_token: metaCapiToken.replace(/\s/g, ''),
   })
 }
 
@@ -84,10 +84,14 @@ export const executeCapiVerification = async (
       metaErr.type === 'OAuthException' ||
       JSON.stringify(errorData).toLowerCase().includes('invalid parameter')
     ) {
-      specificError = `Erro de Parâmetro Inválido: ${specificError}`
+      specificError = `Erro de Parâmetro Inválido: Verifique se o Pixel ID e Token estão corretos. Detalhe: ${specificError}`
     }
 
     await updateMetaCapiStatus(userId, specificError).catch(() => {})
-    throw error
+
+    // Throw a more informative error that UI can use
+    const newError = new Error(specificError) as any
+    newError.response = error.response
+    throw newError
   }
 }

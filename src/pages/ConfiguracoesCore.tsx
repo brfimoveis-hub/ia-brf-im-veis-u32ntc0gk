@@ -573,9 +573,9 @@ export default function ConfiguracoesCore() {
 
   const validateCapiInputs = () => {
     const errors: { businessId?: string; pixelId?: string; accessToken?: string } = {}
-    const bId = metaBusinessId?.trim() || ''
-    const pId = metaPixelId?.trim() || ''
-    const token = metaCapiToken?.trim() || ''
+    const bId = metaBusinessId?.replace(/\D/g, '') || ''
+    const pId = metaPixelId?.replace(/\D/g, '') || ''
+    const token = metaCapiToken?.replace(/\s/g, '') || ''
 
     if (!bId) {
       errors.businessId = 'O Meta Business ID é obrigatório.'
@@ -591,8 +591,6 @@ export default function ConfiguracoesCore() {
 
     if (!token) {
       errors.accessToken = 'O Access Token é obrigatório.'
-    } else if (token !== metaCapiToken) {
-      errors.accessToken = 'O Access Token não deve conter espaços no início ou no fim.'
     }
 
     setCapiValidationErrors(errors)
@@ -613,23 +611,73 @@ export default function ConfiguracoesCore() {
     if (!validateCapiInputs()) return
 
     setIsSavingCapi(true)
+    setCapiErrorDetail('')
     try {
+      const cleanBusinessId = metaBusinessId?.replace(/\D/g, '') || ''
+      const cleanPixelId = metaPixelId?.replace(/\D/g, '') || ''
+      const cleanToken = metaCapiToken?.replace(/\s/g, '') || ''
+
+      // Pre-flight check before saving
+      await pb.send('/backend/v1/meta_capi_test_connection', {
+        method: 'POST',
+        body: {
+          business_id: cleanBusinessId,
+          pixel_id: cleanPixelId,
+          access_token: cleanToken,
+        },
+      })
+
+      // Update Database after successful validation
       await pb.collection('users').update(user.id, {
-        meta_whatsapp_business_id: metaBusinessId?.trim() || '',
-        meta_pixel_id: metaPixelId?.trim() || '',
-        meta_capi_token: metaCapiToken?.trim() || '',
+        meta_whatsapp_business_id: cleanBusinessId,
+        meta_pixel_id: cleanPixelId,
+        meta_capi_token: cleanToken,
         meta_whatsapp_phone_number_id:
-          metaPhoneId?.trim() || user.meta_whatsapp_phone_number_id || '',
+          metaPhoneId?.replace(/\D/g, '') || user.meta_whatsapp_phone_number_id || '',
+        meta_token_status: 'connected',
       })
 
       // Update local state to reflect saved trims
-      setMetaBusinessId((prev) => prev.trim())
-      setMetaPixelId((prev) => prev.trim())
-      setMetaCapiToken((prev) => prev.trim())
+      setMetaBusinessId(cleanBusinessId)
+      setMetaPixelId(cleanPixelId)
+      setMetaCapiToken(cleanToken)
+      setCapiStatus('connected')
 
-      toast({ title: 'Sucesso', description: 'Configurações atualizadas com sucesso!' })
-    } catch (e) {
-      toast({ title: 'Erro', description: 'Falha ao salvar Meta CAPI.', variant: 'destructive' })
+      toast({ title: 'Sucesso', description: 'Credenciais validadas e salvas com sucesso!' })
+    } catch (e: any) {
+      setCapiStatus('disconnected')
+      let errorMsg = e.response?.message || e.message || 'Falha de Handshake'
+
+      const metaErr = e.response?.data?.error || e.response?.error || e.response?.data || {}
+      if (metaErr.error_user_title) {
+        errorMsg = `${metaErr.error_user_title}: ${metaErr.error_user_msg}`
+      } else if (metaErr.error_user_msg) {
+        errorMsg = metaErr.error_user_msg
+      } else if (metaErr.message) {
+        errorMsg = metaErr.message
+      } else if (typeof e.response?.data === 'string') {
+        errorMsg = e.response.data
+      }
+
+      if (
+        metaErr.type === 'OAuthException' ||
+        errorMsg.includes('Invalid parameter') ||
+        JSON.stringify(e.response?.data || {})
+          .toLowerCase()
+          .includes('invalid parameter')
+      ) {
+        errorMsg = `Erro de Parâmetro Inválido: Verifique se o Business ID e Pixel ID estão corretos ou se o Token tem as permissões necessárias. Detalhe: ${errorMsg}`
+      }
+
+      setCapiErrorDetail(errorMsg)
+
+      pb.collection('users')
+        .update(user.id, {
+          meta_token_status: errorMsg,
+        })
+        .catch(() => {})
+
+      toast({ title: 'Erro de Validação/Conexão', description: errorMsg, variant: 'destructive' })
     } finally {
       setIsSavingCapi(false)
     }
@@ -642,18 +690,22 @@ export default function ConfiguracoesCore() {
     setIsTestingCapi(true)
     setCapiErrorDetail('')
     try {
+      const cleanBusinessId = metaBusinessId?.replace(/\D/g, '') || ''
+      const cleanPixelId = metaPixelId?.replace(/\D/g, '') || ''
+      const cleanToken = metaCapiToken?.replace(/\s/g, '') || ''
+
       await pb.collection('users').update(user.id, {
-        meta_whatsapp_business_id: metaBusinessId?.trim() || '',
-        meta_pixel_id: metaPixelId?.trim() || '',
-        meta_capi_token: metaCapiToken?.trim() || '',
+        meta_whatsapp_business_id: cleanBusinessId,
+        meta_pixel_id: cleanPixelId,
+        meta_capi_token: cleanToken,
         meta_whatsapp_phone_number_id:
-          metaPhoneId?.trim() || user.meta_whatsapp_phone_number_id || '',
+          metaPhoneId?.replace(/\D/g, '') || user.meta_whatsapp_phone_number_id || '',
       })
 
       const payload = {
-        business_id: String(metaBusinessId).trim(),
-        pixel_id: String(metaPixelId).trim(),
-        access_token: String(metaCapiToken).trim(),
+        business_id: cleanBusinessId,
+        pixel_id: cleanPixelId,
+        access_token: cleanToken,
       }
 
       await pb.send('/backend/v1/meta_capi_test_connection', {
@@ -690,7 +742,7 @@ export default function ConfiguracoesCore() {
           .toLowerCase()
           .includes('invalid parameter')
       ) {
-        errorMsg = `Erro de Parâmetro Inválido: ${errorMsg}`
+        errorMsg = `Erro de Parâmetro Inválido: Verifique se o Business ID e Pixel ID estão corretos ou se o Token tem as permissões necessárias. Detalhe: ${errorMsg}`
       }
 
       if (
@@ -1193,7 +1245,7 @@ export default function ConfiguracoesCore() {
                   <Label className="flex items-center gap-2">Meta Business ID</Label>
                   <Input
                     value={metaBusinessId}
-                    onChange={(e) => setMetaBusinessId(e.target.value.replace(/\s/g, ''))}
+                    onChange={(e) => setMetaBusinessId(e.target.value.replace(/\D/g, ''))}
                     placeholder="Ex: 27018364624521397"
                     className={capiValidationErrors.businessId ? 'border-destructive' : ''}
                   />
@@ -1211,7 +1263,7 @@ export default function ConfiguracoesCore() {
                   <Label className="flex items-center gap-2">Dataset/Pixel ID</Label>
                   <Input
                     value={metaPixelId}
-                    onChange={(e) => setMetaPixelId(e.target.value.replace(/\s/g, ''))}
+                    onChange={(e) => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
                     placeholder="Ex: 1522162279584545"
                     className={capiValidationErrors.pixelId ? 'border-destructive' : ''}
                   />
@@ -1229,7 +1281,7 @@ export default function ConfiguracoesCore() {
                     <Input
                       type={showCapiToken ? 'text' : 'password'}
                       value={metaCapiToken}
-                      onChange={(e) => setMetaCapiToken(e.target.value)}
+                      onChange={(e) => setMetaCapiToken(e.target.value.replace(/\s/g, ''))}
                       placeholder="EAAL..."
                       className={
                         'pr-10 ' + (capiValidationErrors.accessToken ? 'border-destructive' : '')
