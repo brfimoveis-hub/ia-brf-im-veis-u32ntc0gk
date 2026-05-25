@@ -27,10 +27,12 @@ export const MetaPixel = () => {
       script.src = `https://connect.facebook.net/en_US/fbevents.js`
       document.head.appendChild(script)
 
-      window.fbq = function () {
-        window.fbq.callMethod
-          ? window.fbq.callMethod.apply(window.fbq, arguments)
-          : window.fbq.queue.push(arguments)
+      window.fbq = function (...args: any[]) {
+        if (window.fbq.callMethod) {
+          window.fbq.callMethod(...args)
+        } else {
+          window.fbq.queue.push(args)
+        }
       }
       if (!window._fbq) window._fbq = window.fbq
       window.fbq.push = window.fbq
