@@ -6,83 +6,48 @@ declare global {
   interface Window {
     fbq: any
     _fbq: any
-    _fbqInitialized?: Set<string>
   }
 }
 
-export function MetaPixel() {
+export const MetaPixel = () => {
+  const { pathname } = useLocation()
   const { user } = useAuth()
-  const location = useLocation()
-  const pixelId = user?.meta_pixel_id
-  const metaTagsList = Array.isArray(user?.meta_tags_list) ? user?.meta_tags_list : []
-  const HARDCODED_PIXEL = '1522162279584545'
-  const mainPixel = pixelId || HARDCODED_PIXEL
-  const allPixels = Array.from(
-    new Set([mainPixel, ...metaTagsList.map((tag: any) => tag.id)].filter(Boolean)),
-  )
 
   useEffect(() => {
-    if (allPixels.length === 0) return
+    // Falls back to the required pixel if not set
+    const pixelId = user?.meta_pixel_id || '950541937872426'
 
-    if (!window.fbq) {
-      /* eslint-disable */
-      !(function (f, b, e, v, n, t, s) {
-        if (f.fbq) return
-        n = f.fbq = function () {
-          n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments)
-        }
-        if (!f._fbq) f._fbq = n
-        n.push = n
-        n.loaded = !0
-        n.version = '2.0'
-        n.queue = []
-        t = b.createElement(e) as HTMLScriptElement
-        t.async = !0
-        t.src = v
-        t.setAttribute('nonce', 'meta-pixel')
-        s = b.getElementsByTagName(e)[0]
-        s?.parentNode?.insertBefore(t, s)
-      })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js')
-      /* eslint-enable */
+    if (!pixelId) return
+
+    const initPixel = () => {
+      if (window.fbq) return
+
+      const script = document.createElement('script')
+      script.async = true
+      script.src = `https://connect.facebook.net/en_US/fbevents.js`
+      document.head.appendChild(script)
+
+      window.fbq = function () {
+        window.fbq.callMethod
+          ? window.fbq.callMethod.apply(window.fbq, arguments)
+          : window.fbq.queue.push(arguments)
+      }
+      if (!window._fbq) window._fbq = window.fbq
+      window.fbq.push = window.fbq
+      window.fbq.loaded = true
+      window.fbq.version = '2.0'
+      window.fbq.agent = 'tmgoogletagmanager'
+      window.fbq.queue = []
+
+      window.fbq('init', pixelId)
     }
 
-    window._fbqInitialized = window._fbqInitialized || new Set()
+    initPixel()
 
-    allPixels.forEach((id) => {
-      if (!window._fbqInitialized?.has(id)) {
-        try {
-          window.fbq('init', id)
-          window._fbqInitialized?.add(id)
-        } catch (e) {
-          // ignore ad-blocker errors
-        }
-      }
-    })
-  }, [allPixels.join(',')])
-
-  useEffect(() => {
-    if (allPixels.length > 0 && window.fbq) {
-      try {
-        window.fbq('track', 'PageView')
-      } catch (e) {
-        // ignore ad-blocker errors
-      }
+    if (window.fbq) {
+      window.fbq('track', 'PageView')
     }
-  }, [location.pathname, location.search, allPixels.join(',')])
+  }, [pathname, user?.meta_pixel_id])
 
-  return (
-    <>
-      {allPixels.map((id) => (
-        <noscript key={id}>
-          <img
-            height="1"
-            width="1"
-            style={{ display: 'none' }}
-            src={`https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1`}
-            alt=""
-          />
-        </noscript>
-      ))}
-    </>
-  )
+  return null
 }
