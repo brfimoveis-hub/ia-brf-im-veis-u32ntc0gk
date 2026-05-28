@@ -91,11 +91,9 @@ export default function Index() {
           pb
             .collection('customers')
             .getList(1, 1, { filter: 'status = "closed" || status = "Fechamento"' }),
-          pb
-            .collection('customers')
-            .getList(1, 1, {
-              filter: `(status = "closed" || status = "Fechamento") && created < "${startOfMonth}"`,
-            }),
+          pb.collection('customers').getList(1, 1, {
+            filter: `(status = "closed" || status = "Fechamento") && created < "${startOfMonth}"`,
+          }),
         ])
 
       const calcGrowth = (current: number, prev: number) => {

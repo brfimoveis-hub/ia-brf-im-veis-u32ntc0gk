@@ -16,15 +16,29 @@ routerAdd(
       }
     }
 
+    const setErrorState = (msg) => {
+      if (user) {
+        user.set('meta_capi_status', 'error')
+        user.set('meta_capi_error', msg)
+        try {
+          $app.saveNoValidate(user)
+        } catch (_) {}
+      }
+    }
+
     if (!pixelId || !accessToken) {
-      throw new BadRequestError('Pixel ID e Token de Acesso são obrigatórios.')
+      const msg = 'Pixel ID e Token de Acesso são obrigatórios.'
+      setErrorState(msg)
+      throw new BadRequestError(msg)
     }
 
     const permUrl = `https://graph.facebook.com/v21.0/me/permissions?access_token=${accessToken}`
     const permRes = $http.send({ url: permUrl, method: 'GET', timeout: 15 })
 
     if (permRes.statusCode >= 400) {
-      throw new BadRequestError('Token de Acesso inválido ou expirado.')
+      const msg = permRes.json?.error?.message || 'Token de Acesso inválido ou expirado.'
+      setErrorState(msg)
+      throw new BadRequestError(msg)
     }
 
     const perms = permRes.json?.data || []
@@ -34,7 +48,9 @@ routerAdd(
     const missingPerms = requiredPerms.filter((p) => !grantedPerms.includes(p))
 
     if (missingPerms.length > 0) {
-      throw new BadRequestError(`Permissões insuficientes. Faltam: ${missingPerms.join(', ')}`)
+      const msg = `Permissões insuficientes. Faltam: ${missingPerms.join(', ')}`
+      setErrorState(msg)
+      throw new BadRequestError(msg)
     }
 
     $app.logger().info('CAPI Test Info', 'pixelId', pixelId, 'businessId', businessId)
@@ -77,6 +93,8 @@ routerAdd(
           user.set('meta_whatsapp_status', 'active')
         }
         user.set('meta_token_status', 'valid')
+        user.set('meta_capi_status', 'connected')
+        user.set('meta_capi_error', '')
         try {
           $app.saveNoValidate(user)
         } catch (err) {
@@ -86,11 +104,11 @@ routerAdd(
       return e.json(200, { success: true, data: res.json })
     }
 
+    const errorMsg = res.json?.error?.message || `Erro da Meta API (Status ${res.statusCode})`
+    setErrorState(errorMsg)
+
     // Return the full Meta error to the client so it can identify the field
-    return e.json(
-      res.statusCode,
-      res.json || { error: { message: `Erro da Meta API (Status ${res.statusCode})` } },
-    )
+    return e.json(res.statusCode, res.json || { error: { message: errorMsg } })
   },
   $apis.requireAuth(),
 )
