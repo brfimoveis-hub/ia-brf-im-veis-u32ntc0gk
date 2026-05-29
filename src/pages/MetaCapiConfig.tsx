@@ -1,22 +1,13 @@
 import { useState, useEffect } from 'react'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
-import { CheckCircle2, AlertCircle, Loader2, Info } from 'lucide-react'
-import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
-import { useRealtime } from '@/hooks/use-realtime'
+import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
-import { extractFieldErrors } from '@/lib/pocketbase/errors'
+import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import useRealtime from '@/hooks/use-realtime'
 
 export function MetaCapiConfig() {
   const { user } = useAuth()
@@ -24,185 +15,184 @@ export function MetaCapiConfig() {
 
   const [pixelId, setPixelId] = useState(user?.meta_pixel_id || '')
   const [capiToken, setCapiToken] = useState(user?.meta_capi_token || '')
-  const [isSaving, setIsSaving] = useState(false)
-  const [isTesting, setIsTesting] = useState(false)
+  const [businessId, setBusinessId] = useState(user?.meta_whatsapp_business_id || '')
 
-  const [status, setStatus] = useState<'pending' | 'connected' | 'error'>(
-    user?.meta_capi_status || 'pending',
-  )
-  const [errorMsg, setErrorMsg] = useState(user?.meta_capi_error || '')
-
-  useRealtime('users', (e) => {
-    if (e.record.id === user?.id) {
-      if (e.record.meta_capi_status !== status) {
-        setStatus(e.record.meta_capi_status || 'pending')
-      }
-      if (e.record.meta_capi_error !== errorMsg) {
-        setErrorMsg(e.record.meta_capi_error || '')
-      }
-      if (e.record.meta_pixel_id && e.record.meta_pixel_id !== pixelId && !isSaving) {
-        setPixelId(e.record.meta_pixel_id)
-      }
-      if (e.record.meta_capi_token && e.record.meta_capi_token !== capiToken && !isSaving) {
-        setCapiToken(e.record.meta_capi_token)
-      }
-    }
-  })
+  const [status, setStatus] = useState<'idle' | 'testing' | 'saving'>('idle')
+  const [connectionStatus, setConnectionStatus] = useState(user?.meta_capi_status || 'disconnected')
+  const [errorMessage, setErrorMessage] = useState(user?.meta_capi_error || '')
 
   useEffect(() => {
     if (user) {
       setPixelId(user.meta_pixel_id || '')
       setCapiToken(user.meta_capi_token || '')
-      setStatus(user.meta_capi_status || 'pending')
-      setErrorMsg(user.meta_capi_error || '')
+      setBusinessId(user.meta_whatsapp_business_id || '')
+      setConnectionStatus(user.meta_capi_status || 'disconnected')
+      setErrorMessage(user.meta_capi_error || '')
     }
   }, [user])
 
+  useRealtime('users', (e) => {
+    if (e.record.id === user?.id) {
+      setConnectionStatus(e.record.meta_capi_status || 'disconnected')
+      setErrorMessage(e.record.meta_capi_error || '')
+    }
+  })
+
   const handleSave = async () => {
-    if (!user) return
-    setIsSaving(true)
+    if (!pixelId || !capiToken) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Pixel ID e Token são obrigatórios.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     try {
+      setStatus('saving')
       await pb.collection('users').update(user.id, {
         meta_pixel_id: pixelId,
         meta_capi_token: capiToken,
+        meta_whatsapp_business_id: businessId,
       })
       toast({
         title: 'Sucesso',
-        description: 'Configurações salvas com sucesso.',
+        description: 'Configurações salvas.',
       })
-      await handleTest()
-    } catch (err: any) {
-      const fieldErrors = extractFieldErrors(err)
+    } catch (err) {
       toast({
+        title: 'Erro',
+        description: 'Não foi possível salvar as configurações.',
         variant: 'destructive',
-        title: 'Erro ao salvar',
-        description: Object.values(fieldErrors).join(', ') || err.message,
       })
     } finally {
-      setIsSaving(false)
+      setStatus('idle')
     }
   }
 
-  const handleTest = async () => {
-    setIsTesting(true)
+  const handleTestConnection = async () => {
+    if (!pixelId || !capiToken) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Pixel ID e Token são obrigatórios para o teste.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     try {
-      await pb.send('/backend/v1/meta_capi_test_connection', {
+      setStatus('testing')
+      const res = await pb.send('/backend/v1/meta_capi_test_connection', {
         method: 'POST',
         body: JSON.stringify({
           pixel_id: pixelId,
           access_token: capiToken,
+          business_id: businessId,
         }),
       })
-      toast({
-        title: 'Teste de Conexão',
-        description: 'Conexão com a Meta CAPI estabelecida com sucesso.',
-      })
+
+      if (res.success) {
+        toast({
+          title: 'Conexão bem sucedida',
+          description: 'A comunicação com a Meta API está funcionando perfeitamente.',
+        })
+      }
     } catch (err: any) {
-      const msg =
-        err.response?.error?.message ||
-        err.response?.message ||
-        err.message ||
-        'Falha no teste de conexão.'
+      const msg = err?.response?.error?.message || err?.message || 'Erro ao testar a conexão'
       toast({
-        variant: 'destructive',
-        title: 'Falha na Conexão',
+        title: 'Falha na conexão',
         description: msg,
+        variant: 'destructive',
       })
     } finally {
-      setIsTesting(false)
+      setStatus('idle')
     }
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Meta Conversions API (CAPI)</h1>
-        <p className="text-muted-foreground">
-          Configure a integração com a Meta para enviar eventos de conversão diretamente do
-          servidor.
+    <div className="container max-w-4xl py-10">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold tracking-tight">Meta Conversions API (CAPI)</h1>
+        <p className="text-muted-foreground mt-2">
+          Configure a integração com o Meta CAPI para envio de eventos com qualidade aprimorada.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Status da Conexão</CardTitle>
-          <CardDescription>
-            Acompanhe o estado da sua integração com a Meta em tempo real.
-          </CardDescription>
+          <CardTitle>Credenciais de Integração</CardTitle>
+          <CardDescription>Insira os dados do seu Gerenciador de Negócios da Meta.</CardDescription>
         </CardHeader>
-        <CardContent>
-          {status === 'connected' ? (
-            <Alert className="bg-green-500/10 text-green-700 border-green-500/20">
-              <CheckCircle2 className="h-4 w-4 stroke-green-700" />
-              <AlertTitle>Conectado</AlertTitle>
-              <AlertDescription>
-                A integração com a Meta CAPI está ativa e funcionando perfeitamente.
-              </AlertDescription>
-            </Alert>
-          ) : status === 'error' ? (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Falha na Conexão</AlertTitle>
-              <AlertDescription>
-                {errorMsg ||
-                  'Não foi possível conectar com a Meta CAPI. Verifique suas credenciais.'}
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertTitle>Pendente</AlertTitle>
-              <AlertDescription>
-                A conexão ainda não foi testada ou as credenciais estão incompletas. Preencha os
-                campos abaixo e faça um teste.
-              </AlertDescription>
-            </Alert>
+        <CardContent className="space-y-6">
+          {connectionStatus === 'connected' && (
+            <div className="bg-green-50 text-green-700 p-4 rounded-md flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0" />
+              <div>
+                <h4 className="font-medium">Status: Verificado</h4>
+                <p className="text-sm mt-1">
+                  Sua conexão com o Meta CAPI está ativa e configurada corretamente.
+                </p>
+              </div>
+            </div>
           )}
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Credenciais da API</CardTitle>
-          <CardDescription>
-            Insira o ID do seu Pixel e o Token de Acesso gerado no Gerenciador de Eventos da Meta.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="pixelId">Pixel ID</Label>
-            <Input
-              id="pixelId"
-              placeholder="Ex: 123456789012345"
-              value={pixelId}
-              onChange={(e) => setPixelId(e.target.value)}
-            />
+          {connectionStatus === 'error' && (
+            <div className="bg-red-50 text-red-700 p-4 rounded-md flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+              <div>
+                <h4 className="font-medium">Erro de Conexão</h4>
+                <p className="text-sm mt-1">
+                  {errorMessage || 'Verifique suas credenciais e tente novamente.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="pixelId">Pixel ID</Label>
+              <Input
+                id="pixelId"
+                value={pixelId}
+                onChange={(e) => setPixelId(e.target.value)}
+                placeholder="Ex: 123456789012345"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="capiToken">Token de Acesso (CAPI)</Label>
+              <Input
+                id="capiToken"
+                type="password"
+                value={capiToken}
+                onChange={(e) => setCapiToken(e.target.value)}
+                placeholder="Ex: EAAB..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="businessId">Business ID (Opcional)</Label>
+              <Input
+                id="businessId"
+                value={businessId}
+                onChange={(e) => setBusinessId(e.target.value)}
+                placeholder="ID do Gerenciador de Negócios"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="capiToken">Token de Acesso (CAPI)</Label>
-            <Input
-              id="capiToken"
-              type="password"
-              placeholder="Ex: EAAB..."
-              value={capiToken}
-              onChange={(e) => setCapiToken(e.target.value)}
-            />
+
+          <div className="flex gap-4 pt-4 border-t">
+            <Button onClick={handleSave} disabled={status !== 'idle'}>
+              {status === 'saving' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Salvar Configurações
+            </Button>
+
+            <Button variant="outline" onClick={handleTestConnection} disabled={status !== 'idle'}>
+              {status === 'testing' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Testar Conexão
+            </Button>
           </div>
         </CardContent>
-        <CardFooter className="flex justify-between border-t p-6">
-          <Button
-            variant="outline"
-            onClick={handleTest}
-            disabled={isTesting || !pixelId || !capiToken}
-          >
-            {isTesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Testar Conexão
-          </Button>
-          <Button onClick={handleSave} disabled={isSaving || !pixelId || !capiToken}>
-            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Salvar Configurações
-          </Button>
-        </CardFooter>
       </Card>
     </div>
   )

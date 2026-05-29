@@ -2,14 +2,36 @@ routerAdd(
   'POST',
   '/backend/v1/uazapi/v2/connect',
   (e) => {
+    const user = e.auth
     const body = e.requestInfo().body || {}
-    const instanceName = body.instance_name
-    const domain = body.domain
-    const adminToken = body.admin_token
+    const rawInstanceName = body.instance_name || (user && user.getString('uazapi_instance_number'))
+    const rawDomain =
+      body.domain || (user && user.getString('uazapi_domain')) || 'https://iabrfimveis.uazapi.com'
+    const rawAdminToken =
+      body.admin_token ||
+      (user && user.getString('uazapi_admin_token')) ||
+      $secrets.get('UAZAPI_ADMIN_TOKEN') ||
+      'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
 
-    if (!instanceName || !domain || !adminToken) {
-      return e.badRequestError('Faltam parâmetros obrigatórios.')
+    const userApiKey = body.apikey || (user && user.getString('uazapi_token'))
+
+    if (typeof rawInstanceName !== 'string' || rawInstanceName.trim() === '') {
+      return e.badRequestError(
+        'O parâmetro instance_name é obrigatório e deve ser uma string não vazia.',
+      )
     }
+    if (typeof rawDomain !== 'string' || rawDomain.trim() === '') {
+      return e.badRequestError('O parâmetro domain é obrigatório e deve ser uma string não vazia.')
+    }
+    if (typeof rawAdminToken !== 'string' || rawAdminToken.trim() === '') {
+      return e.badRequestError(
+        'O parâmetro admin_token é obrigatório e deve ser uma string não vazia.',
+      )
+    }
+
+    const instanceName = rawInstanceName.trim()
+    const domain = rawDomain.trim()
+    const adminToken = rawAdminToken.trim()
 
     if (adminToken.length !== 50 || !/^[a-zA-Z0-9]+$/.test(adminToken)) {
       return e.badRequestError('O Admin Token deve ter exatamente 50 caracteres alfanuméricos.')
@@ -32,8 +54,9 @@ routerAdd(
             method: method,
             headers: {
               'Content-Type': 'application/json',
-              apikey: adminToken,
-              Authorization: `Bearer ${adminToken}`,
+              apikey: userApiKey || adminToken,
+              AdminToken: adminToken,
+              Authorization: `Bearer ${userApiKey || adminToken}`,
             },
             body: reqBody ? JSON.stringify(reqBody) : undefined,
             timeout: 30,
@@ -67,6 +90,17 @@ routerAdd(
         allRes = sendRequest('/instance/fetchInstances', 'GET')
       }
 
+      if (allRes.statusCode === 401 || allRes.statusCode === 403) {
+        if (user) {
+          user.set('uazapi_status', 'unauthorized')
+          user.set('uazapi_error', 'Erro de Autenticação: Verifique seu Token e Admin Token.')
+          try {
+            $app.saveNoValidate(user)
+          } catch (_) {}
+        }
+        return e.json(401, { error: 'Acesso negado no Uazapi (Token inválido).' })
+      }
+
       let instances = []
       if (allRes.statusCode >= 200 && allRes.statusCode < 300) {
         const data = allRes.json || {}
@@ -84,10 +118,32 @@ routerAdd(
       // Step 3: Creation
       if (!exists) {
         const createRes = sendRequest('/instance/create', 'POST', { instanceName, qrcode: true })
+        if (createRes.statusCode === 401 || createRes.statusCode === 403) {
+          if (user) {
+            user.set('uazapi_status', 'unauthorized')
+            user.set(
+              'uazapi_error',
+              'Erro de Autenticação ao criar instância: Verifique seu Token e Admin Token.',
+            )
+            try {
+              $app.saveNoValidate(user)
+            } catch (_) {}
+          }
+          return e.json(401, {
+            error: 'Acesso negado no Uazapi (Token inválido ao criar).',
+            details: createRes.json || {},
+          })
+        }
         if (createRes.statusCode >= 400 && createRes.statusCode !== 409) {
-          return e.badRequestError(
-            'Falha ao criar instância: ' + JSON.stringify(createRes.json || {}),
-          )
+          const errorMsg = 'Falha ao criar instância: ' + JSON.stringify(createRes.json || {})
+          if (user) {
+            user.set('uazapi_status', 'error')
+            user.set('uazapi_error', errorMsg)
+            try {
+              $app.saveNoValidate(user)
+            } catch (_) {}
+          }
+          return e.badRequestError(errorMsg)
         }
       }
 
@@ -105,6 +161,13 @@ routerAdd(
       }
 
       if (isConnected) {
+        if (user) {
+          user.set('uazapi_status', 'connected')
+          user.set('uazapi_error', '')
+          try {
+            $app.saveNoValidate(user)
+          } catch (_) {}
+        }
         return e.json(200, { success: true, status: 'connected' })
       }
 
@@ -115,11 +178,39 @@ routerAdd(
       }
 
       if (connectRes.statusCode >= 200 && connectRes.statusCode < 300) {
+        if (user) {
+          user.set('uazapi_status', 'disconnected')
+          user.set('uazapi_error', '')
+          try {
+            $app.saveNoValidate(user)
+          } catch (_) {}
+        }
         return e.json(200, { success: true, status: 'disconnected', data: connectRes.json || {} })
       }
 
+      const isConnectAuthError = connectRes.statusCode === 401 || connectRes.statusCode === 403
+      if (user) {
+        user.set('uazapi_status', isConnectAuthError ? 'unauthorized' : 'error')
+        if (isConnectAuthError)
+          user.set('uazapi_error', 'Erro de Autenticação ao conectar. Verifique seus tokens.')
+        try {
+          $app.saveNoValidate(user)
+        } catch (_) {}
+      }
       return e.json(connectRes.statusCode, connectRes.json || { error: 'Falha ao conectar' })
     } catch (err) {
+      const isAuthError =
+        err.message.includes('401') ||
+        err.message.includes('403') ||
+        err.message.includes('Unauthorized')
+      if (user) {
+        user.set('uazapi_status', isAuthError ? 'unauthorized' : 'error')
+        user.set('uazapi_error', err.message)
+        try {
+          $app.saveNoValidate(user)
+        } catch (_) {}
+      }
+      if (isAuthError) return e.json(401, { error: 'Acesso negado no Uazapi (Token inválido).' })
       return e.badRequestError('Erro na integração Uazapi: ' + err.message)
     }
   },
