@@ -119,6 +119,15 @@ function UazapiSettings() {
     }
   }
 
+  const qrCodeData =
+    typeof instanceData?.qrcode === 'string'
+      ? instanceData.qrcode
+      : typeof instanceData?.instance?.qrcode === 'string'
+        ? instanceData.instance.qrcode
+        : typeof instanceData?.base64 === 'string'
+          ? instanceData.base64
+          : ''
+
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <Card>
@@ -191,31 +200,24 @@ function UazapiSettings() {
             </div>
           )}
 
-          {(instanceData?.qrcode || instanceData?.instance?.qrcode || instanceData?.base64) &&
-            status === 'qr_ready' && (
-              <div className="flex flex-col items-center justify-center space-y-4 p-4 border rounded-lg bg-slate-50/50">
-                <p className="text-sm text-center font-medium text-amber-700">
-                  Aguardando Pareamento: Escaneie o QR Code com seu WhatsApp
-                </p>
-                <div className="bg-white p-2 rounded-lg border shadow-sm">
-                  <img
-                    src={
-                      (
-                        instanceData?.qrcode ||
-                        instanceData?.instance?.qrcode ||
-                        instanceData?.base64
-                      ).startsWith('data:image')
-                        ? instanceData?.qrcode ||
-                          instanceData?.instance?.qrcode ||
-                          instanceData?.base64
-                        : `data:image/png;base64,${instanceData?.qrcode || instanceData?.instance?.qrcode || instanceData?.base64}`
-                    }
-                    alt="QR Code"
-                    className="w-48 h-48 rounded"
-                  />
-                </div>
+          {qrCodeData && status === 'qr_ready' && (
+            <div className="flex flex-col items-center justify-center space-y-4 p-4 border rounded-lg bg-slate-50/50">
+              <p className="text-sm text-center font-medium text-amber-700">
+                Aguardando Pareamento: Escaneie o QR Code com seu WhatsApp
+              </p>
+              <div className="bg-white p-2 rounded-lg border shadow-sm">
+                <img
+                  src={
+                    qrCodeData.startsWith('data:image')
+                      ? qrCodeData
+                      : `data:image/png;base64,${qrCodeData}`
+                  }
+                  alt="QR Code"
+                  className="w-48 h-48 rounded"
+                />
               </div>
-            )}
+            </div>
+          )}
 
           <div className="flex gap-3">
             <Button
