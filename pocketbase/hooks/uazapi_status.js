@@ -34,6 +34,32 @@ routerAdd(
         data = res.json || {}
       } catch (err) {}
 
+      // Fallback logic for 404 - Fetch all instances and match
+      if (res.statusCode === 404) {
+        try {
+          const fallbackRes = $http.send({
+            url: `${domain}/instance/fetchInstances`,
+            method: 'GET',
+            headers: headers,
+            timeout: 10,
+          })
+          if (fallbackRes.statusCode >= 200 && fallbackRes.statusCode < 300 && fallbackRes.json) {
+            const instances = Array.isArray(fallbackRes.json)
+              ? fallbackRes.json
+              : fallbackRes.json.instances || []
+            const found = instances.find((i) => {
+              const iName =
+                i.instance?.instanceName || i.instance?.id || i.instanceName || i.id || i.name
+              return iName === instance
+            })
+            if (found) {
+              data = found
+              res = fallbackRes // trick the next block into accepting it as success
+            }
+          }
+        } catch (err) {}
+      }
+
       // Tolerate 404 since it may indicate the instance is not paired or connecting
       if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
         let statusStr = 'disconnected'
@@ -73,16 +99,19 @@ routerAdd(
 
             if (instanceData.lastDisconnectReason) {
               errorReason = String(instanceData.lastDisconnectReason)
-            } else if (instanceData.message && instanceData.message !== 'Not Found') {
+            } else if (instanceData.message) {
               errorReason = String(instanceData.message)
-            } else if (data?.message && data.message !== 'Not Found') {
+            } else if (data?.message) {
               errorReason = String(data.message)
             }
           }
         }
 
         if (!instanceData && res.statusCode === 404) {
-          statusStr = 'qr_ready'
+          statusStr = 'disconnected'
+          if (!errorReason) {
+            errorReason = 'Not Found'
+          }
         }
 
         let profileName = ''

@@ -1,82 +1,65 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Activity, MessageSquare, Share2 } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
 
 export function IntegrationHealth({ user }: { user: any }) {
-  const isUazapiConnected = user?.uazapi_status === 'connected'
-  const isUazapiPending = user?.uazapi_status === 'qr_ready'
+  const instanceNumber = user?.uazapi_instance_number || '554892098050'
+  const isConnected = user?.uazapi_status === 'connected'
+  const isQrReady = user?.uazapi_status === 'qr_ready'
+
+  let errorMsg = user?.uazapi_error || ''
+  if (errorMsg.includes('Not Found') || errorMsg.includes('404')) {
+    errorMsg = 'Instância não encontrada. Verifique se o ID da Instância e o Token estão corretos.'
+  }
 
   return (
-    <Card>
+    <Card className="h-full animate-fade-in-up">
       <CardHeader>
-        <CardTitle className="text-lg font-semibold flex items-center gap-2">
-          <Activity className="h-5 w-5" />
-          Saúde das Integrações
-        </CardTitle>
-        <CardDescription>Status das conexões do sistema em tempo real.</CardDescription>
+        <CardTitle>Saúde das Integrações</CardTitle>
+        <CardDescription>Status das conexões ativas</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Uazapi Status */}
-        <div className="flex items-center justify-between p-3 border rounded-lg bg-card">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary/10 p-2 rounded-full">
-              <MessageSquare className="h-4 w-4 text-primary" />
-            </div>
+        <div className="flex flex-col space-y-2 border rounded-lg p-4 bg-card/50 shadow-sm transition-colors hover:bg-card">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="font-semibold text-base text-foreground">WhatsApp (Uazapi)</div>
             <div>
-              <p className="font-medium text-sm">WhatsApp (Uazapi)</p>
-              <p className="text-xs text-muted-foreground">
-                Instância: {user?.uazapi_instance_number || 'N/A'}
-              </p>
-              {user?.uazapi_error && !isUazapiConnected && (
-                <p className="text-xs text-red-500 mt-1 line-clamp-1" title={user.uazapi_error}>
-                  {user.uazapi_error}
-                </p>
+              {isConnected ? (
+                <Badge
+                  variant="default"
+                  className="bg-green-500 hover:bg-green-600 cursor-default shadow-none"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Conectado
+                </Badge>
+              ) : isQrReady ? (
+                <Badge
+                  variant="outline"
+                  className="text-yellow-600 border-yellow-600 cursor-default bg-yellow-50 dark:bg-yellow-950/20"
+                >
+                  <AlertCircle className="w-3.5 h-3.5 mr-1" /> Aguardando QR
+                </Badge>
+              ) : (
+                <Badge variant="destructive" className="cursor-default shadow-none">
+                  <XCircle className="w-3.5 h-3.5 mr-1" /> Desconectado
+                </Badge>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span
-                className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isUazapiConnected ? 'bg-emerald-400' : isUazapiPending ? 'bg-amber-400' : 'bg-red-400'}`}
-              ></span>
-              <span
-                className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isUazapiConnected ? 'bg-emerald-500' : isUazapiPending ? 'bg-amber-500' : 'bg-red-500'}`}
-              ></span>
-            </span>
-            <Badge
-              variant={isUazapiConnected ? 'default' : 'secondary'}
-              className={
-                isUazapiConnected
-                  ? 'bg-emerald-500 hover:bg-emerald-600'
-                  : isUazapiPending
-                    ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                    : 'bg-red-500 hover:bg-red-600 text-white'
-              }
-            >
-              {isUazapiConnected ? 'Conectado' : 'Desconectado'}
-            </Badge>
+          <div className="text-sm text-muted-foreground mt-1">
+            <span className="font-medium text-foreground/80">Instância:</span> {instanceNumber}
           </div>
-        </div>
-
-        {/* Generic Example for maintaining layout structure */}
-        <div className="flex items-center justify-between p-3 border rounded-lg bg-card opacity-70">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary/10 p-2 rounded-full">
-              <Share2 className="h-4 w-4 text-primary" />
+          {isConnected && user?.profileName && (
+            <div className="text-sm mt-1">
+              <span className="font-medium text-foreground/80">Perfil:</span> {user.profileName}
+              {user.currentPresence && (
+                <span className="ml-1 text-muted-foreground">({user.currentPresence})</span>
+              )}
             </div>
-            <div>
-              <p className="font-medium text-sm">Meta CAPI</p>
-              <p className="text-xs text-muted-foreground">API de Conversões</p>
+          )}
+          {!isConnected && errorMsg && (
+            <div className="text-sm text-destructive mt-3 bg-destructive/10 p-3 rounded-md border border-destructive/20 font-medium">
+              {errorMsg}
             </div>
-          </div>
-          <Badge
-            variant="outline"
-            className={
-              user?.meta_capi_status === 'connected' ? 'border-emerald-500 text-emerald-500' : ''
-            }
-          >
-            {user?.meta_capi_status === 'connected' ? 'Conectado' : 'Pendente'}
-          </Badge>
+          )}
         </div>
       </CardContent>
     </Card>
