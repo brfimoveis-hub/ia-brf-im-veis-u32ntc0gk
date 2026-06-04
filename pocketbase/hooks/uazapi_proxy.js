@@ -2,12 +2,15 @@ routerAdd(
   'POST',
   '/backend/v1/uazapi/proxy',
   (e) => {
+    const user = e.auth
     const body = e.requestInfo().body || {}
     const endpoint = body.endpoint || ''
     const method = body.method || 'GET'
     const payload = body.payload || null
-    let domain = body.domain || 'https://iabrfimveis.uazapi.com'
-    const apikey = body.apikey || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
+
+    let domain = body.domain || user?.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
+    const apikey =
+      body.apikey || user?.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
 
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
     if (domain.endsWith('/api')) domain = domain.slice(0, -4)
@@ -57,7 +60,16 @@ routerAdd(
 
     jsonRes.statusCode = res.statusCode
 
-    return e.json(res.statusCode === 0 ? 500 : res.statusCode, jsonRes)
+    // Prevent PocketBase SDK from clearing authStore if Uazapi returns 401/403
+    let returnStatus = res.statusCode === 0 ? 500 : res.statusCode
+    if (returnStatus === 401 || returnStatus === 403) {
+      returnStatus = 400
+      jsonRes.originalStatus = res.statusCode
+      jsonRes.message =
+        jsonRes.message || 'Erro de autenticação com a API Uazapi. Verifique o Token.'
+    }
+
+    return e.json(returnStatus, jsonRes)
   },
   $apis.requireAuth(),
 )

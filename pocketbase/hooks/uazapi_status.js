@@ -34,23 +34,33 @@ routerAdd(
       if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
         let statusStr = 'disconnected'
 
-        const isConnected =
-          data.status === 'connected' ||
-          data.connected === true ||
-          data.status?.loggedIn ||
-          data.instance?.status === 'connected' ||
-          data.state === 'open' ||
-          data.instance?.state === 'open'
+        let isConnected = false
+        let isPending = false
 
-        const isPending =
-          data.connected === false ||
-          data.instance?.qrcode ||
-          data.qrcode ||
-          data.base64 ||
-          data.state === 'connecting' ||
-          data.status === 'qr_ready' ||
-          res.statusCode === 404 ||
-          data.message === 'Not Found'
+        if (
+          data?.instance?.status === 'connected' ||
+          data?.instance?.state === 'open' ||
+          data?.status === 'connected' ||
+          data?.connected === true ||
+          data?.status?.loggedIn ||
+          data?.state === 'open'
+        ) {
+          isConnected = true
+        }
+
+        if (
+          !isConnected &&
+          (data?.instance?.qrcode ||
+            data?.qrcode ||
+            data?.base64 ||
+            data?.state === 'connecting' ||
+            data?.instance?.state === 'connecting' ||
+            data?.status === 'qr_ready' ||
+            res.statusCode === 404 ||
+            data?.message === 'Not Found')
+        ) {
+          isPending = true
+        }
 
         if (isConnected) {
           statusStr = 'connected'
@@ -62,7 +72,7 @@ routerAdd(
           user.set('uazapi_status', statusStr)
           user.set('uazapi_error', '')
 
-          if (data.instance?.id) {
+          if (data?.instance?.id) {
             const newName = data.instance.name || data.instance.id
             if (newName && user.getString('uazapi_instance_number') !== newName) {
               user.set('uazapi_instance_number', newName)
@@ -74,8 +84,13 @@ routerAdd(
         return e.json(200, { success: true, status: statusStr, data })
       }
 
+      // Prevent throwing 401/403 to frontend directly
+      if (res.statusCode === 401 || res.statusCode === 403) {
+        throw new BadRequestError('Credenciais inválidas na API Uazapi. Verifique seu Token.')
+      }
+
       throw new BadRequestError(
-        data.message || data.error || `Erro da API Uazapi (${res.statusCode})`,
+        data?.message || data?.error || `Erro da API Uazapi (${res.statusCode})`,
       )
     } catch (err) {
       throw new BadRequestError(`Falha na verificação de status: ${err.message}`)

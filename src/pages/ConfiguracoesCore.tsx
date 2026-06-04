@@ -64,6 +64,8 @@ function UazapiSettings() {
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
   const [errorMsg, setErrorMsg] = useState(user?.uazapi_error || '')
 
+  if (!user) return null
+
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
       setStatus(e.record.uazapi_status)
@@ -248,6 +250,8 @@ function MetaCapiSettings() {
 
   const [status, setStatus] = useState(user?.meta_capi_status || 'disconnected')
   const [errorMsg, setErrorMsg] = useState(user?.meta_capi_error || '')
+
+  if (!user) return null
 
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
