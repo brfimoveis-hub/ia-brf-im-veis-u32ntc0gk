@@ -11,6 +11,7 @@ import { getRecentConversations, getAiConversations } from '@/services/conversat
 import { getCurrentUser } from '@/services/users'
 import { Loader2 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
+import { toast } from 'sonner'
 
 export default function Index() {
   const { user } = useAuth()
@@ -45,7 +46,27 @@ export default function Index() {
 
     // Automatic Connection Health Check immediately upon page load
     if (user) {
-      pb.send('/backend/v1/uazapi/status', { method: 'GET' }).catch(() => {})
+      pb.send('/backend/v1/uazapi/status', { method: 'GET' })
+        .then((res) => {
+          if (res?.data) {
+            setCurrentUser((prev: any) => ({
+              ...prev,
+              uazapi_status: res.status,
+              uazapi_error:
+                res.data.lastDisconnectReason || res.data.message || prev?.uazapi_error || '',
+              profileName: res.data.profileName || prev?.profileName,
+              currentPresence: res.data.currentPresence || prev?.currentPresence,
+            }))
+          }
+        })
+        .catch((err) => {
+          console.error('Uazapi health check failed:', err)
+          const errorMsg =
+            err?.response?.message || err?.message || 'Falha ao verificar conexão com o Uazapi.'
+          toast.error('Erro de Conexão Uazapi', {
+            description: errorMsg,
+          })
+        })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])

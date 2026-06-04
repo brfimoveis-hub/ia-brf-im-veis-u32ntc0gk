@@ -6,7 +6,11 @@ routerAdd(
     if (!user) throw new UnauthorizedError('Não autorizado')
 
     const instance = user.getString('uazapi_instance_number') || '554892098050'
-    let domain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
+    let rawDomain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
+
+    // Sanitize domain to prevent "URL that includes credentials" browser/fetch errors
+    // Replace @ with - if a user mistakenly inputs it like brfimoveis@gmailcom.uazapi.com
+    let domain = rawDomain.replace(/@/g, '-')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
     const token = user.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Users, MessageSquare, Bot, Activity, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -35,7 +36,23 @@ export default function Dashboard() {
         setIaInteractions(iaRes.totalItems)
 
         // Poll Uazapi status silently so dashboard shows updated state
-        pb.send('/backend/v1/uazapi/status', { method: 'GET' }).catch(() => {})
+        pb.send('/backend/v1/uazapi/status', { method: 'GET' })
+          .then((res) => {
+            if (res?.data) {
+              setCurrentUser((prev: any) => ({
+                ...prev,
+                uazapi_status: res.status,
+                uazapi_error: res.data.lastDisconnectReason || res.data.message || '',
+                profileName: res.data.profileName,
+                currentPresence: res.data.currentPresence,
+              }))
+            }
+          })
+          .catch((err) => {
+            const errorMsg =
+              err?.response?.message || err?.message || 'Falha ao verificar conexão com o Uazapi.'
+            toast.error('Erro de Conexão Uazapi', { description: errorMsg })
+          })
       } catch (err) {
         console.error(err)
       }
@@ -129,6 +146,12 @@ export default function Dashboard() {
             <p className="text-xs text-muted-foreground truncate mt-1">
               Instância: {currentUser?.uazapi_instance_number || 'Não configurada'}
             </p>
+            {currentUser?.profileName && currentUser.uazapi_status === 'connected' && (
+              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                Perfil: {currentUser.profileName}
+                {currentUser.currentPresence ? ` (${currentUser.currentPresence})` : ''}
+              </p>
+            )}
             {currentUser?.uazapi_error && currentUser.uazapi_status !== 'connected' && (
               <p
                 className="text-xs text-red-500 mt-1 line-clamp-2"
