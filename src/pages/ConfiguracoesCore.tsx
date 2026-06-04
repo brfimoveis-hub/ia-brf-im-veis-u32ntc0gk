@@ -64,8 +64,6 @@ function UazapiSettings() {
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
   const [errorMsg, setErrorMsg] = useState(user?.uazapi_error || '')
 
-  if (!user) return null
-
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
       setStatus(e.record.uazapi_status)
@@ -74,6 +72,7 @@ function UazapiSettings() {
   })
 
   const saveSettings = async () => {
+    if (!user) return
     try {
       setLoading(true)
       await pb.collection('users').update(user.id, {
@@ -105,7 +104,10 @@ function UazapiSettings() {
 
   useEffect(() => {
     // Check status on mount
-    checkStatus(true)
+    if (user) {
+      checkStatus(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const connectInstance = async () => {
@@ -129,6 +131,8 @@ function UazapiSettings() {
         : typeof instanceData?.base64 === 'string'
           ? instanceData.base64
           : ''
+
+  if (!user) return null
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
@@ -251,8 +255,6 @@ function MetaCapiSettings() {
   const [status, setStatus] = useState(user?.meta_capi_status || 'disconnected')
   const [errorMsg, setErrorMsg] = useState(user?.meta_capi_error || '')
 
-  if (!user) return null
-
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
       setStatus(e.record.meta_capi_status)
@@ -261,6 +263,7 @@ function MetaCapiSettings() {
   })
 
   const saveAndTest = async () => {
+    if (!user) return
     try {
       setLoading(true)
       await pb.collection('users').update(user.id, {
@@ -279,6 +282,8 @@ function MetaCapiSettings() {
       setLoading(false)
     }
   }
+
+  if (!user) return null
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
