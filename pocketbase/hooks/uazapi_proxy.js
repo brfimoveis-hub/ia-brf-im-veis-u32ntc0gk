@@ -7,7 +7,7 @@ routerAdd(
     const method = body.method || 'GET'
     const payload = body.payload || null
     let domain = body.domain || 'https://iabrfimveis.uazapi.com'
-    const apikey = body.apikey || ''
+    const apikey = body.apikey || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
 
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
     if (domain.endsWith('/api')) domain = domain.slice(0, -4)
@@ -24,86 +24,24 @@ routerAdd(
       'Content-Type': 'application/json',
     }
     if (apikey) {
+      headers['apikey'] = apikey
+      headers['Authorization'] = 'Bearer ' + apikey
       headers['AdminToken'] = apikey
     }
 
-    const logsCol = $app.findCollectionByNameOrId('system_logs')
-
-    const maxRetries = 3
-    let attempt = 0
     let res = null
     let error = null
 
-    const sleep = (ms) => {
-      const start = new Date().getTime()
-      while (new Date().getTime() - start < ms) {}
-    }
-
-    while (attempt <= maxRetries) {
-      attempt++
-      const startTime = new Date().getTime()
-      try {
-        res = $http.send({
-          url: url,
-          method: method,
-          headers: headers,
-          body: payload ? JSON.stringify(payload) : undefined,
-          timeout: 15,
-        })
-
-        const duration = new Date().getTime() - startTime
-
-        const logRecord = new Record(logsCol)
-        logRecord.set('type', 'uazapi_proxy_attempt')
-        logRecord.set('message', `Proxy request attempt ${attempt}`)
-        logRecord.set('details', {
-          url,
-          statusCode: res.statusCode,
-          durationMs: duration,
-        })
-        logRecord.set('payload', {
-          request_body: payload,
-          response_body: res.json || null,
-        })
-        $app.saveNoValidate(logRecord)
-
-        if (
-          res.statusCode !== 404 &&
-          res.statusCode !== 504 &&
-          res.statusCode !== 0 &&
-          res.statusCode !== 500
-        ) {
-          break
-        }
-      } catch (err) {
-        error = err
-        const duration = new Date().getTime() - startTime
-        const logRecord = new Record(logsCol)
-        logRecord.set('type', 'uazapi_proxy_error')
-        logRecord.set('message', `Proxy request failed attempt ${attempt}`)
-        logRecord.set('details', {
-          url,
-          error: err.message,
-          durationMs: duration,
-        })
-        logRecord.set('payload', { request_body: payload })
-        $app.saveNoValidate(logRecord)
-      }
-
-      if (
-        attempt <= maxRetries &&
-        (error ||
-          !res ||
-          res.statusCode === 404 ||
-          res.statusCode === 504 ||
-          res.statusCode === 0 ||
-          res.statusCode === 500)
-      ) {
-        const backoff = attempt === 1 ? 1000 : attempt === 2 ? 3000 : 9000
-        sleep(backoff)
-      } else {
-        break
-      }
+    try {
+      res = $http.send({
+        url: url,
+        method: method,
+        headers: headers,
+        body: payload ? JSON.stringify(payload) : undefined,
+        timeout: 15,
+      })
+    } catch (err) {
+      error = err
     }
 
     if (!res && error) {

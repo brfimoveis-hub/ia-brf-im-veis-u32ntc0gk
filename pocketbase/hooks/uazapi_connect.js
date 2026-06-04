@@ -5,28 +5,17 @@ routerAdd(
     const user = e.auth
     if (!user) throw new UnauthorizedError('Não autorizado')
 
-    const instance = user.getString('uazapi_instance_number')
+    const instance = user.getString('uazapi_instance_number') || '554892098050'
     let domain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
-    const userApiKey = user.getString('uazapi_token')
-    const userAdminToken = user.getString('uazapi_admin_token')
-    const adminToken =
-      $secrets.get('UAZAPI_ADMIN_TOKEN') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+    const token = user.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
 
-    if (!instance) throw new BadRequestError('Número da instância não configurado.')
-
-    const headers = { 'Content-Type': 'application/json' }
-
-    if (userApiKey) {
-      headers['apikey'] = userApiKey
-      headers['Authorization'] = 'Bearer ' + userApiKey
-    } else {
-      headers['apikey'] = adminToken
-      headers['Authorization'] = 'Bearer ' + adminToken
+    const headers = {
+      'Content-Type': 'application/json',
+      apikey: token,
+      Authorization: 'Bearer ' + token,
     }
-
-    if (userAdminToken) headers['AdminToken'] = userAdminToken
 
     try {
       const res = $http.send({
@@ -36,35 +25,25 @@ routerAdd(
         timeout: 15,
       })
 
-      if (res.statusCode >= 200 && res.statusCode < 300 && res.json) {
-        const data = res.json
-        let statusStr = 'disconnected'
+      let data = {}
+      try {
+        data = res.json || {}
+      } catch (_) {}
 
-        if (data.status?.loggedIn || data.instance?.status === 'connected') {
-          statusStr = 'connected'
-        } else if (data.instance?.qrcode || data.qrcode) {
-          statusStr = 'qr_ready'
-        } else if (data.base64) {
-          statusStr = 'qr_ready'
-          data.instance = data.instance || {}
-          data.instance.qrcode = data.base64
-        }
+      let statusStr = 'qr_ready'
+      if (data.status === 'connected' || data.connected === true || data.state === 'open') {
+        statusStr = 'connected'
+      }
 
+      if (user.getString('uazapi_status') !== statusStr) {
         user.set('uazapi_status', statusStr)
         user.set('uazapi_error', '')
         $app.saveNoValidate(user)
-
-        return e.json(200, { success: true, status: statusStr, data })
       }
 
-      throw new BadRequestError(res.json?.message || `Erro da API Uazapi (${res.statusCode})`)
+      return e.json(200, { success: true, status: statusStr, data })
     } catch (err) {
-      user.set('uazapi_status', 'error')
-      user.set('uazapi_error', err.message)
-      try {
-        $app.saveNoValidate(user)
-      } catch (_) {}
-      throw new BadRequestError(`Falha na conexão: ${err.message}`)
+      throw new BadRequestError(`Falha na requisição de conexão: ${err.message}`)
     }
   },
   $apis.requireAuth(),

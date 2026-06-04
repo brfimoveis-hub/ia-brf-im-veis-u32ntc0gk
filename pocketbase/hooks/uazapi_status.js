@@ -5,28 +5,17 @@ routerAdd(
     const user = e.auth
     if (!user) throw new UnauthorizedError('Não autorizado')
 
-    const instance = user.getString('uazapi_instance_number')
+    const instance = user.getString('uazapi_instance_number') || '554892098050'
     let domain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
-    const userApiKey = user.getString('uazapi_token')
-    const userAdminToken = user.getString('uazapi_admin_token')
-    const adminToken =
-      $secrets.get('UAZAPI_ADMIN_TOKEN') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+    const token = user.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
 
-    if (!instance) throw new BadRequestError('Número da instância não configurado.')
-
-    const headers = { 'Content-Type': 'application/json' }
-
-    if (userApiKey) {
-      headers['apikey'] = userApiKey
-      headers['Authorization'] = 'Bearer ' + userApiKey
-    } else {
-      headers['apikey'] = adminToken
-      headers['Authorization'] = 'Bearer ' + adminToken
+    const headers = {
+      'Content-Type': 'application/json',
+      apikey: token,
+      Authorization: 'Bearer ' + token,
     }
-
-    if (userAdminToken) headers['AdminToken'] = userAdminToken
 
     try {
       const res = $http.send({
@@ -36,13 +25,36 @@ routerAdd(
         timeout: 10,
       })
 
-      if (res.statusCode >= 200 && res.statusCode < 300 && res.json) {
-        const data = res.json
+      let data = {}
+      try {
+        data = res.json || {}
+      } catch (err) {}
+
+      // Tolerate 404 since it may indicate the instance is not paired or connecting
+      if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
         let statusStr = 'disconnected'
 
-        if (data.status?.loggedIn || data.instance?.status === 'connected') {
+        const isConnected =
+          data.status === 'connected' ||
+          data.connected === true ||
+          data.status?.loggedIn ||
+          data.instance?.status === 'connected' ||
+          data.state === 'open' ||
+          data.instance?.state === 'open'
+
+        const isPending =
+          data.connected === false ||
+          data.instance?.qrcode ||
+          data.qrcode ||
+          data.base64 ||
+          data.state === 'connecting' ||
+          data.status === 'qr_ready' ||
+          res.statusCode === 404 ||
+          data.message === 'Not Found'
+
+        if (isConnected) {
           statusStr = 'connected'
-        } else if (data.instance?.qrcode || data.qrcode) {
+        } else if (isPending) {
           statusStr = 'qr_ready'
         }
 
@@ -62,7 +74,9 @@ routerAdd(
         return e.json(200, { success: true, status: statusStr, data })
       }
 
-      throw new BadRequestError(res.json?.message || `Erro da API Uazapi (${res.statusCode})`)
+      throw new BadRequestError(
+        data.message || data.error || `Erro da API Uazapi (${res.statusCode})`,
+      )
     } catch (err) {
       throw new BadRequestError(`Falha na verificação de status: ${err.message}`)
     }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -55,9 +55,11 @@ function UazapiSettings() {
   const [loading, setLoading] = useState(false)
   const [instanceData, setInstanceData] = useState<any>(null)
 
-  const [domain, setDomain] = useState(user?.uazapi_domain || '')
-  const [instanceNumber, setInstanceNumber] = useState(user?.uazapi_instance_number || '')
-  const [token, setToken] = useState(user?.uazapi_token || '')
+  const [domain, setDomain] = useState(user?.uazapi_domain || 'https://iabrfimveis.uazapi.com')
+  const [instanceNumber, setInstanceNumber] = useState(
+    user?.uazapi_instance_number || '554892098050',
+  )
+  const [token, setToken] = useState(user?.uazapi_token || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934')
 
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
   const [errorMsg, setErrorMsg] = useState(user?.uazapi_error || '')
@@ -85,18 +87,24 @@ function UazapiSettings() {
     }
   }
 
-  const checkStatus = async () => {
+  const checkStatus = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const res = await pb.send('/backend/v1/uazapi/status', { method: 'GET' })
       setInstanceData(res.data)
-      toast({ title: 'Status atualizado com sucesso!' })
+      if (!silent) toast({ title: 'Status atualizado com sucesso!' })
     } catch (err: any) {
-      toast({ title: 'Erro de Status', description: err.message, variant: 'destructive' })
+      if (!silent)
+        toast({ title: 'Erro de Status', description: err.message, variant: 'destructive' })
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
+
+  useEffect(() => {
+    // Check status on mount
+    checkStatus(true)
+  }, [])
 
   const connectInstance = async () => {
     try {
@@ -183,23 +191,39 @@ function UazapiSettings() {
             </div>
           )}
 
-          {instanceData?.instance?.qrcode && status === 'qr_ready' && (
-            <div className="flex flex-col items-center justify-center space-y-4 p-4 border rounded-lg">
-              <p className="text-sm text-center font-medium">Escaneie o QR Code com seu WhatsApp</p>
-              <img
-                src={
-                  instanceData.instance.qrcode.startsWith('data:image')
-                    ? instanceData.instance.qrcode
-                    : `data:image/png;base64,${instanceData.instance.qrcode}`
-                }
-                alt="QR Code"
-                className="w-48 h-48 border rounded-lg"
-              />
-            </div>
-          )}
+          {(instanceData?.qrcode || instanceData?.instance?.qrcode || instanceData?.base64) &&
+            status === 'qr_ready' && (
+              <div className="flex flex-col items-center justify-center space-y-4 p-4 border rounded-lg bg-slate-50/50">
+                <p className="text-sm text-center font-medium text-amber-700">
+                  Aguardando Pareamento: Escaneie o QR Code com seu WhatsApp
+                </p>
+                <div className="bg-white p-2 rounded-lg border shadow-sm">
+                  <img
+                    src={
+                      (
+                        instanceData?.qrcode ||
+                        instanceData?.instance?.qrcode ||
+                        instanceData?.base64
+                      ).startsWith('data:image')
+                        ? instanceData?.qrcode ||
+                          instanceData?.instance?.qrcode ||
+                          instanceData?.base64
+                        : `data:image/png;base64,${instanceData?.qrcode || instanceData?.instance?.qrcode || instanceData?.base64}`
+                    }
+                    alt="QR Code"
+                    className="w-48 h-48 rounded"
+                  />
+                </div>
+              </div>
+            )}
 
           <div className="flex gap-3">
-            <Button variant="outline" onClick={checkStatus} disabled={loading} className="flex-1">
+            <Button
+              variant="outline"
+              onClick={() => checkStatus()}
+              disabled={loading}
+              className="flex-1"
+            >
               <RefreshCw className="mr-2 h-4 w-4" /> Atualizar
             </Button>
             <Button onClick={connectInstance} disabled={loading} className="flex-1">

@@ -26,6 +26,9 @@ export default function Dashboard() {
 
         const iaRes = await pb.collection('leads').getList(1, 1, { fields: 'id' })
         setIaInteractions(iaRes.totalItems)
+
+        // Poll Uazapi status silently so dashboard shows updated state
+        pb.send('/backend/v1/uazapi/status', { method: 'GET' }).catch(() => {})
       } catch (err) {
         console.error(err)
       }
@@ -93,9 +96,13 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div
-              className={`text-2xl font-bold ${user?.uazapi_status === 'Conectado' ? 'text-emerald-600' : ''}`}
+              className={`text-2xl font-bold ${user?.uazapi_status === 'connected' ? 'text-emerald-600' : user?.uazapi_status === 'qr_ready' ? 'text-amber-600' : 'text-red-600'}`}
             >
-              {user?.uazapi_status === 'Conectado' ? 'Ativo' : 'Inativo'}
+              {user?.uazapi_status === 'connected'
+                ? 'Conectado'
+                : user?.uazapi_status === 'qr_ready'
+                  ? 'Aguardando QR'
+                  : 'Desconectado'}
             </div>
             <p className="text-xs text-muted-foreground truncate">
               Instância: {user?.uazapi_instance_number || 'Não configurada'}
