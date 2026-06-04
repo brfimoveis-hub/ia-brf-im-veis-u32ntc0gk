@@ -33,51 +33,58 @@ routerAdd(
       // Tolerate 404 since it may indicate the instance is not paired or connecting
       if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
         let statusStr = 'disconnected'
+        let errorReason = ''
 
-        let isConnected = false
-        let isPending = false
-
-        if (
-          data?.instance?.status === 'connected' ||
-          data?.instance?.state === 'open' ||
-          data?.status === 'connected' ||
-          data?.connected === true ||
-          data?.status?.loggedIn ||
-          data?.state === 'open'
-        ) {
-          isConnected = true
+        let instanceData = null
+        if (Array.isArray(data)) {
+          instanceData = data.find((i) => i.id === instance || i.token === token) || data[0]
+        } else {
+          instanceData = data?.instance || data
         }
 
-        if (
-          !isConnected &&
-          (data?.instance?.qrcode ||
-            data?.qrcode ||
-            data?.base64 ||
-            data?.state === 'connecting' ||
-            data?.instance?.state === 'connecting' ||
-            data?.status === 'qr_ready' ||
-            res.statusCode === 404 ||
-            data?.message === 'Not Found')
-        ) {
-          isPending = true
+        if (instanceData) {
+          const st = instanceData.status || instanceData.state || ''
+          const isConn =
+            st === 'connected' ||
+            st === 'open' ||
+            st === 'loggedIn' ||
+            instanceData.connected === true ||
+            instanceData.status?.loggedIn
+
+          if (isConn) {
+            statusStr = 'connected'
+            errorReason = ''
+          } else {
+            if (
+              instanceData.qrcode ||
+              instanceData.base64 ||
+              st === 'connecting' ||
+              st === 'qr_ready'
+            ) {
+              statusStr = 'qr_ready'
+            } else if (st === 'disconnected' || st === 'closed') {
+              statusStr = 'disconnected'
+            }
+
+            if (instanceData.lastDisconnectReason) {
+              errorReason = String(instanceData.lastDisconnectReason)
+            } else if (instanceData.message && instanceData.message !== 'Not Found') {
+              errorReason = String(instanceData.message)
+            }
+          }
         }
 
-        if (isConnected) {
-          statusStr = 'connected'
-        } else if (isPending) {
+        if (!instanceData && res.statusCode === 404) {
           statusStr = 'qr_ready'
         }
 
-        if (user.getString('uazapi_status') !== statusStr) {
+        if (
+          user.getString('uazapi_status') !== statusStr ||
+          user.getString('uazapi_error') !== errorReason
+        ) {
           user.set('uazapi_status', statusStr)
-          user.set('uazapi_error', '')
-
-          if (data?.instance?.id) {
-            const newName = data.instance.name || data.instance.id
-            if (newName && user.getString('uazapi_instance_number') !== newName) {
-              user.set('uazapi_instance_number', newName)
-            }
-          }
+          user.set('uazapi_error', errorReason)
+          // The process must only update the uazapi_status and uazapi_error fields
           $app.saveNoValidate(user)
         }
 

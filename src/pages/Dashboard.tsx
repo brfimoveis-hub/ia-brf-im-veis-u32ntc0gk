@@ -13,9 +13,16 @@ export default function Dashboard() {
   const [cadenceCount, setCadenceCount] = useState(0)
   const [iaInteractions, setIaInteractions] = useState(0)
 
+  const [currentUser, setCurrentUser] = useState<any>(user)
+
   useEffect(() => {
     const fetchStats = async () => {
       try {
+        if (user) {
+          const usr = await pb.collection('users').getOne(user.id)
+          setCurrentUser(usr)
+        }
+
         const customersRes = await pb.collection('customers').getList(1, 1, { fields: 'id' })
         setCustomerCount(customersRes.totalItems)
 
@@ -37,6 +44,15 @@ export default function Dashboard() {
       fetchStats()
     }
   }, [user])
+
+  useRealtime('users', () => {
+    if (user) {
+      pb.collection('users')
+        .getOne(user.id)
+        .then((res) => setCurrentUser(res))
+        .catch(console.error)
+    }
+  })
 
   useRealtime('customers', () => {
     pb.collection('customers')
@@ -64,7 +80,7 @@ export default function Dashboard() {
       <div>
         <h2 className="text-3xl font-bold tracking-tight">CRM Pipeline (Dashboard)</h2>
         <p className="text-muted-foreground">
-          Bem-vindo de volta, {user?.name || 'Administrador'}.
+          Bem-vindo de volta, {currentUser?.name || user?.name || 'Administrador'}.
         </p>
       </div>
 
@@ -95,18 +111,32 @@ export default function Dashboard() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div
-              className={`text-2xl font-bold ${user?.uazapi_status === 'connected' ? 'text-emerald-600' : user?.uazapi_status === 'qr_ready' ? 'text-amber-600' : 'text-red-600'}`}
-            >
-              {user?.uazapi_status === 'connected'
-                ? 'Conectado'
-                : user?.uazapi_status === 'qr_ready'
-                  ? 'Aguardando QR'
-                  : 'Desconectado'}
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentUser?.uazapi_status === 'connected' ? 'bg-emerald-400' : 'bg-red-400'}`}
+                ></span>
+                <span
+                  className={`relative inline-flex rounded-full h-3 w-3 ${currentUser?.uazapi_status === 'connected' ? 'bg-emerald-500' : currentUser?.uazapi_status === 'qr_ready' ? 'bg-amber-500' : 'bg-red-500'}`}
+                ></span>
+              </span>
+              <div
+                className={`text-2xl font-bold ${currentUser?.uazapi_status === 'connected' ? 'text-emerald-600' : currentUser?.uazapi_status === 'qr_ready' ? 'text-amber-600' : 'text-red-600'}`}
+              >
+                {currentUser?.uazapi_status === 'connected' ? 'Conectado' : 'Desconectado'}
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground truncate">
-              Instância: {user?.uazapi_instance_number || 'Não configurada'}
+            <p className="text-xs text-muted-foreground truncate mt-1">
+              Instância: {currentUser?.uazapi_instance_number || 'Não configurada'}
             </p>
+            {currentUser?.uazapi_error && currentUser.uazapi_status !== 'connected' && (
+              <p
+                className="text-xs text-red-500 mt-1 line-clamp-2"
+                title={currentUser.uazapi_error}
+              >
+                Erro: {currentUser.uazapi_error}
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>

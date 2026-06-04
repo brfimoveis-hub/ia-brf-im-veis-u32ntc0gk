@@ -10,6 +10,7 @@ import { getDashboardCustomers } from '@/services/customers'
 import { getRecentConversations, getAiConversations } from '@/services/conversations'
 import { getCurrentUser } from '@/services/users'
 import { Loader2 } from 'lucide-react'
+import pb from '@/lib/pocketbase/client'
 
 export default function Index() {
   const { user } = useAuth()
@@ -41,6 +42,11 @@ export default function Index() {
 
   useEffect(() => {
     loadData()
+
+    // Automatic Connection Health Check immediately upon page load
+    if (user) {
+      pb.send('/backend/v1/uazapi/status', { method: 'GET' }).catch(() => {})
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
