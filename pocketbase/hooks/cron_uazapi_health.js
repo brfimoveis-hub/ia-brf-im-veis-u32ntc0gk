@@ -16,8 +16,14 @@ cronAdd('uazapi_health_check', '*/5 * * * *', () => {
 
     const headers = { 'Content-Type': 'application/json' }
     if (userAdminToken) headers['AdminToken'] = userAdminToken
-    if (userApiKey) headers['apikey'] = userApiKey
-    if (!userAdminToken && !userApiKey) headers['apikey'] = adminToken
+    if (userApiKey) {
+      headers['apikey'] = userApiKey
+      headers['Authorization'] = 'Bearer ' + userApiKey
+    }
+    if (!userAdminToken && !userApiKey) {
+      headers['apikey'] = adminToken
+      headers['Authorization'] = 'Bearer ' + adminToken
+    }
 
     try {
       const res = $http.send({
@@ -57,10 +63,21 @@ cronAdd('uazapi_health_check', '*/5 * * * *', () => {
         user.set('uazapi_status', 'disconnected')
         user.set('uazapi_error', `Token/Instance invalid (Auto-detected ${res.statusCode})`)
         $app.save(user)
-      } else if (res.statusCode === 200) {
-        if (user.getString('uazapi_status') !== 'connected') {
-          user.set('uazapi_status', 'connected')
+      } else if (res.statusCode === 200 && res.json) {
+        const data = res.json
+        let statusStr = 'disconnected'
+        if (data.status?.loggedIn || data.instance?.status === 'connected') {
+          statusStr = 'connected'
+        } else if (data.instance?.qrcode) {
+          statusStr = 'qr_ready'
+        }
+
+        if (user.getString('uazapi_status') !== statusStr) {
+          user.set('uazapi_status', statusStr)
           user.set('uazapi_error', '')
+          if (data.instance?.id) {
+            user.set('uazapi_instance_number', data.instance.name || data.instance.id)
+          }
           $app.save(user)
         }
       }

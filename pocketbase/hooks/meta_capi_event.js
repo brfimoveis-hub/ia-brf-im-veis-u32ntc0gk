@@ -52,9 +52,8 @@ onRecordAfterUpdateSuccess((e) => {
       if (cleanPhone.length === 10 || cleanPhone.length === 11) {
         cleanPhone = '55' + cleanPhone
       }
-      let e164Phone = '+' + cleanPhone
-      // We send both the digits-only and E.164 formats hashed to maximize match rates
-      userData.ph = [$security.sha256(cleanPhone), $security.sha256(e164Phone)]
+      // Meta strictly expects digits-only for phone numbers, no symbols like '+'
+      userData.ph = [$security.sha256(cleanPhone)]
     }
     if (fn) {
       fn = fn.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -77,7 +76,14 @@ onRecordAfterUpdateSuccess((e) => {
       if (match) userData.fbc = match[1]
     }
 
-    userData.client_ip_address = userData.client_ip_address || '192.168.1.1'
+    const ipv4Regex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/
+    const ipMatch = combinedData.match(ipv4Regex)
+    if (ipMatch) {
+      userData.client_ip_address = ipMatch[0]
+    } else {
+      userData.client_ip_address = userData.client_ip_address || '192.168.1.1'
+    }
+
     userData.client_user_agent =
       userData.client_user_agent ||
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SkipCloud/1.0'

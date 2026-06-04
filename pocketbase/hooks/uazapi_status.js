@@ -1,100 +1,70 @@
 routerAdd(
   'GET',
-  '/backend/v1/uazapi/status/{instance}',
+  '/backend/v1/uazapi/status',
   (e) => {
-    const instance = e.request.pathValue('instance')
-    const domain = 'https://iabrfimveis.uazapi.com'
-
     const user = e.auth
+    if (!user) throw new UnauthorizedError('Não autorizado')
+
+    const instance = user.getString('uazapi_instance_number')
+    let domain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
+    if (domain.endsWith('/')) domain = domain.slice(0, -1)
+
+    const userApiKey = user.getString('uazapi_token')
+    const userAdminToken = user.getString('uazapi_admin_token')
     const adminToken =
-      (user && user.getString('uazapi_admin_token')) ||
-      $secrets.get('UAZAPI_ADMIN_TOKEN') ||
-      'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
-    const userApiKey = user && user.getString('uazapi_token')
+      $secrets.get('UAZAPI_ADMIN_TOKEN') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+
+    if (!instance) throw new BadRequestError('Número da instância não configurado.')
+
+    const headers = { 'Content-Type': 'application/json' }
+
+    if (userApiKey) {
+      headers['apikey'] = userApiKey
+      headers['Authorization'] = 'Bearer ' + userApiKey
+    } else {
+      headers['apikey'] = adminToken
+      headers['Authorization'] = 'Bearer ' + adminToken
+    }
+
+    if (userAdminToken) headers['AdminToken'] = userAdminToken
 
     try {
       const res = $http.send({
-        url: `${domain}/instance/connectionState/${instance}`,
+        url: `${domain}/instance/status/${instance}`,
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: userApiKey || adminToken,
-          AdminToken: adminToken,
-          Authorization: `Bearer ${userApiKey || adminToken}`,
-        },
-        timeout: 15,
+        headers: headers,
+        timeout: 10,
       })
 
-      let jsonRes = {}
-      try {
-        jsonRes = res.json || {}
-      } catch (_) {}
-      jsonRes.statusCode = res.statusCode
+      if (res.statusCode >= 200 && res.statusCode < 300 && res.json) {
+        const data = res.json
+        let statusStr = 'disconnected'
 
-      // Same protection to avoid killing PB sessions by proxying a 401 error code.
-      if (res.statusCode === 401 || res.statusCode === 403) {
-        const uazapiErrorMsg = jsonRes.message || jsonRes.error || ''
-        let customErrorMsg = 'Acesso negado no Uazapi (Token inválido).'
-        if (String(uazapiErrorMsg).toLowerCase().includes('oauth')) {
-          customErrorMsg = `Erro de Autenticação (OAuth): Verifique se o Admin Token está correto e não contém espaços. Mensagem do Uazapi: ${uazapiErrorMsg}`
-        } else if (uazapiErrorMsg) {
-          customErrorMsg = `Acesso negado: ${uazapiErrorMsg}`
+        if (data.status?.loggedIn || data.instance?.status === 'connected') {
+          statusStr = 'connected'
+        } else if (data.instance?.qrcode || data.qrcode) {
+          statusStr = 'qr_ready'
         }
-        jsonRes.error = customErrorMsg
-        $app
-          .logger()
-          .error(
-            'Uazapi Status 401/403 Error',
-            'instance',
-            instance,
-            'domain',
-            domain,
-            'error',
-            uazapiErrorMsg,
-          )
 
-        if (user) {
-          user.set('uazapi_status', 'unauthorized')
-          user.set('uazapi_error', customErrorMsg)
-          try {
-            $app.saveNoValidate(user)
-          } catch (_) {}
-        }
-        return e.json(401, jsonRes)
-      }
-
-      if (res.statusCode === 404) {
-        jsonRes.error = `Instância não encontrada no Uazapi. Verifique se o número ${instance} corresponde exatamente ao registrado no painel da Uazapi.`
-        $app
-          .logger()
-          .error('Uazapi Status 404 Instance Not Found', 'instance', instance, 'domain', domain)
-
-        if (user) {
-          user.set('uazapi_status', 'error')
-          user.set('uazapi_error', jsonRes.error)
-          try {
-            $app.saveNoValidate(user)
-          } catch (_) {}
-        }
-        return e.json(404, jsonRes)
-      }
-
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        if (user) {
-          const state = jsonRes.status || jsonRes.state || jsonRes.instance?.state || 'disconnected'
-          const finalState =
-            state === 'connected' || state === 'open' ? 'connected' : 'disconnected'
-          user.set('uazapi_status', finalState)
+        if (user.getString('uazapi_status') !== statusStr) {
+          user.set('uazapi_status', statusStr)
           user.set('uazapi_error', '')
-          try {
-            $app.saveNoValidate(user)
-          } catch (_) {}
+
+          if (data.instance?.id) {
+            const newName = data.instance.name || data.instance.id
+            if (newName && user.getString('uazapi_instance_number') !== newName) {
+              user.set('uazapi_instance_number', newName)
+            }
+          }
+          $app.saveNoValidate(user)
         }
+
+        return e.json(200, { success: true, status: statusStr, data })
       }
 
-      return e.json(res.statusCode === 0 ? 500 : res.statusCode, jsonRes)
+      throw new BadRequestError(res.json?.message || `Erro da API Uazapi (${res.statusCode})`)
     } catch (err) {
-      return e.json(500, { error: err.message })
+      throw new BadRequestError(`Falha na verificação de status: ${err.message}`)
     }
   },
   $apis.requireAuth(),

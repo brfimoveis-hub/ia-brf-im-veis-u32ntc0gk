@@ -1,317 +1,341 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { Link, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
-import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from '@/components/ui/card'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  AlertCircle,
-  CheckCircle2,
-  Play,
-  RefreshCw,
-  Loader2,
-  Save,
-  Smartphone,
-  ShieldCheck,
-} from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
+import { Loader2, CheckCircle2, AlertCircle, RefreshCw, Smartphone, Facebook } from 'lucide-react'
 
 export default function ConfiguracoesCore() {
+  const location = useLocation()
+  const currentTab = location.pathname.includes('meta-capi') ? 'meta-capi' : 'uazapi'
+
+  return (
+    <div className="container mx-auto py-8 max-w-5xl">
+      <div className="flex flex-col space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Configurações de Integração</h1>
+          <p className="text-muted-foreground mt-2">
+            Gerencie as conexões com WhatsApp (Uazapi) e Meta Conversions API.
+          </p>
+        </div>
+
+        <Tabs value={currentTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+            <TabsTrigger value="uazapi" asChild>
+              <Link to="/configuracoes/uazapi">WhatsApp Uazapi</Link>
+            </TabsTrigger>
+            <TabsTrigger value="meta-capi" asChild>
+              <Link to="/configuracoes/meta-capi">Meta CAPI</Link>
+            </TabsTrigger>
+          </TabsList>
+
+          <div className="mt-6">
+            <Routes>
+              <Route path="/" element={<Navigate to="uazapi" replace />} />
+              <Route path="uazapi" element={<UazapiSettings />} />
+              <Route path="meta-capi" element={<MetaCapiSettings />} />
+            </Routes>
+          </div>
+        </Tabs>
+      </div>
+    </div>
+  )
+}
+
+function UazapiSettings() {
   const { user } = useAuth()
   const { toast } = useToast()
-
   const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [formData, setFormData] = useState({
-    uazapi_domain: '',
-    uazapi_instance_number: '',
-    uazapi_token: '',
-    uazapi_admin_token: '',
-  })
+  const [instanceData, setInstanceData] = useState<any>(null)
 
-  const [status, setStatus] = useState<string>('')
-  const [errorMsg, setErrorMsg] = useState<string>('')
+  const [domain, setDomain] = useState(user?.uazapi_domain || '')
+  const [instanceNumber, setInstanceNumber] = useState(user?.uazapi_instance_number || '')
+  const [token, setToken] = useState(user?.uazapi_token || '')
 
-  useEffect(() => {
-    if (user) {
-      setFormData({
-        uazapi_domain: user.uazapi_domain || '',
-        uazapi_instance_number: user.uazapi_instance_number || '',
-        uazapi_token: user.uazapi_token || '',
-        uazapi_admin_token: user.uazapi_admin_token || '',
-      })
-      setStatus(user.uazapi_status || '')
-      setErrorMsg(user.uazapi_error || '')
-    }
-  }, [user])
+  const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
+  const [errorMsg, setErrorMsg] = useState(user?.uazapi_error || '')
 
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
-      setStatus(e.record.uazapi_status || '')
-      setErrorMsg(e.record.uazapi_error || '')
-      setFormData((prev) => ({
-        uazapi_domain: e.record.uazapi_domain || prev.uazapi_domain,
-        uazapi_instance_number: e.record.uazapi_instance_number || prev.uazapi_instance_number,
-        uazapi_token: e.record.uazapi_token || prev.uazapi_token,
-        uazapi_admin_token: e.record.uazapi_admin_token || prev.uazapi_admin_token,
-      }))
+      setStatus(e.record.uazapi_status)
+      setErrorMsg(e.record.uazapi_error)
     }
   })
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
-  }
-
-  const handleSave = async () => {
-    if (!user) return
-    setSaving(true)
+  const saveSettings = async () => {
     try {
-      await pb.collection('users').update(user.id, formData)
-      toast({
-        title: 'Sucesso',
-        description: 'Configurações salvas com sucesso.',
+      setLoading(true)
+      await pb.collection('users').update(user.id, {
+        uazapi_domain: domain,
+        uazapi_instance_number: instanceNumber,
+        uazapi_token: token,
       })
+      toast({ title: 'Configurações salvas' })
     } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao salvar',
-        description: err.message || 'Ocorreu um erro.',
-      })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleStartInstance = async () => {
-    if (!user) return
-    try {
-      await pb.collection('users').update(user.id, formData)
-    } catch (err) {
-      console.error(err)
-    }
-
-    setLoading(true)
-    try {
-      const res = await pb.send('/backend/v1/uazapi/v2/connect', {
-        method: 'POST',
-        body: {
-          instance_name: formData.uazapi_instance_number,
-          domain: formData.uazapi_domain,
-          apikey: formData.uazapi_token,
-          admin_token: formData.uazapi_admin_token,
-        },
-      })
-
-      toast({
-        title: 'Instância Iniciada',
-        description:
-          res.status === 'connected' ? 'Conectado com sucesso!' : 'Iniciada, aguardando conexão.',
-      })
-    } catch (err: any) {
-      let msg = err.message || 'Falha ao iniciar instância.'
-      if (err.status === 401 || err.status === 403 || msg.toLowerCase().includes('unauthorized')) {
-        msg = 'Erro de Autenticação: Verifique se o Admin Token e Token estão corretos e válidos.'
-      }
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao iniciar instância',
-        description: msg,
-      })
+      toast({ title: 'Erro ao salvar', description: err.message, variant: 'destructive' })
     } finally {
       setLoading(false)
-      checkStatus()
     }
   }
 
   const checkStatus = async () => {
-    if (!user || !formData.uazapi_instance_number) return
-    setRefreshing(true)
     try {
-      await pb.send(`/backend/v1/uazapi/status/${formData.uazapi_instance_number}`, {
-        method: 'GET',
-      })
-      toast({ title: 'Status atualizado' })
+      setLoading(true)
+      const res = await pb.send('/backend/v1/uazapi/status', { method: 'GET' })
+      setInstanceData(res.data)
+      toast({ title: 'Status atualizado com sucesso!' })
     } catch (err: any) {
-      let msg = err.message || 'Erro ao verificar status'
-      if (err.status === 401 || err.status === 403) msg = 'Acesso negado. Verifique os Tokens.'
-      toast({ variant: 'destructive', title: 'Erro de Status', description: msg })
+      toast({ title: 'Erro de Status', description: err.message, variant: 'destructive' })
     } finally {
-      setRefreshing(false)
+      setLoading(false)
+    }
+  }
+
+  const connectInstance = async () => {
+    try {
+      setLoading(true)
+      const res = await pb.send('/backend/v1/uazapi/connect', { method: 'POST' })
+      setInstanceData(res.data)
+      toast({ title: 'Comando de conexão enviado' })
+    } catch (err: any) {
+      toast({ title: 'Erro de Conexão', description: err.message, variant: 'destructive' })
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <div className="container mx-auto py-8 max-w-4xl px-4 animate-fade-in">
-      <h1 className="text-3xl font-bold mb-6 text-foreground tracking-tight">Configurações</h1>
+    <div className="grid gap-6 md:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Credenciais Uazapi</CardTitle>
+          <CardDescription>Configure sua API de WhatsApp via Uazapi.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Domínio / URL da API</Label>
+            <Input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="https://api.uazapi.com"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Nome da Instância</Label>
+            <Input
+              value={instanceNumber}
+              onChange={(e) => setInstanceNumber(e.target.value)}
+              placeholder="minha_instancia"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Token (apikey)</Label>
+            <Input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="Seu token de acesso"
+            />
+          </div>
+          <Button onClick={saveSettings} disabled={loading} className="w-full">
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Salvar Configurações'}
+          </Button>
+        </CardContent>
+      </Card>
 
-      <Tabs defaultValue="uazapi" className="w-full">
-        <TabsList className="mb-6 bg-secondary/50">
-          <TabsTrigger value="uazapi" className="data-[state=active]:bg-background">
-            <Smartphone className="w-4 h-4 mr-2" />
-            WhatsApp (Uazapi)
-          </TabsTrigger>
-          <TabsTrigger value="general" className="data-[state=active]:bg-background">
-            <ShieldCheck className="w-4 h-4 mr-2" />
-            Geral
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="uazapi">
-          <Card className="border-border/50 shadow-sm">
-            <CardHeader className="bg-secondary/20 pb-4">
-              <CardTitle>Integração Uazapi</CardTitle>
-              <CardDescription>
-                Configure as credenciais da sua instância Uazapi para habilitar o envio e
-                recebimento de mensagens.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-6 space-y-6">
-              {status === 'unauthorized' && (
-                <Alert
-                  variant="destructive"
-                  className="animate-fade-in bg-destructive/10 text-destructive border-destructive/20"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Não Autorizado (Unauthorized)</AlertTitle>
-                  <AlertDescription>
-                    {errorMsg ||
-                      'Suas credenciais (Token / Admin Token) são inválidas ou expiraram. Verifique os dados abaixo e tente novamente.'}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {status === 'error' && (
-                <Alert
-                  variant="destructive"
-                  className="animate-fade-in bg-destructive/10 text-destructive border-destructive/20"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Erro na Instância</AlertTitle>
-                  <AlertDescription>
-                    {errorMsg || 'Ocorreu um erro ao comunicar com a API.'}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {status === 'connected' && (
-                <Alert className="bg-green-50 text-green-800 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-900/50">
-                  <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                  <AlertTitle>Conectado</AlertTitle>
-                  <AlertDescription>A instância está conectada e operante.</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="uazapi_domain">URL da API (Domain)</Label>
-                  <Input
-                    id="uazapi_domain"
-                    name="uazapi_domain"
-                    placeholder="https://iabrfimveis.uazapi.com"
-                    value={formData.uazapi_domain}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="uazapi_instance_number">Nome/Número da Instância</Label>
-                  <Input
-                    id="uazapi_instance_number"
-                    name="uazapi_instance_number"
-                    placeholder="Ex: 5548992098050"
-                    value={formData.uazapi_instance_number}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="uazapi_token">Token da Instância (API Key)</Label>
-                  <Input
-                    id="uazapi_token"
-                    name="uazapi_token"
-                    type="password"
-                    placeholder="Insira o token global ou da instância"
-                    value={formData.uazapi_token}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="uazapi_admin_token">Admin Token</Label>
-                  <Input
-                    id="uazapi_admin_token"
-                    name="uazapi_admin_token"
-                    type="password"
-                    placeholder="Token administrativo para gerenciamento"
-                    value={formData.uazapi_admin_token}
-                    onChange={handleChange}
-                  />
+      <Card>
+        <CardHeader>
+          <CardTitle>Status da Instância</CardTitle>
+          <CardDescription>Acompanhe a saúde da sua conexão Uazapi em tempo real.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-slate-50/50">
+            <div className="flex items-center gap-4">
+              <Smartphone className="h-8 w-8 text-muted-foreground" />
+              <div>
+                <p className="font-medium">Status de Conexão</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {status === 'connected' ? (
+                    <Badge className="bg-emerald-500 hover:bg-emerald-600">Conectado</Badge>
+                  ) : status === 'qr_ready' ? (
+                    <Badge variant="outline" className="text-amber-600 border-amber-600">
+                      Aguardando QR Code
+                    </Badge>
+                  ) : (
+                    <Badge variant="destructive">Desconectado</Badge>
+                  )}
                 </div>
               </div>
-            </CardContent>
-            <CardFooter className="flex flex-col sm:flex-row justify-between gap-3 pt-6 border-t bg-secondary/10">
-              <div className="flex gap-2 w-full sm:w-auto">
-                <Button
-                  variant="outline"
-                  onClick={checkStatus}
-                  disabled={refreshing || !formData.uazapi_instance_number}
-                >
-                  {refreshing ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            </div>
+          </div>
+
+          {errorMsg && (
+            <div className="flex items-start gap-3 text-sm text-red-600 bg-red-50 p-3 rounded-md">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              <p>{errorMsg}</p>
+            </div>
+          )}
+
+          {instanceData?.instance?.qrcode && status === 'qr_ready' && (
+            <div className="flex flex-col items-center justify-center space-y-4 p-4 border rounded-lg">
+              <p className="text-sm text-center font-medium">Escaneie o QR Code com seu WhatsApp</p>
+              <img
+                src={
+                  instanceData.instance.qrcode.startsWith('data:image')
+                    ? instanceData.instance.qrcode
+                    : `data:image/png;base64,${instanceData.instance.qrcode}`
+                }
+                alt="QR Code"
+                className="w-48 h-48 border rounded-lg"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={checkStatus} disabled={loading} className="flex-1">
+              <RefreshCw className="mr-2 h-4 w-4" /> Atualizar
+            </Button>
+            <Button onClick={connectInstance} disabled={loading} className="flex-1">
+              Conectar / Gerar QR
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function MetaCapiSettings() {
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(false)
+
+  const [pixelId, setPixelId] = useState(user?.meta_pixel_id || '')
+  const [capiToken, setCapiToken] = useState(user?.meta_capi_token || '')
+
+  const [status, setStatus] = useState(user?.meta_capi_status || 'disconnected')
+  const [errorMsg, setErrorMsg] = useState(user?.meta_capi_error || '')
+
+  useRealtime('users', (e) => {
+    if (e.record.id === user?.id) {
+      setStatus(e.record.meta_capi_status)
+      setErrorMsg(e.record.meta_capi_error)
+    }
+  })
+
+  const saveAndTest = async () => {
+    try {
+      setLoading(true)
+      await pb.collection('users').update(user.id, {
+        meta_pixel_id: pixelId,
+        meta_capi_token: capiToken,
+      })
+
+      await pb.send('/backend/v1/meta_capi_test_connection', {
+        method: 'POST',
+        body: JSON.stringify({ pixel_id: pixelId, access_token: capiToken }),
+      })
+      toast({ title: 'Conexão validada com sucesso!' })
+    } catch (err: any) {
+      toast({ title: 'Erro de Validação', description: err.message, variant: 'destructive' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="grid gap-6 md:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Credenciais Meta CAPI</CardTitle>
+          <CardDescription>Insira seu ID de Pixel e Token de Acesso (CAPI).</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Pixel / Dataset ID</Label>
+            <Input
+              value={pixelId}
+              onChange={(e) => setPixelId(e.target.value)}
+              placeholder="1234567890"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Token de Acesso</Label>
+            <Input
+              type="password"
+              value={capiToken}
+              onChange={(e) => setCapiToken(e.target.value)}
+              placeholder="EAAB..."
+            />
+          </div>
+          <Button onClick={saveAndTest} disabled={loading} className="w-full">
+            {loading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              'Salvar e Testar Conexão'
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Status da Integração Meta</CardTitle>
+          <CardDescription>Monitoramento em tempo real dos disparos de eventos.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-slate-50/50">
+            <div className="flex items-center gap-4">
+              <Facebook className="h-8 w-8 text-blue-600" />
+              <div>
+                <p className="font-medium">Status do Envio de Eventos</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {status === 'connected' ? (
+                    <Badge className="bg-emerald-500 hover:bg-emerald-600">Online e Validado</Badge>
+                  ) : status === 'error' ? (
+                    <Badge variant="destructive">Falha / Erro</Badge>
                   ) : (
-                    <RefreshCw className="w-4 h-4 mr-2" />
+                    <Badge variant="outline">Desconectado</Badge>
                   )}
-                  Verificar Status
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={handleStartInstance}
-                  disabled={loading || !formData.uazapi_instance_number}
-                >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Play className="w-4 h-4 mr-2" />
-                  )}
-                  Iniciar Instância
-                </Button>
+                </div>
               </div>
-              <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
-                {saving ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
+            </div>
+            {status === 'connected' && <CheckCircle2 className="h-6 w-6 text-emerald-500" />}
+          </div>
+
+          {errorMsg && (
+            <div className="flex items-start gap-3 text-sm text-red-600 bg-red-50 p-3 rounded-md">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-semibold">Erro detectado pelo Meta:</p>
+                <p>{errorMsg}</p>
+                {errorMsg.toLowerCase().includes('insufficient') && (
+                  <p className="mt-2 text-xs opacity-90">
+                    *Dica: Verifique se seus Leads/Clientes possuem E-mail ou Telefone válidos
+                    preenchidos no CRM para melhorar a qualidade da correspondência.
+                  </p>
                 )}
-                Salvar Configurações
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
+              </div>
+            </div>
+          )}
 
-        <TabsContent value="general">
-          <Card>
-            <CardHeader>
-              <CardTitle>Configurações Gerais</CardTitle>
-              <CardDescription>Opções da sua conta e preferências do sistema.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground text-sm">Mais opções em breve...</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-lg">
+            <p className="font-medium mb-1">Como funciona a integração?</p>
+            <p>
+              Os eventos são disparados automaticamente sempre que o status de um cliente ou lead é
+              atualizado no CRM, enriquecidos com e-mail, telefone e IP do usuário para contornar o
+              alerta de Parâmetros Insuficientes.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

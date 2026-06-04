@@ -27,9 +27,21 @@ routerAdd(
     const testCode = user.getString('meta_test_event_code')
 
     const data = payloads.map((p) => {
-      const userData = {}
-      if (p.em) userData.em = [p.em]
-      if (p.ph) userData.ph = [p.ph]
+      const userData = {
+        client_ip_address: e.request.remoteAddr.split(':')[0] || '192.168.1.1',
+        client_user_agent:
+          e.request.header.get('User-Agent') ||
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SkipCloud/1.0',
+      }
+
+      if (p.em) userData.em = [$security.sha256(p.em.trim().toLowerCase())]
+      if (p.ph) {
+        let cleanPhone = p.ph.replace(/\D/g, '')
+        if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+          cleanPhone = '55' + cleanPhone
+        }
+        userData.ph = [$security.sha256(cleanPhone)]
+      }
 
       return {
         event_name: eventName,

@@ -20,7 +20,6 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import Index from './pages/Index'
 import ClientesCore from './pages/ClientesCore'
 import ConfiguracoesCore from './pages/ConfiguracoesCore'
-import { MetaCapiConfig } from './pages/MetaCapiConfig'
 import Cadences from './pages/Cadences'
 import Logs from './pages/Logs'
 import NotFound from './pages/NotFound'
@@ -153,10 +152,6 @@ const router = createBrowserRouter(
           element: <ProtectedRoute />,
           children: [
             {
-              path: 'configuracoes/meta-capi',
-              element: <MetaCapiConfig />,
-            },
-            {
               element: <Layout />,
               errorElement: <GlobalError />,
               children: [
@@ -175,10 +170,6 @@ const router = createBrowserRouter(
                 {
                   path: 'logs',
                   element: <Logs />,
-                },
-                {
-                  path: 'configuracoes',
-                  element: <ConfiguracoesCore />,
                 },
                 {
                   path: 'configuracoes/*',
