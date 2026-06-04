@@ -9,8 +9,8 @@ routerAdd(
     let rawDomain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
 
     // Sanitize domain to prevent "URL that includes credentials" browser/fetch errors
-    // Replace @ with - if a user mistakenly inputs it like brfimoveis@gmailcom.uazapi.com
-    let domain = rawDomain.replace(/@/g, '-')
+    // Strip HTTP Basic Auth credentials if present in the URL
+    let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
     const token = user.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
@@ -47,13 +47,14 @@ routerAdd(
         }
 
         if (instanceData) {
+          // Explicitly look for status: "connected" as per AC, with fallbacks for robust detection
           const st = instanceData.status || instanceData.state || ''
           const isConn =
             st === 'connected' ||
             st === 'open' ||
             st === 'loggedIn' ||
             instanceData.connected === true ||
-            instanceData.status?.loggedIn
+            instanceData.status?.loggedIn === true
 
           if (isConn) {
             statusStr = 'connected'
@@ -74,12 +75,22 @@ routerAdd(
               errorReason = String(instanceData.lastDisconnectReason)
             } else if (instanceData.message && instanceData.message !== 'Not Found') {
               errorReason = String(instanceData.message)
+            } else if (data?.message && data.message !== 'Not Found') {
+              errorReason = String(data.message)
             }
           }
         }
 
         if (!instanceData && res.statusCode === 404) {
           statusStr = 'qr_ready'
+        }
+
+        let profileName = ''
+        let currentPresence = ''
+
+        if (instanceData) {
+          profileName = instanceData.profileName || instanceData.pushName || ''
+          currentPresence = instanceData.currentPresence || ''
         }
 
         if (
@@ -92,7 +103,16 @@ routerAdd(
           $app.saveNoValidate(user)
         }
 
-        return e.json(200, { success: true, status: statusStr, data })
+        return e.json(200, {
+          success: true,
+          status: statusStr,
+          data: {
+            profileName,
+            currentPresence,
+            lastDisconnectReason: errorReason,
+            raw: data,
+          },
+        })
       }
 
       // Prevent throwing 401/403 to frontend directly

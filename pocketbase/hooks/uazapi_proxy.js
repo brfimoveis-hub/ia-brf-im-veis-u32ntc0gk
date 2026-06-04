@@ -8,10 +8,13 @@ routerAdd(
     const method = body.method || 'GET'
     const payload = body.payload || null
 
-    let domain = body.domain || user?.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
+    let rawDomain =
+      body.domain || user?.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
     const apikey =
       body.apikey || user?.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
 
+    // Strip credentials from URL to prevent proxy issues
+    let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
     if (domain.endsWith('/api')) domain = domain.slice(0, -4)
     if (domain.endsWith('/v1')) domain = domain.slice(0, -3)

@@ -66,7 +66,13 @@ export default function Dashboard() {
     if (user) {
       pb.collection('users')
         .getOne(user.id)
-        .then((res) => setCurrentUser(res))
+        .then((res) => {
+          setCurrentUser((prev: any) => ({
+            ...res,
+            profileName: prev?.profileName,
+            currentPresence: prev?.currentPresence,
+          }))
+        })
         .catch(console.error)
     }
   })
@@ -144,7 +150,7 @@ export default function Dashboard() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground truncate mt-1">
-              Instância: {currentUser?.uazapi_instance_number || 'Não configurada'}
+              Instância: {currentUser?.uazapi_instance_number || '554892098050'}
             </p>
             {currentUser?.profileName && currentUser.uazapi_status === 'connected' && (
               <p className="text-xs text-muted-foreground truncate mt-0.5">

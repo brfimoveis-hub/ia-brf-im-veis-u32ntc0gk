@@ -33,7 +33,11 @@ export default function Index() {
       setCustomers(custs)
       setConversations(convs.items)
       setAiConversations(aiConvs)
-      setCurrentUser(usr)
+      setCurrentUser((prev: any) => ({
+        ...usr,
+        profileName: prev?.profileName,
+        currentPresence: prev?.currentPresence,
+      }))
     } catch (error) {
       console.error(error)
     } finally {
@@ -52,8 +56,7 @@ export default function Index() {
             setCurrentUser((prev: any) => ({
               ...prev,
               uazapi_status: res.status,
-              uazapi_error:
-                res.data.lastDisconnectReason || res.data.message || prev?.uazapi_error || '',
+              uazapi_error: res.data.lastDisconnectReason || res.data.message || '',
               profileName: res.data.profileName || prev?.profileName,
               currentPresence: res.data.currentPresence || prev?.currentPresence,
             }))
