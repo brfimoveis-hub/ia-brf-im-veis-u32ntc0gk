@@ -11,7 +11,9 @@ routerAdd(
     let rawDomain =
       body.domain || user?.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
     const apikey =
-      body.apikey || user?.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
+      body.apikey ||
+      user?.getString('uazapi_token') ||
+      'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
 
     // Strip credentials from URL to prevent proxy issues
     let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')

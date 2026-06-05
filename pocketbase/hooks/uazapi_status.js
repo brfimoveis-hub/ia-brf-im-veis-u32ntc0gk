@@ -13,7 +13,8 @@ routerAdd(
     let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
-    const token = user.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
+    const token =
+      user.getString('uazapi_token') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
 
     const headers = {
       'Content-Type': 'application/json',
@@ -110,7 +111,7 @@ routerAdd(
         if (!instanceData && res.statusCode === 404) {
           statusStr = 'disconnected'
           if (!errorReason) {
-            errorReason = 'Not Found'
+            errorReason = data?.message || data?.error || 'Instância não encontrada'
           }
         }
 
