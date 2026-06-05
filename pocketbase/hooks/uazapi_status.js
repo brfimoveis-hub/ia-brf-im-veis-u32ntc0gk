@@ -38,37 +38,62 @@ routerAdd(
       }
     }
 
-    try {
-      let res
-      try {
-        res = $http.send({
-          url: `${domain}/instance/status/${instance}`,
-          method: 'GET',
-          headers: headers,
-          timeout: 10,
-        })
-      } catch (err) {
-        res = $http.send({
-          url: `${domain}/instance/status/${instance}`,
-          method: 'GET',
-          headers: headers,
-          timeout: 10,
-        })
-      }
-
-      if (res.statusCode === 404) {
+    const fetchWithRetry = (reqUrl) => {
+      let lastErr = null
+      let response = null
+      for (let i = 0; i < 3; i++) {
         try {
-          const apiV1Res = $http.send({
-            url: `${domain}/api/v1/instance/status/${instance}`,
+          response = $http.send({
+            url: reqUrl,
             method: 'GET',
             headers: headers,
-            timeout: 10,
+            timeout: 15,
           })
-          if (apiV1Res.statusCode !== 404) {
-            res = apiV1Res
+          if (
+            response &&
+            response.statusCode !== 502 &&
+            response.statusCode !== 503 &&
+            response.statusCode !== 504
+          ) {
+            return response
           }
+        } catch (err) {
+          lastErr = err
+        }
+      }
+      if (response) return response
+      throw lastErr || new Error('Request failed after retries')
+    }
+
+    try {
+      let res
+
+      try {
+        res = fetchWithRetry(`${domain}/${instance}/instance/status`)
+      } catch (err) {}
+
+      if (res && res.statusCode === 404) {
+        try {
+          const res2 = fetchWithRetry(`${domain}/instance/status/${instance}`)
+          if (res2.statusCode !== 404) res = res2
         } catch (err) {}
       }
+
+      if (res && res.statusCode === 404) {
+        try {
+          const res3 = fetchWithRetry(`${domain}/api/v1/instance/status/${instance}`)
+          if (res3.statusCode !== 404) res = res3
+        } catch (err) {}
+      }
+
+      if (res && res.statusCode === 404) {
+        try {
+          const res4 = fetchWithRetry(`${domain}/api/v1/${instance}/instance/status`)
+          if (res4.statusCode !== 404) res = res4
+        } catch (err) {}
+      }
+
+      if (!res) throw new Error('Connection failed')
 
       let data = {}
       try {
@@ -158,7 +183,11 @@ routerAdd(
         if (!instanceData && res.statusCode === 404) {
           statusStr = 'error'
           if (!errorReason) {
-            errorReason = data?.message || data?.error || 'Instância não encontrada'
+            errorReason =
+              data?.message ||
+              data?.error ||
+              JSON.stringify(data) ||
+              `Instância não encontrada (404)`
           }
         }
 
@@ -184,11 +213,15 @@ routerAdd(
         })
       }
 
-      const errMsg = data?.message || data?.error || `Erro da API Uazapi (${res.statusCode})`
+      const errMsg =
+        data?.message ||
+        data?.error ||
+        JSON.stringify(data) ||
+        `Erro da API Uazapi (Status: ${res.statusCode})`
       updateUserStatus('error', errMsg)
 
       if (res.statusCode === 401 || res.statusCode === 403) {
-        throw new BadRequestError('Credenciais inválidas na API Uazapi. Verifique seu Token.')
+        throw new BadRequestError(`Credenciais inválidas. Resposta: ${errMsg}`)
       }
 
       throw new BadRequestError(errMsg)

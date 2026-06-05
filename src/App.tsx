@@ -172,6 +172,10 @@ const router = createBrowserRouter(
                   element: <Logs />,
                 },
                 {
+                  path: 'configuracoes',
+                  element: <ConfiguracoesCore />,
+                },
+                {
                   path: 'configuracoes/*',
                   element: <ConfiguracoesCore />,
                 },

@@ -29,37 +29,61 @@ routerAdd(
       Authorization: token.toLowerCase().startsWith('bearer ') ? token : 'Bearer ' + token,
     }
 
+    const fetchWithRetry = (reqUrl) => {
+      let lastErr = null
+      let response = null
+      for (let i = 0; i < 3; i++) {
+        try {
+          response = $http.send({
+            url: reqUrl,
+            method: 'GET',
+            headers: headers,
+            timeout: 15,
+          })
+          if (
+            response &&
+            response.statusCode !== 502 &&
+            response.statusCode !== 503 &&
+            response.statusCode !== 504
+          ) {
+            return response
+          }
+        } catch (err) {
+          lastErr = err
+        }
+      }
+      if (response) return response
+      throw lastErr || new Error('Request failed after retries')
+    }
+
     let stateRes = null
     try {
       try {
-        stateRes = $http.send({
-          url: `${domain}/instance/connectionState/${instance}`,
-          method: 'GET',
-          headers: headers,
-          timeout: 10,
-        })
-      } catch (err) {
-        stateRes = $http.send({
-          url: `${domain}/instance/connectionState/${instance}`,
-          method: 'GET',
-          headers: headers,
-          timeout: 10,
-        })
-      }
+        stateRes = fetchWithRetry(`${domain}/${instance}/instance/connectionState`)
+      } catch (err) {}
 
-      if (stateRes.statusCode === 404) {
+      if (stateRes && stateRes.statusCode === 404) {
         try {
-          const apiV1Res = $http.send({
-            url: `${domain}/api/v1/instance/connectionState/${instance}`,
-            method: 'GET',
-            headers: headers,
-            timeout: 10,
-          })
-          if (apiV1Res.statusCode !== 404) {
-            stateRes = apiV1Res
-          }
+          const res2 = fetchWithRetry(`${domain}/instance/connectionState/${instance}`)
+          if (res2.statusCode !== 404) stateRes = res2
         } catch (err) {}
       }
+
+      if (stateRes && stateRes.statusCode === 404) {
+        try {
+          const res3 = fetchWithRetry(`${domain}/api/v1/instance/connectionState/${instance}`)
+          if (res3.statusCode !== 404) stateRes = res3
+        } catch (err) {}
+      }
+
+      if (stateRes && stateRes.statusCode === 404) {
+        try {
+          const res4 = fetchWithRetry(`${domain}/api/v1/${instance}/instance/connectionState`)
+          if (res4.statusCode !== 404) stateRes = res4
+        } catch (err) {}
+      }
+
+      if (!stateRes) throw new Error('Connection failed')
     } catch (err) {
       return e.json(502, {
         connection_step: 'DNS/Domain or Timeout',
@@ -91,7 +115,11 @@ routerAdd(
         statusStr = 'qr_ready'
       }
     } else {
-      errorReason = data?.message || data?.error || `Erro da API (${stateRes.statusCode})`
+      errorReason =
+        data?.message ||
+        data?.error ||
+        JSON.stringify(data) ||
+        `Erro da API (Status: ${stateRes.statusCode})`
     }
 
     if (

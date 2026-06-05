@@ -23,12 +23,18 @@ routerAdd(
     let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
-    let url = domain
-    if (endpoint.startsWith('/')) {
-      url += endpoint
-    } else {
-      url += '/' + endpoint
+    const instance = (user?.getString('uazapi_instance_number') || '554892098050').trim()
+
+    let baseEndpoint = endpoint.replace(/^\//, '')
+    let prependedEndpoint = baseEndpoint
+    let appendedEndpoint = baseEndpoint
+
+    if (!baseEndpoint.includes(instance)) {
+      prependedEndpoint = `${instance}/${baseEndpoint}`
+      appendedEndpoint = `${baseEndpoint}/${instance}`
     }
+
+    let url = domain + '/' + prependedEndpoint
 
     const headers = {
       'Content-Type': 'application/json',
@@ -41,47 +47,71 @@ routerAdd(
       headers['AdminToken'] = apikey
     }
 
-    let res = null
-    let error = null
-
-    try {
-      try {
-        res = $http.send({
-          url: url,
-          method: method,
-          headers: headers,
-          body: payload ? JSON.stringify(payload) : undefined,
-          timeout: 15,
-        })
-      } catch (err) {
-        res = $http.send({
-          url: url,
-          method: method,
-          headers: headers,
-          body: payload ? JSON.stringify(payload) : undefined,
-          timeout: 15,
-        })
-      }
-
-      if (res && res.statusCode === 404) {
-        // Try to inject /api/v1 prefix if missing
-        let fallbackUrl = domain + '/api/v1'
-        if (endpoint.startsWith('/')) {
-          fallbackUrl += endpoint
-        } else {
-          fallbackUrl += '/' + endpoint
-        }
-
+    const fetchWithRetry = (reqUrl) => {
+      let lastErr = null
+      let response = null
+      for (let i = 0; i < 3; i++) {
         try {
-          const apiV1Res = $http.send({
-            url: fallbackUrl,
+          response = $http.send({
+            url: reqUrl,
             method: method,
             headers: headers,
             body: payload ? JSON.stringify(payload) : undefined,
             timeout: 15,
           })
+          if (
+            response &&
+            response.statusCode !== 502 &&
+            response.statusCode !== 503 &&
+            response.statusCode !== 504 &&
+            response.statusCode !== 404
+          ) {
+            return response
+          }
+        } catch (err) {
+          lastErr = err
+        }
+      }
+      if (response) return response
+      throw lastErr || new Error('Request failed after retries')
+    }
+
+    let res = null
+    let error = null
+
+    try {
+      try {
+        res = fetchWithRetry(url)
+      } catch (err) {
+        error = err
+      }
+
+      if (res && res.statusCode === 404) {
+        let fallbackUrl = domain + '/api/v1/' + prependedEndpoint
+        try {
+          const apiV1Res = fetchWithRetry(fallbackUrl)
           if (apiV1Res.statusCode !== 404) {
             res = apiV1Res
+          }
+        } catch (err) {}
+      }
+
+      if (res && res.statusCode === 404) {
+        let fallbackUrl2 = domain + '/' + appendedEndpoint
+        try {
+          const apiV1Res2 = fetchWithRetry(fallbackUrl2)
+          if (apiV1Res2.statusCode !== 404) {
+            res = apiV1Res2
+          }
+        } catch (err) {}
+      }
+
+      if (res && res.statusCode === 404) {
+        let fallbackUrl3 = domain + '/api/v1/' + appendedEndpoint
+        try {
+          const apiV1Res3 = fetchWithRetry(fallbackUrl3)
+          if (apiV1Res3.statusCode !== 404) {
+            res = apiV1Res3
           }
         } catch (err) {}
       }

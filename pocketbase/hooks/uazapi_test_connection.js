@@ -28,38 +28,62 @@ routerAdd(
       headers['AdminToken'] = adminToken
     }
 
-    try {
-      let res
-      const reqPath = '/instance/connectionState/' + instance
-      try {
-        res = $http.send({
-          url: domain + reqPath,
-          method: 'GET',
-          headers: headers,
-          timeout: 15,
-        })
-      } catch (err) {
-        res = $http.send({
-          url: domain + reqPath,
-          method: 'GET',
-          headers: headers,
-          timeout: 15,
-        })
-      }
-
-      if (res.statusCode === 404) {
+    const fetchWithRetry = (reqUrl) => {
+      let lastErr = null
+      let response = null
+      for (let i = 0; i < 3; i++) {
         try {
-          const fallbackRes = $http.send({
-            url: domain + '/api/v1' + reqPath,
+          response = $http.send({
+            url: reqUrl,
             method: 'GET',
             headers: headers,
             timeout: 15,
           })
-          if (fallbackRes.statusCode !== 404) {
-            res = fallbackRes
+          if (
+            response &&
+            response.statusCode !== 502 &&
+            response.statusCode !== 503 &&
+            response.statusCode !== 504
+          ) {
+            return response
           }
+        } catch (err) {
+          lastErr = err
+        }
+      }
+      if (response) return response
+      throw lastErr || new Error('Request failed after retries')
+    }
+
+    try {
+      let res
+
+      try {
+        res = fetchWithRetry(domain + '/' + instance + '/instance/connectionState')
+      } catch (err) {}
+
+      if (res && res.statusCode === 404) {
+        try {
+          const res2 = fetchWithRetry(domain + '/instance/connectionState/' + instance)
+          if (res2.statusCode !== 404) res = res2
         } catch (err) {}
       }
+
+      if (res && res.statusCode === 404) {
+        try {
+          const res3 = fetchWithRetry(domain + '/api/v1/instance/connectionState/' + instance)
+          if (res3.statusCode !== 404) res = res3
+        } catch (err) {}
+      }
+
+      if (res && res.statusCode === 404) {
+        try {
+          const res4 = fetchWithRetry(domain + '/api/v1/' + instance + '/instance/connectionState')
+          if (res4.statusCode !== 404) res = res4
+        } catch (err) {}
+      }
+
+      if (!res) throw new Error('Connection failed')
 
       // Prevent sending 401/403 as HTTP response status from our proxy API.
       // If we return 401, the PocketBase JS SDK auto-clears the auth token,
@@ -103,10 +127,12 @@ routerAdd(
             domain,
             'payload',
             JSON.stringify(body),
+            'response',
+            JSON.stringify(res.json || {}),
           )
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos para o domínio configurado.`,
+          error: `Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos. Detalhe: ${JSON.stringify(res.json || {})}`,
         })
       }
 
