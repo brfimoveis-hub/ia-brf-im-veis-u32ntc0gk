@@ -38,6 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAuth } from '@/hooks/use-auth'
@@ -84,6 +85,7 @@ export function DiagnosticCenter() {
   const [selectedPayloadLog, setSelectedPayloadLog] = useState<SystemLog | null>(null)
 
   const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false)
+  const [dialogType, setDialogType] = useState<'meta_capi' | 'uazapi'>('meta_capi')
   const [newTokenValue, setNewTokenValue] = useState('')
   const [isUpdatingToken, setIsUpdatingToken] = useState(false)
 
@@ -659,9 +661,27 @@ export function DiagnosticCenter() {
                             size="sm"
                             variant="default"
                             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                            onClick={() => setIsTokenDialogOpen(true)}
+                            onClick={() => {
+                              setDialogType('meta_capi')
+                              setNewTokenValue('')
+                              setIsTokenDialogOpen(true)
+                            }}
                           >
                             Atualizar Token
+                          </Button>
+                        )}
+                        {res.status === 'error' && res.name.includes('Uazapi') && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => {
+                              setDialogType('uazapi')
+                              setNewTokenValue('')
+                              setIsTokenDialogOpen(true)
+                            }}
+                          >
+                            Re-autenticar
                           </Button>
                         )}
                         <Button
@@ -689,18 +709,23 @@ export function DiagnosticCenter() {
           <Dialog open={isTokenDialogOpen} onOpenChange={setIsTokenDialogOpen}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Atualizar Token Meta CAPI</DialogTitle>
+                <DialogTitle>
+                  {dialogType === 'meta_capi'
+                    ? 'Atualizar Token Meta CAPI'
+                    : 'Atualizar Credenciais Uazapi'}
+                </DialogTitle>
                 <DialogDescription>
-                  Insira o novo token de acesso gerado no painel do Meta Business para restaurar a
-                  conexão.
+                  {dialogType === 'meta_capi'
+                    ? 'Insira o novo token de acesso gerado no painel do Meta Business para restaurar a conexão.'
+                    : 'Insira o novo token de acesso (WhatsApp Access Token) para restaurar a conexão Uazapi.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="meta_token">Novo Token de Acesso</Label>
+                  <Label htmlFor="token_input">Novo Token de Acesso</Label>
                   <Input
-                    id="meta_token"
-                    placeholder="EAAI..."
+                    id="token_input"
+                    placeholder={dialogType === 'meta_capi' ? 'EAAI...' : 'EAAL...'}
                     value={newTokenValue}
                     onChange={(e) => setNewTokenValue(e.target.value)}
                   />
@@ -716,11 +741,20 @@ export function DiagnosticCenter() {
                     if (!user?.id) return
                     setIsUpdatingToken(true)
                     try {
-                      await pb.collection('users').update(user.id, {
-                        meta_capi_token: newTokenValue.trim(),
-                        meta_capi_status: 'connected',
-                        meta_token_status: 'valid',
-                      })
+                      if (dialogType === 'meta_capi') {
+                        await pb.collection('users').update(user.id, {
+                          meta_capi_token: newTokenValue.trim(),
+                          meta_capi_status: 'connected',
+                          meta_token_status: 'valid',
+                        })
+                      } else {
+                        await pb.collection('users').update(user.id, {
+                          meta_whatsapp_access_token: newTokenValue.trim(),
+                          meta_whatsapp_status: 'connected',
+                          uazapi_status: 'connected',
+                        })
+                      }
+
                       toast({
                         title: 'Token atualizado',
                         description:
