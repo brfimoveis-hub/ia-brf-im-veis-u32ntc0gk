@@ -26,20 +26,28 @@ routerAdd(
     const instance = (user?.getString('uazapi_instance_number') || '554892098050').trim()
 
     let baseEndpoint = endpoint.replace(/^\//, '')
+
+    let url = ''
     let prependedEndpoint = baseEndpoint
     let appendedEndpoint = baseEndpoint
 
-    if (!baseEndpoint.includes(instance)) {
-      prependedEndpoint = `${instance}/${baseEndpoint}`
-      appendedEndpoint = `${baseEndpoint}/${instance}`
+    if (baseEndpoint === 'messages/send' || baseEndpoint === 'api/v1/messages/send') {
+      url = domain + '/api/v1/messages/send'
+    } else if (baseEndpoint === 'webhook' || baseEndpoint === 'api/v1/webhook') {
+      url = domain + '/api/v1/webhook'
+    } else {
+      if (!baseEndpoint.includes(instance)) {
+        prependedEndpoint = `${instance}/${baseEndpoint}`
+        appendedEndpoint = `${baseEndpoint}/${instance}`
+      }
+      url = domain + '/' + prependedEndpoint
     }
-
-    let url = domain + '/' + prependedEndpoint
 
     const headers = {
       'Content-Type': 'application/json',
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      instance: instance,
     }
     if (apikey) {
       headers['apikey'] = apikey
