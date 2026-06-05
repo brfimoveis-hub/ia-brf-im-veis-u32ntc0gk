@@ -42,6 +42,20 @@ routerAdd(
       }
     }
 
+    const logConnection = (status, details, error = null) => {
+      try {
+        const col = $app.findCollectionByNameOrId('system_logs')
+        const log = new Record(col)
+        log.set('type', 'uazapi_connection')
+        log.set(
+          'message',
+          error ? `Status check failed: ${error}` : `Status check success: ${status}`,
+        )
+        log.set('details', details)
+        $app.save(log)
+      } catch (_) {}
+    }
+
     const fetchWithRetry = (reqUrl) => {
       let lastErr = null
       let response = null
@@ -204,6 +218,8 @@ routerAdd(
 
         updateUserStatus(statusStr, errorReason)
 
+        logConnection(statusStr, { profileName, currentPresence, errorReason, raw: data })
+
         return e.json(200, {
           success: true,
           status: statusStr,
@@ -222,6 +238,7 @@ routerAdd(
         JSON.stringify(data) ||
         `Erro da API Uazapi (Status: ${res.statusCode})`
       updateUserStatus('error', errMsg)
+      logConnection('error', data, errMsg)
 
       if (res.statusCode === 401 || res.statusCode === 403) {
         throw new BadRequestError(`Credenciais inválidas. Resposta: ${errMsg}`)
@@ -230,6 +247,7 @@ routerAdd(
       throw new BadRequestError(errMsg)
     } catch (err) {
       updateUserStatus('error', err.message)
+      logConnection('error', {}, err.message)
       throw new BadRequestError(`Falha na verificação de status: ${err.message}`)
     }
   },

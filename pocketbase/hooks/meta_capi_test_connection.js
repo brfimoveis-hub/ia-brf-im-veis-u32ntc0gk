@@ -16,6 +16,21 @@ routerAdd(
       }
     }
 
+    const logConnection = (status, details, error = null) => {
+      try {
+        const col = $app.findCollectionByNameOrId('system_logs')
+        const log = new Record(col)
+        log.set('type', 'meta_capi_connection')
+        log.set(
+          'message',
+          error ? `Test connection failed: ${error}` : `Test connection success: ${status}`,
+        )
+        log.set('details', details)
+        log.set('payload', body)
+        $app.save(log)
+      } catch (_) {}
+    }
+
     const setErrorState = (msg) => {
       if (user) {
         user.set('meta_capi_status', 'error')
@@ -50,6 +65,7 @@ routerAdd(
     if (missingPerms.length > 0) {
       const msg = `Permissões insuficientes. Faltam: ${missingPerms.join(', ')}`
       setErrorState(msg)
+      logConnection('error', { perms: grantedPerms }, msg)
       throw new BadRequestError(msg)
     }
 
@@ -101,11 +117,13 @@ routerAdd(
           $app.logger().error('Failed to sync CAPI test success to user', 'err', err.message)
         }
       }
+      logConnection('connected', res.json)
       return e.json(200, { success: true, data: res.json })
     }
 
     const errorMsg = res.json?.error?.message || `Erro da Meta API (Status ${res.statusCode})`
     setErrorState(errorMsg)
+    logConnection('error', res.json, errorMsg)
 
     // Return the full Meta error to the client so it can identify the field
     return e.json(res.statusCode, res.json || { error: { message: errorMsg } })

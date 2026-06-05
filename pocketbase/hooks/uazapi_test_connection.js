@@ -33,6 +33,21 @@ routerAdd(
       headers['AdminToken'] = adminToken
     }
 
+    const logConnection = (status, details, error = null) => {
+      try {
+        const col = $app.findCollectionByNameOrId('system_logs')
+        const log = new Record(col)
+        log.set('type', 'uazapi_connection')
+        log.set(
+          'message',
+          error ? `Test connection failed: ${error}` : `Test connection success: ${status}`,
+        )
+        log.set('details', details)
+        log.set('payload', body)
+        $app.save(log)
+      } catch (_) {}
+    }
+
     const fetchWithRetry = (reqUrl) => {
       let lastErr = null
       let response = null
@@ -115,6 +130,8 @@ routerAdd(
             uazapiErrorMsg,
           )
 
+        logConnection('error', res.json, customErrorMsg)
+
         return e.json(400, {
           message: 'Unauthorized at target',
           error: customErrorMsg,
@@ -135,6 +152,8 @@ routerAdd(
             'response',
             JSON.stringify(res.json || {}),
           )
+
+        logConnection('error', res.json, 'Instância não encontrada (404)')
         return e.json(400, {
           message: 'Instance not found',
           error: `Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos. Detalhe: ${JSON.stringify(res.json || {})}`,
@@ -142,12 +161,15 @@ routerAdd(
       }
 
       if (res.statusCode === 504) {
+        logConnection('error', res.json, 'Timeout (504)')
         return e.json(504, { message: 'Timeout' })
       }
 
+      logConnection(res.statusCode, res.json || {})
       return e.json(res.statusCode, res.json || { statusCode: res.statusCode })
     } catch (err) {
       const msg = err.message.toLowerCase()
+      logConnection('error', {}, err.message)
       if (msg.includes('timeout') || msg.includes('deadline exceeded')) {
         return e.json(504, { message: 'Timeout' })
       }
