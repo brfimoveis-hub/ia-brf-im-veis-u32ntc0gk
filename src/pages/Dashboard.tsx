@@ -196,7 +196,7 @@ export default function Dashboard() {
                 </p>
               </div>
               <Button asChild variant="outline" size="sm">
-                <Link to="/configuracoes">
+                <Link to="/configuracoes?tab=uazapi">
                   Configurar Uazapi <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
