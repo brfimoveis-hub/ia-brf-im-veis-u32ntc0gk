@@ -8,3 +8,15 @@ export const getCadences = async () => {
     return []
   }
 }
+
+export const createCadence = async (data: any) => {
+  return await pb.collection('cadences').create(data)
+}
+
+export const updateCadence = async (id: string, data: any) => {
+  return await pb.collection('cadences').update(id, data)
+}
+
+export const deleteCadence = async (id: string) => {
+  return await pb.collection('cadences').delete(id)
+}
