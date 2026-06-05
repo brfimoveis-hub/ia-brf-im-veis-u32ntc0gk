@@ -245,31 +245,29 @@ export function DiagnosticCenter() {
       setProgress(25)
       let uazapiStatus = 'error'
       let uazapiMessage = 'Telefone de campanha Uazapi ausente. A ingestão automática pode falhar.'
-      const hasPhone = !!user?.meta_campaign_phone
+      const hasPhone = !!user?.uazapi_instance_number
 
       if (hasPhone) {
         try {
-          const res = await pb.send('/backend/v1/uazapi/diagnostics', {
+          const res = await pb.send('/backend/v1/uazapi/status', {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
           })
-          if (res.status_code >= 200 && res.status_code < 300) {
+          if (res.status === 'online') {
             uazapiStatus = 'success'
-            uazapiMessage = `Conexão Uazapi ativa e operante no número ${user.meta_campaign_phone}. Fluxo de leads ininterrupto.`
+            uazapiMessage = `Conexão Uazapi ativa e operante no número ${user.uazapi_instance_number}. Fluxo de leads ininterrupto.`
           } else {
-            throw new Error(JSON.stringify(res.api_response))
+            throw new Error(res.data?.lastDisconnectReason || res.status || 'Falha de conexão')
           }
         } catch (e: any) {
           uazapiStatus = 'error'
-          const errMsg = e.response?.api_response
-            ? JSON.stringify(e.response.api_response)
-            : e.response?.message || e.message || 'Erro desconhecido'
-          uazapiMessage = `Falha na integridade da conexão Uazapi para o número ${user.meta_campaign_phone}: Passo: ${e.response?.connection_step || 'Desconhecido'} - ${errMsg}`
+          const errMsg = e.response?.message || e.message || 'Erro desconhecido'
+          uazapiMessage = `Falha na integridade da conexão Uazapi para o número ${user.uazapi_instance_number}: - ${errMsg}`
 
           await createSystemLog({
             type: 'uazapi_error',
             message: `Falha na verificação de integridade do Uazapi`,
-            details: { error: errMsg, phone: user.meta_campaign_phone },
+            details: { error: errMsg, phone: user.uazapi_instance_number },
             payload: e.response || {},
           }).catch(() => {})
         }
@@ -286,7 +284,7 @@ export function DiagnosticCenter() {
         name: 'Integridade da Conexão Uazapi',
         status: uazapiStatus,
         message: uazapiMessage,
-        payload: { meta_campaign_phone: user?.meta_campaign_phone, listening: hasPhone },
+        payload: { uazapi_instance_number: user?.uazapi_instance_number, listening: hasPhone },
       })
       setResults([...newResults])
 
@@ -354,7 +352,7 @@ export function DiagnosticCenter() {
         let lastErrorMsg = ''
         for (let i = 0; i < testCount; i++) {
           try {
-            await pb.send('/backend/v1/meta-test-connection', {
+            await pb.send('/backend/v1/meta_capi_test_connection', {
               method: 'POST',
               body: JSON.stringify({}),
               headers: { 'Content-Type': 'application/json' },

@@ -32,7 +32,7 @@ routerAdd(
       throw new BadRequestError(msg)
     }
 
-    const permUrl = `https://graph.facebook.com/v21.0/me/permissions?access_token=${accessToken}`
+    const permUrl = `https://graph.facebook.com/v17.0/me/permissions?access_token=${accessToken}`
     const permRes = $http.send({ url: permUrl, method: 'GET', timeout: 15 })
 
     if (permRes.statusCode >= 400) {
@@ -55,7 +55,7 @@ routerAdd(
 
     $app.logger().info('CAPI Test Info', 'pixelId', pixelId, 'businessId', businessId)
 
-    const url = `https://graph.facebook.com/v21.0/${pixelId}/events`
+    const url = `https://graph.facebook.com/v17.0/${pixelId}/events`
 
     const payload = {
       data: [

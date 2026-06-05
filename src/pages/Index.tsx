@@ -1,119 +1,69 @@
-import { useEffect, useState } from 'react'
-import { useAuth } from '@/hooks/use-auth'
-import { useRealtime } from '@/hooks/use-realtime'
-import { KPICards } from '@/components/dashboard/kpi-cards'
-import { PipelineChart } from '@/components/dashboard/pipeline-chart'
-import { ActivityMonitor } from '@/components/dashboard/activity-monitor'
-import { IntegrationHealth } from '@/components/dashboard/integration-health'
-import { QuickActions } from '@/components/dashboard/quick-actions'
-import { getDashboardCustomers } from '@/services/customers'
-import { getRecentConversations, getAiConversations } from '@/services/conversations'
-import { getCurrentUser } from '@/services/users'
-import { Loader2 } from 'lucide-react'
-import pb from '@/lib/pocketbase/client'
-import { toast } from 'sonner'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Activity, Users, Settings, Database } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 export default function Index() {
-  const { user } = useAuth()
-  const [loading, setLoading] = useState(true)
-  const [customers, setCustomers] = useState<any[]>([])
-  const [conversations, setConversations] = useState<any[]>([])
-  const [aiConversations, setAiConversations] = useState<any[]>([])
-  const [currentUser, setCurrentUser] = useState<any>(user)
-
-  const loadData = async () => {
-    if (!user) return
-    try {
-      const [custs, convs, aiConvs, usr] = await Promise.all([
-        getDashboardCustomers(),
-        getRecentConversations(),
-        getAiConversations(),
-        getCurrentUser(user.id),
-      ])
-      setCustomers(custs)
-      setConversations(convs.items)
-      setAiConversations(aiConvs)
-      setCurrentUser((prev: any) => ({
-        ...usr,
-        profileName: prev?.profileName,
-        currentPresence: prev?.currentPresence,
-      }))
-    } catch (error) {
-      console.error(error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadData()
-
-    // Automatic Connection Health Check immediately upon page load
-    if (user) {
-      pb.send('/backend/v1/uazapi/status', { method: 'GET' })
-        .then((res) => {
-          if (res?.data) {
-            setCurrentUser((prev: any) => ({
-              ...prev,
-              uazapi_status: res.status,
-              uazapi_error: res.data.lastDisconnectReason || res.data.message || '',
-              profileName: res.data.profileName || prev?.profileName,
-              currentPresence: res.data.currentPresence || prev?.currentPresence,
-            }))
-          }
-        })
-        .catch((err) => {
-          console.error('Uazapi health check failed:', err)
-          const errorMsg =
-            err?.response?.message || err?.message || 'Falha ao verificar conexão com o Uazapi.'
-          toast.error('Erro de Conexão Uazapi', {
-            description: errorMsg,
-          })
-        })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
-
-  useRealtime('customers', () => {
-    loadData()
-  })
-  useRealtime('conversations', () => {
-    loadData()
-  })
-  useRealtime('users', () => {
-    loadData()
-  })
-
-  if (loading) {
-    return (
-      <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
-
   return (
-    <div className="container mx-auto py-8 px-4 space-y-8 animate-fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Visão Geral</h1>
-          <p className="text-muted-foreground mt-1">
-            Acompanhe seu funil de vendas, IA e saúde das integrações em tempo real.
-          </p>
-        </div>
-        <QuickActions />
+    <div className="container mx-auto py-8 px-4 max-w-7xl space-y-6 animate-in fade-in duration-500">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard CRM BRF</h1>
+        <p className="text-muted-foreground mt-2">
+          Visão geral do sistema, integrações e leads recentes.
+        </p>
       </div>
 
-      <KPICards customers={customers} aiConversations={aiConversations} />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Link to="/configuracoes">
+          <Card className="hover:bg-muted/50 transition-colors border-border shadow-sm cursor-pointer h-full">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Saúde do Sistema</CardTitle>
+              <Activity className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">Diagnósticos</div>
+              <p className="text-xs text-muted-foreground mt-1">Verificar Meta & Uazapi</p>
+            </CardContent>
+          </Card>
+        </Link>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6">
-        <div className="lg:col-span-4 h-full">
-          <PipelineChart customers={customers} />
-        </div>
-        <div className="lg:col-span-3 space-y-6">
-          <IntegrationHealth user={currentUser} />
-          <ActivityMonitor conversations={conversations} />
-        </div>
+        <Link to="/clientes">
+          <Card className="hover:bg-muted/50 transition-colors border-border shadow-sm cursor-pointer h-full">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Leads</CardTitle>
+              <Users className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">Gerenciar</div>
+              <p className="text-xs text-muted-foreground mt-1">Acessar CRM e contatos</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/cadencias">
+          <Card className="hover:bg-muted/50 transition-colors border-border shadow-sm cursor-pointer h-full">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Cadências</CardTitle>
+              <Database className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">Automações</div>
+              <p className="text-xs text-muted-foreground mt-1">Regras e respostas da IA</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/configuracoes/meta-capi">
+          <Card className="hover:bg-muted/50 transition-colors border-border shadow-sm cursor-pointer h-full">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Configurações</CardTitle>
+              <Settings className="h-4 w-4 text-zinc-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">Ajustes</div>
+              <p className="text-xs text-muted-foreground mt-1">Pixel, Tokens e Uazapi</p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
     </div>
   )
