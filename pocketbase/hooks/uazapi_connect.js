@@ -16,7 +16,7 @@ routerAdd(
     const headers = {
       'Content-Type': 'application/json',
       apikey: token,
-      Authorization: 'Bearer ' + token,
+      Authorization: token.toLowerCase().startsWith('bearer ') ? token : 'Bearer ' + token,
     }
 
     try {
@@ -37,6 +37,20 @@ routerAdd(
         })
       }
 
+      if (res.statusCode === 404) {
+        try {
+          const apiV1Res = $http.send({
+            url: `${domain}/api/v1/instance/connect/${instance}`,
+            method: 'GET',
+            headers: headers,
+            timeout: 15,
+          })
+          if (apiV1Res.statusCode !== 404) {
+            res = apiV1Res
+          }
+        } catch (err) {}
+      }
+
       let data = {}
       try {
         data = res.json || {}
@@ -44,7 +58,7 @@ routerAdd(
 
       let statusStr = 'qr_ready'
       if (data.status === 'connected' || data.connected === true || data.state === 'open') {
-        statusStr = 'connected'
+        statusStr = 'online'
       }
 
       if (user.getString('uazapi_status') !== statusStr) {

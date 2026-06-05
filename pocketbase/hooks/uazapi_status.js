@@ -22,7 +22,7 @@ routerAdd(
     const headers = {
       'Content-Type': 'application/json',
       apikey: token,
-      Authorization: 'Bearer ' + token,
+      Authorization: token.toLowerCase().startsWith('bearer ') ? token : 'Bearer ' + token,
     }
 
     const updateUserStatus = (statusStr, errorReason) => {
@@ -56,6 +56,20 @@ routerAdd(
         })
       }
 
+      if (res.statusCode === 404) {
+        try {
+          const apiV1Res = $http.send({
+            url: `${domain}/api/v1/instance/status/${instance}`,
+            method: 'GET',
+            headers: headers,
+            timeout: 10,
+          })
+          if (apiV1Res.statusCode !== 404) {
+            res = apiV1Res
+          }
+        } catch (err) {}
+      }
+
       let data = {}
       try {
         data = res.json || {}
@@ -63,12 +77,22 @@ routerAdd(
 
       if (res.statusCode === 404) {
         try {
-          const fallbackRes = $http.send({
+          let fallbackRes = $http.send({
             url: `${domain}/instance/fetchInstances`,
             method: 'GET',
             headers: headers,
             timeout: 10,
           })
+          if (fallbackRes.statusCode === 404) {
+            try {
+              fallbackRes = $http.send({
+                url: `${domain}/api/v1/instance/fetchInstances`,
+                method: 'GET',
+                headers: headers,
+                timeout: 10,
+              })
+            } catch (err) {}
+          }
           if (fallbackRes.statusCode >= 200 && fallbackRes.statusCode < 300 && fallbackRes.json) {
             const instances = Array.isArray(fallbackRes.json)
               ? fallbackRes.json
@@ -107,7 +131,7 @@ routerAdd(
             instanceData.status?.loggedIn === true
 
           if (isConn) {
-            statusStr = 'connected'
+            statusStr = 'online'
             errorReason = ''
           } else {
             if (

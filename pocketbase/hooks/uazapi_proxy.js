@@ -35,7 +35,9 @@ routerAdd(
     }
     if (apikey) {
       headers['apikey'] = apikey
-      headers['Authorization'] = 'Bearer ' + apikey
+      headers['Authorization'] = apikey.toLowerCase().startsWith('bearer ')
+        ? apikey
+        : 'Bearer ' + apikey
       headers['AdminToken'] = apikey
     }
 
@@ -59,6 +61,29 @@ routerAdd(
           body: payload ? JSON.stringify(payload) : undefined,
           timeout: 15,
         })
+      }
+
+      if (res && res.statusCode === 404) {
+        // Try to inject /api/v1 prefix if missing
+        let fallbackUrl = domain + '/api/v1'
+        if (endpoint.startsWith('/')) {
+          fallbackUrl += endpoint
+        } else {
+          fallbackUrl += '/' + endpoint
+        }
+
+        try {
+          const apiV1Res = $http.send({
+            url: fallbackUrl,
+            method: method,
+            headers: headers,
+            body: payload ? JSON.stringify(payload) : undefined,
+            timeout: 15,
+          })
+          if (apiV1Res.statusCode !== 404) {
+            res = apiV1Res
+          }
+        } catch (err) {}
       }
     } catch (err) {
       error = err

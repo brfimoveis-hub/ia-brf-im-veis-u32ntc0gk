@@ -14,16 +14,14 @@ routerAdd(
 
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
-    const reqUrl = domain + '/instance/connectionState/' + instance
-
     const headers = { 'Content-Type': 'application/json' }
 
-    if (userToken) {
-      headers['Authorization'] = 'Bearer ' + userToken
-      headers['apikey'] = userToken
+    const activeToken = userToken || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+    headers['apikey'] = activeToken
+    if (activeToken.toLowerCase().startsWith('bearer ')) {
+      headers['Authorization'] = activeToken
     } else {
-      headers['Authorization'] = 'Bearer SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
-      headers['apikey'] = 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+      headers['Authorization'] = 'Bearer ' + activeToken
     }
 
     if (adminToken) {
@@ -32,21 +30,35 @@ routerAdd(
 
     try {
       let res
+      const reqPath = '/instance/connectionState/' + instance
       try {
         res = $http.send({
-          url: reqUrl,
+          url: domain + reqPath,
           method: 'GET',
           headers: headers,
           timeout: 15,
         })
       } catch (err) {
-        // Retry logic on transport failure
         res = $http.send({
-          url: reqUrl,
+          url: domain + reqPath,
           method: 'GET',
           headers: headers,
           timeout: 15,
         })
+      }
+
+      if (res.statusCode === 404) {
+        try {
+          const fallbackRes = $http.send({
+            url: domain + '/api/v1' + reqPath,
+            method: 'GET',
+            headers: headers,
+            timeout: 15,
+          })
+          if (fallbackRes.statusCode !== 404) {
+            res = fallbackRes
+          }
+        } catch (err) {}
       }
 
       // Prevent sending 401/403 as HTTP response status from our proxy API.

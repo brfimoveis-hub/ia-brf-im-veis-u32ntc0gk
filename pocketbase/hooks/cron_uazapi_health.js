@@ -18,20 +18,38 @@ cronAdd('uazapi_health_check', '*/5 * * * *', () => {
     if (userAdminToken) headers['AdminToken'] = userAdminToken
     if (userApiKey) {
       headers['apikey'] = userApiKey
-      headers['Authorization'] = 'Bearer ' + userApiKey
+      headers['Authorization'] = userApiKey.toLowerCase().startsWith('bearer ')
+        ? userApiKey
+        : 'Bearer ' + userApiKey
     }
     if (!userAdminToken && !userApiKey) {
       headers['apikey'] = adminToken
-      headers['Authorization'] = 'Bearer ' + adminToken
+      headers['Authorization'] = adminToken.toLowerCase().startsWith('bearer ')
+        ? adminToken
+        : 'Bearer ' + adminToken
     }
 
     try {
-      const res = $http.send({
+      let res = $http.send({
         url: `${domain}/instance/status/${instance}`,
         method: 'GET',
         headers: headers,
         timeout: 10,
       })
+
+      if (res.statusCode === 404) {
+        try {
+          const apiV1Res = $http.send({
+            url: `${domain}/api/v1/instance/status/${instance}`,
+            method: 'GET',
+            headers: headers,
+            timeout: 10,
+          })
+          if (apiV1Res.statusCode !== 404) {
+            res = apiV1Res
+          }
+        } catch (err) {}
+      }
 
       if (res.statusCode === 401 || res.statusCode === 403 || res.statusCode === 404) {
         const slackWebhook = $secrets.get('SLACK_WEBHOOK_URL')
@@ -67,7 +85,7 @@ cronAdd('uazapi_health_check', '*/5 * * * *', () => {
         const data = res.json
         let statusStr = 'disconnected'
         if (data.status?.loggedIn || data.instance?.status === 'connected') {
-          statusStr = 'connected'
+          statusStr = 'online'
         } else if (data.instance?.qrcode) {
           statusStr = 'qr_ready'
         }

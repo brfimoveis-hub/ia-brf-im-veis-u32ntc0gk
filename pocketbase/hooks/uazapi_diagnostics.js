@@ -26,7 +26,7 @@ routerAdd(
     const headers = {
       'Content-Type': 'application/json',
       apikey: token,
-      Authorization: 'Bearer ' + token,
+      Authorization: token.toLowerCase().startsWith('bearer ') ? token : 'Bearer ' + token,
     }
 
     let stateRes = null
@@ -45,6 +45,20 @@ routerAdd(
           headers: headers,
           timeout: 10,
         })
+      }
+
+      if (stateRes.statusCode === 404) {
+        try {
+          const apiV1Res = $http.send({
+            url: `${domain}/api/v1/instance/connectionState/${instance}`,
+            method: 'GET',
+            headers: headers,
+            timeout: 10,
+          })
+          if (apiV1Res.statusCode !== 404) {
+            stateRes = apiV1Res
+          }
+        } catch (err) {}
       }
     } catch (err) {
       return e.json(502, {
@@ -72,7 +86,7 @@ routerAdd(
       const st =
         data?.instance?.status || data?.instance?.state || data?.status || data?.state || ''
       if (st === 'connected' || st === 'open' || st === 'loggedIn') {
-        statusStr = 'connected'
+        statusStr = 'online'
       } else if (st === 'connecting' || data?.instance?.qrcode || data?.qrcode) {
         statusStr = 'qr_ready'
       }
