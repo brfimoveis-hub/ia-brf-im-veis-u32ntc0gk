@@ -106,7 +106,7 @@ routerAdd(
           )
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} corresponde exatamente ao registrado no painel da Uazapi e se o domínio está correto.`,
+          error: `Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos para o domínio configurado.`,
         })
       }
 
@@ -126,7 +126,7 @@ routerAdd(
           .error('Uazapi 404 Exception', 'instance', instance, 'domain', domain, 'message', msg)
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} e o domínio estão corretos.`,
+          error: `Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos para o domínio configurado.`,
         })
       }
       return e.internalServerError(err.message)

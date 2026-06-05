@@ -83,7 +83,7 @@ const StatusBadge = ({ status }: { status?: string }) => {
       </Badge>
     )
   }
-  if (s === 'error' || s === 'disconnected' || s === 'failed') {
+  if (s === 'error' || s === 'disconnected' || s === 'offline' || s === 'failed') {
     return (
       <Badge variant="destructive">
         <XCircle className="w-3 h-3 mr-1" /> {status.toUpperCase()}
@@ -308,7 +308,7 @@ export default function ConfiguracoesCore() {
 
         if (resp.status_code === 404) {
           toast.error('Falha no teste Uazapi - 404 Não Encontrado', {
-            description: `Instância não encontrada no Uazapi. Verifique cuidadosamente se o "Domínio Uazapi (URL)" e o "ID da Instância" estão corretos e correspondem ao painel Uazapi.`,
+            description: `Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos para o domínio configurado.`,
             duration: 10000,
           })
         } else {
@@ -317,14 +317,18 @@ export default function ConfiguracoesCore() {
           })
         }
       } else {
-        if (resp?.status === 404 || resp?.message?.includes('404')) {
+        if (
+          resp?.status === 404 ||
+          resp?.message?.includes('404') ||
+          resp?.error?.includes('404')
+        ) {
           toast.error('Falha no teste Uazapi - 404 Não Encontrado', {
-            description: `Instância não encontrada no Uazapi. Verifique cuidadosamente se o "Domínio Uazapi (URL)" e o "ID da Instância" estão corretos.`,
+            description: `Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos para o domínio configurado.`,
             duration: 10000,
           })
         } else {
           toast.error('Falha no teste Uazapi', {
-            description: e.response?.message || e.message || 'Erro desconhecido',
+            description: resp?.error || resp?.message || e.message || 'Erro desconhecido',
           })
         }
       }
@@ -586,9 +590,9 @@ export default function ConfiguracoesCore() {
                     <p>{currentUser.uazapi_error}</p>
                     {String(currentUser.uazapi_error).includes('404') && (
                       <p className="font-semibold text-sm">
-                        Dica: O erro 404 (Not Found) geralmente indica que o "Domínio Uazapi (URL)"
-                        não está correto ou o "ID da Instância" não existe nesse servidor. Verifique
-                        os dados no painel da sua API e tente novamente.
+                        Dica: Instância não encontrada. Verifique se o ID da Instância
+                        (uazapi_instance_number) e o Token estão corretos para o domínio
+                        configurado.
                       </p>
                     )}
                   </AlertDescription>

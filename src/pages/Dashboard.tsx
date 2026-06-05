@@ -137,35 +137,45 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <span className="relative flex h-3 w-3">
                 <span
-                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentUser?.uazapi_status === 'connected' ? 'bg-emerald-400' : 'bg-red-400'}`}
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentUser?.uazapi_status === 'connected' || currentUser?.uazapi_status === 'online' ? 'bg-emerald-400' : 'bg-red-400'}`}
                 ></span>
                 <span
-                  className={`relative inline-flex rounded-full h-3 w-3 ${currentUser?.uazapi_status === 'connected' ? 'bg-emerald-500' : currentUser?.uazapi_status === 'qr_ready' ? 'bg-amber-500' : 'bg-red-500'}`}
+                  className={`relative inline-flex rounded-full h-3 w-3 ${currentUser?.uazapi_status === 'connected' || currentUser?.uazapi_status === 'online' ? 'bg-emerald-500' : currentUser?.uazapi_status === 'qr_ready' ? 'bg-amber-500' : 'bg-red-500'}`}
                 ></span>
               </span>
               <div
-                className={`text-2xl font-bold ${currentUser?.uazapi_status === 'connected' ? 'text-emerald-600' : currentUser?.uazapi_status === 'qr_ready' ? 'text-amber-600' : 'text-red-600'}`}
+                className={`text-2xl font-bold ${currentUser?.uazapi_status === 'connected' || currentUser?.uazapi_status === 'online' ? 'text-emerald-600' : currentUser?.uazapi_status === 'qr_ready' ? 'text-amber-600' : 'text-red-600'}`}
               >
-                {currentUser?.uazapi_status === 'connected' ? 'Conectado' : 'Desconectado'}
+                {currentUser?.uazapi_status === 'connected' ||
+                currentUser?.uazapi_status === 'online'
+                  ? 'Conectado'
+                  : currentUser?.uazapi_status === 'offline'
+                    ? 'Desconectado'
+                    : 'Erro'}
               </div>
             </div>
             <p className="text-xs text-muted-foreground truncate mt-1">
               Instância: {currentUser?.uazapi_instance_number || '554892098050'}
             </p>
-            {currentUser?.profileName && currentUser.uazapi_status === 'connected' && (
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                Perfil: {currentUser.profileName}
-                {currentUser.currentPresence ? ` (${currentUser.currentPresence})` : ''}
-              </p>
-            )}
-            {currentUser?.uazapi_error && currentUser.uazapi_status !== 'connected' && (
-              <p
-                className="text-xs text-red-500 mt-1 line-clamp-2"
-                title={currentUser.uazapi_error}
-              >
-                Erro: {currentUser.uazapi_error}
-              </p>
-            )}
+            {currentUser?.profileName &&
+              (currentUser.uazapi_status === 'connected' ||
+                currentUser.uazapi_status === 'online') && (
+                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                  Perfil: {currentUser.profileName}
+                  {currentUser.currentPresence ? ` (${currentUser.currentPresence})` : ''}
+                </p>
+              )}
+            {currentUser?.uazapi_error &&
+              (currentUser.uazapi_status === 'error' ||
+                currentUser.uazapi_status === 'offline' ||
+                currentUser.uazapi_status === 'disconnected') && (
+                <p
+                  className="text-xs text-red-500 mt-1 line-clamp-2"
+                  title={currentUser.uazapi_error}
+                >
+                  Erro: {currentUser.uazapi_error}
+                </p>
+              )}
           </CardContent>
         </Card>
         <Card>

@@ -111,7 +111,7 @@ routerAdd(
       }
 
       if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
-        let statusStr = 'disconnected'
+        let statusStr = 'offline'
         let errorReason = ''
 
         let instanceData = null
@@ -142,7 +142,7 @@ routerAdd(
             ) {
               statusStr = 'qr_ready'
             } else if (st === 'disconnected' || st === 'closed') {
-              statusStr = 'disconnected'
+              statusStr = 'offline'
             }
 
             if (instanceData.lastDisconnectReason) {
@@ -156,7 +156,7 @@ routerAdd(
         }
 
         if (!instanceData && res.statusCode === 404) {
-          statusStr = 'disconnected'
+          statusStr = 'error'
           if (!errorReason) {
             errorReason = data?.message || data?.error || 'Instância não encontrada'
           }
@@ -185,7 +185,7 @@ routerAdd(
       }
 
       const errMsg = data?.message || data?.error || `Erro da API Uazapi (${res.statusCode})`
-      updateUserStatus('disconnected', errMsg)
+      updateUserStatus('error', errMsg)
 
       if (res.statusCode === 401 || res.statusCode === 403) {
         throw new BadRequestError('Credenciais inválidas na API Uazapi. Verifique seu Token.')
@@ -193,7 +193,7 @@ routerAdd(
 
       throw new BadRequestError(errMsg)
     } catch (err) {
-      updateUserStatus('disconnected', err.message)
+      updateUserStatus('error', err.message)
       throw new BadRequestError(`Falha na verificação de status: ${err.message}`)
     }
   },
