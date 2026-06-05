@@ -235,17 +235,40 @@ export default function ConfiguracoesCore() {
   }
 
   const handleTestUazapi = async () => {
+    if (!user) return
     try {
       setTesting((p) => ({ ...p, uazapi: true }))
-      await pb.send('/backend/v1/uazapi/test-connection', {
-        method: 'POST',
-        body: JSON.stringify({ instance: uazapi.instance }),
+      // Save before test to ensure the backend uses the latest values
+      await pb.collection('users').update(user.id, {
+        uazapi_domain: uazapi.domain,
+        uazapi_instance_number: uazapi.instance,
+        uazapi_token: uazapi.token,
+        uazapi_admin_token: uazapi.admin_token,
       })
-      toast.success('Teste Uazapi enviado com sucesso!')
+
+      const res = await pb.send('/backend/v1/uazapi/diagnostics', {
+        method: 'GET',
+      })
+
+      toast.success('Teste Uazapi bem-sucedido!', {
+        description: 'Sua instância respondeu corretamente e está conectada.',
+      })
     } catch (e: any) {
-      toast.error('Falha no teste Uazapi', {
-        description: e.response?.message || e.message || 'Erro desconhecido',
-      })
+      const resp = e.response
+      if (resp && resp.connection_step) {
+        const errorDetail =
+          resp.api_response?.message ||
+          resp.api_response?.error ||
+          JSON.stringify(resp.api_response) ||
+          'Verifique as configurações.'
+        toast.error('Falha no teste Uazapi', {
+          description: `Passo: ${resp.connection_step} | Código: ${resp.status_code} | Detalhe: ${errorDetail}`,
+        })
+      } else {
+        toast.error('Falha no teste Uazapi', {
+          description: e.response?.message || e.message || 'Erro desconhecido',
+        })
+      }
     } finally {
       setTesting((p) => ({ ...p, uazapi: false }))
     }
@@ -515,7 +538,7 @@ export default function ConfiguracoesCore() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Número da Instância</Label>
+                  <Label>ID da Instância</Label>
                   <Input
                     value={uazapi.instance}
                     onChange={(e) => setUazapi({ ...uazapi, instance: e.target.value })}
@@ -523,7 +546,7 @@ export default function ConfiguracoesCore() {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Token (Globalapikey)</Label>
+                  <Label>Token da Instância</Label>
                   <PasswordInput
                     value={uazapi.token}
                     onChange={(e: any) => setUazapi({ ...uazapi, token: e.target.value })}
@@ -531,7 +554,7 @@ export default function ConfiguracoesCore() {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Admin Token</Label>
+                  <Label>Token Admin</Label>
                   <PasswordInput
                     value={uazapi.admin_token}
                     onChange={(e: any) => setUazapi({ ...uazapi, admin_token: e.target.value })}

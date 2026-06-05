@@ -8,8 +8,6 @@ routerAdd(
     const instance = user.getString('uazapi_instance_number') || '554892098050'
     let rawDomain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
 
-    // Sanitize domain to prevent "URL that includes credentials" browser/fetch errors
-    // Strip HTTP Basic Auth credentials if present in the URL
     let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
@@ -20,6 +18,19 @@ routerAdd(
       'Content-Type': 'application/json',
       apikey: token,
       Authorization: 'Bearer ' + token,
+    }
+
+    const updateUserStatus = (statusStr, errorReason) => {
+      if (
+        user.getString('uazapi_status') !== statusStr ||
+        user.getString('uazapi_error') !== errorReason
+      ) {
+        user.set('uazapi_status', statusStr)
+        user.set('uazapi_error', errorReason)
+        try {
+          $app.saveNoValidate(user)
+        } catch (_) {}
+      }
     }
 
     try {
@@ -35,7 +46,6 @@ routerAdd(
         data = res.json || {}
       } catch (err) {}
 
-      // Fallback logic for 404 - Fetch all instances and match
       if (res.statusCode === 404) {
         try {
           const fallbackRes = $http.send({
@@ -55,13 +65,12 @@ routerAdd(
             })
             if (found) {
               data = found
-              res = fallbackRes // trick the next block into accepting it as success
+              res = fallbackRes
             }
           }
         } catch (err) {}
       }
 
-      // Tolerate 404 since it may indicate the instance is not paired or connecting
       if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
         let statusStr = 'disconnected'
         let errorReason = ''
@@ -74,7 +83,6 @@ routerAdd(
         }
 
         if (instanceData) {
-          // Explicitly look for status: "connected" as per AC, with fallbacks for robust detection
           const st = instanceData.status || instanceData.state || ''
           const isConn =
             st === 'connected' ||
@@ -123,15 +131,7 @@ routerAdd(
           currentPresence = instanceData.currentPresence || ''
         }
 
-        if (
-          user.getString('uazapi_status') !== statusStr ||
-          user.getString('uazapi_error') !== errorReason
-        ) {
-          user.set('uazapi_status', statusStr)
-          user.set('uazapi_error', errorReason)
-          // The process must only update the uazapi_status and uazapi_error fields
-          $app.saveNoValidate(user)
-        }
+        updateUserStatus(statusStr, errorReason)
 
         return e.json(200, {
           success: true,
@@ -145,15 +145,16 @@ routerAdd(
         })
       }
 
-      // Prevent throwing 401/403 to frontend directly
+      const errMsg = data?.message || data?.error || `Erro da API Uazapi (${res.statusCode})`
+      updateUserStatus('disconnected', errMsg)
+
       if (res.statusCode === 401 || res.statusCode === 403) {
         throw new BadRequestError('Credenciais inválidas na API Uazapi. Verifique seu Token.')
       }
 
-      throw new BadRequestError(
-        data?.message || data?.error || `Erro da API Uazapi (${res.statusCode})`,
-      )
+      throw new BadRequestError(errMsg)
     } catch (err) {
+      updateUserStatus('disconnected', err.message)
       throw new BadRequestError(`Falha na verificação de status: ${err.message}`)
     }
   },

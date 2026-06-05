@@ -249,17 +249,22 @@ export function DiagnosticCenter() {
 
       if (hasPhone) {
         try {
-          await pb.send('/backend/v1/uazapi/test-connection', {
-            method: 'POST',
-            body: JSON.stringify({ instance: user.meta_campaign_phone }),
+          const res = await pb.send('/backend/v1/uazapi/diagnostics', {
+            method: 'GET',
             headers: { 'Content-Type': 'application/json' },
           })
-          uazapiStatus = 'success'
-          uazapiMessage = `Conexão Uazapi ativa e operante no número ${user.meta_campaign_phone}. Fluxo de leads ininterrupto.`
+          if (res.status_code >= 200 && res.status_code < 300) {
+            uazapiStatus = 'success'
+            uazapiMessage = `Conexão Uazapi ativa e operante no número ${user.meta_campaign_phone}. Fluxo de leads ininterrupto.`
+          } else {
+            throw new Error(JSON.stringify(res.api_response))
+          }
         } catch (e: any) {
           uazapiStatus = 'error'
-          const errMsg = e.response?.message || e.message || 'Erro desconhecido'
-          uazapiMessage = `Falha na integridade da conexão Uazapi para o número ${user.meta_campaign_phone}: ${errMsg}`
+          const errMsg = e.response?.api_response
+            ? JSON.stringify(e.response.api_response)
+            : e.response?.message || e.message || 'Erro desconhecido'
+          uazapiMessage = `Falha na integridade da conexão Uazapi para o número ${user.meta_campaign_phone}: Passo: ${e.response?.connection_step || 'Desconhecido'} - ${errMsg}`
 
           await createSystemLog({
             type: 'uazapi_error',
