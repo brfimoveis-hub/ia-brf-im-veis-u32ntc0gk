@@ -83,6 +83,10 @@ export function DiagnosticCenter() {
   >([])
   const [selectedPayloadLog, setSelectedPayloadLog] = useState<SystemLog | null>(null)
 
+  const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false)
+  const [newTokenValue, setNewTokenValue] = useState('')
+  const [isUpdatingToken, setIsUpdatingToken] = useState(false)
+
   const fetchLogsAndStats = async () => {
     try {
       const logsRes = await getSystemLogs(1, 200)
@@ -261,21 +265,24 @@ export function DiagnosticCenter() {
           }
         } catch (e: any) {
           uazapiStatus = 'error'
-          const errMsg = e.response?.message || e.message || 'Erro desconhecido'
-          uazapiMessage = `Falha na integridade da conexão Uazapi para o número ${user.uazapi_instance_number}: - ${errMsg}`
+          const resErrorMsg =
+            e.response?.data?.error || e.response?.message || e.message || 'Erro desconhecido'
+          uazapiMessage = `Falha na integridade da conexão Uazapi para o Telefone de Campanha ${user.uazapi_instance_number}: \n\nDetalhe do erro: ${resErrorMsg}`
 
           await createSystemLog({
             type: 'uazapi_error',
             message: `Falha na verificação de integridade do Uazapi`,
-            details: { error: errMsg, phone: user.uazapi_instance_number },
+            details: { error: resErrorMsg, phone: user.uazapi_instance_number },
             payload: e.response || {},
           }).catch(() => {})
         }
       } else {
+        uazapiMessage =
+          'ERRO: Telefone de campanha ausente! É obrigatório configurar o uazapi_instance_number para o CRM receber mensagens e validar a conexão.'
         await createSystemLog({
           type: 'uazapi_error',
           message: `Telefone Uazapi ausente na verificação`,
-          details: { error: 'Telefone não configurado' },
+          details: { error: 'Telefone de campanha (instance number) não configurado' },
           payload: {},
         }).catch(() => {})
       }
@@ -579,66 +586,161 @@ export function DiagnosticCenter() {
           )}
 
           {results.length > 0 && (
-            <div className="space-y-3 pt-2 animate-in slide-in-from-bottom-2 duration-500">
-              <h4 className="font-semibold text-secondary">Relatório do Sistema</h4>
-              <div className="grid gap-2">
+            <div className="space-y-4 pt-4 animate-in slide-in-from-bottom-2 duration-500">
+              <h4 className="font-semibold text-secondary text-lg border-b pb-2">
+                Status das Integrações
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {results.map((res, i) => (
-                  <div
+                  <Card
                     key={i}
-                    className="flex items-center justify-between p-3 border rounded-lg bg-card shadow-sm"
+                    className={cn(
+                      'border flex flex-col overflow-hidden transition-all duration-200',
+                      res.status === 'error' &&
+                        'border-red-200 dark:border-red-900/50 shadow-[0_0_15px_-3px_rgba(239,68,68,0.1)]',
+                      res.status === 'warning' && 'border-amber-200 dark:border-amber-900/50',
+                      res.status === 'success' && 'border-green-200 dark:border-green-900/50',
+                    )}
                   >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      {res.status === 'success' && (
-                        <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
-                      )}
-                      {res.status === 'warning' && (
-                        <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
-                      )}
-                      {res.status === 'error' && (
-                        <XCircle className="h-5 w-5 text-destructive shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0 pr-2">
-                        <p className="text-sm font-medium text-secondary truncate">{res.name}</p>
-                        <div className="flex items-start gap-2 mt-0.5">
-                          <p className="text-xs text-muted-foreground select-text">{res.message}</p>
-                          {(res.status === 'error' || res.status === 'warning') && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-5 w-5 hover:bg-muted shrink-0 -mt-0.5 text-muted-foreground"
-                              onClick={() => handleCopyError(res.message, res.payload)}
-                              title="Copiar mensagem de erro"
-                            >
-                              <Copy className="h-3 w-3" />
-                              <span className="sr-only">Copiar erro</span>
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <Badge
-                      variant="outline"
+                    <div
                       className={cn(
-                        'shrink-0 ml-2',
-                        res.status === 'success' &&
-                          'bg-green-500/10 text-green-600 border-green-500/20',
-                        res.status === 'warning' &&
-                          'bg-amber-500/10 text-amber-600 border-amber-500/20',
-                        res.status === 'error' &&
-                          'bg-destructive/10 text-destructive border-destructive/20',
+                        'h-1.5 w-full',
+                        res.status === 'success'
+                          ? 'bg-green-500'
+                          : res.status === 'warning'
+                            ? 'bg-amber-500'
+                            : 'bg-destructive',
                       )}
-                    >
-                      {res.status === 'success'
-                        ? 'Saudável'
-                        : res.status === 'warning'
-                          ? 'Atenção'
-                          : 'Falha'}
-                    </Badge>
-                  </div>
+                    />
+                    <CardHeader className="pb-2 pt-4 px-4">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex items-center gap-2">
+                          {res.status === 'success' && (
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          )}
+                          {res.status === 'warning' && (
+                            <AlertTriangle className="h-4 w-4 text-amber-500" />
+                          )}
+                          {res.status === 'error' && (
+                            <XCircle className="h-4 w-4 text-destructive" />
+                          )}
+                          <CardTitle className="text-base font-semibold line-clamp-2 leading-tight">
+                            {res.name}
+                          </CardTitle>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'shrink-0 text-xs',
+                            res.status === 'success' &&
+                              'bg-green-500/10 text-green-600 border-green-500/20',
+                            res.status === 'warning' &&
+                              'bg-amber-500/10 text-amber-600 border-amber-500/20',
+                            res.status === 'error' &&
+                              'bg-destructive/10 text-destructive border-destructive/20',
+                          )}
+                        >
+                          {res.status === 'success'
+                            ? 'Saudável'
+                            : res.status === 'warning'
+                              ? 'Atenção'
+                              : 'Falha'}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4 flex-1 flex flex-col justify-between gap-4">
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                        {res.message}
+                      </p>
+
+                      <div className="flex items-center gap-2 mt-auto pt-4 border-t border-border/50">
+                        {res.status === 'error' && res.name.includes('Meta') && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => setIsTokenDialogOpen(true)}
+                          >
+                            Atualizar Token
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            'w-full',
+                            res.status === 'error' && !res.name.includes('Meta')
+                              ? 'bg-muted'
+                              : 'bg-transparent',
+                          )}
+                          onClick={() => handleCopyError(res.message, res.payload)}
+                        >
+                          <Copy className="h-3 w-3 mr-2" />
+                          Copiar Erro
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             </div>
           )}
+
+          <Dialog open={isTokenDialogOpen} onOpenChange={setIsTokenDialogOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Atualizar Token Meta CAPI</DialogTitle>
+                <DialogDescription>
+                  Insira o novo token de acesso gerado no painel do Meta Business para restaurar a
+                  conexão.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="meta_token">Novo Token de Acesso</Label>
+                  <Input
+                    id="meta_token"
+                    placeholder="EAAI..."
+                    value={newTokenValue}
+                    onChange={(e) => setNewTokenValue(e.target.value)}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsTokenDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  disabled={!newTokenValue.trim() || isUpdatingToken}
+                  onClick={async () => {
+                    if (!user?.id) return
+                    setIsUpdatingToken(true)
+                    try {
+                      await pb.collection('users').update(user.id, {
+                        meta_capi_token: newTokenValue.trim(),
+                        meta_capi_status: 'connected',
+                        meta_token_status: 'valid',
+                      })
+                      toast({
+                        title: 'Token atualizado',
+                        description:
+                          'Por favor, execute o diagnóstico novamente para validar a conexão.',
+                      })
+                      setNewTokenValue('')
+                      setIsTokenDialogOpen(false)
+                    } catch (err) {
+                      toast({ title: 'Erro ao salvar', variant: 'destructive' })
+                    } finally {
+                      setIsUpdatingToken(false)
+                    }
+                  }}
+                >
+                  {isUpdatingToken && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Salvar Token
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 

@@ -9,6 +9,7 @@ routerAdd(
     let rawDomain = (user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com').trim()
     let domain = rawDomain
     if (!domain.startsWith('http')) domain = 'https://' + domain
+    domain = domain.replace(/([^:]\/)\/+/g, '$1')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
     const token = (user.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934').trim()
@@ -17,6 +18,7 @@ routerAdd(
       'Content-Type': 'application/json',
       apikey: token,
       Authorization: token.toLowerCase().startsWith('bearer ') ? token : 'Bearer ' + token,
+      instance: instance,
     }
 
     try {

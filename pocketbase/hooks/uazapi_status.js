@@ -13,6 +13,7 @@ routerAdd(
     }
 
     let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
+    domain = domain.replace(/([^:]\/)\/+/g, '$1')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
     const token = (
@@ -25,6 +26,7 @@ routerAdd(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       apikey: token,
       Authorization: token.toLowerCase().startsWith('bearer ') ? token : 'Bearer ' + token,
+      instance: instance,
     }
 
     const updateUserStatus = (statusStr, errorReason) => {

@@ -12,20 +12,21 @@ routerAdd(
       domain = 'https://' + domain
     }
 
+    // Fix double slashes and trailing slashes safely
+    domain = domain.replace(/([^:]\/)\/+/g, '$1')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
+
+    const activeToken = userToken || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
 
     const headers = {
       'Content-Type': 'application/json',
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    }
-
-    const activeToken = userToken || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
-    headers['apikey'] = activeToken
-    if (activeToken.toLowerCase().startsWith('bearer ')) {
-      headers['Authorization'] = activeToken
-    } else {
-      headers['Authorization'] = 'Bearer ' + activeToken
+      apikey: activeToken,
+      Authorization: activeToken.toLowerCase().startsWith('bearer ')
+        ? activeToken
+        : 'Bearer ' + activeToken,
+      instance: instance,
     }
 
     if (adminToken) {
