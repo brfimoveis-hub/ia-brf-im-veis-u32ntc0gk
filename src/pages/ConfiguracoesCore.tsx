@@ -38,6 +38,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { createSystemLog } from '@/services/system_logs'
 
 const uazapiSchema = z.object({
   domain: z
@@ -148,11 +149,23 @@ function UazapiStatusView({ user }: { user: any }) {
     try {
       setIsConnecting(true)
       await pb.send('/backend/v1/uazapi/connect', { method: 'POST' })
+
+      await pb.collection('users').update(user.id, {
+        uazapi_status: 'Saudável',
+        uazapi_error: '',
+      })
+
       toast({
         title: 'Comando enviado',
         description: 'A escuta da instância foi ativada com sucesso.',
       })
     } catch (err: any) {
+      await createSystemLog({
+        type: 'uazapi_error',
+        message: 'Failed to enable listening',
+        details: { error: err.message, status: err.status || 500, raw: err },
+        payload: { instance: user?.uazapi_instance_number, domain: user?.uazapi_domain },
+      })
       toast({ title: 'Erro ao conectar', description: err.message, variant: 'destructive' })
     } finally {
       setIsConnecting(false)
@@ -240,7 +253,7 @@ function UazapiStatusView({ user }: { user: any }) {
           ) : (
             <RefreshCw className="mr-2 h-4 w-4" />
           )}
-          Resetar Configuração Uazapi
+          Limpar Configurações Uazapi
         </Button>
       </CardFooter>
     </Card>
@@ -254,7 +267,7 @@ function UazapiFormView({ user }: { user: any }) {
   const form = useForm<z.infer<typeof uazapiSchema>>({
     resolver: zodResolver(uazapiSchema),
     defaultValues: {
-      domain: 'https://iabrfimveis.uazapi.com',
+      domain: '',
       instance_number: '',
       token: '',
       admin_token: '',
@@ -290,17 +303,33 @@ function UazapiFormView({ user }: { user: any }) {
         description: 'Credenciais validadas. Configure a escuta na próxima etapa.',
       })
     } catch (err: any) {
-      const errorMsg =
+      let errorMsg =
         err.response?.error ||
         err.response?.message ||
         err.message ||
         'Erro desconhecido ao conectar'
+
+      if (
+        err.status === 404 ||
+        errorMsg.includes('404') ||
+        errorMsg.toLowerCase().includes('not found')
+      ) {
+        errorMsg =
+          'Erro de Conexão: Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos.'
+      }
 
       // Salva apenas o erro e status no banco para visualização e cumprimento dos critérios.
       // O uazapi_instance_number continua vazio para manter o usuário no FormView permitindo correção.
       await pb.collection('users').update(user.id, {
         uazapi_error: errorMsg,
         uazapi_status: 'Falha',
+      })
+
+      await createSystemLog({
+        type: 'uazapi_error',
+        message: 'Failed to connect during clean setup',
+        details: { error: errorMsg, status: err.status || 500, raw: err },
+        payload: { instance: values.instance_number, domain: values.domain },
       })
 
       toast({ title: 'Falha na conexão', description: errorMsg, variant: 'destructive' })
