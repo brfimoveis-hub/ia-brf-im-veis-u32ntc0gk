@@ -5,14 +5,19 @@ routerAdd(
     const user = e.auth
     if (!user) throw new UnauthorizedError('Não autorizado')
 
-    const instance = user.getString('uazapi_instance_number') || '554892098050'
-    let rawDomain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
+    const instance = (user.getString('uazapi_instance_number') || '554892098050').trim()
+    let rawDomain = (user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com').trim()
+
+    if (rawDomain && !rawDomain.startsWith('http://') && !rawDomain.startsWith('https://')) {
+      rawDomain = 'https://' + rawDomain
+    }
 
     let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
-    const token =
+    const token = (
       user.getString('uazapi_token') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+    ).trim()
 
     const headers = {
       'Content-Type': 'application/json',
@@ -34,12 +39,22 @@ routerAdd(
     }
 
     try {
-      const res = $http.send({
-        url: `${domain}/instance/status/${instance}`,
-        method: 'GET',
-        headers: headers,
-        timeout: 10,
-      })
+      let res
+      try {
+        res = $http.send({
+          url: `${domain}/instance/status/${instance}`,
+          method: 'GET',
+          headers: headers,
+          timeout: 10,
+        })
+      } catch (err) {
+        res = $http.send({
+          url: `${domain}/instance/status/${instance}`,
+          method: 'GET',
+          headers: headers,
+          timeout: 10,
+        })
+      }
 
       let data = {}
       try {

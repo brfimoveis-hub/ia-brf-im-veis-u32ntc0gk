@@ -220,13 +220,28 @@ export default function ConfiguracoesCore() {
     if (!user) return
     try {
       setSaving((p) => ({ ...p, uazapi: true }))
+      const cleanDomain = uazapi.domain.trim()
+      const cleanInstance = uazapi.instance.trim()
+      const cleanToken = uazapi.token.trim()
+      const cleanAdminToken = uazapi.admin_token.trim()
+
+      setUazapi({
+        domain: cleanDomain,
+        instance: cleanInstance,
+        token: cleanToken,
+        admin_token: cleanAdminToken,
+      })
+
       await pb.collection('users').update(user.id, {
-        uazapi_domain: uazapi.domain,
-        uazapi_instance_number: uazapi.instance,
-        uazapi_token: uazapi.token,
-        uazapi_admin_token: uazapi.admin_token,
+        uazapi_domain: cleanDomain,
+        uazapi_instance_number: cleanInstance,
+        uazapi_token: cleanToken,
+        uazapi_admin_token: cleanAdminToken,
       })
       toast.success('Credenciais Uazapi atualizadas com sucesso!')
+
+      // Auto-trigger test connection after saving
+      handleTestUazapi(cleanDomain, cleanInstance, cleanToken, cleanAdminToken)
     } catch (e: any) {
       toast.error('Erro ao salvar Uazapi', { description: e.message })
     } finally {
@@ -234,16 +249,27 @@ export default function ConfiguracoesCore() {
     }
   }
 
-  const handleTestUazapi = async () => {
+  const handleTestUazapi = async (
+    overrideDomain?: string,
+    overrideInstance?: string,
+    overrideToken?: string,
+    overrideAdminToken?: string,
+  ) => {
     if (!user) return
     try {
       setTesting((p) => ({ ...p, uazapi: true }))
+
+      const domainToUse = overrideDomain ?? uazapi.domain.trim()
+      const instanceToUse = overrideInstance ?? uazapi.instance.trim()
+      const tokenToUse = overrideToken ?? uazapi.token.trim()
+      const adminTokenToUse = overrideAdminToken ?? uazapi.admin_token.trim()
+
       // Save before test to ensure the backend uses the latest values
       await pb.collection('users').update(user.id, {
-        uazapi_domain: uazapi.domain,
-        uazapi_instance_number: uazapi.instance,
-        uazapi_token: uazapi.token,
-        uazapi_admin_token: uazapi.admin_token,
+        uazapi_domain: domainToUse,
+        uazapi_instance_number: instanceToUse,
+        uazapi_token: tokenToUse,
+        uazapi_admin_token: adminTokenToUse,
       })
 
       const res = await pb.send('/backend/v1/uazapi/diagnostics', {
@@ -566,7 +592,7 @@ export default function ConfiguracoesCore() {
             <CardFooter className="flex flex-col sm:flex-row justify-between gap-4 border-t pt-6">
               <Button
                 variant="outline"
-                onClick={handleTestUazapi}
+                onClick={() => handleTestUazapi()}
                 disabled={testing.uazapi}
                 className="w-full sm:w-auto"
               >

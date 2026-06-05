@@ -8,18 +8,20 @@ routerAdd(
     const method = body.method || 'GET'
     const payload = body.payload || null
 
-    let rawDomain =
-      body.domain || user?.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
-    const apikey =
+    let rawDomain = (
+      body.domain ||
+      user?.getString('uazapi_domain') ||
+      'https://iabrfimveis.uazapi.com'
+    ).trim()
+    const apikey = (
       body.apikey ||
       user?.getString('uazapi_token') ||
       'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
+    ).trim()
 
     // Strip credentials from URL to prevent proxy issues
     let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
-    if (domain.endsWith('/api')) domain = domain.slice(0, -4)
-    if (domain.endsWith('/v1')) domain = domain.slice(0, -3)
 
     let url = domain
     if (endpoint.startsWith('/')) {
@@ -41,13 +43,23 @@ routerAdd(
     let error = null
 
     try {
-      res = $http.send({
-        url: url,
-        method: method,
-        headers: headers,
-        body: payload ? JSON.stringify(payload) : undefined,
-        timeout: 15,
-      })
+      try {
+        res = $http.send({
+          url: url,
+          method: method,
+          headers: headers,
+          body: payload ? JSON.stringify(payload) : undefined,
+          timeout: 15,
+        })
+      } catch (err) {
+        res = $http.send({
+          url: url,
+          method: method,
+          headers: headers,
+          body: payload ? JSON.stringify(payload) : undefined,
+          timeout: 15,
+        })
+      }
     } catch (err) {
       error = err
     }

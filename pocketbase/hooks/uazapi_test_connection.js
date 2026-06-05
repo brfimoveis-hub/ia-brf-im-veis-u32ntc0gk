@@ -3,18 +3,16 @@ routerAdd(
   '/backend/v1/uazapi/test-connection',
   (e) => {
     const body = e.requestInfo().body || {}
-    let domain = body.domain || 'https://iabrfimveis.uazapi.com'
-    const instance = body.instance || '554892098050'
-    const userToken = body.token || ''
-    const adminToken = body.admin_token || ''
+    let domain = (body.domain || 'https://iabrfimveis.uazapi.com').trim()
+    const instance = (body.instance || '554892098050').trim()
+    const userToken = (body.token || '').trim()
+    const adminToken = (body.admin_token || '').trim()
 
     if (domain && !domain.startsWith('http://') && !domain.startsWith('https://')) {
       domain = 'https://' + domain
     }
 
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
-    if (domain.endsWith('/api')) domain = domain.slice(0, -4)
-    if (domain.endsWith('/v1')) domain = domain.slice(0, -3)
 
     const reqUrl = domain + '/instance/connectionState/' + instance
 
@@ -33,12 +31,23 @@ routerAdd(
     }
 
     try {
-      const res = $http.send({
-        url: reqUrl,
-        method: 'GET',
-        headers: headers,
-        timeout: 15,
-      })
+      let res
+      try {
+        res = $http.send({
+          url: reqUrl,
+          method: 'GET',
+          headers: headers,
+          timeout: 15,
+        })
+      } catch (err) {
+        // Retry logic on transport failure
+        res = $http.send({
+          url: reqUrl,
+          method: 'GET',
+          headers: headers,
+          timeout: 15,
+        })
+      }
 
       // Prevent sending 401/403 as HTTP response status from our proxy API.
       // If we return 401, the PocketBase JS SDK auto-clears the auth token,
@@ -85,7 +94,7 @@ routerAdd(
           )
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} corresponde exatamente ao registrado no painel da Uazapi.`,
+          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} corresponde exatamente ao registrado no painel da Uazapi e se o domínio está correto.`,
         })
       }
 
@@ -105,7 +114,7 @@ routerAdd(
           .error('Uazapi 404 Exception', 'instance', instance, 'domain', domain, 'message', msg)
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} corresponde exatamente ao registrado no painel da Uazapi.`,
+          error: `Instância não encontrada no Uazapi. Verifique se o número ${instance} e o domínio estão corretos.`,
         })
       }
       return e.internalServerError(err.message)

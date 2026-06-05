@@ -5,16 +5,15 @@ routerAdd(
     const user = e.auth
     if (!user) return e.unauthorizedError('auth required')
 
-    let rawDomain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
-    let domain = rawDomain.trim()
+    let rawDomain = (user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com').trim()
+    let domain = rawDomain
     if (!domain.startsWith('http')) domain = 'https://' + domain
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
-    if (domain.endsWith('/api')) domain = domain.slice(0, -4)
-    if (domain.endsWith('/v1')) domain = domain.slice(0, -3)
 
-    const token =
+    const token = (
       user.getString('uazapi_token') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
-    const instance = user.getString('uazapi_instance_number') || '554892098050'
+    ).trim()
+    const instance = (user.getString('uazapi_instance_number') || '554892098050').trim()
 
     if (!token || !instance) {
       return e.json(400, {
@@ -32,12 +31,21 @@ routerAdd(
 
     let stateRes = null
     try {
-      stateRes = $http.send({
-        url: `${domain}/instance/connectionState/${instance}`,
-        method: 'GET',
-        headers: headers,
-        timeout: 10,
-      })
+      try {
+        stateRes = $http.send({
+          url: `${domain}/instance/connectionState/${instance}`,
+          method: 'GET',
+          headers: headers,
+          timeout: 10,
+        })
+      } catch (err) {
+        stateRes = $http.send({
+          url: `${domain}/instance/connectionState/${instance}`,
+          method: 'GET',
+          headers: headers,
+          timeout: 10,
+        })
+      }
     } catch (err) {
       return e.json(502, {
         connection_step: 'DNS/Domain or Timeout',
