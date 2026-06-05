@@ -259,7 +259,7 @@ export function DiagnosticCenter() {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
           })
-          if (res.status === 'online') {
+          if (res.status === 'online' || res.status === 'Saudável') {
             uazapiStatus = 'success'
             uazapiMessage = `Conexão Uazapi ativa e operante no número ${user.uazapi_instance_number}. Fluxo de leads ininterrupto.`
           } else {

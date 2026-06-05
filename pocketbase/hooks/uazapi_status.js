@@ -160,7 +160,7 @@ routerAdd(
             instanceData.status?.loggedIn === true
 
           if (isConn) {
-            statusStr = 'online'
+            statusStr = 'Saudável'
             errorReason = ''
           } else {
             if (
@@ -190,8 +190,7 @@ routerAdd(
             errorReason =
               data?.message ||
               data?.error ||
-              JSON.stringify(data) ||
-              `Instância não encontrada (404)`
+              `Instância não encontrada (404) - Verifique se a instância ${instance} existe e o token está correto.`
           }
         }
 
