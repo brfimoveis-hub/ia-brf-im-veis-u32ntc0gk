@@ -143,6 +143,7 @@ routerAdd(
           message: 'Unauthorized at target',
           error: customErrorMsg,
           originalStatus: res.statusCode,
+          rawLog: res.json || { code: res.statusCode, message: 'Unauthorized', data: {} },
         })
       }
 
@@ -164,17 +165,29 @@ routerAdd(
         logConnection('error', res.json, 'Instância não encontrada (404)')
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instância não encontrada. Verifique se o ID da Instância (Instance Number) e o Domínio (Base Domain) estão corretos. Detalhe: ${JSON.stringify(res.json || {})}`,
+          error: `Instance not found. Please verify if the 'Instance Number' should be the Instance Slug (name) instead of the phone number. Detalhe: ${JSON.stringify(res.json || {})}`,
           originalStatus: 404,
+          rawLog: res.json || { code: 404, message: 'Not Found.', data: {} },
         })
       }
 
       if (res.statusCode === 504) {
         logConnection('error', res.json, 'Timeout (504)')
-        return e.json(504, { message: 'Timeout' })
+        return e.json(504, { message: 'Timeout', rawLog: res.json || {} })
       }
 
       logConnection(res.statusCode, res.json || {})
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        try {
+          const user = e.auth
+          if (user) {
+            user.set('uazapi_status', 'connected')
+            $app.saveNoValidate(user)
+          }
+        } catch (_) {}
+      }
+
       return e.json(res.statusCode, res.json || { statusCode: res.statusCode })
     } catch (err) {
       const msg = err.message.toLowerCase()

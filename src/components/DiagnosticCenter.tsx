@@ -717,7 +717,7 @@ export function DiagnosticCenter() {
                 <DialogDescription>
                   {dialogType === 'meta_capi'
                     ? 'Insira o novo token de acesso gerado no painel do Meta Business para restaurar a conexão.'
-                    : 'Insira o novo token de acesso (WhatsApp Access Token) para restaurar a conexão Uazapi.'}
+                    : 'Insira o novo Instance Token (API Key) para restaurar a conexão Uazapi.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -725,7 +725,7 @@ export function DiagnosticCenter() {
                   <Label htmlFor="token_input">Novo Token de Acesso</Label>
                   <Input
                     id="token_input"
-                    placeholder={dialogType === 'meta_capi' ? 'EAAI...' : 'EAAL...'}
+                    placeholder={dialogType === 'meta_capi' ? 'EAAI...' : '6df3aaaa-...'}
                     value={newTokenValue}
                     onChange={(e) => setNewTokenValue(e.target.value)}
                   />
@@ -749,8 +749,7 @@ export function DiagnosticCenter() {
                         })
                       } else {
                         await pb.collection('users').update(user.id, {
-                          meta_whatsapp_access_token: newTokenValue.trim(),
-                          meta_whatsapp_status: 'connected',
+                          uazapi_token: newTokenValue.trim(),
                           uazapi_status: 'connected',
                         })
                       }
