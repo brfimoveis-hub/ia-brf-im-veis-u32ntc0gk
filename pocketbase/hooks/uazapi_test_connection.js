@@ -91,6 +91,13 @@ routerAdd(
 
       if (res && res.statusCode === 404) {
         try {
+          const res2b = fetchWithRetry(domain + '/instance/' + instance + '/connectionState')
+          if (res2b.statusCode !== 404) res = res2b
+        } catch (err) {}
+      }
+
+      if (res && res.statusCode === 404) {
+        try {
           const res3 = fetchWithRetry(domain + '/api/v1/instance/connectionState/' + instance)
           if (res3.statusCode !== 404) res = res3
         } catch (err) {}
@@ -135,6 +142,7 @@ routerAdd(
         return e.json(400, {
           message: 'Unauthorized at target',
           error: customErrorMsg,
+          originalStatus: res.statusCode,
         })
       }
 
@@ -156,7 +164,8 @@ routerAdd(
         logConnection('error', res.json, 'Instância não encontrada (404)')
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos. Detalhe: ${JSON.stringify(res.json || {})}`,
+          error: `Instância não encontrada. Verifique se o ID da Instância (Instance Number) e o Domínio (Base Domain) estão corretos. Detalhe: ${JSON.stringify(res.json || {})}`,
+          originalStatus: 404,
         })
       }
 

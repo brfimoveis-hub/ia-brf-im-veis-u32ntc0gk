@@ -117,6 +117,16 @@ routerAdd(
       }
 
       if (res && res.statusCode === 404) {
+        let fallbackUrl2b = domain + '/instance/' + prependedEndpoint
+        try {
+          const apiV1Res2b = fetchWithRetry(fallbackUrl2b)
+          if (apiV1Res2b.statusCode !== 404) {
+            res = apiV1Res2b
+          }
+        } catch (err) {}
+      }
+
+      if (res && res.statusCode === 404) {
         let fallbackUrl3 = domain + '/api/v1/' + appendedEndpoint
         try {
           const apiV1Res3 = fetchWithRetry(fallbackUrl3)

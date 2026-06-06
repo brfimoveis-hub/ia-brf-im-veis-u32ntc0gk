@@ -99,6 +99,13 @@ routerAdd(
 
       if (res && res.statusCode === 404) {
         try {
+          const res2b = fetchWithRetry(`${domain}/instance/${instance}/status`)
+          if (res2b.statusCode !== 404) res = res2b
+        } catch (err) {}
+      }
+
+      if (res && res.statusCode === 404) {
+        try {
           const res3 = fetchWithRetry(`${domain}/api/v1/instance/status/${instance}`)
           if (res3.statusCode !== 404) res = res3
         } catch (err) {}
