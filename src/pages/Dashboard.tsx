@@ -7,6 +7,7 @@ import { Users, MessageSquare, Bot, Activity, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -107,7 +108,7 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-sm font-medium">Clientes Ativos</CardTitle>
@@ -158,24 +159,82 @@ export default function Dashboard() {
               Instância: {currentUser?.uazapi_instance_number || '554892098050'}
             </p>
             {currentUser?.profileName &&
-              (currentUser.uazapi_status === 'connected' ||
-                currentUser.uazapi_status === 'online') && (
-                <p className="text-xs text-muted-foreground truncate mt-0.5">
-                  Perfil: {currentUser.profileName}
-                  {currentUser.currentPresence ? ` (${currentUser.currentPresence})` : ''}
-                </p>
-              )}
+            (currentUser.uazapi_status === 'connected' ||
+              currentUser.uazapi_status === 'online') ? (
+              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                Perfil: {currentUser.profileName}
+                {currentUser.currentPresence ? ` (${currentUser.currentPresence})` : null}
+              </p>
+            ) : null}
             {currentUser?.uazapi_error &&
-              (currentUser.uazapi_status === 'error' ||
-                currentUser.uazapi_status === 'offline' ||
-                currentUser.uazapi_status === 'disconnected') && (
-                <p
-                  className="text-xs text-red-500 mt-1 line-clamp-2"
-                  title={currentUser.uazapi_error}
-                >
-                  Erro: {currentUser.uazapi_error}
-                </p>
-              )}
+            (currentUser.uazapi_status === 'error' ||
+              currentUser.uazapi_status === 'offline' ||
+              currentUser.uazapi_status === 'disconnected') ? (
+              <p
+                className="text-xs text-red-500 mt-1 line-clamp-2"
+                title={currentUser.uazapi_error}
+              >
+                Erro: {currentUser.uazapi_error}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Meta CAPI Status</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span
+                  className={cn(
+                    'animate-ping absolute inline-flex h-full w-full rounded-full opacity-75',
+                    currentUser?.meta_capi_status === 'connected' ||
+                      currentUser?.meta_capi_status === 'active' ||
+                      currentUser?.meta_capi_status === 'valid'
+                      ? 'bg-emerald-400'
+                      : 'bg-red-400',
+                  )}
+                ></span>
+                <span
+                  className={cn(
+                    'relative inline-flex rounded-full h-3 w-3',
+                    currentUser?.meta_capi_status === 'connected' ||
+                      currentUser?.meta_capi_status === 'active' ||
+                      currentUser?.meta_capi_status === 'valid'
+                      ? 'bg-emerald-500'
+                      : 'bg-red-500',
+                  )}
+                ></span>
+              </span>
+              <div
+                className={cn(
+                  'text-2xl font-bold',
+                  currentUser?.meta_capi_status === 'connected' ||
+                    currentUser?.meta_capi_status === 'active' ||
+                    currentUser?.meta_capi_status === 'valid'
+                    ? 'text-emerald-600'
+                    : 'text-red-600',
+                )}
+              >
+                {currentUser?.meta_capi_status === 'connected' ||
+                currentUser?.meta_capi_status === 'active' ||
+                currentUser?.meta_capi_status === 'valid'
+                  ? 'Conectado'
+                  : 'Desconectado'}
+              </div>
+            </div>
+            {currentUser?.meta_capi_error &&
+            (currentUser?.meta_capi_status === 'error' ||
+              currentUser?.meta_capi_status === 'disconnected') ? (
+              <p
+                className="text-xs text-red-500 mt-1 line-clamp-2"
+                title={currentUser.meta_capi_error}
+              >
+                Erro: {currentUser.meta_capi_error}
+              </p>
+            ) : null}
           </CardContent>
         </Card>
         <Card>
@@ -206,8 +265,21 @@ export default function Dashboard() {
                 </p>
               </div>
               <Button asChild variant="outline" size="sm">
-                <Link to="/configuracoes?tab=uazapi">
+                <Link to="/configuracoes/uazapi">
                   Configurar Uazapi <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/20">
+              <div className="space-y-1">
+                <h4 className="font-medium text-sm">Integração Meta CAPI</h4>
+                <p className="text-xs text-muted-foreground max-w-sm">
+                  Gerencie sua conexão com a API de Conversões da Meta (CAPI) para otimizar eventos.
+                </p>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/configuracoes/meta-capi">
+                  Configurar Meta CAPI <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
             </div>

@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import { UazapiConfig } from '@/components/UazapiConfig'
+import { MetaCapiConfig } from './MetaCapiConfig'
 
 export default function ConfiguracoesCore() {
   const location = useLocation()
@@ -20,12 +21,19 @@ export default function ConfiguracoesCore() {
             >
               Integração Uazapi
             </Link>
+            <Link
+              to="/configuracoes/meta-capi"
+              className={`justify-start px-4 py-2 rounded-md ${location.pathname.includes('/meta-capi') ? 'bg-muted font-bold' : 'hover:bg-transparent hover:underline'}`}
+            >
+              Configurações Meta CAPI
+            </Link>
           </nav>
         </aside>
         <div className="flex-1 lg:max-w-3xl">
           <Routes>
             <Route path="/" element={<Navigate to="uazapi" replace />} />
             <Route path="uazapi" element={<UazapiConfig />} />
+            <Route path="meta-capi" element={<MetaCapiConfig />} />
           </Routes>
         </div>
       </div>

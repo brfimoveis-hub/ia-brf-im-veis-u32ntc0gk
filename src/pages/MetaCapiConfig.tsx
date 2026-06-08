@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import useRealtime from '@/hooks/use-realtime'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export function MetaCapiConfig() {
   const { user } = useAuth()
@@ -92,6 +92,12 @@ export function MetaCapiConfig() {
       })
 
       if (res.success) {
+        if (user?.id) {
+          await pb.collection('users').update(user.id, {
+            meta_capi_status: 'connected',
+            meta_capi_error: '',
+          })
+        }
         toast({
           title: 'Conexão bem sucedida',
           description: 'A comunicação com a Meta API está funcionando perfeitamente.',
@@ -99,6 +105,15 @@ export function MetaCapiConfig() {
       }
     } catch (err: any) {
       const msg = err?.response?.error?.message || err?.message || 'Erro ao testar a conexão'
+      if (user?.id) {
+        await pb
+          .collection('users')
+          .update(user.id, {
+            meta_capi_status: 'error',
+            meta_capi_error: msg,
+          })
+          .catch(() => {})
+      }
       toast({
         title: 'Falha na conexão',
         description: msg,
