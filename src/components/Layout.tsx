@@ -11,6 +11,8 @@ import {
   Menu,
   Activity,
   MessageSquare,
+  Bot,
+  RefreshCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -34,6 +36,8 @@ export default function Layout() {
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Clientes', path: '/clientes', icon: Users },
     { name: 'Cadências', path: '/cadencias', icon: MessageSquare },
+    { name: 'IA Mãe (Bia)', path: '/configuracoes/bia', icon: Bot },
+    { name: 'Remarketing', path: '/configuracoes/remarketing', icon: RefreshCw },
     { name: 'Configurações', path: '/configuracoes', icon: Settings },
   ]
 

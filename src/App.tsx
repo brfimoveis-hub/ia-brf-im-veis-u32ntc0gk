@@ -20,6 +20,8 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import Index from './pages/Index'
 import ClientesCore from './pages/ClientesCore'
 import ConfiguracoesCore from './pages/ConfiguracoesCore'
+import Bia from './pages/Bia'
+import Remarketing from './pages/Remarketing'
 import Cadences from './pages/Cadences'
 import Logs from './pages/Logs'
 import NotFound from './pages/NotFound'
@@ -65,6 +67,10 @@ const RouteTracker = () => {
     // Strict isolation for Configuration path
     if (lowerPath === '/configuracoes/meta-capi') {
       component = 'MetaCapiConfig'
+    } else if (lowerPath === '/configuracoes/bia') {
+      component = 'BiaConfig'
+    } else if (lowerPath === '/configuracoes/remarketing') {
+      component = 'RemarketingConfig'
     } else if (lowerPath.startsWith('/configuracoes')) {
       component = 'ConfiguracoesCore'
     } else if (lowerPath.startsWith('/dashboard')) {
@@ -170,6 +176,14 @@ const router = createBrowserRouter(
                 {
                   path: 'logs',
                   element: <Logs />,
+                },
+                {
+                  path: 'configuracoes/bia',
+                  element: <Bia />,
+                },
+                {
+                  path: 'configuracoes/remarketing',
+                  element: <Remarketing />,
                 },
                 {
                   path: 'configuracoes',
