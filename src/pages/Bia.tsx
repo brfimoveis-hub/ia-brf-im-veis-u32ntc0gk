@@ -15,6 +15,7 @@ import {
   CardFooter,
 } from '@/components/ui/card'
 import { Loader2, Bot, Save, FileText } from 'lucide-react'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export default function Bia() {
   const { user } = useAuth()
@@ -37,6 +38,16 @@ export default function Bia() {
     }
   }, [user])
 
+  useRealtime('users', (e) => {
+    if (e.record.id === user?.id && !loading) {
+      setFormData({
+        ai_name: e.record.ai_name || 'Bia',
+        bia_instructions: e.record.bia_instructions || '',
+        ai_instructions: e.record.ai_instructions || '',
+      })
+    }
+  })
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
   }
@@ -44,6 +55,16 @@ export default function Bia() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
+
+    if (!formData.ai_name.trim()) {
+      toast({
+        title: 'Erro de Validação',
+        description: 'O Nome da IA é obrigatório.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setLoading(true)
     try {
       await pb.collection('users').update(user.id, formData)

@@ -42,6 +42,8 @@ export default function Index() {
     return status || 'Desconhecido'
   }
 
+  const isBiaActive = !!(currentUser?.bia_instructions || currentUser?.ai_name)
+
   return (
     <div className="container mx-auto py-8 max-w-5xl space-y-8 animate-fade-in">
       <div className="flex flex-col gap-2">
@@ -72,11 +74,11 @@ export default function Index() {
                 {getStatusText(currentUser?.uazapi_status)}
               </span>
             </div>
-            {currentUser?.uazapi_error && (
+            {currentUser?.uazapi_error ? (
               <p className="text-xs text-red-500 mt-2 truncate" title={currentUser?.uazapi_error}>
                 {currentUser?.uazapi_error}
               </p>
-            )}
+            ) : null}
             <p className="text-xs text-slate-500 mt-2">
               Instância: {currentUser?.uazapi_instance_number || 'Não configurada'}
             </p>
@@ -109,15 +111,24 @@ export default function Index() {
           </CardContent>
         </Card>
 
-        <Card className="transition-all duration-300 border-l-4 border-l-blue-500">
+        <Card
+          className={cn(
+            'transition-all duration-300 border-l-4',
+            isBiaActive ? 'border-l-blue-500' : 'border-l-slate-300',
+          )}
+        >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">IA Mãe (Bia)</CardTitle>
             <Bot className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-blue-500" />
-              <span className="text-2xl font-bold">Ativa</span>
+              {isBiaActive ? (
+                <CheckCircle2 className="h-5 w-5 text-blue-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-slate-400" />
+              )}
+              <span className="text-2xl font-bold">{isBiaActive ? 'Ativa' : 'Pendente'}</span>
             </div>
             <p className="text-xs text-slate-500 mt-2 truncate" title={currentUser?.ai_name}>
               Nome: {currentUser?.ai_name || 'Bia'}

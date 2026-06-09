@@ -66,15 +66,15 @@ const RouteTracker = () => {
     const lowerPath = path.toLowerCase()
 
     // Strict isolation for Configuration path
-    if (lowerPath === '/configuracoes/meta-capi') {
+    if (lowerPath === '/configuracoes/conexoes/meta-capi') {
       component = 'MetaCapiConfig'
     } else if (lowerPath === '/configuracoes/bia') {
       component = 'BiaConfig'
     } else if (lowerPath === '/configuracoes/remarketing') {
       component = 'RemarketingConfig'
-    } else if (lowerPath === '/configuracoes/uazapi') {
+    } else if (lowerPath === '/configuracoes/conexoes/uazapi') {
       component = 'UazapiConfig'
-    } else if (lowerPath.startsWith('/configuracoes')) {
+    } else if (lowerPath.startsWith('/configuracoes/conexoes')) {
       component = 'ConfiguracoesCore'
     } else if (lowerPath.startsWith('/dashboard')) {
       component = 'Dashboard'
@@ -189,15 +189,7 @@ const router = createBrowserRouter(
                   element: <Remarketing />,
                 },
                 {
-                  path: 'configuracoes/uazapi',
-                  element: <UazapiConfig />,
-                },
-                {
-                  path: 'configuracoes',
-                  element: <ConfiguracoesCore />,
-                },
-                {
-                  path: 'configuracoes/*',
+                  path: 'configuracoes/conexoes/*',
                   element: <ConfiguracoesCore />,
                 },
               ],

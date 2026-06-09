@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Loader2, CheckCircle2, AlertTriangle, Settings, Network } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export function UazapiConfig() {
   const { user } = useAuth()
@@ -44,6 +45,12 @@ export function UazapiConfig() {
     }
   }, [user])
 
+  useRealtime('users', (e) => {
+    if (e.record.id === user?.id) {
+      setStatus(e.record.uazapi_status || 'disconnected')
+    }
+  })
+
   const sanitizeDomain = (raw: string) => {
     let clean = raw.trim()
     if (clean && !clean.startsWith('http')) {
@@ -55,8 +62,21 @@ export function UazapiConfig() {
     return clean
   }
 
+  const validateFields = () => {
+    if (!domain.trim()) return 'Server URL (Base Domain) é obrigatório.'
+    if (!instance.trim()) return 'Instance Number (ou Slug) é obrigatório.'
+    if (!token.trim()) return 'Instance Token (API Key) é obrigatório.'
+    return null
+  }
+
   const handleSave = async () => {
     if (!user?.id) return
+    const errorMsg = validateFields()
+    if (errorMsg) {
+      toast({ title: 'Erro de Validação', description: errorMsg, variant: 'destructive' })
+      return
+    }
+
     setIsSaving(true)
     try {
       const cleanDomain = sanitizeDomain(domain)
@@ -85,6 +105,12 @@ export function UazapiConfig() {
   }
 
   const handleTestConnection = async () => {
+    const errorMsg = validateFields()
+    if (errorMsg) {
+      toast({ title: 'Erro de Validação', description: errorMsg, variant: 'destructive' })
+      return
+    }
+
     setIsTesting(true)
     setTestResult({ status: null, message: '' })
 

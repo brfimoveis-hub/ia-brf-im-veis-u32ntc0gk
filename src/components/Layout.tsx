@@ -36,10 +36,10 @@ export default function Layout() {
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Clientes', path: '/clientes', icon: Users },
-    { name: 'IA Mãe (Bia)', path: '/configuracoes/bia', icon: Bot },
-    { name: 'Remarketing Meta', path: '/configuracoes/remarketing', icon: RefreshCw },
-    { name: 'Conexão Uazapi', path: '/configuracoes/uazapi', icon: MessageSquare },
     { name: 'Cadências', path: '/cadencias', icon: Settings },
+    { name: 'IA Mãe (Bia)', path: '/configuracoes/bia', icon: Bot },
+    { name: 'Remarketing', path: '/configuracoes/remarketing', icon: RefreshCw },
+    { name: 'Conexões', path: '/configuracoes/conexoes', icon: MessageSquare },
     { name: 'Logs', path: '/logs', icon: Activity },
   ]
 

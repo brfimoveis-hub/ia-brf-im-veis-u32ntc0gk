@@ -14,6 +14,7 @@ import {
   CardFooter,
 } from '@/components/ui/card'
 import { Loader2, RefreshCw, Save, Activity } from 'lucide-react'
+import { useRealtime } from '@/hooks/use-realtime'
 
 export default function Remarketing() {
   const { user } = useAuth()
@@ -26,6 +27,11 @@ export default function Remarketing() {
     meta_whatsapp_business_id: '',
   })
 
+  const [status, setStatus] = useState({
+    meta_capi_status: user?.meta_capi_status || 'Não configurado',
+    meta_token_status: user?.meta_token_status || 'Não validado',
+  })
+
   useEffect(() => {
     if (user) {
       setFormData({
@@ -33,8 +39,28 @@ export default function Remarketing() {
         meta_capi_token: user.meta_capi_token || '',
         meta_whatsapp_business_id: user.meta_whatsapp_business_id || '',
       })
+      setStatus({
+        meta_capi_status: user.meta_capi_status || 'Não configurado',
+        meta_token_status: user.meta_token_status || 'Não validado',
+      })
     }
   }, [user])
+
+  useRealtime('users', (e) => {
+    if (e.record.id === user?.id) {
+      if (!loading) {
+        setFormData({
+          meta_pixel_id: e.record.meta_pixel_id || '',
+          meta_capi_token: e.record.meta_capi_token || '',
+          meta_whatsapp_business_id: e.record.meta_whatsapp_business_id || '',
+        })
+      }
+      setStatus({
+        meta_capi_status: e.record.meta_capi_status || 'Não configurado',
+        meta_token_status: e.record.meta_token_status || 'Não validado',
+      })
+    }
+  })
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
@@ -43,6 +69,16 @@ export default function Remarketing() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
+
+    if (!formData.meta_pixel_id.trim() && !formData.meta_capi_token.trim()) {
+      toast({
+        title: 'Erro de Validação',
+        description: 'Preencha os campos para salvar as configurações.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setLoading(true)
     try {
       await pb.collection('users').update(user.id, formData)
@@ -86,14 +122,14 @@ export default function Remarketing() {
                 <p className="text-sm text-slate-500 mb-1">Status CAPI</p>
                 <div className="flex items-center gap-2">
                   <Activity className="h-4 w-4" />
-                  <span className="font-medium">{user?.meta_capi_status || 'Não configurado'}</span>
+                  <span className="font-medium">{status.meta_capi_status}</span>
                 </div>
               </div>
               <div className="p-4 bg-slate-50 rounded-lg border">
                 <p className="text-sm text-slate-500 mb-1">Status do Token</p>
                 <div className="flex items-center gap-2">
                   <Activity className="h-4 w-4" />
-                  <span className="font-medium">{user?.meta_token_status || 'Não validado'}</span>
+                  <span className="font-medium">{status.meta_token_status}</span>
                 </div>
               </div>
             </div>
