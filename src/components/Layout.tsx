@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export default function Layout() {
   const { user, signOut } = useAuth()
@@ -35,10 +36,11 @@ export default function Layout() {
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Clientes', path: '/clientes', icon: Users },
-    { name: 'Cadências', path: '/cadencias', icon: MessageSquare },
     { name: 'IA Mãe (Bia)', path: '/configuracoes/bia', icon: Bot },
-    { name: 'Remarketing', path: '/configuracoes/remarketing', icon: RefreshCw },
-    { name: 'Configurações', path: '/configuracoes', icon: Settings },
+    { name: 'Remarketing Meta', path: '/configuracoes/remarketing', icon: RefreshCw },
+    { name: 'Conexão Uazapi', path: '/configuracoes/uazapi', icon: MessageSquare },
+    { name: 'Cadências', path: '/cadencias', icon: Settings },
+    { name: 'Logs', path: '/logs', icon: Activity },
   ]
 
   const SidebarContent = () => (
@@ -158,7 +160,9 @@ export default function Layout() {
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

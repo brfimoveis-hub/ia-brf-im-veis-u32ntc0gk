@@ -22,6 +22,7 @@ import ClientesCore from './pages/ClientesCore'
 import ConfiguracoesCore from './pages/ConfiguracoesCore'
 import Bia from './pages/Bia'
 import Remarketing from './pages/Remarketing'
+import UazapiConfig from './pages/UazapiConfig'
 import Cadences from './pages/Cadences'
 import Logs from './pages/Logs'
 import NotFound from './pages/NotFound'
@@ -71,6 +72,8 @@ const RouteTracker = () => {
       component = 'BiaConfig'
     } else if (lowerPath === '/configuracoes/remarketing') {
       component = 'RemarketingConfig'
+    } else if (lowerPath === '/configuracoes/uazapi') {
+      component = 'UazapiConfig'
     } else if (lowerPath.startsWith('/configuracoes')) {
       component = 'ConfiguracoesCore'
     } else if (lowerPath.startsWith('/dashboard')) {
@@ -184,6 +187,10 @@ const router = createBrowserRouter(
                 {
                   path: 'configuracoes/remarketing',
                   element: <Remarketing />,
+                },
+                {
+                  path: 'configuracoes/uazapi',
+                  element: <UazapiConfig />,
                 },
                 {
                   path: 'configuracoes',
