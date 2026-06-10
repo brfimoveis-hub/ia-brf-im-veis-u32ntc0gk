@@ -127,22 +127,27 @@ export function DiagnosticCenter() {
     }))
   }
 
+  const safeStringify = (obj: any): string => {
+    if (obj === null || obj === undefined) return ''
+    if (typeof obj === 'string') return obj
+    try {
+      return JSON.stringify(obj)
+    } catch (e) {
+      return String(obj)
+    }
+  }
+
   const filteredAndSortedLogs = useMemo(() => {
     let result = [...recentLogs]
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
-      result = result.filter(
-        (log) =>
-          log.message.toLowerCase().includes(q) ||
-          (log.details &&
-            typeof log.details === 'string' &&
-            log.details.toLowerCase().includes(q)) ||
-          (log.details &&
-            typeof log.details === 'object' &&
-            JSON.stringify(log.details).toLowerCase().includes(q)) ||
-          log.type.toLowerCase().includes(q),
-      )
+      result = result.filter((log) => {
+        const msg = safeStringify(log.message).toLowerCase()
+        const typ = safeStringify(log.type).toLowerCase()
+        const det = safeStringify(log.details).toLowerCase()
+        return msg.includes(q) || typ.includes(q) || det.includes(q)
+      })
     }
 
     result.sort((a, b) => {
@@ -450,7 +455,7 @@ export function DiagnosticCenter() {
       : 100
 
   const getLogBadgeColor = (type: string) => {
-    const t = type.toLowerCase()
+    const t = typeof type === 'string' ? type.toLowerCase() : String(type).toLowerCase()
     if (t.includes('error') || t.includes('fail'))
       return 'bg-destructive/10 text-destructive border-destructive/20'
     if (t.includes('warning') || t.includes('diagnostic'))
@@ -838,30 +843,29 @@ export function DiagnosticCenter() {
                   </TableRow>
                 ) : (
                   filteredAndSortedLogs.map((log) => {
+                    const typ = safeStringify(log.type)
+                    const msg = safeStringify(log.message)
                     let source = 'System'
                     if (
-                      log.type.toLowerCase().includes('webhook') ||
-                      log.message.toLowerCase().includes('webhook')
+                      typ.toLowerCase().includes('webhook') ||
+                      msg.toLowerCase().includes('webhook')
                     )
                       source = 'Webhook'
                     else if (
-                      log.type.toLowerCase().includes('ai') ||
-                      log.type.toLowerCase() === 'ai_response'
+                      typ.toLowerCase().includes('ai') ||
+                      typ.toLowerCase() === 'ai_response'
                     )
                       source = 'AI Engine'
                     else if (
-                      log.type.toLowerCase().includes('meta') ||
-                      log.type.toLowerCase().includes('remarketing')
+                      typ.toLowerCase().includes('meta') ||
+                      typ.toLowerCase().includes('remarketing')
                     )
                       source = 'Meta Ads'
 
                     let statusType = 'Success'
-                    if (
-                      log.type.toLowerCase().includes('error') ||
-                      log.message.toLowerCase().includes('falha')
-                    )
+                    if (typ.toLowerCase().includes('error') || msg.toLowerCase().includes('falha'))
                       statusType = 'Error'
-                    else if (log.type.toLowerCase().includes('warning')) statusType = 'Info'
+                    else if (typ.toLowerCase().includes('warning')) statusType = 'Info'
 
                     return (
                       <TableRow key={log.id}>
@@ -874,23 +878,25 @@ export function DiagnosticCenter() {
                             variant="outline"
                             className={cn(
                               'text-[10px] h-6 px-2 whitespace-nowrap',
-                              getLogBadgeColor(log.type),
+                              getLogBadgeColor(typ),
                             )}
                           >
-                            {log.type.toUpperCase()}
+                            {typ.toUpperCase() || 'INFO'}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm font-medium text-secondary">
+                        <TableCell className="text-sm font-medium text-secondary max-w-[300px]">
                           <div className="flex items-center gap-2">
                             {statusType === 'Error' ? (
-                              <AlertTriangle className="h-4 w-4 text-red-500" />
+                              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
                             ) : statusType === 'Info' ? (
-                              <Activity className="h-4 w-4 text-amber-500" />
+                              <Activity className="h-4 w-4 text-amber-500 shrink-0" />
                             ) : (
-                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                              <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                             )}
-                            <div className="line-clamp-2" title={log.message}>
-                              {log.message}
+                            <div className="line-clamp-2 truncate break-words" title={msg}>
+                              {msg || (
+                                <span className="italic text-muted-foreground">Sem mensagem</span>
+                              )}
                             </div>
                           </div>
                         </TableCell>
@@ -961,7 +967,9 @@ export function DiagnosticCenter() {
           <ScrollArea className="max-h-[60vh] mt-4 rounded-md bg-slate-950 p-4 border">
             <pre className="text-xs text-slate-50 font-mono whitespace-pre-wrap break-words">
               {selectedPayloadLog?.payload
-                ? JSON.stringify(selectedPayloadLog.payload, null, 2)
+                ? typeof selectedPayloadLog.payload === 'object'
+                  ? JSON.stringify(selectedPayloadLog.payload, null, 2)
+                  : String(selectedPayloadLog.payload)
                 : 'Nenhum payload disponível para este log.'}
             </pre>
           </ScrollArea>
