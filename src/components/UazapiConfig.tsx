@@ -26,6 +26,12 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { useRealtime } from '@/hooks/use-realtime'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 
 export function UazapiConfig() {
   const { user } = useAuth()
@@ -161,9 +167,15 @@ export function UazapiConfig() {
     } catch (err: any) {
       const data = err.response || {}
 
+      let message = data.error || data.message || err.message || 'Erro desconhecido ao conectar.'
+      if (err.status === 404 || data.code === 404 || data.status === 404) {
+        message =
+          "Instance not found. Please verify if the 'Instance Number' should be the Instance Slug (name) instead of the phone number."
+      }
+
       setTestResult({
         status: 'error',
-        message: data.error || data.message || err.message || 'Erro desconhecido ao conectar.',
+        message,
         rawLog: data.rawLog || data,
       })
       setStatus('error')
@@ -448,18 +460,21 @@ export function UazapiConfig() {
           </Alert>
 
           {testResult.status === 'error' && testResult.rawLog && (
-            <Card className="border-red-200 dark:border-red-900/50 overflow-hidden">
-              <CardHeader className="py-3 px-4 bg-red-50 dark:bg-red-900/10 border-b border-red-100 dark:border-red-900/50">
-                <CardTitle className="text-sm font-medium text-red-800 dark:text-red-200">
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem
+                value="raw-log"
+                className="border-red-200 dark:border-red-900/50 rounded-md border overflow-hidden"
+              >
+                <AccordionTrigger className="py-3 px-4 bg-red-50 dark:bg-red-900/10 text-sm font-medium text-red-800 dark:text-red-200 hover:no-underline hover:bg-red-100 dark:hover:bg-red-900/20 data-[state=open]:border-b data-[state=open]:border-red-100 dark:data-[state=open]:border-red-900/50">
                   Detalhes Técnicos (Raw Log)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <pre className="p-4 text-xs font-mono bg-slate-950 text-slate-50 overflow-auto max-h-[300px]">
-                  {JSON.stringify(testResult.rawLog, null, 2)}
-                </pre>
-              </CardContent>
-            </Card>
+                </AccordionTrigger>
+                <AccordionContent className="p-0 border-t-0">
+                  <pre className="p-4 text-xs font-mono bg-slate-950 text-slate-50 overflow-auto max-h-[300px]">
+                    {JSON.stringify(testResult.rawLog, null, 2)}
+                  </pre>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           )}
         </div>
       )}
