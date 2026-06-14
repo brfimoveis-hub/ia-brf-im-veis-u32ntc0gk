@@ -48,7 +48,9 @@ routerAdd(
       } catch (_) {}
     }
 
+    let urlsAttempted = []
     const fetchWithRetry = (reqUrl) => {
+      urlsAttempted.push(reqUrl)
       let lastErr = null
       let response = null
       for (let i = 0; i < 3; i++) {
@@ -79,8 +81,7 @@ routerAdd(
       let res
 
       try {
-        // Optimized path-based routing
-        res = fetchWithRetry(domain + '/instance/' + instance + '/connectionState')
+        res = fetchWithRetry(domain + '/instance/status/' + instance)
       } catch (err) {}
 
       if (!res || res.statusCode === 404) {
@@ -92,21 +93,14 @@ routerAdd(
 
       if (!res || res.statusCode === 404) {
         try {
-          const res3 = fetchWithRetry(domain + '/' + instance + '/instance/connectionState')
+          const res3 = fetchWithRetry(domain + '/instance/' + instance + '/connectionState')
           if (res3.statusCode !== 404) res = res3
         } catch (err) {}
       }
 
-      if (res && res.statusCode === 404) {
+      if (!res || res.statusCode === 404) {
         try {
-          const res3 = fetchWithRetry(domain + '/api/v1/instance/connectionState/' + instance)
-          if (res3.statusCode !== 404) res = res3
-        } catch (err) {}
-      }
-
-      if (res && res.statusCode === 404) {
-        try {
-          const res4 = fetchWithRetry(domain + '/api/v1/' + instance + '/instance/connectionState')
+          const res4 = fetchWithRetry(domain + '/' + instance + '/instance/connectionState')
           if (res4.statusCode !== 404) res = res4
         } catch (err) {}
       }
@@ -163,6 +157,8 @@ routerAdd(
             domain,
             'payload',
             JSON.stringify(body),
+            'urlsAttempted',
+            JSON.stringify(urlsAttempted),
             'response',
             JSON.stringify(res.json || {}),
           )
@@ -170,9 +166,9 @@ routerAdd(
         logConnection('error', res.json, 'Instância não encontrada (404)')
         return e.json(400, {
           message: 'Instance not found',
-          error: `Instance not found. Please verify if the 'Instance Number' should be the Instance Slug (name) instead of the phone number. Detalhe: ${JSON.stringify(res.json || {})}`,
+          error: `Instance not found. Please verify if the 'Instance Number' should be the Instance Slug (name) instead of the phone number. URLs Attempted: ${urlsAttempted.join(', ')}. Detalhe: ${JSON.stringify(res.json || {})}`,
           originalStatus: 404,
-          rawLog: res.json || { code: 404, message: 'Not Found.', data: {} },
+          rawLog: { ...(res.json || {}), urlsAttempted },
         })
       }
 

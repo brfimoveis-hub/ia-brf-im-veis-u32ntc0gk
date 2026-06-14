@@ -38,9 +38,9 @@ export function UazapiConfig() {
   const { toast } = useToast()
 
   const [domain, setDomain] = useState(user?.uazapi_domain || 'https://iabrfimveis.uazapi.com')
-  const [token, setToken] = useState(user?.uazapi_token || '')
+  const [token, setToken] = useState(user?.uazapi_token || 'd40df49e-bcbe-4729-9a71-291527eaa812')
   const [adminToken, setAdminToken] = useState(user?.uazapi_admin_token || '')
-  const [instance, setInstance] = useState(user?.uazapi_instance_number || '')
+  const [instance, setInstance] = useState(user?.uazapi_instance_number || 'pog6Yx')
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
 
   const [isSaving, setIsSaving] = useState(false)
@@ -170,6 +170,7 @@ export function UazapiConfig() {
       let message = data.error || data.message || err.message || 'Erro desconhecido ao conectar.'
       if (err.status === 404 || data.code === 404 || data.status === 404) {
         message =
+          data.error ||
           "Instância não encontrada. Por favor, verifique se o 'Instance Number' deve ser o Slug da Instância (nome) em vez do número de telefone."
       }
 
@@ -330,7 +331,7 @@ export function UazapiConfig() {
             <Label htmlFor="instance">Instance Number (ou Slug)</Label>
             <Input
               id="instance"
-              placeholder="Ex: pog6Yx ou 554892098050"
+              placeholder="pog6Yx"
               value={instance}
               onChange={(e) => setInstance(e.target.value)}
             />
@@ -345,7 +346,7 @@ export function UazapiConfig() {
             <Input
               id="token"
               type="password"
-              placeholder="Ex: 6df3aaaa-9198-40aa-9d0c-da3abd9c1934"
+              placeholder="••••••••••••••••••••••••••••••••••••••••••••••••••"
               value={token}
               onChange={(e) => setToken(e.target.value)}
             />
