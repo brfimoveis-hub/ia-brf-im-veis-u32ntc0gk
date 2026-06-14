@@ -439,46 +439,55 @@ export function UazapiConfig() {
         </CardFooter>
       </Card>
 
-      {testResult.status && (
-        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-          <Alert
-            variant={testResult.status === 'error' ? 'destructive' : 'default'}
-            className={testResult.status === 'success' ? 'border-green-500/50 bg-green-500/10' : ''}
+      <div className="min-h-[150px]">
+        {testResult.status && (
+          <div
+            key="test-result-panel"
+            className="space-y-4 animate-in fade-in slide-in-from-bottom-4"
           >
-            {testResult.status === 'success' ? (
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-            ) : (
-              <AlertTriangle className="h-4 w-4" />
-            )}
-            <div className="ml-2">
-              <AlertTitle>
-                {testResult.status === 'success'
-                  ? 'Conexão Bem-sucedida'
-                  : 'Falha no Teste de Conexão'}
-              </AlertTitle>
-              <AlertDescription className="mt-1">{testResult.message}</AlertDescription>
-            </div>
-          </Alert>
+            <Alert
+              variant={testResult.status === 'error' ? 'destructive' : 'default'}
+              className={
+                testResult.status === 'success' ? 'border-green-500/50 bg-green-500/10' : ''
+              }
+            >
+              {testResult.status === 'success' ? (
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              ) : (
+                <AlertTriangle className="h-4 w-4" />
+              )}
+              <div className="ml-2">
+                <AlertTitle>
+                  {testResult.status === 'success'
+                    ? 'Conexão Bem-sucedida'
+                    : 'Falha no Teste de Conexão'}
+                </AlertTitle>
+                <AlertDescription className="mt-1 whitespace-pre-wrap">
+                  {testResult.message}
+                </AlertDescription>
+              </div>
+            </Alert>
 
-          {testResult.status === 'error' && testResult.rawLog && (
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem
-                value="raw-log"
-                className="border-red-200 dark:border-red-900/50 rounded-md border overflow-hidden"
-              >
-                <AccordionTrigger className="py-3 px-4 bg-red-50 dark:bg-red-900/10 text-sm font-medium text-red-800 dark:text-red-200 hover:no-underline hover:bg-red-100 dark:hover:bg-red-900/20 data-[state=open]:border-b data-[state=open]:border-red-100 dark:data-[state=open]:border-red-900/50">
-                  Detalhes Técnicos (Raw Log)
-                </AccordionTrigger>
-                <AccordionContent className="p-0 border-t-0">
-                  <pre className="p-4 text-xs font-mono bg-slate-950 text-slate-50 overflow-auto max-h-[300px]">
-                    {JSON.stringify(testResult.rawLog, null, 2)}
-                  </pre>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          )}
-        </div>
-      )}
+            {testResult.status === 'error' && testResult.rawLog && (
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem
+                  value="raw-log"
+                  className="border-red-200 dark:border-red-900/50 rounded-md border overflow-hidden"
+                >
+                  <AccordionTrigger className="py-3 px-4 bg-red-50 dark:bg-red-900/10 text-sm font-medium text-red-800 dark:text-red-200 hover:no-underline hover:bg-red-100 dark:hover:bg-red-900/20 data-[state=open]:border-b data-[state=open]:border-red-100 dark:data-[state=open]:border-red-900/50">
+                    Detalhes Técnicos (Raw Log)
+                  </AccordionTrigger>
+                  <AccordionContent className="p-0 border-t-0">
+                    <pre className="p-4 text-xs font-mono bg-slate-950 text-slate-50 overflow-auto max-h-[300px]">
+                      {JSON.stringify(testResult.rawLog, null, 2)}
+                    </pre>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

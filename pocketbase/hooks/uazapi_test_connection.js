@@ -80,29 +80,30 @@ routerAdd(
     try {
       let res
 
-      try {
-        res = fetchWithRetry(domain + '/instance/status/' + instance)
-      } catch (err) {}
+      const phoneFallback = '554892098050'
+      const instancesToTry = [instance]
+      if (instance !== phoneFallback) instancesToTry.push(phoneFallback)
 
-      if (!res || res.statusCode === 404) {
-        try {
-          const res2 = fetchWithRetry(domain + '/instance/connectionState/' + instance)
-          if (res2.statusCode !== 404) res = res2
-        } catch (err) {}
-      }
+      for (const inst of instancesToTry) {
+        if (res && res.statusCode !== 404) break
 
-      if (!res || res.statusCode === 404) {
-        try {
-          const res3 = fetchWithRetry(domain + '/instance/' + instance + '/connectionState')
-          if (res3.statusCode !== 404) res = res3
-        } catch (err) {}
-      }
+        const pathsToTry = [
+          '/api/instance/' + inst + '/status',
+          '/instance/status/' + inst,
+          '/instance/connectionState/' + inst,
+          '/instance/' + inst + '/connectionState',
+          '/' + inst + '/instance/connectionState',
+        ]
 
-      if (!res || res.statusCode === 404) {
-        try {
-          const res4 = fetchWithRetry(domain + '/' + instance + '/instance/connectionState')
-          if (res4.statusCode !== 404) res = res4
-        } catch (err) {}
+        for (const path of pathsToTry) {
+          try {
+            const attemptRes = fetchWithRetry(domain + path)
+            if (attemptRes && attemptRes.statusCode !== 404) {
+              res = attemptRes
+              break
+            }
+          } catch (err) {}
+        }
       }
 
       if (!res) throw new Error('Connection failed')
