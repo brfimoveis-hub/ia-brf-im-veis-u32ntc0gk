@@ -1,25 +1,126 @@
+import { useState, useEffect } from 'react'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import {
-  Activity,
-  Bot,
-  MessageSquare,
-  RefreshCw,
+  Loader2,
   CheckCircle2,
   XCircle,
   AlertCircle,
+  Activity,
+  Users,
+  MessageSquare,
+  Phone,
 } from 'lucide-react'
-import { useRealtime } from '@/hooks/use-realtime'
-import { useState, useEffect } from 'react'
-import { cn } from '@/lib/utils'
+import useRealtime from '@/hooks/use-realtime'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+
+function UazapiStatusBadge({ status }: { status?: string }) {
+  if (!status || status === 'offline') {
+    return (
+      <Badge variant="destructive" className="flex w-fit items-center gap-1">
+        <XCircle className="w-3 h-3" /> Offline
+      </Badge>
+    )
+  }
+  if (status === 'connected' || status === 'Saudável') {
+    return (
+      <Badge
+        variant="default"
+        className="bg-emerald-500 hover:bg-emerald-600 flex w-fit items-center gap-1"
+      >
+        <CheckCircle2 className="w-3 h-3" /> Conectado
+      </Badge>
+    )
+  }
+  if (status === 'qr_ready' || status === 'connecting') {
+    return (
+      <Badge
+        variant="secondary"
+        className="flex w-fit items-center gap-1 text-yellow-600 dark:text-yellow-500 bg-yellow-100 dark:bg-yellow-900/20"
+      >
+        <Loader2 className="w-3 h-3 animate-spin" /> Conectando...
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="flex w-fit items-center gap-1">
+      <AlertCircle className="w-3 h-3" /> {status}
+    </Badge>
+  )
+}
+
+function UazapiConnectionDetails({
+  user,
+  status,
+  error,
+}: {
+  user: any
+  status?: string
+  error?: string
+}) {
+  const instanceNumber = user?.uazapi_instance_number || 'Não configurada'
+  const domain = user?.uazapi_domain || 'Não configurado'
+
+  const safeError = error && typeof error === 'object' ? JSON.stringify(error) : String(error || '')
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        <div key="instance-block">
+          <span className="text-muted-foreground block mb-1">Instância</span>
+          <span className="font-medium truncate block">{instanceNumber}</span>
+        </div>
+        <div key="domain-block">
+          <span className="text-muted-foreground block mb-1">Domínio</span>
+          <span className="font-medium truncate block">{domain}</span>
+        </div>
+      </div>
+
+      {safeError ? (
+        <Alert variant="destructive" className="mt-4" key="error-alert">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Erro de Conexão</AlertTitle>
+          <AlertDescription className="break-all">{safeError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {status === 'connected' || status === 'Saudável' ? (
+        <Alert
+          className="mt-4 border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          key="success-alert"
+        >
+          <CheckCircle2 className="h-4 w-4 stroke-emerald-600 dark:stroke-emerald-400" />
+          <AlertTitle>Tudo certo!</AlertTitle>
+          <AlertDescription>
+            Sua instância Uazapi ({instanceNumber}) está conectada e pronta para enviar e receber
+            mensagens.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </div>
+  )
+}
+
+function DashboardErrorFallback() {
+  return (
+    <Alert variant="destructive" className="mt-6">
+      <AlertCircle className="h-4 w-4" />
+      <AlertTitle>Erro ao carregar painel</AlertTitle>
+      <AlertDescription>
+        Ocorreu um erro inesperado ao renderizar os componentes do painel. Um log foi enviado para a
+        equipe técnica.
+      </AlertDescription>
+    </Alert>
+  )
+}
 
 export default function Index() {
   const { user } = useAuth()
-  const [currentUser, setCurrentUser] = useState<any>(user)
-
-  useEffect(() => {
-    setCurrentUser(user)
-  }, [user])
+  const [stats, setStats] = useState({ leads: 0, customers: 0, conversations: 0 })
+  const [currentUser, setCurrentUser] = useState(user)
 
   useRealtime('users', (e) => {
     if (e.action === 'update' && e.record.id === user?.id) {
@@ -27,130 +128,91 @@ export default function Index() {
     }
   })
 
-  const getStatusIcon = (status: string) => {
-    const s = status?.toLowerCase() || ''
-    if (s === 'connected' || s === 'active' || s === 'open')
-      return <CheckCircle2 className="h-5 w-5 text-green-500" />
-    if (s === 'disconnected' || s === 'error') return <XCircle className="h-5 w-5 text-red-500" />
-    return <AlertCircle className="h-5 w-5 text-yellow-500" />
-  }
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const [leadsList, customersList, convsList] = await Promise.all([
+          pb.collection('leads').getList(1, 1, { filter: `assigned_to = "${user?.id}"` }),
+          pb.collection('customers').getList(1, 1, { filter: `user_id = "${user?.id}"` }),
+          pb
+            .collection('conversations')
+            .getList(1, 1, { filter: `customer_id.user_id = "${user?.id}"` }),
+        ])
+        setStats({
+          leads: leadsList.totalItems,
+          customers: customersList.totalItems,
+          conversations: convsList.totalItems,
+        })
+      } catch (err) {
+        console.error('Failed to load stats', err)
+      }
+    }
+    if (user?.id) loadStats()
+  }, [user?.id])
 
-  const getStatusText = (status: string) => {
-    const s = status?.toLowerCase() || ''
-    if (s === 'connected' || s === 'active' || s === 'open') return 'Conectado'
-    if (s === 'disconnected' || s === 'error') return 'Desconectado / Erro'
-    return status || 'Desconhecido'
-  }
-
-  const isBiaActive = !!(currentUser?.bia_instructions || currentUser?.ai_name)
+  const status = currentUser?.uazapi_status
+  const error = currentUser?.uazapi_error
 
   return (
-    <div className="container mx-auto py-8 max-w-5xl space-y-8 animate-fade-in">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard de Conectividade</h1>
-        <p className="text-slate-500">
-          Bem-vindo, {currentUser?.name || currentUser?.email}. Monitore o status das suas
-          integrações em tempo real.
-        </p>
+    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card
-          className={cn(
-            'transition-all duration-300 border-l-4',
-            currentUser?.uazapi_status === 'connected' || currentUser?.uazapi_status === 'open'
-              ? 'border-l-green-500'
-              : 'border-l-red-500',
-          )}
-        >
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Conexão Uazapi</CardTitle>
-            <MessageSquare className="h-4 w-4 text-slate-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              {getStatusIcon(currentUser?.uazapi_status)}
-              <span className="text-2xl font-bold">
-                {getStatusText(currentUser?.uazapi_status)}
-              </span>
-            </div>
-            {currentUser?.uazapi_error ? (
-              <p className="text-xs text-red-500 mt-2 truncate" title={currentUser?.uazapi_error}>
-                {currentUser?.uazapi_error}
-              </p>
-            ) : null}
-            <p className="text-xs text-slate-500 mt-2">
-              Instância: {currentUser?.uazapi_instance_number || 'Não configurada'}
-            </p>
-          </CardContent>
-        </Card>
+      <ErrorBoundary fallback={<DashboardErrorFallback />}>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card key="stat-leads">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total de Leads</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.leads}</div>
+            </CardContent>
+          </Card>
+          <Card key="stat-customers">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Clientes</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.customers}</div>
+            </CardContent>
+          </Card>
+          <Card key="stat-conversations">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Conversas</CardTitle>
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.conversations}</div>
+            </CardContent>
+          </Card>
+          <Card key="stat-uazapi">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Status Uazapi</CardTitle>
+              <Phone className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <UazapiStatusBadge status={status} />
+            </CardContent>
+          </Card>
+        </div>
 
-        <Card
-          className={cn(
-            'transition-all duration-300 border-l-4',
-            currentUser?.meta_capi_status === 'active' ||
-              currentUser?.meta_capi_status === 'connected'
-              ? 'border-l-green-500'
-              : 'border-l-yellow-500',
-          )}
-        >
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Meta Remarketing</CardTitle>
-            <RefreshCw className="h-4 w-4 text-slate-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              {getStatusIcon(currentUser?.meta_capi_status)}
-              <span className="text-2xl font-bold">
-                {getStatusText(currentUser?.meta_capi_status)}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Pixel ID: {currentUser?.meta_pixel_id || 'Não configurado'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={cn(
-            'transition-all duration-300 border-l-4',
-            isBiaActive ? 'border-l-blue-500' : 'border-l-slate-300',
-          )}
-        >
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">IA Mãe (Bia)</CardTitle>
-            <Bot className="h-4 w-4 text-slate-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              {isBiaActive ? (
-                <CheckCircle2 className="h-5 w-5 text-blue-500" />
-              ) : (
-                <AlertCircle className="h-5 w-5 text-slate-400" />
-              )}
-              <span className="text-2xl font-bold">{isBiaActive ? 'Ativa' : 'Pendente'}</span>
-            </div>
-            <p className="text-xs text-slate-500 mt-2 truncate" title={currentUser?.ai_name}>
-              Nome: {currentUser?.ai_name || 'Bia'}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Atividade Recente</CardTitle>
-          <CardDescription>Acompanhe os últimos eventos e integrações de sistema.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center p-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
-            <Activity className="h-8 w-8 text-slate-400 mb-3" />
-            <p className="text-sm text-slate-500">
-              O log de atividades integrado será exibido aqui em breve.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7 mt-4">
+          <Card className="col-span-4" key="connection-card">
+            <CardHeader>
+              <CardTitle>Conexão Uazapi</CardTitle>
+              <CardDescription>
+                Monitoramento em tempo real do status da sua instância WhatsApp.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <UazapiConnectionDetails user={currentUser} status={status} error={error} />
+            </CardContent>
+          </Card>
+        </div>
+      </ErrorBoundary>
     </div>
   )
 }

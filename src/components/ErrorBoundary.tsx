@@ -1,6 +1,7 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import pb from '@/lib/pocketbase/client'
 
 interface Props {
   children?: ReactNode
@@ -23,6 +24,23 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo)
+
+    try {
+      if (pb.authStore.isValid) {
+        pb.collection('system_logs')
+          .create({
+            type: 'frontend_error',
+            message: error.message || 'React Rendering Error',
+            details: {
+              stack: error.stack,
+              componentStack: errorInfo.componentStack,
+            },
+          })
+          .catch(console.error)
+      }
+    } catch (e) {
+      console.error('Failed to log error to backend', e)
+    }
   }
 
   public render() {

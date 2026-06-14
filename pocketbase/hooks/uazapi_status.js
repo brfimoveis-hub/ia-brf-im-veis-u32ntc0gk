@@ -208,10 +208,11 @@ routerAdd(
         if (!instanceData && res.statusCode === 404) {
           statusStr = 'error'
           if (!errorReason) {
-            errorReason =
+            let rawErr =
               data?.message ||
               data?.error ||
               `Instância não encontrada (404) - Verifique se a instância ${instance} existe e o token está correto.`
+            errorReason = typeof rawErr === 'object' ? JSON.stringify(rawErr) : String(rawErr)
           }
         }
 
@@ -239,11 +240,10 @@ routerAdd(
         })
       }
 
-      const errMsg =
-        data?.message ||
-        data?.error ||
-        JSON.stringify(data) ||
-        `Erro da API Uazapi (Status: ${res.statusCode})`
+      let errMsg =
+        data?.message || data?.error || data || `Erro da API Uazapi (Status: ${res.statusCode})`
+      errMsg = typeof errMsg === 'object' ? JSON.stringify(errMsg) : String(errMsg)
+
       updateUserStatus('error', errMsg)
       logConnection('error', data, errMsg)
 

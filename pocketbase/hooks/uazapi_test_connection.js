@@ -119,10 +119,14 @@ routerAdd(
         const uazapiErrorMsg = res.json && (res.json.message || res.json.error)
         let customErrorMsg = 'Acesso negado no Uazapi (Token inválido).'
 
-        if (uazapiErrorMsg && String(uazapiErrorMsg).toLowerCase().includes('oauth')) {
-          customErrorMsg = `Erro de Autenticação (OAuth): Verifique se o Instance Token e o Admin Token não contêm espaços ou caracteres ocultos. Mensagem do Uazapi: ${uazapiErrorMsg}`
-        } else if (uazapiErrorMsg) {
-          customErrorMsg = `Acesso negado: ${uazapiErrorMsg}`
+        const safeUazapiErrorMsg =
+          typeof uazapiErrorMsg === 'object'
+            ? JSON.stringify(uazapiErrorMsg)
+            : String(uazapiErrorMsg || '')
+        if (safeUazapiErrorMsg && safeUazapiErrorMsg.toLowerCase().includes('oauth')) {
+          customErrorMsg = `Erro de Autenticação (OAuth): Verifique se o Instance Token e o Admin Token não contêm espaços ou caracteres ocultos. Mensagem do Uazapi: ${safeUazapiErrorMsg}`
+        } else if (safeUazapiErrorMsg) {
+          customErrorMsg = `Acesso negado: ${safeUazapiErrorMsg}`
         }
 
         $app
