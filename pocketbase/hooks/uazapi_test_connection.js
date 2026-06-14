@@ -20,22 +20,46 @@ routerAdd(
     const phoneFallback = instance.replace(/\D/g, '')
 
     const check = (identifier) => {
-      try {
-        const url = `${baseUrl}/api/instance/${identifier}/status`
-        const res = $http.send({
-          url: url,
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            apikey: token,
-            'Content-Type': 'application/json',
-          },
-          timeout: 10,
-        })
-        return { res, identifier, url }
-      } catch (err) {
-        throw err
+      const endpoints = [
+        `/api/instance/${identifier}/status`,
+        `/status?instance=${identifier}`,
+        `/instance/status/${identifier}`,
+      ]
+
+      let lastRes = null
+      let lastUrl = null
+      let lastErr = null
+
+      for (const endpoint of endpoints) {
+        const url = `${baseUrl}${endpoint}`
+        try {
+          const res = $http.send({
+            url: url,
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              apikey: token,
+              'Cache-Control': 'no-cache',
+              'Content-Type': 'application/json',
+            },
+            timeout: 10,
+          })
+          lastRes = res
+          lastUrl = url
+
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            return { res, identifier, url }
+          }
+        } catch (err) {
+          lastErr = err
+        }
       }
+
+      if (lastRes) {
+        return { res: lastRes, identifier, url: lastUrl }
+      }
+
+      throw lastErr || new Error('Connection failed')
     }
 
     let result

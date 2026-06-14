@@ -22,6 +22,7 @@ import {
   Copy,
   RefreshCw,
   Activity,
+  RotateCcw,
 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -38,15 +39,19 @@ export function UazapiConfig() {
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
 
   const [isSaving, setIsSaving] = useState(false)
-  const [isTesting, setIsTesting] = useState(false)
   const [isRestarting, setIsRestarting] = useState(false)
   const [isCheckingStatus, setIsCheckingStatus] = useState(false)
 
-  const [testResult, setTestResult] = useState<{
-    status: 'success' | 'error' | 'warning' | null
+  const [testState, setTestState] = useState<{
+    isTesting: boolean
+    status: 'idle' | 'success' | 'error' | 'warning'
     message: string
     rawLog?: any
-  }>({ status: null, message: '' })
+  }>({
+    isTesting: false,
+    status: 'idle',
+    message: '',
+  })
 
   const webhookUrl = `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/uazapi/webhook`
 
@@ -127,8 +132,12 @@ export function UazapiConfig() {
       return
     }
 
-    setIsTesting(true)
-    setTestResult({ status: null, message: '' })
+    setTestState({
+      isTesting: true,
+      status: 'idle',
+      message: '',
+      rawLog: null,
+    })
 
     try {
       const cleanDomain = sanitizeDomain(domain)
@@ -142,7 +151,8 @@ export function UazapiConfig() {
         }),
       })
 
-      setTestResult({
+      setTestState({
+        isTesting: false,
         status: 'success',
         message: 'Conexão estabelecida com sucesso. A IA Mãe pode se comunicar com a instância.',
         rawLog: res,
@@ -166,10 +176,13 @@ export function UazapiConfig() {
         message = 'Instância não encontrada (404)'
       }
 
-      setTestResult({
+      const rawLog = data.details || data.rawLog || data || err
+
+      setTestState({
+        isTesting: false,
         status: 'error',
         message,
-        rawLog: data.details || data.rawLog || data,
+        rawLog,
       })
       setStatus('error')
 
@@ -177,12 +190,10 @@ export function UazapiConfig() {
         pb.collection('users')
           .update(user.id, {
             uazapi_status: 'error',
-            uazapi_error: message,
+            uazapi_error: typeof rawLog === 'string' ? rawLog : JSON.stringify(rawLog),
           })
           .catch(() => {})
       }
-    } finally {
-      setIsTesting(false)
     }
   }
 
@@ -437,10 +448,10 @@ export function UazapiConfig() {
           <Button
             variant="outline"
             onClick={handleTestConnection}
-            disabled={isTesting || !domain || !instance}
+            disabled={testState.isTesting || !domain || !instance}
             className="gap-2"
           >
-            {isTesting ? (
+            {testState.isTesting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Settings className="h-4 w-4" />
@@ -455,55 +466,72 @@ export function UazapiConfig() {
       </Card>
 
       <div className="min-h-[200px] border rounded-lg p-6 bg-card relative shadow-sm">
-        {!testResult.status && !isTesting && (
+        {testState.status === 'idle' && !testState.isTesting && (
           <div className="flex flex-col items-center justify-center text-center h-full min-h-[150px] text-muted-foreground">
             <Network className="h-8 w-8 mb-3 opacity-20" />
             <p className="text-sm">O resultado do teste de conexão aparecerá aqui.</p>
           </div>
         )}
 
-        {isTesting && (
+        {testState.isTesting && (
           <div className="flex flex-col items-center justify-center text-center h-full min-h-[150px] text-muted-foreground">
             <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
             <p className="text-sm">Testando conexão com a instância...</p>
           </div>
         )}
 
-        {testResult.status && !isTesting && (
+        {!testState.isTesting && testState.status !== 'idle' && (
           <div className="space-y-4">
             <Alert
-              variant={testResult.status === 'error' ? 'destructive' : 'default'}
+              variant={testState.status === 'error' ? 'destructive' : 'default'}
               className={
-                testResult.status === 'success' ? 'border-green-500/50 bg-green-500/10' : ''
+                testState.status === 'success' ? 'border-green-500/50 bg-green-500/10' : ''
               }
             >
-              {testResult.status === 'success' ? (
+              {testState.status === 'success' ? (
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
               ) : (
                 <AlertTriangle className="h-4 w-4" />
               )}
-              <div className="ml-2">
+              <div className="ml-2 w-full flex-1">
                 <AlertTitle>
-                  {testResult.status === 'success'
+                  {testState.status === 'success'
                     ? 'Conexão Bem-sucedida'
                     : 'Falha no Teste de Conexão'}
                 </AlertTitle>
-                <AlertDescription className="mt-1 whitespace-pre-wrap">
-                  {testResult.message}
+                <AlertDescription className="mt-1 whitespace-pre-wrap break-all">
+                  {testState.message}
                 </AlertDescription>
+                {testState.status === 'error' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestConnection}
+                    disabled={testState.isTesting}
+                    className="mt-3 gap-2 bg-background hover:bg-muted"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Tentar novamente
+                  </Button>
+                )}
               </div>
             </Alert>
 
-            {testResult.status === 'error' && testResult.rawLog && (
-              <div className="border-red-200 dark:border-red-900/50 rounded-md border overflow-hidden mt-4">
-                <div className="py-2 px-4 bg-red-50 dark:bg-red-900/10 text-sm font-medium text-red-800 dark:text-red-200 border-b border-red-100 dark:border-red-900/50">
-                  Detalhes Técnicos (Raw Log)
+            {testState.rawLog && (
+              <div className="border rounded-md overflow-hidden mt-4 border-border">
+                <div className="py-2 px-4 bg-muted text-sm font-medium border-b border-border">
+                  Detalhes Técnicos (Log Bruto)
                 </div>
-                <pre className="p-4 text-xs font-mono bg-slate-950 text-slate-50 overflow-auto max-h-[300px]">
-                  {typeof testResult.rawLog === 'string'
-                    ? testResult.rawLog
-                    : JSON.stringify(testResult.rawLog, null, 2)}
+                <pre className="p-4 text-xs font-mono bg-slate-950 text-slate-50 overflow-auto max-h-[300px] break-all whitespace-pre-wrap">
+                  {typeof testState.rawLog === 'string'
+                    ? testState.rawLog
+                    : JSON.stringify(testState.rawLog, null, 2)}
                 </pre>
+                <div className="py-2 px-4 bg-slate-900 border-t border-slate-800 text-[10px] text-slate-400 font-mono break-all">
+                  Contexto:{' '}
+                  {localStorage.getItem('currentRoute') ||
+                    '{"path": "/configuracoes/conexoes/uazapi", "component": "UazapiConfig"}'}
+                </div>
               </div>
             )}
           </div>
