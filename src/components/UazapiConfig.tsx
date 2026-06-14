@@ -13,7 +13,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, CheckCircle2, AlertTriangle, Settings, Network } from 'lucide-react'
+import {
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  Settings,
+  Network,
+  Copy,
+  RefreshCw,
+  Activity,
+} from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -29,12 +38,16 @@ export function UazapiConfig() {
 
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
+  const [isRestarting, setIsRestarting] = useState(false)
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false)
 
   const [testResult, setTestResult] = useState<{
     status: 'success' | 'error' | 'warning' | null
     message: string
     rawLog?: any
   }>({ status: null, message: '' })
+
+  const webhookUrl = `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/uazapi/webhook`
 
   useEffect(() => {
     if (user) {
@@ -139,6 +152,7 @@ export function UazapiConfig() {
           uazapi_token: token.trim(),
           uazapi_instance_number: instance.trim(),
           uazapi_status: 'connected',
+          uazapi_error: '',
         })
       }
     } catch (err: any) {
@@ -153,6 +167,95 @@ export function UazapiConfig() {
     } finally {
       setIsTesting(false)
     }
+  }
+
+  const handleRestart = async () => {
+    setIsRestarting(true)
+    try {
+      await pb.send('/backend/v1/uazapi/restart', {
+        method: 'POST',
+        body: JSON.stringify({
+          domain: sanitizeDomain(domain),
+          instance: instance.trim(),
+          token: token.trim(),
+        }),
+      })
+      toast({
+        title: 'API Reiniciada',
+        description: 'O comando de reinício foi enviado com sucesso.',
+      })
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao reiniciar',
+        description: err.message || 'Falha ao reiniciar a API.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsRestarting(false)
+    }
+  }
+
+  const handleCheckStatus = async () => {
+    setIsCheckingStatus(true)
+    try {
+      const res = await pb.send('/backend/v1/uazapi/status', {
+        method: 'POST',
+        body: JSON.stringify({
+          domain: sanitizeDomain(domain),
+          instance: instance.trim(),
+          token: token.trim(),
+        }),
+      })
+
+      const currentState = res.state || res.status || 'unknown'
+      toast({
+        title: 'Status da Instância',
+        description: `Estado atual da conexão: ${currentState}`,
+      })
+
+      if (user?.id && currentState === 'open') {
+        setStatus('connected')
+        await pb.collection('users').update(user.id, { uazapi_status: 'connected' })
+      } else if (user?.id) {
+        setStatus(currentState)
+        await pb.collection('users').update(user.id, { uazapi_status: currentState })
+      }
+    } catch (err: any) {
+      if (err.status === 404 || err.status === 405) {
+        try {
+          const resGet = await pb.send('/backend/v1/uazapi/status', {
+            method: 'GET',
+            query: {
+              domain: sanitizeDomain(domain),
+              instance: instance.trim(),
+              token: token.trim(),
+            },
+          })
+          const currentState = resGet.state || resGet.status || 'unknown'
+          toast({ title: 'Status da Instância', description: `Estado atual: ${currentState}` })
+          return
+        } catch (fallbackErr: any) {
+          toast({
+            title: 'Erro ao checar status',
+            description: fallbackErr.message || 'Falha ao checar o status.',
+            variant: 'destructive',
+          })
+          return
+        }
+      }
+      toast({
+        title: 'Erro ao checar status',
+        description: err.message || 'Falha ao checar o status.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsCheckingStatus(false)
+    }
+  }
+
+  const handleCopyWebhook = () => {
+    navigator.clipboard.writeText(webhookUrl)
+    toast({ title: 'Copiado', description: 'Webhook URL copiada para a área de transferência.' })
   }
 
   return (
@@ -170,14 +273,18 @@ export function UazapiConfig() {
             <Badge
               variant="outline"
               className={
-                status === 'connected'
+                status === 'connected' || status === 'open'
                   ? 'bg-green-500/10 text-green-600 border-green-500/20'
                   : status === 'error'
                     ? 'bg-red-500/10 text-red-600 border-red-500/20'
                     : 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'
               }
             >
-              {status === 'connected' ? 'Conectado' : status === 'error' ? 'Falha' : 'Desconectado'}
+              {status === 'connected' || status === 'open'
+                ? 'Conectado'
+                : status === 'error'
+                  ? 'Falha'
+                  : status || 'Desconectado'}
             </Badge>
           </div>
         </CardHeader>
@@ -199,12 +306,13 @@ export function UazapiConfig() {
             <Label htmlFor="instance">Instance Number (ou Slug)</Label>
             <Input
               id="instance"
-              placeholder="Ex: 554892098050"
+              placeholder="Ex: pog6Yx ou 554892098050"
               value={instance}
               onChange={(e) => setInstance(e.target.value)}
             />
             <p className="text-[0.8rem] text-muted-foreground">
-              Número de telefone com DDI e DDD ou nome da instância.
+              Nome da instância (Instance Slug) para evitar erros 404, ou número de telefone com DDI
+              e DDD se aplicável.
             </p>
           </div>
 
@@ -217,6 +325,61 @@ export function UazapiConfig() {
               value={token}
               onChange={(e) => setToken(e.target.value)}
             />
+          </div>
+
+          <div className="pt-4 border-t space-y-4">
+            <div className="space-y-2">
+              <Label>Webhook URL</Label>
+              <div className="flex gap-2">
+                <Input readOnly value={webhookUrl} className="bg-muted font-mono text-xs" />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={handleCopyWebhook}
+                  title="Copiar URL"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-[0.8rem] text-muted-foreground">
+                Configure esta URL na sua instância Uazapi para receber eventos de mensagens e
+                status.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRestart}
+                disabled={isRestarting || !domain || !instance}
+                className="gap-2"
+              >
+                {isRestarting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Reiniciar API
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCheckStatus}
+                disabled={isCheckingStatus || !domain || !instance}
+                className="gap-2"
+              >
+                {isCheckingStatus ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Activity className="h-4 w-4" />
+                )}
+                Verificar Status
+              </Button>
+            </div>
           </div>
         </CardContent>
         <CardFooter className="flex justify-between border-t px-6 py-4 bg-muted/20">
@@ -265,7 +428,7 @@ export function UazapiConfig() {
             <Card className="border-red-200 dark:border-red-900/50 overflow-hidden">
               <CardHeader className="py-3 px-4 bg-red-50 dark:bg-red-900/10 border-b border-red-100 dark:border-red-900/50">
                 <CardTitle className="text-sm font-medium text-red-800 dark:text-red-200">
-                  Technical Details (Raw Log)
+                  Detalhes Técnicos (Raw Log)
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">

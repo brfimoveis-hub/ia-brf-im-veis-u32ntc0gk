@@ -118,15 +118,16 @@ const RouteTracker = () => {
 
 const Root = () => {
   const { loading } = useAuth()
+  const location = useLocation()
   return (
-    <>
+    <div key={location.pathname} className="contents">
       <RouteTracker />
       <ErrorBoundary fallback={null}>
         <GTMTracker />
         <MetaPixel />
       </ErrorBoundary>
       {loading ? <PageLoader /> : <Outlet />}
-    </>
+    </div>
   )
 }
 
