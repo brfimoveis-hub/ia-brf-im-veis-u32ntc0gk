@@ -26,12 +26,6 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { useRealtime } from '@/hooks/use-realtime'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
 
 export function UazapiConfig() {
   const { user } = useAuth()
@@ -169,9 +163,7 @@ export function UazapiConfig() {
 
       let message = data.error || data.message || err.message || 'Erro desconhecido ao conectar.'
       if (err.status === 404 || data.code === 404 || data.status === 404) {
-        message =
-          data.error ||
-          "Instância não encontrada. Por favor, verifique se o 'Instance Number' deve ser o Slug da Instância (nome) em vez do número de telefone."
+        message = 'Instância não encontrada (404)'
       }
 
       setTestResult({
@@ -180,6 +172,15 @@ export function UazapiConfig() {
         rawLog: data.details || data.rawLog || data,
       })
       setStatus('error')
+
+      if (user?.id) {
+        pb.collection('users')
+          .update(user.id, {
+            uazapi_status: 'error',
+            uazapi_error: message,
+          })
+          .catch(() => {})
+      }
     } finally {
       setIsTesting(false)
     }
@@ -240,7 +241,9 @@ export function UazapiConfig() {
 
       if (user?.id && currentState === 'open') {
         setStatus('connected')
-        await pb.collection('users').update(user.id, { uazapi_status: 'connected' })
+        await pb
+          .collection('users')
+          .update(user.id, { uazapi_status: 'connected', uazapi_error: '' })
       } else if (user?.id) {
         setStatus(currentState)
         await pb.collection('users').update(user.id, { uazapi_status: currentState })
@@ -258,6 +261,16 @@ export function UazapiConfig() {
           })
           const currentState = resGet.state || resGet.status || 'unknown'
           toast({ title: 'Status da Instância', description: `Estado atual: ${currentState}` })
+
+          if (user?.id && currentState === 'open') {
+            setStatus('connected')
+            await pb
+              .collection('users')
+              .update(user.id, { uazapi_status: 'connected', uazapi_error: '' })
+          } else if (user?.id) {
+            setStatus(currentState)
+            await pb.collection('users').update(user.id, { uazapi_status: currentState })
+          }
           return
         } catch (fallbackErr: any) {
           toast({
@@ -441,9 +454,23 @@ export function UazapiConfig() {
         </CardFooter>
       </Card>
 
-      <div className="min-h-[150px]">
-        {testResult.status ? (
-          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+      <div className="min-h-[200px] border rounded-lg p-6 bg-card relative shadow-sm">
+        {!testResult.status && !isTesting && (
+          <div className="flex flex-col items-center justify-center text-center h-full min-h-[150px] text-muted-foreground">
+            <Network className="h-8 w-8 mb-3 opacity-20" />
+            <p className="text-sm">O resultado do teste de conexão aparecerá aqui.</p>
+          </div>
+        )}
+
+        {isTesting && (
+          <div className="flex flex-col items-center justify-center text-center h-full min-h-[150px] text-muted-foreground">
+            <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary" />
+            <p className="text-sm">Testando conexão com a instância...</p>
+          </div>
+        )}
+
+        {testResult.status && !isTesting && (
+          <div className="space-y-4">
             <Alert
               variant={testResult.status === 'error' ? 'destructive' : 'default'}
               className={
@@ -467,27 +494,20 @@ export function UazapiConfig() {
               </div>
             </Alert>
 
-            {testResult.status === 'error' && testResult.rawLog ? (
-              <Accordion type="single" collapsible className="w-full">
-                <AccordionItem
-                  value="raw-log"
-                  className="border-red-200 dark:border-red-900/50 rounded-md border overflow-hidden"
-                >
-                  <AccordionTrigger className="py-3 px-4 bg-red-50 dark:bg-red-900/10 text-sm font-medium text-red-800 dark:text-red-200 hover:no-underline hover:bg-red-100 dark:hover:bg-red-900/20 data-[state=open]:border-b data-[state=open]:border-red-100 dark:data-[state=open]:border-red-900/50">
-                    <span>Detalhes Técnicos (Raw Log)</span>
-                  </AccordionTrigger>
-                  <AccordionContent className="p-0 border-t-0">
-                    <pre className="p-4 text-xs font-mono bg-slate-950 text-slate-50 overflow-auto max-h-[300px]">
-                      {typeof testResult.rawLog === 'string'
-                        ? testResult.rawLog
-                        : JSON.stringify(testResult.rawLog, null, 2)}
-                    </pre>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            ) : null}
+            {testResult.status === 'error' && testResult.rawLog && (
+              <div className="border-red-200 dark:border-red-900/50 rounded-md border overflow-hidden mt-4">
+                <div className="py-2 px-4 bg-red-50 dark:bg-red-900/10 text-sm font-medium text-red-800 dark:text-red-200 border-b border-red-100 dark:border-red-900/50">
+                  Detalhes Técnicos (Raw Log)
+                </div>
+                <pre className="p-4 text-xs font-mono bg-slate-950 text-slate-50 overflow-auto max-h-[300px]">
+                  {typeof testResult.rawLog === 'string'
+                    ? testResult.rawLog
+                    : JSON.stringify(testResult.rawLog, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   )
