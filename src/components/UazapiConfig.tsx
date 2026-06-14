@@ -33,6 +33,7 @@ export function UazapiConfig() {
 
   const [domain, setDomain] = useState(user?.uazapi_domain || 'https://iabrfimveis.uazapi.com')
   const [token, setToken] = useState(user?.uazapi_token || '')
+  const [adminToken, setAdminToken] = useState(user?.uazapi_admin_token || '')
   const [instance, setInstance] = useState(user?.uazapi_instance_number || '')
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
 
@@ -53,6 +54,7 @@ export function UazapiConfig() {
     if (user) {
       if (!domain && user.uazapi_domain) setDomain(user.uazapi_domain)
       if (!token && user.uazapi_token) setToken(user.uazapi_token)
+      if (!adminToken && user.uazapi_admin_token) setAdminToken(user.uazapi_admin_token)
       if (!instance && user.uazapi_instance_number) setInstance(user.uazapi_instance_number)
       setStatus(user.uazapi_status || 'disconnected')
     }
@@ -97,6 +99,7 @@ export function UazapiConfig() {
       await pb.collection('users').update(user.id, {
         uazapi_domain: cleanDomain,
         uazapi_token: token.trim(),
+        uazapi_admin_token: adminToken.trim(),
         uazapi_instance_number: instance.trim(),
       })
 
@@ -324,6 +327,17 @@ export function UazapiConfig() {
               placeholder="Ex: 6df3aaaa-9198-40aa-9d0c-da3abd9c1934"
               value={token}
               onChange={(e) => setToken(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="adminToken">Admin Token (Global/Master Key)</Label>
+            <Input
+              id="adminToken"
+              type="password"
+              placeholder="Opcional: Ex: v234d-1a..."
+              value={adminToken}
+              onChange={(e) => setAdminToken(e.target.value)}
             />
           </div>
 
