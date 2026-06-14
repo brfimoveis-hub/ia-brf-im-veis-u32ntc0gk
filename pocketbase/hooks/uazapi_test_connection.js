@@ -3,210 +3,93 @@ routerAdd(
   '/backend/v1/uazapi/test-connection',
   (e) => {
     const body = e.requestInfo().body || {}
-    let domain = (body.domain || 'https://iabrfimveis.uazapi.com').trim()
-    const instance = (body.instance || '554892098050').trim()
-    const userToken = (body.token || '').trim()
-    const adminToken = (body.admin_token || '').trim()
+    const domain = body.domain
+    const instance = body.instance
+    const token = body.token
 
-    if (domain && !domain.startsWith('http://') && !domain.startsWith('https://')) {
-      domain = 'https://' + domain
+    if (!domain || !instance || !token) {
+      return e.badRequestError('Missing required parameters (domain, instance, token)')
     }
 
-    // Fix double slashes and trailing slashes safely
-    domain = domain.replace(/([^:]\/)\/+/g, '$1')
-    if (domain.endsWith('/')) domain = domain.slice(0, -1)
-
-    const activeToken = userToken || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      apikey: activeToken,
-      Authorization: activeToken.toLowerCase().startsWith('bearer ')
-        ? activeToken
-        : 'Bearer ' + activeToken,
-      instance: instance,
+    let baseUrl = domain
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1)
     }
 
-    if (adminToken) {
-      headers['AdminToken'] = adminToken
-    }
+    // Extract digits to attempt fallback check if needed
+    const phoneFallback = instance.replace(/\D/g, '')
 
-    const logConnection = (status, details, error = null) => {
+    const check = (identifier) => {
       try {
-        const col = $app.findCollectionByNameOrId('system_logs')
-        const log = new Record(col)
-        log.set('type', 'uazapi_connection')
-        log.set(
-          'message',
-          error ? `Test connection failed: ${error}` : `Test connection success: ${status}`,
-        )
-        log.set('details', details)
-        log.set('payload', body)
-        $app.save(log)
-      } catch (_) {}
-    }
-
-    let urlsAttempted = []
-    const fetchWithRetry = (reqUrl) => {
-      urlsAttempted.push(reqUrl)
-      let lastErr = null
-      let response = null
-      for (let i = 0; i < 3; i++) {
-        try {
-          response = $http.send({
-            url: reqUrl,
-            method: 'GET',
-            headers: headers,
-            timeout: 15,
-          })
-          if (
-            response &&
-            response.statusCode !== 502 &&
-            response.statusCode !== 503 &&
-            response.statusCode !== 504
-          ) {
-            return response
-          }
-        } catch (err) {
-          lastErr = err
-        }
+        const url = `${baseUrl}/api/instance/${identifier}/status`
+        const res = $http.send({
+          url: url,
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: token,
+            'Content-Type': 'application/json',
+          },
+          timeout: 10,
+        })
+        return { res, identifier, url }
+      } catch (err) {
+        throw err
       }
-      if (response) return response
-      throw lastErr || new Error('Request failed after retries')
     }
 
+    let result
     try {
-      let res
+      result = check(instance)
 
-      const phoneFallback = '554892098050'
-      const instancesToTry = [instance]
-      if (instance !== phoneFallback) instancesToTry.push(phoneFallback)
-
-      for (const inst of instancesToTry) {
-        if (res && res.statusCode !== 404) break
-
-        const pathsToTry = [
-          '/api/instance/' + inst + '/status',
-          '/instance/status/' + inst,
-          '/instance/connectionState/' + inst,
-          '/instance/' + inst + '/connectionState',
-          '/' + inst + '/instance/connectionState',
-        ]
-
-        for (const path of pathsToTry) {
-          try {
-            const attemptRes = fetchWithRetry(domain + path)
-            if (attemptRes && attemptRes.statusCode !== 404) {
-              res = attemptRes
-              break
-            }
-          } catch (err) {}
-        }
-      }
-
-      if (!res) throw new Error('Connection failed')
-
-      // Prevent sending 401/403 as HTTP response status from our proxy API.
-      // If we return 401, the PocketBase JS SDK auto-clears the auth token,
-      // destroying the frontend session and forcing a redirect to /login.
-      if (res.statusCode === 401 || res.statusCode === 403) {
-        const uazapiErrorMsg = res.json && (res.json.message || res.json.error)
-        let customErrorMsg = 'Acesso negado no Uazapi (Token inválido).'
-
-        const safeUazapiErrorMsg =
-          typeof uazapiErrorMsg === 'object'
-            ? JSON.stringify(uazapiErrorMsg)
-            : String(uazapiErrorMsg || '')
-        if (safeUazapiErrorMsg && safeUazapiErrorMsg.toLowerCase().includes('oauth')) {
-          customErrorMsg = `Erro de Autenticação (OAuth): Verifique se o Instance Token e o Admin Token não contêm espaços ou caracteres ocultos. Mensagem do Uazapi: ${safeUazapiErrorMsg}`
-        } else if (safeUazapiErrorMsg) {
-          customErrorMsg = `Acesso negado: ${safeUazapiErrorMsg}`
-        }
-
-        $app
-          .logger()
-          .error(
-            'Uazapi 401/403 Error',
-            'instance',
-            instance,
-            'domain',
-            domain,
-            'error',
-            uazapiErrorMsg,
-          )
-
-        logConnection('error', res.json, customErrorMsg)
-
-        return e.json(400, {
-          message: 'Unauthorized at target',
-          error: customErrorMsg,
-          originalStatus: res.statusCode,
-          rawLog: res.json || { code: res.statusCode, message: 'Unauthorized', data: {} },
-        })
-      }
-
-      if (res.statusCode === 404) {
-        $app
-          .logger()
-          .error(
-            'Uazapi 404 Instance Not Found',
-            'instance',
-            instance,
-            'domain',
-            domain,
-            'payload',
-            JSON.stringify(body),
-            'urlsAttempted',
-            JSON.stringify(urlsAttempted),
-            'response',
-            JSON.stringify(res.json || {}),
-          )
-
-        logConnection('error', res.json, 'Instância não encontrada (404)')
-        return e.json(400, {
-          message: 'Instance not found',
-          error: `Instance not found. Please verify if the 'Instance Number' should be the Instance Slug (name) instead of the phone number. URLs Attempted: ${urlsAttempted.join(', ')}. Detalhe: ${JSON.stringify(res.json || {})}`,
-          originalStatus: 404,
-          rawLog: { ...(res.json || {}), urlsAttempted },
-        })
-      }
-
-      if (res.statusCode === 504) {
-        logConnection('error', res.json, 'Timeout (504)')
-        return e.json(504, { message: 'Timeout', rawLog: res.json || {} })
-      }
-
-      logConnection(res.statusCode, res.json || {})
-
-      if (res.statusCode >= 200 && res.statusCode < 300) {
+      // Fallback logic for 404s
+      if (result.res.statusCode === 404 && phoneFallback && phoneFallback !== instance) {
         try {
-          const user = e.auth
-          if (user) {
-            user.set('uazapi_status', 'connected')
-            $app.saveNoValidate(user)
+          const fbResult = check(phoneFallback)
+          if (fbResult.res.statusCode !== 404) {
+            result = fbResult
           }
-        } catch (_) {}
+        } catch (fbErr) {
+          // Ignore fallback errors and keep the original result if fallback fails at transport level
+        }
       }
-
-      return e.json(res.statusCode, res.json || { statusCode: res.statusCode })
     } catch (err) {
-      const msg = err.message.toLowerCase()
-      logConnection('error', {}, err.message)
-      if (msg.includes('timeout') || msg.includes('deadline exceeded')) {
-        return e.json(504, { message: 'Timeout' })
-      }
-      if (msg.includes('not found')) {
-        $app
-          .logger()
-          .error('Uazapi 404 Exception', 'instance', instance, 'domain', domain, 'message', msg)
-        return e.json(400, {
-          message: 'Instance not found',
-          error: `Instância não encontrada. Verifique se o ID da Instância (uazapi_instance_number) e o Token estão corretos para o domínio configurado.`,
-        })
-      }
-      return e.internalServerError(err.message)
+      return e.json(500, {
+        error: 'Erro de rede ao conectar com a instância',
+        details: err.message,
+        status: 500,
+      })
+    }
+
+    const { res, identifier, url } = result
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      let data = {}
+      try {
+        data = res.json || {}
+      } catch (err) {}
+      return e.json(200, {
+        status: 'success',
+        identifier_used: identifier,
+        data: data,
+      })
+    } else {
+      let errorDetail = res.body
+        ? String.fromCharCode.apply(null, new Uint8Array(res.body))
+        : 'No response body'
+      try {
+        if (res.json) errorDetail = res.json
+      } catch (err) {}
+
+      return e.json(res.statusCode, {
+        error:
+          res.statusCode === 404
+            ? 'Instância não encontrada (404)'
+            : 'Falha na conexão com a instância',
+        code: res.statusCode,
+        url: url,
+        details: errorDetail,
+      })
     }
   },
   $apis.requireAuth(),
