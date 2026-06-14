@@ -68,12 +68,18 @@ export function DiagnosticCenter() {
   const [recentLogs, setRecentLogs] = useState<SystemLog[]>([])
   const [leadStats, setLeadStats] = useState({ success: 0, errors: 0 })
   const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const perPage = 50
   const [sortConfig, setSortConfig] = useState<{ key: keyof SystemLog; direction: 'asc' | 'desc' }>(
     {
       key: 'created',
       direction: 'desc',
     },
   )
+
+  useEffect(() => {
+    setPage(1)
+  }, [searchQuery, sortConfig])
 
   const [isRunning, setIsRunning] = useState(false)
   const [logToDelete, setLogToDelete] = useState<string | null>(null)
@@ -91,7 +97,7 @@ export function DiagnosticCenter() {
 
   const fetchLogsAndStats = async () => {
     try {
-      const logsRes = await getSystemLogs(1, 200)
+      const logsRes = await getSystemLogs(1, 500)
       setRecentLogs(logsRes.items)
 
       const customersRes = await pb.collection('customers').getList(1, 1)
@@ -577,7 +583,7 @@ export function DiagnosticCenter() {
                 ) : (
                   <ShieldCheck className="h-4 w-4" />
                 )}
-                {isRunning ? 'Verificando...' : 'Executar Diagnóstico'}
+                <span>{isRunning ? 'Verificando...' : 'Executar Diagnóstico'}</span>
               </Button>
             </div>
           </div>
@@ -632,7 +638,7 @@ export function DiagnosticCenter() {
                             <XCircle className="h-4 w-4 text-destructive" />
                           )}
                           <CardTitle className="text-base font-semibold line-clamp-2 leading-tight">
-                            {res.name}
+                            <span>{res.name}</span>
                           </CardTitle>
                         </div>
                         <Badge
@@ -647,17 +653,19 @@ export function DiagnosticCenter() {
                               'bg-destructive/10 text-destructive border-destructive/20',
                           )}
                         >
-                          {res.status === 'success'
-                            ? 'Saudável'
-                            : res.status === 'warning'
-                              ? 'Atenção'
-                              : 'Falha'}
+                          <span>
+                            {res.status === 'success'
+                              ? 'Saudável'
+                              : res.status === 'warning'
+                                ? 'Atenção'
+                                : 'Falha'}
+                          </span>
                         </Badge>
                       </div>
                     </CardHeader>
                     <CardContent className="px-4 pb-4 flex-1 flex flex-col justify-between gap-4">
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                        {res.message}
+                        <span>{res.message}</span>
                       </p>
 
                       <div className="flex items-center gap-2 mt-auto pt-4 border-t border-border/50">
@@ -715,14 +723,18 @@ export function DiagnosticCenter() {
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>
-                  {dialogType === 'meta_capi'
-                    ? 'Atualizar Token Meta CAPI'
-                    : 'Atualizar Credenciais Uazapi'}
+                  <span>
+                    {dialogType === 'meta_capi'
+                      ? 'Atualizar Token Meta CAPI'
+                      : 'Atualizar Credenciais Uazapi'}
+                  </span>
                 </DialogTitle>
                 <DialogDescription>
-                  {dialogType === 'meta_capi'
-                    ? 'Insira o novo token de acesso gerado no painel do Meta Business para restaurar a conexão.'
-                    : 'Insira o novo Instance Token (API Key) para restaurar a conexão Uazapi.'}
+                  <span>
+                    {dialogType === 'meta_capi'
+                      ? 'Insira o novo token de acesso gerado no painel do Meta Business para restaurar a conexão.'
+                      : 'Insira o novo Instance Token (API Key) para restaurar a conexão Uazapi.'}
+                  </span>
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -838,11 +850,11 @@ export function DiagnosticCenter() {
                 {filteredAndSortedLogs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground h-24">
-                      Nenhum log encontrado para esta busca.
+                      <span>Nenhum log encontrado para esta busca.</span>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredAndSortedLogs.map((log) => {
+                  filteredAndSortedLogs.slice((page - 1) * perPage, page * perPage).map((log) => {
                     const typ = safeStringify(log.type)
                     const msg = safeStringify(log.message)
                     let source = 'System'
@@ -870,9 +882,11 @@ export function DiagnosticCenter() {
                     return (
                       <TableRow key={log.id}>
                         <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">
-                          {new Date(log.created).toLocaleString('pt-BR')}
+                          <span>{new Date(log.created).toLocaleString('pt-BR')}</span>
                         </TableCell>
-                        <TableCell className="text-xs font-medium">{source}</TableCell>
+                        <TableCell className="text-xs font-medium">
+                          <span>{source}</span>
+                        </TableCell>
                         <TableCell>
                           <Badge
                             variant="outline"
@@ -881,7 +895,7 @@ export function DiagnosticCenter() {
                               getLogBadgeColor(typ),
                             )}
                           >
-                            {typ.toUpperCase() || 'INFO'}
+                            <span>{typ.toUpperCase() || 'INFO'}</span>
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm font-medium text-secondary max-w-[300px]">
@@ -894,7 +908,9 @@ export function DiagnosticCenter() {
                               <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                             )}
                             <div className="line-clamp-2 truncate break-words" title={msg}>
-                              {msg || (
+                              {msg ? (
+                                <span>{msg}</span>
+                              ) : (
                                 <span className="italic text-muted-foreground">Sem mensagem</span>
                               )}
                             </div>
@@ -929,6 +945,39 @@ export function DiagnosticCenter() {
                 )}
               </TableBody>
             </Table>
+            {Math.ceil(filteredAndSortedLogs.length / perPage) > 1 && (
+              <div className="flex items-center justify-between px-4 py-4 border-t bg-muted/20">
+                <div className="text-sm text-muted-foreground">
+                  <span>
+                    Mostrando {(page - 1) * perPage + 1} a{' '}
+                    {Math.min(page * perPage, filteredAndSortedLogs.length)} de{' '}
+                    {filteredAndSortedLogs.length} logs
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setPage((p) =>
+                        Math.min(Math.ceil(filteredAndSortedLogs.length / perPage), p + 1),
+                      )
+                    }
+                    disabled={page === Math.ceil(filteredAndSortedLogs.length / perPage)}
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -966,11 +1015,15 @@ export function DiagnosticCenter() {
           </DialogHeader>
           <ScrollArea className="max-h-[60vh] mt-4 rounded-md bg-slate-950 p-4 border">
             <pre className="text-xs text-slate-50 font-mono whitespace-pre-wrap break-words">
-              {selectedPayloadLog?.payload
-                ? typeof selectedPayloadLog.payload === 'object'
-                  ? JSON.stringify(selectedPayloadLog.payload, null, 2)
-                  : String(selectedPayloadLog.payload)
-                : 'Nenhum payload disponível para este log.'}
+              {selectedPayloadLog?.payload ? (
+                typeof selectedPayloadLog.payload === 'object' ? (
+                  <span>{JSON.stringify(selectedPayloadLog.payload, null, 2)}</span>
+                ) : (
+                  <span>{String(selectedPayloadLog.payload)}</span>
+                )
+              ) : (
+                <span>Nenhum payload disponível para este log.</span>
+              )}
             </pre>
           </ScrollArea>
         </DialogContent>
