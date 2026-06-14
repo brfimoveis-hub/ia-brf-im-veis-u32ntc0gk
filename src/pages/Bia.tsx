@@ -1,26 +1,23 @@
 import { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { useToast } from '@/hooks/use-toast'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
+  CardDescription,
   CardFooter,
 } from '@/components/ui/card'
-import { Loader2, Bot, Save, FileText } from 'lucide-react'
-import { useRealtime } from '@/hooks/use-realtime'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { toast } from '@/hooks/use-toast'
+import { Bot, Save, FileUp, Upload } from 'lucide-react'
 
 export default function Bia() {
   const { user } = useAuth()
-  const { toast } = useToast()
-
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     ai_name: '',
@@ -38,41 +35,21 @@ export default function Bia() {
     }
   }, [user])
 
-  useRealtime('users', (e) => {
-    if (e.record.id === user?.id && !loading) {
-      setFormData({
-        ai_name: e.record.ai_name || 'Bia',
-        bia_instructions: e.record.bia_instructions || '',
-        ai_instructions: e.record.ai_instructions || '',
-      })
-    }
-  })
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSave = async () => {
     if (!user) return
-
-    if (!formData.ai_name.trim()) {
-      toast({
-        title: 'Erro de Validação',
-        description: 'O Nome da IA é obrigatório.',
-        variant: 'destructive',
-      })
-      return
-    }
-
     setLoading(true)
     try {
       await pb.collection('users').update(user.id, formData)
-      toast({ title: 'Sucesso', description: 'Configurações da IA Mãe (Bia) salvas com sucesso.' })
-    } catch (error: any) {
+      toast({ title: 'Sucesso', description: 'Configurações da IA atualizadas com sucesso.' })
+    } catch (e) {
+      console.error(e)
       toast({
         title: 'Erro',
-        description: error.message || 'Falha ao salvar as configurações.',
+        description: 'Ocorreu um erro ao salvar as configurações.',
         variant: 'destructive',
       })
     } finally {
@@ -80,95 +57,152 @@ export default function Bia() {
     }
   }
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
+    if (!user || !e.target.files || e.target.files.length === 0) return
+    setLoading(true)
+    try {
+      const uploadData = new FormData()
+      uploadData.append(field, e.target.files[0])
+      await pb.collection('users').update(user.id, uploadData)
+      toast({ title: 'Sucesso', description: 'Arquivo enviado com sucesso.' })
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível enviar o arquivo.',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!user) return null
+
   return (
-    <div className="container mx-auto py-8 max-w-3xl animate-fade-in-up">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-          <Bot className="h-6 w-6" />
+    <div className="space-y-6 max-w-4xl mx-auto">
+      <div className="flex items-center gap-4">
+        <div className="p-3 bg-primary/10 text-primary rounded-full">
+          <Bot className="h-8 w-8" />
         </div>
         <div>
           <h1 className="text-3xl font-bold tracking-tight">IA Mãe (Bia)</h1>
-          <p className="text-slate-500">
-            Configure o comportamento, nome e base de conhecimento da inteligência artificial.
+          <p className="text-muted-foreground">
+            Configure a persona, instruções e base de conhecimento da sua IA.
           </p>
         </div>
       </div>
 
-      <form onSubmit={handleSave}>
-        <Card className="shadow-sm">
+      <Card>
+        <CardHeader>
+          <CardTitle>Identidade e Instruções</CardTitle>
+          <CardDescription>Personalize como sua IA se comunica com seus clientes.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="ai_name">Nome da IA</Label>
+            <Input
+              id="ai_name"
+              name="ai_name"
+              value={formData.ai_name}
+              onChange={handleChange}
+              placeholder="Ex: Bia"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="bia_instructions">Instruções Principais (IA Mãe)</Label>
+            <Textarea
+              id="bia_instructions"
+              name="bia_instructions"
+              value={formData.bia_instructions}
+              onChange={handleChange}
+              className="min-h-[150px]"
+              placeholder="Defina as diretrizes gerais de comportamento da IA."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ai_instructions">Instruções Específicas de Vendas</Label>
+            <Textarea
+              id="ai_instructions"
+              name="ai_instructions"
+              value={formData.ai_instructions}
+              onChange={handleChange}
+              className="min-h-[150px]"
+              placeholder="Instruções focadas na abordagem comercial e conversão."
+            />
+          </div>
+        </CardContent>
+        <CardFooter className="flex justify-end bg-slate-50 border-t mt-4 p-4 rounded-b-lg">
+          <Button onClick={handleSave} disabled={loading}>
+            <Save className="mr-2 h-4 w-4" /> Salvar Configurações
+          </Button>
+        </CardFooter>
+      </Card>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
           <CardHeader>
-            <CardTitle>Configurações da Persona</CardTitle>
-            <CardDescription>Defina como a IA deve se apresentar e se comportar.</CardDescription>
+            <CardTitle className="text-lg">Avatar da IA</CardTitle>
+            <CardDescription>A imagem que representará a IA.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="ai_name">Nome da IA</Label>
-              <Input
-                id="ai_name"
-                name="ai_name"
-                placeholder="Ex: Bia"
-                value={formData.ai_name}
-                onChange={handleChange}
+          <CardContent className="flex flex-col items-center gap-4">
+            {user.ai_avatar ? (
+              <img
+                src={pb.files.getUrl(user, user.ai_avatar)}
+                alt="Avatar da IA"
+                className="w-24 h-24 rounded-full object-cover border"
               />
-              <p className="text-xs text-slate-500">
-                Nome pelo qual a IA será conhecida no atendimento.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="bia_instructions">Instruções Principais (Bia)</Label>
-              <Textarea
-                id="bia_instructions"
-                name="bia_instructions"
-                placeholder="Ex: Você é a Bia, uma assistente cordial e direta..."
-                className="min-h-[120px]"
-                value={formData.bia_instructions}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ai_instructions">Instruções Adicionais</Label>
-              <Textarea
-                id="ai_instructions"
-                name="ai_instructions"
-                placeholder="Detalhes adicionais de comportamento..."
-                className="min-h-[120px]"
-                value={formData.ai_instructions}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="pt-4 border-t border-slate-100">
-              <Label className="mb-2 block">Base de Conhecimento</Label>
-              <div className="flex items-center gap-3 p-4 bg-slate-50 border rounded-md">
-                <FileText className="h-5 w-5 text-slate-400" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Arquivos de Treinamento</p>
-                  <p className="text-xs text-slate-500">
-                    {user?.ai_knowledge_files
-                      ? 'Arquivo carregado.'
-                      : 'Nenhum arquivo carregado no momento.'}
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" type="button" disabled>
-                  Atualizar Arquivo
-                </Button>
+            ) : (
+              <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center border border-dashed">
+                <Bot className="h-10 w-10 text-slate-300" />
               </div>
-            </div>
+            )}
+            <Label htmlFor="ai_avatar_upload" className="cursor-pointer">
+              <div className="flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors">
+                <Upload className="mr-2 h-4 w-4" /> Enviar Avatar
+              </div>
+              <input
+                id="ai_avatar_upload"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleFileUpload(e, 'ai_avatar')}
+                disabled={loading}
+              />
+            </Label>
           </CardContent>
-          <CardFooter className="bg-slate-50 border-t flex justify-end p-4">
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-              Salvar Alterações
-            </Button>
-          </CardFooter>
         </Card>
-      </form>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Base de Conhecimento</CardTitle>
+            <CardDescription>Documentos de referência para a IA.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center gap-4">
+            <div className="w-24 h-24 rounded-lg bg-slate-100 flex items-center justify-center border border-dashed">
+              <FileUp className="h-10 w-10 text-slate-300" />
+            </div>
+            {user.ai_knowledge_files && (
+              <p className="text-sm text-green-600 font-medium">Arquivo carregado</p>
+            )}
+            <Label htmlFor="ai_kb_upload" className="cursor-pointer">
+              <div className="flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors">
+                <Upload className="mr-2 h-4 w-4" /> Enviar Base
+              </div>
+              <input
+                id="ai_kb_upload"
+                type="file"
+                accept=".pdf,.doc,.docx,.txt"
+                className="hidden"
+                onChange={(e) => handleFileUpload(e, 'ai_knowledge_files')}
+                disabled={loading}
+              />
+            </Label>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

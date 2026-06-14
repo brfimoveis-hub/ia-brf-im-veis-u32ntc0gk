@@ -1,214 +1,158 @@
-import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { getPaginatedCustomers, Customer, deleteCustomer } from '@/services/customers'
+import { useState, useEffect } from 'react'
+import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
-import { Loader2, Search, ChevronLeft, ChevronRight, Plus, AlertCircle } from 'lucide-react'
-import { CustomerDashboard } from '@/components/customers/CustomerDashboard'
-import { CustomerTable } from '@/components/customers/CustomerTable'
-import { LeadDialog } from '@/components/customers/LeadDialog'
-import { useToast } from '@/hooks/use-toast'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
 
 export default function ClientesCore() {
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const { toast } = useToast()
-  const [allLeads, setAllLeads] = useState<Customer[]>([])
+  const [customers, setCustomers] = useState<any[]>([])
+  const [leads, setLeads] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalItems, setTotalItems] = useState(0)
-  const [phaseFilter, setPhaseFilter] = useState('all')
-  const [error, setError] = useState(false)
 
-  const fetchCustomers = async (
-    currentPage: number,
-    currentSearch: string,
-    currentPhase: string,
-  ) => {
-    setLoading(true)
+  const loadData = async () => {
     try {
-      const result = await getPaginatedCustomers(currentPage, 50, currentSearch, currentPhase)
-      setCustomers(result.items)
-      setTotalPages(result.totalPages)
-      setTotalItems(result.totalItems)
-
-      setAllLeads(result.items)
-      setError(false)
-    } catch (err) {
-      console.error(err)
-      setError(true)
+      const [customersData, leadsData] = await Promise.all([
+        pb.collection('customers').getFullList({ sort: '-created' }),
+        pb.collection('leads').getFullList({ sort: '-created' }),
+      ])
+      setCustomers(customersData)
+      setLeads(leadsData)
+    } catch (e) {
+      console.error(e)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      fetchCustomers(page, search, phaseFilter)
-    }, 500)
-    return () => clearTimeout(delayDebounce)
-  }, [page, search, phaseFilter])
+    loadData()
+  }, [])
 
-  useRealtime('customers', () => {
-    fetchCustomers(page, search, phaseFilter)
-  })
+  useRealtime('customers', () => loadData())
+  useRealtime('leads', () => loadData())
 
-  // Escuta os leads novos para atualizar a tabela caso um lead seja adicionado
-  // O hook on_lead_create já garante que ele é inserido em customers na base de dados
-  useRealtime('leads', () => {
-    fetchCustomers(page, search, phaseFilter)
-  })
-
-  const handleEdit = (customer: Customer) => {
-    setSelectedCustomer(customer)
-    setIsDialogOpen(true)
-  }
-
-  const handleDelete = async (id: string) => {
-    try {
-      await deleteCustomer(id)
-      toast({ title: 'Cliente excluído com sucesso' })
-      fetchCustomers(page, search, phaseFilter)
-    } catch (err) {
-      toast({ title: 'Erro ao excluir cliente', variant: 'destructive' })
-    }
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-[200px]" />
+        <Skeleton className="h-[400px] w-full" />
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-8">
-      <div className="flex justify-between items-start">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Base de Clientes</h2>
-          <p className="text-muted-foreground">
-            Gerenciamento de leads e contatos ({totalItems.toLocaleString('pt-BR')} registros).
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            setSelectedCustomer(null)
-            setIsDialogOpen(true)
-          }}
-        >
-          <Plus className="mr-2 h-4 w-4" /> Novo Lead
-        </Button>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Clientes e Leads</h1>
+        <p className="text-muted-foreground">Gerencie seus registros de clientes e leads.</p>
       </div>
 
-      <CustomerDashboard leads={allLeads} />
+      <Tabs defaultValue="customers" className="w-full">
+        <TabsList>
+          <TabsTrigger value="customers">Clientes ({customers.length})</TabsTrigger>
+          <TabsTrigger value="leads">Leads ({leads.length})</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Todos os Clientes</CardTitle>
-          <CardDescription>Busque por nome, email ou telefone.</CardDescription>
-          <div className="flex flex-col sm:flex-row gap-4 mt-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar clientes..."
-                className="pl-9"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                  setPage(1)
-                }}
-              />
-            </div>
-            <select
-              className="flex h-10 w-full sm:w-[200px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              value={phaseFilter}
-              onChange={(e) => {
-                setPhaseFilter(e.target.value)
-                setPage(1)
-              }}
-            >
-              <option value="all">Todas as Fases</option>
-              <option value="lead">Lead</option>
-              <option value="contact">Contato</option>
-              <option value="closed">Fechado</option>
-              <option value="Visita">Visita</option>
-              <option value="Fechamento">Fechamento</option>
-              <option value="Demo Realiz.">Demo Realiz.</option>
-              <option value="Engajamento">Engajamento</option>
-              <option value="Qualificação">Qualificação</option>
-              <option value="Novo">Novo</option>
-            </select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading && customers.length === 0 ? (
-            <div className="flex justify-center p-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center p-12 space-y-4 text-center">
-              <div className="bg-destructive/10 p-4 rounded-full">
-                <AlertCircle className="h-8 w-8 text-destructive" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold">Erro ao carregar clientes</h3>
-                <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                  Não foi possível carregar a lista de clientes. Verifique sua conexão com a
-                  internet e tente novamente.
-                </p>
-              </div>
-              <Button onClick={() => fetchCustomers(page, search, phaseFilter)}>
-                Tentar Novamente
-              </Button>
-            </div>
-          ) : (
-            <>
-              <CustomerTable
-                leads={customers}
-                loading={loading}
-                error={error}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-muted-foreground">
-                  Mostrando {(page - 1) * 50 + 1} a {Math.min(page * 50, totalItems)} de{' '}
-                  {totalItems}
+        <TabsContent value="customers">
+          <Card>
+            <CardHeader>
+              <CardTitle>Clientes</CardTitle>
+              <CardDescription>
+                Visualização centralizada dos registros de clientes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {customers.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  Nenhum cliente encontrado.
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <div className="text-sm font-medium">
-                    {page} / {totalPages || 1}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages || totalPages === 0}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Telefone</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Origem</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {customers.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="font-medium">
+                            {c.name || c.first_name || 'Sem nome'}
+                          </TableCell>
+                          <TableCell>{c.email || c.email_1_value || '-'}</TableCell>
+                          <TableCell>{c.phone || c.phone_1_value || '-'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{c.status || 'Sem status'}</Badge>
+                          </TableCell>
+                          <TableCell>{c.source || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <LeadDialog
-        open={isDialogOpen}
-        onOpenChange={(open) => {
-          setIsDialogOpen(open)
-          if (!open) {
-            fetchCustomers(page, search, phaseFilter)
-          }
-        }}
-        defaultValues={selectedCustomer}
-      />
+        <TabsContent value="leads">
+          <Card>
+            <CardHeader>
+              <CardTitle>Leads</CardTitle>
+              <CardDescription>Rastreamento e gerenciamento de leads.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {leads.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  Nenhum lead encontrado.
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Telefone</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Origem</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leads.map((l) => (
+                        <TableRow key={l.id}>
+                          <TableCell className="font-medium">{l.name || 'Sem nome'}</TableCell>
+                          <TableCell>{l.email || '-'}</TableCell>
+                          <TableCell>{l.phone || '-'}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{l.status || 'Novo'}</Badge>
+                          </TableCell>
+                          <TableCell>{l.source || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
