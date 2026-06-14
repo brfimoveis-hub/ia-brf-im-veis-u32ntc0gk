@@ -188,9 +188,18 @@ export function UazapiConfig() {
         description: 'O comando de reinício foi enviado com sucesso.',
       })
     } catch (err: any) {
+      let errorMsg = err.message || 'Falha ao reiniciar a API.'
+      if (err.status === 405) {
+        errorMsg = err.response?.message || 'Failed to restart API: Method Not Allowed'
+      } else if (err.status === 401) {
+        errorMsg = err.response?.message || 'Failed to restart API: Unauthorized'
+      } else if (err.response?.message) {
+        errorMsg = err.response.message
+      }
+
       toast({
         title: 'Erro ao reiniciar',
-        description: err.message || 'Falha ao reiniciar a API.',
+        description: errorMsg,
         variant: 'destructive',
       })
     } finally {

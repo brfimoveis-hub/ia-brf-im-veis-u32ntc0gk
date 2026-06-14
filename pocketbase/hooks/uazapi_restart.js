@@ -47,7 +47,16 @@ routerAdd(
         })
       }
 
-      throw new BadRequestError(res.json?.message || `Erro da API Uazapi (${res.statusCode})`)
+      if (res.statusCode === 405) {
+        return e.json(405, { message: 'Failed to restart API: Method Not Allowed' })
+      }
+      if (res.statusCode === 401) {
+        return e.json(401, { message: 'Failed to restart API: Unauthorized' })
+      }
+
+      return e.json(res.statusCode || 400, {
+        message: res.json?.message || `Erro da API Uazapi (${res.statusCode})`,
+      })
     } catch (err) {
       throw new BadRequestError(`Falha ao reiniciar: ${err.message}`)
     }
