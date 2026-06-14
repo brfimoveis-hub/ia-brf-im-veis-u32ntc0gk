@@ -79,20 +79,21 @@ routerAdd(
       let res
 
       try {
-        res = fetchWithRetry(domain + '/' + instance + '/instance/connectionState')
+        // Optimized path-based routing
+        res = fetchWithRetry(domain + '/instance/' + instance + '/connectionState')
       } catch (err) {}
 
-      if (res && res.statusCode === 404) {
+      if (!res || res.statusCode === 404) {
         try {
           const res2 = fetchWithRetry(domain + '/instance/connectionState/' + instance)
           if (res2.statusCode !== 404) res = res2
         } catch (err) {}
       }
 
-      if (res && res.statusCode === 404) {
+      if (!res || res.statusCode === 404) {
         try {
-          const res2b = fetchWithRetry(domain + '/instance/' + instance + '/connectionState')
-          if (res2b.statusCode !== 404) res = res2b
+          const res3 = fetchWithRetry(domain + '/' + instance + '/instance/connectionState')
+          if (res3.statusCode !== 404) res = res3
         } catch (err) {}
       }
 

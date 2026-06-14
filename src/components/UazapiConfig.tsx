@@ -170,7 +170,7 @@ export function UazapiConfig() {
       let message = data.error || data.message || err.message || 'Erro desconhecido ao conectar.'
       if (err.status === 404 || data.code === 404 || data.status === 404) {
         message =
-          "Instance not found. Please verify if the 'Instance Number' should be the Instance Slug (name) instead of the phone number."
+          "Instância não encontrada. Por favor, verifique se o 'Instance Number' deve ser o Slug da Instância (nome) em vez do número de telefone."
       }
 
       setTestResult({
@@ -307,7 +307,7 @@ export function UazapiConfig() {
               {status === 'connected' || status === 'open'
                 ? 'Conectado'
                 : status === 'error'
-                  ? 'Falha'
+                  ? 'Falha na Conexão'
                   : status || 'Desconectado'}
             </Badge>
           </div>

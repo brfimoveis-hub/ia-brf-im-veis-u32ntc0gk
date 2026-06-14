@@ -31,7 +31,7 @@ routerAdd(
     try {
       const res = $http.send({
         url: `${domain}/instance/restart/${instance}`,
-        method: 'PUT',
+        method: 'POST',
         headers: headers,
         timeout: 15,
       })

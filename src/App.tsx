@@ -190,6 +190,10 @@ const router = createBrowserRouter(
                   element: <Remarketing />,
                 },
                 {
+                  path: 'configuracoes/conexoes/uazapi',
+                  element: <UazapiConfig />,
+                },
+                {
                   path: 'configuracoes/conexoes/*',
                   element: <ConfiguracoesCore />,
                 },
