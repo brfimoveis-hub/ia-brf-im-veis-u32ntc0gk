@@ -23,24 +23,19 @@ routerAdd(
     let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
 
-    const instance = (user?.getString('uazapi_instance_number') || '554892098050').trim()
+    const instance = (user?.getString('uazapi_instance_number') || '5548992098050').trim()
 
     let baseEndpoint = endpoint.replace(/^\//, '')
 
-    let url = ''
-    let prependedEndpoint = baseEndpoint
-    let appendedEndpoint = baseEndpoint
+    // For absolute endpoint resolution without 404 loops, we build the exact standard URL.
+    let url = domain + '/' + baseEndpoint
 
-    if (baseEndpoint === 'messages/send' || baseEndpoint === 'api/v1/messages/send') {
-      url = domain + '/api/v1/messages/send'
-    } else if (baseEndpoint === 'webhook' || baseEndpoint === 'api/v1/webhook') {
-      url = domain + '/api/v1/webhook'
-    } else {
-      if (!baseEndpoint.includes(instance)) {
-        prependedEndpoint = `${instance}/${baseEndpoint}`
-        appendedEndpoint = `${baseEndpoint}/${instance}`
-      }
-      url = domain + '/' + prependedEndpoint
+    // Auto-append instance to Evolution API standard paths if not present
+    if (
+      !baseEndpoint.includes(instance) &&
+      (baseEndpoint.startsWith('message/') || baseEndpoint.startsWith('instance/'))
+    ) {
+      url = `${domain}/${baseEndpoint}/${instance}`
     }
 
     const headers = {
@@ -57,82 +52,28 @@ routerAdd(
       headers['AdminToken'] = apikey
     }
 
-    const fetchWithRetry = (reqUrl) => {
-      let lastErr = null
-      let response = null
-      for (let i = 0; i < 3; i++) {
-        try {
-          response = $http.send({
-            url: reqUrl,
-            method: method,
-            headers: headers,
-            body: payload ? JSON.stringify(payload) : undefined,
-            timeout: 15,
-          })
-          if (
-            response &&
-            response.statusCode !== 502 &&
-            response.statusCode !== 503 &&
-            response.statusCode !== 504 &&
-            response.statusCode !== 404
-          ) {
-            return response
-          }
-        } catch (err) {
-          lastErr = err
-        }
-      }
-      if (response) return response
-      throw lastErr || new Error('Request failed after retries')
+    const fetchDirect = (reqUrl) => {
+      return $http.send({
+        url: reqUrl,
+        method: method,
+        headers: headers,
+        body: payload ? JSON.stringify(payload) : undefined,
+        timeout: 15,
+      })
     }
 
     let res = null
     let error = null
 
     try {
-      try {
-        res = fetchWithRetry(url)
-      } catch (err) {
-        error = err
-      }
+      res = fetchDirect(url)
 
-      if (res && res.statusCode === 404) {
-        let fallbackUrl = domain + '/api/v1/' + prependedEndpoint
+      // Basic fallback just in case the endpoint structure is slightly different
+      if (res && res.statusCode === 404 && !baseEndpoint.includes(instance)) {
         try {
-          const apiV1Res = fetchWithRetry(fallbackUrl)
-          if (apiV1Res.statusCode !== 404) {
-            res = apiV1Res
-          }
-        } catch (err) {}
-      }
-
-      if (res && res.statusCode === 404) {
-        let fallbackUrl2 = domain + '/' + appendedEndpoint
-        try {
-          const apiV1Res2 = fetchWithRetry(fallbackUrl2)
-          if (apiV1Res2.statusCode !== 404) {
-            res = apiV1Res2
-          }
-        } catch (err) {}
-      }
-
-      if (res && res.statusCode === 404) {
-        let fallbackUrl2b = domain + '/instance/' + prependedEndpoint
-        try {
-          const apiV1Res2b = fetchWithRetry(fallbackUrl2b)
-          if (apiV1Res2b.statusCode !== 404) {
-            res = apiV1Res2b
-          }
-        } catch (err) {}
-      }
-
-      if (res && res.statusCode === 404) {
-        let fallbackUrl3 = domain + '/api/v1/' + appendedEndpoint
-        try {
-          const apiV1Res3 = fetchWithRetry(fallbackUrl3)
-          if (apiV1Res3.statusCode !== 404) {
-            res = apiV1Res3
-          }
+          const fallbackUrl = `${domain}/${instance}/${baseEndpoint}`
+          const res2 = fetchDirect(fallbackUrl)
+          if (res2.statusCode !== 404) res = res2
         } catch (err) {}
       }
     } catch (err) {

@@ -33,9 +33,13 @@ export function UazapiConfig() {
   const { toast } = useToast()
 
   const [domain, setDomain] = useState(user?.uazapi_domain || 'https://iabrfimveis.uazapi.com')
-  const [token, setToken] = useState(user?.uazapi_token || 'd40df49e-bcbe-4729-9a71-291527eaa812')
-  const [adminToken, setAdminToken] = useState(user?.uazapi_admin_token || '')
-  const [instance, setInstance] = useState(user?.uazapi_instance_number || 'pog6Yx')
+  const [token, setToken] = useState(
+    user?.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj',
+  )
+  const [adminToken, setAdminToken] = useState(
+    user?.uazapi_admin_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj',
+  )
+  const [instance, setInstance] = useState(user?.uazapi_instance_number || '5548992098050')
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
 
   const [isSaving, setIsSaving] = useState(false)
@@ -160,9 +164,11 @@ export function UazapiConfig() {
       setStatus('connected')
 
       if (user?.id) {
+        // Only update credentials when testing via UI, effectively locking them manually
         await pb.collection('users').update(user.id, {
           uazapi_domain: cleanDomain,
           uazapi_token: token.trim(),
+          uazapi_admin_token: adminToken.trim(),
           uazapi_instance_number: instance.trim(),
           uazapi_status: 'connected',
           uazapi_error: '',
@@ -244,20 +250,26 @@ export function UazapiConfig() {
         }),
       })
 
-      const currentState = res.state || res.status || 'unknown'
+      // The endpoint returns success: true, status: statusStr, data: {...}
+      const currentState = res.status || res.state || 'unknown'
       toast({
         title: 'Status da Instância',
         description: `Estado atual da conexão: ${currentState}`,
       })
 
-      if (user?.id && currentState === 'open') {
-        setStatus('connected')
+      // Backend already saves the status in the user record, but we can optimistically update
+      if (user?.id) {
+        const newStatus =
+          currentState === 'Saudável' || currentState === 'open' || currentState === 'connected'
+            ? 'connected'
+            : currentState
+        setStatus(newStatus)
         await pb
           .collection('users')
-          .update(user.id, { uazapi_status: 'connected', uazapi_error: '' })
-      } else if (user?.id) {
-        setStatus(currentState)
-        await pb.collection('users').update(user.id, { uazapi_status: currentState })
+          .update(user.id, {
+            uazapi_status: newStatus,
+            uazapi_error: res.data?.lastDisconnectReason || '',
+          })
       }
     } catch (err: any) {
       if (err.status === 404 || err.status === 405) {

@@ -5,7 +5,7 @@ routerAdd(
     const user = e.auth
     if (!user) throw new UnauthorizedError('Não autorizado')
 
-    const instance = (user.getString('uazapi_instance_number') || '554892098050').trim()
+    const instance = (user.getString('uazapi_instance_number') || '5548992098050').trim()
     let rawDomain = (user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com').trim()
 
     if (rawDomain && !rawDomain.startsWith('http://') && !rawDomain.startsWith('https://')) {
@@ -84,38 +84,15 @@ routerAdd(
     }
 
     try {
+      // Evolution API / Uazapi common standard routes:
       let res
-
       try {
-        // Optimized path-based routing: /instance/{slug}/status
-        res = fetchWithRetry(`${domain}/instance/${instance}/status`)
+        res = fetchWithRetry(`${domain}/instance/connectionState/${instance}`)
       } catch (err) {}
 
       if (!res || res.statusCode === 404) {
         try {
-          const res2 = fetchWithRetry(`${domain}/instance/status/${instance}`)
-          if (res2.statusCode !== 404) res = res2
-        } catch (err) {}
-      }
-
-      if (!res || res.statusCode === 404) {
-        try {
-          const res3 = fetchWithRetry(`${domain}/${instance}/instance/status`)
-          if (res3.statusCode !== 404) res = res3
-        } catch (err) {}
-      }
-
-      if (res && res.statusCode === 404) {
-        try {
-          const res3 = fetchWithRetry(`${domain}/api/v1/instance/status/${instance}`)
-          if (res3.statusCode !== 404) res = res3
-        } catch (err) {}
-      }
-
-      if (res && res.statusCode === 404) {
-        try {
-          const res4 = fetchWithRetry(`${domain}/api/v1/${instance}/instance/status`)
-          if (res4.statusCode !== 404) res = res4
+          res = fetchWithRetry(`${domain}/instance/fetchInstances`)
         } catch (err) {}
       }
 
@@ -126,39 +103,21 @@ routerAdd(
         data = res.json || {}
       } catch (err) {}
 
-      if (res.statusCode === 404) {
-        try {
-          let fallbackRes = $http.send({
-            url: `${domain}/instance/fetchInstances`,
-            method: 'GET',
-            headers: headers,
-            timeout: 10,
-          })
-          if (fallbackRes.statusCode === 404) {
-            try {
-              fallbackRes = $http.send({
-                url: `${domain}/api/v1/instance/fetchInstances`,
-                method: 'GET',
-                headers: headers,
-                timeout: 10,
-              })
-            } catch (err) {}
-          }
-          if (fallbackRes.statusCode >= 200 && fallbackRes.statusCode < 300 && fallbackRes.json) {
-            const instances = Array.isArray(fallbackRes.json)
-              ? fallbackRes.json
-              : fallbackRes.json.instances || []
-            const found = instances.find((i) => {
-              const iName =
-                i.instance?.instanceName || i.instance?.id || i.instanceName || i.id || i.name
-              return iName === instance
-            })
-            if (found) {
-              data = found
-              res = fallbackRes
-            }
-          }
-        } catch (err) {}
+      // If fetchInstances was used, find the specific instance
+      if (Array.isArray(data) || data.instances) {
+        const instances = Array.isArray(data) ? data : data.instances || []
+        const found = instances.find((i) => {
+          const iName =
+            i.instance?.instanceName || i.instance?.id || i.instanceName || i.id || i.name
+          return iName === instance
+        })
+        if (found) {
+          data = found
+          res.statusCode = 200 // Found it
+        } else if (res.statusCode === 200) {
+          res.statusCode = 404
+          data = { error: `Instance ${instance} not found in fetchInstances` }
+        }
       }
 
       if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
