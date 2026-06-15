@@ -1,18 +1,19 @@
 import pb from '@/lib/pocketbase/client'
 
-export const getConversations = (page: number = 1, limit: number = 50, options?: any) =>
-  pb.collection('conversations').getList(page, limit, options)
+export interface Conversation {
+  id: string
+  customer_id: string
+  content: string
+  sender: 'customer' | 'agent' | 'ai' | 'system'
+  created: string
+  updated: string
+}
 
-export const createConversation = (data: any) => pb.collection('conversations').create(data)
-
-export const getRecentConversations = () =>
-  pb.collection('conversations').getList(1, 10, {
-    sort: '-created',
-    expand: 'customer_id',
+export const getConversations = (customerId: string) =>
+  pb.collection('conversations').getFullList<Conversation>({
+    filter: `customer_id = "${customerId}"`,
+    sort: 'created',
   })
 
-export const getAiConversations = () =>
-  pb.collection('conversations').getFullList({
-    filter: "sender = 'ai'",
-    fields: 'customer_id',
-  })
+export const createConversation = (data: Partial<Conversation>) =>
+  pb.collection('conversations').create<Conversation>(data)

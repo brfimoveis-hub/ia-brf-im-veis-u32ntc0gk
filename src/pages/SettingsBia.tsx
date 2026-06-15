@@ -1,182 +1,201 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/hooks/use-auth'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import pb from '@/lib/pocketbase/client'
+import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { useToast } from '@/hooks/use-toast'
-import { Loader2, Bot } from 'lucide-react'
-import pb from '@/lib/pocketbase/client'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Bot, Save, Upload, Mic } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export default function SettingsBia() {
   const { user } = useAuth()
   const { toast } = useToast()
-  const [loading, setLoading] = useState(false)
+
   const [formData, setFormData] = useState({
     ai_name: '',
     bia_instructions: '',
-    ai_instructions: '',
     ai_voice_id: '',
   })
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const [kbFiles, setKbFiles] = useState<FileList | null>(null)
+  const [saving, setSaving] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (user) {
       setFormData({
         ai_name: user.ai_name || '',
         bia_instructions: user.bia_instructions || '',
-        ai_instructions: user.ai_instructions || '',
-        ai_voice_id: user.ai_voice_id || '',
+        ai_voice_id: user.ai_voice_id || 'nova',
       })
+      if (user.ai_avatar) {
+        setAvatarPreview(pb.files.getURL(user, user.ai_avatar))
+      }
     }
   }, [user])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!user) return
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0]
+      setAvatarFile(file)
+      setAvatarPreview(URL.createObjectURL(file))
+    }
+  }
 
-    setLoading(true)
+  const handleSave = async () => {
+    if (!user) return
+    setSaving(true)
     try {
       const data = new FormData()
       data.append('ai_name', formData.ai_name)
       data.append('bia_instructions', formData.bia_instructions)
-      data.append('ai_instructions', formData.ai_instructions)
       data.append('ai_voice_id', formData.ai_voice_id)
 
       if (avatarFile) {
         data.append('ai_avatar', avatarFile)
       }
 
-      if (kbFiles) {
-        for (let i = 0; i < kbFiles.length; i++) {
-          data.append('ai_knowledge_files', kbFiles[i])
-        }
-      }
-
       await pb.collection('users').update(user.id, data)
-      toast({
-        title: 'Configurações Salvas',
-        description: 'As configurações da sua IA foram atualizadas com sucesso.',
-      })
-
-      // Clear file inputs state
-      setAvatarFile(null)
-      setKbFiles(null)
+      toast({ title: 'Configurações da IA atualizadas com sucesso' })
     } catch (error) {
-      toast({
-        title: 'Erro ao Salvar',
-        description: 'Não foi possível atualizar as configurações da IA. Tente novamente.',
-        variant: 'destructive',
-      })
+      toast({ title: 'Erro ao salvar as configurações', variant: 'destructive' })
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-3">
-        <Bot className="h-8 w-8 text-primary" />
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div>
         <h1 className="text-3xl font-bold tracking-tight">IA Mãe (Bia)</h1>
+        <p className="text-muted-foreground">
+          Configure a personalidade, voz e aparência da sua inteligência artificial.
+        </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Configurações de Identidade e Comportamento</CardTitle>
-          <CardDescription>
-            Personalize a persona da sua IA, forneça diretrizes de comunicação e faça o upload da
-            base de conhecimento.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid gap-6 sm:grid-cols-2">
+      <div className="grid md:grid-cols-3 gap-6">
+        <div className="md:col-span-1 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Aparência</CardTitle>
+              <CardDescription>Avatar utilizado no WhatsApp.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center space-y-4">
+              <Avatar className="h-32 w-32 border-4 border-background shadow-lg">
+                <AvatarImage
+                  src={
+                    avatarPreview ||
+                    `https://img.usecurling.com/ppl/medium?seed=${user?.id}&gender=female`
+                  }
+                />
+                <AvatarFallback>
+                  <Bot className="h-12 w-12" />
+                </AvatarFallback>
+              </Avatar>
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handleFileChange}
+              />
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-4 w-4 mr-2" /> Alterar Avatar
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Voz (TTS)</CardTitle>
+              <CardDescription>Selecione a voz para mensagens de áudio.</CardDescription>
+            </CardHeader>
+            <CardContent>
               <div className="space-y-2">
-                <Label htmlFor="ai_name">Nome da IA</Label>
+                <Label className="flex items-center gap-2">
+                  <Mic className="h-4 w-4" /> Voz Principal
+                </Label>
+                <Select
+                  value={formData.ai_voice_id}
+                  onValueChange={(v) => setFormData({ ...formData, ai_voice_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma voz" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nova">Nova (Feminina, Suave)</SelectItem>
+                    <SelectItem value="shimmer">Shimmer (Feminina, Clara)</SelectItem>
+                    <SelectItem value="alloy">Alloy (Feminina, Neutra)</SelectItem>
+                    <SelectItem value="echo">Echo (Masculina, Quente)</SelectItem>
+                    <SelectItem value="onyx">Onyx (Masculina, Profunda)</SelectItem>
+                    <SelectItem value="fable">Fable (Masculina, Britânica)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="md:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Identidade & Comportamento</CardTitle>
+              <CardDescription>
+                Defina como a IA se apresenta e quais suas regras globais.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Nome da IA</Label>
                 <Input
-                  id="ai_name"
-                  placeholder="Ex: Bia, Assistente Virtual"
                   value={formData.ai_name}
                   onChange={(e) => setFormData({ ...formData, ai_name: e.target.value })}
+                  placeholder="Ex: Bia, Atendimento BRF..."
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="ai_voice_id">ID da Voz da IA</Label>
-                <Input
-                  id="ai_voice_id"
-                  placeholder="ID da voz (ex: ElevenLabs)"
-                  value={formData.ai_voice_id}
-                  onChange={(e) => setFormData({ ...formData, ai_voice_id: e.target.value })}
-                />
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="bia_instructions">Instruções Globais (IA Mãe)</Label>
-              <Textarea
-                id="bia_instructions"
-                placeholder="Defina o comportamento global da IA e regras que nunca devem ser quebradas..."
-                rows={4}
-                value={formData.bia_instructions}
-                onChange={(e) => setFormData({ ...formData, bia_instructions: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Instruções que valem para todos os fluxos e campanhas.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ai_instructions">Instruções Específicas de Atendimento</Label>
-              <Textarea
-                id="ai_instructions"
-                placeholder="Exemplo prático de atendimento, saudação ou diretriz de vendas..."
-                rows={4}
-                value={formData.ai_instructions}
-                onChange={(e) => setFormData({ ...formData, ai_instructions: e.target.value })}
-              />
-            </div>
-
-            <div className="grid gap-6 sm:grid-cols-2 pt-4 border-t">
               <div className="space-y-2">
-                <Label htmlFor="ai_avatar">Avatar (Foto de Perfil)</Label>
-                <Input
-                  id="ai_avatar"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setAvatarFile(e.target.files?.[0] || null)}
+                <div className="flex items-center justify-between">
+                  <Label>Instruções Principais (Prompt de Sistema)</Label>
+                </div>
+                <Textarea
+                  value={formData.bia_instructions}
+                  onChange={(e) => setFormData({ ...formData, bia_instructions: e.target.value })}
+                  placeholder="Escreva como a IA deve se comportar, qual o tom de voz, regras de negócio gerais..."
+                  className="min-h-[250px] font-mono text-sm leading-relaxed"
                 />
-                {user?.ai_avatar && !avatarFile && (
-                  <p className="text-xs text-muted-foreground">
-                    Você já possui um avatar configurado.
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ai_knowledge_files">Arquivos de Conhecimento (PDFs, Docs)</Label>
-                <Input
-                  id="ai_knowledge_files"
-                  type="file"
-                  multiple
-                  onChange={(e) => setKbFiles(e.target.files)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Faça upload de materiais para alimentar a inteligência (RAG) da IA. Arquivos
-                  antigos com o mesmo nome serão substituídos.
+                <p className="text-xs text-muted-foreground mt-2">
+                  Estas instruções serão usadas em todas as conversas. Instruções de cadência
+                  (configuradas no menu Cadências) são adicionadas dinamicamente ao contexto do
+                  cliente.
                 </p>
               </div>
-            </div>
 
-            <div className="flex justify-end pt-4">
-              <Button type="submit" disabled={loading} size="lg">
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Salvar Configurações da IA
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+              <div className="pt-4 border-t flex justify-end">
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? (
+                    'Salvando...'
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" /> Salvar Alterações
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }

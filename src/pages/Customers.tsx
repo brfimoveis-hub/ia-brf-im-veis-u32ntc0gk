@@ -1,55 +1,37 @@
-import { useEffect, useState } from 'react'
-import { getCustomers } from '@/services/customers'
+import { useState, useEffect } from 'react'
+import { getCustomers, type Customer } from '@/services/customers'
 import { useRealtime } from '@/hooks/use-realtime'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Loader2, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import type { RecordModel } from 'pocketbase'
+import { CustomerDetailDrawer } from '@/components/customers/CustomerDetailDrawer'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Search, Clock, Phone } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 const STATUSES = [
+  'Novo',
   'lead',
   'contact',
-  'closed',
-  'Visita',
-  'Fechamento',
-  'Demo Realiz.',
-  'Engajamento',
   'Qualificação',
-  'Novo',
+  'Engajamento',
+  'Visita',
+  'Demo Realiz.',
+  'Fechamento',
+  'closed',
 ]
 
 export default function Customers() {
-  const [customers, setCustomers] = useState<RecordModel[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [selectedNote, setSelectedNote] = useState<string | null>(null)
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [search, setSearch] = useState('')
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const loadData = async () => {
     try {
-      setError(false)
       const data = await getCustomers()
       setCustomers(data)
     } catch (e) {
-      setError(true)
-    } finally {
-      setLoading(false)
+      console.error(e)
     }
   }
 
@@ -57,112 +39,137 @@ export default function Customers() {
     loadData()
   }, [])
 
-  useRealtime('customers', () => {
-    loadData()
+  useRealtime('customers', (e) => {
+    if (e.action === 'create') {
+      setCustomers((prev) => [e.record as unknown as Customer, ...prev])
+    } else if (e.action === 'update') {
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === e.record.id ? (e.record as unknown as Customer) : c)),
+      )
+    } else if (e.action === 'delete') {
+      setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
+    }
   })
 
-  if (loading) {
-    return (
-      <div className="flex h-full min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
+  const filtered = customers.filter(
+    (c) =>
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.phone?.includes(search) ||
+      c.email?.toLowerCase().includes(search.toLowerCase()),
+  )
 
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full min-h-[50vh] space-y-4">
-        <AlertCircle className="h-12 w-12 text-destructive" />
-        <p className="text-lg font-medium text-slate-700">Erro ao carregar clientes.</p>
-        <Button onClick={loadData}>Tentar Novamente</Button>
-      </div>
-    )
-  }
-
-  const filteredCustomers =
-    statusFilter === 'all' ? customers : customers.filter((c) => c.status === statusFilter)
+  const grouped = STATUSES.reduce(
+    (acc, status) => {
+      acc[status] = filtered.filter(
+        (c) =>
+          c.status === status ||
+          (status === 'Novo' && (!c.status || c.status === 'Base de Clientes/Novo LYD')),
+      )
+      return acc
+    },
+    {} as Record<string, Customer[]>,
+  )
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">Clientes (CRM)</h1>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Filtrar por Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os Status</SelectItem>
-            {STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Clientes CRM</h1>
+          <p className="text-muted-foreground">
+            Gerencie seus leads e acompanhe o pipeline de vendas.
+          </p>
+        </div>
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar clientes..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista de Clientes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>E-mail</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredCustomers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    Nenhum cliente encontrado.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredCustomers.map((customer) => (
-                  <TableRow key={customer.id}>
-                    <TableCell className="font-medium">{customer.name || '-'}</TableCell>
-                    <TableCell>{customer.phone || '-'}</TableCell>
-                    <TableCell>{customer.email || '-'}</TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-secondary text-secondary-foreground">
-                        {customer.status || 'Nenhum'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setSelectedNote(customer.notes || 'Sem notas para este cliente.')
-                        }
-                      >
-                        Ver Notas
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="flex overflow-x-auto pb-4 gap-4 snap-x">
+        {STATUSES.map((status) => (
+          <div key={status} className="flex-shrink-0 w-80 snap-start flex flex-col gap-3">
+            <div className="flex items-center justify-between bg-muted/50 px-3 py-2 rounded-md">
+              <h3 className="font-semibold text-sm truncate">{status}</h3>
+              <Badge variant="secondary">{grouped[status]?.length || 0}</Badge>
+            </div>
 
-      <Dialog open={!!selectedNote} onOpenChange={(open) => !open && setSelectedNote(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Notas do Cliente</DialogTitle>
-          </DialogHeader>
-          <div className="bg-muted p-4 rounded-md mt-4 text-sm whitespace-pre-wrap">
-            {selectedNote}
+            <div className="flex-1 space-y-3 min-h-[200px]">
+              {grouped[status]?.map((customer) => (
+                <Card
+                  key={customer.id}
+                  className={cn(
+                    'cursor-pointer hover:border-primary transition-colors',
+                    customer.is_blocked && 'opacity-60',
+                  )}
+                  onClick={() => {
+                    setSelectedCustomerId(customer.id)
+                    setDrawerOpen(true)
+                  }}
+                >
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="font-medium text-sm leading-tight truncate">
+                        {customer.name || 'Sem nome'}
+                      </div>
+                      {customer.is_blocked && (
+                        <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4">
+                          Bloq
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      {customer.phone && (
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="h-3 w-3" />
+                          {customer.phone}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-3 w-3" />{' '}
+                        {new Date(customer.updated).toLocaleDateString()}
+                      </div>
+                    </div>
+                    {customer.tags && customer.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {customer.tags.slice(0, 2).map((t, i) => (
+                          <Badge
+                            key={i}
+                            variant="outline"
+                            className="text-[10px] px-1 py-0 h-4 font-normal"
+                          >
+                            {t}
+                          </Badge>
+                        ))}
+                        {customer.tags.length > 2 && (
+                          <span className="text-[10px] text-muted-foreground">
+                            +{customer.tags.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+              {grouped[status]?.length === 0 && (
+                <div className="h-24 border-2 border-dashed border-muted rounded-lg flex items-center justify-center text-muted-foreground text-sm">
+                  Nenhum lead
+                </div>
+              )}
+            </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        ))}
+      </div>
+
+      <CustomerDetailDrawer
+        customerId={selectedCustomerId}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+      />
     </div>
   )
 }
