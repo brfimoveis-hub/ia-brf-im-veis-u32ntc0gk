@@ -1,43 +1,26 @@
-import { useState, useEffect } from 'react'
-import pb from '@/lib/pocketbase/client'
-import { useAuth } from '@/hooks/use-auth'
+import { useEffect, useState } from 'react'
+import { getCadences } from '@/services/cadences'
 import { useRealtime } from '@/hooks/use-realtime'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Loader2, AlertCircle, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { toast } from '@/hooks/use-toast'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import { FileText, Edit2 } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
+import type { RecordModel } from 'pocketbase'
 
 export default function Cadences() {
-  const { user } = useAuth()
-  const [cadences, setCadences] = useState<any[]>([])
+  const [cadences, setCadences] = useState<RecordModel[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [selectedCadence, setSelectedCadence] = useState<RecordModel | null>(null)
 
   const loadData = async () => {
-    if (!user) return
     try {
-      const records = await pb.collection('cadences').getFullList({
-        filter: `user_id = "${user.id}"`,
-        sort: 'order',
-      })
-      setCadences(records)
+      setError(false)
+      const data = await getCadences()
+      setCadences(data)
     } catch (e) {
-      console.error(e)
+      setError(true)
     } finally {
       setLoading(false)
     }
@@ -45,114 +28,111 @@ export default function Cadences() {
 
   useEffect(() => {
     loadData()
-  }, [user])
+  }, [])
 
-  useRealtime('cadences', () => loadData())
-
-  const toggleStatus = async (id: string, current: boolean) => {
-    try {
-      await pb.collection('cadences').update(id, { is_active: !current })
-      toast({ title: 'Sucesso', description: 'Status da cadência atualizado.' })
-    } catch (e) {
-      toast({ title: 'Erro', description: 'Não foi possível atualizar.', variant: 'destructive' })
-    }
-  }
+  useRealtime('cadences', () => {
+    loadData()
+  })
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-[200px]" />
-        <div className="grid gap-4 md:grid-cols-2">
-          <Skeleton className="h-[200px]" />
-          <Skeleton className="h-[200px]" />
-        </div>
+      <div className="flex h-full min-h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[50vh] space-y-4">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+        <p className="text-lg font-medium text-slate-700">Erro ao carregar cadências.</p>
+        <Button onClick={loadData}>Tentar Novamente</Button>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Cadências</h1>
-          <p className="text-muted-foreground">Gerencie a automação dos fluxos de mensagens.</p>
-        </div>
-        <Button>Nova Cadência</Button>
-      </div>
+      <h1 className="text-3xl font-bold tracking-tight">Cadências</h1>
 
       {cadences.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              Nenhuma cadência encontrada. Crie sua primeira cadência de automação.
-            </p>
-          </CardContent>
+        <Card className="flex flex-col items-center justify-center py-12">
+          <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold">Nenhuma Cadência Encontrada</h2>
+          <p className="text-muted-foreground text-center mt-2 max-w-md">
+            Você não possui cadências configuradas no momento.
+          </p>
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {cadences.map((c) => (
-            <Card key={c.id} className="flex flex-col">
-              <CardHeader>
-                <div className="flex justify-between items-start gap-4">
-                  <CardTitle className="text-xl">{c.title || 'Sem título'}</CardTitle>
-                  <Switch
-                    checked={c.is_active}
-                    onCheckedChange={() => toggleStatus(c.id, c.is_active)}
-                  />
+          {cadences.map((cadence) => (
+            <Card
+              key={cadence.id}
+              className="flex flex-col shadow-sm transition-shadow hover:shadow-md"
+            >
+              <CardHeader className="pb-4">
+                <div className="flex justify-between items-start mb-2 gap-4">
+                  <CardTitle className="text-lg leading-tight">{cadence.title}</CardTitle>
+                  <Badge variant={cadence.is_active ? 'default' : 'secondary'} className="shrink-0">
+                    {cadence.is_active ? 'Ativa' : 'Inativa'}
+                  </Badge>
                 </div>
                 <CardDescription className="line-clamp-2">
-                  {c.description || 'Sem descrição'}
+                  {cadence.description || 'Sem descrição'}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex-1">
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  <p>
-                    <strong>Ordem:</strong> {c.order ?? '-'}
-                  </p>
-                  {c.steps && (
-                    <p>
-                      <strong>Passos:</strong>{' '}
-                      {Array.isArray(c.steps) ? c.steps.length : 'Configurado'}
-                    </p>
-                  )}
-                  <div className="flex gap-2 mt-4 flex-wrap">
-                    {c.ebook_file && (
-                      <span className="flex items-center gap-1 text-xs bg-slate-100 px-2 py-1 rounded border">
-                        <FileText className="h-3 w-3" /> E-book
-                      </span>
-                    )}
-                    {c.price_table_file && (
-                      <span className="flex items-center gap-1 text-xs bg-slate-100 px-2 py-1 rounded border">
-                        <FileText className="h-3 w-3" /> Tabela
-                      </span>
-                    )}
-                  </div>
-                </div>
+              <CardContent className="mt-auto pt-0">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setSelectedCadence(cadence)}
+                >
+                  Ver Detalhes e Fluxo
+                </Button>
               </CardContent>
-              <CardFooter>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <Edit2 className="mr-2 h-4 w-4" /> Editar Configurações
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Editar {c.title}</DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4 text-sm text-muted-foreground text-center">
-                      <p>
-                        A edição detalhada dos passos (JSON) e upload de arquivos está em
-                        desenvolvimento.
-                      </p>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </CardFooter>
             </Card>
           ))}
         </div>
       )}
+
+      <Dialog open={!!selectedCadence} onOpenChange={(open) => !open && setSelectedCadence(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl">
+              Fluxo de Mensagens: {selectedCadence?.title}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 mt-2">
+            <div>
+              <h3 className="font-semibold text-sm text-muted-foreground mb-2 uppercase tracking-wide">
+                Conteúdo da Cadência
+              </h3>
+              <div className="bg-muted p-4 rounded-lg text-sm whitespace-pre-wrap border">
+                {selectedCadence?.content || 'Nenhum conteúdo principal definido.'}
+              </div>
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm text-muted-foreground mb-2 uppercase tracking-wide">
+                Passos Configurados (JSON)
+              </h3>
+              <pre className="bg-slate-900 text-slate-50 p-4 rounded-lg text-xs overflow-x-auto font-mono border border-slate-800">
+                {JSON.stringify(selectedCadence?.steps || {}, null, 2)}
+              </pre>
+            </div>
+            {selectedCadence?.ai_instructions && (
+              <div>
+                <h3 className="font-semibold text-sm text-muted-foreground mb-2 uppercase tracking-wide">
+                  Instruções para a IA
+                </h3>
+                <div className="bg-muted p-4 rounded-lg text-sm whitespace-pre-wrap border">
+                  {selectedCadence.ai_instructions}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

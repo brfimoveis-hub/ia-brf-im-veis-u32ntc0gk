@@ -17,14 +17,12 @@ import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-import Index from './pages/Index'
-import ClientesCore from './pages/ClientesCore'
-import ConfiguracoesCore from './pages/ConfiguracoesCore'
-import Bia from './pages/Bia'
-import Remarketing from './pages/Remarketing'
-import UazapiConfig from './pages/UazapiConfig'
+import Dashboard from './pages/Index'
+import Customers from './pages/Customers'
 import Cadences from './pages/Cadences'
-import Logs from './pages/Logs'
+import SettingsBia from './pages/SettingsBia'
+import SettingsRemarketing from './pages/SettingsRemarketing'
+import SettingsConnections from './pages/SettingsConnections'
 import NotFound from './pages/NotFound'
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
@@ -65,37 +63,28 @@ const RouteTracker = () => {
 
     const lowerPath = path.toLowerCase()
 
-    // Strict isolation for Configuration path
-    if (lowerPath === '/configuracoes/conexoes/meta-capi') {
-      component = 'MetaCapiConfig'
-    } else if (lowerPath === '/configuracoes/bia') {
-      component = 'BiaConfig'
-    } else if (lowerPath === '/configuracoes/remarketing') {
-      component = 'RemarketingConfig'
-    } else if (lowerPath === '/configuracoes/conexoes/uazapi') {
-      component = 'UazapiConfig'
-    } else if (lowerPath.startsWith('/configuracoes/conexoes')) {
-      component = 'ConfiguracoesCore'
+    if (lowerPath === '/settings/connections') {
+      component = 'SettingsConnections'
+    } else if (lowerPath === '/settings/bia') {
+      component = 'SettingsBia'
+    } else if (lowerPath === '/settings/remarketing') {
+      component = 'SettingsRemarketing'
     } else if (lowerPath.startsWith('/dashboard')) {
       component = 'Dashboard'
-    } else if (lowerPath.startsWith('/clientes')) {
-      component = 'ClientesCore'
-    } else if (lowerPath.startsWith('/cadencias')) {
+    } else if (lowerPath.startsWith('/customers')) {
+      component = 'Customers'
+    } else if (lowerPath.startsWith('/cadences')) {
       component = 'Cadences'
-    } else if (lowerPath.startsWith('/logs')) {
-      component = 'Logs'
     } else if (lowerPath === '/') {
       component = 'Root'
     }
 
     const routeData = { path, component }
 
-    // Persist to match expected state structure and resolve specific state conflicts
     if (component !== 'Root') {
       localStorage.setItem('currentRoute', JSON.stringify(routeData))
     }
 
-    // Also patch potential nested store formats just in case
     try {
       const existing = localStorage.getItem('route-store')
       if (existing) {
@@ -167,35 +156,27 @@ const router = createBrowserRouter(
               children: [
                 {
                   path: 'dashboard',
-                  element: <Index />,
+                  element: <Dashboard />,
                 },
                 {
-                  path: 'clientes/*',
-                  element: <ClientesCore />,
+                  path: 'customers/*',
+                  element: <Customers />,
                 },
                 {
-                  path: 'cadencias',
+                  path: 'cadences',
                   element: <Cadences />,
                 },
                 {
-                  path: 'logs',
-                  element: <Logs />,
+                  path: 'settings/bia',
+                  element: <SettingsBia />,
                 },
                 {
-                  path: 'configuracoes/bia',
-                  element: <Bia />,
+                  path: 'settings/remarketing',
+                  element: <SettingsRemarketing />,
                 },
                 {
-                  path: 'configuracoes/remarketing',
-                  element: <Remarketing />,
-                },
-                {
-                  path: 'configuracoes/conexoes/uazapi',
-                  element: <UazapiConfig />,
-                },
-                {
-                  path: 'configuracoes/conexoes/*',
-                  element: <ConfiguracoesCore />,
+                  path: 'settings/connections/*',
+                  element: <SettingsConnections />,
                 },
               ],
             },

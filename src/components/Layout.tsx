@@ -35,11 +35,11 @@ export default function Layout() {
 
   const navItems = [
     { name: 'Painel', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Clientes', path: '/clientes', icon: Users },
-    { name: 'Cadências', path: '/cadencias', icon: Settings },
-    { name: 'IA Mãe (Bia)', path: '/configuracoes/bia', icon: Bot },
-    { name: 'Remarketing', path: '/configuracoes/remarketing', icon: RefreshCw },
-    { name: 'Conexões', path: '/configuracoes/conexoes', icon: MessageSquare },
+    { name: 'Clientes', path: '/customers', icon: Users },
+    { name: 'Cadências', path: '/cadences', icon: Settings },
+    { name: 'IA Mãe (Bia)', path: '/settings/bia', icon: Bot },
+    { name: 'Remarketing', path: '/settings/remarketing', icon: RefreshCw },
+    { name: 'Conexões', path: '/settings/connections', icon: MessageSquare },
   ]
 
   const SidebarContent = () => (
