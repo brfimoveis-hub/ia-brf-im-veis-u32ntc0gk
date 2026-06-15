@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-15T18:49:19.758Z",
+  "generatedAt": "2026-06-15T19:44:14.711Z",
   "collections": [
     {
       "name": "users",
@@ -250,7 +250,8 @@
             "Demo Realiz.",
             "Engajamento",
             "Qualificação",
-            "Novo"
+            "Novo",
+            "Proposta"
           ]
         },
         {

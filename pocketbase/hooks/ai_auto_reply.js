@@ -236,7 +236,7 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     const customerMessage = e.record.getString('content') || ''
-    const currentStatus = customer.getString('status') || 'Base de Clientes/Novo LYD'
+    const currentStatus = customer.getString('status') || 'Novo'
     let activeCadenceText = ''
 
     try {
@@ -577,20 +577,16 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
         let targetStatus = ''
         const validStatuses = [
-          'Base de Clientes/Novo LYD',
-          'Lead Novo',
-          'Contato 1',
-          'Contato 2',
+          'Novo',
+          'lead',
+          'contact',
           'Qualificação',
-          'Qualificado',
           'Engajamento',
-          'Visita',
-          'Objeção',
-          'Demo Agend.',
           'Demo Realiz.',
+          'Visita',
           'Proposta',
-          'Negociação',
           'Fechamento',
+          'closed',
         ]
 
         if (detectedStatus && validStatuses.includes(detectedStatus)) {
@@ -601,7 +597,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
           custStatusLower === 'base de clientes/novo lyd' ||
           custStatusLower === ''
         ) {
-          targetStatus = 'Contato 1'
+          targetStatus = 'lead'
         }
 
         let crmUpdated = false
@@ -626,7 +622,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         if (crmUpdated) {
           $app.save(custToUpdate)
 
-          if (targetStatus === 'Qualificado') {
+          if (targetStatus === 'Qualificação') {
             const slackWebhook = $secrets.get('SLACK_WEBHOOK_URL')
             if (slackWebhook) {
               try {
