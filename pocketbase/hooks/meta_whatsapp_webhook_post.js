@@ -14,17 +14,25 @@ routerAdd('POST', '/backend/v1/webhook/whatsapp', (e) => {
 
               if (msg.type === 'audio' && msg.audio?.id) {
                 try {
-                  const usersToken = $app.findRecordsByFilter(
-                    'users',
-                    "meta_whatsapp_access_token != ''",
-                    '-created',
-                    1,
-                    0,
-                  )
-                  const metaToken =
-                    usersToken.length > 0
-                      ? usersToken[0].getString('meta_whatsapp_access_token')
-                      : null
+                  let metaToken = null
+                  try {
+                    const adminUser = $app.findAuthRecordByEmail('users', 'brfimoveis@gmail.com')
+                    metaToken = adminUser.getString('meta_whatsapp_access_token')
+                  } catch (_) {}
+
+                  if (!metaToken) {
+                    const usersToken = $app.findRecordsByFilter(
+                      'users',
+                      "meta_whatsapp_access_token != ''",
+                      '-created',
+                      1,
+                      0,
+                    )
+                    metaToken =
+                      usersToken.length > 0
+                        ? usersToken[0].getString('meta_whatsapp_access_token')
+                        : null
+                  }
                   if (metaToken) {
                     const mediaInfo = $http.send({
                       url: `https://graph.facebook.com/v19.0/${msg.audio.id}`,
@@ -88,14 +96,24 @@ routerAdd('POST', '/backend/v1/webhook/whatsapp', (e) => {
 
               let customerId = ''
               let userId = ''
+
+              try {
+                const adminUser = $app.findAuthRecordByEmail('users', 'brfimoveis@gmail.com')
+                userId = adminUser.id
+              } catch (_) {
+                const users = $app.findRecordsByFilter('users', "id != ''", '-created', 1, 0)
+                if (users.length > 0) userId = users[0].id
+              }
+
               try {
                 const customer = $app.findFirstRecordByData('customers', 'phone', phone)
                 customerId = customer.id
-                const users = $app.findRecordsByFilter('users', "id != ''", '-created', 1, 0)
-                if (users.length > 0) userId = users[0].id
 
                 try {
                   const custToUpdate = $app.findRecordById('customers', customerId)
+                  if (userId && !custToUpdate.getString('user_id')) {
+                    custToUpdate.set('user_id', userId)
+                  }
                   $app.save(custToUpdate)
                 } catch (e) {}
               } catch (err) {
@@ -105,10 +123,9 @@ routerAdd('POST', '/backend/v1/webhook/whatsapp', (e) => {
                 newCustomer.set('name', change.value.contacts?.[0]?.profile?.name || phone)
                 newCustomer.set('status', 'Lead Novo')
                 newCustomer.set('source', 'Meta - WhatsApp')
+                if (userId) newCustomer.set('user_id', userId)
                 $app.save(newCustomer)
                 customerId = newCustomer.id
-                const users = $app.findRecordsByFilter('users', "id != ''", '-created', 1, 0)
-                if (users.length > 0) userId = users[0].id
               }
 
               if (customerId) {

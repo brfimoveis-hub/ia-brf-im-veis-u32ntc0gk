@@ -264,12 +264,10 @@ export function UazapiConfig() {
             ? 'connected'
             : currentState
         setStatus(newStatus)
-        await pb
-          .collection('users')
-          .update(user.id, {
-            uazapi_status: newStatus,
-            uazapi_error: res.data?.lastDisconnectReason || '',
-          })
+        await pb.collection('users').update(user.id, {
+          uazapi_status: newStatus,
+          uazapi_error: res.data?.lastDisconnectReason || '',
+        })
       }
     } catch (err: any) {
       if (err.status === 404 || err.status === 405) {

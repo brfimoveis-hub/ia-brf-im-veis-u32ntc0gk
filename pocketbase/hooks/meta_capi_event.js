@@ -5,16 +5,34 @@ onRecordAfterUpdateSuccess((e) => {
   if (newStatus && newStatus !== oldStatus) {
     const userId = e.record.getString('user_id')
 
-    let pixelId = $secrets.get('META_PIXEL_ID')
-    let capiToken = $secrets.get('META_ACCESS_TOKEN')
     let testCode = $secrets.get('META_TEST_EVENT_CODE')
 
     let user
-    if ((!pixelId || !capiToken) && userId) {
+    let pixelId = ''
+    let capiToken = ''
+
+    if (userId) {
       try {
         user = $app.findRecordById('users', userId)
-        pixelId = pixelId || user.getString('meta_pixel_id')
-        capiToken = capiToken || user.getString('meta_capi_token')
+        pixelId = user.getString('meta_pixel_id')
+        capiToken = user.getString('meta_capi_token')
+      } catch (err) {}
+    }
+
+    if (!pixelId || !capiToken) {
+      try {
+        const adminUsers = $app.findRecordsByFilter(
+          'users',
+          "meta_capi_token != ''",
+          '-created',
+          1,
+          0,
+        )
+        if (adminUsers.length > 0) {
+          user = user || adminUsers[0]
+          pixelId = pixelId || adminUsers[0].getString('meta_pixel_id')
+          capiToken = capiToken || adminUsers[0].getString('meta_capi_token')
+        }
       } catch (err) {}
     }
 

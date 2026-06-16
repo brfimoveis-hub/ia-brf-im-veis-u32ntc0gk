@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-15T20:39:00.852Z",
+  "generatedAt": "2026-06-16T20:40:13.907Z",
   "collections": [
     {
       "name": "users",
@@ -190,6 +190,30 @@
         },
         {
           "name": "meta_capi_error",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_app_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_app_secret",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_dataset_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_offline_event_set_id",
           "type": "text",
           "required": false,
           "system": false
