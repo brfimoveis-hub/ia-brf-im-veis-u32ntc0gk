@@ -939,12 +939,43 @@ export function DiagnosticCenter() {
                 <DialogDescription>
                   <span>
                     {dialogType === 'meta_capi'
-                      ? 'Insira o novo token de acesso gerado no painel do Meta Business para restaurar a conexão.'
+                      ? 'Siga os passos abaixo para gerar e inserir o seu Token de Acesso da API de Conversões do Meta.'
                       : 'Insira o novo Instance Token (API Key) para restaurar a conexão Uazapi.'}
                   </span>
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
+                {dialogType === 'meta_capi' && (
+                  <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md border space-y-2">
+                    <p className="font-medium text-foreground">Guia de Configuração (CAPI):</p>
+                    <ol className="list-decimal list-inside space-y-1 ml-1">
+                      <li>
+                        Acesse o{' '}
+                        <a
+                          href="https://business.facebook.com/events_manager2/"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          Meta Events Manager
+                        </a>
+                        .
+                      </li>
+                      <li>
+                        Clique em <strong>Fontes de Dados</strong> e selecione o Pixel{' '}
+                        <strong>{currentUser?.meta_pixel_id || '4391651051078163'}</strong>.
+                      </li>
+                      <li>
+                        Navegue até a aba <strong>Configurações</strong>.
+                      </li>
+                      <li>
+                        Role até <strong>API de Conversões</strong> e clique em{' '}
+                        <strong>Gerar token de acesso</strong>.
+                      </li>
+                      <li>Copie o token gerado e cole no campo abaixo.</li>
+                    </ol>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="token_input">Novo Token de Acesso</Label>
                   <Input
