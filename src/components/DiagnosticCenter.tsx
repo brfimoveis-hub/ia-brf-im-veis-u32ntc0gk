@@ -662,7 +662,7 @@ export function DiagnosticCenter() {
                   ? 'Conectado'
                   : currentUser?.meta_capi_status || 'Desconectado'}
               </Badge>
-              {!!currentUser?.meta_capi_token ? (
+              {currentUser?.meta_capi_token ? (
                 <Badge
                   variant="outline"
                   className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px]"
