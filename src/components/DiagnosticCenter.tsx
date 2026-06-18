@@ -94,6 +94,28 @@ export function DiagnosticCenter() {
   const [dialogType, setDialogType] = useState<'meta_capi' | 'uazapi'>('meta_capi')
   const [newTokenValue, setNewTokenValue] = useState('')
   const [isUpdatingToken, setIsUpdatingToken] = useState(false)
+  const [currentUser, setCurrentUser] = useState<any>(user)
+
+  const fetchCurrentUser = async () => {
+    if (user?.id) {
+      try {
+        const u = await pb.collection('users').getOne(user.id)
+        setCurrentUser(u)
+      } catch (e) {
+        console.error(e)
+      }
+    }
+  }
+
+  useEffect(() => {
+    fetchCurrentUser()
+  }, [user?.id])
+
+  useRealtime('users', (e) => {
+    if (e.record.id === user?.id) {
+      setCurrentUser(e.record)
+    }
+  })
 
   const fetchLogsAndStats = async () => {
     try {
@@ -260,19 +282,28 @@ export function DiagnosticCenter() {
 
       // 2. Uazapi Connection Integrity Check
       setProgress(25)
+      const phoneId = currentUser?.uazapi_instance_number || 'Não configurado'
       let uazapiStatus = 'error'
-      let uazapiMessage = 'Telefone de campanha Uazapi ausente. A ingestão automática pode falhar.'
-      const hasPhone = !!user?.uazapi_instance_number
+      let uazapiMessage = `Telefone de campanha Uazapi ausente. A ingestão automática pode falhar.`
+      const hasPhone = !!currentUser?.uazapi_instance_number
 
       if (hasPhone) {
         try {
-          const res = await pb.send('/backend/v1/uazapi/status', {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-          })
+          const res = await pb
+            .send('/backend/v1/uazapi/diagnostics', {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' },
+            })
+            .catch(() =>
+              pb.send('/backend/v1/uazapi/status', {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' },
+              }),
+            )
+
           if (res.status === 'online' || res.status === 'Saudável') {
             uazapiStatus = 'success'
-            uazapiMessage = `Conexão Uazapi ativa e operante no número ${user.uazapi_instance_number}. Fluxo de leads ininterrupto.`
+            uazapiMessage = `Conexão Uazapi ativa e operante no número ${phoneId}. Fluxo de leads ininterrupto.`
           } else {
             throw new Error(res.data?.lastDisconnectReason || res.status || 'Falha de conexão')
           }
@@ -280,12 +311,12 @@ export function DiagnosticCenter() {
           uazapiStatus = 'error'
           const resErrorMsg =
             e.response?.data?.error || e.response?.message || e.message || 'Erro desconhecido'
-          uazapiMessage = `Falha na integridade da conexão Uazapi para o Telefone de Campanha ${user.uazapi_instance_number}: \n\nDetalhe do erro: ${resErrorMsg}`
+          uazapiMessage = `Falha na integridade da conexão Uazapi para o Telefone de Campanha ${phoneId}: \n\nDetalhe do erro: ${resErrorMsg}`
 
           await createSystemLog({
             type: 'uazapi_error',
             message: `Falha na verificação de integridade do Uazapi`,
-            details: { error: resErrorMsg, phone: user.uazapi_instance_number },
+            details: { error: resErrorMsg, phone: phoneId },
             payload: e.response || {},
           }).catch(() => {})
         }
@@ -301,10 +332,10 @@ export function DiagnosticCenter() {
       }
 
       newResults.push({
-        name: 'Integridade da Conexão Uazapi',
+        name: `Integridade da Conexão Uazapi (${phoneId})`,
         status: uazapiStatus,
         message: uazapiMessage,
-        payload: { uazapi_instance_number: user?.uazapi_instance_number, listening: hasPhone },
+        payload: { uazapi_instance_number: phoneId, listening: hasPhone },
       })
       setResults([...newResults])
 
@@ -348,21 +379,25 @@ export function DiagnosticCenter() {
       setProgress(60)
       const testCount = loopEnabled ? 5 : 1
       let metaSuccesses = 0
+      const pixelId = currentUser?.meta_pixel_id || 'Não configurado'
 
-      if (!user?.meta_pixel_id || !user?.meta_capi_token) {
-        const missing = !user?.meta_pixel_id
+      if (!currentUser?.meta_pixel_id || !currentUser?.meta_capi_token) {
+        const missing = !currentUser?.meta_pixel_id
           ? 'Pixel ID ausente.'
           : 'Token da API de Conversões (CAPI) ausente.'
         newResults.push({
-          name: 'Integração Meta (Pixel & CAPI) 61569504383085',
+          name: `Integração Meta (Pixel & CAPI) ${pixelId}`,
           status: 'error',
-          message: `${missing} Certifique-se de configurar o Pixel 61569504383085.`,
-          payload: { pixel: user?.meta_pixel_id, hasCapiToken: !!user?.meta_capi_token },
+          message: `${missing} Certifique-se de configurar o Pixel ${pixelId}.`,
+          payload: {
+            pixel: currentUser?.meta_pixel_id,
+            hasCapiToken: !!currentUser?.meta_capi_token,
+          },
         })
 
         await createSystemLog({
           type: 'meta_error',
-          message: `Configuração Meta ausente para Pixel 61569504383085`,
+          message: `Configuração Meta ausente para Pixel ${pixelId}`,
           details: { error: missing },
           payload: {},
         }).catch(() => {})
@@ -372,17 +407,26 @@ export function DiagnosticCenter() {
         let lastErrorMsg = ''
         for (let i = 0; i < testCount; i++) {
           try {
-            await pb.send('/backend/v1/meta_capi_test_connection', {
-              method: 'POST',
-              body: JSON.stringify({}),
-              headers: { 'Content-Type': 'application/json' },
-            })
+            await pb
+              .send('/backend/v1/meta_test_connection', {
+                method: 'POST',
+                body: JSON.stringify({}),
+                headers: { 'Content-Type': 'application/json' },
+              })
+              .catch(() =>
+                pb.send('/backend/v1/meta_capi_test_connection', {
+                  method: 'POST',
+                  body: JSON.stringify({}),
+                  headers: { 'Content-Type': 'application/json' },
+                }),
+              )
+
             metaSuccesses++
           } catch (e: any) {
             const resData = e.response?.data || e.response || {}
             let msg = resData.message || e.message || 'Erro desconhecido'
             if (e.status === 400) {
-              msg = `Erro 400 (Bad Request): O payload enviado para o Meta Pixel 61569504383085 é inválido ou a CAPI rejeitou os dados. Detalhes: ${msg}`
+              msg = `Erro 400 (Bad Request): O payload enviado para o Meta Pixel ${pixelId} é inválido ou a CAPI rejeitou os dados. Detalhes: ${msg}`
             } else if (resData.code && !msg.includes(`Código: ${resData.code}`)) {
               msg += ` (Meta Error Code: ${resData.code})`
             }
@@ -391,7 +435,7 @@ export function DiagnosticCenter() {
             // Log the error to system_logs
             await createSystemLog({
               type: 'meta_error',
-              message: `Falha na conexão com Meta Pixel 61569504383085`,
+              message: `Falha na conexão com Meta Pixel ${pixelId}`,
               details: { error: msg, status: e.status },
               payload: e.response || {},
             }).catch(() => {})
@@ -400,20 +444,20 @@ export function DiagnosticCenter() {
           if (i < testCount - 1) await new Promise((r) => setTimeout(r, 1500))
         }
 
-        let finalMessage = `${metaSuccesses}/${testCount} testes do Pixel 61569504383085 bem-sucedidos. Status: Conectado.`
+        let finalMessage = `${metaSuccesses}/${testCount} testes do Pixel ${pixelId} bem-sucedidos. Status: Conectado.`
         if (metaSuccesses < testCount)
-          finalMessage = `Falha de conexão com Pixel 61569504383085: ${lastErrorMsg}`
+          finalMessage = `Falha de conexão com Pixel ${pixelId}: ${lastErrorMsg}`
 
         newResults.push({
-          name: 'Integração Meta (Pixel & CAPI) 61569504383085',
+          name: `Integração Meta (Pixel & CAPI) ${pixelId}`,
           status: metaSuccesses === testCount ? 'success' : metaSuccesses > 0 ? 'warning' : 'error',
           message: finalMessage,
           payload: {
             successes: metaSuccesses,
             testCount,
             lastErrorMsg,
-            pixel: user.meta_pixel_id || '61569504383085',
-            hasCapiToken: !!user.meta_capi_token,
+            pixel: pixelId,
+            hasCapiToken: !!currentUser?.meta_capi_token,
           },
         })
       }
@@ -533,6 +577,169 @@ export function DiagnosticCenter() {
             <p className="text-sm text-muted-foreground font-medium">
               Taxa de Sucesso (Capture Rate)
             </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Integrações em Tempo Real */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Uazapi Status */}
+        <Card className="border-border shadow-elevation">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Activity className="h-5 w-5 text-blue-500" />
+                Uazapi (WhatsApp)
+              </CardTitle>
+            </div>
+            <CardDescription className="font-mono text-xs">
+              {currentUser?.uazapi_instance_number || 'Sem número configurado'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 mb-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  currentUser?.uazapi_status === 'connected'
+                    ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                    : 'bg-destructive/10 text-destructive border-destructive/20',
+                )}
+              >
+                {currentUser?.uazapi_status === 'connected'
+                  ? 'Conectado'
+                  : currentUser?.uazapi_status || 'Desconectado'}
+              </Badge>
+            </div>
+            {currentUser?.uazapi_status !== 'connected' && currentUser?.uazapi_error && (
+              <div className="mt-3 text-xs text-destructive flex gap-1 items-start bg-destructive/10 p-2 rounded-md">
+                <span className="whitespace-pre-wrap">{currentUser.uazapi_error}</span>
+              </div>
+            )}
+            <div className="mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs"
+                onClick={() => {
+                  setDialogType('uazapi')
+                  setNewTokenValue('')
+                  setIsTokenDialogOpen(true)
+                }}
+              >
+                Atualizar Token Uazapi
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Meta CAPI Status */}
+        <Card className="border-border shadow-elevation">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Target className="h-5 w-5 text-purple-500" />
+                Meta CAPI
+              </CardTitle>
+            </div>
+            <CardDescription className="font-mono text-xs">
+              Pixel: {currentUser?.meta_pixel_id || 'Não configurado'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  currentUser?.meta_capi_status === 'connected' ||
+                    currentUser?.meta_token_status === 'valid'
+                    ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                    : 'bg-destructive/10 text-destructive border-destructive/20',
+                )}
+              >
+                {currentUser?.meta_capi_status === 'connected' ||
+                currentUser?.meta_token_status === 'valid'
+                  ? 'Conectado'
+                  : currentUser?.meta_capi_status || 'Desconectado'}
+              </Badge>
+              {!!currentUser?.meta_capi_token ? (
+                <Badge
+                  variant="outline"
+                  className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px]"
+                >
+                  Token Presente
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[10px]"
+                >
+                  Token Ausente
+                </Badge>
+              )}
+            </div>
+            {currentUser?.meta_capi_status !== 'connected' &&
+              currentUser?.meta_token_status !== 'valid' &&
+              currentUser?.meta_capi_error && (
+                <div className="mt-3 text-xs text-destructive flex gap-1 items-start bg-destructive/10 p-2 rounded-md">
+                  <span
+                    className="whitespace-pre-wrap line-clamp-3"
+                    title={currentUser.meta_capi_error}
+                  >
+                    {currentUser.meta_capi_error}
+                  </span>
+                </div>
+              )}
+            <div className="mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs"
+                onClick={() => {
+                  setDialogType('meta_capi')
+                  setNewTokenValue('')
+                  setIsTokenDialogOpen(true)
+                }}
+              >
+                Atualizar Token CAPI
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Meta WhatsApp Status */}
+        <Card className="border-border shadow-elevation">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Activity className="h-5 w-5 text-emerald-500" />
+                Meta WhatsApp API
+              </CardTitle>
+            </div>
+            <CardDescription className="font-mono text-xs">
+              ID: {currentUser?.meta_whatsapp_phone_number_id || 'Não configurado'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 mb-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  currentUser?.meta_whatsapp_status === 'connected'
+                    ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                    : 'bg-secondary/20 text-secondary-foreground border-secondary/30',
+                )}
+              >
+                {currentUser?.meta_whatsapp_status === 'connected'
+                  ? 'Conectado'
+                  : currentUser?.meta_whatsapp_status || 'Não configurado'}
+              </Badge>
+            </div>
+            <div className="mt-auto pt-4 flex flex-col justify-end">
+              <p className="text-xs text-muted-foreground mt-4">
+                Status da conexão nativa da Cloud API.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
