@@ -2,17 +2,29 @@ import { useState, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardDescription,
+  CardFooter,
+} from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Loader2,
   RefreshCw,
   CheckCircle,
   XCircle,
-  Bot,
   User as UserIcon,
   Activity,
+  Save,
+  BrainCircuit,
+  FileText,
+  MessageSquare,
+  Network,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -26,6 +38,12 @@ export default function Dashboard() {
   const [userSettings, setUserSettings] = useState<RecordModel | null>(null)
   const [customers, setCustomers] = useState<RecordModel[]>([])
   const [cadences, setCadences] = useState<RecordModel[]>([])
+
+  const [biaInstructions, setBiaInstructions] = useState('')
+  const [aiInstructions, setAiInstructions] = useState('')
+  const [isSavingBia, setIsSavingBia] = useState(false)
+  const [isSavingAi, setIsSavingAi] = useState(false)
+
   const [isSyncing, setIsSyncing] = useState(false)
 
   const loadData = async () => {
@@ -37,6 +55,8 @@ export default function Dashboard() {
         pb.collection('cadences').getFullList({ sort: 'order' }),
       ])
       setUserSettings(uRes)
+      setBiaInstructions(uRes.bia_instructions || '')
+      setAiInstructions(uRes.ai_instructions || '')
       setCustomers(cRes)
       setCadences(cadRes)
     } catch (err) {
@@ -73,6 +93,40 @@ export default function Dashboard() {
       })
     } finally {
       setIsSyncing(false)
+    }
+  }
+
+  const handleSaveBia = async () => {
+    if (!authUser?.id) return
+    setIsSavingBia(true)
+    try {
+      await pb.collection('users').update(authUser.id, { bia_instructions: biaInstructions })
+      toast({ title: 'Sucesso', description: 'Instruções da Bia atualizadas.' })
+    } catch (e) {
+      toast({
+        title: 'Erro',
+        description: 'Falha ao salvar as instruções da Bia.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingBia(false)
+    }
+  }
+
+  const handleSaveAi = async () => {
+    if (!authUser?.id) return
+    setIsSavingAi(true)
+    try {
+      await pb.collection('users').update(authUser.id, { ai_instructions: aiInstructions })
+      toast({ title: 'Sucesso', description: 'Diretrizes da IA Mãe atualizadas.' })
+    } catch (e) {
+      toast({
+        title: 'Erro',
+        description: 'Falha ao salvar as diretrizes da IA.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingAi(false)
     }
   }
 
@@ -113,6 +167,12 @@ export default function Dashboard() {
   const hasUazapiConfig = !!(userSettings?.uazapi_token || userSettings?.uazapi_domain)
   const isConnected = userSettings?.uazapi_status === 'connected'
 
+  const knowledgeFiles = userSettings?.ai_knowledge_files
+    ? Array.isArray(userSettings.ai_knowledge_files)
+      ? userSettings.ai_knowledge_files
+      : [userSettings.ai_knowledge_files]
+    : []
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8 animate-fade-in">
       <div>
@@ -120,8 +180,8 @@ export default function Dashboard() {
         <p className="text-muted-foreground mt-1">Gerencie seu ambiente do CRM Inteligente</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="shadow-sm lg:col-span-1 h-fit">
           <CardHeader className="pb-4 border-b">
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-blue-500" />
@@ -174,54 +234,144 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm">
-          <CardHeader className="pb-4 border-b">
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="h-5 w-5 text-purple-500" />
-              Identidade da IA
-            </CardTitle>
-            <CardDescription>Perfil e diretrizes da assistente virtual</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6 flex gap-6 items-start">
-            <div className="h-24 w-24 rounded-full overflow-hidden bg-secondary flex items-center justify-center border-4 border-background shadow-md shrink-0">
-              {userSettings?.ai_avatar ? (
-                <img
-                  src={pb.files.getURL(userSettings, userSettings.ai_avatar)}
-                  alt="AI Avatar"
-                  className="h-full w-full object-cover"
+        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className="shadow-sm flex flex-col">
+            <CardHeader className="pb-4 border-b">
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-purple-500" />
+                Bia Atendente
+              </CardTitle>
+              <CardDescription>Assistente de linha de frente no WhatsApp</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6 flex-1 flex flex-col space-y-4">
+              <div className="flex gap-4 items-center">
+                <div className="h-16 w-16 rounded-full overflow-hidden bg-secondary flex items-center justify-center border-2 border-background shadow-sm shrink-0">
+                  {userSettings?.ai_avatar ? (
+                    <img
+                      src={pb.files.getURL(userSettings, userSettings.ai_avatar)}
+                      alt="Avatar"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <UserIcon className="h-8 w-8 text-muted-foreground/50" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Nome da Assistente
+                  </p>
+                  <p className="font-bold text-lg">{userSettings?.ai_name || 'Bia'}</p>
+                  <div className="mt-1">
+                    {isConnected ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-green-50 text-green-700 border-green-200"
+                      >
+                        Ativa / Conectada
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-muted text-muted-foreground">
+                        Aguardando Conexão
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 flex flex-col mt-2">
+                <label className="text-sm font-semibold mb-2">Instruções de Atendimento</label>
+                <Textarea
+                  value={biaInstructions}
+                  onChange={(e) => setBiaInstructions(e.target.value)}
+                  className="flex-1 min-h-[160px] resize-y text-sm"
+                  placeholder="Instruções de como a Bia deve falar com o cliente..."
                 />
-              ) : (
-                <UserIcon className="h-12 w-12 text-muted-foreground/50" />
-              )}
-            </div>
-            <div className="space-y-3 flex-1">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Nome da Persona
-                </p>
-                <p className="font-bold text-lg">{userSettings?.ai_name || 'Bia'}</p>
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  ID da Voz
+            </CardContent>
+            <CardFooter className="pt-0 pb-6 px-6">
+              <Button onClick={handleSaveBia} disabled={isSavingBia} className="w-full">
+                {isSavingBia ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Salvar Instruções da Bia
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card className="shadow-sm flex flex-col border-primary/20">
+            <CardHeader className="pb-4 border-b bg-primary/5">
+              <CardTitle className="flex items-center gap-2">
+                <BrainCircuit className="h-5 w-5 text-primary" />
+                IA Mãe (Gestora)
+              </CardTitle>
+              <CardDescription>Gestora de Informações e Orquestradora</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6 flex-1 flex flex-col space-y-4">
+              <div className="bg-muted/50 rounded-md p-3 text-sm flex items-start gap-3">
+                <Network className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <p className="text-muted-foreground leading-relaxed text-xs">
+                  A <strong className="text-foreground">IA Mãe</strong> analisa os dados, arquivos e
+                  histórico do CRM. Ela toma decisões e alimenta a{' '}
+                  <strong className="text-foreground">Bia Atendente</strong> com o contexto e os
+                  próximos passos.
                 </p>
-                <Badge variant="secondary" className="mt-1 font-mono text-xs">
-                  {userSettings?.ai_voice_id || 'padrão'}
-                </Badge>
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Instruções Base
-                </p>
-                <p className="text-sm text-foreground/80 line-clamp-2 mt-1 bg-muted/50 p-2 rounded-md">
-                  {userSettings?.bia_instructions ||
-                    userSettings?.ai_instructions ||
-                    'Sistema utilizando as diretrizes globais.'}
-                </p>
+
+              <div className="flex-1 flex flex-col">
+                <label className="text-sm font-semibold mb-2">Diretrizes da Gestora</label>
+                <Textarea
+                  value={aiInstructions}
+                  onChange={(e) => setAiInstructions(e.target.value)}
+                  className="flex-1 min-h-[160px] resize-y text-sm"
+                  placeholder="Instruções para análise e gestão de informações..."
+                />
               </div>
-            </div>
-          </CardContent>
-        </Card>
+
+              <div className="pt-2 border-t">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex justify-between items-center">
+                  Base de Conhecimento
+                  <Badge variant="secondary" className="font-mono">
+                    {knowledgeFiles.length}
+                  </Badge>
+                </p>
+                {knowledgeFiles.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {knowledgeFiles.map((file: string, i: number) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-1.5 bg-secondary px-2 py-1 rounded text-xs"
+                      >
+                        <FileText className="h-3 w-3 shrink-0" />
+                        <span className="truncate max-w-[120px]" title={file}>
+                          {file}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nenhum arquivo global carregado.</p>
+                )}
+              </div>
+            </CardContent>
+            <CardFooter className="pt-0 pb-6 px-6">
+              <Button
+                onClick={handleSaveAi}
+                disabled={isSavingAi}
+                variant="secondary"
+                className="w-full"
+              >
+                {isSavingAi ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Salvar Diretrizes da IA Mãe
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
       </div>
 
       <Card className="shadow-sm">
