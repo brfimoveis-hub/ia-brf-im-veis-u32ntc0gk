@@ -34,10 +34,9 @@ export default function Layout() {
   })
 
   const navItems = [
-    { name: 'Painel', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Cérebro do Sistema', path: '/dashboard', icon: Bot },
     { name: 'Clientes', path: '/customers', icon: Users },
     { name: 'Cadências', path: '/cadences', icon: Settings },
-    { name: 'IA Mãe (Bia)', path: '/settings/bia', icon: Bot },
     { name: 'Remarketing', path: '/settings/remarketing', icon: RefreshCw },
     { name: 'Conexões', path: '/settings/connections', icon: MessageSquare },
   ]

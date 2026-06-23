@@ -20,7 +20,6 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import Dashboard from './pages/Index'
 import Customers from './pages/Customers'
 import Cadences from './pages/Cadences'
-import SettingsBia from './pages/SettingsBia'
 import SettingsRemarketing from './pages/SettingsRemarketing'
 import SettingsConnections from './pages/SettingsConnections'
 import NotFound from './pages/NotFound'
@@ -65,8 +64,6 @@ const RouteTracker = () => {
 
     if (lowerPath === '/settings/connections') {
       component = 'SettingsConnections'
-    } else if (lowerPath === '/settings/bia') {
-      component = 'SettingsBia'
     } else if (lowerPath === '/settings/remarketing') {
       component = 'SettingsRemarketing'
     } else if (lowerPath.startsWith('/dashboard')) {
@@ -165,10 +162,6 @@ const router = createBrowserRouter(
                 {
                   path: 'cadences',
                   element: <Cadences />,
-                },
-                {
-                  path: 'settings/bia',
-                  element: <SettingsBia />,
                 },
                 {
                   path: 'settings/remarketing',
