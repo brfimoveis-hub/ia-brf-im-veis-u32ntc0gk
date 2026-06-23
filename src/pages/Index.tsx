@@ -25,6 +25,7 @@ import {
   FileText,
   MessageSquare,
   Network,
+  Sparkles,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -43,8 +44,33 @@ export default function Dashboard() {
   const [aiInstructions, setAiInstructions] = useState('')
   const [isSavingBia, setIsSavingBia] = useState(false)
   const [isSavingAi, setIsSavingAi] = useState(false)
+  const [isApplyingPreset, setIsApplyingPreset] = useState<string | null>(null)
 
   const [isSyncing, setIsSyncing] = useState(false)
+
+  const PRESETS = [
+    {
+      id: 'profissional',
+      name: 'Bia Profissional',
+      description: 'Meia idade, vestimenta de corretora profissional',
+      tone: 'Profissional / Formal',
+      voiceId: 'professional_female',
+    },
+    {
+      id: 'amigavel',
+      name: 'Bia Amigável',
+      description: 'Comunicativa e acolhedora',
+      tone: 'Amigável',
+      voiceId: 'friendly_female',
+    },
+    {
+      id: 'executiva',
+      name: 'Bia Executiva',
+      description: 'Focada em resultados e direta',
+      tone: 'Executivo',
+      voiceId: 'executive_female',
+    },
+  ]
 
   const loadData = async () => {
     if (!authUser?.id) return
@@ -73,6 +99,8 @@ export default function Dashboard() {
   useRealtime('users', (e) => {
     if (e.action === 'update' && e.record.id === authUser?.id) {
       setUserSettings(e.record)
+      setBiaInstructions(e.record.bia_instructions || '')
+      setAiInstructions(e.record.ai_instructions || '')
     }
   })
 
@@ -127,6 +155,26 @@ export default function Dashboard() {
       })
     } finally {
       setIsSavingAi(false)
+    }
+  }
+
+  const handleApplyPreset = async (presetId: string) => {
+    if (isApplyingPreset) return
+    setIsApplyingPreset(presetId)
+    try {
+      await pb.send('/backend/v1/users/bia-preset', {
+        method: 'POST',
+        body: JSON.stringify({ presetId }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      toast({
+        title: 'Persona Aplicada',
+        description: 'A Bia foi atualizada com a nova persona e foto de perfil.',
+      })
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao aplicar persona.' })
+    } finally {
+      setIsApplyingPreset(null)
     }
   }
 
@@ -243,7 +291,7 @@ export default function Dashboard() {
               </CardTitle>
               <CardDescription>Assistente de linha de frente no WhatsApp</CardDescription>
             </CardHeader>
-            <CardContent className="pt-6 flex-1 flex flex-col space-y-4">
+            <CardContent className="pt-6 flex-1 flex flex-col space-y-6">
               <div className="flex gap-4 items-center">
                 <div className="h-16 w-16 rounded-full overflow-hidden bg-secondary flex items-center justify-center border-2 border-background shadow-sm shrink-0">
                   {userSettings?.ai_avatar ? (
@@ -261,7 +309,7 @@ export default function Dashboard() {
                     Nome da Assistente
                   </p>
                   <p className="font-bold text-lg">{userSettings?.ai_name || 'Bia'}</p>
-                  <div className="mt-1">
+                  <div className="mt-1 flex items-center gap-2">
                     {isConnected ? (
                       <Badge
                         variant="outline"
@@ -274,12 +322,59 @@ export default function Dashboard() {
                         Aguardando Conexão
                       </Badge>
                     )}
+                    {userSettings?.ai_voice_id && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Tom:{' '}
+                        {PRESETS.find((p) => p.voiceId === userSettings.ai_voice_id)?.tone ||
+                          'Personalizado'}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="flex-1 flex flex-col mt-2">
-                <label className="text-sm font-semibold mb-2">Instruções de Atendimento</label>
+              <div className="flex flex-col gap-3">
+                <p className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Personas Prontas
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {PRESETS.map((preset) => (
+                    <div
+                      key={preset.id}
+                      onClick={() => handleApplyPreset(preset.id)}
+                      className={cn(
+                        'cursor-pointer border rounded-lg p-3 hover:border-primary/50 transition-all flex flex-col relative',
+                        userSettings?.ai_voice_id === preset.voiceId
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border bg-card',
+                        isApplyingPreset === preset.id && 'opacity-70 pointer-events-none',
+                      )}
+                    >
+                      {isApplyingPreset === preset.id && (
+                        <div className="absolute inset-0 bg-background/50 flex items-center justify-center rounded-lg z-10">
+                          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        </div>
+                      )}
+                      <p className="font-semibold text-sm">{preset.name}</p>
+                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 flex-1">
+                        {preset.description}
+                      </p>
+                      <Badge variant="secondary" className="mt-2 w-fit text-[10px]">
+                        {preset.tone}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 flex flex-col">
+                <label className="text-sm font-semibold mb-2 flex justify-between items-center">
+                  Instruções de Atendimento
+                  <span className="text-[10px] font-normal text-muted-foreground">
+                    Editável manualmente
+                  </span>
+                </label>
                 <Textarea
                   value={biaInstructions}
                   onChange={(e) => setBiaInstructions(e.target.value)}
