@@ -18,7 +18,6 @@ import {
   RefreshCw,
   CheckCircle,
   XCircle,
-  User as UserIcon,
   Activity,
   Save,
   BrainCircuit,
@@ -38,7 +37,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [userSettings, setUserSettings] = useState<RecordModel | null>(null)
   const [customers, setCustomers] = useState<RecordModel[]>([])
-  const [cadences, setCadences] = useState<RecordModel[]>([])
+  const [, setCadences] = useState<RecordModel[]>([])
 
   const [biaInstructions, setBiaInstructions] = useState('')
   const [aiInstructions, setAiInstructions] = useState('')
@@ -52,27 +51,33 @@ export default function Dashboard() {
     {
       id: 'profissional',
       name: 'Bia Profissional',
-      description: 'Corretora experiente, equilibrada e atenciosa.',
+      description: 'Corretora de meia-idade, elegante, experiente, equilibrada e atenciosa.',
       tone: 'Profissional',
       voiceId: 'professional_female',
+      avatarUrl:
+        'https://img.usecurling.com/p/256/256?q=smiling%20middle-aged%20professional%20woman%20elegant%20modest%20attire',
       baseInstructions:
         'Aja como uma corretora de imóveis experiente e profissional de meia-idade. Seja clara, objetiva e atenciosa. Evite gírias e foque em entender a necessidade do cliente para oferecer as melhores opções.',
     },
     {
       id: 'cordial',
       name: 'Bia Cordial',
-      description: 'Comunicativa, amigável e acolhedora.',
+      description: 'Comunicativa, empática, amigável e acolhedora.',
       tone: 'Cordial',
       voiceId: 'friendly_female',
+      avatarUrl:
+        'https://img.usecurling.com/p/256/256?q=smiling%20friendly%20middle-aged%20woman%20business%20modest%20clothing',
       baseInstructions:
         'Aja como uma corretora de imóveis acolhedora e empática de meia-idade. Mostre entusiasmo genuíno em ajudar o cliente a encontrar o lar dos sonhos. Use um tom amigável e acessível, mantendo o profissionalismo.',
     },
     {
       id: 'formal',
       name: 'Bia Formal',
-      description: 'Focada, direta e executiva.',
+      description: 'Focada no alto padrão, direta e executiva.',
       tone: 'Formal',
       voiceId: 'executive_female',
+      avatarUrl:
+        'https://img.usecurling.com/p/256/256?q=confident%20middle-aged%20executive%20woman%20formal%20modest%20suit',
       baseInstructions:
         'Aja como uma corretora de imóveis focada no segmento de alto padrão. Utilize um vocabulário formal e culto. Vá direto ao ponto, priorize informações técnicas, valores e métricas de investimento imobiliário.',
     },
@@ -256,6 +261,11 @@ export default function Dashboard() {
       : [userSettings.ai_knowledge_files]
     : []
 
+  const activePreset = PRESETS.find((p) => p.voiceId === userSettings?.ai_voice_id) || PRESETS[0]
+  const displayAvatar = userSettings?.ai_avatar
+    ? pb.files.getURL(userSettings, userSettings.ai_avatar)
+    : activePreset.avatarUrl
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8 animate-fade-in">
       <div>
@@ -268,7 +278,7 @@ export default function Dashboard() {
           <CardHeader className="pb-4 border-b">
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-blue-500" />
-              Conexão Uazapi
+              <span>Conexão Uazapi</span>
             </CardTitle>
             <CardDescription>Status da integração com WhatsApp</CardDescription>
           </CardHeader>
@@ -279,13 +289,16 @@ export default function Dashboard() {
                 {isConnected ? (
                   <Badge
                     variant="default"
-                    className="bg-green-500 hover:bg-green-600 font-medium px-3 py-1 text-sm"
+                    className="bg-green-500 hover:bg-green-600 font-medium px-3 py-1 text-sm inline-flex items-center"
                   >
-                    <CheckCircle className="h-4 w-4 mr-2" /> Conectado
+                    <CheckCircle className="h-4 w-4 mr-2" /> <span>Conectado</span>
                   </Badge>
                 ) : (
-                  <Badge variant="destructive" className="font-medium px-3 py-1 text-sm">
-                    <XCircle className="h-4 w-4 mr-2" /> Offline / Desconectado
+                  <Badge
+                    variant="destructive"
+                    className="font-medium px-3 py-1 text-sm inline-flex items-center"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" /> <span>Offline / Desconectado</span>
                   </Badge>
                 )}
               </div>
@@ -303,14 +316,14 @@ export default function Dashboard() {
                   onClick={handleResync}
                   disabled={isSyncing}
                   variant="outline"
-                  className="w-full h-11 border-primary/20 hover:bg-primary/5"
+                  className="w-full h-11 border-primary/20 hover:bg-primary/5 inline-flex items-center justify-center"
                 >
                   {isSyncing ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : (
                     <RefreshCw className="h-4 w-4 mr-2 text-primary" />
                   )}
-                  Re-sincronizar Conexão
+                  <span>Re-sincronizar Conexão</span>
                 </Button>
               </div>
             )}
@@ -322,26 +335,14 @@ export default function Dashboard() {
             <CardHeader className="pb-4 border-b">
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5 text-purple-500" />
-                Bia Atendente
+                <span>Bia Atendente</span>
               </CardTitle>
               <CardDescription>Assistente de linha de frente no WhatsApp</CardDescription>
             </CardHeader>
             <CardContent className="pt-6 flex-1 flex flex-col space-y-6">
               <div className="flex gap-4 items-center">
                 <div className="h-16 w-16 rounded-full overflow-hidden bg-secondary flex items-center justify-center border-2 border-background shadow-sm shrink-0">
-                  {userSettings?.ai_avatar ? (
-                    <img
-                      src={pb.files.getURL(userSettings, userSettings.ai_avatar)}
-                      alt="Avatar"
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <img
-                      src="https://img.usecurling.com/p/256/256?q=elegant%20middle%20aged%20business%20woman%20real%20estate"
-                      alt="Avatar Padrão"
-                      className="h-full w-full object-cover grayscale-[20%]"
-                    />
-                  )}
+                  <img src={displayAvatar} alt="Avatar" className="h-full w-full object-cover" />
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -352,20 +353,25 @@ export default function Dashboard() {
                     {isConnected ? (
                       <Badge
                         variant="outline"
-                        className="bg-green-50 text-green-700 border-green-200"
+                        className="bg-green-50 text-green-700 border-green-200 inline-flex items-center"
                       >
-                        Ativa / Conectada
+                        <span>Ativa / Conectada</span>
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="bg-muted text-muted-foreground">
-                        Aguardando Conexão
+                      <Badge
+                        variant="outline"
+                        className="bg-muted text-muted-foreground inline-flex items-center"
+                      >
+                        <span>Aguardando Conexão</span>
                       </Badge>
                     )}
                     {userSettings?.ai_voice_id && (
-                      <Badge variant="secondary" className="text-[10px]">
-                        Tom:{' '}
-                        {PRESETS.find((p) => p.voiceId === userSettings.ai_voice_id)?.tone ||
-                          'Personalizado'}
+                      <Badge variant="secondary" className="text-[10px] inline-flex items-center">
+                        <span>
+                          Tom:{' '}
+                          {PRESETS.find((p) => p.voiceId === userSettings.ai_voice_id)?.tone ||
+                            'Personalizado'}
+                        </span>
                       </Badge>
                     )}
                   </div>
@@ -375,7 +381,7 @@ export default function Dashboard() {
               <div className="flex flex-col gap-3">
                 <p className="text-sm font-semibold flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary" />
-                  Personas Prontas
+                  <span>Personas Prontas</span>
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {PRESETS.map((preset) => (
@@ -395,12 +401,17 @@ export default function Dashboard() {
                           <Loader2 className="h-5 w-5 animate-spin text-primary" />
                         </div>
                       )}
-                      <p className="font-semibold text-sm">{preset.name}</p>
-                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 flex-1">
-                        {preset.description}
+                      <p className="font-semibold text-sm">
+                        <span>{preset.name}</span>
                       </p>
-                      <Badge variant="secondary" className="mt-2 w-fit text-[10px]">
-                        {preset.tone}
+                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 flex-1">
+                        <span>{preset.description}</span>
+                      </p>
+                      <Badge
+                        variant="secondary"
+                        className="mt-2 w-fit text-[10px] inline-flex items-center"
+                      >
+                        <span>{preset.tone}</span>
                       </Badge>
                     </div>
                   ))}
@@ -409,7 +420,7 @@ export default function Dashboard() {
 
               <div className="flex-1 flex flex-col">
                 <label className="text-sm font-semibold mb-2 flex justify-between items-center">
-                  Instruções de Atendimento (Bia)
+                  <span>Instruções de Atendimento (Bia)</span>
                   <span className="text-[10px] font-normal text-muted-foreground">
                     Editável manualmente
                   </span>
@@ -423,13 +434,17 @@ export default function Dashboard() {
               </div>
             </CardContent>
             <CardFooter className="pt-0 pb-6 px-6">
-              <Button onClick={handleSaveBia} disabled={isSavingBia} className="w-full">
+              <Button
+                onClick={handleSaveBia}
+                disabled={isSavingBia}
+                className="w-full inline-flex items-center justify-center"
+              >
                 {isSavingBia ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
                   <Save className="h-4 w-4 mr-2" />
                 )}
-                Salvar Instruções da Bia
+                <span>Salvar Instruções da Bia</span>
               </Button>
             </CardFooter>
           </Card>
@@ -438,7 +453,7 @@ export default function Dashboard() {
             <CardHeader className="pb-4 border-b bg-primary/5">
               <CardTitle className="flex items-center gap-2">
                 <BrainCircuit className="h-5 w-5 text-primary" />
-                IA Mãe (Gestora)
+                <span>IA Mãe (Gestora)</span>
               </CardTitle>
               <CardDescription>Gestora de Informações e Orquestradora</CardDescription>
             </CardHeader>
@@ -446,15 +461,19 @@ export default function Dashboard() {
               <div className="bg-muted/50 rounded-md p-3 text-sm flex items-start gap-3">
                 <Network className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                 <p className="text-muted-foreground leading-relaxed text-xs">
-                  A <strong className="text-foreground">IA Mãe</strong> analisa os dados, arquivos e
-                  histórico do CRM. Ela toma decisões e alimenta a{' '}
-                  <strong className="text-foreground">Bia Atendente</strong> com o contexto e os
-                  próximos passos.
+                  <span>
+                    A <strong className="text-foreground">IA Mãe</strong> analisa os dados, arquivos
+                    e histórico do CRM. Ela toma decisões e alimenta a{' '}
+                    <strong className="text-foreground">Bia Atendente</strong> com o contexto e os
+                    próximos passos.
+                  </span>
                 </p>
               </div>
 
               <div className="flex-1 flex flex-col">
-                <label className="text-sm font-semibold mb-2">Diretrizes da Gestora (IA Mãe)</label>
+                <label className="text-sm font-semibold mb-2">
+                  <span>Diretrizes da Gestora (IA Mãe)</span>
+                </label>
                 <Textarea
                   value={aiInstructions}
                   onChange={(e) => setAiInstructions(e.target.value)}
@@ -465,9 +484,9 @@ export default function Dashboard() {
 
               <div className="pt-2 border-t">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex justify-between items-center">
-                  Base de Conhecimento
-                  <Badge variant="secondary" className="font-mono">
-                    {knowledgeFiles.length}
+                  <span>Base de Conhecimento</span>
+                  <Badge variant="secondary" className="font-mono inline-flex items-center">
+                    <span>{knowledgeFiles.length}</span>
                   </Badge>
                 </p>
                 {knowledgeFiles.length > 0 ? (
@@ -485,7 +504,9 @@ export default function Dashboard() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Nenhum arquivo global carregado.</p>
+                  <p className="text-xs text-muted-foreground">
+                    <span>Nenhum arquivo global carregado.</span>
+                  </p>
                 )}
               </div>
             </CardContent>
@@ -494,14 +515,14 @@ export default function Dashboard() {
                 onClick={handleSaveAi}
                 disabled={isSavingAi}
                 variant="secondary"
-                className="w-full"
+                className="w-full inline-flex items-center justify-center"
               >
                 {isSavingAi ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
                   <Save className="h-4 w-4 mr-2" />
                 )}
-                Salvar Diretrizes da IA Mãe
+                <span>Salvar Diretrizes da IA Mãe</span>
               </Button>
             </CardFooter>
           </Card>
@@ -510,7 +531,9 @@ export default function Dashboard() {
 
       <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Funil de Cadência Automatizado (10 Estágios)</CardTitle>
+          <CardTitle>
+            <span>Funil de Cadência Automatizado (10 Estágios)</span>
+          </CardTitle>
           <CardDescription>Movimentação automática guiada pelas interações da IA</CardDescription>
         </CardHeader>
         <CardContent>
