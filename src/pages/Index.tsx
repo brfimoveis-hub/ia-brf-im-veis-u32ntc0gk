@@ -52,23 +52,29 @@ export default function Dashboard() {
     {
       id: 'profissional',
       name: 'Bia Profissional',
-      description: 'Meia idade, vestimenta de corretora profissional',
-      tone: 'Profissional / Formal',
+      description: 'Corretora experiente, equilibrada e atenciosa.',
+      tone: 'Profissional',
       voiceId: 'professional_female',
+      baseInstructions:
+        'Aja como uma corretora de imóveis experiente e profissional de meia-idade. Seja clara, objetiva e atenciosa. Evite gírias e foque em entender a necessidade do cliente para oferecer as melhores opções.',
     },
     {
-      id: 'amigavel',
-      name: 'Bia Amigável',
-      description: 'Comunicativa e acolhedora',
-      tone: 'Amigável',
+      id: 'cordial',
+      name: 'Bia Cordial',
+      description: 'Comunicativa, amigável e acolhedora.',
+      tone: 'Cordial',
       voiceId: 'friendly_female',
+      baseInstructions:
+        'Aja como uma corretora de imóveis acolhedora e empática de meia-idade. Mostre entusiasmo genuíno em ajudar o cliente a encontrar o lar dos sonhos. Use um tom amigável e acessível, mantendo o profissionalismo.',
     },
     {
-      id: 'executiva',
-      name: 'Bia Executiva',
-      description: 'Focada em resultados e direta',
-      tone: 'Executivo',
+      id: 'formal',
+      name: 'Bia Formal',
+      description: 'Focada, direta e executiva.',
+      tone: 'Formal',
       voiceId: 'executive_female',
+      baseInstructions:
+        'Aja como uma corretora de imóveis focada no segmento de alto padrão. Utilize um vocabulário formal e culto. Vá direto ao ponto, priorize informações técnicas, valores e métricas de investimento imobiliário.',
     },
   ]
 
@@ -126,6 +132,14 @@ export default function Dashboard() {
 
   const handleSaveBia = async () => {
     if (!authUser?.id) return
+    if (!biaInstructions.trim()) {
+      toast({
+        title: 'Atenção',
+        description: 'As instruções da Bia não podem estar vazias.',
+        variant: 'destructive',
+      })
+      return
+    }
     setIsSavingBia(true)
     try {
       await pb.collection('users').update(authUser.id, { bia_instructions: biaInstructions })
@@ -143,6 +157,14 @@ export default function Dashboard() {
 
   const handleSaveAi = async () => {
     if (!authUser?.id) return
+    if (!aiInstructions.trim()) {
+      toast({
+        title: 'Atenção',
+        description: 'As diretrizes da IA Mãe não podem estar vazias.',
+        variant: 'destructive',
+      })
+      return
+    }
     setIsSavingAi(true)
     try {
       await pb.collection('users').update(authUser.id, { ai_instructions: aiInstructions })
@@ -158,18 +180,31 @@ export default function Dashboard() {
     }
   }
 
-  const handleApplyPreset = async (presetId: string) => {
+  const handleApplyPreset = async (preset: (typeof PRESETS)[0]) => {
     if (isApplyingPreset) return
-    setIsApplyingPreset(presetId)
+    setIsApplyingPreset(preset.id)
     try {
-      await pb.send('/backend/v1/users/bia-preset', {
-        method: 'POST',
-        body: JSON.stringify({ presetId }),
-        headers: { 'Content-Type': 'application/json' },
-      })
+      if (authUser?.id) {
+        await pb.collection('users').update(authUser.id, {
+          bia_instructions: preset.baseInstructions,
+          ai_voice_id: preset.voiceId,
+        })
+      }
+      try {
+        await pb.send('/backend/v1/users/bia-preset', {
+          method: 'POST',
+          body: JSON.stringify({ presetId: preset.id }),
+          headers: { 'Content-Type': 'application/json' },
+        })
+      } catch (err) {
+        console.warn('Backend preset hook warning:', err)
+      }
+
+      setBiaInstructions(preset.baseInstructions)
+
       toast({
         title: 'Persona Aplicada',
-        description: 'A Bia foi atualizada com a nova persona e foto de perfil.',
+        description: `A Bia agora tem um tom ${preset.tone}.`,
       })
     } catch (err) {
       toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao aplicar persona.' })
@@ -301,7 +336,11 @@ export default function Dashboard() {
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <UserIcon className="h-8 w-8 text-muted-foreground/50" />
+                    <img
+                      src="https://img.usecurling.com/p/256/256?q=elegant%20middle%20aged%20business%20woman%20real%20estate"
+                      alt="Avatar Padrão"
+                      className="h-full w-full object-cover grayscale-[20%]"
+                    />
                   )}
                 </div>
                 <div>
@@ -342,7 +381,7 @@ export default function Dashboard() {
                   {PRESETS.map((preset) => (
                     <div
                       key={preset.id}
-                      onClick={() => handleApplyPreset(preset.id)}
+                      onClick={() => handleApplyPreset(preset)}
                       className={cn(
                         'cursor-pointer border rounded-lg p-3 hover:border-primary/50 transition-all flex flex-col relative',
                         userSettings?.ai_voice_id === preset.voiceId
@@ -370,7 +409,7 @@ export default function Dashboard() {
 
               <div className="flex-1 flex flex-col">
                 <label className="text-sm font-semibold mb-2 flex justify-between items-center">
-                  Instruções de Atendimento
+                  Instruções de Atendimento (Bia)
                   <span className="text-[10px] font-normal text-muted-foreground">
                     Editável manualmente
                   </span>
@@ -415,7 +454,7 @@ export default function Dashboard() {
               </div>
 
               <div className="flex-1 flex flex-col">
-                <label className="text-sm font-semibold mb-2">Diretrizes da Gestora</label>
+                <label className="text-sm font-semibold mb-2">Diretrizes da Gestora (IA Mãe)</label>
                 <Textarea
                   value={aiInstructions}
                   onChange={(e) => setAiInstructions(e.target.value)}
