@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-24T12:38:51.810Z",
+  "generatedAt": "2026-06-24T13:41:22.286Z",
   "collections": [
     {
       "name": "users",
@@ -329,9 +329,27 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "urgency",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "neighborhood",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price_range",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
-      "indexes": []
+      "indexes": ["CREATE INDEX `idx_customers_urgency` ON `customers` (urgency)"]
     },
     {
       "name": "cadences",
