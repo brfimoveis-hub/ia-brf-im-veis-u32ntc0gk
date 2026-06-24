@@ -616,6 +616,15 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
           }
         }
 
+        if (detectedHandover) {
+          const tags = custToUpdate.get('tags') || []
+          if (!tags.includes('ai_paused')) {
+            tags.push('ai_paused')
+            custToUpdate.set('tags', tags)
+            crmUpdated = true
+          }
+        }
+
         if (crmUpdated) {
           $app.save(custToUpdate)
 
