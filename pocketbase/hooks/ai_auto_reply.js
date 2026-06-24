@@ -276,6 +276,15 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (err) {}
 
+    const strictGuidelines = `
+### REGRAS OBRIGATÓRIAS (SIGA ESTRITAMENTE):
+1. FOCO EM VENDA/PERMUTA: Priorize venda e permuta. Nós NÃO trabalhamos com aluguel. Se o cliente perguntar sobre aluguel, informe gentilmente que a especialidade é apenas Venda e Permuta.
+2. HANDOFF PARA HUMANO: Se o cliente fizer uma pergunta que você não saiba responder com base no seu conhecimento, ou se ele pedir explicitamente para falar com um "corretor", "humano", "atendente" ou "Mauro", responda EXATAMENTE COM ESTA FRASE:
+"Entendi sua dúvida. Vou te transferir agora para o Mauro, nosso especialista: https://wa.me/5548992098050"
+E não adicione mais nenhuma palavra.`
+
+    activeCadenceText += `\n\n${strictGuidelines}`
+
     let queryEmbedding = null
     try {
       const res = $ai.embed({ input: customerMessage })

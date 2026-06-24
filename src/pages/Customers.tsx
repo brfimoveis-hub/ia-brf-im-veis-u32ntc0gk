@@ -1,581 +1,361 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
-import { Card, CardContent } from '@/components/ui/card'
+import { cn, formatPhone } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Table,
-  TableHeader,
-  TableRow,
-  TableHead,
   TableBody,
   TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui/table'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
+import { Search, LayoutList, Kanban, Clock, AlertTriangle } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import {
-  Loader2,
-  Search,
-  LayoutList,
-  Kanban,
-  MessageSquare,
-  AlertTriangle,
-  Send,
-  Bot,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
-
-interface Customer {
-  id: string
-  name: string
-  phone_1_value: string
-  phone: string
-  email_1_value: string
-  email: string
-  status: string
-  urgency: number
-  updated: string
-  notes: string
-  source: string
-  created: string
-  neighborhood: string
-  price_range: string
-}
-
-interface Cadence {
-  id: string
-  title: string
-  order: number
-}
-
-interface Conversation {
-  id: string
-  content: string
-  sender: string
-  created: string
-  customer_id: string
-}
+import { useToast } from '@/hooks/use-toast'
 
 export default function Customers() {
-  const [view, setView] = useState<'list' | 'pipeline'>('list')
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [cadences, setCadences] = useState<Cadence[]>([])
+  const [view, setView] = useState<'list' | 'kanban'>('list')
+  const [customers, setCustomers] = useState<any[]>([])
+  const [cadences, setCadences] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const { toast } = useToast()
 
-  const loadData = async () => {
-    try {
-      const [custRes, cadRes] = await Promise.all([
-        pb.collection('customers').getFullList<Customer>({
-          sort: '-updated',
-        }),
-        pb.collection('cadences').getFullList<Cadence>({
-          sort: 'order',
-          filter: 'is_active = true',
-        }),
-      ])
-      setCustomers(custRes)
-      setCadences(cadRes)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const observer = useRef<IntersectionObserver | null>(null)
+  const lastElementRef = useCallback(
+    (node: HTMLTableRowElement | null) => {
+      if (loading) return
+      if (observer.current) observer.current.disconnect()
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          setPage((p) => p + 1)
+        }
+      })
+      if (node) observer.current.observe(node)
+    },
+    [loading, hasMore],
+  )
 
   useEffect(() => {
-    loadData()
+    pb.collection('cadences')
+      .getFullList({ sort: 'order' })
+      .then((res) => setCadences(res))
+      .catch(console.error)
   }, [])
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true)
+        const res = await pb.collection('customers').getList(page, 50, {
+          sort: '-updated',
+          filter: searchTerm ? `name ~ "${searchTerm}" || phone ~ "${searchTerm}"` : '',
+        })
+        if (page === 1) {
+          setCustomers(res.items)
+        } else {
+          setCustomers((prev) => {
+            const existingIds = new Set(prev.map((c) => c.id))
+            const newItems = res.items.filter((c) => !existingIds.has(c.id))
+            return [...prev, ...newItems]
+          })
+        }
+        setHasMore(res.page < res.totalPages)
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [page, searchTerm])
 
   useRealtime('customers', (e) => {
     if (e.action === 'create') {
-      setCustomers((prev) => [e.record as unknown as Customer, ...prev])
+      setCustomers((prev) => [e.record, ...prev])
     } else if (e.action === 'update') {
-      setCustomers((prev) =>
-        prev.map((c) => (c.id === e.record.id ? (e.record as unknown as Customer) : c)),
-      )
+      setCustomers((prev) => prev.map((c) => (c.id === e.record.id ? e.record : c)))
     } else if (e.action === 'delete') {
       setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
     }
   })
 
-  const filteredCustomers = customers.filter((c) => {
-    const s = search.toLowerCase()
-    return (
-      (c.name || '').toLowerCase().includes(s) ||
-      (c.phone || c.phone_1_value || '').includes(s) ||
-      (c.email || c.email_1_value || '').toLowerCase().includes(s)
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value)
+    setPage(1)
+  }
+
+  const onDragStart = (e: React.DragEvent, customerId: string) => {
+    e.dataTransfer.setData('customerId', customerId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const onDrop = async (e: React.DragEvent, targetStatus: string) => {
+    e.preventDefault()
+    const customerId = e.dataTransfer.getData('customerId')
+    if (!customerId) return
+
+    const customer = customers.find((c) => c.id === customerId)
+    if (customer?.status === targetStatus) return
+
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === customerId ? { ...c, status: targetStatus } : c)),
     )
-  })
 
-  const getUrgencyColor = (u: number) => {
-    if (u >= 4) return 'bg-destructive text-destructive-foreground'
-    if (u === 3) return 'bg-orange-500 text-white'
-    return 'bg-secondary text-secondary-foreground'
-  }
-
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    e.dataTransfer.setData('customerId', id)
-  }
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-  }
-
-  const handleDrop = async (e: React.DragEvent, newStatus: string) => {
-    e.preventDefault()
-    const id = e.dataTransfer.getData('customerId')
-    if (id) {
-      const cust = customers.find((c) => c.id === id)
-      if (cust && cust.status !== newStatus) {
-        setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)))
-        try {
-          await pb.collection('customers').update(id, { status: newStatus })
-        } catch (err) {
-          loadData() // Revert local state on error
-        }
-      }
+    try {
+      await pb.collection('customers').update(customerId, { status: targetStatus })
+      toast({ title: 'Status atualizado', description: `O lead foi movido para ${targetStatus}` })
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' })
     }
   }
 
-  return (
-    <div className="flex flex-col h-full flex-1 w-full relative">
-      <div className="flex-none p-6 space-y-4 max-w-[1600px] mx-auto w-full">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">Leads</h2>
-            <p className="text-muted-foreground">Gerencie seus contatos e acompanhe o funil.</p>
-          </div>
-          <Tabs
-            value={view}
-            onValueChange={(v) => setView(v as 'list' | 'pipeline')}
-            className="w-full sm:w-auto"
-          >
-            <TabsList className="grid w-full sm:w-[200px] grid-cols-2">
-              <TabsTrigger value="list">
-                <LayoutList className="w-4 h-4 mr-2" />
-                Lista
-              </TabsTrigger>
-              <TabsTrigger value="pipeline">
-                <Kanban className="w-4 h-4 mr-2" />
-                Funil
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+  const getUrgencyColor = (urgency: number) => {
+    if (urgency >= 4)
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800'
+    if (urgency === 3)
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800'
+    return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800'
+  }
 
-        <div className="flex items-center gap-2 max-w-sm">
-          <div className="relative flex-1">
+  return (
+    <div className="flex flex-col h-full p-4 md:p-8 space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Leads & Clientes</h1>
+          <p className="text-muted-foreground">
+            Gerencie seus leads e acompanhe o funil de vendas.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Buscar lead..."
+              placeholder="Buscar clientes..."
               className="pl-8"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchTerm}
+              onChange={handleSearch}
             />
+          </div>
+          <div className="flex items-center border rounded-md p-1 bg-muted/20">
+            <Button
+              variant={view === 'list' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setView('list')}
+              className="h-8 px-2"
+            >
+              <LayoutList className="h-4 w-4 mr-2 hidden sm:block" />
+              Lista
+            </Button>
+            <Button
+              variant={view === 'kanban' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setView('kanban')}
+              className="h-8 px-2"
+            >
+              <Kanban className="h-4 w-4 mr-2 hidden sm:block" />
+              Kanban
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden px-6 pb-6 max-w-[1600px] mx-auto w-full">
-        {loading ? (
-          <div className="flex h-full items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : view === 'list' ? (
-          <div className="border rounded-md bg-card">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Telefone</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Urgência</TableHead>
-                  <TableHead>Última Interação</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCustomers.map((customer) => (
-                  <TableRow
-                    key={customer.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setSelectedCustomerId(customer.id)}
-                  >
-                    <TableCell className="font-medium">{customer.name || 'Sem nome'}</TableCell>
-                    <TableCell>{customer.phone_1_value || customer.phone || '-'}</TableCell>
-                    <TableCell>{customer.email_1_value || customer.email || '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{customer.status || 'Novo'}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getUrgencyColor(customer.urgency)}>
-                        Nível {customer.urgency || 0}
+      {view === 'list' ? (
+        <div className="rounded-md border bg-card flex-1 overflow-auto relative">
+          <Table>
+            <TableHeader className="sticky top-0 bg-background/95 backdrop-blur z-10 shadow-sm">
+              <TableRow>
+                <TableHead>Nome</TableHead>
+                <TableHead>Telefone</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Status (Cadência)</TableHead>
+                <TableHead>Urgência</TableHead>
+                <TableHead>Notas / Interesse</TableHead>
+                <TableHead>Última Interação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {customers.map((c, idx) => (
+                <TableRow key={c.id} ref={idx === customers.length - 1 ? lastElementRef : null}>
+                  <TableCell className="font-medium">{c.name || 'Sem nome'}</TableCell>
+                  <TableCell>{c.phone ? formatPhone(c.phone) : '-'}</TableCell>
+                  <TableCell>{c.email || '-'}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">{c.status || 'Novo'}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {c.urgency ? (
+                      <Badge variant="outline" className={getUrgencyColor(c.urgency)}>
+                        Nível {c.urgency}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {format(new Date(customer.updated), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredCustomers.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                      Nenhum lead encontrado.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <ScrollArea className="h-full w-full whitespace-nowrap rounded-md border bg-muted/20">
-            <div className="flex h-full p-4 gap-4 w-max">
-              {cadences.map((cadence) => {
-                const columnCustomers = filteredCustomers.filter((c) => {
-                  if (c.status === cadence.title) return true
-                  const hasExactCadence = cadences.some((cad) => cad.title === c.status)
-                  if (!hasExactCadence && cadence.order === 1) return true
-                  return false
-                })
-                return (
-                  <div
-                    key={cadence.id}
-                    className="w-80 shrink-0 flex flex-col bg-muted/50 rounded-lg p-3"
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, cadence.title)}
-                  >
-                    <div className="flex items-center justify-between mb-3 px-1">
-                      <h3 className="font-semibold text-sm truncate pr-2" title={cadence.title}>
-                        {cadence.order}. {cadence.title}
-                      </h3>
-                      <Badge variant="secondary" className="text-xs">
-                        {columnCustomers.length}
-                      </Badge>
-                    </div>
-                    <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar pb-2">
-                      {columnCustomers.map((customer) => (
-                        <Card
-                          key={customer.id}
-                          className="cursor-pointer hover:border-primary/50 transition-colors shadow-sm"
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, customer.id)}
-                          onClick={() => setSelectedCustomerId(customer.id)}
-                        >
-                          <CardContent className="p-3 space-y-2">
-                            <div className="font-medium text-sm leading-tight line-clamp-1">
-                              {customer.name || 'Sem nome'}
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs text-muted-foreground truncate">
-                                {customer.phone_1_value || customer.phone || 'Sem telefone'}
-                              </span>
-                              {customer.urgency >= 4 && (
-                                <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
-        )}
-      </div>
-
-      <CustomerSidebar
-        customerId={selectedCustomerId}
-        onClose={() => setSelectedCustomerId(null)}
-      />
-    </div>
-  )
-}
-
-function CustomerSidebar({
-  customerId,
-  onClose,
-}: {
-  customerId: string | null
-  onClose: () => void
-}) {
-  const [customer, setCustomer] = useState<Customer | null>(null)
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [loading, setLoading] = useState(false)
-  const [replyText, setReplyText] = useState('')
-  const [savingNotes, setSavingNotes] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!customerId) {
-      setCustomer(null)
-      setConversations([])
-      return
-    }
-
-    let isMounted = true
-    const fetchContext = async () => {
-      setLoading(true)
-      try {
-        const [cust, conv] = await Promise.all([
-          pb.collection('customers').getOne<Customer>(customerId),
-          pb.collection('conversations').getFullList<Conversation>({
-            filter: `customer_id = '${customerId}'`,
-            sort: 'created',
-          }),
-        ])
-        if (isMounted) {
-          setCustomer(cust)
-          setConversations(conv)
-          setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-          }, 100)
-        }
-      } catch (err) {
-        console.error(err)
-      } finally {
-        if (isMounted) setLoading(false)
-      }
-    }
-    fetchContext()
-
-    return () => {
-      isMounted = false
-    }
-  }, [customerId])
-
-  useRealtime(
-    'conversations',
-    (e) => {
-      if (!customerId) return
-      const rec = e.record as unknown as Conversation
-      if (rec.customer_id === customerId) {
-        if (e.action === 'create') {
-          setConversations((prev) => [...prev, rec])
-          setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-          }, 100)
-        }
-      }
-    },
-    !!customerId,
-  )
-
-  useRealtime(
-    'customers',
-    (e) => {
-      if (!customerId) return
-      if (e.record.id === customerId && e.action === 'update') {
-        setCustomer(e.record as unknown as Customer)
-      }
-    },
-    !!customerId,
-  )
-
-  const handleUpdateNotes = async (val: string) => {
-    if (!customer) return
-    setSavingNotes(true)
-    try {
-      const updated = await pb.collection('customers').update(customer.id, { notes: val })
-      setCustomer(updated as unknown as Customer)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setSavingNotes(false)
-    }
-  }
-
-  const handleSendManualMessage = async () => {
-    if (!replyText.trim() || !customer) return
-    try {
-      await pb.collection('conversations').create({
-        customer_id: customer.id,
-        user_id: pb.authStore.model?.id,
-        sender: 'agent',
-        content: replyText.trim(),
-      })
-      setReplyText('')
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
-  return (
-    <Sheet open={!!customerId} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full sm:max-w-md md:max-w-lg p-0 flex flex-col">
-        {loading || !customer ? (
-          <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <>
-            <SheetHeader className="p-6 pb-4 border-b">
-              <SheetTitle className="flex items-center justify-between">
-                <span>{customer.name || 'Lead sem nome'}</span>
-                {customer.urgency >= 4 && (
-                  <Badge variant="destructive">Urgência {customer.urgency}</Badge>
-                )}
-              </SheetTitle>
-              <SheetDescription className="flex flex-col gap-1 mt-2">
-                <span>{customer.phone_1_value || customer.phone || 'Sem telefone'}</span>
-                <span>
-                  Status: <Badge variant="outline">{customer.status}</Badge>
-                </span>
-              </SheetDescription>
-            </SheetHeader>
-
-            <Tabs defaultValue="chat" className="flex-1 flex flex-col min-h-0">
-              <div className="px-6 pt-2 border-b">
-                <TabsList className="w-full justify-start rounded-none border-b bg-transparent p-0">
-                  <TabsTrigger
-                    value="chat"
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
-                  >
-                    <MessageSquare className="w-4 h-4 mr-2" /> Conversa
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="notes"
-                    className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
-                  >
-                    Notas & Dados
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent
-                value="chat"
-                className="flex-1 flex flex-col min-h-0 mt-0 data-[state=inactive]:hidden"
-              >
-                <ScrollArea className="flex-1 p-4">
-                  <div className="space-y-4 pb-4">
-                    {conversations.length === 0 ? (
-                      <div className="text-center text-muted-foreground text-sm mt-10">
-                        Nenhuma mensagem registrada.
-                      </div>
                     ) : (
-                      conversations.map((msg, i) => {
-                        const isAgentOrAi = msg.sender === 'ai' || msg.sender === 'agent'
-                        return (
-                          <div
-                            key={msg.id || i}
+                      '-'
+                    )}
+                  </TableCell>
+                  <TableCell className="max-w-[200px] truncate" title={c.notes}>
+                    {c.notes || '-'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground whitespace-nowrap text-sm">
+                    {c.updated
+                      ? format(new Date(c.updated), 'dd/MM/yyyy HH:mm', { locale: ptBR })
+                      : '-'}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    Carregando leads...
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && customers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    Nenhum cliente encontrado.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+          <div className="flex gap-4 h-full items-start min-w-max">
+            {cadences.map((cadence) => {
+              const columnCustomers = customers.filter(
+                (c) => c.status === cadence.title || (!c.status && cadence.title === 'Novo'),
+              )
+              return (
+                <div
+                  key={cadence.id}
+                  className="flex-shrink-0 w-80 bg-muted/30 rounded-xl border flex flex-col max-h-full"
+                  onDragOver={onDragOver}
+                  onDrop={(e) => onDrop(e, cadence.title)}
+                >
+                  <div className="p-3 border-b bg-muted/50 rounded-t-xl font-semibold flex items-center justify-between">
+                    <span className="truncate pr-2 text-sm" title={cadence.title}>
+                      {cadence.title}
+                    </span>
+                    <Badge variant="secondary" className="text-xs bg-background">
+                      {columnCustomers.length}
+                    </Badge>
+                  </div>
+                  <div className="p-3 overflow-y-auto flex-1 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+                    {columnCustomers.map((c) => (
+                      <div
+                        key={c.id}
+                        draggable
+                        onDragStart={(e) => onDragStart(e, c.id)}
+                        className="bg-background border rounded-lg p-4 shadow-sm cursor-grab active:cursor-grabbing hover:border-primary/40 hover:shadow-md transition-all group"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <h4
+                            className="font-medium text-sm line-clamp-1 group-hover:text-primary transition-colors"
+                            title={c.name}
+                          >
+                            {c.name || 'Sem nome'}
+                          </h4>
+                          {c.urgency && c.urgency >= 4 && (
+                            <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 ml-2" />
+                          )}
+                        </div>
+                        {c.urgency ? (
+                          <Badge
+                            variant="outline"
                             className={cn(
-                              'flex w-full',
-                              isAgentOrAi ? 'justify-end' : 'justify-start',
+                              'text-[10px] mb-3 font-medium',
+                              getUrgencyColor(c.urgency),
                             )}
                           >
-                            <div
-                              className={cn(
-                                'max-w-[85%] rounded-2xl px-4 py-2 text-sm',
-                                isAgentOrAi
-                                  ? 'bg-primary text-primary-foreground rounded-br-sm'
-                                  : 'bg-muted rounded-bl-sm',
-                              )}
-                            >
-                              {msg.sender === 'ai' && (
-                                <div className="text-[10px] opacity-70 mb-1 font-semibold flex items-center">
-                                  <Bot className="w-3 h-3 mr-1" /> BIA
-                                </div>
-                              )}
-                              {msg.sender === 'agent' && (
-                                <div className="text-[10px] opacity-70 mb-1 font-semibold flex items-center">
-                                  Agente Humano
-                                </div>
-                              )}
-                              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                              <div className="text-[10px] opacity-50 mt-1 text-right">
-                                {format(new Date(msg.created), 'HH:mm')}
-                              </div>
-                            </div>
+                            Urgência: {c.urgency}
+                          </Badge>
+                        ) : null}
+                        <div
+                          className="text-xs text-muted-foreground line-clamp-2 mb-3 bg-muted/30 p-2 rounded"
+                          title={c.notes}
+                        >
+                          {c.notes || 'Nenhuma nota registrada.'}
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground/80 mt-auto pt-3 border-t">
+                          <div className="flex items-center">
+                            <Clock className="h-3 w-3 mr-1" />
+                            {c.updated
+                              ? format(new Date(c.updated), 'dd/MM', { locale: ptBR })
+                              : '-'}
                           </div>
-                        )
-                      })
+                          <span className="truncate max-w-[100px]">
+                            {c.phone ? formatPhone(c.phone) : ''}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {columnCustomers.length === 0 && (
+                      <div className="text-center p-4 text-xs text-muted-foreground border-2 border-dashed rounded-lg border-muted">
+                        Arraste leads para cá
+                      </div>
                     )}
-                    <div ref={messagesEndRef} />
-                  </div>
-                </ScrollArea>
-                <div className="p-4 border-t bg-background">
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault()
-                      handleSendManualMessage()
-                    }}
-                    className="flex gap-2"
-                  >
-                    <Input
-                      placeholder="Enviar mensagem manual..."
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                    />
-                    <Button type="submit" size="icon">
-                      <Send className="w-4 h-4" />
-                    </Button>
-                  </form>
-                </div>
-              </TabsContent>
-
-              <TabsContent
-                value="notes"
-                className="flex-1 p-6 overflow-y-auto mt-0 data-[state=inactive]:hidden"
-              >
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Observações</label>
-                    <textarea
-                      className="flex min-h-[150px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="Adicione notas sobre o cliente..."
-                      defaultValue={customer.notes}
-                      onBlur={(e) => {
-                        if (e.target.value !== customer.notes) handleUpdateNotes(e.target.value)
-                      }}
-                      disabled={savingNotes}
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-medium border-b pb-1">Metadados</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-muted-foreground block text-xs">Origem</span>
-                        <span>{customer.source || '-'}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block text-xs">Criado em</span>
-                        <span>{format(new Date(customer.created), 'dd/MM/yyyy')}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block text-xs">
-                          Bairro de Interesse
-                        </span>
-                        <span>{customer.neighborhood || '-'}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block text-xs">Faixa de Preço</span>
-                        <span>{customer.price_range || '-'}</span>
-                      </div>
-                    </div>
                   </div>
                 </div>
-              </TabsContent>
-            </Tabs>
-          </>
-        )}
-      </SheetContent>
-    </Sheet>
+              )
+            })}
+
+            {(() => {
+              const knownTitles = new Set(cadences.map((c) => c.title))
+              const unknownCustomers = customers.filter(
+                (c) => c.status && !knownTitles.has(c.status) && c.status !== 'Novo',
+              )
+              if (unknownCustomers.length === 0) return null
+              return (
+                <div
+                  className="flex-shrink-0 w-80 bg-muted/20 rounded-xl border border-dashed flex flex-col max-h-full"
+                  onDragOver={onDragOver}
+                  onDrop={(e) => onDrop(e, 'Outros')}
+                >
+                  <div className="p-3 border-b border-dashed bg-muted/30 rounded-t-xl font-semibold flex items-center justify-between text-muted-foreground">
+                    <span className="text-sm">Outros Status</span>
+                    <Badge variant="outline" className="text-xs">
+                      {unknownCustomers.length}
+                    </Badge>
+                  </div>
+                  <div className="p-3 overflow-y-auto flex-1 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+                    {unknownCustomers.map((c) => (
+                      <div
+                        key={c.id}
+                        draggable
+                        onDragStart={(e) => onDragStart(e, c.id)}
+                        className="bg-background/50 border border-dashed rounded-lg p-4 shadow-sm cursor-grab active:cursor-grabbing"
+                      >
+                        <div className="font-medium text-sm mb-2">{c.name || 'Sem nome'}</div>
+                        <Badge variant="outline" className="text-[10px] mb-3">
+                          {c.status}
+                        </Badge>
+                        <div className="flex items-center text-[10px] text-muted-foreground/80 pt-3 border-t border-dashed">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {c.updated ? format(new Date(c.updated), 'dd/MM', { locale: ptBR }) : '-'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

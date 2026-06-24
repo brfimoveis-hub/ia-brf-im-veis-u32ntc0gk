@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-24T14:50:00.576Z",
+  "generatedAt": "2026-06-24T15:04:04.808Z",
   "collections": [
     {
       "name": "users",
@@ -266,16 +266,27 @@
           "required": false,
           "system": false,
           "selectValues": [
-            "lead",
-            "contact",
-            "closed",
-            "Visita",
-            "Fechamento",
-            "Demo Realiz.",
-            "Engajamento",
-            "Qualificação",
+            "D0 - Contato Imediato",
+            "Contato Inicial",
+            "D1 - Follow up 1",
             "Novo",
-            "Proposta"
+            "D2 - Follow up 2",
+            "contact",
+            "D3 - Follow up 3",
+            "Qualificação",
+            "D4 - Follow up 4",
+            "Engajamento",
+            "D5 - Follow up 5",
+            "Demo Realiz.",
+            "D6 - Follow up 6",
+            "Visita",
+            "D7 - Follow up 7",
+            "D8 - Follow up 8",
+            "Proposta",
+            "D9 - Despedida/Nutrição",
+            "Fechamento",
+            "closed",
+            "lead"
           ]
         },
         {
