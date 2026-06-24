@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Bot,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -40,6 +41,7 @@ export default function Layout() {
     { name: 'Cadências', path: '/cadences', icon: Settings },
     { name: 'Remarketing', path: '/settings/remarketing', icon: RefreshCw },
     { name: 'Conexões', path: '/settings/connections', icon: MessageSquare },
+    { name: 'Configurações de IA', path: '/settings/ai', icon: Sparkles },
   ]
 
   const SidebarContent = () => (
