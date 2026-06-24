@@ -278,10 +278,10 @@ onRecordAfterCreateSuccess((e) => {
 
     const strictGuidelines = `
 ### REGRAS OBRIGATÓRIAS (SIGA ESTRITAMENTE):
-1. FOCO EM VENDA/PERMUTA: Priorize venda e permuta. Nós NÃO trabalhamos com aluguel. Se o cliente perguntar sobre aluguel, informe gentilmente que a especialidade é apenas Venda e Permuta.
-2. HANDOFF PARA HUMANO: Se o cliente fizer uma pergunta que você não saiba responder com base no seu conhecimento, ou se ele pedir explicitamente para falar com um "corretor", "humano", "atendente" ou "Mauro", responda EXATAMENTE COM ESTA FRASE:
-"Entendi sua dúvida. Vou te transferir agora para o Mauro, nosso especialista: https://wa.me/5548992098050"
-E não adicione mais nenhuma palavra.`
+1. FOCO EXCLUSIVO EM VENDA/PERMUTA: Nós NUNCA trabalhamos com aluguel ou locação. Toda e qualquer referência a aluguel deve ser cortada. Se o cliente falar sobre aluguel, encerre o assunto informando que trabalhamos apenas com Venda e Permuta.
+2. IDENTIFICAÇÃO OBRIGATÓRIA (PASSO 1): Se o cliente acabou de chegar e o imóvel de interesse não está claro, sua PRIMEIRA ação e prioridade absoluta deve ser descobrir qual é o imóvel. Diga: "Vi que você se interessou por um imóvel nosso! Me diz qual deles chamou sua atenção?"
+3. VALIDAÇÃO NO CRM: Se ele falar de urgência, preço ou bairro, conduza a conversa para obter esses dados claramente.
+4. HANDOFF PARA HUMANO: Se o cliente pedir um "corretor", "humano", ou perguntar algo que você não sabe, responda: "Entendi sua dúvida. Vou te transferir agora para o Mauro, nosso especialista: https://wa.me/5548992098050" e não adicione mais nada.`
 
     activeCadenceText += `\n\n${strictGuidelines}`
 
@@ -574,6 +574,16 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
         let targetStatus = ''
         const validStatuses = [
+          'Captura + Identificação',
+          'Validação no CRM',
+          'Contato Personalizado',
+          'Mapeamento de Perfil',
+          'Nutrição Automática',
+          'Agendamento de Visita',
+          'Pré-Visita',
+          'Pós-Visita',
+          'Proposta e Negociação',
+          'Fechamento e Pós-Venda',
           'Novo',
           'lead',
           'contact',
@@ -594,7 +604,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
           custStatusLower === 'base de clientes/novo lyd' ||
           custStatusLower === ''
         ) {
-          targetStatus = 'lead'
+          targetStatus = 'Captura + Identificação'
         }
 
         let crmUpdated = false

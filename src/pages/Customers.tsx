@@ -1,9 +1,22 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
-import pb from '@/lib/pocketbase/client'
-import { useRealtime } from '@/hooks/use-realtime'
-import { cn, formatPhone } from '@/lib/utils'
+import { useState, useEffect } from 'react'
+import {
+  Plus,
+  Search,
+  Filter,
+  MessageSquare,
+  Phone,
+  Mail,
+  MoreHorizontal,
+  LayoutList,
+  Kanban,
+  Clock,
+  GripVertical,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -12,349 +25,285 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import { Search, LayoutList, Kanban, Clock, AlertTriangle } from 'lucide-react'
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-import { useToast } from '@/hooks/use-toast'
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import pb from '@/lib/pocketbase/client'
+import { useRealtime } from '@/hooks/use-realtime'
+import { cn, formatPhone } from '@/lib/utils'
 
-export default function Customers() {
-  const [view, setView] = useState<'list' | 'kanban'>('list')
+export const KANBAN_COLUMNS = [
+  'Captura + Identificação',
+  'Validação no CRM',
+  'Contato Personalizado',
+  'Mapeamento de Perfil',
+  'Nutrição Automática',
+  'Agendamento de Visita',
+  'Pré-Visita',
+  'Pós-Visita',
+  'Proposta e Negociação',
+  'Fechamento e Pós-Venda',
+]
+
+export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
-  const [cadences, setCadences] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
-  const { toast } = useToast()
+  const [search, setSearch] = useState('')
+  const [view, setView] = useState<'list' | 'kanban'>('list')
 
-  const observer = useRef<IntersectionObserver | null>(null)
-  const lastElementRef = useCallback(
-    (node: HTMLTableRowElement | null) => {
-      if (loading) return
-      if (observer.current) observer.current.disconnect()
-      observer.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && hasMore) {
-          setPage((p) => p + 1)
-        }
+  const fetchCustomers = async () => {
+    try {
+      const records = await pb.collection('customers').getFullList({
+        sort: '-updated',
+        filter: search ? `name ~ "${search}" || phone ~ "${search}"` : '',
       })
-      if (node) observer.current.observe(node)
-    },
-    [loading, hasMore],
-  )
-
-  useEffect(() => {
-    pb.collection('cadences')
-      .getFullList({ sort: 'order' })
-      .then((res) => setCadences(res))
-      .catch(console.error)
-  }, [])
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true)
-        const res = await pb.collection('customers').getList(page, 50, {
-          sort: '-updated',
-          filter: searchTerm ? `name ~ "${searchTerm}" || phone ~ "${searchTerm}"` : '',
-        })
-        if (page === 1) {
-          setCustomers(res.items)
-        } else {
-          setCustomers((prev) => {
-            const existingIds = new Set(prev.map((c) => c.id))
-            const newItems = res.items.filter((c) => !existingIds.has(c.id))
-            return [...prev, ...newItems]
-          })
-        }
-        setHasMore(res.page < res.totalPages)
-      } catch (err) {
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
+      setCustomers(records)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
     }
-    load()
-  }, [page, searchTerm])
+  }
+
+  useEffect(() => {
+    fetchCustomers()
+  }, [search])
 
   useRealtime('customers', (e) => {
-    if (e.action === 'create') {
-      setCustomers((prev) => [e.record, ...prev])
-    } else if (e.action === 'update') {
-      setCustomers((prev) => prev.map((c) => (c.id === e.record.id ? e.record : c)))
-    } else if (e.action === 'delete') {
-      setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
-    }
+    fetchCustomers()
   })
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value)
-    setPage(1)
-  }
-
-  const onDragStart = (e: React.DragEvent, customerId: string) => {
-    e.dataTransfer.setData('customerId', customerId)
-    e.dataTransfer.effectAllowed = 'move'
-  }
-
-  const onDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }
-
-  const onDrop = async (e: React.DragEvent, targetStatus: string) => {
-    e.preventDefault()
-    const customerId = e.dataTransfer.getData('customerId')
-    if (!customerId) return
-
-    const customer = customers.find((c) => c.id === customerId)
-    if (customer?.status === targetStatus) return
-
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === customerId ? { ...c, status: targetStatus } : c)),
-    )
-
+  const updateCustomerStatus = async (id: string, newStatus: string) => {
     try {
-      await pb.collection('customers').update(customerId, { status: targetStatus })
-      toast({ title: 'Status atualizado', description: `O lead foi movido para ${targetStatus}` })
-    } catch (err: any) {
-      toast({ title: 'Erro', description: err.message, variant: 'destructive' })
+      setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)))
+      await pb.collection('customers').update(id, { status: newStatus })
+    } catch (err) {
+      fetchCustomers()
     }
   }
 
-  const getUrgencyColor = (urgency: number) => {
-    if (urgency >= 4)
-      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800'
-    if (urgency === 3)
-      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800'
-    return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800'
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('customerId', id)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = (e: React.DragEvent, status: string) => {
+    e.preventDefault()
+    const id = e.dataTransfer.getData('customerId')
+    if (id) {
+      updateCustomerStatus(id, status)
+    }
   }
 
   return (
-    <div className="flex flex-col h-full p-4 md:p-8 space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-8 overflow-hidden">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between shrink-0">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Leads & Clientes</h1>
-          <p className="text-muted-foreground">
-            Gerencie seus leads e acompanhe o funil de vendas.
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight">Clientes e Leads</h1>
+          <p className="text-muted-foreground">Gerencie sua base e o funil de vendas</p>
         </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Buscar clientes..."
-              className="pl-8"
-              value={searchTerm}
-              onChange={handleSearch}
-            />
-          </div>
-          <div className="flex items-center border rounded-md p-1 bg-muted/20">
-            <Button
-              variant={view === 'list' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setView('list')}
-              className="h-8 px-2"
-            >
-              <LayoutList className="h-4 w-4 mr-2 hidden sm:block" />
-              Lista
-            </Button>
-            <Button
-              variant={view === 'kanban' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setView('kanban')}
-              className="h-8 px-2"
-            >
-              <Kanban className="h-4 w-4 mr-2 hidden sm:block" />
-              Kanban
-            </Button>
-          </div>
+        <div className="flex items-center gap-2">
+          <Tabs
+            value={view}
+            onValueChange={(v) => setView(v as 'list' | 'kanban')}
+            className="w-full sm:w-auto"
+          >
+            <TabsList>
+              <TabsTrigger value="list" className="gap-2">
+                <LayoutList className="h-4 w-4" />
+                <span className="hidden sm:inline">Lista</span>
+              </TabsTrigger>
+              <TabsTrigger value="kanban" className="gap-2">
+                <Kanban className="h-4 w-4" />
+                <span className="hidden sm:inline">Pipeline</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Cliente
+          </Button>
         </div>
       </div>
 
-      {view === 'list' ? (
-        <div className="rounded-md border bg-card flex-1 overflow-auto relative">
-          <Table>
-            <TableHeader className="sticky top-0 bg-background/95 backdrop-blur z-10 shadow-sm">
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Status (Cadência)</TableHead>
-                <TableHead>Urgência</TableHead>
-                <TableHead>Notas / Interesse</TableHead>
-                <TableHead>Última Interação</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {customers.map((c, idx) => (
-                <TableRow key={c.id} ref={idx === customers.length - 1 ? lastElementRef : null}>
-                  <TableCell className="font-medium">{c.name || 'Sem nome'}</TableCell>
-                  <TableCell>{c.phone ? formatPhone(c.phone) : '-'}</TableCell>
-                  <TableCell>{c.email || '-'}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{c.status || 'Novo'}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {c.urgency ? (
-                      <Badge variant="outline" className={getUrgencyColor(c.urgency)}>
-                        Nível {c.urgency}
-                      </Badge>
-                    ) : (
-                      '-'
-                    )}
-                  </TableCell>
-                  <TableCell className="max-w-[200px] truncate" title={c.notes}>
-                    {c.notes || '-'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground whitespace-nowrap text-sm">
-                    {c.updated
-                      ? format(new Date(c.updated), 'dd/MM/yyyy HH:mm', { locale: ptBR })
-                      : '-'}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    Carregando leads...
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && customers.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    Nenhum cliente encontrado.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome ou telefone..."
+            className="pl-8"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
+        <Button variant="outline" size="icon">
+          <Filter className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="flex flex-1 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent"></div>
+        </div>
+      ) : view === 'list' ? (
+        <Card className="flex-1 overflow-hidden flex flex-col">
+          <ScrollArea className="flex-1 overflow-auto">
+            <Table>
+              <TableHeader className="sticky top-0 z-10 bg-background/90 backdrop-blur">
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Contato</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Urgência</TableHead>
+                  <TableHead>Atualizado em</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {customers.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.name || 'Sem nome'}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col text-sm">
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <Phone className="h-3 w-3" /> {formatPhone(c.phone || '') || 'N/A'}
+                        </span>
+                        {c.email && (
+                          <span className="flex items-center gap-1 text-muted-foreground mt-1">
+                            <Mail className="h-3 w-3" /> {c.email}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="whitespace-nowrap">
+                        {c.status || 'Novo'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {c.urgency ? (
+                        <div className="flex items-center gap-1">
+                          <span
+                            className={cn(
+                              'h-2 w-2 rounded-full',
+                              c.urgency >= 4
+                                ? 'bg-red-500'
+                                : c.urgency >= 3
+                                  ? 'bg-orange-500'
+                                  : 'bg-green-500',
+                            )}
+                          />
+                          <span>{c.urgency}/5</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(c.updated).toLocaleDateString('pt-BR')}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon">
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {customers.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center">
+                      Nenhum cliente encontrado.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+            <ScrollBar orientation="horizontal" />
+            <ScrollBar orientation="vertical" />
+          </ScrollArea>
+        </Card>
       ) : (
-        <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full">
-          <div className="flex gap-4 h-full items-start min-w-max">
-            {cadences.map((cadence) => {
-              const columnCustomers = customers.filter(
-                (c) => c.status === cadence.title || (!c.status && cadence.title === 'Novo'),
+        <ScrollArea className="flex-1 rounded-md border bg-muted/20">
+          <div className="flex h-full gap-4 p-4 min-w-max pb-8">
+            {KANBAN_COLUMNS.map((col) => {
+              const colCustomers = customers.filter(
+                (c) =>
+                  c.status === col ||
+                  (!c.status && col === 'Captura + Identificação') ||
+                  (col === 'Captura + Identificação' && !KANBAN_COLUMNS.includes(c.status)),
               )
+
               return (
                 <div
-                  key={cadence.id}
-                  className="flex-shrink-0 w-80 bg-muted/30 rounded-xl border flex flex-col max-h-full"
-                  onDragOver={onDragOver}
-                  onDrop={(e) => onDrop(e, cadence.title)}
+                  key={col}
+                  className="flex h-full w-80 flex-col gap-3 rounded-lg bg-muted/50 p-3 shrink-0"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, col)}
                 >
-                  <div className="p-3 border-b bg-muted/50 rounded-t-xl font-semibold flex items-center justify-between">
-                    <span className="truncate pr-2 text-sm" title={cadence.title}>
-                      {cadence.title}
-                    </span>
-                    <Badge variant="secondary" className="text-xs bg-background">
-                      {columnCustomers.length}
+                  <div className="flex items-center justify-between px-1 shrink-0">
+                    <h3 className="font-semibold text-sm line-clamp-1 flex-1" title={col}>
+                      {col}
+                    </h3>
+                    <Badge variant="secondary" className="ml-2">
+                      {colCustomers.length}
                     </Badge>
                   </div>
-                  <div className="p-3 overflow-y-auto flex-1 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full">
-                    {columnCustomers.map((c) => (
-                      <div
-                        key={c.id}
-                        draggable
-                        onDragStart={(e) => onDragStart(e, c.id)}
-                        className="bg-background border rounded-lg p-4 shadow-sm cursor-grab active:cursor-grabbing hover:border-primary/40 hover:shadow-md transition-all group"
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <h4
-                            className="font-medium text-sm line-clamp-1 group-hover:text-primary transition-colors"
-                            title={c.name}
-                          >
-                            {c.name || 'Sem nome'}
-                          </h4>
-                          {c.urgency && c.urgency >= 4 && (
-                            <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 ml-2" />
-                          )}
-                        </div>
-                        {c.urgency ? (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              'text-[10px] mb-3 font-medium',
-                              getUrgencyColor(c.urgency),
-                            )}
-                          >
-                            Urgência: {c.urgency}
-                          </Badge>
-                        ) : null}
-                        <div
-                          className="text-xs text-muted-foreground line-clamp-2 mb-3 bg-muted/30 p-2 rounded"
-                          title={c.notes}
+                  <ScrollArea className="flex-1 -mx-3 px-3">
+                    <div className="flex flex-col gap-2 pb-4">
+                      {colCustomers.map((c) => (
+                        <Card
+                          key={c.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, c.id)}
+                          className="cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors"
                         >
-                          {c.notes || 'Nenhuma nota registrada.'}
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground/80 mt-auto pt-3 border-t">
-                          <div className="flex items-center">
-                            <Clock className="h-3 w-3 mr-1" />
-                            {c.updated
-                              ? format(new Date(c.updated), 'dd/MM', { locale: ptBR })
-                              : '-'}
-                          </div>
-                          <span className="truncate max-w-[100px]">
-                            {c.phone ? formatPhone(c.phone) : ''}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {columnCustomers.length === 0 && (
-                      <div className="text-center p-4 text-xs text-muted-foreground border-2 border-dashed rounded-lg border-muted">
-                        Arraste leads para cá
-                      </div>
-                    )}
-                  </div>
+                          <CardContent className="p-3 flex flex-col gap-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="font-medium text-sm line-clamp-1">
+                                {c.name || 'Sem nome'}
+                              </span>
+                              <GripVertical className="h-4 w-4 text-muted-foreground/50 shrink-0 cursor-grab active:cursor-grabbing" />
+                            </div>
+                            <div className="text-xs text-muted-foreground flex flex-col gap-1">
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3" />{' '}
+                                {formatPhone(c.phone || '') || 'Sem telefone'}
+                              </span>
+                              {c.urgency ? (
+                                <span className="flex items-center gap-1 mt-1">
+                                  <span
+                                    className={cn(
+                                      'h-2 w-2 rounded-full',
+                                      c.urgency >= 4
+                                        ? 'bg-red-500'
+                                        : c.urgency >= 3
+                                          ? 'bg-orange-500'
+                                          : 'bg-green-500',
+                                    )}
+                                  />
+                                  Urgência: {c.urgency}/5
+                                </span>
+                              ) : null}
+                              <span className="flex items-center gap-1 mt-1">
+                                <Clock className="h-3 w-3" />
+                                {new Date(c.updated).toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </ScrollArea>
                 </div>
               )
             })}
-
-            {(() => {
-              const knownTitles = new Set(cadences.map((c) => c.title))
-              const unknownCustomers = customers.filter(
-                (c) => c.status && !knownTitles.has(c.status) && c.status !== 'Novo',
-              )
-              if (unknownCustomers.length === 0) return null
-              return (
-                <div
-                  className="flex-shrink-0 w-80 bg-muted/20 rounded-xl border border-dashed flex flex-col max-h-full"
-                  onDragOver={onDragOver}
-                  onDrop={(e) => onDrop(e, 'Outros')}
-                >
-                  <div className="p-3 border-b border-dashed bg-muted/30 rounded-t-xl font-semibold flex items-center justify-between text-muted-foreground">
-                    <span className="text-sm">Outros Status</span>
-                    <Badge variant="outline" className="text-xs">
-                      {unknownCustomers.length}
-                    </Badge>
-                  </div>
-                  <div className="p-3 overflow-y-auto flex-1 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full">
-                    {unknownCustomers.map((c) => (
-                      <div
-                        key={c.id}
-                        draggable
-                        onDragStart={(e) => onDragStart(e, c.id)}
-                        className="bg-background/50 border border-dashed rounded-lg p-4 shadow-sm cursor-grab active:cursor-grabbing"
-                      >
-                        <div className="font-medium text-sm mb-2">{c.name || 'Sem nome'}</div>
-                        <Badge variant="outline" className="text-[10px] mb-3">
-                          {c.status}
-                        </Badge>
-                        <div className="flex items-center text-[10px] text-muted-foreground/80 pt-3 border-t border-dashed">
-                          <Clock className="h-3 w-3 mr-1" />
-                          {c.updated ? format(new Date(c.updated), 'dd/MM', { locale: ptBR }) : '-'}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
           </div>
-        </div>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
       )}
     </div>
   )
