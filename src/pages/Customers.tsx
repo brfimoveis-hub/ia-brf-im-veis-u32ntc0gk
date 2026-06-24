@@ -1,126 +1,314 @@
-import { useState, useEffect, useMemo } from 'react'
-import { Routes, Route, useNavigate, useParams, Link } from 'react-router-dom'
-import { Search, Loader2, ArrowLeft, Phone, Mail, User, Clock, MessageSquare } from 'lucide-react'
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-import { toast } from 'sonner'
-
-import pb from '@/lib/pocketbase/client'
-import { useRealtime } from '@/hooks/use-realtime'
-import { cn } from '@/lib/utils'
-
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { useState, useEffect } from 'react'
+import { Routes, Route, Link, useParams } from 'react-router-dom'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import pb from '@/lib/pocketbase/client'
+import { useRealtime } from '@/hooks/use-realtime'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { Loader2, KanbanSquare, List, Phone, Mail, Search, ArrowRight } from 'lucide-react'
+import { toast } from 'sonner'
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 
-interface Customer {
-  id: string
-  name: string
-  phone: string
-  email: string
-  status: string
-  urgency: number
-  neighborhood: string
-  price_range: string
-  source: string
-  notes: string
-  updated: string
-  created: string
-}
-
-const STEPS = [
+const PIPELINE_COLUMNS = [
   {
-    status: 'Captura + Identificação',
-    title: '1. CAPTURA + IDENTIFICAÇÃO',
-    description:
-      'Identificar qual imóvel gerou o lead (Site, Meta, Chaves na Mão, YouTube). Pergunta inicial obrigatória se não identificado.',
-    active: true,
+    id: 'Captura + Identificação',
+    title: '1. Captura',
+    desc: 'Identificação inicial do lead e dados de contato.',
   },
   {
-    status: 'Validação no CRM',
-    title: '2. VALIDAÇÃO NO CRM',
-    description:
-      'Registrar Imóvel, Origem, Perfil (Comprador/Vendedor), Faixa de Preço, Urgência (1-5) e Bairros. Gatilho de notificação se Urgência ≥ 4.',
-    active: true,
+    id: 'Validação no CRM',
+    title: '2. Validação',
+    desc: 'Verificação de dados e deduplicação no sistema.',
   },
   {
-    status: 'Contato Personalizado',
-    title: '3. CONTATO PERSONALIZADO',
-    description:
-      'BIA responde com dados reais do imóvel (Tipo, Bairro, Valor). Oferece fotos, vídeo ou visita.',
-    active: true,
+    id: 'Contato Personalizado',
+    title: '3. Contato',
+    desc: 'Primeira abordagem personalizada para engajamento.',
   },
   {
-    status: 'Mapeamento de Perfil',
-    title: '4. MAPEAMENTO DE PERFIL',
-    description:
-      '3 perguntas estratégicas: Imóvel para vender (permuta), faixa de valor ideal e pressa para fechar.',
-    active: true,
+    id: 'Mapeamento de Perfil',
+    title: '4. Mapeamento',
+    desc: 'Entendimento das necessidades, orçamento e região.',
   },
   {
-    status: 'Nutrição Automática',
-    title: '5. NUTRIÇÃO AUTOMÁTICA',
-    description:
-      'Fluxo de follow-up (D1: Ficha, D3: Vídeo, D7: Novas opções, D14: Similares). 3 toques sem resposta = nutrição mensal.',
-    active: true,
+    id: 'Nutrição Automática',
+    title: '5. Nutrição',
+    desc: 'Envio de conteúdos relevantes e imóveis compatíveis.',
   },
   {
-    status: 'Agendamento de Visita',
-    title: '6. AGENDAMENTO DE VISITA',
-    description:
-      'Ponto Crítico. BIA verifica Google Calendar e propõe 3 opções. Se não, oferece vídeo tour.',
-    active: true,
+    id: 'Agendamento de Visita',
+    title: '6. Agendamento',
+    desc: 'Marcação de data e horário para visitação.',
+  },
+  { id: 'Pré-Visita', title: '7. Pré-Visita', desc: 'Confirmação do agendamento e orientações.' },
+  {
+    id: 'Pós-Visita',
+    title: '8. Pós-Visita',
+    desc: 'Coleta de feedback após a visita aos imóveis.',
   },
   {
-    status: 'Pré-Visita',
-    title: '7. PRÉ-VISITA',
-    description:
-      '1h antes: Envio de endereço (Waze), lembrete de permuta e documentos necessários.',
-    active: true,
+    id: 'Proposta e Negociação',
+    title: '9. Proposta',
+    desc: 'Análise de condições e negociação de valores.',
   },
   {
-    status: 'Pós-Visita',
-    title: '8. PÓS-VISITA',
-    description:
-      '2h depois: Feedback do imóvel. Se gostou, simulação de financiamento. Se não, novas opções. Corretor liga em 24h sem resposta.',
-    active: true,
-  },
-  {
-    status: 'Proposta e Negociação',
-    title: '9. PROPOSTA E NEGOCIAÇÃO',
-    description:
-      'Coleta valor, forma de pagamento e permuta. BIA trata objeções (preço, vender primeiro, vou pensar).',
-    active: true,
-  },
-  {
-    status: 'Fechamento e Pós-Venda',
-    title: '10. FECHAMENTO E PÓS-VENDA',
-    description:
-      'Checklist de documentos, lembretes automáticos. Pós-venda em 7, 30 e 90 dias com pedido de indicação.',
-    active: false,
+    id: 'Fechamento e Pós-Venda',
+    title: '10. Fechamento',
+    desc: 'Assinatura de contrato e acompanhamento final.',
   },
 ]
 
-function Pipeline() {
-  const [customers, setCustomers] = useState<Customer[]>([])
+function PipelineBoard({
+  customers,
+  updateStatus,
+}: {
+  customers: any[]
+  updateStatus: (id: string, status: string) => void
+}) {
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggingId(id)
+    e.dataTransfer.setData('text/plain', id)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = (e: React.DragEvent, newStatus: string) => {
+    e.preventDefault()
+    const customerId = e.dataTransfer.getData('text/plain')
+    if (customerId && draggingId) {
+      const customer = customers.find((c) => c.id === customerId)
+      if (customer && customer.status !== newStatus) {
+        updateStatus(customerId, newStatus)
+      }
+    }
+    setDraggingId(null)
+  }
+
+  const customersByColumn = PIPELINE_COLUMNS.map((col) => ({
+    ...col,
+    items: customers.filter((c) => {
+      const mappedStatus = PIPELINE_COLUMNS.some((p) => p.id === c.status)
+        ? c.status
+        : 'Captura + Identificação'
+      return mappedStatus === col.id
+    }),
+  }))
+
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-6 pt-2 snap-x items-start min-h-[500px]">
+      {customersByColumn.map((col) => (
+        <div
+          key={col.id}
+          className="min-w-[320px] w-[320px] bg-slate-100/60 rounded-xl p-3 flex flex-col snap-start border border-slate-200"
+          onDragOver={handleDragOver}
+          onDrop={(e) => handleDrop(e, col.id)}
+        >
+          <div className="mb-4">
+            <h3 className="font-semibold text-sm text-slate-800 flex items-center justify-between">
+              {col.title}
+              <span className="bg-white text-slate-500 text-xs px-2 py-0.5 rounded-full shadow-sm border border-slate-200">
+                {col.items.length}
+              </span>
+            </h3>
+            <p className="text-[11px] text-slate-500 mt-1.5 leading-tight">{col.desc}</p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-3 min-h-[100px]">
+            {col.items.map((customer) => (
+              <div
+                key={customer.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, customer.id)}
+                className={cn(
+                  'bg-white p-3.5 rounded-lg shadow-sm border border-slate-200 cursor-grab active:cursor-grabbing hover:border-primary/40 hover:shadow-md transition-all',
+                  draggingId === customer.id ? 'opacity-40 scale-95' : 'opacity-100',
+                )}
+              >
+                <div className="flex justify-between items-start mb-2.5">
+                  <Link
+                    to={`/customers/${customer.id}`}
+                    className="font-medium text-sm text-slate-900 hover:text-primary transition-colors line-clamp-1 flex-1 pr-2"
+                  >
+                    {customer.name || 'Lead sem nome'}
+                  </Link>
+                  <Badge
+                    variant={customer.urgency >= 4 ? 'destructive' : 'secondary'}
+                    className="text-[10px] px-1.5 h-4"
+                  >
+                    U-{customer.urgency || 0}
+                  </Badge>
+                </div>
+                {(customer.phone || customer.email) && (
+                  <div className="space-y-1.5 mt-2">
+                    {customer.phone && (
+                      <div className="flex items-center text-xs text-slate-500">
+                        <Phone className="w-3 h-3 mr-1.5 text-slate-400" />
+                        {customer.phone}
+                      </div>
+                    )}
+                    {customer.email && (
+                      <div className="flex items-center text-xs text-slate-500">
+                        <Mail className="w-3 h-3 mr-1.5 text-slate-400" />
+                        <span className="truncate">{customer.email}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {col.items.length === 0 && (
+              <div className="border-2 border-dashed border-slate-200 rounded-lg h-24 flex items-center justify-center text-xs text-slate-400">
+                Arraste leads para cá
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ListView({
+  customers,
+  updateStatus,
+}: {
+  customers: any[]
+  updateStatus: (id: string, status: string) => void
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <Table>
+        <TableHeader className="bg-slate-50">
+          <TableRow>
+            <TableHead className="w-[250px]">Nome</TableHead>
+            <TableHead>Contato</TableHead>
+            <TableHead className="w-[220px]">Status (Fase)</TableHead>
+            <TableHead className="w-[100px]">Urgência</TableHead>
+            <TableHead className="w-[120px]">Criado em</TableHead>
+            <TableHead className="text-right w-[100px]">Ações</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {customers.map((customer) => {
+            const mappedStatus = PIPELINE_COLUMNS.some((p) => p.id === customer.status)
+              ? customer.status
+              : 'Captura + Identificação'
+            return (
+              <TableRow key={customer.id} className="hover:bg-slate-50/50">
+                <TableCell className="font-medium text-slate-900">
+                  {customer.name || 'Lead sem nome'}
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-col gap-1 text-sm">
+                    {customer.phone && (
+                      <span className="flex items-center text-slate-600">
+                        <Phone className="w-3 h-3 mr-1.5 text-slate-400" />
+                        {customer.phone}
+                      </span>
+                    )}
+                    {customer.email && (
+                      <span className="flex items-center text-slate-600">
+                        <Mail className="w-3 h-3 mr-1.5 text-slate-400" />
+                        {customer.email}
+                      </span>
+                    )}
+                    {!customer.phone && !customer.email && (
+                      <span className="text-slate-400 italic">Sem contato</span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Select
+                    value={mappedStatus}
+                    onValueChange={(val) => updateStatus(customer.id, val)}
+                  >
+                    <SelectTrigger className="w-full h-8 text-xs bg-white">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PIPELINE_COLUMNS.map((col) => (
+                        <SelectItem key={col.id} value={col.id} className="text-xs">
+                          {col.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={customer.urgency >= 4 ? 'destructive' : 'secondary'}
+                    className="shadow-sm"
+                  >
+                    Nível {customer.urgency || 0}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-sm text-slate-500">
+                  {format(new Date(customer.created), 'dd/MM/yyyy', { locale: ptBR })}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button variant="ghost" size="sm" asChild className="hover:bg-slate-100">
+                    <Link to={`/customers/${customer.id}`}>
+                      Detalhes
+                      <ArrowRight className="w-4 h-4 ml-1.5" />
+                    </Link>
+                  </Button>
+                </TableCell>
+              </TableRow>
+            )
+          })}
+          {customers.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="text-center h-32 text-slate-500">
+                Nenhum cliente encontrado.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function CustomersMain() {
+  const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [showOnlyActive, setShowOnlyActive] = useState(true)
 
   const loadData = async () => {
     try {
-      setLoading(true)
-      const records = await pb.collection('customers').getFullList<Customer>({
-        sort: '-updated',
+      const records = await pb.collection('customers').getFullList({
+        sort: '-created',
       })
       setCustomers(records)
     } catch (err) {
       console.error(err)
-      toast.error('Erro ao carregar leads do pipeline')
+      toast.error('Erro ao carregar clientes')
     } finally {
       setLoading(false)
     }
@@ -130,7 +318,7 @@ function Pipeline() {
     loadData()
   }, [])
 
-  useRealtime<Customer>('customers', (e) => {
+  useRealtime('customers', (e) => {
     if (e.action === 'create') {
       setCustomers((prev) => [e.record, ...prev])
     } else if (e.action === 'update') {
@@ -140,93 +328,51 @@ function Pipeline() {
     }
   })
 
-  const visibleSteps = showOnlyActive ? STEPS.filter((s) => s.active) : STEPS
+  const updateStatus = async (id: string, newStatus: string) => {
+    // Optimistic update
+    const previous = customers
+    setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)))
 
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((c) => {
-      if (search) {
-        const query = search.toLowerCase()
-        const matchesName = c.name?.toLowerCase().includes(query)
-        const matchesPhone = c.phone?.includes(query)
-        const matchesEmail = c.email?.toLowerCase().includes(query)
-        if (!matchesName && !matchesPhone && !matchesEmail) {
-          return false
-        }
-      }
-      return true
-    })
-  }, [customers, search])
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, Customer[]>()
-    visibleSteps.forEach((s) => map.set(s.status, []))
-    filteredCustomers.forEach((c) => {
-      if (map.has(c.status)) {
-        map.get(c.status)!.push(c)
-      }
-    })
-    return map
-  }, [filteredCustomers, visibleSteps])
-
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    e.dataTransfer.setData('customerId', id)
-  }
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-  }
-
-  const handleDrop = async (e: React.DragEvent, newStatus: string) => {
-    e.preventDefault()
-    const id = e.dataTransfer.getData('customerId')
-    if (id) {
-      const customer = customers.find((c) => c.id === id)
-      if (customer && customer.status !== newStatus) {
-        // Optimistic update
-        setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)))
-        try {
-          await pb.collection('customers').update(id, { status: newStatus })
-        } catch (err) {
-          toast.error('Erro ao atualizar status do lead')
-          loadData() // rollback on error
-        }
-      }
+    try {
+      await pb.collection('customers').update(id, { status: newStatus })
+      toast.success('Status atualizado com sucesso')
+    } catch (error) {
+      toast.error('Erro ao atualizar status')
+      setCustomers(previous)
     }
   }
 
+  const filteredCustomers = customers.filter(
+    (c) =>
+      !search ||
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.email?.toLowerCase().includes(search.toLowerCase()) ||
+      c.phone?.includes(search),
+  )
+
   if (loading) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+      <div className="flex h-[calc(100vh-8rem)] w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden p-6 gap-4 w-full max-w-full">
-      <div className="flex items-center justify-between flex-shrink-0">
+    <div className="flex-1 space-y-6 max-w-[1600px] mx-auto w-full">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pipeline Cadeia Evolutiva</h1>
-          <p className="text-muted-foreground">
-            Arraste os leads entre as etapas para atualizar o status.
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900">Gestão de Clientes</h2>
+          <p className="text-slate-500 mt-1.5 text-sm">
+            Acompanhe o funil de vendas e mova os leads através da Cadeia Evolutiva de 10 Passos.
           </p>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="active-leads"
-              checked={showOnlyActive}
-              onCheckedChange={setShowOnlyActive}
-            />
-            <Label htmlFor="active-leads" className="text-sm font-medium cursor-pointer">
-              Visualizar Apenas Ativos (1-9)
-            </Label>
-          </div>
-          <div className="relative w-64">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
-              placeholder="Buscar por nome ou contato..."
-              className="pl-8 bg-background"
+              placeholder="Buscar leads..."
+              className="pl-9 w-[280px] bg-white border-slate-200"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -234,274 +380,160 @@ function Pipeline() {
         </div>
       </div>
 
-      <ScrollArea className="flex-1 w-full rounded-md bg-muted/20 border">
-        <div className="flex h-full w-max gap-4 p-4 items-start">
-          {visibleSteps.map((step) => {
-            const colCustomers = grouped.get(step.status) || []
-            return (
-              <div
-                key={step.status}
-                className="w-[320px] flex-shrink-0 flex flex-col gap-3 rounded-xl bg-muted/40 p-3 h-full border shadow-sm"
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, step.status)}
-              >
-                <div className="flex flex-col gap-1.5 px-1 mb-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-[13px] uppercase tracking-tight">{step.title}</h3>
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                      {colCustomers.length}
-                    </Badge>
-                  </div>
-                  <p className="text-[11px] leading-tight text-muted-foreground font-medium">
-                    {step.description}
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3 flex-1 overflow-y-auto min-h-[150px] pb-2">
-                  {colCustomers.map((customer) => (
-                    <Card
-                      key={customer.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, customer.id)}
-                      className="cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors shadow-sm"
-                    >
-                      <CardContent className="p-3 flex flex-col gap-2">
-                        <div className="flex justify-between items-start gap-2">
-                          <span className="font-semibold text-[13px] leading-tight line-clamp-2">
-                            {customer.name || 'Sem nome'}
-                          </span>
-                          {customer.urgency >= 4 && (
-                            <Badge
-                              variant="destructive"
-                              className="px-1.5 py-0 text-[10px] h-5 shrink-0"
-                            >
-                              Urg {customer.urgency}
-                            </Badge>
-                          )}
-                        </div>
-                        {(customer.neighborhood || customer.price_range) && (
-                          <div className="text-[11px] text-muted-foreground line-clamp-1">
-                            {customer.neighborhood}{' '}
-                            {customer.neighborhood && customer.price_range && '•'}{' '}
-                            {customer.price_range}
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between mt-1 pt-2 border-t border-border/50">
-                          <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
-                            <Clock className="w-3 h-3" />
-                            {format(new Date(customer.updated), 'dd/MM HH:mm', { locale: ptBR })}
-                          </div>
-                          <Button variant="secondary" size="icon" className="h-6 w-6" asChild>
-                            <Link to={`/customers/${customer.id}`}>
-                              <ArrowLeft className="w-3 h-3 rotate-180" />
-                            </Link>
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {colCustomers.length === 0 && (
-                    <div className="h-full flex items-center justify-center opacity-50 border-2 border-dashed rounded-lg p-6 text-center text-xs font-medium">
-                      Arraste leads para cá
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+      <Tabs defaultValue="pipeline" className="w-full">
+        <TabsList className="mb-6 bg-slate-100 p-1 border border-slate-200">
+          <TabsTrigger
+            value="pipeline"
+            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+          >
+            <KanbanSquare className="w-4 h-4" />
+            Pipeline Visual
+          </TabsTrigger>
+          <TabsTrigger
+            value="list"
+            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+          >
+            <List className="w-4 h-4" />
+            Lista de Clientes
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="pipeline" className="m-0 focus-visible:outline-none">
+          <PipelineBoard customers={filteredCustomers} updateStatus={updateStatus} />
+        </TabsContent>
+        <TabsContent value="list" className="m-0 focus-visible:outline-none">
+          <ListView customers={filteredCustomers} updateStatus={updateStatus} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
 
 function CustomerDetail() {
   const { id } = useParams()
-  const navigate = useNavigate()
-  const [customer, setCustomer] = useState<Customer | null>(null)
-  const [conversations, setConversations] = useState<any[]>([])
+  const [customer, setCustomer] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  const loadData = async () => {
-    if (!id) return
-    try {
-      setLoading(true)
-      const cust = await pb.collection('customers').getOne<Customer>(id)
-      setCustomer(cust)
-
-      const convs = await pb.collection('conversations').getFullList({
-        filter: `customer_id = "${id}"`,
-        sort: 'created',
-      })
-      setConversations(convs)
-    } catch (err) {
-      toast.error('Erro ao carregar detalhes do lead')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
-    loadData()
-  }, [id])
-
-  useRealtime<Customer>('customers', (e) => {
-    if (e.record.id === id) setCustomer(e.record)
-  })
-
-  useRealtime('conversations', (e) => {
-    if (e.record.customer_id === id) {
-      if (e.action === 'create') {
-        setConversations((prev) => [...prev, e.record])
-      }
+    if (id) {
+      pb.collection('customers')
+        .getOne(id)
+        .then(setCustomer)
+        .catch(() => toast.error('Erro ao carregar detalhes do cliente'))
+        .finally(() => setLoading(false))
     }
-  })
+  }, [id])
 
   if (loading) {
     return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     )
   }
 
   if (!customer) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] gap-4">
-        <h2 className="text-xl font-semibold">Lead não encontrado</h2>
-        <Button onClick={() => navigate('/customers')}>Voltar ao Pipeline</Button>
+      <div className="p-8 text-center text-slate-500">
+        <p>Cliente não encontrado.</p>
+        <Button variant="outline" asChild className="mt-4">
+          <Link to="/customers">Voltar para a lista</Link>
+        </Button>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] max-w-7xl mx-auto p-6 gap-6 w-full">
-      <div className="flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="icon" onClick={() => navigate('/customers')}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              {customer.name || 'Lead sem nome'}
-            </h1>
-            <div className="flex items-center gap-2 mt-1">
-              <Badge variant="secondary">{customer.status}</Badge>
-              {customer.urgency >= 4 && (
-                <Badge variant="destructive">Urgência {customer.urgency}</Badge>
-              )}
-            </div>
+    <div className="space-y-6 max-w-4xl mx-auto pb-10">
+      <Button variant="ghost" asChild className="-ml-4 text-slate-500 hover:text-slate-900">
+        <Link to="/customers">← Voltar para Gestão</Link>
+      </Button>
+
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-900">{customer.name || 'Lead sem nome'}</h2>
+          <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
+            <span>
+              Criado em {format(new Date(customer.created), 'dd/MM/yyyy', { locale: ptBR })}
+            </span>
+            {customer.source && (
+              <>
+                <span>•</span>
+                <span className="capitalize">Origem: {customer.source}</span>
+              </>
+            )}
           </div>
         </div>
+        <Badge
+          variant={customer.urgency >= 4 ? 'destructive' : 'secondary'}
+          className="text-sm px-3 py-1"
+        >
+          Urgência Nível {customer.urgency || 0}
+        </Badge>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0 overflow-hidden">
-        <ScrollArea className="h-full pr-4">
-          <div className="flex flex-col gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Informações do Lead</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{customer.phone || 'Não informado'}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm break-all">{customer.email || 'Não informado'}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">Origem: {customer.source || 'Não informada'}</span>
-                </div>
-
-                <div className="pt-4 border-t space-y-3">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-xs font-semibold text-muted-foreground block mb-1">
-                        Bairro Ideal
-                      </span>
-                      <span className="text-sm font-medium">{customer.neighborhood || '-'}</span>
-                    </div>
-                    <div>
-                      <span className="text-xs font-semibold text-muted-foreground block mb-1">
-                        Faixa de Valor
-                      </span>
-                      <span className="text-sm font-medium">{customer.price_range || '-'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {customer.notes && (
-                  <div className="pt-4 border-t">
-                    <span className="text-xs font-semibold text-muted-foreground block mb-2">
-                      Anotações
-                    </span>
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{customer.notes}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </ScrollArea>
-
-        <Card className="lg:col-span-2 flex flex-col h-full overflow-hidden">
-          <CardHeader className="py-4 border-b">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" /> Histórico de Interações (BIA / Humano)
-            </CardTitle>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
+            <CardTitle className="text-lg">Dados Principais</CardTitle>
           </CardHeader>
-          <CardContent className="flex-1 overflow-hidden p-0 bg-muted/10">
-            <ScrollArea className="h-full w-full p-4">
-              {conversations.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-muted-foreground text-sm mt-10">
-                  Nenhuma conversa registrada.
-                </div>
-              ) : (
-                <div className="space-y-6 flex flex-col pb-4">
-                  {conversations.map((msg) => {
-                    const isStaff = msg.sender !== 'customer'
+          <CardContent className="space-y-4 pt-6">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                Status (Fase Atual)
+              </div>
+              <Badge className="bg-primary/10 text-primary hover:bg-primary/20">
+                {customer.status}
+              </Badge>
+            </div>
 
-                    let senderLabel = 'LEAD'
-                    if (msg.sender === 'ai') senderLabel = 'BIA (IA)'
-                    if (msg.sender === 'system') senderLabel = 'SISTEMA'
-                    if (msg.sender === 'agent') senderLabel = 'CORRETOR'
-
-                    return (
-                      <div
-                        key={msg.id}
-                        className={cn(
-                          'max-w-[85%] rounded-2xl p-4 text-sm shadow-sm',
-                          isStaff
-                            ? 'bg-primary text-primary-foreground self-end rounded-tr-sm'
-                            : 'bg-background border self-start rounded-tl-sm',
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            'text-[10px] font-bold tracking-wider mb-2',
-                            isStaff ? 'text-primary-foreground/80' : 'text-muted-foreground',
-                          )}
-                        >
-                          {senderLabel}
-                        </div>
-                        <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                        <span
-                          className={cn(
-                            'text-[10px] mt-2 block font-medium',
-                            isStaff ? 'text-primary-foreground/60' : 'text-muted-foreground/60',
-                          )}
-                        >
-                          {format(new Date(msg.created), "dd/MM 'às' HH:mm", { locale: ptBR })}
-                        </span>
-                      </div>
-                    )
-                  })}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Telefone
                 </div>
-              )}
-            </ScrollArea>
+                <div className="text-sm text-slate-900 font-medium">{customer.phone || '-'}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Email
+                </div>
+                <div className="text-sm text-slate-900 font-medium break-all">
+                  {customer.email || '-'}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Bairro de Interesse
+                </div>
+                <div className="text-sm text-slate-900">{customer.neighborhood || '-'}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                  Faixa de Preço
+                </div>
+                <div className="text-sm text-slate-900">{customer.price_range || '-'}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
+            <CardTitle className="text-lg">Anotações e Observações</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            {customer.notes ? (
+              <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                {customer.notes}
+              </p>
+            ) : (
+              <p className="text-sm text-slate-400 italic">
+                Nenhuma anotação registrada para este lead.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -512,8 +544,8 @@ function CustomerDetail() {
 export default function Customers() {
   return (
     <Routes>
-      <Route index element={<Pipeline />} />
-      <Route path=":id" element={<CustomerDetail />} />
+      <Route path="/" element={<CustomersMain />} />
+      <Route path="/:id" element={<CustomerDetail />} />
     </Routes>
   )
 }
