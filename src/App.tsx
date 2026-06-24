@@ -19,6 +19,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 import Dashboard from './pages/Index'
 import Customers from './pages/Customers'
+import CustomerList from './pages/CustomerList'
 import Cadences from './pages/Cadences'
 import SettingsRemarketing from './pages/SettingsRemarketing'
 import SettingsConnections from './pages/SettingsConnections'
@@ -73,6 +74,8 @@ const RouteTracker = () => {
       component = 'Dashboard'
     } else if (lowerPath.startsWith('/customers')) {
       component = 'Customers'
+    } else if (lowerPath.startsWith('/customer-list')) {
+      component = 'CustomerList'
     } else if (lowerPath.startsWith('/cadences')) {
       component = 'Cadences'
     } else if (lowerPath === '/') {
@@ -161,6 +164,10 @@ const router = createBrowserRouter(
                 {
                   path: 'customers/*',
                   element: <Customers />,
+                },
+                {
+                  path: 'customer-list/*',
+                  element: <CustomerList />,
                 },
                 {
                   path: 'cadences',
