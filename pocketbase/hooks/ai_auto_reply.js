@@ -276,24 +276,19 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (err) {}
 
-    const embedRes = $http.send({
-      url: 'https://api.openai.com/v1/embeddings',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-      body: JSON.stringify({ model: 'text-embedding-3-small', input: customerMessage }),
-      timeout: 30,
-    })
+    let queryEmbedding = null
+    try {
+      const res = $ai.embed({ input: customerMessage })
+      if (res.data && res.data[0]) {
+        queryEmbedding = res.data[0].embedding
+      }
+    } catch (err) {
+      $app.logger().error('Embedding failed', 'error', String(err))
+    }
 
     let contextChunks = []
 
-    if (
-      embedRes.statusCode === 200 &&
-      embedRes.json &&
-      embedRes.json.data &&
-      embedRes.json.data[0] &&
-      embedRes.json.data[0].embedding
-    ) {
-      const queryEmbedding = embedRes.json.data[0].embedding
+    if (queryEmbedding) {
       const pbaseURL = $secrets.get('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
 
       const ragRes = $http.send({
@@ -422,62 +417,47 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
     messages.push({ role: 'user', content: customerMessage })
 
-    const chatRes = $http.send({
-      url: 'https://api.openai.com/v1/chat/completions',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: messages,
-        temperature: 0.3,
-        max_tokens: 500,
-      }),
-      timeout: 45,
-    })
-
     let responseText =
       'Desculpe, estou com uma instabilidade no momento e não consegui gerar uma resposta.'
     let detectedStatus = ''
     let detectedPhase = ''
     let detectedHandover = ''
 
-    if (
-      chatRes.statusCode === 200 &&
-      chatRes.json &&
-      chatRes.json.choices &&
-      chatRes.json.choices[0] &&
-      chatRes.json.choices[0].message &&
-      chatRes.json.choices[0].message.content
-    ) {
-      responseText = chatRes.json.choices[0].message.content.trim()
+    try {
+      const chatRes = $ai.chat({
+        model: 'fast',
+        messages: messages,
+      })
+      if (chatRes.choices && chatRes.choices[0] && chatRes.choices[0].message) {
+        responseText = chatRes.choices[0].message.content.trim()
+      }
+    } catch (err) {
+      $app.logger().error('Skip AI Chat failed', 'error', String(err))
+    }
 
+    if (
+      responseText !==
+      'Desculpe, estou com uma instabilidade no momento e não consegui gerar uma resposta.'
+    ) {
       if (motherAiInstructions) {
         try {
-          const validationRes = $http.send({
-            url: 'https://api.openai.com/v1/chat/completions',
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: [
-                {
-                  role: 'system',
-                  content: `Você é a IA Mãe, o sistema mestre de supervisão. Avalie se a resposta gerada pela Persona Bia obedece às diretrizes globais de negócio: "${motherAiInstructions}". Responda APENAS com "APROVADO" se estiver correta e dentro das regras, ou reescreva a mensagem corrigindo os desvios e mantendo o mesmo tom original, preservando também as tags sistêmicas se houver.`,
-                },
-                { role: 'user', content: responseText },
-              ],
-              temperature: 0.1,
-              max_tokens: 500,
-            }),
-            timeout: 20,
+          const validationRes = $ai.chat({
+            model: 'fast',
+            messages: [
+              {
+                role: 'system',
+                content: `Você é a IA Mãe, o sistema mestre de supervisão. Avalie se a resposta gerada pela Persona Bia obedece às diretrizes globais de negócio: "${motherAiInstructions}". Responda APENAS com "APROVADO" se estiver correta e dentro das regras, ou reescreva a mensagem corrigindo os desvios e mantendo o mesmo tom original, preservando também as tags sistêmicas se houver.`,
+              },
+              { role: 'user', content: responseText },
+            ],
           })
 
           if (
-            validationRes.statusCode === 200 &&
-            validationRes.json &&
-            validationRes.json.choices?.[0]?.message?.content
+            validationRes.choices &&
+            validationRes.choices[0] &&
+            validationRes.choices[0].message
           ) {
-            const motherFeedback = validationRes.json.choices[0].message.content.trim()
+            const motherFeedback = validationRes.choices[0].message.content.trim()
             if (motherFeedback !== 'APROVADO' && !motherFeedback.startsWith('APROVADO')) {
               responseText = motherFeedback
               $app.logger().info('IA Mãe corrigiu a resposta da Bia', 'customerId', customerId)
@@ -510,7 +490,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
       responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
       responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
     } else {
-      $app.logger().error('OpenAI Chat failed', 'status', String(chatRes.statusCode))
+      $app.logger().error('OpenAI Chat failed or skipped')
     }
 
     let isDuplicate = false
@@ -827,27 +807,19 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
       if (detectedHandover) {
         let summary = 'A IA transferiu este lead para o atendimento humano.'
         try {
-          const summaryRes = $http.send({
-            url: 'https://api.openai.com/v1/chat/completions',
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: [
-                {
-                  role: 'system',
-                  content:
-                    'Resuma em poucas palavras o interesse ou objeção deste cliente com base nas últimas mensagens da conversa de vendas. Max 3 linhas.',
-                },
-                ...messages.slice(-6),
-              ],
-              temperature: 0.3,
-              max_tokens: 150,
-            }),
-            timeout: 15,
+          const summaryRes = $ai.chat({
+            model: 'fast',
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'Resuma em poucas palavras o interesse ou objeção deste cliente com base nas últimas mensagens da conversa de vendas. Max 3 linhas.',
+              },
+              ...messages.slice(-6),
+            ],
           })
-          if (summaryRes.statusCode === 200 && summaryRes.json && summaryRes.json.choices[0]) {
-            summary = summaryRes.json.choices[0].message.content.trim()
+          if (summaryRes.choices && summaryRes.choices[0] && summaryRes.choices[0].message) {
+            summary = summaryRes.choices[0].message.content.trim()
           }
         } catch (e) {}
 

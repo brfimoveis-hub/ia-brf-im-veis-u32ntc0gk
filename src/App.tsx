@@ -22,6 +22,7 @@ import Customers from './pages/Customers'
 import Cadences from './pages/Cadences'
 import SettingsRemarketing from './pages/SettingsRemarketing'
 import SettingsConnections from './pages/SettingsConnections'
+import SettingsAI from './pages/SettingsAI'
 import NotFound from './pages/NotFound'
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
@@ -66,6 +67,8 @@ const RouteTracker = () => {
       component = 'SettingsConnections'
     } else if (lowerPath === '/settings/remarketing') {
       component = 'SettingsRemarketing'
+    } else if (lowerPath === '/settings/ai') {
+      component = 'SettingsAI'
     } else if (lowerPath.startsWith('/dashboard')) {
       component = 'Dashboard'
     } else if (lowerPath.startsWith('/customers')) {
@@ -170,6 +173,10 @@ const router = createBrowserRouter(
                 {
                   path: 'settings/connections/*',
                   element: <SettingsConnections />,
+                },
+                {
+                  path: 'settings/ai',
+                  element: <SettingsAI />,
                 },
               ],
             },

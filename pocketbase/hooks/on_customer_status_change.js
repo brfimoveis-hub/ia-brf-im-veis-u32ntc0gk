@@ -73,12 +73,6 @@ onRecordAfterUpdateSuccess((e) => {
     return e.next()
   }
 
-  const apiKey = $secrets.get('OPENAI_API_KEY')
-  if (!apiKey) {
-    $app.logger().warn('AI Trigger skipped: No OPENAI_API_KEY')
-    return e.next()
-  }
-
   try {
     const logsCol = $app.findCollectionByNameOrId('system_logs')
     const logRecord = new Record(logsCol)
@@ -154,95 +148,89 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase
     messages.push({ role: 'user', content: '(Nenhum histórico anterior)' })
   }
 
-  const chatRes = $http.send({
-    url: 'https://api.openai.com/v1/chat/completions',
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
+  try {
+    const chatRes = $ai.chat({
+      model: 'fast',
       messages: messages,
-      temperature: 0.3,
-      max_tokens: 400,
-    }),
-    timeout: 30,
-  })
+    })
 
-  if (chatRes.statusCode === 200 && chatRes.json?.choices?.[0]?.message?.content) {
-    let responseText = chatRes.json.choices[0].message.content.trim()
+    if (chatRes.choices && chatRes.choices[0] && chatRes.choices[0].message) {
+      let responseText = chatRes.choices[0].message.content.trim()
 
-    // Sanitize in case AI includes the STATUS tag by mistake
-    responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+      // Sanitize in case AI includes the STATUS tag by mistake
+      responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
 
-    if (responseText !== 'SKIP_MESSAGE' && responseText !== '') {
-      try {
-        const reply = new Record($app.findCollectionByNameOrId('conversations'))
-        reply.set('user_id', userId)
-        reply.set('customer_id', customerId)
-        reply.set('sender', 'ai')
-        reply.set('content', responseText)
-        $app.save(reply)
+      if (responseText !== 'SKIP_MESSAGE' && responseText !== '') {
+        try {
+          const reply = new Record($app.findCollectionByNameOrId('conversations'))
+          reply.set('user_id', userId)
+          reply.set('customer_id', customerId)
+          reply.set('sender', 'ai')
+          reply.set('content', responseText)
+          $app.save(reply)
 
-        // System Log
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', userId)
-        logRecord.set('type', 'diagnostic')
-        logRecord.set('message', 'IA enviou mensagem após mudança de fase')
-        logRecord.set('details', `Mensagem gerada para a fase ${newStatus}.`)
-        logRecord.set('payload', { customer_id: customerId, text: responseText })
-        $app.saveNoValidate(logRecord)
-      } catch (err) {
-        $app.logger().error('Error saving AI reply for status change', err)
-      }
-
-      // Send to Uazapi
-      try {
-        const phone = e.record.getString('phone') || ''
-        const source = e.record.getString('source') || ''
-        const uazapiUrl = $secrets.get('UAZAPI_URL') || ''
-        const uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
-
-        if (
-          phone &&
-          uazapiUrl &&
-          uazapiKey &&
-          (phone.includes('48992098050') || source.includes('Uazapi'))
-        ) {
-          let instanceName = '48992098050'
-          if (source.includes('Uazapi - ')) {
-            instanceName = source.replace('Uazapi - ', '').trim()
-          } else if (source.includes('Meta - ')) {
-            instanceName = source.replace('Meta - ', '').trim()
-          }
-          const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
-          $http.send({
-            url: `${cleanUrl}/message/sendText/${instanceName}`,
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
-            body: JSON.stringify({
-              number: phone,
-              options: { delay: 1200, presence: 'composing' },
-              textMessage: { text: responseText },
-            }),
-            timeout: 15,
-          })
+          // System Log
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', userId)
+          logRecord.set('type', 'diagnostic')
+          logRecord.set('message', 'IA enviou mensagem após mudança de fase')
+          logRecord.set('details', `Mensagem gerada para a fase ${newStatus}.`)
+          logRecord.set('payload', { customer_id: customerId, text: responseText })
+          $app.saveNoValidate(logRecord)
+        } catch (err) {
+          $app.logger().error('Error saving AI reply for status change', err)
         }
-      } catch (_) {}
-    } else {
-      // Skipped
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', userId)
-        logRecord.set('type', 'diagnostic')
-        logRecord.set('message', 'IA não considerou necessário enviar mensagem')
-        logRecord.set('details', `Para a fase ${newStatus}, a IA retornou SKIP_MESSAGE.`)
-        logRecord.set('payload', { customer_id: customerId })
-        $app.saveNoValidate(logRecord)
-      } catch (_) {}
+
+        // Send to Uazapi
+        try {
+          const phone = e.record.getString('phone') || ''
+          const source = e.record.getString('source') || ''
+          const uazapiUrl = $secrets.get('UAZAPI_URL') || ''
+          const uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
+
+          if (
+            phone &&
+            uazapiUrl &&
+            uazapiKey &&
+            (phone.includes('48992098050') || source.includes('Uazapi'))
+          ) {
+            let instanceName = '48992098050'
+            if (source.includes('Uazapi - ')) {
+              instanceName = source.replace('Uazapi - ', '').trim()
+            } else if (source.includes('Meta - ')) {
+              instanceName = source.replace('Meta - ', '').trim()
+            }
+            const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
+            $http.send({
+              url: `${cleanUrl}/message/sendText/${instanceName}`,
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
+              body: JSON.stringify({
+                number: phone,
+                options: { delay: 1200, presence: 'composing' },
+                textMessage: { text: responseText },
+              }),
+              timeout: 15,
+            })
+          }
+        } catch (_) {}
+      } else {
+        // Skipped
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', userId)
+          logRecord.set('type', 'diagnostic')
+          logRecord.set('message', 'IA não considerou necessário enviar mensagem')
+          logRecord.set('details', `Para a fase ${newStatus}, a IA retornou SKIP_MESSAGE.`)
+          logRecord.set('payload', { customer_id: customerId })
+          $app.saveNoValidate(logRecord)
+        } catch (_) {}
+      }
     }
-  } else {
-    $app.logger().error('OpenAI Chat failed in status change', 'status', chatRes.statusCode)
+  } catch (err) {
+    $app.logger().error('Skip AI Chat failed in status change', 'error', String(err))
   }
 
   return e.next()
