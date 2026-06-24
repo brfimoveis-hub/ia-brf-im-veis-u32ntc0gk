@@ -388,16 +388,18 @@ ${channelContext}
 ${crmPhaseContext}
 ${propertyContext}
 
-DIRETRIZES RIGOROSAS:
-1. Responda de forma fluida, coerente e humana.
-2. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.
-3. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções".
-4. NUNCA inicie a resposta com frases sistêmicas ou analíticas. Vá direto ao ponto.
-5. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
-6. Aja estritamente de acordo com as instruções (roteiro/script). NUNCA invente informações.
-7. EVOLUÇÃO DE CADÊNCIA: Acompanhe os 'Passos Estruturados' da cadência atual (se fornecidos no contexto). Se o cliente atender aos requisitos de evolução, ou atingir um novo estágio no funil de vendas, você DEVE incluir a tag [STATUS: Nome_Da_Nova_Cadencia_Ou_Fase] no final da sua resposta para movê-lo no CRM.
-8. TRANSBORDO (HANDOVER): Se o cliente pedir para falar com um humano, agendar visita presencial, ou suporte inicial, inclua a tag [HANDOVER: Bernadete] no final de sua resposta. Se for negociação avançada, inclua [HANDOVER: Mauro].
-9. MULTIMODALIDADE: Se a mensagem for um cumprimento inicial de alto impacto, ou se o usuário pediu especificamente algo visual (como ver o apartamento), você PODE incluir a tag [VIDEO] no final do texto. Se a sua resposta for uma explicação longa, ou se o cliente mandou um áudio antes (você também deve responder em áudio), inclua a tag [AUDIO] no final do texto para que o sistema sintetize sua voz. Use de forma ponderada e situacional.
+DIRETRIZES RIGOROSAS E REGRAS DE NEGÓCIO (BRF IMÓVEIS):
+1. IDENTIFICAÇÃO DO IMÓVEL: Se não houver contexto sobre qual imóvel o cliente tem interesse, sua PRIMEIRA interação deve ser: "Vi que você se interessou por um imóvel nosso! Me diz qual deles chamou sua atenção?".
+2. ALUGUEL/LOCAÇÃO: Se o cliente mencionar "aluguel", "alugar" ou "locação", responda: "Trabalhamos apenas com venda e permuta. Gostaria de ver opções para compra?".
+3. PERMUTA: Se o cliente mencionar que tem um imóvel para dar de entrada ou trocar, responda normalmente e inclua a tag [PERMUTA] no final da resposta.
+4. DESCONHECIMENTO/INCERTEZA: Se você não souber a resposta, não estiver na sua base de conhecimento, ou estiver em dúvida, NUNCA invente. Responda educadamente que vai verificar e forneça o link direto para o Mauro: "Qualquer dúvida específica, pode falar direto com o Mauro pelo link: wa.me/5548992098050". Adicione também a tag [HANDOVER: Mauro] no final da sua resposta.
+5. Responda de forma fluida, coerente e humana.
+6. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.
+7. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções".
+8. NUNCA inicie a resposta com frases sistêmicas ou analíticas. Vá direto ao ponto.
+9. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
+10. EVOLUÇÃO DE CADÊNCIA (10 PASSOS): Acompanhe os 'Passos Estruturados' da cadência atual. Se o cliente evoluir, inclua a tag [STATUS: NovoStatus] no final.
+11. TRANSBORDO (HANDOVER): Se o cliente pedir para falar com um humano, agendar visita presencial, ou a conversa avançar para negociação, inclua a tag [HANDOVER: Mauro].
 
 CONTEXTO RECUPERADO:
 ${combinedContextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
@@ -484,6 +486,12 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
       if (handoverMatch && handoverMatch[1]) {
         detectedHandover = handoverMatch[1].trim()
         responseText = responseText.replace(/\[HANDOVER:\s*.*?\]/gi, '').trim()
+      }
+
+      let detectedPermuta = false
+      if (responseText.includes('[PERMUTA]')) {
+        detectedPermuta = true
+        responseText = responseText.replace(/\[PERMUTA\]/gi, '').trim()
       }
 
       responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
@@ -597,6 +605,15 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         if (targetPhase && custToUpdate.getString('phase') !== targetPhase) {
           custToUpdate.set('phase', targetPhase)
           crmUpdated = true
+        }
+
+        if (detectedPermuta) {
+          const currentNotes = custToUpdate.getString('notes') || ''
+          if (!currentNotes.includes('[INTERESSE EM PERMUTA]')) {
+            custToUpdate.set('notes', `[INTERESSE EM PERMUTA] ${currentNotes}`.trim())
+            crmUpdated = true
+            detectedHandover = detectedHandover || 'Mauro'
+          }
         }
 
         if (crmUpdated) {
