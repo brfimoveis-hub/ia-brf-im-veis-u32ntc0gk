@@ -14,6 +14,7 @@ import {
   Bot,
   RefreshCw,
   Sparkles,
+  Target,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -39,7 +40,7 @@ export default function Layout() {
     { name: 'Pipeline', path: '/customers', icon: LayoutDashboard },
     { name: 'Lista de Clientes', path: '/customer-list', icon: Users },
     { name: 'Cadências', path: '/cadences', icon: Settings },
-    { name: 'Remarketing', path: '/settings/remarketing', icon: RefreshCw },
+    { name: 'Remarketing', path: '/settings/remarketing', icon: Target },
     { name: 'Conexões', path: '/settings/connections', icon: MessageSquare },
     { name: 'Configurações de IA', path: '/settings/ai', icon: Sparkles },
   ]
