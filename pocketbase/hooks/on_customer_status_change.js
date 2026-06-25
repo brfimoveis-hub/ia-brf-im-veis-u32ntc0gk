@@ -65,7 +65,7 @@ onRecordAfterUpdateSuccess((e) => {
     if (cadenceContent) aiInstructions += `Procedimento/Conteúdo: ${cadenceContent}\n`
     if (cadenceInstructions) aiInstructions += `Instruções Específicas: ${cadenceInstructions}\n`
     if (cadenceStepsJson) aiInstructions += `Passos da Cadência (JSON): ${cadenceStepsJson}\n`
-    aiInstructions += `\nIMPORTANTE: Com base nos passos da cadência, conduza o lead para o próximo passo. Quando o lead atingir o objetivo de uma nova fase, você poderá incluir a tag [STATUS: Nova_Fase] nas próximas mensagens para atualizar o CRM.\n`
+    aiInstructions += `\nIMPORTANTE: Com base nos passos da cadência, conduza o lead para o próximo passo. Quando o lead atingir o objetivo de uma nova fase, você poderá incluir a tag [STATUS: Nova_Fase] nas próximas mensagens para atualizar o CRM. ATENÇÃO: Você NUNCA deve mover o lead para a fase "Fechamento" ou estágios finais automaticamente. Essa ação é restrita a humanos, então não forneça a tag [STATUS: Fechamento].\n`
   }
 
   if (!aiInstructions.trim()) {

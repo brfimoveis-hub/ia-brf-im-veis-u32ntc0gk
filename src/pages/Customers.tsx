@@ -1,48 +1,15 @@
-import { useEffect, useState } from 'react'
-import { useRealtime } from '@/hooks/use-realtime'
+import { useEffect, useState, DragEvent } from 'react'
 import pb from '@/lib/pocketbase/client'
+import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import {
-  MessageCircle,
-  FileText,
-  MoreHorizontal,
-  MoveRight,
-  MoveLeft,
-  Edit2,
-  Phone,
-  Mail,
-} from 'lucide-react'
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
+import { Loader2, User, Phone, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { cn, formatPhone } from '@/lib/utils'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
-const KANBAN_COLUMNS = [
+const STAGES = [
   'Novo',
   'D0 - Contato Imediato',
   'D1 - Follow up 1',
@@ -60,11 +27,13 @@ const KANBAN_COLUMNS = [
 export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
 
   const loadData = async () => {
     try {
       const records = await pb.collection('customers').getFullList({
         sort: '-created',
+        filter: "status != 'closed' && status != 'Fechamento e Pós-Venda'",
       })
       setCustomers(records)
     } catch (err) {
@@ -79,375 +48,159 @@ export default function Customers() {
     loadData()
   }, [])
 
-  useRealtime('customers', () => {
-    loadData()
+  useRealtime('customers', (e) => {
+    if (e.action === 'create') {
+      setCustomers((prev) => {
+        if (prev.some((c) => c.id === e.record.id)) return prev
+        return [e.record, ...prev]
+      })
+    } else if (e.action === 'update') {
+      setCustomers((prev) => {
+        const exists = prev.some((c) => c.id === e.record.id)
+        if (exists) {
+          return prev.map((c) => (c.id === e.record.id ? e.record : c))
+        }
+        return [e.record, ...prev]
+      })
+    } else if (e.action === 'delete') {
+      setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
+    }
   })
 
-  const handleUpdateStatus = async (id: string, newStatus: string) => {
+  const handleDragStart = (e: DragEvent<HTMLDivElement>, id: string) => {
+    e.dataTransfer.setData('text/plain', id)
+    e.dataTransfer.effectAllowed = 'move'
+    // Delay setting the state so the browser can capture the original element's style for the drag image
+    setTimeout(() => setDraggingId(id), 0)
+  }
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = async (e: DragEvent<HTMLDivElement>, targetStatus: string) => {
+    e.preventDefault()
+    const id = e.dataTransfer.getData('text/plain')
+    if (!id) return
+
+    const customer = customers.find((c) => c.id === id)
+    if (!customer || customer.status === targetStatus) {
+      setDraggingId(null)
+      return
+    }
+
+    const previousStatus = customer.status
+
+    setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, status: targetStatus } : c)))
+    setDraggingId(null)
+
     try {
-      await pb.collection('customers').update(id, { status: newStatus })
+      await pb.collection('customers').update(id, { status: targetStatus })
+      toast.success('Lead movido com sucesso')
     } catch (err) {
-      toast.error('Erro ao atualizar status do cliente')
+      console.error(err)
+      toast.error('Erro ao mover lead')
+      setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, status: previousStatus } : c)))
     }
   }
 
-  const handleUpdateCustomer = async (id: string, data: any) => {
-    await pb.collection('customers').update(id, data)
+  if (loading) {
+    return (
+      <div className="flex h-[50vh] w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
-  // Preserve the standard columns and also display any extra status currently in use
-  const activeColumns = Array.from(
-    new Set([
-      ...KANBAN_COLUMNS,
-      ...customers.map((c) => c.status).filter((s) => s && !KANBAN_COLUMNS.includes(s)),
-    ]),
-  )
-
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col space-y-4 p-4 md:p-6 lg:p-8">
+    <div className="flex h-[calc(100vh-6rem)] flex-col space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Pipeline de Clientes</h1>
-          <p className="text-muted-foreground mt-1">
-            Gerencie a cadência de vendas e acompanhamentos (Kanban).
+          <h1 className="text-2xl font-bold tracking-tight">Pipeline Kanban</h1>
+          <p className="text-muted-foreground">
+            Acompanhe e movimente os leads pelas fases da cadência.
           </p>
         </div>
       </div>
 
-      <ScrollArea className="flex-1 rounded-lg border bg-muted/10 shadow-sm">
-        <div className="flex h-full gap-5 p-5 min-h-[600px]">
-          {loading ? (
-            <div className="flex items-center justify-center w-full">
-              <span className="text-muted-foreground animate-pulse">Carregando pipeline...</span>
-            </div>
-          ) : (
-            activeColumns.map((col) => (
-              <Column
-                key={col}
-                title={col}
-                customers={customers.filter(
-                  (c) => (c.status || 'Novo') === col || (col === 'Novo' && !c.status),
-                )}
-                onUpdateStatus={handleUpdateStatus}
-                onUpdateCustomer={handleUpdateCustomer}
-                allColumns={activeColumns}
-              />
-            ))
-          )}
-        </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
-    </div>
-  )
-}
+      <div className="flex flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-2 custom-scrollbar">
+        {STAGES.map((stage) => {
+          const stageCustomers = customers.filter(
+            (c) => c.status === stage || (stage === 'Novo' && (!c.status || c.status === 'lead')),
+          )
 
-function Column({
-  title,
-  customers,
-  onUpdateStatus,
-  onUpdateCustomer,
-  allColumns,
-}: {
-  title: string
-  customers: any[]
-  onUpdateStatus: (id: string, status: string) => void
-  onUpdateCustomer: (id: string, data: any) => Promise<void>
-  allColumns: string[]
-}) {
-  return (
-    <div className="flex h-full min-w-[340px] max-w-[340px] flex-col rounded-xl bg-muted/40 p-3.5 border border-border/50">
-      <div className="mb-4 flex items-center justify-between px-1.5">
-        <h3 className="font-semibold text-sm text-foreground/80 tracking-tight">{title}</h3>
-        <span className="rounded-full bg-background px-2.5 py-0.5 text-xs font-medium text-muted-foreground shadow-sm">
-          {customers.length}
-        </span>
-      </div>
-      <ScrollArea className="flex-1 -mx-1 px-1">
-        <div className="flex flex-col gap-3.5 pb-4">
-          {customers.map((c) => (
-            <CustomerCard
-              key={c.id}
-              customer={c}
-              onUpdateStatus={onUpdateStatus}
-              onUpdateCustomer={onUpdateCustomer}
-              allColumns={allColumns}
-            />
-          ))}
-          {customers.length === 0 && (
-            <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-muted-foreground/25 bg-muted/20">
-              <span className="text-xs text-muted-foreground">Nenhum cliente aqui</span>
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-    </div>
-  )
-}
-
-function CustomerCard({
-  customer,
-  onUpdateStatus,
-  onUpdateCustomer,
-  allColumns,
-}: {
-  customer: any
-  onUpdateStatus: (id: string, status: string) => void
-  onUpdateCustomer: (id: string, data: any) => Promise<void>
-  allColumns: string[]
-}) {
-  const formatWhatsAppLink = (phone: string) => {
-    if (!phone) return '#'
-    const clean = phone.replace(/\D/g, '')
-    const finalPhone = clean.length <= 11 ? `55${clean}` : clean
-    return `https://wa.me/${finalPhone}`
-  }
-
-  const currentIndex = allColumns.indexOf(customer.status || 'Novo')
-
-  return (
-    <Card className="group cursor-default shadow-sm hover:shadow-md transition-all duration-200 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1.5 pr-2">
-            <h4 className="text-sm font-semibold leading-tight text-foreground line-clamp-1">
-              {customer.name || 'Sem Nome'}
-            </h4>
-            {customer.phone && (
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Phone className="mr-1.5 h-3 w-3" />
-                {customer.phone}
+          return (
+            <div
+              key={stage}
+              className="flex w-[280px] shrink-0 flex-col rounded-xl bg-muted/40 border border-border/50 p-3"
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, stage)}
+            >
+              <div className="mb-4 flex items-center justify-between px-1">
+                <h3 className="font-semibold text-sm text-foreground/80">{stage}</h3>
+                <Badge variant="secondary" className="font-mono text-xs px-2 py-0.5 h-auto">
+                  {stageCustomers.length}
+                </Badge>
               </div>
-            )}
-            {customer.email && (
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Mail className="mr-1.5 h-3 w-3" />
-                <span className="truncate max-w-[180px]">{customer.email}</span>
-              </div>
-            )}
-          </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
-              >
-                <span className="sr-only">Abrir menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>Mover Card</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => {
-                  if (currentIndex < allColumns.length - 1) {
-                    onUpdateStatus(customer.id, allColumns[currentIndex + 1])
-                  }
-                }}
-                disabled={currentIndex === allColumns.length - 1 || currentIndex === -1}
-              >
-                <MoveRight className="mr-2 h-4 w-4 text-muted-foreground" />
-                Avançar Estágio
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  if (currentIndex > 0) {
-                    onUpdateStatus(customer.id, allColumns[currentIndex - 1])
-                  }
-                }}
-                disabled={currentIndex <= 0}
-              >
-                <MoveLeft className="mr-2 h-4 w-4 text-muted-foreground" />
-                Voltar Estágio
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <EditCustomerSheet
-                customer={customer}
-                onUpdateCustomer={onUpdateCustomer}
-                isDropdownItem
-                allColumns={allColumns}
-              />
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+              <div className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-[150px] pr-1 pb-2 custom-scrollbar">
+                {stageCustomers.map((customer) => (
+                  <Card
+                    key={customer.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, customer.id)}
+                    onDragEnd={() => setDraggingId(null)}
+                    className={cn(
+                      'cursor-grab active:cursor-grabbing hover:border-primary/40 hover:shadow-sm transition-all bg-background',
+                      draggingId === customer.id && 'opacity-40 border-dashed border-primary',
+                    )}
+                  >
+                    <CardContent className="p-3">
+                      <div className="flex flex-col gap-2">
+                        <div className="font-medium text-sm leading-tight flex items-start gap-2">
+                          <User className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
+                          <span className="line-clamp-2">
+                            {customer.name || customer.first_name || 'Sem nome'}
+                          </span>
+                        </div>
 
-        {customer.notes && (
-          <div className="mt-3.5 line-clamp-2 text-xs text-muted-foreground/90 bg-muted/40 p-2.5 rounded-md border border-border/40">
-            {customer.notes}
-          </div>
-        )}
+                        {customer.phone && (
+                          <div className="text-xs text-muted-foreground flex items-center gap-2">
+                            <Phone className="h-3 w-3 shrink-0" />
+                            {formatPhone(customer.phone)}
+                          </div>
+                        )}
 
-        {/* Actions Section RESTORED */}
-        <div className="mt-4 flex items-center gap-2 border-t pt-3.5">
-          {customer.phone ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 flex-1 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 border-[#25D366]/20 shadow-none"
-              asChild
-            >
-              <a
-                href={formatWhatsAppLink(customer.phone)}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
-                WhatsApp
-              </a>
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 flex-1 opacity-50 shadow-none"
-              disabled
-            >
-              <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
-              WhatsApp
-            </Button>
-          )}
-
-          <EditCustomerSheet
-            customer={customer}
-            onUpdateCustomer={onUpdateCustomer}
-            allColumns={allColumns}
-          >
-            <Button size="sm" variant="secondary" className="h-8 flex-1 shadow-none">
-              <Edit2 className="mr-1.5 h-3.5 w-3.5" />
-              Editar / Notas
-            </Button>
-          </EditCustomerSheet>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function EditCustomerSheet({
-  customer,
-  onUpdateCustomer,
-  children,
-  isDropdownItem = false,
-  allColumns,
-}: {
-  customer: any
-  onUpdateCustomer: (id: string, data: any) => Promise<void>
-  children?: React.ReactNode
-  isDropdownItem?: boolean
-  allColumns: string[]
-}) {
-  const [open, setOpen] = useState(false)
-  const [formData, setFormData] = useState({
-    name: customer.name || '',
-    phone: customer.phone || '',
-    email: customer.email || '',
-    notes: customer.notes || '',
-    status: customer.status || 'Novo',
-  })
-  const [loading, setLoading] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    try {
-      await onUpdateCustomer(customer.id, formData)
-      toast.success('Cliente atualizado com sucesso')
-      setOpen(false)
-    } catch (err) {
-      toast.error('Erro ao atualizar cliente')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const trigger = isDropdownItem ? (
-    <DropdownMenuItem
-      onSelect={(e) => {
-        e.preventDefault()
-        setOpen(true)
-      }}
-    >
-      <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
-      Detalhes & Anotações
-    </DropdownMenuItem>
-  ) : (
-    children
-  )
-
-  return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>{trigger}</SheetTrigger>
-      <SheetContent className="w-[90vw] sm:max-w-[540px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Ficha do Cliente</SheetTitle>
-          <SheetDescription>Atualize as informações, anotações e status no funil.</SheetDescription>
-        </SheetHeader>
-        <form onSubmit={handleSubmit} className="space-y-5 mt-6">
-          <div className="space-y-2">
-            <Label htmlFor="name">Nome Completo</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="phone">Telefone / WhatsApp</Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="status">Estágio Atual (Funil)</Label>
-            <Select
-              value={formData.status}
-              onValueChange={(v) => setFormData({ ...formData, status: v })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o estágio..." />
-              </SelectTrigger>
-              <SelectContent>
-                {allColumns.map((col) => (
-                  <SelectItem key={col} value={col}>
-                    {col}
-                  </SelectItem>
+                        <div className="flex items-center justify-between mt-1 pt-2 border-t border-border/50 text-[10px] text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {format(new Date(customer.created), 'dd/MM', { locale: ptBR })}
+                          </div>
+                          {customer.source && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1.5 py-0 h-4 bg-muted/50 border-muted font-normal"
+                            >
+                              {customer.source.substring(0, 15)}
+                              {customer.source.length > 15 ? '...' : ''}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="notes">Anotações e Histórico</Label>
-            <Textarea
-              id="notes"
-              className="min-h-[160px] resize-y"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Descreva as interações, perfil do cliente, preferências..."
-            />
-          </div>
-          <div className="pt-6 flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Salvando...' : 'Salvar Alterações'}
-            </Button>
-          </div>
-        </form>
-      </SheetContent>
-    </Sheet>
+                {stageCustomers.length === 0 && (
+                  <div className="flex h-20 items-center justify-center rounded-lg border border-dashed border-border/50 text-xs text-muted-foreground pointer-events-none">
+                    Solte aqui
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
