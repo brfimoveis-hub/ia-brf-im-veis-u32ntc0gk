@@ -47,7 +47,7 @@ routerAdd(
       throw new BadRequestError(msg)
     }
 
-    const permUrl = `https://graph.facebook.com/v17.0/me/permissions?access_token=${accessToken}`
+    const permUrl = `https://graph.facebook.com/v21.0/me/permissions?access_token=${accessToken}`
     const permRes = $http.send({ url: permUrl, method: 'GET', timeout: 15 })
 
     if (permRes.statusCode >= 400) {
@@ -71,7 +71,7 @@ routerAdd(
 
     $app.logger().info('CAPI Test Info', 'pixelId', pixelId, 'businessId', businessId)
 
-    const url = `https://graph.facebook.com/v17.0/${pixelId}/events`
+    const url = `https://graph.facebook.com/v21.0/${pixelId}/events`
 
     const payload = {
       data: [
@@ -121,12 +121,17 @@ routerAdd(
       return e.json(200, { success: true, data: res.json })
     }
 
-    const errorMsg = res.json?.error?.message || `Erro da Meta API (Status ${res.statusCode})`
+    let errorMsg = res.json?.error?.message || `Erro da Meta API (Status ${res.statusCode})`
+
+    if (errorMsg.includes('Unsupported post request') || errorMsg.includes('does not exist')) {
+      errorMsg = `ID inválido: O ID '${pixelId}' não foi encontrado ou não suporta eventos. Verifique se você não inseriu um App ID ou Business ID no lugar do Dataset/Pixel ID, e se o token tem acesso a ele.`
+    }
+
     setErrorState(errorMsg)
     logConnection('error', res.json, errorMsg)
 
     // Return the full Meta error to the client so it can identify the field
-    return e.json(res.statusCode, res.json || { error: { message: errorMsg } })
+    return e.json(res.statusCode, { error: { message: errorMsg }, details: res.json })
   },
   $apis.requireAuth(),
 )

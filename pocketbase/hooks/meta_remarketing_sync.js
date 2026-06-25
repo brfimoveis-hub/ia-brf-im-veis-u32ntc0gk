@@ -61,7 +61,7 @@ routerAdd(
       payload.test_event_code = testCode
     }
 
-    const metaUrl = 'https://graph.facebook.com/v19.0/' + pixelId + '/events'
+    const metaUrl = 'https://graph.facebook.com/v21.0/' + pixelId + '/events'
 
     try {
       const res = $http.send({
@@ -107,6 +107,14 @@ routerAdd(
         if (resJson && resJson.error && resJson.error.message) {
           apiErrMsg = resJson.error.message
           errorMessage = resJson.error.message
+        }
+
+        if (
+          errorMessage.includes('Unsupported post request') ||
+          errorMessage.includes('does not exist')
+        ) {
+          errorMessage = `ID inválido: O Dataset/Pixel ID '${pixelId}' não existe ou o token não tem permissão. Verifique se não é um App ID.`
+          apiErrMsg = errorMessage
         }
 
         payloads.forEach((p) => {

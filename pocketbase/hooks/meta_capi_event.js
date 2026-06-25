@@ -143,7 +143,13 @@ onRecordAfterUpdateSuccess((e) => {
           .error('CAPI Update Error', 'status', res.statusCode, 'body', res.json || res.body)
         if (user) {
           user.set('meta_capi_status', 'error')
-          const errorMsg = res.json?.error?.message || `API Error ${res.statusCode}`
+          let errorMsg = res.json?.error?.message || `API Error ${res.statusCode}`
+          if (
+            errorMsg.includes('Unsupported post request') ||
+            errorMsg.includes('does not exist')
+          ) {
+            errorMsg = `ID inválido: O Dataset/Pixel ID '${pixelId}' não existe ou o token não tem permissão. Verifique se não é um App ID.`
+          }
           user.set('meta_capi_error', errorMsg)
           try {
             $app.saveNoValidate(user)

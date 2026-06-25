@@ -13,7 +13,7 @@ routerAdd(
         return e.badRequestError('Dataset ID e Access Token são obrigatórios para CAPI.')
       }
 
-      const testUrl = 'https://graph.facebook.com/v17.0/' + dataset_id + '/events'
+      const testUrl = 'https://graph.facebook.com/v21.0/' + dataset_id + '/events'
 
       const payload = {
         data: [
@@ -60,7 +60,7 @@ routerAdd(
 
       const res = $http.send({
         url:
-          'https://graph.facebook.com/v17.0/' +
+          'https://graph.facebook.com/v21.0/' +
           phone_number_id +
           '?fields=display_phone_number,name,quality_rating',
         method: 'GET',
