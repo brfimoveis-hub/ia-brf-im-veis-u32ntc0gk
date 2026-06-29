@@ -1,30 +1,32 @@
 routerAdd(
   'GET',
-  '/backend/v1/uazapi/qrcode/{instance}',
+  '/backend/v1/uazapi/qrcode',
   (e) => {
-    const instance = e.request.pathValue('instance') || '554892098050'
     const user = e.auth
-    if (!user) return e.unauthorizedError('Não autorizado')
+    if (!user) return e.unauthorizedError('unauthorized')
 
-    const domain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
-    const token = user.getString('uazapi_token') || '6df3aaaa-9198-40aa-9d0c-da3abd9c1934'
+    const domain = user.getString('uazapi_domain')
+    const token = user.getString('uazapi_admin_token') || user.getString('uazapi_token')
+    const instance = user.getString('uazapi_instance_number')
 
-    if (!domain || !token) return e.badRequestError('Credenciais da Uazapi não configuradas.')
+    if (!domain || !token || !instance) {
+      return e.badRequestError('Configuração UAZAPI incompleta')
+    }
+
+    let baseUrl = domain
+    if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1)
 
     try {
       const res = $http.send({
-        url: `${domain.replace(/\/$/, '')}/instance/connect/${instance}`,
+        url: `${baseUrl}/instance/connect/${instance}`,
         method: 'GET',
-        headers: {
-          apikey: token,
-          Authorization: 'Bearer ' + token,
-        },
-        timeout: 30,
+        headers: { apikey: token },
+        timeout: 15,
       })
 
-      return e.json(res.statusCode === 404 ? 200 : res.statusCode, res.json || {})
+      return e.json(res.statusCode, res.json || {})
     } catch (err) {
-      return e.badRequestError('Falha ao obter QR code: ' + err.message)
+      return e.internalServerError('Erro ao buscar qrcode: ' + err.message)
     }
   },
   $apis.requireAuth(),

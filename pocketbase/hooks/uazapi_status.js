@@ -3,219 +3,37 @@ routerAdd(
   '/backend/v1/uazapi/status',
   (e) => {
     const user = e.auth
-    if (!user) throw new UnauthorizedError('Não autorizado')
+    if (!user) return e.unauthorizedError('unauthorized')
 
-    const instance = (user.getString('uazapi_instance_number') || '5548992098050').trim()
-    let rawDomain = (user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com').trim()
+    const domain = user.getString('uazapi_domain')
+    const token = user.getString('uazapi_admin_token') || user.getString('uazapi_token')
+    const instance = user.getString('uazapi_instance_number')
 
-    if (rawDomain && !rawDomain.startsWith('http://') && !rawDomain.startsWith('https://')) {
-      rawDomain = 'https://' + rawDomain
+    if (!domain || !token || !instance) {
+      return e.badRequestError('Configuração UAZAPI incompleta')
     }
 
-    let domain = rawDomain.replace(/:\/\/([^@]+)@/, '://')
-    domain = domain.replace(/([^:]\/)\/+/g, '$1')
-    if (domain.endsWith('/')) domain = domain.slice(0, -1)
-
-    const token = (
-      user.getString('uazapi_token') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
-    ).trim()
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      apikey: token,
-      Authorization: token.toLowerCase().startsWith('bearer ') ? token : 'Bearer ' + token,
-      instance: instance,
-    }
-
-    const updateUserStatus = (statusStr, errorReason) => {
-      if (
-        user.getString('uazapi_status') !== statusStr ||
-        user.getString('uazapi_error') !== errorReason
-      ) {
-        user.set('uazapi_status', statusStr)
-        user.set('uazapi_error', errorReason)
-        try {
-          $app.saveNoValidate(user)
-        } catch (_) {}
-      }
-    }
-
-    const logConnection = (status, details, error = null) => {
-      try {
-        const col = $app.findCollectionByNameOrId('system_logs')
-        const log = new Record(col)
-        log.set('type', 'uazapi_connection')
-        log.set(
-          'message',
-          error ? `Status check failed: ${error}` : `Status check success: ${status}`,
-        )
-        log.set('details', details)
-        $app.save(log)
-      } catch (_) {}
-    }
-
-    const fetchWithRetry = (reqUrl) => {
-      let lastErr = null
-      let response = null
-      for (let i = 0; i < 3; i++) {
-        try {
-          response = $http.send({
-            url: reqUrl,
-            method: 'GET',
-            headers: headers,
-            timeout: 15,
-          })
-          if (
-            response &&
-            response.statusCode !== 502 &&
-            response.statusCode !== 503 &&
-            response.statusCode !== 504
-          ) {
-            return response
-          }
-        } catch (err) {
-          lastErr = err
-        }
-      }
-      if (response) return response
-      throw lastErr || new Error('Request failed after retries')
-    }
+    let baseUrl = domain
+    if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1)
 
     try {
-      // Evolution API / Uazapi common standard routes:
-      let res
-      try {
-        res = fetchWithRetry(`${domain}/instance/connectionState/${instance}`)
-      } catch (err) {}
+      const res = $http.send({
+        url: `${baseUrl}/instance/connectionState/${instance}`,
+        method: 'GET',
+        headers: { apikey: token },
+        timeout: 15,
+      })
 
-      if (!res || res.statusCode === 404) {
-        try {
-          res = fetchWithRetry(`${domain}/instance/fetchInstances`)
-        } catch (err) {}
+      if (res.statusCode === 200 && res.json && res.json.instance) {
+        const state = res.json.instance.state
+        const dbUser = $app.findRecordById('users', user.id)
+        dbUser.set('uazapi_status', state === 'open' ? 'connected' : state)
+        $app.save(dbUser)
       }
 
-      if (!res) throw new Error('Connection failed')
-
-      let data = {}
-      try {
-        data = res.json || {}
-      } catch (err) {}
-
-      // If fetchInstances was used, find the specific instance
-      if (Array.isArray(data) || data.instances) {
-        const instances = Array.isArray(data) ? data : data.instances || []
-        const found = instances.find((i) => {
-          const iName =
-            i.instance?.instanceName || i.instance?.id || i.instanceName || i.id || i.name
-          return iName === instance
-        })
-        if (found) {
-          data = found
-          res.statusCode = 200 // Found it
-        } else if (res.statusCode === 200) {
-          res.statusCode = 404
-          data = { error: `Instance ${instance} not found in fetchInstances` }
-        }
-      }
-
-      if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
-        let statusStr = 'offline'
-        let errorReason = ''
-
-        let instanceData = null
-        if (Array.isArray(data)) {
-          instanceData = data.find((i) => i.id === instance || i.token === token) || data[0]
-        } else {
-          instanceData = data?.instance || data
-        }
-
-        if (instanceData) {
-          const st = instanceData.status || instanceData.state || ''
-          const isConn =
-            st === 'connected' ||
-            st === 'open' ||
-            st === 'loggedIn' ||
-            instanceData.connected === true ||
-            instanceData.status?.loggedIn === true
-
-          if (isConn) {
-            statusStr = 'Saudável'
-            errorReason = ''
-          } else {
-            if (
-              instanceData.qrcode ||
-              instanceData.base64 ||
-              st === 'connecting' ||
-              st === 'qr_ready'
-            ) {
-              statusStr = 'qr_ready'
-            } else if (st === 'disconnected' || st === 'closed') {
-              statusStr = 'offline'
-            }
-
-            if (instanceData.lastDisconnectReason) {
-              errorReason = String(instanceData.lastDisconnectReason)
-            } else if (instanceData.message) {
-              errorReason = String(instanceData.message)
-            } else if (data?.message) {
-              errorReason = String(data.message)
-            }
-          }
-        }
-
-        if (!instanceData && res.statusCode === 404) {
-          statusStr = 'error'
-          if (!errorReason) {
-            let rawErr =
-              data?.message ||
-              data?.error ||
-              `Instância não encontrada (404) - Verifique se a instância ${instance} existe e o token está correto.`
-            errorReason = typeof rawErr === 'object' ? JSON.stringify(rawErr) : String(rawErr)
-          }
-        }
-
-        let profileName = ''
-        let currentPresence = ''
-
-        if (instanceData) {
-          profileName = instanceData.profileName || instanceData.pushName || ''
-          currentPresence = instanceData.currentPresence || ''
-        }
-
-        updateUserStatus(statusStr, errorReason)
-
-        logConnection(statusStr, { profileName, currentPresence, errorReason, raw: data })
-
-        return e.json(200, {
-          success: true,
-          status: statusStr,
-          data: {
-            profileName,
-            currentPresence,
-            lastDisconnectReason: errorReason,
-            raw: data,
-          },
-        })
-      }
-
-      let errMsg =
-        data?.message || data?.error || data || `Erro da API Uazapi (Status: ${res.statusCode})`
-      errMsg = typeof errMsg === 'object' ? JSON.stringify(errMsg) : String(errMsg)
-
-      updateUserStatus('error', errMsg)
-      logConnection('error', data, errMsg)
-
-      if (res.statusCode === 401 || res.statusCode === 403) {
-        throw new BadRequestError(`Credenciais inválidas. Resposta: ${errMsg}`)
-      }
-
-      throw new BadRequestError(errMsg)
+      return e.json(res.statusCode, res.json || {})
     } catch (err) {
-      updateUserStatus('error', err.message)
-      logConnection('error', {}, err.message)
-      throw new BadRequestError(`Falha na verificação de status: ${err.message}`)
+      return e.internalServerError('Erro ao buscar status: ' + err.message)
     }
   },
   $apis.requireAuth(),

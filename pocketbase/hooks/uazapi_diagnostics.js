@@ -3,144 +3,67 @@ routerAdd(
   '/backend/v1/uazapi/diagnostics',
   (e) => {
     const user = e.auth
-    if (!user) return e.unauthorizedError('auth required')
+    if (!user) throw new UnauthorizedError('Não autorizado')
 
-    let rawDomain = (user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com').trim()
-    let domain = rawDomain
-    if (!domain.startsWith('http')) domain = 'https://' + domain
+    const instance = user.getString('uazapi_instance_number')
+    let domain = user.getString('uazapi_domain') || 'https://iabrfimveis.uazapi.com'
     if (domain.endsWith('/')) domain = domain.slice(0, -1)
+    const token = user.getString('uazapi_token')
 
-    const token = (
-      user.getString('uazapi_token') || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj'
-    ).trim()
-    const instance = (user.getString('uazapi_instance_number') || '554892098050').trim()
-
-    if (!token || !instance) {
-      return e.json(400, {
-        connection_step: 'Validation',
-        status_code: 400,
-        api_response: 'Missing token or instance number',
-      })
+    if (!instance || !domain || !token) {
+      throw new BadRequestError('Configuração da Uazapi incompleta.')
     }
 
     const headers = {
       'Content-Type': 'application/json',
       apikey: token,
-      Authorization: token.toLowerCase().startsWith('bearer ') ? token : 'Bearer ' + token,
+      Authorization: 'Bearer ' + token,
     }
 
-    const fetchWithRetry = (reqUrl) => {
-      let lastErr = null
-      let response = null
-      for (let i = 0; i < 3; i++) {
-        try {
-          response = $http.send({
-            url: reqUrl,
-            method: 'GET',
-            headers: headers,
-            timeout: 15,
-          })
-          if (
-            response &&
-            response.statusCode !== 502 &&
-            response.statusCode !== 503 &&
-            response.statusCode !== 504
-          ) {
-            return response
-          }
-        } catch (err) {
-          lastErr = err
+    const results = {
+      instance: instance,
+      domain: domain,
+      timestamp: new Date().toISOString(),
+      tests: {},
+    }
+
+    const runTest = (name, url, method = 'GET') => {
+      try {
+        const res = $http.send({
+          url,
+          method,
+          headers,
+          timeout: 10,
+        })
+        results.tests[name] = {
+          status: res.statusCode,
+          success: res.statusCode >= 200 && res.statusCode < 300,
+          data: res.json || null,
+        }
+      } catch (err) {
+        results.tests[name] = {
+          status: 0,
+          success: false,
+          error: err.message,
         }
       }
-      if (response) return response
-      throw lastErr || new Error('Request failed after retries')
     }
 
-    let stateRes = null
+    // Do NOT alter user credentials here. This is purely diagnostic.
+    runTest('connection_state', `${domain}/instance/connectionState/${instance}`)
+    runTest('fetch_instances', `${domain}/instance/fetchInstances`)
+
+    // Save diagnostic result to logs
     try {
-      try {
-        stateRes = fetchWithRetry(`${domain}/${instance}/instance/connectionState`)
-      } catch (err) {}
-
-      if (stateRes && stateRes.statusCode === 404) {
-        try {
-          const res2 = fetchWithRetry(`${domain}/instance/connectionState/${instance}`)
-          if (res2.statusCode !== 404) stateRes = res2
-        } catch (err) {}
-      }
-
-      if (stateRes && stateRes.statusCode === 404) {
-        try {
-          const res3 = fetchWithRetry(`${domain}/api/v1/instance/connectionState/${instance}`)
-          if (res3.statusCode !== 404) stateRes = res3
-        } catch (err) {}
-      }
-
-      if (stateRes && stateRes.statusCode === 404) {
-        try {
-          const res4 = fetchWithRetry(`${domain}/api/v1/${instance}/instance/connectionState`)
-          if (res4.statusCode !== 404) stateRes = res4
-        } catch (err) {}
-      }
-
-      if (!stateRes) throw new Error('Connection failed')
-    } catch (err) {
-      return e.json(502, {
-        connection_step: 'DNS/Domain or Timeout',
-        status_code: 0,
-        api_response: err.message,
-      })
-    }
-
-    let data = {}
-    try {
-      data = stateRes.json || {}
+      const col = $app.findCollectionByNameOrId('system_logs')
+      const log = new Record(col)
+      log.set('type', 'uazapi_diagnostics')
+      log.set('message', 'Diagnóstico executado')
+      log.set('details', results)
+      $app.save(log)
     } catch (_) {}
 
-    let step = 'Instance State'
-    if (stateRes.statusCode === 401 || stateRes.statusCode === 403) {
-      step = 'Authentication'
-    } else if (stateRes.statusCode === 404) {
-      step = 'Instance ID'
-    }
-
-    let statusStr = 'disconnected'
-    let errorReason = ''
-    if (stateRes.statusCode >= 200 && stateRes.statusCode < 300) {
-      const st =
-        data?.instance?.status || data?.instance?.state || data?.status || data?.state || ''
-      if (st === 'connected' || st === 'open' || st === 'loggedIn') {
-        statusStr = 'online'
-      } else if (st === 'connecting' || data?.instance?.qrcode || data?.qrcode) {
-        statusStr = 'qr_ready'
-      }
-    } else {
-      errorReason =
-        data?.message ||
-        data?.error ||
-        JSON.stringify(data) ||
-        `Erro da API (Status: ${stateRes.statusCode})`
-    }
-
-    if (
-      user.getString('uazapi_status') !== statusStr ||
-      user.getString('uazapi_error') !== errorReason
-    ) {
-      user.set('uazapi_status', statusStr)
-      user.set('uazapi_error', errorReason)
-      try {
-        $app.saveNoValidate(user)
-      } catch (_) {}
-    }
-
-    const finalCode =
-      stateRes.statusCode >= 200 && stateRes.statusCode < 300 ? 200 : stateRes.statusCode
-
-    return e.json(finalCode, {
-      connection_step: step,
-      status_code: stateRes.statusCode,
-      api_response: data,
-    })
+    return e.json(200, results)
   },
   $apis.requireAuth(),
 )

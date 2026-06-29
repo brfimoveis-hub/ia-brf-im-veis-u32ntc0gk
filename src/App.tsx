@@ -16,6 +16,7 @@ import { GTMTracker } from '@/components/GTMTracker'
 import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { UazapiPoller } from '@/components/UazapiPoller'
 
 import Dashboard from './pages/Index'
 import Customers from './pages/Customers'
@@ -109,7 +110,7 @@ const RouteTracker = () => {
 }
 
 const Root = () => {
-  const { loading } = useAuth()
+  const { loading, user } = useAuth()
   const location = useLocation()
   return (
     <div key={location.pathname} className="contents">
@@ -117,6 +118,7 @@ const Root = () => {
       <ErrorBoundary fallback={null}>
         <GTMTracker />
         <MetaPixel />
+        {user && <UazapiPoller />}
       </ErrorBoundary>
       {loading ? <PageLoader /> : <Outlet />}
     </div>
