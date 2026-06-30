@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   Loader2,
   RefreshCw,
@@ -19,53 +20,35 @@ import {
   Plug,
 } from 'lucide-react'
 import { useRealtime } from '@/hooks/use-realtime'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-class ConnectionErrorBoundary extends React.Component<
-  { children: React.ReactNode; name: string },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: any) {
-    super(props)
-    this.state = { hasError: false, error: null }
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <Card className="border-red-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-red-600 flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" />
-              Erro em {this.props.name}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Não foi possível carregar este painel de configuração.
-            </p>
-            <div className="mt-4 bg-red-50 p-3 rounded-md text-sm text-red-800 font-mono break-words overflow-auto">
-              {this.state.error?.message || 'Erro desconhecido'}
-            </div>
-            <Button
-              variant="outline"
-              className="mt-4"
-              onClick={() => this.setState({ hasError: false, error: null })}
-            >
-              Tentar Novamente
-            </Button>
-          </CardContent>
-        </Card>
-      )
-    }
-    return this.props.children
-  }
+const sanitizeDomain = (raw: string) => {
+  let clean = raw.trim()
+  if (clean && !clean.startsWith('http')) clean = 'https://' + clean
+  if (clean.endsWith('/')) clean = clean.slice(0, -1)
+  return clean
 }
 
-const UazapiPanel = () => {
+function StatusBanner({ type, message }: { type: 'error' | 'success'; message: string }) {
+  if (type === 'success') {
+    return (
+      <Alert className="border-green-500/50 bg-green-500/10">
+        <CheckCircle2 className="h-4 w-4 text-green-600" />
+        <AlertTitle className="text-green-700">Conectado</AlertTitle>
+        <AlertDescription className="text-green-600">{message}</AlertDescription>
+      </Alert>
+    )
+  }
+  return (
+    <Alert variant="destructive">
+      <AlertCircle className="h-4 w-4" />
+      <AlertTitle>Status de Erro</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
+  )
+}
+
+function UazapiPanel() {
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -73,7 +56,6 @@ const UazapiPanel = () => {
   const [token, setToken] = useState(user?.uazapi_token || '')
   const [adminToken, setAdminToken] = useState(user?.uazapi_admin_token || '')
   const [instanceNumber, setInstanceNumber] = useState(user?.uazapi_instance_number || '')
-
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
   const [errorMsg, setErrorMsg] = useState(user?.uazapi_error || '')
 
@@ -81,9 +63,8 @@ const UazapiPanel = () => {
   const [isRestarting, setIsRestarting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
-
-  const [qrCodeData, setQrCodeData] = useState<{ base64?: string; code?: string } | null>(null)
   const [isLoadingQr, setIsLoadingQr] = useState(false)
+  const [qrCodeData, setQrCodeData] = useState<{ base64?: string; code?: string } | null>(null)
 
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
@@ -92,12 +73,12 @@ const UazapiPanel = () => {
     }
   })
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!user) return
     setIsSaving(true)
     try {
       await pb.collection('users').update(user.id, {
-        uazapi_domain: domain,
+        uazapi_domain: sanitizeDomain(domain),
         uazapi_token: token,
         uazapi_admin_token: adminToken,
         uazapi_instance_number: instanceNumber,
@@ -111,9 +92,9 @@ const UazapiPanel = () => {
     } finally {
       setIsSaving(false)
     }
-  }
+  }, [user, domain, token, adminToken, instanceNumber, toast])
 
-  const handleRestart = async () => {
+  const handleRestart = useCallback(async () => {
     setIsRestarting(true)
     try {
       await pb.send('/backend/v1/uazapi/restart', { method: 'POST' })
@@ -127,9 +108,9 @@ const UazapiPanel = () => {
     } finally {
       setIsRestarting(false)
     }
-  }
+  }, [toast])
 
-  const handleSyncStatus = async () => {
+  const handleSyncStatus = useCallback(async () => {
     setIsSyncing(true)
     try {
       await pb.send('/backend/v1/uazapi/status', { method: 'GET' })
@@ -143,9 +124,9 @@ const UazapiPanel = () => {
     } finally {
       setIsSyncing(false)
     }
-  }
+  }, [toast])
 
-  const handleTestConnection = async () => {
+  const handleTestConnection = useCallback(async () => {
     if (!domain.trim() || !instanceNumber.trim() || !token.trim()) {
       toast({
         variant: 'destructive',
@@ -156,13 +137,7 @@ const UazapiPanel = () => {
     }
     setIsTesting(true)
     try {
-      let cleanDomain = domain.trim()
-      if (cleanDomain && !cleanDomain.startsWith('http')) {
-        cleanDomain = 'https://' + cleanDomain
-      }
-      if (cleanDomain.endsWith('/')) {
-        cleanDomain = cleanDomain.slice(0, -1)
-      }
+      const cleanDomain = sanitizeDomain(domain)
       const res = await pb.send('/backend/v1/uazapi/test-connection', {
         method: 'POST',
         body: JSON.stringify({
@@ -173,6 +148,7 @@ const UazapiPanel = () => {
       })
       if (res.status === 'success') {
         setStatus('connected')
+        setErrorMsg('')
         toast({
           title: 'Conexão bem-sucedida',
           description: 'A comunicação com a instância UAZAPI está funcionando.',
@@ -195,18 +171,14 @@ const UazapiPanel = () => {
       }
     } catch (err: any) {
       const msg = err?.response?.error || err?.message || 'Erro ao testar a conexão.'
-      toast({
-        variant: 'destructive',
-        title: 'Falha na conexão',
-        description: msg,
-      })
+      toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
       setStatus('disconnected')
     } finally {
       setIsTesting(false)
     }
-  }
+  }, [domain, instanceNumber, token, user, toast])
 
-  const fetchQrCode = async () => {
+  const fetchQrCode = useCallback(async () => {
     setIsLoadingQr(true)
     try {
       const res = await pb.send('/backend/v1/uazapi/qrcode', { method: 'GET' })
@@ -229,7 +201,7 @@ const UazapiPanel = () => {
     } finally {
       setIsLoadingQr(false)
     }
-  }
+  }, [toast])
 
   const isConnected = status.toLowerCase() === 'connected' || status.toLowerCase() === 'open'
 
@@ -255,15 +227,14 @@ const UazapiPanel = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        {errorMsg && (
-          <div className="bg-red-50 text-red-700 p-4 rounded-md text-sm border border-red-100 flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold block mb-1">Status de Erro:</span>
-              <span className="opacity-90">{errorMsg}</span>
-            </div>
-          </div>
-        )}
+        {errorMsg ? (
+          <StatusBanner type="error" message={errorMsg} />
+        ) : isConnected ? (
+          <StatusBanner
+            type="success"
+            message="A comunicação com a instância UAZAPI está funcionando perfeitamente."
+          />
+        ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
@@ -272,7 +243,7 @@ const UazapiPanel = () => {
               id="uazapi_domain"
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
-              placeholder="https://api.uazapi.com"
+              placeholder="https://iabrfimveis.uazapi.com"
             />
           </div>
           <div className="space-y-2">
@@ -281,7 +252,7 @@ const UazapiPanel = () => {
               id="uazapi_instance"
               value={instanceNumber}
               onChange={(e) => setInstanceNumber(e.target.value)}
-              placeholder="instancia-brf"
+              placeholder="554892098050"
             />
           </div>
           <div className="space-y-2">
@@ -315,7 +286,6 @@ const UazapiPanel = () => {
             )}
             Salvar Credenciais
           </Button>
-
           <Button
             onClick={handleTestConnection}
             disabled={isTesting}
@@ -329,7 +299,6 @@ const UazapiPanel = () => {
             )}
             Testar Conexão
           </Button>
-
           <Button
             onClick={handleSyncStatus}
             disabled={isSyncing}
@@ -343,7 +312,6 @@ const UazapiPanel = () => {
             )}
             Sincronizar Status
           </Button>
-
           <Button
             onClick={handleRestart}
             disabled={isRestarting}
@@ -357,7 +325,6 @@ const UazapiPanel = () => {
             )}
             Reiniciar Instância
           </Button>
-
           {!isConnected && (
             <Button
               onClick={fetchQrCode}
@@ -375,39 +342,39 @@ const UazapiPanel = () => {
           )}
         </div>
 
-        {qrCodeData?.base64 && !isConnected && (
-          <div className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner">
-            <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-              <img src={qrCodeData.base64} alt="QR Code" className="w-64 h-64 object-contain" />
-            </div>
-            <h4 className="font-medium text-center text-lg">Escaneie o QR Code</h4>
-            <p className="text-muted-foreground text-center mt-2 max-w-sm">
-              Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e aponte a câmera para a
-              imagem acima.
-            </p>
-            {qrCodeData.code && (
-              <div className="mt-4 px-4 py-2 bg-slate-200 rounded text-sm text-slate-700 font-mono font-medium">
-                Código: {qrCodeData.code}
+        <div className="qr-section-container">
+          {qrCodeData?.base64 && !isConnected && (
+            <div className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner">
+              <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+                <img src={qrCodeData.base64} alt="QR Code" className="w-64 h-64 object-contain" />
               </div>
-            )}
-          </div>
-        )}
+              <h4 className="font-medium text-center text-lg">Escaneie o QR Code</h4>
+              <p className="text-muted-foreground text-center mt-2 max-w-sm">
+                Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e aponte a câmera para a
+                imagem acima.
+              </p>
+              {qrCodeData.code && (
+                <div className="mt-4 px-4 py-2 bg-slate-200 rounded text-sm text-slate-700 font-mono font-medium">
+                  Código: {qrCodeData.code}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   )
 }
 
-const MetaCapiPanel = () => {
+function MetaCapiPanel() {
   const { user } = useAuth()
   const { toast } = useToast()
 
   const [pixelId, setPixelId] = useState(user?.meta_pixel_id || user?.meta_dataset_id || '')
   const [capiToken, setCapiToken] = useState(user?.meta_capi_token || '')
   const [businessId, setBusinessId] = useState(user?.meta_whatsapp_business_id || '')
-
   const [status, setStatus] = useState(user?.meta_capi_status || 'disconnected')
   const [errorMsg, setErrorMsg] = useState(user?.meta_capi_error || '')
-
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
 
@@ -418,7 +385,7 @@ const MetaCapiPanel = () => {
     }
   })
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!user) return
     setIsSaving(true)
     try {
@@ -437,9 +404,9 @@ const MetaCapiPanel = () => {
     } finally {
       setIsSaving(false)
     }
-  }
+  }, [user, pixelId, capiToken, businessId, toast])
 
-  const handleTestConnection = async () => {
+  const handleTestConnection = useCallback(async () => {
     if (!user) return
     if (!pixelId.trim() || !capiToken.trim()) {
       toast({
@@ -466,6 +433,8 @@ const MetaCapiPanel = () => {
         }),
       })
       if (res.success) {
+        setStatus('connected')
+        setErrorMsg('')
         toast({
           title: 'Conexão bem-sucedida',
           description: 'A comunicação com a Meta API está funcionando perfeitamente.',
@@ -483,17 +452,16 @@ const MetaCapiPanel = () => {
         err?.response?.message ||
         err?.message ||
         'Erro ao testar a conexão'
-      toast({
-        variant: 'destructive',
-        title: 'Falha na conexão',
-        description: msg,
-      })
+      setStatus('error')
+      setErrorMsg(msg)
+      toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
     } finally {
       setIsTesting(false)
     }
-  }
+  }, [user, pixelId, capiToken, businessId, toast])
 
   const isConnected = status.toLowerCase() === 'connected' || status.toLowerCase() === 'active'
+  const isLikelyAppId = pixelId.replace(/\D/g, '').length >= 16
 
   return (
     <Card className="shadow-sm border-slate-200">
@@ -517,40 +485,27 @@ const MetaCapiPanel = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        {isConnected && !errorMsg && (
-          <div className="bg-green-50 text-green-700 p-4 rounded-md text-sm border border-green-100 flex items-start gap-3">
-            <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold block mb-1">Conectado:</span>
-              <span className="opacity-90">
-                A comunicação com a Meta API está funcionando perfeitamente.
-              </span>
-            </div>
-          </div>
-        )}
+        <div className="meta-status-container">
+          {isConnected && !errorMsg ? (
+            <StatusBanner
+              type="success"
+              message="A comunicação com a Meta API está funcionando perfeitamente."
+            />
+          ) : errorMsg ? (
+            <StatusBanner type="error" message={errorMsg} />
+          ) : null}
+        </div>
 
-        {errorMsg && (
-          <div className="bg-red-50 text-red-700 p-4 rounded-md text-sm border border-red-100 flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold block mb-1">Status de Erro:</span>
-              <span className="opacity-90">{errorMsg}</span>
-            </div>
-          </div>
-        )}
-
-        {pixelId.replace(/\D/g, '').length >= 16 && (
-          <div className="bg-yellow-50 text-yellow-800 p-4 rounded-md text-sm border border-yellow-200 flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold block mb-1">Aviso: Possível App ID</span>
-              <span className="opacity-90">
-                Este ID parece ser um App ID da Meta, não um Pixel/Dataset ID. App IDs geralmente
-                têm 16 ou mais dígitos. Verifique se você está usando o ID correto do Pixel na seção
-                de Gerenciador de Eventos do Facebook.
-              </span>
-            </div>
-          </div>
+        {isLikelyAppId && (
+          <Alert className="border-yellow-200 bg-yellow-50">
+            <AlertCircle className="h-4 w-4 text-yellow-600" />
+            <AlertTitle className="text-yellow-800">Aviso: Possível App ID</AlertTitle>
+            <AlertDescription className="text-yellow-700">
+              Este ID parece ser um App ID da Meta, não um Pixel/Dataset ID. App IDs geralmente têm
+              16 ou mais dígitos. Verifique se você está usando o ID correto do Pixel na seção de
+              Gerenciador de Eventos do Facebook.
+            </AlertDescription>
+          </Alert>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -569,7 +524,7 @@ const MetaCapiPanel = () => {
               id="meta_pixel_id"
               value={pixelId}
               onChange={(e) => setPixelId(e.target.value)}
-              placeholder="123456789012345"
+              placeholder="950541937872426"
             />
           </div>
           <div className="space-y-2 md:col-span-2">
@@ -593,7 +548,6 @@ const MetaCapiPanel = () => {
             )}
             Salvar Meta CAPI
           </Button>
-
           <Button
             onClick={handleTestConnection}
             disabled={isTesting}
@@ -622,13 +576,13 @@ export default function SettingsConnections() {
       </div>
 
       <div className="grid gap-8">
-        <ConnectionErrorBoundary name="UAZAPI">
+        <ErrorBoundary key="uazapi-panel-boundary" fallback={null}>
           <UazapiPanel />
-        </ConnectionErrorBoundary>
+        </ErrorBoundary>
 
-        <ConnectionErrorBoundary name="Meta CAPI">
+        <ErrorBoundary key="meta-capi-panel-boundary" fallback={null}>
           <MetaCapiPanel />
-        </ConnectionErrorBoundary>
+        </ErrorBoundary>
       </div>
     </div>
   )
