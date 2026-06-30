@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   BarChart,
   AlertCircle,
+  Plug,
 } from 'lucide-react'
 import { useRealtime } from '@/hooks/use-realtime'
 
@@ -79,6 +80,7 @@ const UazapiPanel = () => {
   const [isSaving, setIsSaving] = useState(false)
   const [isRestarting, setIsRestarting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isTesting, setIsTesting] = useState(false)
 
   const [qrCodeData, setQrCodeData] = useState<{ base64?: string; code?: string } | null>(null)
   const [isLoadingQr, setIsLoadingQr] = useState(false)
@@ -140,6 +142,67 @@ const UazapiPanel = () => {
       })
     } finally {
       setIsSyncing(false)
+    }
+  }
+
+  const handleTestConnection = async () => {
+    if (!domain.trim() || !instanceNumber.trim() || !token.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Campos obrigatórios',
+        description: 'Domínio, Instância e Token são obrigatórios para testar.',
+      })
+      return
+    }
+    setIsTesting(true)
+    try {
+      let cleanDomain = domain.trim()
+      if (cleanDomain && !cleanDomain.startsWith('http')) {
+        cleanDomain = 'https://' + cleanDomain
+      }
+      if (cleanDomain.endsWith('/')) {
+        cleanDomain = cleanDomain.slice(0, -1)
+      }
+      const res = await pb.send('/backend/v1/uazapi/test-connection', {
+        method: 'POST',
+        body: JSON.stringify({
+          domain: cleanDomain,
+          instance: instanceNumber.trim(),
+          token: token.trim(),
+        }),
+      })
+      if (res.status === 'success') {
+        setStatus('connected')
+        toast({
+          title: 'Conexão bem-sucedida',
+          description: 'A comunicação com a instância UAZAPI está funcionando.',
+        })
+        if (user?.id) {
+          await pb.collection('users').update(user.id, {
+            uazapi_domain: cleanDomain,
+            uazapi_instance_number: instanceNumber.trim(),
+            uazapi_token: token.trim(),
+            uazapi_status: 'connected',
+            uazapi_error: '',
+          })
+        }
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Falha na conexão',
+          description: res.error || 'Erro ao testar a conexão.',
+        })
+      }
+    } catch (err: any) {
+      const msg = err?.response?.error || err?.message || 'Erro ao testar a conexão.'
+      toast({
+        variant: 'destructive',
+        title: 'Falha na conexão',
+        description: msg,
+      })
+      setStatus('disconnected')
+    } finally {
+      setIsTesting(false)
     }
   }
 
@@ -254,6 +317,20 @@ const UazapiPanel = () => {
           </Button>
 
           <Button
+            onClick={handleTestConnection}
+            disabled={isTesting}
+            variant="outline"
+            className="w-full sm:w-auto"
+          >
+            {isTesting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Plug className="mr-2 h-4 w-4" />
+            )}
+            Testar Conexão
+          </Button>
+
+          <Button
             onClick={handleSyncStatus}
             disabled={isSyncing}
             variant="outline"
@@ -324,7 +401,7 @@ const MetaCapiPanel = () => {
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const [pixelId, setPixelId] = useState(user?.meta_pixel_id || '')
+  const [pixelId, setPixelId] = useState(user?.meta_pixel_id || user?.meta_dataset_id || '')
   const [capiToken, setCapiToken] = useState(user?.meta_capi_token || '')
   const [businessId, setBusinessId] = useState(user?.meta_whatsapp_business_id || '')
 
@@ -347,6 +424,7 @@ const MetaCapiPanel = () => {
     try {
       await pb.collection('users').update(user.id, {
         meta_pixel_id: pixelId,
+        meta_dataset_id: pixelId,
         meta_capi_token: capiToken,
         meta_whatsapp_business_id: businessId,
       })
@@ -375,6 +453,7 @@ const MetaCapiPanel = () => {
     try {
       await pb.collection('users').update(user.id, {
         meta_pixel_id: pixelId,
+        meta_dataset_id: pixelId,
         meta_capi_token: capiToken,
         meta_whatsapp_business_id: businessId,
       })
@@ -456,6 +535,20 @@ const MetaCapiPanel = () => {
             <div>
               <span className="font-semibold block mb-1">Status de Erro:</span>
               <span className="opacity-90">{errorMsg}</span>
+            </div>
+          </div>
+        )}
+
+        {pixelId.replace(/\D/g, '').length >= 16 && (
+          <div className="bg-yellow-50 text-yellow-800 p-4 rounded-md text-sm border border-yellow-200 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold block mb-1">Aviso: Possível App ID</span>
+              <span className="opacity-90">
+                Este ID parece ser um App ID da Meta, não um Pixel/Dataset ID. App IDs geralmente
+                têm 16 ou mais dígitos. Verifique se você está usando o ID correto do Pixel na seção
+                de Gerenciador de Eventos do Facebook.
+              </span>
             </div>
           </div>
         )}

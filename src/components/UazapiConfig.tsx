@@ -32,14 +32,10 @@ export function UazapiConfig() {
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const [domain, setDomain] = useState(user?.uazapi_domain || 'https://iabrfimveis.uazapi.com')
-  const [token, setToken] = useState(
-    user?.uazapi_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj',
-  )
-  const [adminToken, setAdminToken] = useState(
-    user?.uazapi_admin_token || 'SuAwfdyhG5J3DTooe0zj8DBkXD6LziAyM1vNoYcW3dsAqyAiYj',
-  )
-  const [instance, setInstance] = useState(user?.uazapi_instance_number || '5548992098050')
+  const [domain, setDomain] = useState(user?.uazapi_domain || '')
+  const [token, setToken] = useState(user?.uazapi_token || '')
+  const [adminToken, setAdminToken] = useState(user?.uazapi_admin_token || '')
+  const [instance, setInstance] = useState(user?.uazapi_instance_number || '')
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
 
   const [isSaving, setIsSaving] = useState(false)

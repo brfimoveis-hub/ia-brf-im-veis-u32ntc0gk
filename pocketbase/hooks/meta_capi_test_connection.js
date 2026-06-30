@@ -103,6 +103,7 @@ routerAdd(
     if (res.statusCode >= 200 && res.statusCode < 300) {
       if (user) {
         user.set('meta_pixel_id', pixelId)
+        user.set('meta_dataset_id', pixelId)
         user.set('meta_capi_token', accessToken)
         if (businessId) {
           user.set('meta_whatsapp_business_id', businessId)
