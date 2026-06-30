@@ -326,11 +326,13 @@ const MetaCapiPanel = () => {
 
   const [pixelId, setPixelId] = useState(user?.meta_pixel_id || '')
   const [capiToken, setCapiToken] = useState(user?.meta_capi_token || '')
+  const [businessId, setBusinessId] = useState(user?.meta_whatsapp_business_id || '')
 
   const [status, setStatus] = useState(user?.meta_capi_status || 'disconnected')
   const [errorMsg, setErrorMsg] = useState(user?.meta_capi_error || '')
 
   const [isSaving, setIsSaving] = useState(false)
+  const [isTesting, setIsTesting] = useState(false)
 
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
@@ -346,6 +348,7 @@ const MetaCapiPanel = () => {
       await pb.collection('users').update(user.id, {
         meta_pixel_id: pixelId,
         meta_capi_token: capiToken,
+        meta_whatsapp_business_id: businessId,
       })
       toast({
         title: 'Configurações salvas',
@@ -355,6 +358,59 @@ const MetaCapiPanel = () => {
       toast({ variant: 'destructive', title: 'Erro ao salvar', description: err.message })
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleTestConnection = async () => {
+    if (!user) return
+    if (!pixelId.trim() || !capiToken.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Campos obrigatórios',
+        description: 'Dataset ID e Token de Acesso são obrigatórios para o teste.',
+      })
+      return
+    }
+    setIsTesting(true)
+    try {
+      await pb.collection('users').update(user.id, {
+        meta_pixel_id: pixelId,
+        meta_capi_token: capiToken,
+        meta_whatsapp_business_id: businessId,
+      })
+      const res = await pb.send('/backend/v1/meta_capi_test_connection', {
+        method: 'POST',
+        body: JSON.stringify({
+          pixel_id: pixelId,
+          access_token: capiToken,
+          business_id: businessId,
+        }),
+      })
+      if (res.success) {
+        toast({
+          title: 'Conexão bem-sucedida',
+          description: 'A comunicação com a Meta API está funcionando perfeitamente.',
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Falha na conexão',
+          description: res.error?.message || 'Erro ao testar a conexão.',
+        })
+      }
+    } catch (err: any) {
+      const msg =
+        err?.response?.error?.message ||
+        err?.response?.message ||
+        err?.message ||
+        'Erro ao testar a conexão'
+      toast({
+        variant: 'destructive',
+        title: 'Falha na conexão',
+        description: msg,
+      })
+    } finally {
+      setIsTesting(false)
     }
   }
 
@@ -374,7 +430,7 @@ const MetaCapiPanel = () => {
               isConnected ? 'bg-green-500 hover:bg-green-600 text-sm py-1' : 'text-sm py-1'
             }
           >
-            {isConnected ? 'Ativo' : status || 'Desconectado'}
+            {isConnected ? 'Conectado' : status || 'Desconectado'}
           </Badge>
         </div>
         <CardDescription className="pt-2">
@@ -382,6 +438,18 @@ const MetaCapiPanel = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
+        {isConnected && !errorMsg && (
+          <div className="bg-green-50 text-green-700 p-4 rounded-md text-sm border border-green-100 flex items-start gap-3">
+            <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold block mb-1">Conectado:</span>
+              <span className="opacity-90">
+                A comunicação com a Meta API está funcionando perfeitamente.
+              </span>
+            </div>
+          </div>
+        )}
+
         {errorMsg && (
           <div className="bg-red-50 text-red-700 p-4 rounded-md text-sm border border-red-100 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
@@ -394,6 +462,15 @@ const MetaCapiPanel = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
+            <Label htmlFor="meta_business_id">Business ID</Label>
+            <Input
+              id="meta_business_id"
+              value={businessId}
+              onChange={(e) => setBusinessId(e.target.value)}
+              placeholder="ID do Gerenciador de Negócios"
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="meta_pixel_id">ID do Pixel (Dataset ID)</Label>
             <Input
               id="meta_pixel_id"
@@ -402,7 +479,7 @@ const MetaCapiPanel = () => {
               placeholder="123456789012345"
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 md:col-span-2">
             <Label htmlFor="meta_capi_token">Token de Acesso (CAPI)</Label>
             <Input
               id="meta_capi_token"
@@ -414,7 +491,7 @@ const MetaCapiPanel = () => {
           </div>
         </div>
 
-        <div className="pt-6 border-t flex">
+        <div className="pt-6 border-t flex flex-col sm:flex-row gap-3">
           <Button onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto">
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -422,6 +499,16 @@ const MetaCapiPanel = () => {
               <CheckCircle2 className="mr-2 h-4 w-4" />
             )}
             Salvar Meta CAPI
+          </Button>
+
+          <Button
+            onClick={handleTestConnection}
+            disabled={isTesting}
+            variant="outline"
+            className="w-full sm:w-auto"
+          >
+            {isTesting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isTesting ? 'Testando...' : 'Testar Conexão'}
           </Button>
         </div>
       </CardContent>
