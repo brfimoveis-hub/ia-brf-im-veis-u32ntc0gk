@@ -16,15 +16,24 @@ routerAdd(
       }
     }
 
-    const logConnection = (status, details, error = null) => {
+    const logIntegrationError = (errorCode, message, details) => {
+      try {
+        const col = $app.findCollectionByNameOrId('system_logs')
+        const log = new Record(col)
+        log.set('type', 'integration_error')
+        log.set('message', 'Meta CAPI: ' + message)
+        log.set('details', { error_code: errorCode, pixel_id: pixelId, ...details })
+        log.set('payload', body)
+        $app.save(log)
+      } catch (_) {}
+    }
+
+    const logSuccess = (message, details) => {
       try {
         const col = $app.findCollectionByNameOrId('system_logs')
         const log = new Record(col)
         log.set('type', 'meta_capi_connection')
-        log.set(
-          'message',
-          error ? `Test connection failed: ${error}` : `Test connection success: ${status}`,
-        )
+        log.set('message', 'Test connection success: ' + message)
         log.set('details', details)
         log.set('payload', body)
         $app.save(log)
@@ -44,34 +53,76 @@ routerAdd(
     if (!pixelId || !accessToken) {
       const msg = 'Pixel ID e Token de Acesso são obrigatórios.'
       setErrorState(msg)
+      logIntegrationError('missing_fields', msg, {
+        hasPixelId: !!pixelId,
+        hasAccessToken: !!accessToken,
+      })
       throw new BadRequestError(msg)
     }
 
-    const permUrl = `https://graph.facebook.com/v21.0/me/permissions?access_token=${accessToken}`
+    const pixelIdStr = String(pixelId).trim()
+    const pixelIdDigits = pixelIdStr.replace(/\D/g, '')
+
+    if (pixelIdDigits.length < 10 || pixelIdDigits.length > 18) {
+      const msg =
+        "ID inválido: O ID '" +
+        pixelIdStr +
+        "' não foi encontrado ou não suporta eventos. Verifique se você não inseriu um App ID ou Business ID no lugar do Dataset/Pixel ID."
+      setErrorState(msg)
+      logIntegrationError('invalid_id_format', msg, {
+        pixelId: pixelIdStr,
+        digitCount: pixelIdDigits.length,
+      })
+      return e.json(400, {
+        success: false,
+        error: { code: 'invalid_id', message: msg },
+      })
+    }
+
+    const permUrl = 'https://graph.facebook.com/v21.0/me/permissions?access_token=' + accessToken
     const permRes = $http.send({ url: permUrl, method: 'GET', timeout: 15 })
 
     if (permRes.statusCode >= 400) {
       const msg = permRes.json?.error?.message || 'Token de Acesso inválido ou expirado.'
       setErrorState(msg)
-      throw new BadRequestError(msg)
+      logIntegrationError('invalid_token', msg, {
+        statusCode: permRes.statusCode,
+        response: permRes.json,
+      })
+      return e.json(400, {
+        success: false,
+        error: { code: 'invalid_token', message: msg },
+      })
     }
 
     const perms = permRes.json?.data || []
-    const grantedPerms = perms.filter((p) => p.status === 'granted').map((p) => p.permission)
+    const grantedPerms = perms
+      .filter(function (p) {
+        return p.status === 'granted'
+      })
+      .map(function (p) {
+        return p.permission
+      })
 
     const requiredPerms = ['ads_management', 'business_management', 'ads_read']
-    const missingPerms = requiredPerms.filter((p) => !grantedPerms.includes(p))
+    const missingPerms = requiredPerms.filter(function (p) {
+      return grantedPerms.indexOf(p) === -1
+    })
 
     if (missingPerms.length > 0) {
-      const msg = `Permissões insuficientes. Faltam: ${missingPerms.join(', ')}`
+      const msg = 'Permissões insuficientes. Faltam: ' + missingPerms.join(', ')
       setErrorState(msg)
-      logConnection('error', { perms: grantedPerms }, msg)
-      throw new BadRequestError(msg)
+      logIntegrationError('insufficient_permissions', msg, {
+        granted: grantedPerms,
+        missing: missingPerms,
+      })
+      return e.json(400, {
+        success: false,
+        error: { code: 'insufficient_permissions', message: msg },
+      })
     }
 
-    $app.logger().info('CAPI Test Info', 'pixelId', pixelId, 'businessId', businessId)
-
-    const url = `https://graph.facebook.com/v21.0/${pixelId}/events`
+    const url = 'https://graph.facebook.com/v21.0/' + pixelIdStr + '/events'
 
     const payload = {
       data: [
@@ -94,7 +145,7 @@ routerAdd(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: 'Bearer ' + accessToken,
       },
       body: JSON.stringify(payload),
       timeout: 15,
@@ -102,8 +153,8 @@ routerAdd(
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
       if (user) {
-        user.set('meta_pixel_id', pixelId)
-        user.set('meta_dataset_id', pixelId)
+        user.set('meta_pixel_id', pixelIdStr)
+        user.set('meta_dataset_id', pixelIdStr)
         user.set('meta_capi_token', accessToken)
         if (businessId) {
           user.set('meta_whatsapp_business_id', businessId)
@@ -118,21 +169,35 @@ routerAdd(
           $app.logger().error('Failed to sync CAPI test success to user', 'err', err.message)
         }
       }
-      logConnection('connected', res.json)
+      logSuccess('connected', { pixelId: pixelIdStr, response: res.json })
       return e.json(200, { success: true, data: res.json })
     }
 
-    let errorMsg = res.json?.error?.message || `Erro da Meta API (Status ${res.statusCode})`
+    let errorMsg = res.json?.error?.message || 'Erro da Meta API (Status ' + res.statusCode + ')'
+    let errorCode = 'api_error'
 
-    if (errorMsg.includes('Unsupported post request') || errorMsg.includes('does not exist')) {
-      errorMsg = `ID inválido: O ID '${pixelId}' não foi encontrado ou não suporta eventos. Verifique se você não inseriu um App ID ou Business ID no lugar do Dataset/Pixel ID, e se o token tem acesso a ele.`
+    if (
+      errorMsg.indexOf('Unsupported post request') !== -1 ||
+      errorMsg.indexOf('does not exist') !== -1
+    ) {
+      errorMsg =
+        "ID inválido: O ID '" +
+        pixelIdStr +
+        "' não foi encontrado ou não suporta eventos. Verifique se você não inseriu um App ID ou Business ID no lugar do Dataset/Pixel ID."
+      errorCode = 'invalid_id'
     }
 
     setErrorState(errorMsg)
-    logConnection('error', res.json, errorMsg)
+    logIntegrationError(errorCode, errorMsg, {
+      statusCode: res.statusCode,
+      response: res.json,
+    })
 
-    // Return the full Meta error to the client so it can identify the field
-    return e.json(res.statusCode, { error: { message: errorMsg }, details: res.json })
+    return e.json(res.statusCode, {
+      success: false,
+      error: { code: errorCode, message: errorMsg },
+      details: res.json,
+    })
   },
   $apis.requireAuth(),
 )

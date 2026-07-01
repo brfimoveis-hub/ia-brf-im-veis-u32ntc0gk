@@ -40,9 +40,11 @@ export default function Dashboard() {
         pb.send('/backend/v1/uazapi/status', { method: 'GET' })
           .then((res) => {
             if (res?.data) {
+              const rawState = res.state || 'unknown'
+              const normalizedState = rawState === 'open' ? 'connected' : rawState
               setCurrentUser((prev: any) => ({
                 ...prev,
-                uazapi_status: res.status,
+                uazapi_status: normalizedState,
                 uazapi_error: res.data.lastDisconnectReason || res.data.message || '',
                 profileName: res.data.profileName,
                 currentPresence: res.data.currentPresence,
@@ -63,19 +65,18 @@ export default function Dashboard() {
     }
   }, [user])
 
-  useRealtime('users', () => {
-    if (user) {
-      pb.collection('users')
-        .getOne(user.id)
-        .then((res) => {
-          setCurrentUser((prev: any) => ({
-            ...res,
-            profileName: prev?.profileName,
-            currentPresence: prev?.currentPresence,
-          }))
-        })
-        .catch(console.error)
-    }
+  useRealtime('users', (e) => {
+    if (!user?.id || e.record.id !== user.id) return
+    pb.collection('users')
+      .getOne(user.id)
+      .then((res) => {
+        setCurrentUser((prev: any) => ({
+          ...res,
+          profileName: prev?.profileName,
+          currentPresence: prev?.currentPresence,
+        }))
+      })
+      .catch(console.error)
   })
 
   useRealtime('customers', () => {
@@ -84,14 +85,12 @@ export default function Dashboard() {
       .then((res) => setCustomerCount(res.totalItems))
       .catch(console.error)
   })
-
   useRealtime('cadences', () => {
     pb.collection('cadences')
       .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
       .then((res) => setCadenceCount(res.totalItems))
       .catch(console.error)
   })
-
   useRealtime('leads', () => {
     pb.collection('leads')
       .getList(1, 1, { fields: 'id' })

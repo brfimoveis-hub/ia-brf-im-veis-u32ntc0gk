@@ -287,20 +287,19 @@ function UazapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        <div key="uazapi-status-banner" className="uazapi-status-banner-container">
-          {errorMsg ? (
-            <StatusBanner key="uazapi-error-banner" type="error" message={errorMsg} />
-          ) : isConnected ? (
+        <div className="uazapi-status-banner-container">
+          {(errorMsg || isConnected) && (
             <StatusBanner
-              key="uazapi-success-banner"
-              type="success"
-              message="A comunicação com a instância UAZAPI está funcionando perfeitamente."
+              type={errorMsg ? 'error' : 'success'}
+              message={
+                errorMsg || 'A comunicação com a instância UAZAPI está funcionando perfeitamente.'
+              }
             />
-          ) : null}
+          )}
         </div>
 
         {testResult && (
-          <div key="uazapi-test-result" className="uazapi-test-result-container">
+          <div className="uazapi-test-result-container">
             <Alert
               variant={testResult.success ? 'default' : 'destructive'}
               className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
@@ -318,7 +317,7 @@ function UazapiPanel() {
           </div>
         )}
 
-        <div key="uazapi-form-fields" className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="uazapi_domain">Domínio da API</Label>
             <Input
@@ -359,7 +358,7 @@ function UazapiPanel() {
           </div>
         </div>
 
-        <div key="uazapi-actions" className="pt-6 border-t flex flex-col sm:flex-row gap-3">
+        <div className="pt-6 border-t flex flex-col sm:flex-row gap-3">
           <Button onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto">
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -424,35 +423,19 @@ function UazapiPanel() {
           )}
         </div>
 
-        <div key="uazapi-qr-section" className="uazapi-qr-section-container">
+        <div className="uazapi-qr-section-container">
           {qrCodeData?.base64 && !isConnected && (
-            <div
-              key="uazapi-qr-display"
-              className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner animate-fade-in"
-            >
-              <div
-                key="uazapi-qr-image-wrapper"
-                className="bg-white p-4 rounded-lg shadow-sm border mb-6"
-              >
-                <img
-                  key={`qr-img-${qrCodeData.base64.slice(0, 20)}`}
-                  src={qrCodeData.base64}
-                  alt="QR Code"
-                  className="w-64 h-64 object-contain"
-                />
+            <div className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner animate-fade-in">
+              <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+                <img src={qrCodeData.base64} alt="QR Code" className="w-64 h-64 object-contain" />
               </div>
-              <h4 key="uazapi-qr-title" className="font-medium text-center text-lg">
-                Escaneie o QR Code
-              </h4>
-              <p key="uazapi-qr-desc" className="text-muted-foreground text-center mt-2 max-w-sm">
+              <h4 className="font-medium text-center text-lg">Escaneie o QR Code</h4>
+              <p className="text-muted-foreground text-center mt-2 max-w-sm">
                 Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e aponte a câmera para a
                 imagem acima.
               </p>
               {qrCodeData.code && (
-                <div
-                  key="uazapi-qr-code-text"
-                  className="mt-4 px-4 py-2 bg-slate-200 rounded text-sm text-slate-700 font-mono font-medium"
-                >
+                <div className="mt-4 px-4 py-2 bg-slate-200 rounded text-sm text-slate-700 font-mono font-medium">
                   Código: {qrCodeData.code}
                 </div>
               )}
@@ -585,16 +568,13 @@ function MetaCapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        <div key="meta-status-banner" className="meta-status-container">
-          {isConnected && !errorMsg ? (
+        <div className="meta-status-container">
+          {(isConnected || errorMsg) && (
             <StatusBanner
-              key="meta-success"
-              type="success"
-              message="A comunicação com a Meta API está funcionando perfeitamente."
+              type={errorMsg ? 'error' : 'success'}
+              message={errorMsg || 'A comunicação com a Meta API está funcionando perfeitamente.'}
             />
-          ) : errorMsg ? (
-            <StatusBanner key="meta-error" type="error" message={errorMsg} />
-          ) : null}
+          )}
         </div>
 
         {isLikelyAppId && (
@@ -609,7 +589,7 @@ function MetaCapiPanel() {
           </Alert>
         )}
 
-        <div key="meta-form-fields" className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="meta_business_id">Business ID</Label>
             <Input
@@ -640,7 +620,7 @@ function MetaCapiPanel() {
           </div>
         </div>
 
-        <div key="meta-actions" className="pt-6 border-t flex flex-col sm:flex-row gap-3">
+        <div className="pt-6 border-t flex flex-col sm:flex-row gap-3">
           <Button onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto">
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

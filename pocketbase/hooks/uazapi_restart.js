@@ -13,8 +13,28 @@ routerAdd(
       return e.badRequestError('Configuração UAZAPI incompleta. Salve as credenciais primeiro.')
     }
 
-    let baseUrl = domain
+    const logIntegrationError = (message, details) => {
+      try {
+        const col = $app.findCollectionByNameOrId('system_logs')
+        const log = new Record(col)
+        log.set('type', 'integration_error')
+        log.set('message', 'UAZAPI Restart: ' + message)
+        log.set('details', { instance: instance, ...details })
+        log.set('payload', { domain: domain, instance: instance })
+        $app.save(log)
+      } catch (_) {}
+    }
+
+    let baseUrl = domain.trim()
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1)
+
+    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+      const msg = 'Domínio inválido. Deve começar com http:// ou https://'
+      logIntegrationError(msg, { domain: domain })
+      return e.badRequestError(msg)
+    }
+
+    const restartUrl = baseUrl + '/instance/restart/' + instance
 
     const headers = {
       apikey: token,
@@ -22,56 +42,34 @@ routerAdd(
       'Content-Type': 'application/json',
     }
 
-    const primaryUrl = baseUrl + '/instance/restart/' + instance
-    const fallbackUrl = baseUrl + '/instance/restart?instance=' + instance
-
     let res = null
-    let lastErr = null
+    let transportError = null
 
     try {
       res = $http.send({
-        url: primaryUrl,
+        url: restartUrl,
         method: 'POST',
         headers: headers,
         timeout: 15,
       })
     } catch (err) {
-      lastErr = err
+      transportError = err
     }
 
-    if (res && res.statusCode === 405) {
-      try {
-        const putRes = $http.send({
-          url: primaryUrl,
-          method: 'PUT',
-          headers: headers,
-          timeout: 15,
-        })
-        if (putRes.statusCode !== 405) {
-          res = putRes
-        }
-      } catch (err) {}
-    }
+    if (!res && transportError) {
+      const errorMsg =
+        'Erro de rede ao reiniciar instância: ' + (transportError.message || 'unknown')
 
-    if (!res && lastErr) {
-      try {
-        res = $http.send({
-          url: fallbackUrl,
-          method: 'POST',
-          headers: headers,
-          timeout: 15,
-        })
-      } catch (err) {}
-    }
-
-    if (!res) {
       try {
         const dbUser = $app.findRecordById('users', user.id)
         dbUser.set('uazapi_status', 'error')
-        dbUser.set('uazapi_error', 'Erro de rede: ' + (lastErr ? lastErr.message : 'unknown'))
+        dbUser.set('uazapi_error', errorMsg)
         $app.save(dbUser)
       } catch (_) {}
-      return e.internalServerError('Erro ao reiniciar: ' + (lastErr ? lastErr.message : 'unknown'))
+
+      logIntegrationError(errorMsg, { error: transportError.message })
+
+      return e.internalServerError(errorMsg)
     }
 
     let body = {}
@@ -85,17 +83,26 @@ routerAdd(
       return e.json(200, {
         status: 'success',
         data: body,
+        url: restartUrl,
       })
     }
 
-    const errorMsg =
-      res.statusCode === 404
-        ? 'HTTP 404: Not Found - Instância não encontrada'
-        : res.statusCode === 401
-          ? 'HTTP 401: Unauthorized - Token inválido ou não autorizado'
-          : res.statusCode === 405
-            ? 'HTTP 405: Method Not Allowed'
-            : 'HTTP ' + res.statusCode + ': Falha ao reiniciar instância'
+    let errorMsg = ''
+    if (res.statusCode === 404) {
+      errorMsg =
+        'HTTP 404: Not Found - Instância não encontrada. Verifique o Nome/Número da Instância e o Domínio da API.'
+    } else if (res.statusCode === 401) {
+      errorMsg = 'HTTP 401: Unauthorized - Token inválido ou não autorizado.'
+    } else if (res.statusCode === 405) {
+      errorMsg =
+        'HTTP 405: Method Not Allowed - O endpoint não aceita o método POST. Verifique a versão da API UAZAPI.'
+    } else {
+      errorMsg =
+        'HTTP ' +
+        res.statusCode +
+        ': Falha ao reiniciar instância. ' +
+        (body.message || body.error || '')
+    }
 
     try {
       const dbUser = $app.findRecordById('users', user.id)
@@ -104,10 +111,17 @@ routerAdd(
       $app.save(dbUser)
     } catch (_) {}
 
+    logIntegrationError(errorMsg, {
+      statusCode: res.statusCode,
+      url: restartUrl,
+      response: body,
+    })
+
     return e.json(res.statusCode, {
       status: 'error',
       error: errorMsg,
       code: res.statusCode,
+      url: restartUrl,
       details: body,
     })
   },

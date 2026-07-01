@@ -71,11 +71,14 @@ export const executeCapiVerification = async (
     await updateMetaCapiStatus(userId, 'valid')
     return { success: true }
   } catch (error: any) {
-    const errorMsg =
-      error.response?.message || error.message || 'Falha de comunicação com Meta CAPI'
-
     const errorData = error.response || {}
     const metaErr = errorData.error || errorData
+    const errorMsg =
+      metaErr?.message ||
+      errorData.message ||
+      error.response?.message ||
+      error.message ||
+      'Falha de comunicação com Meta CAPI'
 
     let specificError = errorMsg
     if (metaErr.error_user_title) {
@@ -88,7 +91,13 @@ export const executeCapiVerification = async (
 
     const errorString = JSON.stringify(errorData).toLowerCase()
 
-    if (errorMsg.includes('Faltam:')) {
+    if (metaErr?.code === 'invalid_id' || metaErr?.code === 'invalid_id_format') {
+      specificError = errorMsg
+    } else if (metaErr?.code === 'insufficient_permissions') {
+      specificError = `Permissões insuficientes. Faltam: ads_management, business_management, ads_read`
+    } else if (metaErr?.code === 'invalid_token') {
+      specificError = `Erro no Token de Acesso: O token fornecido é inválido, expirou ou não tem as permissões corretas.`
+    } else if (errorMsg.includes('Faltam:')) {
       specificError = errorMsg
     } else if (
       errorString.includes('permissões insuficientes') ||
