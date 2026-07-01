@@ -22,34 +22,55 @@ routerAdd(
       'Content-Type': 'application/json',
     }
 
-    const url = baseUrl + '/instance/restart/' + instance
+    const primaryUrl = baseUrl + '/instance/restart/' + instance
+    const fallbackUrl = baseUrl + '/instance/restart?instance=' + instance
 
-    const tryMethods = ['POST', 'PUT']
     let res = null
     let lastErr = null
 
-    for (let i = 0; i < tryMethods.length; i++) {
+    try {
+      res = $http.send({
+        url: primaryUrl,
+        method: 'POST',
+        headers: headers,
+        timeout: 15,
+      })
+    } catch (err) {
+      lastErr = err
+    }
+
+    if (res && res.statusCode === 405) {
       try {
-        const r = $http.send({
-          url: url,
-          method: tryMethods[i],
+        const putRes = $http.send({
+          url: primaryUrl,
+          method: 'PUT',
           headers: headers,
           timeout: 15,
         })
-
-        if (r.statusCode === 405 && i < tryMethods.length - 1) {
-          res = r
-          continue
+        if (putRes.statusCode !== 405) {
+          res = putRes
         }
+      } catch (err) {}
+    }
 
-        res = r
-        break
-      } catch (err) {
-        lastErr = err
-      }
+    if (!res && lastErr) {
+      try {
+        res = $http.send({
+          url: fallbackUrl,
+          method: 'POST',
+          headers: headers,
+          timeout: 15,
+        })
+      } catch (err) {}
     }
 
     if (!res) {
+      try {
+        const dbUser = $app.findRecordById('users', user.id)
+        dbUser.set('uazapi_status', 'error')
+        dbUser.set('uazapi_error', 'Erro de rede: ' + (lastErr ? lastErr.message : 'unknown'))
+        $app.save(dbUser)
+      } catch (_) {}
       return e.internalServerError('Erro ao reiniciar: ' + (lastErr ? lastErr.message : 'unknown'))
     }
 
@@ -67,14 +88,25 @@ routerAdd(
       })
     }
 
-    return e.json(res.statusCode === 405 ? 400 : res.statusCode, {
+    const errorMsg =
+      res.statusCode === 404
+        ? 'HTTP 404: Not Found - Instância não encontrada'
+        : res.statusCode === 401
+          ? 'HTTP 401: Unauthorized - Token inválido ou não autorizado'
+          : res.statusCode === 405
+            ? 'HTTP 405: Method Not Allowed'
+            : 'HTTP ' + res.statusCode + ': Falha ao reiniciar instância'
+
+    try {
+      const dbUser = $app.findRecordById('users', user.id)
+      dbUser.set('uazapi_status', 'error')
+      dbUser.set('uazapi_error', errorMsg)
+      $app.save(dbUser)
+    } catch (_) {}
+
+    return e.json(res.statusCode, {
       status: 'error',
-      error:
-        res.statusCode === 404
-          ? 'Instância não encontrada (404)'
-          : res.statusCode === 401
-            ? 'Token inválido ou não autorizado (401)'
-            : 'Falha ao reiniciar instância (' + res.statusCode + ')',
+      error: errorMsg,
       code: res.statusCode,
       details: body,
     })

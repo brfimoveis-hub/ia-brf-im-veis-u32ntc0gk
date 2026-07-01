@@ -16,89 +16,59 @@ routerAdd(
       baseUrl = baseUrl.slice(0, -1)
     }
 
-    const phoneFallback = instance.replace(/\D/g, '')
+    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+      return e.badRequestError('Domínio inválido. Deve começar com http:// ou https://')
+    }
 
     const headers = {
       Authorization: 'Bearer ' + token,
       apikey: token,
       'Content-Type': 'application/json',
-      'Cache-Control': 'no-cache',
     }
 
-    var check = function (identifier) {
-      var endpoints = [
-        '/instance/connectionState/' + identifier,
-        '/api/instance/' + identifier + '/status',
-        '/instance/status/' + identifier,
-        '/status?instance=' + identifier,
-      ]
+    const endpoints = ['/instance/connectionState/' + instance, '/instance/status/' + instance]
 
-      var lastRes = null
-      var lastUrl = null
-      var lastErr = null
+    let res = null
+    let usedUrl = ''
+    let lastErr = null
 
-      for (var i = 0; i < endpoints.length; i++) {
-        var url = baseUrl + endpoints[i]
-        try {
-          var res = $http.send({
-            url: url,
-            method: 'GET',
-            headers: headers,
-            timeout: 10,
-          })
-          lastRes = res
-          lastUrl = url
+    for (let i = 0; i < endpoints.length; i++) {
+      const url = baseUrl + endpoints[i]
+      try {
+        const r = $http.send({
+          url: url,
+          method: 'GET',
+          headers: headers,
+          timeout: 10,
+        })
+        res = r
+        usedUrl = url
 
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            return { res: res, identifier: identifier, url: url }
-          }
-        } catch (err) {
-          lastErr = err
+        if (r.statusCode !== 404) {
+          break
         }
+      } catch (err) {
+        lastErr = err
       }
-
-      if (lastRes) {
-        return { res: lastRes, identifier: identifier, url: lastUrl }
-      }
-
-      throw lastErr || new Error('Connection failed')
     }
 
-    var result
-    try {
-      result = check(instance)
-
-      if (result.res.statusCode === 404 && phoneFallback && phoneFallback !== instance) {
-        try {
-          var fbResult = check(phoneFallback)
-          if (fbResult.res.statusCode !== 404) {
-            result = fbResult
-          }
-        } catch (fbErr) {
-          // Keep original result
-        }
-      }
-    } catch (err) {
+    if (!res) {
       return e.json(500, {
         error: 'Erro de rede ao conectar com a instância',
-        details: err.message,
+        details: lastErr ? lastErr.message : 'unknown',
         status: 500,
       })
     }
 
-    var res = result.res
-    var identifier = result.identifier
-    var url = result.url
+    let data = {}
+    try {
+      data = res.json || {}
+    } catch (_) {
+      data = {}
+    }
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      var data = {}
-      try {
-        data = res.json || {}
-      } catch (_) {
-        data = {}
-      }
-
-      var state = 'unknown'
+      let state = 'unknown'
       if (data.instance && data.instance.state) {
         state = data.instance.state
       } else if (data.state) {
@@ -109,30 +79,26 @@ routerAdd(
 
       return e.json(200, {
         status: 'success',
-        identifier_used: identifier,
+        identifier_used: instance,
         state: state,
         data: data,
       })
     }
 
-    var errorDetail = 'No response body'
-    try {
-      if (res.body) {
-        errorDetail = String.fromCharCode.apply(null, new Uint8Array(res.body))
-      }
-      if (res.json) errorDetail = res.json
-    } catch (_) {}
+    const errorMsg =
+      res.statusCode === 404
+        ? 'HTTP 404: Not Found - Instância não encontrada'
+        : res.statusCode === 401
+          ? 'HTTP 401: Unauthorized - Token inválido ou não autorizado'
+          : res.statusCode === 405
+            ? 'HTTP 405: Method Not Allowed - Método não permitido'
+            : 'HTTP ' + res.statusCode + ': Falha na conexão com a instância'
 
     return e.json(res.statusCode, {
-      error:
-        res.statusCode === 404
-          ? 'Instância não encontrada (404)'
-          : res.statusCode === 401
-            ? 'Token inválido ou não autorizado (401)'
-            : 'Falha na conexão com a instância (' + res.statusCode + ')',
+      error: errorMsg,
       code: res.statusCode,
-      url: url,
-      details: errorDetail,
+      url: usedUrl,
+      details: data,
     })
   },
   $apis.requireAuth(),

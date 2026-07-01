@@ -23,12 +23,26 @@ routerAdd(
     }
 
     try {
-      const res = $http.send({
+      let res = $http.send({
         url: baseUrl + '/instance/connectionState/' + instance,
         method: 'GET',
         headers: headers,
         timeout: 15,
       })
+
+      if (res.statusCode === 404) {
+        try {
+          const fallbackRes = $http.send({
+            url: baseUrl + '/instance/status/' + instance,
+            method: 'GET',
+            headers: headers,
+            timeout: 15,
+          })
+          if (fallbackRes.statusCode !== 404) {
+            res = fallbackRes
+          }
+        } catch (fbErr) {}
+      }
 
       let body = {}
       try {
@@ -85,8 +99,12 @@ routerAdd(
         state: 'error',
         error:
           res.statusCode === 404
-            ? 'Instância não encontrada'
-            : 'Falha ao verificar status (' + res.statusCode + ')',
+            ? 'HTTP 404: Not Found - Instância não encontrada'
+            : res.statusCode === 401
+              ? 'HTTP 401: Unauthorized - Token inválido'
+              : res.statusCode === 405
+                ? 'HTTP 405: Method Not Allowed - Método não permitido'
+                : 'HTTP ' + res.statusCode + ': Falha ao verificar status',
         code: res.statusCode,
         data: body,
       })

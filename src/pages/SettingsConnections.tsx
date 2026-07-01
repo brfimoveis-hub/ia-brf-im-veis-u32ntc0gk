@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
@@ -39,6 +39,16 @@ const normalizeUazapiStatus = (raw: string) => {
     return { connected: false, label: 'Erro de Conexão' }
   if (s === 'disconnected' || s === '') return { connected: false, label: 'Desconectado' }
   return { connected: false, label: raw }
+}
+
+const mapHttpError = (code: number | undefined, defaultMessage: string): string => {
+  if (code === 404)
+    return 'Erro 404: Endpoint não encontrado. Verifique o Domínio da API e o Número da Instância.'
+  if (code === 405)
+    return 'Erro 405: Método não permitido. A requisição foi recusada pelo servidor.'
+  if (code === 401)
+    return 'Erro 401: Não autorizado. Verifique o Token da Instância ou Global API Key.'
+  return defaultMessage
 }
 
 function StatusBanner({ type, message }: { type: 'error' | 'success'; message: string }) {
@@ -122,7 +132,12 @@ function UazapiPanel() {
       await pb.send('/backend/v1/uazapi/restart', { method: 'POST' })
       toast({ title: 'Instância reiniciada', description: 'O comando de reinício foi enviado.' })
     } catch (err: any) {
-      const msg = err?.response?.error || err?.message || 'Falha ao processar comando.'
+      const errCode = err?.response?.code || err?.status
+      const errMsg = err?.response?.error || err?.message || 'Falha ao processar comando.'
+      const msg = mapHttpError(
+        typeof errCode === 'number' ? errCode : undefined,
+        errCode && !errMsg.includes('HTTP') ? `HTTP ${errCode}: ${errMsg}` : errMsg,
+      )
       toast({ variant: 'destructive', title: 'Erro ao reiniciar', description: msg })
     } finally {
       setIsRestarting(false)
@@ -135,10 +150,13 @@ function UazapiPanel() {
       await pb.send('/backend/v1/uazapi/status', { method: 'GET' })
       toast({ title: 'Status atualizado', description: 'O status da instância foi verificado.' })
     } catch (err: any) {
+      const errCode = err?.response?.code || err?.status
+      const errMsg = err?.response?.error || err?.message || 'Falha ao acessar status.'
+      const msg = mapHttpError(typeof errCode === 'number' ? errCode : undefined, errMsg)
       toast({
         variant: 'destructive',
         title: 'Erro ao verificar status',
-        description: err.message || 'Falha ao acessar status.',
+        description: msg,
       })
     } finally {
       setIsSyncing(false)
@@ -195,7 +213,12 @@ function UazapiPanel() {
         toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
       }
     } catch (err: any) {
-      const msg = err?.response?.error || err?.message || 'Erro ao testar a conexão.'
+      const errCode = err?.response?.code || err?.status
+      const errMsg = err?.response?.error || err?.message || 'Erro ao testar a conexão.'
+      const msg = mapHttpError(
+        typeof errCode === 'number' ? errCode : undefined,
+        errCode && !errMsg.includes('HTTP') ? `HTTP ${errCode}: ${errMsg}` : errMsg,
+      )
       setTestResult({ success: false, message: msg })
       toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
     } finally {
@@ -227,6 +250,17 @@ function UazapiPanel() {
       setIsLoadingQr(false)
     }
   }, [toast])
+
+  useEffect(() => {
+    const s = (status || '').toLowerCase()
+    if ((s === 'qr_ready' || s === 'qrcode' || s === 'qr') && !qrCodeData?.base64 && !isLoadingQr) {
+      fetchQrCode()
+    }
+    if (s === 'connected' || s === 'open') {
+      setQrCodeData(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
 
   const statusInfo = normalizeUazapiStatus(status)
   const isConnected = statusInfo.connected
@@ -394,18 +428,31 @@ function UazapiPanel() {
           {qrCodeData?.base64 && !isConnected && (
             <div
               key="uazapi-qr-display"
-              className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner"
+              className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner animate-fade-in"
             >
-              <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-                <img src={qrCodeData.base64} alt="QR Code" className="w-64 h-64 object-contain" />
+              <div
+                key="uazapi-qr-image-wrapper"
+                className="bg-white p-4 rounded-lg shadow-sm border mb-6"
+              >
+                <img
+                  key={`qr-img-${qrCodeData.base64.slice(0, 20)}`}
+                  src={qrCodeData.base64}
+                  alt="QR Code"
+                  className="w-64 h-64 object-contain"
+                />
               </div>
-              <h4 className="font-medium text-center text-lg">Escaneie o QR Code</h4>
-              <p className="text-muted-foreground text-center mt-2 max-w-sm">
+              <h4 key="uazapi-qr-title" className="font-medium text-center text-lg">
+                Escaneie o QR Code
+              </h4>
+              <p key="uazapi-qr-desc" className="text-muted-foreground text-center mt-2 max-w-sm">
                 Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e aponte a câmera para a
                 imagem acima.
               </p>
               {qrCodeData.code && (
-                <div className="mt-4 px-4 py-2 bg-slate-200 rounded text-sm text-slate-700 font-mono font-medium">
+                <div
+                  key="uazapi-qr-code-text"
+                  className="mt-4 px-4 py-2 bg-slate-200 rounded text-sm text-slate-700 font-mono font-medium"
+                >
                   Código: {qrCodeData.code}
                 </div>
               )}
