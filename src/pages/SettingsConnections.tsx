@@ -122,7 +122,9 @@ function UazapiPanel() {
       await pb.send('/backend/v1/uazapi/restart', { method: 'POST' })
       toast({ title: 'Instância reiniciada', description: 'O comando de reinício foi enviado.' })
     } catch (err: any) {
-      const msg = err?.response?.error || err?.message || 'Falha ao processar comando.'
+      const errCode = err?.response?.code || err?.status
+      const errMsg = err?.response?.error || err?.message || 'Falha ao processar comando.'
+      const msg = errCode && !errMsg.includes('HTTP') ? `HTTP ${errCode}: ${errMsg}` : errMsg
       toast({ variant: 'destructive', title: 'Erro ao reiniciar', description: msg })
     } finally {
       setIsRestarting(false)
@@ -135,10 +137,11 @@ function UazapiPanel() {
       await pb.send('/backend/v1/uazapi/status', { method: 'GET' })
       toast({ title: 'Status atualizado', description: 'O status da instância foi verificado.' })
     } catch (err: any) {
+      const msg = err?.response?.error || err?.message || 'Falha ao acessar status.'
       toast({
         variant: 'destructive',
         title: 'Erro ao verificar status',
-        description: err.message || 'Falha ao acessar status.',
+        description: msg,
       })
     } finally {
       setIsSyncing(false)
@@ -195,7 +198,9 @@ function UazapiPanel() {
         toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
       }
     } catch (err: any) {
-      const msg = err?.response?.error || err?.message || 'Erro ao testar a conexão.'
+      const errCode = err?.response?.code || err?.status
+      const errMsg = err?.response?.error || err?.message || 'Erro ao testar a conexão.'
+      const msg = errCode && !errMsg.includes('HTTP') ? `HTTP ${errCode}: ${errMsg}` : errMsg
       setTestResult({ success: false, message: msg })
       toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
     } finally {

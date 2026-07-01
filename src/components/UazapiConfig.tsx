@@ -149,7 +149,11 @@ export function UazapiConfig() {
           instance: instance.trim(),
           token: token.trim(),
         }),
+        headers: { 'Content-Type': 'application/json' },
       })
+
+      const state = res.state || 'unknown'
+      const normalizedState = state === 'open' ? 'connected' : state
 
       setTestState({
         isTesting: false,
@@ -157,28 +161,22 @@ export function UazapiConfig() {
         message: 'Conexão estabelecida com sucesso. A IA Mãe pode se comunicar com a instância.',
         rawLog: res,
       })
-      setStatus('connected')
+      setStatus(normalizedState)
 
       if (user?.id) {
-        // Only update credentials when testing via UI, effectively locking them manually
         await pb.collection('users').update(user.id, {
           uazapi_domain: cleanDomain,
           uazapi_token: token.trim(),
           uazapi_admin_token: adminToken.trim(),
           uazapi_instance_number: instance.trim(),
-          uazapi_status: 'connected',
+          uazapi_status: normalizedState,
           uazapi_error: '',
         })
       }
     } catch (err: any) {
       const data = err.response || {}
-
-      let message = data.error || data.message || err.message || 'Erro desconhecido ao conectar.'
-      if (err.status === 404 || data.code === 404 || data.status === 404) {
-        message = 'Instância não encontrada (404)'
-      }
-
-      const rawLog = data.details || data.rawLog || data || err
+      const message = data.error || data.message || err.message || 'Erro desconhecido ao conectar.'
+      const rawLog = data.details || data || err
 
       setTestState({
         isTesting: false,
@@ -192,7 +190,7 @@ export function UazapiConfig() {
         pb.collection('users')
           .update(user.id, {
             uazapi_status: 'error',
-            uazapi_error: typeof rawLog === 'string' ? rawLog : JSON.stringify(rawLog),
+            uazapi_error: message,
           })
           .catch(() => {})
       }
@@ -202,28 +200,13 @@ export function UazapiConfig() {
   const handleRestart = async () => {
     setIsRestarting(true)
     try {
-      await pb.send('/backend/v1/uazapi/restart', {
-        method: 'POST',
-        body: JSON.stringify({
-          domain: sanitizeDomain(domain),
-          instance: instance.trim(),
-          token: token.trim(),
-        }),
-      })
+      await pb.send('/backend/v1/uazapi/restart', { method: 'POST' })
       toast({
         title: 'API Reiniciada',
         description: 'O comando de reinício foi enviado com sucesso.',
       })
     } catch (err: any) {
-      let errorMsg = err.message || 'Falha ao reiniciar a API.'
-      if (err.status === 405) {
-        errorMsg = err.response?.message || 'Failed to restart API: Method Not Allowed'
-      } else if (err.status === 401) {
-        errorMsg = err.response?.message || 'Failed to restart API: Unauthorized'
-      } else if (err.response?.message) {
-        errorMsg = err.response.message
-      }
-
+      const errorMsg = err?.response?.error || err?.message || 'Falha ao reiniciar a API.'
       toast({
         title: 'Erro ao reiniciar',
         description: errorMsg,
@@ -237,70 +220,21 @@ export function UazapiConfig() {
   const handleCheckStatus = async () => {
     setIsCheckingStatus(true)
     try {
-      const res = await pb.send('/backend/v1/uazapi/status', {
-        method: 'POST',
-        body: JSON.stringify({
-          domain: sanitizeDomain(domain),
-          instance: instance.trim(),
-          token: token.trim(),
-        }),
-      })
+      const res = await pb.send('/backend/v1/uazapi/status', { method: 'GET' })
 
-      // The endpoint returns success: true, status: statusStr, data: {...}
-      const currentState = res.status || res.state || 'unknown'
+      const currentState = res.state || 'unknown'
+      const normalizedState = currentState === 'open' ? 'connected' : currentState
       toast({
         title: 'Status da Instância',
         description: `Estado atual da conexão: ${currentState}`,
       })
 
-      // Backend already saves the status in the user record, but we can optimistically update
-      if (user?.id) {
-        const newStatus =
-          currentState === 'Saudável' || currentState === 'open' || currentState === 'connected'
-            ? 'connected'
-            : currentState
-        setStatus(newStatus)
-        await pb.collection('users').update(user.id, {
-          uazapi_status: newStatus,
-          uazapi_error: res.data?.lastDisconnectReason || '',
-        })
-      }
+      setStatus(normalizedState)
     } catch (err: any) {
-      if (err.status === 404 || err.status === 405) {
-        try {
-          const resGet = await pb.send('/backend/v1/uazapi/status', {
-            method: 'GET',
-            query: {
-              domain: sanitizeDomain(domain),
-              instance: instance.trim(),
-              token: token.trim(),
-            },
-          })
-          const currentState = resGet.state || resGet.status || 'unknown'
-          toast({ title: 'Status da Instância', description: `Estado atual: ${currentState}` })
-
-          if (user?.id && currentState === 'open') {
-            setStatus('connected')
-            await pb
-              .collection('users')
-              .update(user.id, { uazapi_status: 'connected', uazapi_error: '' })
-          } else if (user?.id) {
-            setStatus(currentState)
-            await pb.collection('users').update(user.id, { uazapi_status: currentState })
-          }
-          return
-        } catch (fallbackErr: any) {
-          toast({
-            title: 'Erro ao checar status',
-            description: fallbackErr.message || 'Falha ao checar o status.',
-            variant: 'destructive',
-          })
-          return
-        }
-      }
+      const errorMsg = err?.response?.error || err?.message || 'Falha ao checar o status.'
       toast({
         title: 'Erro ao checar status',
-        description: err.message || 'Falha ao checar o status.',
+        description: errorMsg,
         variant: 'destructive',
       })
     } finally {
