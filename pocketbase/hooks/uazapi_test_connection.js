@@ -16,39 +16,41 @@ routerAdd(
       baseUrl = baseUrl.slice(0, -1)
     }
 
-    // Extract digits to attempt fallback check if needed
     const phoneFallback = instance.replace(/\D/g, '')
 
-    const check = (identifier) => {
-      const endpoints = [
-        `/api/instance/${identifier}/status`,
-        `/status?instance=${identifier}`,
-        `/instance/status/${identifier}`,
+    const headers = {
+      Authorization: 'Bearer ' + token,
+      apikey: token,
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+    }
+
+    var check = function (identifier) {
+      var endpoints = [
+        '/instance/connectionState/' + identifier,
+        '/api/instance/' + identifier + '/status',
+        '/instance/status/' + identifier,
+        '/status?instance=' + identifier,
       ]
 
-      let lastRes = null
-      let lastUrl = null
-      let lastErr = null
+      var lastRes = null
+      var lastUrl = null
+      var lastErr = null
 
-      for (const endpoint of endpoints) {
-        const url = `${baseUrl}${endpoint}`
+      for (var i = 0; i < endpoints.length; i++) {
+        var url = baseUrl + endpoints[i]
         try {
-          const res = $http.send({
+          var res = $http.send({
             url: url,
             method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              apikey: token,
-              'Cache-Control': 'no-cache',
-              'Content-Type': 'application/json',
-            },
+            headers: headers,
             timeout: 10,
           })
           lastRes = res
           lastUrl = url
 
           if (res.statusCode >= 200 && res.statusCode < 300) {
-            return { res, identifier, url }
+            return { res: res, identifier: identifier, url: url }
           }
         } catch (err) {
           lastErr = err
@@ -56,25 +58,24 @@ routerAdd(
       }
 
       if (lastRes) {
-        return { res: lastRes, identifier, url: lastUrl }
+        return { res: lastRes, identifier: identifier, url: lastUrl }
       }
 
       throw lastErr || new Error('Connection failed')
     }
 
-    let result
+    var result
     try {
       result = check(instance)
 
-      // Fallback logic for 404s
       if (result.res.statusCode === 404 && phoneFallback && phoneFallback !== instance) {
         try {
-          const fbResult = check(phoneFallback)
+          var fbResult = check(phoneFallback)
           if (fbResult.res.statusCode !== 404) {
             result = fbResult
           }
         } catch (fbErr) {
-          // Ignore fallback errors and keep the original result if fallback fails at transport level
+          // Keep original result
         }
       }
     } catch (err) {
@@ -85,36 +86,54 @@ routerAdd(
       })
     }
 
-    const { res, identifier, url } = result
+    var res = result.res
+    var identifier = result.identifier
+    var url = result.url
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      let data = {}
+      var data = {}
       try {
         data = res.json || {}
-      } catch (err) {}
+      } catch (_) {
+        data = {}
+      }
+
+      var state = 'unknown'
+      if (data.instance && data.instance.state) {
+        state = data.instance.state
+      } else if (data.state) {
+        state = data.state
+      } else if (data.status) {
+        state = data.status
+      }
+
       return e.json(200, {
         status: 'success',
         identifier_used: identifier,
+        state: state,
         data: data,
       })
-    } else {
-      let errorDetail = res.body
-        ? String.fromCharCode.apply(null, new Uint8Array(res.body))
-        : 'No response body'
-      try {
-        if (res.json) errorDetail = res.json
-      } catch (err) {}
-
-      return e.json(res.statusCode, {
-        error:
-          res.statusCode === 404
-            ? 'Instância não encontrada (404)'
-            : 'Falha na conexão com a instância',
-        code: res.statusCode,
-        url: url,
-        details: errorDetail,
-      })
     }
+
+    var errorDetail = 'No response body'
+    try {
+      if (res.body) {
+        errorDetail = String.fromCharCode.apply(null, new Uint8Array(res.body))
+      }
+      if (res.json) errorDetail = res.json
+    } catch (_) {}
+
+    return e.json(res.statusCode, {
+      error:
+        res.statusCode === 404
+          ? 'Instância não encontrada (404)'
+          : res.statusCode === 401
+            ? 'Token inválido ou não autorizado (401)'
+            : 'Falha na conexão com a instância (' + res.statusCode + ')',
+      code: res.statusCode,
+      url: url,
+      details: errorDetail,
+    })
   },
   $apis.requireAuth(),
 )

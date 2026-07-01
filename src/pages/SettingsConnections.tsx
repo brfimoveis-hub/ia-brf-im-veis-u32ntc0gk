@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
@@ -27,6 +27,18 @@ const sanitizeDomain = (raw: string) => {
   if (clean && !clean.startsWith('http')) clean = 'https://' + clean
   if (clean.endsWith('/')) clean = clean.slice(0, -1)
   return clean
+}
+
+const normalizeUazapiStatus = (raw: string) => {
+  const s = (raw || '').toLowerCase()
+  if (s === 'connected' || s === 'open') return { connected: true, label: 'Conectado' }
+  if (s === 'qr_ready' || s === 'qrcode' || s === 'qr')
+    return { connected: false, label: 'QR Code Pronto' }
+  if (s === 'connecting' || s === 'loading') return { connected: false, label: 'Conectando...' }
+  if (s === 'error' || s === 'failed' || s === 'close')
+    return { connected: false, label: 'Erro de Conexão' }
+  if (s === 'disconnected' || s === '') return { connected: false, label: 'Desconectado' }
+  return { connected: false, label: raw }
 }
 
 function StatusBanner({ type, message }: { type: 'error' | 'success'; message: string }) {
@@ -58,6 +70,7 @@ function UazapiPanel() {
   const [instanceNumber, setInstanceNumber] = useState(user?.uazapi_instance_number || '')
   const [status, setStatus] = useState(user?.uazapi_status || 'disconnected')
   const [errorMsg, setErrorMsg] = useState(user?.uazapi_error || '')
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const [isSaving, setIsSaving] = useState(false)
   const [isRestarting, setIsRestarting] = useState(false)
@@ -67,10 +80,11 @@ function UazapiPanel() {
   const [qrCodeData, setQrCodeData] = useState<{ base64?: string; code?: string } | null>(null)
 
   useRealtime('users', (e) => {
-    if (e.record.id === user?.id) {
-      setStatus(e.record.uazapi_status || 'disconnected')
-      setErrorMsg(e.record.uazapi_error || '')
-    }
+    if (!user?.id || e.record.id !== user.id) return
+    const newStatus = e.record.uazapi_status || 'disconnected'
+    const newError = e.record.uazapi_error || ''
+    setStatus((prev) => (prev !== newStatus ? newStatus : prev))
+    setErrorMsg((prev) => (prev !== newError ? newError : prev))
   })
 
   const handleSave = useCallback(async () => {
@@ -95,20 +109,25 @@ function UazapiPanel() {
   }, [user, domain, token, adminToken, instanceNumber, toast])
 
   const handleRestart = useCallback(async () => {
+    if (!user?.uazapi_domain || !user?.uazapi_instance_number) {
+      toast({
+        variant: 'destructive',
+        title: 'Credenciais não salvas',
+        description: 'Salve as credenciais antes de reiniciar a instância.',
+      })
+      return
+    }
     setIsRestarting(true)
     try {
       await pb.send('/backend/v1/uazapi/restart', { method: 'POST' })
       toast({ title: 'Instância reiniciada', description: 'O comando de reinício foi enviado.' })
     } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao reiniciar',
-        description: err.message || 'Falha ao processar comando.',
-      })
+      const msg = err?.response?.error || err?.message || 'Falha ao processar comando.'
+      toast({ variant: 'destructive', title: 'Erro ao reiniciar', description: msg })
     } finally {
       setIsRestarting(false)
     }
-  }, [toast])
+  }, [user, toast])
 
   const handleSyncStatus = useCallback(async () => {
     setIsSyncing(true)
@@ -136,6 +155,7 @@ function UazapiPanel() {
       return
     }
     setIsTesting(true)
+    setTestResult(null)
     try {
       const cleanDomain = sanitizeDomain(domain)
       const res = await pb.send('/backend/v1/uazapi/test-connection', {
@@ -145,10 +165,17 @@ function UazapiPanel() {
           instance: instanceNumber.trim(),
           token: token.trim(),
         }),
+        headers: { 'Content-Type': 'application/json' },
       })
       if (res.status === 'success') {
-        setStatus('connected')
+        const state = res.state || 'unknown'
+        const normalizedState = state === 'open' ? 'connected' : state
+        setStatus(normalizedState)
         setErrorMsg('')
+        setTestResult({
+          success: true,
+          message: `Conexão bem-sucedida. Status: ${normalizeUazapiStatus(normalizedState).label}`,
+        })
         toast({
           title: 'Conexão bem-sucedida',
           description: 'A comunicação com a instância UAZAPI está funcionando.',
@@ -158,21 +185,19 @@ function UazapiPanel() {
             uazapi_domain: cleanDomain,
             uazapi_instance_number: instanceNumber.trim(),
             uazapi_token: token.trim(),
-            uazapi_status: 'connected',
+            uazapi_status: normalizedState,
             uazapi_error: '',
           })
         }
       } else {
-        toast({
-          variant: 'destructive',
-          title: 'Falha na conexão',
-          description: res.error || 'Erro ao testar a conexão.',
-        })
+        const msg = res.error || 'Erro ao testar a conexão.'
+        setTestResult({ success: false, message: msg })
+        toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
       }
     } catch (err: any) {
       const msg = err?.response?.error || err?.message || 'Erro ao testar a conexão.'
+      setTestResult({ success: false, message: msg })
       toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
-      setStatus('disconnected')
     } finally {
       setIsTesting(false)
     }
@@ -203,7 +228,8 @@ function UazapiPanel() {
     }
   }, [toast])
 
-  const isConnected = status.toLowerCase() === 'connected' || status.toLowerCase() === 'open'
+  const statusInfo = normalizeUazapiStatus(status)
+  const isConnected = statusInfo.connected
 
   return (
     <Card className="shadow-sm border-slate-200">
@@ -219,7 +245,7 @@ function UazapiPanel() {
               isConnected ? 'bg-green-500 hover:bg-green-600 text-sm py-1' : 'text-sm py-1'
             }
           >
-            {isConnected ? 'Conectado Perfeitamente' : status || 'Desconectado'}
+            {isConnected ? 'Conectado Perfeitamente' : statusInfo.label}
           </Badge>
         </div>
         <CardDescription className="pt-2">
@@ -227,16 +253,38 @@ function UazapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        {errorMsg ? (
-          <StatusBanner type="error" message={errorMsg} />
-        ) : isConnected ? (
-          <StatusBanner
-            type="success"
-            message="A comunicação com a instância UAZAPI está funcionando perfeitamente."
-          />
-        ) : null}
+        <div key="uazapi-status-banner" className="uazapi-status-banner-container">
+          {errorMsg ? (
+            <StatusBanner key="uazapi-error-banner" type="error" message={errorMsg} />
+          ) : isConnected ? (
+            <StatusBanner
+              key="uazapi-success-banner"
+              type="success"
+              message="A comunicação com a instância UAZAPI está funcionando perfeitamente."
+            />
+          ) : null}
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {testResult && (
+          <div key="uazapi-test-result" className="uazapi-test-result-container">
+            <Alert
+              variant={testResult.success ? 'default' : 'destructive'}
+              className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
+            >
+              {testResult.success ? (
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              ) : (
+                <AlertCircle className="h-4 w-4" />
+              )}
+              <AlertTitle>
+                {testResult.success ? 'Teste Bem-sucedido' : 'Falha no Teste'}
+              </AlertTitle>
+              <AlertDescription>{testResult.message}</AlertDescription>
+            </Alert>
+          </div>
+        )}
+
+        <div key="uazapi-form-fields" className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="uazapi_domain">Domínio da API</Label>
             <Input
@@ -277,7 +325,7 @@ function UazapiPanel() {
           </div>
         </div>
 
-        <div className="pt-6 border-t flex flex-col sm:flex-row gap-3">
+        <div key="uazapi-actions" className="pt-6 border-t flex flex-col sm:flex-row gap-3">
           <Button onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto">
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -342,9 +390,12 @@ function UazapiPanel() {
           )}
         </div>
 
-        <div className="qr-section-container">
+        <div key="uazapi-qr-section" className="uazapi-qr-section-container">
           {qrCodeData?.base64 && !isConnected && (
-            <div className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner">
+            <div
+              key="uazapi-qr-display"
+              className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner"
+            >
               <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
                 <img src={qrCodeData.base64} alt="QR Code" className="w-64 h-64 object-contain" />
               </div>
@@ -379,10 +430,11 @@ function MetaCapiPanel() {
   const [isTesting, setIsTesting] = useState(false)
 
   useRealtime('users', (e) => {
-    if (e.record.id === user?.id) {
-      setStatus(e.record.meta_capi_status || 'disconnected')
-      setErrorMsg(e.record.meta_capi_error || '')
-    }
+    if (!user?.id || e.record.id !== user.id) return
+    const newStatus = e.record.meta_capi_status || 'disconnected'
+    const newError = e.record.meta_capi_error || ''
+    setStatus((prev) => (prev !== newStatus ? newStatus : prev))
+    setErrorMsg((prev) => (prev !== newError ? newError : prev))
   })
 
   const handleSave = useCallback(async () => {
@@ -431,6 +483,7 @@ function MetaCapiPanel() {
           access_token: capiToken,
           business_id: businessId,
         }),
+        headers: { 'Content-Type': 'application/json' },
       })
       if (res.success) {
         setStatus('connected')
@@ -485,14 +538,15 @@ function MetaCapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        <div className="meta-status-container">
+        <div key="meta-status-banner" className="meta-status-container">
           {isConnected && !errorMsg ? (
             <StatusBanner
+              key="meta-success"
               type="success"
               message="A comunicação com a Meta API está funcionando perfeitamente."
             />
           ) : errorMsg ? (
-            <StatusBanner type="error" message={errorMsg} />
+            <StatusBanner key="meta-error" type="error" message={errorMsg} />
           ) : null}
         </div>
 
@@ -508,7 +562,7 @@ function MetaCapiPanel() {
           </Alert>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div key="meta-form-fields" className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="meta_business_id">Business ID</Label>
             <Input
@@ -539,7 +593,7 @@ function MetaCapiPanel() {
           </div>
         </div>
 
-        <div className="pt-6 border-t flex flex-col sm:flex-row gap-3">
+        <div key="meta-actions" className="pt-6 border-t flex flex-col sm:flex-row gap-3">
           <Button onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto">
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -574,12 +628,10 @@ export default function SettingsConnections() {
           </p>
         </div>
       </div>
-
       <div className="grid gap-8">
         <ErrorBoundary key="uazapi-panel-boundary" fallback={null}>
           <UazapiPanel />
         </ErrorBoundary>
-
         <ErrorBoundary key="meta-capi-panel-boundary" fallback={null}>
           <MetaCapiPanel />
         </ErrorBoundary>
