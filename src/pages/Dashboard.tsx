@@ -275,7 +275,7 @@ export default function Dashboard() {
                 </p>
               </div>
               <Button asChild variant="outline" size="sm">
-                <Link to="/configuracoes/uazapi">
+                <Link to="/settings/connections">
                   Configurar Uazapi <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
@@ -288,7 +288,7 @@ export default function Dashboard() {
                 </p>
               </div>
               <Button asChild variant="outline" size="sm">
-                <Link to="/configuracoes/meta-capi">
+                <Link to="/settings/connections">
                   Configurar Meta CAPI <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>

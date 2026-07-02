@@ -111,9 +111,8 @@ const RouteTracker = () => {
 
 const Root = () => {
   const { loading, user } = useAuth()
-  const location = useLocation()
   return (
-    <div key={location.pathname} className="contents">
+    <div className="contents">
       <RouteTracker />
       <ErrorBoundary fallback={null}>
         <GTMTracker />

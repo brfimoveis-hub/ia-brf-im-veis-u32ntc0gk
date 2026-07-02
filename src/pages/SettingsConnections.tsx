@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
@@ -89,6 +89,14 @@ function UazapiPanel() {
   const [isTesting, setIsTesting] = useState(false)
   const [isLoadingQr, setIsLoadingQr] = useState(false)
   const [qrCodeData, setQrCodeData] = useState<{ base64?: string; code?: string } | null>(null)
+  const mountedRef = useRef(true)
+  const qrFetchingRef = useRef(false)
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useRealtime('users', (e) => {
     if (!user?.id || e.record.id !== user.id) return
@@ -233,9 +241,12 @@ function UazapiPanel() {
   }, [domain, instanceNumber, token, adminToken, user, toast])
 
   const fetchQrCode = useCallback(async () => {
+    if (qrFetchingRef.current || !mountedRef.current) return
+    qrFetchingRef.current = true
     setIsLoadingQr(true)
     try {
       const res = await pb.send('/backend/v1/uazapi/qrcode', { method: 'GET' })
+      if (!mountedRef.current) return
       if (res && res.base64) {
         setQrCodeData({ base64: res.base64, code: res.code })
         toast({ title: 'QR Code gerado', description: 'Leia o QR Code com o seu WhatsApp.' })
@@ -247,19 +258,27 @@ function UazapiPanel() {
         })
       }
     } catch (err: any) {
+      if (!mountedRef.current) return
       toast({
         variant: 'destructive',
         title: 'Erro ao gerar QR Code',
         description: err.message || 'Não foi possível buscar o QR Code.',
       })
     } finally {
-      setIsLoadingQr(false)
+      qrFetchingRef.current = false
+      if (mountedRef.current) setIsLoadingQr(false)
     }
   }, [toast])
 
   useEffect(() => {
+    if (!mountedRef.current) return
     const s = (status || '').toLowerCase()
-    if ((s === 'qr_ready' || s === 'qrcode' || s === 'qr') && !qrCodeData?.base64 && !isLoadingQr) {
+    if (
+      (s === 'qr_ready' || s === 'qrcode' || s === 'qr') &&
+      !qrCodeData?.base64 &&
+      !isLoadingQr &&
+      !qrFetchingRef.current
+    ) {
       fetchQrCode()
     }
     if (s === 'connected' || s === 'open') {
@@ -305,7 +324,7 @@ function UazapiPanel() {
         </div>
 
         {testResult && (
-          <div className="uazapi-test-result-container">
+          <div className="uazapi-test-result-container" key="uazapi-test-result">
             <Alert
               variant={testResult.success ? 'default' : 'destructive'}
               className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
@@ -319,6 +338,22 @@ function UazapiPanel() {
                 {testResult.success ? 'Teste Bem-sucedido' : 'Falha no Teste'}
               </AlertTitle>
               <AlertDescription>{testResult.message}</AlertDescription>
+              {!testResult.success && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestConnection}
+                  disabled={isTesting}
+                  className="mt-3"
+                >
+                  {isTesting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Tentar Novamente
+                </Button>
+              )}
             </Alert>
           </div>
         )}
@@ -469,6 +504,7 @@ function MetaCapiPanel() {
   const [errorMsg, setErrorMsg] = useState(user?.meta_capi_error || '')
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
   useRealtime('users', (e) => {
     if (!user?.id || e.record.id !== user.id) return
@@ -480,6 +516,16 @@ function MetaCapiPanel() {
 
   const handleSave = useCallback(async () => {
     if (!user) return
+    const digits = pixelId.replace(/\D/g, '')
+    if (digits.length >= 16) {
+      toast({
+        variant: 'destructive',
+        title: 'ID inválido',
+        description:
+          'ID inválido: O ID inserido parece ser um App ID ou Business ID. Por favor, insira o ID do Dataset (Pixel).',
+      })
+      return
+    }
     setIsSaving(true)
     try {
       await pb.collection('users').update(user.id, {
@@ -501,6 +547,14 @@ function MetaCapiPanel() {
 
   const handleTestConnection = useCallback(async () => {
     if (!user) return
+    const digits = pixelId.replace(/\D/g, '')
+    if (digits.length >= 16) {
+      const msg =
+        'ID inválido: O ID inserido parece ser um App ID ou Business ID. Por favor, insira o ID do Dataset (Pixel).'
+      setTestResult({ success: false, message: msg })
+      toast({ variant: 'destructive', title: 'ID inválido', description: msg })
+      return
+    }
     if (!pixelId.trim() || !capiToken.trim()) {
       toast({
         variant: 'destructive',
@@ -510,6 +564,7 @@ function MetaCapiPanel() {
       return
     }
     setIsTesting(true)
+    setTestResult(null)
     try {
       await pb.collection('users').update(user.id, {
         meta_pixel_id: pixelId,
@@ -529,16 +584,18 @@ function MetaCapiPanel() {
       if (res.success) {
         setStatus('connected')
         setErrorMsg('')
+        setTestResult({
+          success: true,
+          message: 'A comunicação com a Meta API está funcionando perfeitamente.',
+        })
         toast({
           title: 'Conexão bem-sucedida',
           description: 'A comunicação com a Meta API está funcionando perfeitamente.',
         })
       } else {
-        toast({
-          variant: 'destructive',
-          title: 'Falha na conexão',
-          description: res.error?.message || 'Erro ao testar a conexão.',
-        })
+        const msg = res.error?.message || 'Erro ao testar a conexão.'
+        setTestResult({ success: false, message: msg })
+        toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
       }
     } catch (err: any) {
       const msg =
@@ -548,6 +605,7 @@ function MetaCapiPanel() {
         'Erro ao testar a conexão'
       setStatus('error')
       setErrorMsg(msg)
+      setTestResult({ success: false, message: msg })
       toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
     } finally {
       setIsTesting(false)
@@ -585,6 +643,38 @@ function MetaCapiPanel() {
             message={errorMsg || 'A comunicação com a Meta API está funcionando perfeitamente.'}
           />
         </div>
+
+        {testResult && (
+          <Alert
+            variant={testResult.success ? 'default' : 'destructive'}
+            className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
+            key="meta-test-result"
+          >
+            {testResult.success ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            ) : (
+              <AlertCircle className="h-4 w-4" />
+            )}
+            <AlertTitle>{testResult.success ? 'Teste Bem-sucedido' : 'Falha no Teste'}</AlertTitle>
+            <AlertDescription>{testResult.message}</AlertDescription>
+            {!testResult.success && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                className="mt-3"
+              >
+                {isTesting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Tentar Novamente
+              </Button>
+            )}
+          </Alert>
+        )}
 
         <Alert className={cn('border-yellow-200 bg-yellow-50', !isLikelyAppId && 'hidden')}>
           <AlertCircle className="h-4 w-4 text-yellow-600" />

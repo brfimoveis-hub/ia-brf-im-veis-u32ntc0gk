@@ -53,20 +53,9 @@ routerAdd(
 
     let res = null
     let transportError = null
-    let usedMethod = 'POST'
 
     try {
       res = sendRequest('POST')
-
-      if (res.statusCode === 405) {
-        try {
-          const getRes = sendRequest('GET')
-          if (getRes.statusCode !== 405) {
-            res = getRes
-            usedMethod = 'GET'
-          }
-        } catch (getErr) {}
-      }
     } catch (err) {
       transportError = err
     }
@@ -99,7 +88,7 @@ routerAdd(
         status: 'success',
         data: body,
         url: restartUrl,
-        method: usedMethod,
+        method: 'POST',
       })
     }
 
@@ -130,7 +119,7 @@ routerAdd(
     logIntegrationError(errorMsg, {
       statusCode: res.statusCode,
       url: restartUrl,
-      method: usedMethod,
+      method: 'POST',
       response: body,
     })
 
