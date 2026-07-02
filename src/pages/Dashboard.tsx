@@ -157,25 +157,33 @@ export default function Dashboard() {
             <p className="text-xs text-muted-foreground truncate mt-1">
               Instância: {currentUser?.uazapi_instance_number || '554892098050'}
             </p>
-            {currentUser?.profileName &&
-            (currentUser.uazapi_status === 'connected' ||
-              currentUser.uazapi_status === 'online') ? (
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                Perfil: {currentUser.profileName}
-                {currentUser.currentPresence ? ` (${currentUser.currentPresence})` : null}
-              </p>
-            ) : null}
-            {currentUser?.uazapi_error &&
-            (currentUser.uazapi_status === 'error' ||
-              currentUser.uazapi_status === 'offline' ||
-              currentUser.uazapi_status === 'disconnected') ? (
-              <p
-                className="text-xs text-red-500 mt-1 line-clamp-2"
-                title={currentUser.uazapi_error}
-              >
-                Erro: {currentUser.uazapi_error}
-              </p>
-            ) : null}
+            <p
+              className={cn(
+                'text-xs text-muted-foreground truncate mt-0.5',
+                !(
+                  currentUser?.profileName &&
+                  (currentUser?.uazapi_status === 'connected' ||
+                    currentUser?.uazapi_status === 'online')
+                ) && 'hidden',
+              )}
+            >
+              Perfil: {currentUser?.profileName || ''}
+              {currentUser?.currentPresence ? ` (${currentUser.currentPresence})` : ''}
+            </p>
+            <p
+              className={cn(
+                'text-xs text-red-500 mt-1 line-clamp-2',
+                !(
+                  currentUser?.uazapi_error &&
+                  (currentUser?.uazapi_status === 'error' ||
+                    currentUser?.uazapi_status === 'offline' ||
+                    currentUser?.uazapi_status === 'disconnected')
+                ) && 'hidden',
+              )}
+              title={currentUser?.uazapi_error || ''}
+            >
+              Erro: {currentUser?.uazapi_error || ''}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -224,16 +232,19 @@ export default function Dashboard() {
                   : 'Desconectado'}
               </div>
             </div>
-            {currentUser?.meta_capi_error &&
-            (currentUser?.meta_capi_status === 'error' ||
-              currentUser?.meta_capi_status === 'disconnected') ? (
-              <p
-                className="text-xs text-red-500 mt-1 line-clamp-2"
-                title={currentUser.meta_capi_error}
-              >
-                Erro: {currentUser.meta_capi_error}
-              </p>
-            ) : null}
+            <p
+              className={cn(
+                'text-xs text-red-500 mt-1 line-clamp-2',
+                !(
+                  currentUser?.meta_capi_error &&
+                  (currentUser?.meta_capi_status === 'error' ||
+                    currentUser?.meta_capi_status === 'disconnected')
+                ) && 'hidden',
+              )}
+              title={currentUser?.meta_capi_error || ''}
+            >
+              Erro: {currentUser?.meta_capi_error || ''}
+            </p>
           </CardContent>
         </Card>
         <Card>

@@ -94,6 +94,16 @@ routerAdd(
             ? 'HTTP 405: Method Not Allowed - Método não permitido'
             : 'HTTP ' + res.statusCode + ': Falha na conexão com a instância'
 
+    try {
+      const logCol = $app.findCollectionByNameOrId('system_logs')
+      const log = new Record(logCol)
+      log.set('type', 'integration_error')
+      log.set('message', 'UAZAPI Test Connection: ' + errorMsg)
+      log.set('details', { statusCode: res.statusCode, url: usedUrl, instance: instance })
+      log.set('payload', { domain: domain, instance: instance, response: data })
+      $app.save(log)
+    } catch (_) {}
+
     return e.json(res.statusCode, {
       error: errorMsg,
       code: res.statusCode,

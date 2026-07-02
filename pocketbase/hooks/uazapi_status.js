@@ -13,8 +13,26 @@ routerAdd(
       return e.badRequestError('Configuração UAZAPI incompleta')
     }
 
+    const logError = (message, details) => {
+      try {
+        const col = $app.findCollectionByNameOrId('system_logs')
+        const log = new Record(col)
+        log.set('type', 'integration_error')
+        log.set('message', 'UAZAPI Status: ' + message)
+        log.set('details', { instance: instance, ...details })
+        log.set('payload', { domain: domain, instance: instance })
+        $app.save(log)
+      } catch (_) {}
+    }
+
     let baseUrl = domain
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1)
+
+    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+      const msg = 'Domínio inválido. Deve começar com http:// ou https://'
+      logError(msg, { domain: domain })
+      return e.badRequestError(msg)
+    }
 
     const headers = {
       apikey: token,
@@ -22,22 +40,31 @@ routerAdd(
       'Content-Type': 'application/json',
     }
 
-    try {
-      let res = $http.send({
-        url: baseUrl + '/instance/connectionState/' + instance,
-        method: 'GET',
+    const sendRequest = (url, method) => {
+      return $http.send({
+        url: url,
+        method: method,
         headers: headers,
         timeout: 15,
       })
+    }
+
+    try {
+      const stateUrl = baseUrl + '/instance/connectionState/' + instance
+      let res = sendRequest(stateUrl, 'GET')
+
+      if (res.statusCode === 405) {
+        try {
+          const postRes = sendRequest(stateUrl, 'POST')
+          if (postRes.statusCode !== 405) {
+            res = postRes
+          }
+        } catch (postErr) {}
+      }
 
       if (res.statusCode === 404) {
         try {
-          const fallbackRes = $http.send({
-            url: baseUrl + '/instance/status/' + instance,
-            method: 'GET',
-            headers: headers,
-            timeout: 15,
-          })
+          const fallbackRes = sendRequest(baseUrl + '/instance/status/' + instance, 'GET')
           if (fallbackRes.statusCode !== 404) {
             res = fallbackRes
           }
@@ -71,9 +98,7 @@ routerAdd(
             dbUser.set('uazapi_error', '')
           }
           $app.save(dbUser)
-        } catch (dbErr) {
-          // Ignore DB errors - status is still returned
-        }
+        } catch (dbErr) {}
 
         return e.json(200, {
           status: 'success',
@@ -81,6 +106,15 @@ routerAdd(
           data: body,
         })
       }
+
+      const errorMsg =
+        res.statusCode === 404
+          ? 'HTTP 404: Not Found - Instância não encontrada'
+          : res.statusCode === 401
+            ? 'HTTP 401: Unauthorized - Token inválido'
+            : res.statusCode === 405
+              ? 'HTTP 405: Method Not Allowed - Método não permitido'
+              : 'HTTP ' + res.statusCode + ': Falha ao verificar status'
 
       try {
         const dbUser = $app.findRecordById('users', user.id)
@@ -90,21 +124,17 @@ routerAdd(
           'HTTP ' + res.statusCode + ': ' + (body.message || body.error || 'Unknown error'),
         )
         $app.save(dbUser)
-      } catch (dbErr) {
-        // Ignore
-      }
+      } catch (dbErr) {}
+
+      logError(errorMsg, {
+        statusCode: res.statusCode,
+        response: body,
+      })
 
       return e.json(res.statusCode, {
         status: 'error',
         state: 'error',
-        error:
-          res.statusCode === 404
-            ? 'HTTP 404: Not Found - Instância não encontrada'
-            : res.statusCode === 401
-              ? 'HTTP 401: Unauthorized - Token inválido'
-              : res.statusCode === 405
-                ? 'HTTP 405: Method Not Allowed - Método não permitido'
-                : 'HTTP ' + res.statusCode + ': Falha ao verificar status',
+        error: errorMsg,
         code: res.statusCode,
         data: body,
       })
@@ -114,9 +144,9 @@ routerAdd(
         dbUser.set('uazapi_status', 'error')
         dbUser.set('uazapi_error', err.message || 'Network error')
         $app.save(dbUser)
-      } catch (dbErr) {
-        // Ignore
-      }
+      } catch (dbErr) {}
+
+      logError(err.message || 'Network error', { error: err.message })
 
       return e.internalServerError('Erro ao buscar status: ' + err.message)
     }

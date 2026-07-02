@@ -42,16 +42,31 @@ routerAdd(
       'Content-Type': 'application/json',
     }
 
-    let res = null
-    let transportError = null
-
-    try {
-      res = $http.send({
+    const sendRequest = (method) => {
+      return $http.send({
         url: restartUrl,
-        method: 'POST',
+        method: method,
         headers: headers,
         timeout: 15,
       })
+    }
+
+    let res = null
+    let transportError = null
+    let usedMethod = 'POST'
+
+    try {
+      res = sendRequest('POST')
+
+      if (res.statusCode === 405) {
+        try {
+          const getRes = sendRequest('GET')
+          if (getRes.statusCode !== 405) {
+            res = getRes
+            usedMethod = 'GET'
+          }
+        } catch (getErr) {}
+      }
     } catch (err) {
       transportError = err
     }
@@ -84,6 +99,7 @@ routerAdd(
         status: 'success',
         data: body,
         url: restartUrl,
+        method: usedMethod,
       })
     }
 
@@ -95,7 +111,7 @@ routerAdd(
       errorMsg = 'HTTP 401: Unauthorized - Token inválido ou não autorizado.'
     } else if (res.statusCode === 405) {
       errorMsg =
-        'HTTP 405: Method Not Allowed - O endpoint não aceita o método POST. Verifique a versão da API UAZAPI.'
+        'HTTP 405: Method Not Allowed - O endpoint não aceita POST nem GET. Verifique a versão da API UAZAPI.'
     } else {
       errorMsg =
         'HTTP ' +
@@ -114,6 +130,7 @@ routerAdd(
     logIntegrationError(errorMsg, {
       statusCode: res.statusCode,
       url: restartUrl,
+      method: usedMethod,
       response: body,
     })
 

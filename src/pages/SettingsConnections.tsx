@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { useRealtime } from '@/hooks/use-realtime'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { cn } from '@/lib/utils'
 
 const sanitizeDomain = (raw: string) => {
   let clean = raw.trim()
@@ -176,6 +177,14 @@ function UazapiPanel() {
     setTestResult(null)
     try {
       const cleanDomain = sanitizeDomain(domain)
+      if (user?.id) {
+        await pb.collection('users').update(user.id, {
+          uazapi_domain: cleanDomain,
+          uazapi_instance_number: instanceNumber.trim(),
+          uazapi_token: token.trim(),
+          uazapi_admin_token: adminToken.trim(),
+        })
+      }
       const res = await pb.send('/backend/v1/uazapi/test-connection', {
         method: 'POST',
         body: JSON.stringify({
@@ -200,9 +209,6 @@ function UazapiPanel() {
         })
         if (user?.id) {
           await pb.collection('users').update(user.id, {
-            uazapi_domain: cleanDomain,
-            uazapi_instance_number: instanceNumber.trim(),
-            uazapi_token: token.trim(),
             uazapi_status: normalizedState,
             uazapi_error: '',
           })
@@ -224,7 +230,7 @@ function UazapiPanel() {
     } finally {
       setIsTesting(false)
     }
-  }, [domain, instanceNumber, token, user, toast])
+  }, [domain, instanceNumber, token, adminToken, user, toast])
 
   const fetchQrCode = useCallback(async () => {
     setIsLoadingQr(true)
@@ -287,15 +293,15 @@ function UazapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        <div className="uazapi-status-banner-container">
-          {(errorMsg || isConnected) && (
-            <StatusBanner
-              type={errorMsg ? 'error' : 'success'}
-              message={
-                errorMsg || 'A comunicação com a instância UAZAPI está funcionando perfeitamente.'
-              }
-            />
-          )}
+        <div
+          className={cn('uazapi-status-banner-container', !(errorMsg || isConnected) && 'hidden')}
+        >
+          <StatusBanner
+            type={errorMsg ? 'error' : 'success'}
+            message={
+              errorMsg || 'A comunicação com a instância UAZAPI está funcionando perfeitamente.'
+            }
+          />
         </div>
 
         {testResult && (
@@ -423,7 +429,12 @@ function UazapiPanel() {
           )}
         </div>
 
-        <div className="uazapi-qr-section-container">
+        <div
+          className={cn(
+            'uazapi-qr-section-container',
+            !(qrCodeData?.base64 && !isConnected) && 'hidden',
+          )}
+        >
           {qrCodeData?.base64 && !isConnected && (
             <div className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner animate-fade-in">
               <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
@@ -568,26 +579,22 @@ function MetaCapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        <div className="meta-status-container">
-          {(isConnected || errorMsg) && (
-            <StatusBanner
-              type={errorMsg ? 'error' : 'success'}
-              message={errorMsg || 'A comunicação com a Meta API está funcionando perfeitamente.'}
-            />
-          )}
+        <div className={cn('meta-status-container', !(isConnected || errorMsg) && 'hidden')}>
+          <StatusBanner
+            type={errorMsg ? 'error' : 'success'}
+            message={errorMsg || 'A comunicação com a Meta API está funcionando perfeitamente.'}
+          />
         </div>
 
-        {isLikelyAppId && (
-          <Alert className="border-yellow-200 bg-yellow-50">
-            <AlertCircle className="h-4 w-4 text-yellow-600" />
-            <AlertTitle className="text-yellow-800">Aviso: Possível App ID</AlertTitle>
-            <AlertDescription className="text-yellow-700">
-              Este ID parece ser um App ID da Meta, não um Pixel/Dataset ID. App IDs geralmente têm
-              16 ou mais dígitos. Verifique se você está usando o ID correto do Pixel na seção de
-              Gerenciador de Eventos do Facebook.
-            </AlertDescription>
-          </Alert>
-        )}
+        <Alert className={cn('border-yellow-200 bg-yellow-50', !isLikelyAppId && 'hidden')}>
+          <AlertCircle className="h-4 w-4 text-yellow-600" />
+          <AlertTitle className="text-yellow-800">Aviso: Possível App ID</AlertTitle>
+          <AlertDescription className="text-yellow-700">
+            Este ID parece ser um App ID da Meta, não um Pixel/Dataset ID. App IDs geralmente têm 16
+            ou mais dígitos. Verifique se você está usando o ID correto do Pixel na seção de
+            Gerenciador de Eventos do Facebook.
+          </AlertDescription>
+        </Alert>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
