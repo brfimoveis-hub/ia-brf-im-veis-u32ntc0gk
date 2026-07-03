@@ -108,10 +108,19 @@ function UazapiPanel() {
 
   const handleSave = useCallback(async () => {
     if (!user) return
+    const cleanDomain = sanitizeDomain(domain)
+    if (domain.trim() && !/^https?:\/\/[^/]+\.[^/]+/.test(cleanDomain)) {
+      toast({
+        variant: 'destructive',
+        title: 'Domínio inválido',
+        description: 'O domínio deve ser uma URL válida (ex: https://iabrfimveis.uazapi.com).',
+      })
+      return
+    }
     setIsSaving(true)
     try {
       await pb.collection('users').update(user.id, {
-        uazapi_domain: sanitizeDomain(domain),
+        uazapi_domain: cleanDomain,
         uazapi_token: token,
         uazapi_admin_token: adminToken,
         uazapi_instance_number: instanceNumber,
@@ -522,7 +531,7 @@ function MetaCapiPanel() {
         variant: 'destructive',
         title: 'ID inválido',
         description:
-          'ID inválido: O ID inserido parece ser um App ID ou Business ID. Por favor, insira o ID do Dataset (Pixel).',
+          'ID inválido: Verifique se você inseriu um Dataset/Pixel ID em vez de um App ID.',
       })
       return
     }
@@ -549,8 +558,7 @@ function MetaCapiPanel() {
     if (!user) return
     const digits = pixelId.replace(/\D/g, '')
     if (digits.length >= 16) {
-      const msg =
-        'ID inválido: O ID inserido parece ser um App ID ou Business ID. Por favor, insira o ID do Dataset (Pixel).'
+      const msg = 'ID inválido: Verifique se você inseriu um Dataset/Pixel ID em vez de um App ID.'
       setTestResult({ success: false, message: msg })
       toast({ variant: 'destructive', title: 'ID inválido', description: msg })
       return

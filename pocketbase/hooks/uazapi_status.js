@@ -17,7 +17,7 @@ routerAdd(
       try {
         const col = $app.findCollectionByNameOrId('system_logs')
         const log = new Record(col)
-        log.set('type', 'integration_error')
+        log.set('type', 'connection_error')
         log.set('message', 'UAZAPI Status: ' + message)
         log.set('details', { instance: instance, ...details })
         log.set('payload', { domain: domain, instance: instance })

@@ -27,7 +27,8 @@ export default function SettingsRemarketing() {
     setIsLoadingLogs(true)
     try {
       const records = await pb.collection('system_logs').getList(1, 20, {
-        filter: "type ~ 'meta_capi' || type ~ 'Remarketing' || type ~ 'meta'",
+        filter:
+          "type ~ 'connection_error' || type ~ 'api_integration' || type ~ 'meta_capi' || type ~ 'meta'",
         sort: '-created',
       })
       setLogs(records.items)
@@ -48,8 +49,9 @@ export default function SettingsRemarketing() {
   useRealtime('system_logs', (e) => {
     if (
       e.action === 'create' &&
-      (e.record.type?.includes('meta_capi') ||
-        e.record.type?.includes('Remarketing') ||
+      (e.record.type?.includes('connection_error') ||
+        e.record.type?.includes('api_integration') ||
+        e.record.type?.includes('meta_capi') ||
         e.record.type?.includes('meta'))
     ) {
       setLogs((prev) => [e.record, ...prev].slice(0, 20))

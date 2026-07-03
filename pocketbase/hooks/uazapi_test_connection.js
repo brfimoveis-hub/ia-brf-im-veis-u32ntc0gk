@@ -97,7 +97,7 @@ routerAdd(
     try {
       const logCol = $app.findCollectionByNameOrId('system_logs')
       const log = new Record(logCol)
-      log.set('type', 'integration_error')
+      log.set('type', 'connection_error')
       log.set('message', 'UAZAPI Test Connection: ' + errorMsg)
       log.set('details', { statusCode: res.statusCode, url: usedUrl, instance: instance })
       log.set('payload', { domain: domain, instance: instance, response: data })

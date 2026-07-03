@@ -20,7 +20,7 @@ routerAdd(
       try {
         const col = $app.findCollectionByNameOrId('system_logs')
         const log = new Record(col)
-        log.set('type', 'integration_error')
+        log.set('type', 'connection_error')
         log.set('message', 'Meta CAPI: ' + message)
         log.set('details', { error_code: errorCode, pixel_id: pixelId, ...details })
         log.set('payload', body)
@@ -32,7 +32,7 @@ routerAdd(
       try {
         const col = $app.findCollectionByNameOrId('system_logs')
         const log = new Record(col)
-        log.set('type', 'meta_capi_connection')
+        log.set('type', 'api_integration')
         log.set('message', 'Test connection success: ' + message)
         log.set('details', details)
         log.set('payload', body)
