@@ -9,7 +9,7 @@ routerAdd(
 
     const user = e.auth
     if (user) {
-      pixelId = pixelId || user.getString('meta_pixel_id')
+      pixelId = pixelId || user.getString('meta_dataset_id') || user.getString('meta_pixel_id')
       accessToken = accessToken || user.getString('meta_capi_token')
       if (!businessId) {
         businessId = user.getString('meta_whatsapp_business_id')
@@ -173,12 +173,23 @@ routerAdd(
       return e.json(200, { success: true, data: res.json })
     }
 
-    let errorMsg = res.json?.error?.message || 'Erro da Meta API (Status ' + res.statusCode + ')'
+    const metaError = res.json?.error || {}
+    const metaErrorCode = metaError.code
+    const metaErrorSubcode = metaError.error_subcode
+    let errorMsg = metaError.message || 'Erro da Meta API (Status ' + res.statusCode + ')'
     let errorCode = 'api_error'
 
-    if (
+    // GraphMethodException: code 100, subcode 33 — "Object with ID does not exist"
+    if (metaErrorCode === 100 && metaErrorSubcode === 33) {
+      errorMsg =
+        "Object ID '" +
+        pixelIdStr +
+        "' não encontrado. O Dataset/Pixel ID fornecido não existe ou o token não tem permissão para acessá-lo. Verifique o ID no Gerenciador de Eventos do Facebook."
+      errorCode = 'invalid_id'
+    } else if (
       errorMsg.indexOf('Unsupported post request') !== -1 ||
-      errorMsg.indexOf('does not exist') !== -1
+      errorMsg.indexOf('does not exist') !== -1 ||
+      errorMsg.indexOf('Object with ID') !== -1
     ) {
       errorMsg =
         "ID inválido: O ID '" +

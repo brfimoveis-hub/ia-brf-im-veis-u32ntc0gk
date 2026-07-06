@@ -8,18 +8,18 @@ onRecordAfterUpdateSuccess((e) => {
     let testCode = $secrets.get('META_TEST_EVENT_CODE')
 
     let user
-    let pixelId = ''
+    let datasetId = ''
     let capiToken = ''
 
     if (userId) {
       try {
         user = $app.findRecordById('users', userId)
-        pixelId = user.getString('meta_pixel_id')
+        datasetId = user.getString('meta_dataset_id') || user.getString('meta_pixel_id')
         capiToken = user.getString('meta_capi_token')
       } catch (err) {}
     }
 
-    if (!pixelId || !capiToken) {
+    if (!datasetId || !capiToken) {
       try {
         const adminUsers = $app.findRecordsByFilter(
           'users',
@@ -30,14 +30,17 @@ onRecordAfterUpdateSuccess((e) => {
         )
         if (adminUsers.length > 0) {
           user = user || adminUsers[0]
-          pixelId = pixelId || adminUsers[0].getString('meta_pixel_id')
+          datasetId =
+            datasetId ||
+            adminUsers[0].getString('meta_dataset_id') ||
+            adminUsers[0].getString('meta_pixel_id')
           capiToken = capiToken || adminUsers[0].getString('meta_capi_token')
         }
       } catch (err) {}
     }
 
-    if (!pixelId || !capiToken) {
-      $app.logger().warn('CAPI Event Match Warning: Missing Pixel ID or Token. Event blocked.')
+    if (!datasetId || !capiToken) {
+      $app.logger().warn('CAPI Event Match Warning: Missing Dataset ID or Token. Event blocked.')
       return e.next()
     }
 
@@ -70,7 +73,6 @@ onRecordAfterUpdateSuccess((e) => {
       if (cleanPhone.length === 10 || cleanPhone.length === 11) {
         cleanPhone = '55' + cleanPhone
       }
-      // Meta strictly expects digits-only for phone numbers, no symbols like '+'
       userData.ph = [$security.sha256(cleanPhone)]
     }
     if (fn) {
@@ -124,7 +126,7 @@ onRecordAfterUpdateSuccess((e) => {
 
     if (testCode) payload.test_event_code = testCode
 
-    const url = `https://graph.facebook.com/v21.0/${pixelId}/events`
+    const url = `https://graph.facebook.com/v21.0/${datasetId}/events`
     try {
       const res = $http.send({
         url: url,
@@ -138,18 +140,38 @@ onRecordAfterUpdateSuccess((e) => {
       })
 
       if (res.statusCode >= 400) {
+        const errorBody = res.json || {}
+        const metaError = errorBody.error || {}
+        const metaErrorCode = metaError.code
+        const metaErrorSubcode = metaError.error_subcode
+        let errorMsg = metaError.message || `API Error ${res.statusCode}`
+
+        // GraphMethodException: code 100, subcode 33 — "Object with ID does not exist"
+        if (metaErrorCode === 100 && metaErrorSubcode === 33) {
+          errorMsg = `Object ID '${datasetId}' não encontrado. O Dataset/Pixel ID fornecido não existe ou o token não tem permissão para acessá-lo. Verifique o ID nas configurações de conexão.`
+        } else if (
+          errorMsg.includes('Unsupported post request') ||
+          errorMsg.includes('does not exist') ||
+          errorMsg.includes('Object with ID')
+        ) {
+          errorMsg = `ID inválido: O Dataset/Pixel ID '${datasetId}' não existe ou o token não tem permissão. Verifique se não é um App ID.`
+        }
+
         $app
           .logger()
-          .error('CAPI Update Error', 'status', res.statusCode, 'body', res.json || res.body)
+          .error(
+            'CAPI Update Error',
+            'status',
+            res.statusCode,
+            'code',
+            metaErrorCode,
+            'subcode',
+            metaErrorSubcode,
+            'message',
+            errorMsg,
+          )
         if (user) {
           user.set('meta_capi_status', 'error')
-          let errorMsg = res.json?.error?.message || `API Error ${res.statusCode}`
-          if (
-            errorMsg.includes('Unsupported post request') ||
-            errorMsg.includes('does not exist')
-          ) {
-            errorMsg = `ID inválido: O Dataset/Pixel ID '${pixelId}' não existe ou o token não tem permissão. Verifique se não é um App ID.`
-          }
           user.set('meta_capi_error', errorMsg)
           try {
             $app.saveNoValidate(user)

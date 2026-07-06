@@ -14,14 +14,6 @@ export const testMetaCapiConnectionService = async (
     access_token: accessToken.trim(),
   }
 
-  // Diagnostic API Logging
-  console.log('--- DEBUG: Meta CAPI Test Payload ---', {
-    business_id: payload.business_id ? '***' + payload.business_id.slice(-4) : undefined,
-    pixel_id: payload.pixel_id ? '***' + payload.pixel_id.slice(-4) : undefined,
-    access_token: payload.access_token ? '***' + payload.access_token.slice(-4) : undefined,
-    structure: Object.keys(payload),
-  })
-
   return pb.send('/backend/v1/meta_capi_test_connection', {
     method: 'POST',
     body: payload,
