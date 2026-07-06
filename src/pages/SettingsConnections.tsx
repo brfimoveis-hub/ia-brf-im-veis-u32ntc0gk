@@ -376,15 +376,21 @@ function UazapiPanel() {
               onChange={(e) => setDomain(e.target.value)}
               placeholder="https://iabrfimveis.uazapi.com"
             />
+            <p className="text-xs text-muted-foreground">
+              URL base da sua instância UAZAPI (Evolution API).
+            </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="uazapi_instance">Nome/Número da Instância</Label>
+            <Label htmlFor="uazapi_instance">Nome da Instância</Label>
             <Input
               id="uazapi_instance"
               value={instanceNumber}
               onChange={(e) => setInstanceNumber(e.target.value)}
-              placeholder="554892098050"
+              placeholder="brfimoveis"
             />
+            <p className="text-xs text-muted-foreground">
+              Use o nome da instância (ex: brfimoveis), não o número de telefone.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="uazapi_token">Token da Instância (Opcional se usar Global)</Label>

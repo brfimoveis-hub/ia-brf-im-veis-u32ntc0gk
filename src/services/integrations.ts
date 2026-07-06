@@ -1,27 +1,27 @@
 import pb from '@/lib/pocketbase/client'
 
 export const getUazapiQrCode = async () => {
-  try {
-    return await pb.send('/backend/v1/uazapi/qrcode', { method: 'POST' })
-  } catch (err) {
-    return await pb.send('/backend/v1/uazapi/qrcode', { method: 'GET' })
-  }
+  return pb.send('/backend/v1/uazapi/qrcode', { method: 'GET' })
 }
 
 export const restartUazapi = async () => {
-  try {
-    return await pb.send('/backend/v1/uazapi/restart', { method: 'POST' })
-  } catch (err) {
-    return await pb.send('/backend/v1/uazapi/restart', { method: 'GET' })
-  }
+  return pb.send('/backend/v1/uazapi/restart', { method: 'POST' })
 }
 
 export const disconnectUazapi = async () => {
-  try {
-    return await pb.send('/backend/v1/uazapi/disconnect', { method: 'POST' })
-  } catch (err) {
-    return await pb.send('/backend/v1/uazapi/disconnect', { method: 'GET' })
-  }
+  return pb.send('/backend/v1/uazapi/disconnect', { method: 'POST' })
+}
+
+export const getUazapiStatus = async () => {
+  return pb.send('/backend/v1/uazapi/status', { method: 'GET' })
+}
+
+export const testUazapiConnection = async (domain: string, instance: string, token: string) => {
+  return pb.send('/backend/v1/uazapi/test-connection', {
+    method: 'POST',
+    body: JSON.stringify({ domain, instance, token }),
+    headers: { 'Content-Type': 'application/json' },
+  })
 }
 
 export const updateUserIntegrations = (userId: string, data: any) => {

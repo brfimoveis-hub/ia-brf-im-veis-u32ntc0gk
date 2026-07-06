@@ -60,6 +60,9 @@ routerAdd(
       transportError = err
     }
 
+    // Strictly use POST method — no GET fallback.
+    // The Evolution API restart endpoint only accepts POST.
+
     if (!res && transportError) {
       const errorMsg =
         'Erro de rede ao reiniciar instância: ' + (transportError.message || 'unknown')

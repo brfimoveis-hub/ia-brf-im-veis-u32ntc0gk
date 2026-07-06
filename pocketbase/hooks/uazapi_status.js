@@ -53,15 +53,6 @@ routerAdd(
       const stateUrl = baseUrl + '/instance/connectionState/' + instance
       let res = sendRequest(stateUrl, 'GET')
 
-      if (res.statusCode === 405) {
-        try {
-          const postRes = sendRequest(stateUrl, 'POST')
-          if (postRes.statusCode !== 405) {
-            res = postRes
-          }
-        } catch (postErr) {}
-      }
-
       if (res.statusCode === 404) {
         try {
           const fallbackRes = sendRequest(baseUrl + '/instance/status/' + instance, 'GET')
@@ -69,6 +60,37 @@ routerAdd(
             res = fallbackRes
           }
         } catch (fbErr) {}
+      }
+
+      if (res.statusCode === 404) {
+        try {
+          const altRes = sendRequest(baseUrl + '/instance/fetchInstances', 'GET')
+          if (altRes.statusCode >= 200 && altRes.statusCode < 300) {
+            let altBody = {}
+            try {
+              altBody = altRes.json || {}
+            } catch (_) {}
+            const instances = altBody.instances || altBody.data || []
+            if (instances.length > 0) {
+              const inst = instances[0]
+              const state = inst.state || inst.connectionState || 'unknown'
+              const normalizedStatus = state === 'open' ? 'connected' : state
+              try {
+                const dbUser = $app.findRecordById('users', user.id)
+                dbUser.set('uazapi_status', normalizedStatus)
+                if (state === 'open' || state === 'connected') {
+                  dbUser.set('uazapi_error', '')
+                }
+                $app.save(dbUser)
+              } catch (dbErr) {}
+              return e.json(200, {
+                status: 'success',
+                state: state,
+                data: { instance: inst, state: state },
+              })
+            }
+          }
+        } catch (altErr) {}
       }
 
       let body = {}
