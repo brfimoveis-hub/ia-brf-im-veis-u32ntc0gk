@@ -752,13 +752,23 @@ function MetaCapiPanel() {
 
   const handleSave = useCallback(async () => {
     if (!user) return
+    const cleanPixelId = pixelId.replace(/\D/g, '').trim()
+    const cleanBusinessId = businessId.replace(/\D/g, '').trim()
+    if (cleanPixelId && (cleanPixelId.length < 10 || cleanPixelId.length > 18)) {
+      toast({
+        variant: 'destructive',
+        title: 'ID inválido',
+        description: 'O Dataset/Pixel ID deve ter entre 10 e 18 dígitos.',
+      })
+      return
+    }
     setIsSaving(true)
     try {
       await pb.collection('users').update(user.id, {
-        meta_pixel_id: pixelId,
-        meta_dataset_id: pixelId,
-        meta_capi_token: capiToken,
-        meta_whatsapp_business_id: businessId,
+        meta_pixel_id: cleanPixelId,
+        meta_dataset_id: cleanPixelId,
+        meta_capi_token: capiToken.trim(),
+        meta_whatsapp_business_id: cleanBusinessId,
       })
       toast({
         title: 'Configurações salvas',
@@ -773,7 +783,9 @@ function MetaCapiPanel() {
 
   const handleTestConnection = useCallback(async () => {
     if (!user) return
-    if (!pixelId.trim() || !capiToken.trim()) {
+    const cleanPixelId = pixelId.replace(/\D/g, '').trim()
+    const cleanBusinessId = businessId.replace(/\D/g, '').trim()
+    if (!cleanPixelId || !capiToken.trim()) {
       toast({
         variant: 'destructive',
         title: 'Campos obrigatórios',
@@ -781,21 +793,29 @@ function MetaCapiPanel() {
       })
       return
     }
+    if (cleanPixelId.length < 10 || cleanPixelId.length > 18) {
+      toast({
+        variant: 'destructive',
+        title: 'ID inválido',
+        description: 'O Dataset/Pixel ID deve ter entre 10 e 18 dígitos.',
+      })
+      return
+    }
     setIsTesting(true)
     setTestResult(null)
     try {
       await pb.collection('users').update(user.id, {
-        meta_pixel_id: pixelId,
-        meta_dataset_id: pixelId,
-        meta_capi_token: capiToken,
-        meta_whatsapp_business_id: businessId,
+        meta_pixel_id: cleanPixelId,
+        meta_dataset_id: cleanPixelId,
+        meta_capi_token: capiToken.trim(),
+        meta_whatsapp_business_id: cleanBusinessId,
       })
       const res = await pb.send('/backend/v1/meta_capi_test_connection', {
         method: 'POST',
         body: JSON.stringify({
-          pixel_id: pixelId,
-          access_token: capiToken,
-          business_id: businessId,
+          pixel_id: cleanPixelId,
+          access_token: capiToken.trim(),
+          business_id: cleanBusinessId,
         }),
         headers: { 'Content-Type': 'application/json' },
       })
@@ -908,8 +928,8 @@ function MetaCapiPanel() {
             <Input
               id="meta_pixel_id"
               value={pixelId}
-              onChange={(e) => setPixelId(e.target.value)}
-              placeholder="950541937872426"
+              onChange={(e) => setPixelId(e.target.value.replace(/\D/g, ''))}
+              placeholder="1093869151209421"
             />
           </div>
           <div className="space-y-2 md:col-span-2">

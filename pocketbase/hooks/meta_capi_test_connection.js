@@ -7,12 +7,22 @@ routerAdd(
     let accessToken = body.access_token
     let businessId = body.business_id
 
-    const user = e.auth
-    if (user) {
-      pixelId = pixelId || user.getString('meta_dataset_id') || user.getString('meta_pixel_id')
-      accessToken = accessToken || user.getString('meta_capi_token')
+    const authUser = e.auth
+    let userRecord = null
+    if (authUser) {
+      try {
+        userRecord = $app.findRecordById('users', authUser.id)
+      } catch (_) {
+        userRecord = authUser
+      }
+    }
+
+    if (userRecord) {
+      pixelId =
+        pixelId || userRecord.getString('meta_dataset_id') || userRecord.getString('meta_pixel_id')
+      accessToken = accessToken || userRecord.getString('meta_capi_token')
       if (!businessId) {
-        businessId = user.getString('meta_whatsapp_business_id')
+        businessId = userRecord.getString('meta_whatsapp_business_id')
       }
     }
 
@@ -41,11 +51,11 @@ routerAdd(
     }
 
     const setErrorState = (msg) => {
-      if (user) {
-        user.set('meta_capi_status', 'error')
-        user.set('meta_capi_error', msg)
+      if (userRecord) {
+        userRecord.set('meta_capi_status', 'error')
+        userRecord.set('meta_capi_error', msg)
         try {
-          $app.saveNoValidate(user)
+          $app.saveNoValidate(userRecord)
         } catch (_) {}
       }
     }
@@ -80,6 +90,8 @@ routerAdd(
         error: { code: 'invalid_id', message: msg },
       })
     }
+
+    const cleanPixelId = pixelIdDigits
 
     const permUrl = 'https://graph.facebook.com/v21.0/me/permissions?access_token=' + accessToken
     const permRes = $http.send({ url: permUrl, method: 'GET', timeout: 15 })
@@ -124,7 +136,7 @@ routerAdd(
       })
     }
 
-    const url = 'https://graph.facebook.com/v21.0/' + pixelIdStr + '/events'
+    const url = 'https://graph.facebook.com/v21.0/' + cleanPixelId + '/events'
 
     const payload = {
       data: [
@@ -154,24 +166,24 @@ routerAdd(
     })
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      if (user) {
-        user.set('meta_pixel_id', pixelIdStr)
-        user.set('meta_dataset_id', pixelIdStr)
-        user.set('meta_capi_token', accessToken)
+      if (userRecord) {
+        userRecord.set('meta_pixel_id', cleanPixelId)
+        userRecord.set('meta_dataset_id', cleanPixelId)
+        userRecord.set('meta_capi_token', accessToken)
         if (businessId) {
-          user.set('meta_whatsapp_business_id', businessId)
-          user.set('meta_whatsapp_status', 'active')
+          userRecord.set('meta_whatsapp_business_id', businessId)
+          userRecord.set('meta_whatsapp_status', 'active')
         }
-        user.set('meta_token_status', 'valid')
-        user.set('meta_capi_status', 'connected')
-        user.set('meta_capi_error', '')
+        userRecord.set('meta_token_status', 'valid')
+        userRecord.set('meta_capi_status', 'connected')
+        userRecord.set('meta_capi_error', '')
         try {
-          $app.saveNoValidate(user)
+          $app.saveNoValidate(userRecord)
         } catch (err) {
           $app.logger().error('Failed to sync CAPI test success to user', 'err', err.message)
         }
       }
-      logSuccess('connected', { pixelId: pixelIdStr, response: res.json })
+      logSuccess('connected', { pixelId: cleanPixelId, response: res.json })
       return e.json(200, { success: true, data: res.json })
     }
 
@@ -181,11 +193,10 @@ routerAdd(
     let errorMsg = metaError.message || 'Erro da Meta API (Status ' + res.statusCode + ')'
     let errorCode = 'api_error'
 
-    // GraphMethodException: code 100, subcode 33 — "Object with ID does not exist"
     if (metaErrorCode === 100 && metaErrorSubcode === 33) {
       errorMsg =
         "ID do objeto não encontrado: O ID '" +
-        pixelIdStr +
+        cleanPixelId +
         "' não foi encontrado na Meta API. Verifique se o ID está correto e se o token tem as permissões necessárias."
       errorCode = 'invalid_id'
     } else if (
@@ -195,7 +206,7 @@ routerAdd(
     ) {
       errorMsg =
         "ID do objeto não encontrado: O ID '" +
-        pixelIdStr +
+        cleanPixelId +
         "' não foi encontrado na Meta API. Verifique se o ID está correto e se o token tem as permissões necessárias."
       errorCode = 'invalid_id'
     }
