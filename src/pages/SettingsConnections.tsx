@@ -27,6 +27,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { createSystemLog } from '@/services/system_logs'
 import { cn } from '@/lib/utils'
+import ChavesNaMao from '@/pages/SettingsConnections/ChavesNaMao'
 
 const sanitizeDomain = (raw: string) => {
   let clean = raw.trim()
@@ -985,6 +986,9 @@ export default function SettingsConnections() {
         </ErrorBoundary>
         <ErrorBoundary key="meta-capi-panel-boundary" fallback={null}>
           <MetaCapiPanel />
+        </ErrorBoundary>
+        <ErrorBoundary key="chaves-na-mao-panel-boundary" fallback={null}>
+          <ChavesNaMao />
         </ErrorBoundary>
       </div>
     </div>

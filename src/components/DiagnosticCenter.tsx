@@ -461,14 +461,45 @@ export function DiagnosticCenter() {
           },
         })
       }
-      // 5. Slack Integration Check (Mocking the status for UX requirement)
-      setProgress(85)
+      // 5. Website Integration Check
+      setProgress(80)
+      const websiteUrl = currentUser?.website_url || ''
+      const expectedWebsite = 'brfimoveis.com.br'
+      const hasValidWebsite = websiteUrl.toLowerCase().includes(expectedWebsite)
       newResults.push({
-        name: 'Slack Connector (Notificações CRM)',
-        status: 'success',
-        message: 'Conexão Slack operacional. Canais de notificação para Nível 5 ativos.',
-        payload: { connected: true, channels: ['#leads-qualificados'] },
+        name: 'Integração de Website (brfimoveis.com.br)',
+        status: hasValidWebsite ? 'success' : 'warning',
+        message: hasValidWebsite
+          ? 'Website sincronizado: ' + websiteUrl
+          : 'Website não configurado. Defina o website_url para https://www.brfimoveis.com.br nas configurações.',
+        payload: { website_url: websiteUrl, expected: expectedWebsite },
       })
+      setResults([...newResults])
+
+      // 6. Chaves na Mão Portal Check
+      setProgress(90)
+      try {
+        const portalRes = await pb.send('/backend/v1/chaves_na_mao_webhook/status', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        })
+        const portalActive = portalRes && portalRes.status === 'active'
+        newResults.push({
+          name: 'Portal Chaves na Mão',
+          status: portalActive ? 'success' : 'warning',
+          message: portalActive
+            ? 'Webhook do portal Chaves na Mão ativo e pronto para receber leads.'
+            : 'Portal Chaves na Mão não respondeu corretamente.',
+          payload: { status: portalRes?.status, webhook_configured: true },
+        })
+      } catch (portalErr) {
+        newResults.push({
+          name: 'Portal Chaves na Mão',
+          status: 'warning',
+          message: 'Não foi possível verificar o status do portal Chaves na Mão.',
+          payload: { error: portalErr.message },
+        })
+      }
       setResults([...newResults])
       setProgress(100)
 
@@ -963,7 +994,7 @@ export function DiagnosticCenter() {
                       </li>
                       <li>
                         Clique em <strong>Fontes de Dados</strong> e selecione o Pixel{' '}
-                        <strong>{currentUser?.meta_pixel_id || '4391651051078163'}</strong>.
+                        <strong>{currentUser?.meta_pixel_id || 'Não configurado'}</strong>.
                       </li>
                       <li>
                         Navegue até a aba <strong>Configurações</strong>.

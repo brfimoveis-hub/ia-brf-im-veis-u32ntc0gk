@@ -114,7 +114,9 @@ onRecordAfterUpdateSuccess((e) => {
           event_name: newStatus,
           event_time: Math.floor(Date.now() / 1000),
           action_source: 'website',
-          event_source_url: 'https://brfiacrminteligente.goskip.app',
+          event_source_url: user
+            ? user.getString('website_url') || 'https://www.brfimoveis.com.br'
+            : 'https://www.brfimoveis.com.br',
           event_id: e.record.id + '_' + newStatus,
           user_data: userData,
           custom_data: {

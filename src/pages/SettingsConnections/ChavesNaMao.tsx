@@ -3,9 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
-import { Copy, CheckCircle2, Activity } from 'lucide-react'
+import { Copy, CheckCircle2, Activity, Building2 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 
 export default function ChavesNaMao() {
@@ -13,7 +14,7 @@ export default function ChavesNaMao() {
   const { toast } = useToast()
   const [status, setStatus] = useState<'idle' | 'checking' | 'active' | 'error'>('idle')
 
-  const webhookUrl = `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/webhooks/chaves-na-mao?uid=${user?.id || ''}`
+  const webhookUrl = `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/chaves_na_mao_webhook?provider=chavesnamao&user_id=${user?.id || ''}`
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(webhookUrl)
@@ -26,13 +27,12 @@ export default function ChavesNaMao() {
   const checkStatus = async () => {
     setStatus('checking')
     try {
-      const res = await pb.send('/backend/v1/webhooks/chaves-na-mao/status', { method: 'GET' })
+      const res = await pb.send('/backend/v1/chaves_na_mao_webhook/status', { method: 'GET' })
       if (res && res.status === 'active') {
         setStatus('active')
         toast({
           title: 'Conexão Ativa',
-          description:
-            'A integração com o Chaves na Mão está pronta para receber leads no Pipeline.',
+          description: 'A integração com o Chaves na Mão está pronta para receber leads.',
         })
       } else {
         setStatus('error')
@@ -48,67 +48,59 @@ export default function ChavesNaMao() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium">Chaves na Mão</h3>
-        <p className="text-sm text-muted-foreground">
+    <Card className="shadow-sm border-slate-200">
+      <CardHeader className="bg-slate-50/50 border-b">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-6 w-6 text-primary" />
+            <CardTitle className="text-xl">Chaves na Mão</CardTitle>
+          </div>
+          <Badge variant="secondary" className="text-sm py-1">
+            Portal de Imóveis
+          </Badge>
+        </div>
+        <CardDescription className="pt-2">
           Configure a integração para receber leads do portal Chaves na Mão diretamente no seu
           Pipeline.
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>URL do Webhook</CardTitle>
-          <CardDescription>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6 pt-6">
+        <div className="space-y-2">
+          <Label>URL do Webhook</Label>
+          <p className="text-xs text-muted-foreground">
             Copie esta URL e cole nas configurações de integração (webhook) do portal Chaves na Mão.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Endpoint de Recepção</Label>
-            <div className="flex gap-2">
-              <Input readOnly value={webhookUrl} />
-              <Button variant="secondary" onClick={copyToClipboard}>
-                <Copy className="h-4 w-4 mr-2" />
-                Copiar
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Status da Integração</CardTitle>
-          <CardDescription>
-            Verifique se o seu Pipeline está pronto para receber leads deste portal.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <Button onClick={checkStatus} disabled={status === 'checking'}>
-              {status === 'checking' ? (
-                <Activity className="h-4 w-4 mr-2 animate-pulse" />
-              ) : (
-                <Activity className="h-4 w-4 mr-2" />
-              )}
-              Testar Conexão
+          </p>
+          <div className="flex gap-2">
+            <Input readOnly value={webhookUrl} className="font-mono text-xs" />
+            <Button variant="secondary" onClick={copyToClipboard}>
+              <Copy className="h-4 w-4 mr-2" />
+              Copiar
             </Button>
-            {status === 'active' && (
-              <span className="flex items-center text-sm text-green-600 font-medium">
-                <CheckCircle2 className="h-4 w-4 mr-1" />
-                Conectado e Operante no Pipeline
-              </span>
-            )}
-            {status === 'error' && (
-              <span className="text-sm text-red-600 font-medium">
-                Erro ao verificar status. Tente novamente mais tarde.
-              </span>
-            )}
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+
+        <div className="pt-4 border-t flex items-center gap-4">
+          <Button onClick={checkStatus} disabled={status === 'checking'} variant="outline">
+            {status === 'checking' ? (
+              <Activity className="h-4 w-4 mr-2 animate-pulse" />
+            ) : (
+              <Activity className="h-4 w-4 mr-2" />
+            )}
+            Testar Conexão
+          </Button>
+          {status === 'active' && (
+            <span className="flex items-center text-sm text-green-600 font-medium">
+              <CheckCircle2 className="h-4 w-4 mr-1" />
+              Conectado e Operante no Pipeline
+            </span>
+          )}
+          {status === 'error' && (
+            <span className="text-sm text-red-600 font-medium">
+              Erro ao verificar status. Tente novamente mais tarde.
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

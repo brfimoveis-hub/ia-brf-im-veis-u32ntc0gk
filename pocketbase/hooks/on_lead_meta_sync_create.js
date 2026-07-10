@@ -4,12 +4,14 @@ onRecordAfterCreateSuccess((e) => {
   let pixelId = $secrets.get('META_PIXEL_ID')
   let capiToken = $secrets.get('META_ACCESS_TOKEN')
   let testCode = $secrets.get('META_TEST_EVENT_CODE')
+  let websiteUrl = ''
 
-  if ((!pixelId || !capiToken) && userId) {
+  if ((!pixelId || !capiToken || !websiteUrl) && userId) {
     try {
       const user = $app.findRecordById('users', userId)
       pixelId = pixelId || user.getString('meta_pixel_id')
       capiToken = capiToken || user.getString('meta_capi_token')
+      websiteUrl = user.getString('website_url')
     } catch (err) {}
   }
 
@@ -43,7 +45,7 @@ onRecordAfterCreateSuccess((e) => {
             event_name: 'Lead',
             event_time: Math.floor(Date.now() / 1000),
             action_source: 'website',
-            event_source_url: 'https://brfiacrminteligente.goskip.app',
+            event_source_url: websiteUrl || 'https://www.brfimoveis.com.br',
             event_id: $security.randomString(32),
             user_data: userData,
             custom_data: {

@@ -1,11 +1,12 @@
-routerAdd('POST', '/backend/v1/webhooks/chaves-na-mao', (e) => {
+routerAdd('POST', '/backend/v1/chaves_na_mao_webhook', (e) => {
   const body = e.requestInfo().body || {}
-  const uid = e.request.url.query().get('uid')
+  const userId = e.request.url.query().get('user_id') || e.request.url.query().get('uid')
+  const provider = e.request.url.query().get('provider')
 
   let user = null
-  if (uid) {
+  if (userId) {
     try {
-      user = $app.findRecordById('users', uid)
+      user = $app.findRecordById('users', userId)
     } catch (_) {}
   }
 
@@ -25,7 +26,6 @@ routerAdd('POST', '/backend/v1/webhooks/chaves-na-mao', (e) => {
     const email = body.email || body.lead_email || ''
     let phone = body.phone || body.telefone || body.lead_phone || body.celular || ''
 
-    // Normalize phone to digits only
     phone = phone.replace(/\D/g, '')
 
     const propertyRef =
@@ -33,11 +33,11 @@ routerAdd('POST', '/backend/v1/webhooks/chaves-na-mao', (e) => {
 
     let notes = ''
     if (propertyRef) {
-      notes = `Referência do Imóvel: ${propertyRef}`
+      notes = 'Referência do Imóvel: ' + propertyRef
     }
     if (body.message || body.mensagem || body.observacao) {
       const msg = body.message || body.mensagem || body.observacao
-      notes += notes ? `\nMensagem: ${msg}` : `Mensagem: ${msg}`
+      notes += notes ? '\nMensagem: ' + msg : 'Mensagem: ' + msg
     }
 
     const leadsCol = $app.findCollectionByNameOrId('leads')
@@ -56,7 +56,7 @@ routerAdd('POST', '/backend/v1/webhooks/chaves-na-mao', (e) => {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const log = new Record(logsCol)
       log.set('type', 'webhook_success')
-      log.set('message', `Lead do Chaves na Mão recebido com sucesso e adicionado ao Pipeline.`)
+      log.set('message', 'Lead do Chaves na Mão recebido com sucesso e adicionado ao Pipeline.')
       log.set('details', body)
       $app.save(log)
     } catch (_) {}
