@@ -505,8 +505,8 @@ function UazapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        <div className={cn(!(!domain.trim() || !instanceNumber.trim()) && 'hidden')}>
-          <Alert className="border-blue-500/50 bg-blue-500/10">
+        {(!domain.trim() || !instanceNumber.trim()) && (
+          <Alert key="uazapi-config-incomplete" className="border-blue-500/50 bg-blue-500/10">
             <Info className="h-4 w-4 text-blue-600" />
             <AlertTitle className="text-blue-700">Configuração Incompleta</AlertTitle>
             <AlertDescription className="text-blue-600">
@@ -514,21 +514,19 @@ function UazapiPanel() {
               Credenciais" para ativar a integração com o WhatsApp.
             </AlertDescription>
           </Alert>
-        </div>
-
-        <div
-          className={cn('uazapi-status-banner-container', !(errorMsg || isConnected) && 'hidden')}
-        >
+        )}
+        {(errorMsg || isConnected) && (
           <StatusBanner
+            key={errorMsg ? 'uazapi-error-banner' : 'uazapi-success-banner'}
             type={errorMsg ? 'error' : 'success'}
             message={
               errorMsg || 'A comunicação com a instância UAZAPI está funcionando perfeitamente.'
             }
           />
-        </div>
+        )}
 
-        <div className={cn(!(!!errorMsg && !isConnected) && 'hidden')}>
-          <Alert className="border-amber-500/50 bg-amber-500/10">
+        {!!errorMsg && !isConnected && (
+          <Alert key="uazapi-troubleshooting" className="border-amber-500/50 bg-amber-500/10">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <AlertTitle className="text-amber-700">Passos para Solução de Problemas</AlertTitle>
             <AlertDescription className="text-amber-600">
@@ -541,42 +539,39 @@ function UazapiPanel() {
               </ul>
             </AlertDescription>
           </Alert>
-        </div>
+        )}
 
-        <div className={cn('uazapi-test-result-container', !testResult && 'hidden')}>
-          {testResult && (
-            <Alert
-              variant={testResult.success ? 'default' : 'destructive'}
-              className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
-            >
-              {testResult.success ? (
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-              ) : (
-                <AlertCircle className="h-4 w-4" />
-              )}
-              <AlertTitle>
-                {testResult.success ? 'Teste Bem-sucedido' : 'Falha no Teste'}
-              </AlertTitle>
-              <AlertDescription>{testResult.message}</AlertDescription>
-              {!testResult.success && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleTestConnection}
-                  disabled={isTesting}
-                  className="mt-3"
-                >
-                  {isTesting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Tentar Novamente
-                </Button>
-              )}
-            </Alert>
-          )}
-        </div>
+        {testResult && (
+          <Alert
+            key={testResult.success ? 'uazapi-test-success' : 'uazapi-test-error'}
+            variant={testResult.success ? 'default' : 'destructive'}
+            className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
+          >
+            {testResult.success ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            ) : (
+              <AlertCircle className="h-4 w-4" />
+            )}
+            <AlertTitle>{testResult.success ? 'Teste Bem-sucedido' : 'Falha no Teste'}</AlertTitle>
+            <AlertDescription>{testResult.message}</AlertDescription>
+            {!testResult.success ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                className="mt-3"
+              >
+                {isTesting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Tentar Novamente
+              </Button>
+            ) : null}
+          </Alert>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
@@ -719,30 +714,26 @@ function UazapiPanel() {
           )}
         </div>
 
-        <div
-          className={cn(
-            'uazapi-qr-section-container',
-            !(qrCodeData?.base64 && !isConnected) && 'hidden',
-          )}
-        >
-          {!!qrCodeData?.base64 && !isConnected && (
-            <div className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner animate-fade-in">
-              <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-                <img src={qrCodeData.base64} alt="QR Code" className="w-64 h-64 object-contain" />
-              </div>
-              <h4 className="font-medium text-center text-lg">Escaneie o QR Code</h4>
-              <p className="text-muted-foreground text-center mt-2 max-w-sm">
-                Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e aponte a câmera para a
-                imagem acima.
-              </p>
-              {!!qrCodeData.code && (
-                <div className="mt-4 px-4 py-2 bg-slate-200 rounded text-sm text-slate-700 font-mono font-medium">
-                  Código: {qrCodeData.code}
-                </div>
-              )}
+        {!!qrCodeData?.base64 && !isConnected && (
+          <div
+            key="uazapi-qr-display"
+            className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner animate-fade-in"
+          >
+            <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+              <img src={qrCodeData.base64} alt="QR Code" className="w-64 h-64 object-contain" />
             </div>
-          )}
-        </div>
+            <h4 className="font-medium text-center text-lg">Escaneie o QR Code</h4>
+            <p className="text-muted-foreground text-center mt-2 max-w-sm">
+              Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e aponte a câmera para a
+              imagem acima.
+            </p>
+            {!!qrCodeData.code && (
+              <div className="mt-4 px-4 py-2 bg-slate-200 rounded text-sm text-slate-700 font-mono font-medium">
+                Código: {qrCodeData.code}
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -903,47 +894,45 @@ function MetaCapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        <div className={cn('meta-status-container', !(isConnected || errorMsg) && 'hidden')}>
+        {(isConnected || errorMsg) && (
           <StatusBanner
+            key={errorMsg ? 'meta-error-banner' : 'meta-success-banner'}
             type={errorMsg ? 'error' : 'success'}
             message={errorMsg || 'A comunicação com a Meta API está funcionando perfeitamente.'}
           />
-        </div>
+        )}
 
-        <div className={cn(!testResult && 'hidden')}>
-          {testResult && (
-            <Alert
-              variant={testResult.success ? 'default' : 'destructive'}
-              className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
-            >
-              {testResult.success ? (
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-              ) : (
-                <AlertCircle className="h-4 w-4" />
-              )}
-              <AlertTitle>
-                {testResult.success ? 'Teste Bem-sucedido' : 'Falha no Teste'}
-              </AlertTitle>
-              <AlertDescription>{testResult.message}</AlertDescription>
-              {!testResult.success && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleTestConnection}
-                  disabled={isTesting}
-                  className="mt-3"
-                >
-                  {isTesting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Tentar Novamente
-                </Button>
-              )}
-            </Alert>
-          )}
-        </div>
+        {testResult && (
+          <Alert
+            key={testResult.success ? 'meta-test-success' : 'meta-test-error'}
+            variant={testResult.success ? 'default' : 'destructive'}
+            className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
+          >
+            {testResult.success ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            ) : (
+              <AlertCircle className="h-4 w-4" />
+            )}
+            <AlertTitle>{testResult.success ? 'Teste Bem-sucedido' : 'Falha no Teste'}</AlertTitle>
+            <AlertDescription>{testResult.message}</AlertDescription>
+            {!testResult.success ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                className="mt-3"
+              >
+                {isTesting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Tentar Novamente
+              </Button>
+            ) : null}
+          </Alert>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">

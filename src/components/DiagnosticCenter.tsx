@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Button } from '@/components/ui/button'
@@ -95,8 +95,9 @@ export function DiagnosticCenter() {
   const [newTokenValue, setNewTokenValue] = useState('')
   const [isUpdatingToken, setIsUpdatingToken] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(user)
+  const fetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fetchCurrentUser = async () => {
+  const fetchCurrentUser = useCallback(async () => {
     if (user?.id) {
       try {
         const u = await pb.collection('users').getOne(user.id)
@@ -105,41 +106,61 @@ export function DiagnosticCenter() {
         console.error(e)
       }
     }
-  }
+  }, [user?.id])
 
   useEffect(() => {
     fetchCurrentUser()
-  }, [user?.id])
+  }, [fetchCurrentUser])
 
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
-      setCurrentUser(e.record)
+      setCurrentUser((prev: any) => {
+        if (
+          prev &&
+          prev.uazapi_status === e.record.uazapi_status &&
+          prev.meta_capi_status === e.record.meta_capi_status &&
+          prev.meta_whatsapp_status === e.record.meta_whatsapp_status &&
+          prev.uazapi_error === e.record.uazapi_error &&
+          prev.meta_capi_error === e.record.meta_capi_error &&
+          prev.meta_pixel_id === e.record.meta_pixel_id &&
+          prev.uazapi_instance_number === e.record.uazapi_instance_number
+        ) {
+          return prev
+        }
+        return e.record
+      })
     }
   })
 
-  const fetchLogsAndStats = async () => {
-    try {
-      const logsRes = await getSystemLogs(1, 500)
-      setRecentLogs(logsRes.items)
+  const fetchLogsAndStats = useCallback(() => {
+    if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current)
+    fetchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const logsRes = await getSystemLogs(1, 500)
+        setRecentLogs(logsRes.items)
 
-      const customersRes = await pb.collection('customers').getList(1, 1)
-      const errorsRes = await pb.collection('system_logs').getList(1, 1, {
-        filter:
-          'type ~ "error" || type = "diagnostic_error" || type = "remarketing_error" || type = "meta_error"',
-      })
+        const customersRes = await pb.collection('customers').getList(1, 1)
+        const errorsRes = await pb.collection('system_logs').getList(1, 1, {
+          filter:
+            'type ~ "error" || type = "diagnostic_error" || type = "remarketing_error" || type = "meta_error"',
+        })
 
-      setLeadStats({
-        success: customersRes.totalItems,
-        errors: errorsRes.totalItems,
-      })
-    } catch (e) {
-      console.error(e)
-    }
-  }
+        setLeadStats({
+          success: customersRes.totalItems,
+          errors: errorsRes.totalItems,
+        })
+      } catch (e) {
+        console.error(e)
+      }
+    }, 350)
+  }, [])
 
   useEffect(() => {
     fetchLogsAndStats()
-  }, [])
+    return () => {
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current)
+    }
+  }, [fetchLogsAndStats])
 
   useRealtime('system_logs', () => {
     fetchLogsAndStats()
@@ -866,17 +887,15 @@ export function DiagnosticCenter() {
                     <CardHeader className="pb-2 pt-4 px-4">
                       <div className="flex justify-between items-start gap-2">
                         <div className="flex items-center gap-2">
-                          {res.status === 'success' && (
+                          {res.status === 'success' ? (
                             <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          )}
-                          {res.status === 'warning' && (
+                          ) : res.status === 'warning' ? (
                             <AlertTriangle className="h-4 w-4 text-amber-500" />
-                          )}
-                          {res.status === 'error' && (
+                          ) : (
                             <XCircle className="h-4 w-4 text-destructive" />
                           )}
                           <CardTitle className="text-base font-semibold line-clamp-2 leading-tight">
-                            <span>{res.name}</span>
+                            {res.name}
                           </CardTitle>
                         </div>
                         <Badge
@@ -891,19 +910,17 @@ export function DiagnosticCenter() {
                               'bg-destructive/10 text-destructive border-destructive/20',
                           )}
                         >
-                          <span>
-                            {res.status === 'success'
-                              ? 'Saudável'
-                              : res.status === 'warning'
-                                ? 'Atenção'
-                                : 'Falha'}
-                          </span>
+                          {res.status === 'success'
+                            ? 'Saudável'
+                            : res.status === 'warning'
+                              ? 'Atenção'
+                              : 'Falha'}
                         </Badge>
                       </div>
                     </CardHeader>
                     <CardContent className="px-4 pb-4 flex-1 flex flex-col justify-between gap-4">
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                        <span>{res.message}</span>
+                        {res.message}
                       </p>
 
                       <div className="flex items-center gap-2 mt-auto pt-4 border-t border-border/50">
@@ -961,18 +978,14 @@ export function DiagnosticCenter() {
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>
-                  <span>
-                    {dialogType === 'meta_capi'
-                      ? 'Atualizar Token Meta CAPI'
-                      : 'Atualizar Credenciais Uazapi'}
-                  </span>
+                  {dialogType === 'meta_capi'
+                    ? 'Atualizar Token Meta CAPI'
+                    : 'Atualizar Credenciais Uazapi'}
                 </DialogTitle>
                 <DialogDescription>
-                  <span>
-                    {dialogType === 'meta_capi'
-                      ? 'Siga os passos abaixo para gerar e inserir o seu Token de Acesso da API de Conversões do Meta.'
-                      : 'Insira o novo Instance Token (API Key) para restaurar a conexão Uazapi.'}
-                  </span>
+                  {dialogType === 'meta_capi'
+                    ? 'Siga os passos abaixo para gerar e inserir o seu Token de Acesso da API de Conversões do Meta.'
+                    : 'Insira o novo Instance Token (API Key) para restaurar a conexão Uazapi.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -1119,7 +1132,7 @@ export function DiagnosticCenter() {
                 {filteredAndSortedLogs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground h-24">
-                      <span>Nenhum log encontrado para esta busca.</span>
+                      Nenhum log encontrado para esta busca.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -1151,11 +1164,9 @@ export function DiagnosticCenter() {
                     return (
                       <TableRow key={log.id}>
                         <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">
-                          <span>{new Date(log.created).toLocaleString('pt-BR')}</span>
+                          {new Date(log.created).toLocaleString('pt-BR')}
                         </TableCell>
-                        <TableCell className="text-xs font-medium">
-                          <span>{source}</span>
-                        </TableCell>
+                        <TableCell className="text-xs font-medium">{source}</TableCell>
                         <TableCell>
                           <Badge
                             variant="outline"
@@ -1164,7 +1175,7 @@ export function DiagnosticCenter() {
                               getLogBadgeColor(typ),
                             )}
                           >
-                            <span>{typ.toUpperCase() || 'INFO'}</span>
+                            {typ.toUpperCase() || 'INFO'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm font-medium text-secondary max-w-[300px]">
@@ -1178,7 +1189,7 @@ export function DiagnosticCenter() {
                             )}
                             <div className="line-clamp-2 truncate break-words" title={msg}>
                               {msg ? (
-                                <span>{msg}</span>
+                                msg
                               ) : (
                                 <span className="italic text-muted-foreground">Sem mensagem</span>
                               )}
@@ -1217,11 +1228,13 @@ export function DiagnosticCenter() {
             {Math.ceil(filteredAndSortedLogs.length / perPage) > 1 && (
               <div className="flex items-center justify-between px-4 py-4 border-t bg-muted/20">
                 <div className="text-sm text-muted-foreground">
-                  <span>
-                    Mostrando {(page - 1) * perPage + 1} a{' '}
-                    {Math.min(page * perPage, filteredAndSortedLogs.length)} de{' '}
-                    {filteredAndSortedLogs.length} logs
-                  </span>
+                  {'Mostrando ' +
+                    ((page - 1) * perPage + 1) +
+                    ' a ' +
+                    Math.min(page * perPage, filteredAndSortedLogs.length) +
+                    ' de ' +
+                    filteredAndSortedLogs.length +
+                    ' logs'}
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -1284,15 +1297,11 @@ export function DiagnosticCenter() {
           </DialogHeader>
           <ScrollArea className="max-h-[60vh] mt-4 rounded-md bg-slate-950 p-4 border">
             <pre className="text-xs text-slate-50 font-mono whitespace-pre-wrap break-words">
-              {selectedPayloadLog?.payload ? (
-                typeof selectedPayloadLog.payload === 'object' ? (
-                  <span>{JSON.stringify(selectedPayloadLog.payload, null, 2)}</span>
-                ) : (
-                  <span>{String(selectedPayloadLog.payload)}</span>
-                )
-              ) : (
-                <span>Nenhum payload disponível para este log.</span>
-              )}
+              {selectedPayloadLog?.payload
+                ? typeof selectedPayloadLog.payload === 'object'
+                  ? JSON.stringify(selectedPayloadLog.payload, null, 2)
+                  : String(selectedPayloadLog.payload)
+                : 'Nenhum payload disponível para este log.'}
             </pre>
           </ScrollArea>
         </DialogContent>
