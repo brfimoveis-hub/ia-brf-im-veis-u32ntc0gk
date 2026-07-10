@@ -752,16 +752,6 @@ function MetaCapiPanel() {
 
   const handleSave = useCallback(async () => {
     if (!user) return
-    const digits = pixelId.replace(/\D/g, '')
-    if (digits.length >= 16) {
-      toast({
-        variant: 'destructive',
-        title: 'ID inválido',
-        description:
-          'ID inválido: Verifique se você inseriu um Dataset/Pixel ID em vez de um App ID.',
-      })
-      return
-    }
     setIsSaving(true)
     try {
       await pb.collection('users').update(user.id, {
@@ -783,13 +773,6 @@ function MetaCapiPanel() {
 
   const handleTestConnection = useCallback(async () => {
     if (!user) return
-    const digits = pixelId.replace(/\D/g, '')
-    if (digits.length >= 16) {
-      const msg = 'ID inválido: Verifique se você inseriu um Dataset/Pixel ID em vez de um App ID.'
-      setTestResult({ success: false, message: msg })
-      toast({ variant: 'destructive', title: 'ID inválido', description: msg })
-      return
-    }
     if (!pixelId.trim() || !capiToken.trim()) {
       toast({
         variant: 'destructive',
@@ -848,7 +831,6 @@ function MetaCapiPanel() {
   }, [user, pixelId, capiToken, businessId, toast])
 
   const isConnected = status.toLowerCase() === 'connected' || status.toLowerCase() === 'active'
-  const isLikelyAppId = pixelId.replace(/\D/g, '').length >= 16
 
   return (
     <Card className="shadow-sm border-slate-200">
@@ -910,16 +892,6 @@ function MetaCapiPanel() {
             )}
           </Alert>
         )}
-
-        <Alert className={cn('border-yellow-200 bg-yellow-50', !isLikelyAppId && 'hidden')}>
-          <AlertCircle className="h-4 w-4 text-yellow-600" />
-          <AlertTitle className="text-yellow-800">Aviso: Possível App ID</AlertTitle>
-          <AlertDescription className="text-yellow-700">
-            Este ID parece ser um App ID da Meta, não um Pixel/Dataset ID. App IDs geralmente têm 16
-            ou mais dígitos. Verifique se você está usando o ID correto do Pixel na seção de
-            Gerenciador de Eventos do Facebook.
-          </AlertDescription>
-        </Alert>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
