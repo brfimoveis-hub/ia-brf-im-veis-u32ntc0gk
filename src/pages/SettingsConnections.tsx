@@ -754,11 +754,11 @@ function MetaCapiPanel() {
     if (!user) return
     const cleanPixelId = pixelId.replace(/\D/g, '').trim()
     const cleanBusinessId = businessId.replace(/\D/g, '').trim()
-    if (cleanPixelId && (cleanPixelId.length < 10 || cleanPixelId.length > 18)) {
+    if (cleanPixelId && (cleanPixelId.length < 10 || cleanPixelId.length > 20)) {
       toast({
         variant: 'destructive',
         title: 'ID inválido',
-        description: 'O Dataset/Pixel ID deve ter entre 10 e 18 dígitos.',
+        description: 'O Dataset/Pixel ID deve ter entre 10 e 20 dígitos.',
       })
       return
     }
@@ -793,11 +793,11 @@ function MetaCapiPanel() {
       })
       return
     }
-    if (cleanPixelId.length < 10 || cleanPixelId.length > 18) {
+    if (cleanPixelId.length < 10 || cleanPixelId.length > 20) {
       toast({
         variant: 'destructive',
         title: 'ID inválido',
-        description: 'O Dataset/Pixel ID deve ter entre 10 e 18 dígitos.',
+        description: 'O Dataset/Pixel ID deve ter entre 10 e 20 dígitos.',
       })
       return
     }

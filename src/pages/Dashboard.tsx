@@ -232,6 +232,10 @@ export default function Dashboard() {
                   : 'Desconectado'}
               </div>
             </div>
+            <p className="text-xs text-muted-foreground truncate mt-1">
+              Pixel ID:{' '}
+              {currentUser?.meta_dataset_id || currentUser?.meta_pixel_id || '1093869151209421'}
+            </p>
             <p
               className={cn(
                 'text-xs text-red-500 mt-1 line-clamp-2',

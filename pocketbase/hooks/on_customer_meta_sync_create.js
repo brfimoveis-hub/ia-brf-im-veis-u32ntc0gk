@@ -1,18 +1,23 @@
 onRecordAfterCreateSuccess((e) => {
   const userId = e.record.getString('user_id')
 
-  let pixelId = $secrets.get('META_PIXEL_ID')
-  let capiToken = $secrets.get('META_ACCESS_TOKEN')
   let testCode = $secrets.get('META_TEST_EVENT_CODE')
 
   let userRecord = null
-  if ((!pixelId || !capiToken) && userId) {
+  if (userId) {
     try {
       userRecord = $app.findRecordById('users', userId)
-      pixelId = pixelId || userRecord.getString('meta_pixel_id')
-      capiToken = capiToken || userRecord.getString('meta_capi_token')
     } catch (err) {}
   }
+
+  let pixelId = ''
+  let capiToken = ''
+  if (userRecord) {
+    pixelId = userRecord.getString('meta_dataset_id') || userRecord.getString('meta_pixel_id') || ''
+    capiToken = userRecord.getString('meta_capi_token') || ''
+  }
+  if (!pixelId) pixelId = $secrets.get('META_PIXEL_ID') || ''
+  if (!capiToken) capiToken = $secrets.get('META_ACCESS_TOKEN') || ''
 
   if (!pixelId || !capiToken) {
     return e.next()
