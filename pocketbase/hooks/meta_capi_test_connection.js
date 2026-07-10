@@ -3,7 +3,7 @@ routerAdd(
   '/backend/v1/meta_capi_test_connection',
   (e) => {
     const body = e.requestInfo().body || {}
-    let pixelId = body.pixel_id
+    let pixelId = body.dataset_id || body.pixel_id
     let accessToken = body.access_token
     let businessId = body.business_id
 
@@ -65,9 +65,11 @@ routerAdd(
 
     if (pixelIdDigits.length < 10 || pixelIdDigits.length > 18) {
       const msg =
-        "ID inválido: O ID '" +
+        "ID inválido: O ID deve ter entre 10 e 18 dígitos. O ID fornecido '" +
         pixelIdStr +
-        "' não foi encontrado ou não suporta eventos. Verifique se você não inseriu um App ID ou Business ID no lugar do Dataset/Pixel ID."
+        "' tem " +
+        pixelIdDigits.length +
+        ' dígitos. Verifique se você está usando o Dataset/Pixel ID correto.'
       setErrorState(msg)
       logIntegrationError('invalid_id_format', msg, {
         pixelId: pixelIdStr,
@@ -182,9 +184,9 @@ routerAdd(
     // GraphMethodException: code 100, subcode 33 — "Object with ID does not exist"
     if (metaErrorCode === 100 && metaErrorSubcode === 33) {
       errorMsg =
-        "Object ID '" +
+        "ID do objeto não encontrado: O ID '" +
         pixelIdStr +
-        "' não encontrado. O Dataset/Pixel ID fornecido não existe ou o token não tem permissão para acessá-lo. Verifique o ID no Gerenciador de Eventos do Facebook."
+        "' não foi encontrado na Meta API. Verifique se o ID está correto e se o token tem as permissões necessárias."
       errorCode = 'invalid_id'
     } else if (
       errorMsg.indexOf('Unsupported post request') !== -1 ||
@@ -192,9 +194,9 @@ routerAdd(
       errorMsg.indexOf('Object with ID') !== -1
     ) {
       errorMsg =
-        "ID inválido: O ID '" +
+        "ID do objeto não encontrado: O ID '" +
         pixelIdStr +
-        "' não foi encontrado ou não suporta eventos. Verifique se você não inseriu um App ID ou Business ID no lugar do Dataset/Pixel ID."
+        "' não foi encontrado na Meta API. Verifique se o ID está correto e se o token tem as permissões necessárias."
       errorCode = 'invalid_id'
     }
 
