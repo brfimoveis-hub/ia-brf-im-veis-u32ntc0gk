@@ -844,7 +844,7 @@ export function DiagnosticCenter() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {results.map((res, i) => (
                   <Card
-                    key={i}
+                    key={res.name}
                     className={cn(
                       'border flex flex-col overflow-hidden transition-all duration-200',
                       res.status === 'error' &&

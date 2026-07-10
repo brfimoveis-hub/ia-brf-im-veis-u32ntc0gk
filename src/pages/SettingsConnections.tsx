@@ -28,6 +28,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { createSystemLog } from '@/services/system_logs'
 import { cn } from '@/lib/utils'
 import ChavesNaMao from '@/pages/SettingsConnections/ChavesNaMao'
+import { DiagnosticCenter } from '@/components/DiagnosticCenter'
 
 const sanitizeDomain = (raw: string) => {
   let clean = raw.trim()
@@ -504,7 +505,7 @@ function UazapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        {(!domain.trim() || !instanceNumber.trim()) && (
+        <div className={cn(!(!domain.trim() || !instanceNumber.trim()) && 'hidden')}>
           <Alert className="border-blue-500/50 bg-blue-500/10">
             <Info className="h-4 w-4 text-blue-600" />
             <AlertTitle className="text-blue-700">Configuração Incompleta</AlertTitle>
@@ -513,7 +514,7 @@ function UazapiPanel() {
               Credenciais" para ativar a integração com o WhatsApp.
             </AlertDescription>
           </Alert>
-        )}
+        </div>
 
         <div
           className={cn('uazapi-status-banner-container', !(errorMsg || isConnected) && 'hidden')}
@@ -526,7 +527,7 @@ function UazapiPanel() {
           />
         </div>
 
-        {!!errorMsg && !isConnected && (
+        <div className={cn(!(!!errorMsg && !isConnected) && 'hidden')}>
           <Alert className="border-amber-500/50 bg-amber-500/10">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <AlertTitle className="text-amber-700">Passos para Solução de Problemas</AlertTitle>
@@ -540,10 +541,10 @@ function UazapiPanel() {
               </ul>
             </AlertDescription>
           </Alert>
-        )}
+        </div>
 
-        {testResult && (
-          <div className="uazapi-test-result-container" key="uazapi-test-result">
+        <div className={cn('uazapi-test-result-container', !testResult && 'hidden')}>
+          {testResult && (
             <Alert
               variant={testResult.success ? 'default' : 'destructive'}
               className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
@@ -574,8 +575,8 @@ function UazapiPanel() {
                 </Button>
               )}
             </Alert>
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
@@ -909,37 +910,40 @@ function MetaCapiPanel() {
           />
         </div>
 
-        {testResult && (
-          <Alert
-            variant={testResult.success ? 'default' : 'destructive'}
-            className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
-            key="meta-test-result"
-          >
-            {testResult.success ? (
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-            ) : (
-              <AlertCircle className="h-4 w-4" />
-            )}
-            <AlertTitle>{testResult.success ? 'Teste Bem-sucedido' : 'Falha no Teste'}</AlertTitle>
-            <AlertDescription>{testResult.message}</AlertDescription>
-            {!testResult.success && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleTestConnection}
-                disabled={isTesting}
-                className="mt-3"
-              >
-                {isTesting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                Tentar Novamente
-              </Button>
-            )}
-          </Alert>
-        )}
+        <div className={cn(!testResult && 'hidden')}>
+          {testResult && (
+            <Alert
+              variant={testResult.success ? 'default' : 'destructive'}
+              className={testResult.success ? 'border-green-500/50 bg-green-500/10' : ''}
+            >
+              {testResult.success ? (
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              ) : (
+                <AlertCircle className="h-4 w-4" />
+              )}
+              <AlertTitle>
+                {testResult.success ? 'Teste Bem-sucedido' : 'Falha no Teste'}
+              </AlertTitle>
+              <AlertDescription>{testResult.message}</AlertDescription>
+              {!testResult.success && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestConnection}
+                  disabled={isTesting}
+                  className="mt-3"
+                >
+                  {isTesting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Tentar Novamente
+                </Button>
+              )}
+            </Alert>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
@@ -1018,6 +1022,10 @@ export default function SettingsConnections() {
           <ChavesNaMao />
         </ErrorBoundary>
       </div>
+
+      <ErrorBoundary key="diagnostic-center-boundary" fallback={null}>
+        <DiagnosticCenter />
+      </ErrorBoundary>
     </div>
   )
 }
