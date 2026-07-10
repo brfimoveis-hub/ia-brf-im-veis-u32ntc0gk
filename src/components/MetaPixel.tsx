@@ -15,7 +15,7 @@ export const MetaPixel = () => {
 
   useEffect(() => {
     // Falls back to the required pixel if not set
-    const pixelId = user?.meta_pixel_id || '950541937872426'
+    const pixelId = user?.meta_pixel_id || '1093869151209421'
 
     if (!pixelId) return
 
