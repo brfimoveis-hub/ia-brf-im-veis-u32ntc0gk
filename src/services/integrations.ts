@@ -12,6 +12,10 @@ export const disconnectUazapi = async () => {
   return pb.send('/backend/v1/uazapi/disconnect', { method: 'POST' })
 }
 
+export const resyncUazapi = async () => {
+  return pb.send('/backend/v1/uazapi/resync', { method: 'POST' })
+}
+
 export const getUazapiStatus = async () => {
   return pb.send('/backend/v1/uazapi/status', { method: 'GET' })
 }

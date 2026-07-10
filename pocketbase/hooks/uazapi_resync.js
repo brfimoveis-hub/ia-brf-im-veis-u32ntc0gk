@@ -35,6 +35,16 @@ routerAdd(
     user.set('uazapi_status', isConnected ? 'connected' : 'disconnected')
     $app.save(user)
 
+    try {
+      const logCol = $app.findCollectionByNameOrId('system_logs')
+      const log = new Record(logCol)
+      log.set('type', 'uazapi_config')
+      log.set('message', 'UAZAPI Resync: status sincronizado')
+      log.set('details', { instance: instanceNumber, connected: isConnected })
+      log.set('payload', { action: 'resync', status: user.getString('uazapi_status') })
+      $app.save(log)
+    } catch (_) {}
+
     return e.json(200, { status: user.getString('uazapi_status') })
   },
   $apis.requireAuth(),

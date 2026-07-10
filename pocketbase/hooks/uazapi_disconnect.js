@@ -32,6 +32,16 @@ routerAdd(
       user.set('uazapi_error', 'Desconectado manualmente')
       $app.saveNoValidate(user)
 
+      try {
+        const logCol = $app.findCollectionByNameOrId('system_logs')
+        const log = new Record(logCol)
+        log.set('type', 'uazapi_config')
+        log.set('message', 'UAZAPI Disconnect: instância desconectada')
+        log.set('details', { instance: instance })
+        log.set('payload', { action: 'disconnect', status: 'disconnected' })
+        $app.save(log)
+      } catch (_) {}
+
       return e.json(200, {
         success: true,
         message: 'Instância desconectada com sucesso.',
@@ -41,6 +51,16 @@ routerAdd(
       user.set('uazapi_status', 'disconnected')
       user.set('uazapi_error', 'Desconectado (erro na API: ' + err.message + ')')
       $app.saveNoValidate(user)
+
+      try {
+        const logCol = $app.findCollectionByNameOrId('system_logs')
+        const log = new Record(logCol)
+        log.set('type', 'uazapi_config')
+        log.set('message', 'UAZAPI Disconnect: desconectado localmente (erro na API)')
+        log.set('details', { instance: instance, error: err.message })
+        log.set('payload', { action: 'disconnect_forced', status: 'disconnected' })
+        $app.save(log)
+      } catch (_) {}
 
       return e.json(200, {
         success: true,

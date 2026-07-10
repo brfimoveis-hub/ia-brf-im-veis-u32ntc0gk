@@ -18,9 +18,14 @@ import {
   BarChart,
   AlertCircle,
   Plug,
+  LogOut,
+  Wifi,
+  AlertTriangle,
+  Info,
 } from 'lucide-react'
 import { useRealtime } from '@/hooks/use-realtime'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { createSystemLog } from '@/services/system_logs'
 import { cn } from '@/lib/utils'
 
 const sanitizeDomain = (raw: string) => {
@@ -88,6 +93,8 @@ function UazapiPanel() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
   const [isLoadingQr, setIsLoadingQr] = useState(false)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [isResyncing, setIsResyncing] = useState(false)
   const [qrCodeData, setQrCodeData] = useState<{ base64?: string; code?: string } | null>(null)
   const mountedRef = useRef(true)
   const qrFetchingRef = useRef(false)
@@ -117,6 +124,15 @@ function UazapiPanel() {
       })
       return
     }
+    if (instanceNumber.trim() && !/^[a-zA-Z0-9_-]+$/.test(instanceNumber.trim())) {
+      toast({
+        variant: 'destructive',
+        title: 'Nome de instância inválido',
+        description:
+          'O nome da instância deve conter apenas letras, números, hífens ou underscores.',
+      })
+      return
+    }
     setIsSaving(true)
     try {
       await pb.collection('users').update(user.id, {
@@ -125,11 +141,28 @@ function UazapiPanel() {
         uazapi_admin_token: adminToken,
         uazapi_instance_number: instanceNumber,
       })
+      await createSystemLog({
+        type: 'uazapi_config',
+        message: 'Configurações UAZAPI salvas',
+        details: {
+          domain: cleanDomain,
+          instance: instanceNumber.trim(),
+          has_token: !!token.trim(),
+          has_admin_token: !!adminToken.trim(),
+        },
+        payload: { action: 'save_config', instance: instanceNumber.trim() },
+      }).catch(() => {})
       toast({
         title: 'Configurações salvas',
         description: 'As credenciais do UAZAPI foram atualizadas.',
       })
     } catch (err: any) {
+      await createSystemLog({
+        type: 'uazapi_config',
+        message: 'Erro ao salvar configurações UAZAPI',
+        details: { error: err.message },
+        payload: { action: 'save_config_error' },
+      }).catch(() => {})
       toast({ variant: 'destructive', title: 'Erro ao salvar', description: err.message })
     } finally {
       setIsSaving(false)
@@ -148,6 +181,12 @@ function UazapiPanel() {
     setIsRestarting(true)
     try {
       await pb.send('/backend/v1/uazapi/restart', { method: 'POST' })
+      await createSystemLog({
+        type: 'uazapi_config',
+        message: 'Instância UAZAPI reiniciada',
+        details: { instance: user.uazapi_instance_number },
+        payload: { action: 'restart', instance: user.uazapi_instance_number },
+      }).catch(() => {})
       toast({ title: 'Instância reiniciada', description: 'O comando de reinício foi enviado.' })
     } catch (err: any) {
       const errCode = err?.response?.code || err?.status
@@ -156,6 +195,12 @@ function UazapiPanel() {
         typeof errCode === 'number' ? errCode : undefined,
         errCode && !errMsg.includes('HTTP') ? `HTTP ${errCode}: ${errMsg}` : errMsg,
       )
+      await createSystemLog({
+        type: 'uazapi_config',
+        message: 'Erro ao reiniciar instância UAZAPI',
+        details: { error: msg, code: errCode },
+        payload: { action: 'restart_error', instance: user.uazapi_instance_number },
+      }).catch(() => {})
       toast({ variant: 'destructive', title: 'Erro ao reiniciar', description: msg })
     } finally {
       setIsRestarting(false)
@@ -180,6 +225,83 @@ function UazapiPanel() {
       setIsSyncing(false)
     }
   }, [toast])
+
+  const handleResync = useCallback(async () => {
+    if (!user?.uazapi_domain || !user?.uazapi_instance_number) {
+      toast({
+        variant: 'destructive',
+        title: 'Credenciais não salvas',
+        description: 'Salve as credenciais antes de sincronizar a instância.',
+      })
+      return
+    }
+    setIsResyncing(true)
+    try {
+      const res = await pb.send('/backend/v1/uazapi/resync', { method: 'POST' })
+      await createSystemLog({
+        type: 'uazapi_config',
+        message: 'Instância UAZAPI sincronizada',
+        details: { instance: user.uazapi_instance_number, status: res.status },
+        payload: { action: 'resync', instance: user.uazapi_instance_number },
+      }).catch(() => {})
+      toast({
+        title: 'Sincronização concluída',
+        description: `Status da instância: ${res.status === 'connected' ? 'Conectado' : 'Desconectado'}`,
+      })
+    } catch (err: any) {
+      const errCode = err?.response?.code || err?.status
+      const errMsg = err?.response?.error || err?.message || 'Falha ao sincronizar.'
+      const msg = mapHttpError(typeof errCode === 'number' ? errCode : undefined, errMsg)
+      await createSystemLog({
+        type: 'uazapi_config',
+        message: 'Erro ao sincronizar instância UAZAPI',
+        details: { error: msg, code: errCode },
+        payload: { action: 'resync_error', instance: user.uazapi_instance_number },
+      }).catch(() => {})
+      toast({ variant: 'destructive', title: 'Erro ao sincronizar', description: msg })
+    } finally {
+      setIsResyncing(false)
+    }
+  }, [user, toast])
+
+  const handleDisconnect = useCallback(async () => {
+    if (!user?.uazapi_instance_number) {
+      toast({
+        variant: 'destructive',
+        title: 'Instância não configurada',
+        description: 'Configure o nome da instância antes de desconectar.',
+      })
+      return
+    }
+    setIsDisconnecting(true)
+    try {
+      await pb.send('/backend/v1/uazapi/disconnect', { method: 'POST' })
+      await createSystemLog({
+        type: 'uazapi_config',
+        message: 'Instância UAZAPI desconectada',
+        details: { instance: user.uazapi_instance_number },
+        payload: { action: 'disconnect', instance: user.uazapi_instance_number },
+      }).catch(() => {})
+      setStatus('disconnected')
+      toast({
+        title: 'Instância desconectada',
+        description: 'A instância foi desconectada com sucesso.',
+      })
+    } catch (err: any) {
+      const errCode = err?.response?.code || err?.status
+      const errMsg = err?.response?.error || err?.message || 'Falha ao desconectar.'
+      const msg = mapHttpError(typeof errCode === 'number' ? errCode : undefined, errMsg)
+      await createSystemLog({
+        type: 'uazapi_config',
+        message: 'Erro ao desconectar instância UAZAPI',
+        details: { error: msg, code: errCode },
+        payload: { action: 'disconnect_error', instance: user.uazapi_instance_number },
+      }).catch(() => {})
+      toast({ variant: 'destructive', title: 'Erro ao desconectar', description: msg })
+    } finally {
+      setIsDisconnecting(false)
+    }
+  }, [user, toast])
 
   const handleTestConnection = useCallback(async () => {
     if (!domain.trim() || !instanceNumber.trim() || !token.trim()) {
@@ -230,10 +352,37 @@ function UazapiPanel() {
             uazapi_error: '',
           })
         }
+        await createSystemLog({
+          type: 'uazapi_config',
+          message: 'Teste de conexão UAZAPI bem-sucedido',
+          details: { instance: instanceNumber.trim(), state: normalizedState },
+          payload: {
+            action: 'test_connection',
+            result: 'success',
+            instance: instanceNumber.trim(),
+          },
+        }).catch(() => {})
       } else {
         const msg = res.error || 'Erro ao testar a conexão.'
         setTestResult({ success: false, message: msg })
+        setErrorMsg(msg)
+        setStatus('error')
         toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
+        if (user?.id) {
+          await pb
+            .collection('users')
+            .update(user.id, {
+              uazapi_status: 'error',
+              uazapi_error: msg,
+            })
+            .catch(() => {})
+        }
+        await createSystemLog({
+          type: 'uazapi_config',
+          message: 'Falha no teste de conexão UAZAPI',
+          details: { instance: instanceNumber.trim(), error: msg },
+          payload: { action: 'test_connection', result: 'error', instance: instanceNumber.trim() },
+        }).catch(() => {})
       }
     } catch (err: any) {
       const errCode = err?.response?.code || err?.status
@@ -243,7 +392,24 @@ function UazapiPanel() {
         errCode && !errMsg.includes('HTTP') ? `HTTP ${errCode}: ${errMsg}` : errMsg,
       )
       setTestResult({ success: false, message: msg })
+      setErrorMsg(msg)
+      setStatus('error')
       toast({ variant: 'destructive', title: 'Falha na conexão', description: msg })
+      if (user?.id) {
+        await pb
+          .collection('users')
+          .update(user.id, {
+            uazapi_status: 'error',
+            uazapi_error: msg,
+          })
+          .catch(() => {})
+      }
+      await createSystemLog({
+        type: 'uazapi_config',
+        message: 'Erro no teste de conexão UAZAPI',
+        details: { instance: instanceNumber.trim(), error: msg, code: errCode },
+        payload: { action: 'test_connection', result: 'error', instance: instanceNumber.trim() },
+      }).catch(() => {})
     } finally {
       setIsTesting(false)
     }
@@ -321,6 +487,17 @@ function UazapiPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
+        {(!domain.trim() || !instanceNumber.trim()) && (
+          <Alert className="border-blue-500/50 bg-blue-500/10">
+            <Info className="h-4 w-4 text-blue-600" />
+            <AlertTitle className="text-blue-700">Configuração Incompleta</AlertTitle>
+            <AlertDescription className="text-blue-600">
+              Preencha o Domínio da API e o Nome da Instância abaixo e clique em "Salvar
+              Credenciais" para ativar a integração com o WhatsApp.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div
           className={cn('uazapi-status-banner-container', !(errorMsg || isConnected) && 'hidden')}
         >
@@ -331,6 +508,22 @@ function UazapiPanel() {
             }
           />
         </div>
+
+        {errorMsg && !isConnected && (
+          <Alert className="border-amber-500/50 bg-amber-500/10">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-700">Passos para Solução de Problemas</AlertTitle>
+            <AlertDescription className="text-amber-600">
+              <ul className="list-disc list-inside space-y-1 mt-2">
+                <li>Verifique se o Nome da Instância corresponde ao seu painel UAZAPI.</li>
+                <li>Confirme se o Domínio da API está correto e acessível.</li>
+                <li>Valide se o Token da Instância ou Global API Key estão atualizados.</li>
+                <li>Use o botão "Reiniciar Instância" para tentar restabelecer a conexão.</li>
+                <li>Clique em "Sincronizar" para forçar a verificação do status atual.</li>
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {testResult && (
           <div className="uazapi-test-result-container" key="uazapi-test-result">
@@ -462,6 +655,34 @@ function UazapiPanel() {
             )}
             Reiniciar Instância
           </Button>
+          <Button
+            onClick={handleResync}
+            disabled={isResyncing}
+            variant="outline"
+            className="w-full sm:w-auto"
+          >
+            {isResyncing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Wifi className="mr-2 h-4 w-4" />
+            )}
+            Sincronizar
+          </Button>
+          {isConnected && (
+            <Button
+              onClick={handleDisconnect}
+              disabled={isDisconnecting}
+              variant="destructive"
+              className="w-full sm:w-auto"
+            >
+              {isDisconnecting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <LogOut className="mr-2 h-4 w-4" />
+              )}
+              Desconectar
+            </Button>
+          )}
           {!isConnected && (
             <Button
               onClick={fetchQrCode}
