@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
-import { Copy, CheckCircle2, Activity, Building2 } from 'lucide-react'
+import { Copy, CheckCircle2, Activity, Building2, Loader2 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 
 export default function ChavesNaMao() {
@@ -14,7 +14,17 @@ export default function ChavesNaMao() {
   const { toast } = useToast()
   const [status, setStatus] = useState<'idle' | 'checking' | 'active' | 'error'>('idle')
 
-  const webhookUrl = `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/chaves_na_mao_webhook?provider=chavesnamao&user_id=${user?.id || ''}`
+  if (!user) {
+    return (
+      <Card className="shadow-sm border-slate-200">
+        <CardContent className="py-10 text-center text-muted-foreground">
+          Carregando dados do usuário...
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const webhookUrl = `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/chaves_na_mao_webhook?provider=chavesnamao&user_id=${user.id}`
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(webhookUrl)
@@ -82,23 +92,22 @@ export default function ChavesNaMao() {
         <div className="pt-4 border-t flex items-center gap-4">
           <Button onClick={checkStatus} disabled={status === 'checking'} variant="outline">
             {status === 'checking' ? (
-              <Activity className="h-4 w-4 mr-2 animate-pulse" />
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Activity className="h-4 w-4 mr-2" />
             )}
             Testar Conexão
           </Button>
-          {status === 'active' && (
+          {status === 'active' ? (
             <span className="flex items-center text-sm text-green-600 font-medium">
               <CheckCircle2 className="h-4 w-4 mr-1" />
               Conectado e Operante no Pipeline
             </span>
-          )}
-          {status === 'error' && (
+          ) : status === 'error' ? (
             <span className="text-sm text-red-600 font-medium">
               Erro ao verificar status. Tente novamente mais tarde.
             </span>
-          )}
+          ) : null}
         </div>
       </CardContent>
     </Card>

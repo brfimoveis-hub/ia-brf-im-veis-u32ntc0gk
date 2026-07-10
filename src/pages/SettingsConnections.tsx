@@ -99,6 +99,7 @@ function UazapiPanel() {
   const [qrCodeData, setQrCodeData] = useState<{ base64?: string; code?: string } | null>(null)
   const mountedRef = useRef(true)
   const qrFetchingRef = useRef(false)
+  const statusRef = useRef(status)
 
   useEffect(() => {
     return () => {
@@ -424,6 +425,10 @@ function UazapiPanel() {
       const res = await pb.send('/backend/v1/uazapi/qrcode', { method: 'GET' })
       if (!mountedRef.current) return
       if (res && res.base64) {
+        if (statusRef.current === 'connected' || statusRef.current === 'open') {
+          setQrCodeData(null)
+          return
+        }
         setQrCodeData({ base64: res.base64, code: res.code })
         toast({ title: 'QR Code gerado', description: 'Leia o QR Code com o seu WhatsApp.' })
       } else {
@@ -447,6 +452,7 @@ function UazapiPanel() {
   }, [toast])
 
   useEffect(() => {
+    statusRef.current = status
     if (!mountedRef.current) return
     const s = (status || '').toLowerCase()
     if (
@@ -465,6 +471,16 @@ function UazapiPanel() {
 
   const statusInfo = normalizeUazapiStatus(status)
   const isConnected = statusInfo.connected
+
+  if (!user) {
+    return (
+      <Card className="shadow-sm border-slate-200">
+        <CardContent className="py-10 text-center text-muted-foreground">
+          Carregando dados do usuário...
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="shadow-sm border-slate-200">
@@ -510,7 +526,7 @@ function UazapiPanel() {
           />
         </div>
 
-        {errorMsg && !isConnected && (
+        {!!errorMsg && !isConnected && (
           <Alert className="border-amber-500/50 bg-amber-500/10">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <AlertTitle className="text-amber-700">Passos para Solução de Problemas</AlertTitle>
@@ -669,8 +685,9 @@ function UazapiPanel() {
             )}
             Sincronizar
           </Button>
-          {isConnected && (
+          {isConnected ? (
             <Button
+              key="uazapi-disconnect-btn"
               onClick={handleDisconnect}
               disabled={isDisconnecting}
               variant="destructive"
@@ -683,9 +700,9 @@ function UazapiPanel() {
               )}
               Desconectar
             </Button>
-          )}
-          {!isConnected && (
+          ) : (
             <Button
+              key="uazapi-qrcode-btn"
               onClick={fetchQrCode}
               disabled={isLoadingQr}
               variant="default"
@@ -707,7 +724,7 @@ function UazapiPanel() {
             !(qrCodeData?.base64 && !isConnected) && 'hidden',
           )}
         >
-          {qrCodeData?.base64 && !isConnected && (
+          {!!qrCodeData?.base64 && !isConnected && (
             <div className="mt-6 flex flex-col items-center justify-center p-8 border rounded-xl bg-slate-50/80 shadow-inner animate-fade-in">
               <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
                 <img src={qrCodeData.base64} alt="QR Code" className="w-64 h-64 object-contain" />
@@ -717,7 +734,7 @@ function UazapiPanel() {
                 Abra o WhatsApp no seu celular, vá em Aparelhos Conectados e aponte a câmera para a
                 imagem acima.
               </p>
-              {qrCodeData.code && (
+              {!!qrCodeData.code && (
                 <div className="mt-4 px-4 py-2 bg-slate-200 rounded text-sm text-slate-700 font-mono font-medium">
                   Código: {qrCodeData.code}
                 </div>
@@ -852,6 +869,16 @@ function MetaCapiPanel() {
   }, [user, pixelId, capiToken, businessId, toast])
 
   const isConnected = status.toLowerCase() === 'connected' || status.toLowerCase() === 'active'
+
+  if (!user) {
+    return (
+      <Card className="shadow-sm border-slate-200">
+        <CardContent className="py-10 text-center text-muted-foreground">
+          Carregando dados do usuário...
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="shadow-sm border-slate-200">
