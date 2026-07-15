@@ -28,6 +28,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { createSystemLog } from '@/services/system_logs'
 import { cn } from '@/lib/utils'
 import ChavesNaMao from '@/pages/SettingsConnections/ChavesNaMao'
+import { MetaWhatsAppPanel } from '@/pages/SettingsConnections/MetaWhatsAppPanel'
 import { DiagnosticCenter } from '@/components/DiagnosticCenter'
 
 const sanitizeDomain = (raw: string) => {
@@ -1009,6 +1010,9 @@ export default function SettingsConnections() {
         </ErrorBoundary>
         <ErrorBoundary key="chaves-na-mao-panel-boundary" fallback={null}>
           <ChavesNaMao />
+        </ErrorBoundary>
+        <ErrorBoundary key="meta-whatsapp-panel-boundary" fallback={null}>
+          <MetaWhatsAppPanel />
         </ErrorBoundary>
       </div>
 
