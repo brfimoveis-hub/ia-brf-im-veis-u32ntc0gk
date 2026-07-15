@@ -14,7 +14,48 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { Loader2, Bot, Save } from 'lucide-react'
+import { Loader2, Bot, Save, Building2 } from 'lucide-react'
+
+interface ProjectData {
+  name: string
+  neighborhood: string
+  starting_price: string
+  key_features: string
+}
+
+const DEFAULT_PROJECT: ProjectData = {
+  name: '',
+  neighborhood: '',
+  starting_price: '',
+  key_features: '',
+}
+
+function parseProjectData(raw: unknown): ProjectData {
+  if (!raw) return { ...DEFAULT_PROJECT }
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      return {
+        name: parsed.name || '',
+        neighborhood: parsed.neighborhood || '',
+        starting_price: parsed.starting_price || '',
+        key_features: parsed.key_features || '',
+      }
+    } catch {
+      return { ...DEFAULT_PROJECT }
+    }
+  }
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>
+    return {
+      name: (obj.name as string) || '',
+      neighborhood: (obj.neighborhood as string) || '',
+      starting_price: (obj.starting_price as string) || '',
+      key_features: (obj.key_features as string) || '',
+    }
+  }
+  return { ...DEFAULT_PROJECT }
+}
 
 export default function SettingsAI() {
   const { user } = useAuth()
@@ -23,12 +64,14 @@ export default function SettingsAI() {
   const [aiName, setAiName] = useState('Bia')
   const [biaInstructions, setBiaInstructions] = useState('')
   const [aiInstructions, setAiInstructions] = useState('')
+  const [projectData, setProjectData] = useState<ProjectData>({ ...DEFAULT_PROJECT })
 
   useEffect(() => {
     if (user) {
       setAiName(user.ai_name || 'Bia')
       setBiaInstructions(user.bia_instructions || '')
       setAiInstructions(user.ai_instructions || '')
+      setProjectData(parseProjectData(user.project_data))
       setLoading(false)
     }
   }, [user])
@@ -41,6 +84,7 @@ export default function SettingsAI() {
         ai_name: aiName,
         bia_instructions: biaInstructions,
         ai_instructions: aiInstructions,
+        project_data: JSON.stringify(projectData),
       })
       toast.success('Configurações da IA salvas com sucesso!')
     } catch (error: any) {
@@ -67,6 +111,66 @@ export default function SettingsAI() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
+            <Building2 className="w-5 h-5" />
+            Dados do Empreendimento (Lançamento Atual)
+          </CardTitle>
+          <CardDescription>
+            Configure os detalhes do empreendimento que a Bia usará para personalizar a abordagem de
+            vendas seguindo a Metodologia dos 10 Passos.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="projectName">Nome do Empreendimento</Label>
+              <Input
+                id="projectName"
+                value={projectData.name}
+                onChange={(e) => setProjectData((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Ex: Villa dos Açores"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="projectNeighborhood">Bairro / Localização</Label>
+              <Input
+                id="projectNeighborhood"
+                value={projectData.neighborhood}
+                onChange={(e) =>
+                  setProjectData((prev) => ({ ...prev, neighborhood: e.target.value }))
+                }
+                placeholder="Ex: Biguaçu / Rio Caveiras"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="projectPrice">Preço Inicial</Label>
+            <Input
+              id="projectPrice"
+              value={projectData.starting_price}
+              onChange={(e) =>
+                setProjectData((prev) => ({ ...prev, starting_price: e.target.value }))
+              }
+              placeholder="Ex: A partir de R$ 350.000,00"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="projectFeatures">Diferenciais e Características Principais</Label>
+            <Textarea
+              id="projectFeatures"
+              value={projectData.key_features}
+              onChange={(e) =>
+                setProjectData((prev) => ({ ...prev, key_features: e.target.value }))
+              }
+              placeholder="Ex: 3 quartos, suíte master, lazer completo, churrasqueira, vista para o mar..."
+              className="min-h-[100px]"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
             <Bot className="w-5 h-5" />
             Identidade e Comportamento
           </CardTitle>
@@ -87,12 +191,12 @@ export default function SettingsAI() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="biaInstructions">Persona e Comportamento Específico (BIA)</Label>
+            <Label htmlFor="biaInstructions">Metodologia dos 10 Passos (BIA)</Label>
             <Textarea
               id="biaInstructions"
               value={biaInstructions}
               onChange={(e) => setBiaInstructions(e.target.value)}
-              placeholder="Descreva a persona de atendimento..."
+              placeholder="Descreva a metodologia de atendimento: SPIN, 5 Whys, tratamento de objeções, gatilhos mentais..."
               className="min-h-[200px]"
               maxLength={200000}
             />

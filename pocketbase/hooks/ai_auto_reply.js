@@ -362,7 +362,24 @@ onRecordAfterCreateSuccess((e) => {
 
     let crmPhaseContext = ''
 
-    const propertyContext = `\n[DADOS DO EMPREENDIMENTO]\nEmpreendimento: Villa dos Açores\nLocalização: Biguaçu / Rio Caveiras\n`
+    let propertyContext = ''
+    if (userRecord) {
+      try {
+        const projectDataStr = userRecord.getString('project_data') || ''
+        if (projectDataStr) {
+          const pd = JSON.parse(projectDataStr)
+          propertyContext = '\n[DADOS DO EMPREENDIMENTO]\n'
+          if (pd.name) propertyContext += 'Empreendimento: ' + pd.name + '\n'
+          if (pd.neighborhood) propertyContext += 'Localização: ' + pd.neighborhood + '\n'
+          if (pd.starting_price) propertyContext += 'Preço Inicial: ' + pd.starting_price + '\n'
+          if (pd.key_features) propertyContext += 'Diferenciais: ' + pd.key_features + '\n'
+        }
+      } catch (_) {}
+    }
+    if (!propertyContext) {
+      propertyContext =
+        '\n[DADOS DO EMPREENDIMENTO]\nEmpreendimento: Villa dos Açores\nLocalização: Biguaçu / Rio Caveiras\n'
+    }
 
     let filesContextText = ''
     if (userRecord) {
@@ -410,6 +427,18 @@ DIRETRIZES RIGOROSAS E REGRAS DE NEGÓCIO (BRF IMÓVEIS):
 10. EVOLUÇÃO DE CADÊNCIA (10 PASSOS): Acompanhe os 'Passos Estruturados' da cadência atual. Se o cliente evoluir, inclua a tag [STATUS: NovoStatus] no final.
 11. TRANSBORDO (HANDOVER): Se o cliente pedir para falar com um humano, agendar visita presencial, ou a conversa avançar para negociação, inclua a tag [HANDOVER: Mauro].
 
+### METODOLOGIA DOS 10 PASSOS DA BIA:
+1. CLASSIFICACAO DO LEAD: Identifique o perfil (Investidor, Morador, Primeiro Imovel, Veranista). Inclua [PROFILE: TipoPerfil] no final.
+2. ABERTURA PERSONALIZADA: Adapte a saudacao ao perfil identificado.
+3. DIAGNOSTICO SPIN: Mapeie Situacao, Problema, Implicacao, Necessidade. Inclua [STATUS: Mapeamento de Perfil] ao concluir.
+4. 5 WHYS: Aprofunde a motivacao emocional perguntando "Por que?". Inclua [STATUS: Nutricao Automatica] ao identificar.
+5. APRESENTACAO MATCH: Conecte recursos do empreendimento as dores identificadas.
+6. TRATAMENTO DE OBJECOES: Use rebatidas (preco alto -> comparativos; vou pensar -> reserva 48h). Inclua [STATUS: Proposta e Negociacao] ao avancar.
+7. GATILHOS MENTAIS: Aplique Escassez, Urgencia, Prova Social, Autoridade, Reciprocidade.
+8. FECHAMENTO: Use Premissa, Resumo ou Condicao Especial. Inclua [HANDOVER: Mauro] para finalizar.
+9. FOLLOW-UP: Nutricao em D1, D7, D15, D30. Inclua [STATUS: Agendamento de Visita] ou [STATUS: Pos-Visita].
+10. POS-VENDA: Peca indicacoes e verifique satisfacao.
+
 CONTEXTO RECUPERADO:
 ${combinedContextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
 
@@ -433,6 +462,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
     let detectedStatus = ''
     let detectedPhase = ''
     let detectedHandover = ''
+    let detectedProfile = ''
 
     try {
       const chatRes = $ai.chat({
@@ -495,6 +525,12 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
       if (handoverMatch && handoverMatch[1]) {
         detectedHandover = handoverMatch[1].trim()
         responseText = responseText.replace(/\[HANDOVER:\s*.*?\]/gi, '').trim()
+      }
+
+      const profileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
+      if (profileMatch && profileMatch[1]) {
+        detectedProfile = profileMatch[1].trim()
+        responseText = responseText.replace(/\[PROFILE:\s*.*?\]/gi, '').trim()
       }
 
       let detectedPermuta = false
@@ -632,6 +668,14 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
             custToUpdate.set('notes', `[INTERESSE EM PERMUTA] ${currentNotes}`.trim())
             crmUpdated = true
             detectedHandover = detectedHandover || 'Mauro'
+          }
+        }
+
+        if (detectedProfile) {
+          const validProfiles = ['Investidor', 'Morador', 'Primeiro Imóvel', 'Veranista']
+          if (validProfiles.includes(detectedProfile)) {
+            custToUpdate.set('lead_profile', detectedProfile)
+            crmUpdated = true
           }
         }
 
