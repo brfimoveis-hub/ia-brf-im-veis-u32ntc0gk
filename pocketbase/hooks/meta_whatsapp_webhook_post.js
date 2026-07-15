@@ -1,151 +1,172 @@
-routerAdd('POST', '/backend/v1/webhook/whatsapp', (e) => {
-  const body = e.requestInfo().body
+routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
+  const body = e.requestInfo().body || {}
+  const query = e.requestInfo().query || {}
+  const userId = query['user_id'] || query['uid'] || ''
 
-  $app.logger().info('Meta WhatsApp Webhook received', 'body', JSON.stringify(body))
+  $app.logger().info('Meta WhatsApp Webhook received', 'user_id', userId, 'object', body.object)
 
-  if (body && body.object === 'whatsapp_business_account') {
-    try {
-      for (const entry of body.entry) {
-        for (const change of entry.changes) {
-          if (change.value && change.value.messages) {
-            for (const msg of change.value.messages) {
-              const phone = change.value.contacts?.[0]?.wa_id || msg.from
-              let content = msg.text?.body || ''
+  if (!userId) {
+    return e.string(400, 'Missing user_id')
+  }
 
-              if (msg.type === 'audio' && msg.audio?.id) {
-                try {
-                  let metaToken = null
-                  try {
-                    const adminUser = $app.findAuthRecordByEmail('users', 'brfimoveis@gmail.com')
-                    metaToken = adminUser.getString('meta_whatsapp_access_token')
-                  } catch (_) {}
+  let user = null
+  try {
+    user = $app.findRecordById('users', userId)
+  } catch (_) {}
+  if (!user) {
+    return e.string(403, 'Forbidden')
+  }
 
-                  if (!metaToken) {
-                    const usersToken = $app.findRecordsByFilter(
-                      'users',
-                      "meta_whatsapp_access_token != ''",
-                      '-created',
-                      1,
-                      0,
-                    )
-                    metaToken =
-                      usersToken.length > 0
-                        ? usersToken[0].getString('meta_whatsapp_access_token')
-                        : null
-                  }
-                  if (metaToken) {
-                    const mediaInfo = $http.send({
-                      url: `https://graph.facebook.com/v19.0/${msg.audio.id}`,
-                      method: 'GET',
-                      headers: { Authorization: `Bearer ${metaToken}` },
-                    })
-                    if (mediaInfo.statusCode === 200 && mediaInfo.json?.url) {
-                      const audioData = $http.send({
-                        url: mediaInfo.json.url,
-                        method: 'GET',
-                        headers: { Authorization: `Bearer ${metaToken}` },
-                      })
-                      if (audioData.statusCode === 200 && audioData.body) {
-                        const openAiKey = $secrets.get('OPENAI_API_KEY')
-                        if (openAiKey) {
-                          const boundary = '----Boundary' + $security.randomString(16)
-                          const headerStr = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n`
-                          const footerStr = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n--${boundary}--\r\n`
+  if (!body || body.object !== 'whatsapp_business_account') {
+    return e.string(404, 'Not Found')
+  }
 
-                          const headerBytes = new Uint8Array(headerStr.length)
-                          for (let i = 0; i < headerStr.length; i++)
-                            headerBytes[i] = headerStr.charCodeAt(i)
-                          const footerBytes = new Uint8Array(footerStr.length)
-                          for (let i = 0; i < footerStr.length; i++)
-                            footerBytes[i] = footerStr.charCodeAt(i)
+  try {
+    for (const entry of body.entry || []) {
+      for (const change of entry.changes || []) {
+        const value = change.value
+        if (!value || !value.messages || value.messages.length === 0) continue
 
-                          const bodyBytes = new Uint8Array(
-                            headerBytes.length + audioData.body.length + footerBytes.length,
-                          )
-                          bodyBytes.set(headerBytes, 0)
-                          bodyBytes.set(audioData.body, headerBytes.length)
-                          bodyBytes.set(footerBytes, headerBytes.length + audioData.body.length)
+        const contacts = value.contacts || []
+        const metadata = value.metadata || {}
+        const displayPhone = (metadata.display_phone_number || '').replace(/\D/g, '')
 
-                          const whisperRes = $http.send({
-                            url: 'https://api.openai.com/v1/audio/transcriptions',
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                              Authorization: `Bearer ${openAiKey}`,
-                            },
-                            body: bodyBytes.buffer,
-                          })
-                          if (whisperRes.statusCode === 200 && whisperRes.json?.text) {
-                            content = whisperRes.json.text
-                          } else {
-                            content = '[Áudio Recebido - Não foi possível transcrever]'
-                          }
-                        } else {
-                          content = '[Áudio Recebido]'
-                        }
-                      }
-                    }
-                  }
-                } catch (e) {
-                  $app.logger().error('Audio processing failed', 'error', String(e))
-                  content = '[Áudio Recebido]'
-                }
+        for (const msg of value.messages) {
+          const phone = (msg.from || '').replace(/\D/g, '')
+          if (!phone) continue
+
+          let content = ''
+          if (msg.type === 'text' && msg.text && msg.text.body) {
+            content = msg.text.body
+          } else if (msg.type === 'audio') {
+            content = '[Áudio Recebido]'
+          } else if (msg.type === 'image' && msg.image && msg.image.caption) {
+            content = msg.image.caption
+          } else if (msg.type === 'button' && msg.button && msg.button.text) {
+            content = msg.button.text
+          } else if (msg.type === 'interactive' && msg.interactive) {
+            const it = msg.interactive
+            content =
+              (it.button_reply && it.button_reply.title) ||
+              (it.list_reply && it.list_reply.title) ||
+              '[Interação Recebida]'
+          } else {
+            content = '[' + (msg.type || 'Mensagem') + ' Recebida]'
+          }
+          if (!content) continue
+
+          const contactInfo = contacts.find((c) => c.wa_id === msg.from)
+          const contactName =
+            (contactInfo && contactInfo.profile && contactInfo.profile.name) ||
+            (contactInfo && contactInfo.wa_id) ||
+            phone
+
+          let customer = null
+          try {
+            customer = $app.findFirstRecordByFilter(
+              'customers',
+              `phone ~ '${phone}' || phone_1_value ~ '${phone}'`,
+            )
+          } catch (_) {}
+
+          let isNewCustomer = false
+          if (!customer) {
+            try {
+              const customersCol = $app.findCollectionByNameOrId('customers')
+              customer = new Record(customersCol)
+              customer.set('user_id', userId)
+              customer.set('name', contactName)
+              customer.set('phone', phone)
+              customer.set('status', 'Novo')
+              let source = 'Meta - WhatsApp Cloud API'
+              if (displayPhone) source += ' (' + displayPhone + ')'
+              customer.set('source', source)
+              if (msg.referral) {
+                customer.set(
+                  'notes',
+                  'Origem: Anúncio Meta\nHeadline: ' +
+                    (msg.referral.headline || 'N/A') +
+                    '\nAd ID: ' +
+                    (msg.referral.source_id || 'N/A'),
+                )
               }
-
-              if (!content) continue
-
-              let customerId = ''
-              let userId = ''
-
-              try {
-                const adminUser = $app.findAuthRecordByEmail('users', 'brfimoveis@gmail.com')
-                userId = adminUser.id
-              } catch (_) {
-                const users = $app.findRecordsByFilter('users', "id != ''", '-created', 1, 0)
-                if (users.length > 0) userId = users[0].id
+              $app.save(customer)
+              isNewCustomer = true
+            } catch (err) {
+              $app
+                .logger()
+                .error('Failed to create customer from WhatsApp webhook', 'error', String(err))
+              continue
+            }
+          } else {
+            try {
+              const custToUpdate = $app.findRecordById('customers', customer.id)
+              if (!custToUpdate.getString('user_id')) {
+                custToUpdate.set('user_id', userId)
+                $app.save(custToUpdate)
               }
+            } catch (_) {}
+          }
 
-              try {
-                const customer = $app.findFirstRecordByData('customers', 'phone', phone)
-                customerId = customer.id
+          if (isNewCustomer) {
+            try {
+              const leadsCol = $app.findCollectionByNameOrId('leads')
+              const lead = new Record(leadsCol)
+              lead.set('assigned_to', userId)
+              lead.set('name', contactName)
+              lead.set('phone', phone)
+              lead.set('source', 'WhatsApp Cloud API')
+              lead.set('status', 'Novo')
+              let leadNotes = 'Capturado via Meta WhatsApp Cloud API'
+              if (displayPhone) leadNotes += ' - ' + displayPhone
+              leadNotes += '\nMensagem: ' + content
+              lead.set('notes', leadNotes)
+              $app.save(lead)
+            } catch (err) {
+              $app
+                .logger()
+                .error('Failed to create lead from WhatsApp webhook', 'error', String(err))
+            }
+          }
 
-                try {
-                  const custToUpdate = $app.findRecordById('customers', customerId)
-                  if (userId && !custToUpdate.getString('user_id')) {
-                    custToUpdate.set('user_id', userId)
-                  }
-                  $app.save(custToUpdate)
-                } catch (e) {}
-              } catch (err) {
-                const customersCol = $app.findCollectionByNameOrId('customers')
-                const newCustomer = new Record(customersCol)
-                newCustomer.set('phone', phone)
-                newCustomer.set('name', change.value.contacts?.[0]?.profile?.name || phone)
-                newCustomer.set('status', 'Lead Novo')
-                newCustomer.set('source', 'Meta - WhatsApp')
-                if (userId) newCustomer.set('user_id', userId)
-                $app.save(newCustomer)
-                customerId = newCustomer.id
-              }
+          let isDuplicate = false
+          try {
+            const recentMsgs = $app.findRecordsByFilter(
+              'conversations',
+              `customer_id = '${customer.id}' && sender = 'customer' && content = {:text}`,
+              '-created',
+              1,
+              0,
+              { text: content },
+            )
+            if (recentMsgs.length > 0) {
+              const lastMsg = recentMsgs[0]
+              const diffMins =
+                (new Date().getTime() - new Date(lastMsg.getString('created')).getTime()) / 60000
+              if (diffMins < 2) isDuplicate = true
+            }
+          } catch (_) {}
 
-              if (customerId) {
-                const convCol = $app.findCollectionByNameOrId('conversations')
-                const newMsg = new Record(convCol)
-                newMsg.set('customer_id', customerId)
-                if (userId) newMsg.set('user_id', userId)
-                newMsg.set('sender', 'customer')
-                newMsg.set('content', content)
-                $app.save(newMsg)
-              }
+          if (!isDuplicate) {
+            try {
+              const convCol = $app.findCollectionByNameOrId('conversations')
+              const newMsg = new Record(convCol)
+              newMsg.set('customer_id', customer.id)
+              newMsg.set('sender', 'customer')
+              newMsg.set('content', content)
+              $app.save(newMsg)
+            } catch (err) {
+              $app
+                .logger()
+                .error('Failed to save conversation from WhatsApp webhook', 'error', String(err))
             }
           }
         }
       }
-    } catch (err) {
-      $app.logger().error('Error processing WhatsApp Webhook', 'error', String(err))
     }
-    return e.string(200, 'EVENT_RECEIVED')
+  } catch (err) {
+    $app.logger().error('Error processing WhatsApp Webhook', 'error', String(err))
   }
 
-  return e.string(404, 'Not Found')
+  return e.string(200, 'EVENT_RECEIVED')
 })

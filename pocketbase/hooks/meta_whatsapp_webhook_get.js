@@ -1,27 +1,25 @@
-routerAdd('GET', '/backend/v1/webhook/whatsapp', (e) => {
-  const mode = e.request.url.query().get('hub.mode')
-  const token = e.request.url.query().get('hub.verify_token')
-  const challenge = e.request.url.query().get('hub.challenge')
+routerAdd('GET', '/backend/v1/meta_whatsapp_webhook', (e) => {
+  const query = e.requestInfo().query || {}
+  const mode = query['hub.mode']
+  const token = query['hub.verify_token']
+  const challenge = query['hub.challenge']
+  const userId = query['user_id'] || query['uid'] || ''
 
-  if (mode === 'subscribe' && token) {
-    try {
-      const users = $app.findRecordsByFilter(
-        'users',
-        'meta_whatsapp_verify_token = {:token}',
-        '',
-        1,
-        0,
-        { token },
-      )
-      if (users && users.length > 0) {
-        return e.string(200, challenge || '')
-      } else {
-        return e.string(403, 'Forbidden')
-      }
-    } catch (err) {
-      return e.string(403, 'Forbidden')
-    }
+  if (mode !== 'subscribe' || !token || !userId) {
+    return e.string(400, 'Bad Request')
   }
 
-  return e.string(400, 'Bad Request')
+  try {
+    const user = $app.findRecordById('users', userId)
+    if (!user) {
+      return e.string(403, 'Forbidden')
+    }
+    const storedToken = user.getString('meta_whatsapp_verify_token') || ''
+    if (storedToken && storedToken === token) {
+      return e.string(200, challenge || '')
+    }
+    return e.string(403, 'Forbidden')
+  } catch (err) {
+    return e.string(403, 'Forbidden')
+  }
 })

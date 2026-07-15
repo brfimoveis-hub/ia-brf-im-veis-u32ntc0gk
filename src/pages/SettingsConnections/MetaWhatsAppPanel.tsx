@@ -11,7 +11,8 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Loader2, MessageCircle, CheckCircle2, AlertCircle, Copy } from 'lucide-react'
 
-const WEBHOOK_URL = 'https://ia-uazapi-6d79e.shrd00.internal.goskip.dev/backend/v1/webhook/whatsapp'
+const WEBHOOK_BASE_URL =
+  'https://ia-uazapi-6d79e.shrd00.internal.goskip.dev/backend/v1/meta_whatsapp_webhook'
 
 export function MetaWhatsAppPanel() {
   const { user } = useAuth()
@@ -136,13 +137,23 @@ export function MetaWhatsAppPanel() {
     }
   }, [user, phoneNumberId, accessToken, businessId, verifyToken, toast])
 
+  const webhookUrl = user?.id ? `${WEBHOOK_BASE_URL}?user_id=${user.id}` : WEBHOOK_BASE_URL
+
   const copyWebhookUrl = useCallback(() => {
-    navigator.clipboard.writeText(WEBHOOK_URL)
+    navigator.clipboard.writeText(webhookUrl)
     toast({
       title: 'URL copiada',
       description: 'A URL do webhook foi copiada para a área de transferência.',
     })
-  }, [toast])
+  }, [webhookUrl, toast])
+
+  const statusLabel = isConnected
+    ? 'Active'
+    : status.toLowerCase() === 'error'
+      ? 'Error'
+      : status && status !== 'disconnected'
+        ? status
+        : 'Pending'
 
   const isConnected = status.toLowerCase() === 'connected' || status.toLowerCase() === 'active'
 
@@ -188,12 +199,17 @@ export function MetaWhatsAppPanel() {
             </p>
             <div className="flex items-center gap-2">
               <code className="flex-1 px-3 py-2 bg-white rounded text-xs text-slate-800 break-all font-mono">
-                {WEBHOOK_URL}
+                {webhookUrl}
               </code>
-              <Button variant="outline" size="sm" onClick={copyWebhookUrl}>
+              <Button variant="outline" size="sm" onClick={copyWebhookUrl} disabled={!user?.id}>
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
+            {!user?.id && (
+              <p className="text-xs text-amber-600 mt-1">
+                Faça login para gerar a URL completa do webhook com o seu identificador.
+              </p>
+            )}
           </AlertDescription>
         </Alert>
 
