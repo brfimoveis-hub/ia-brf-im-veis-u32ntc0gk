@@ -35,6 +35,7 @@ interface RemarketingSyncModalProps {
   phaseFilter?: string
   sourceFilter?: string
   leads?: Customer[]
+  selectedIds?: string[]
 }
 
 export function RemarketingSyncModal({
@@ -43,6 +44,7 @@ export function RemarketingSyncModal({
   searchTerm = '',
   phaseFilter = 'all',
   sourceFilter = '',
+  selectedIds,
 }: RemarketingSyncModalProps) {
   const { toast } = useToast()
   const { user } = useAuth()
@@ -124,13 +126,18 @@ export function RemarketingSyncModal({
           requestKey: null,
         })
 
-        const valid = allLeads.filter((l) => {
+        let valid = allLeads.filter((l) => {
           const hasEmail =
             (l.email && l.email.trim() !== '') || (l.email_1_value && l.email_1_value.trim() !== '')
           const hasPhone =
             (l.phone && l.phone.trim() !== '') || (l.phone_1_value && l.phone_1_value.trim() !== '')
           return hasEmail || hasPhone
         })
+
+        if (selectedIds && selectedIds.length > 0) {
+          const idSet = new Set(selectedIds)
+          valid = valid.filter((l) => idSet.has(l.id))
+        }
 
         setValidLeads(valid)
       } catch (error) {
@@ -145,7 +152,7 @@ export function RemarketingSyncModal({
     }
 
     fetchInitialData()
-  }, [isOpen, searchTerm, phaseFilter, sourceFilter, toast])
+  }, [isOpen, searchTerm, phaseFilter, sourceFilter, toast, selectedIds])
 
   const leadsToSync = useMemo(() => {
     let filtered = validLeads

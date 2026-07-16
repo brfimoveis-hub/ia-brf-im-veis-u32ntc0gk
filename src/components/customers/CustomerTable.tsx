@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,20 +16,21 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import { MoreHorizontal, Edit, Trash2, AlertCircle, RefreshCw } from 'lucide-react'
+import { MoreHorizontal, Edit, Trash2, RefreshCw, X } from 'lucide-react'
 import { Customer } from '@/services/customers'
 import { PHASES } from './constants'
+import { cn, formatPhone } from '@/lib/utils'
+import { useSearchParams } from 'react-router-dom'
+import { RemarketingSyncModal } from './RemarketingSyncModal'
+import { useState, useMemo } from 'react'
+import { CustomerDetailDrawer } from './CustomerDetailDrawer'
+import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 
 const COLUMNS = [
   { key: 'name', label: 'Nome' },
   { key: 'phone', label: 'Telefone' },
   { key: 'email', label: 'E-mail' },
 ]
-import { cn, formatPhone } from '@/lib/utils'
-import { useSearchParams } from 'react-router-dom'
-import { RemarketingSyncModal } from './RemarketingSyncModal'
-import { useState } from 'react'
-import { CustomerDetailDrawer } from './CustomerDetailDrawer'
 
 interface CustomerTableProps {
   leads: Customer[]
@@ -54,15 +56,30 @@ export function CustomerTable({
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
 
+  const selectedIds = useCustomerSelection()
+
+  const visibleIds = useMemo(() => leads.map((l) => l.id), [leads])
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
+  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected
+
+  const handleSelectAll = () => {
+    if (allVisibleSelected) {
+      customerSelectionStore.removeMany(visibleIds)
+    } else {
+      customerSelectionStore.addMany(visibleIds)
+    }
+  }
+
+  const handleToggleRow = (id: string) => {
+    customerSelectionStore.toggle(id)
+  }
+
+  const selectedCount = selectedIds.size
+  const hasSelection = selectedCount > 0
+  const selectedIdArray = useMemo(() => Array.from(selectedIds), [selectedIds])
+
   return (
     <div className="space-y-4">
-      {hasFilter && leads.length > 0 && (
-        <div className="flex justify-end">
-          <Button onClick={() => setIsSyncModalOpen(true)} variant="outline" className="gap-2">
-            <RefreshCw className="h-4 w-4" /> Sincronizar Remarketing
-          </Button>
-        </div>
-      )}
       <CustomerDetailDrawer
         customerId={selectedCustomerId}
         open={!!selectedCustomerId}
@@ -73,11 +90,63 @@ export function CustomerTable({
         onClose={() => setIsSyncModalOpen(false)}
         leads={leads}
         searchTerm={searchTerm}
+        selectedIds={hasSelection ? selectedIdArray : undefined}
       />
+
+      {hasSelection && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border bg-primary/5 px-4 py-2.5 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-semibold text-primary-foreground">
+              {selectedCount}
+            </span>
+            <span className="text-sm font-medium text-foreground">
+              {selectedCount === 1
+                ? '1 contato selecionado'
+                : `${selectedCount} contatos selecionados`}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => customerSelectionStore.clear()}
+            >
+              <X className="mr-1 h-3.5 w-3.5" /> Limpar
+            </Button>
+          </div>
+          <Button onClick={() => setIsSyncModalOpen(true)} size="sm" className="gap-2">
+            <RefreshCw className="h-4 w-4" /> Sincronizar Remarketing
+          </Button>
+        </div>
+      )}
+
+      {!hasSelection && leads.length > 0 && (
+        <div className="flex justify-end">
+          <Button
+            onClick={() => setIsSyncModalOpen(true)}
+            variant="outline"
+            className="gap-2"
+            disabled
+            title="Selecione ao menos um contato"
+          >
+            <RefreshCw className="h-4 w-4" /> Sincronizar Remarketing
+          </Button>
+        </div>
+      )}
+
       <div className="rounded-md border">
         <Table className="w-full">
           <TableHeader className="bg-muted sticky top-0 z-10 shadow-sm">
             <TableRow>
+              <TableHead className="w-[44px] pl-4">
+                <Checkbox
+                  checked={
+                    allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false
+                  }
+                  onCheckedChange={handleSelectAll}
+                  aria-label="Selecionar todos"
+                  disabled={loading || leads.length === 0}
+                />
+              </TableHead>
               <TableHead className="whitespace-nowrap font-semibold">Fase/Status</TableHead>
               {COLUMNS.map((col) => (
                 <TableHead key={col.key} className="whitespace-nowrap">
@@ -91,7 +160,7 @@ export function CustomerTable({
             {loading ? (
               Array.from({ length: 15 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={COLUMNS.length + 2} className="py-3">
+                  <TableCell colSpan={COLUMNS.length + 3} className="py-3">
                     <Skeleton className="h-8 w-full" />
                   </TableCell>
                 </TableRow>
@@ -99,7 +168,7 @@ export function CustomerTable({
             ) : leads.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={COLUMNS.length + 2}
+                  colSpan={COLUMNS.length + 3}
                   className="h-32 text-center text-muted-foreground"
                 >
                   Nenhum cliente encontrado.
@@ -114,14 +183,27 @@ export function CustomerTable({
                     (p.aliases && p.aliases.includes(lead.status)),
                 )
                 const isLast = index === leads.length - 1
+                const isSelected = selectedIds.has(lead.id)
                 return (
                   <TableRow
                     key={lead.id}
                     ref={isLast ? lastElementRef : null}
-                    className="group hover:bg-muted/50 transition-colors cursor-pointer"
-                    onClick={() => setSelectedCustomerId(lead.id)}
+                    className={cn(
+                      'group hover:bg-muted/50 transition-colors',
+                      isSelected && 'bg-primary/5',
+                    )}
                   >
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => handleToggleRow(lead.id)}
+                        aria-label={`Selecionar ${lead.name || lead.id}`}
+                      />
+                    </TableCell>
+                    <TableCell
+                      className="whitespace-nowrap cursor-pointer"
+                      onClick={() => setSelectedCustomerId(lead.id)}
+                    >
                       <div className="flex items-center gap-2">
                         {(lead.status === 'Lead Novo' ||
                           lead.status === 'Base de Clientes/Novo LYD' ||
@@ -142,9 +224,13 @@ export function CustomerTable({
                     {COLUMNS.map((col) => {
                       if (col.key === 'tags') {
                         return (
-                          <TableCell key={col.key} className="whitespace-nowrap">
+                          <TableCell
+                            key={col.key}
+                            className="whitespace-nowrap cursor-pointer"
+                            onClick={() => setSelectedCustomerId(lead.id)}
+                          >
                             <div className="flex gap-1">
-                              {(lead.tags || []).map((t, i) => (
+                              {(lead.tags || []).map((t: string, i: number) => (
                                 <Badge key={i} variant="outline" className="text-xs">
                                   {t}
                                 </Badge>
@@ -167,9 +253,10 @@ export function CustomerTable({
                         <TableCell
                           key={col.key}
                           className={cn(
-                            'whitespace-nowrap text-sm text-muted-foreground',
+                            'whitespace-nowrap text-sm text-muted-foreground cursor-pointer',
                             col.key === 'name' && 'font-medium text-foreground',
                           )}
+                          onClick={() => setSelectedCustomerId(lead.id)}
                         >
                           {val}
                         </TableCell>
