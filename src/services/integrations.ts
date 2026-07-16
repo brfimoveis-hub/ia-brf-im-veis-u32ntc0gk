@@ -1,31 +1,27 @@
 import pb from '@/lib/pocketbase/client'
 
 export const getUazapiQrCode = async () => {
-  return pb.send('/backend/v1/uazapi/qrcode', { method: 'GET' })
+  throw new Error('Uazapi integration has been removed.')
 }
 
 export const restartUazapi = async () => {
-  return pb.send('/backend/v1/uazapi/restart', { method: 'POST' })
+  throw new Error('Uazapi integration has been removed.')
 }
 
 export const disconnectUazapi = async () => {
-  return pb.send('/backend/v1/uazapi/disconnect', { method: 'POST' })
+  throw new Error('Uazapi integration has been removed.')
 }
 
 export const resyncUazapi = async () => {
-  return pb.send('/backend/v1/uazapi/resync', { method: 'POST' })
+  throw new Error('Uazapi integration has been removed.')
 }
 
 export const getUazapiStatus = async () => {
-  return pb.send('/backend/v1/uazapi/status', { method: 'GET' })
+  throw new Error('Uazapi integration has been removed.')
 }
 
-export const testUazapiConnection = async (domain: string, instance: string, token: string) => {
-  return pb.send('/backend/v1/uazapi/test-connection', {
-    method: 'POST',
-    body: JSON.stringify({ domain, instance, token }),
-    headers: { 'Content-Type': 'application/json' },
-  })
+export const testUazapiConnection = async (_domain: string, _instance: string, _token: string) => {
+  throw new Error('Uazapi integration has been removed.')
 }
 
 export const updateUserIntegrations = (userId: string, data: any) => {

@@ -81,23 +81,6 @@ export default function Layout() {
 
           <div className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-2">
-              <Activity className="h-4 w-4" /> Uazapi
-            </span>
-            <span
-              className={cn(
-                'flex h-2.5 w-2.5 rounded-full',
-                currentUser?.uazapi_status === 'connected' || currentUser?.uazapi_status === 'open'
-                  ? 'bg-green-500'
-                  : currentUser?.uazapi_status === 'disconnected'
-                    ? 'bg-red-500'
-                    : 'bg-yellow-500',
-              )}
-              title={currentUser?.uazapi_status || 'Unknown'}
-            />
-          </div>
-
-          <div className="flex items-center justify-between text-sm">
-            <span className="flex items-center gap-2">
               <Activity className="h-4 w-4" /> Meta CAPI
             </span>
             <span

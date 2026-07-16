@@ -91,7 +91,6 @@ export function DiagnosticCenter() {
   const [selectedPayloadLog, setSelectedPayloadLog] = useState<SystemLog | null>(null)
 
   const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false)
-  const [dialogType, setDialogType] = useState<'meta_capi' | 'uazapi'>('meta_capi')
   const [newTokenValue, setNewTokenValue] = useState('')
   const [isUpdatingToken, setIsUpdatingToken] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(user)
@@ -117,13 +116,10 @@ export function DiagnosticCenter() {
       setCurrentUser((prev: any) => {
         if (
           prev &&
-          prev.uazapi_status === e.record.uazapi_status &&
           prev.meta_capi_status === e.record.meta_capi_status &&
           prev.meta_whatsapp_status === e.record.meta_whatsapp_status &&
-          prev.uazapi_error === e.record.uazapi_error &&
           prev.meta_capi_error === e.record.meta_capi_error &&
-          prev.meta_pixel_id === e.record.meta_pixel_id &&
-          prev.uazapi_instance_number === e.record.uazapi_instance_number
+          prev.meta_pixel_id === e.record.meta_pixel_id
         ) {
           return prev
         }
@@ -301,67 +297,8 @@ export function DiagnosticCenter() {
       }
       setResults([...newResults])
 
-      // 2. Uazapi Connection Integrity Check
-      setProgress(25)
-      const phoneId = currentUser?.uazapi_instance_number || 'Não configurado'
-      let uazapiStatus = 'error'
-      let uazapiMessage = `Telefone de campanha Uazapi ausente. A ingestão automática pode falhar.`
-      const hasPhone = !!currentUser?.uazapi_instance_number
-
-      if (hasPhone) {
-        try {
-          const res = await pb
-            .send('/backend/v1/uazapi/diagnostics', {
-              method: 'GET',
-              headers: { 'Content-Type': 'application/json' },
-            })
-            .catch(() =>
-              pb.send('/backend/v1/uazapi/status', {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' },
-              }),
-            )
-
-          if (res.status === 'online' || res.status === 'Saudável') {
-            uazapiStatus = 'success'
-            uazapiMessage = `Conexão Uazapi ativa e operante no número ${phoneId}. Fluxo de leads ininterrupto.`
-          } else {
-            throw new Error(res.data?.lastDisconnectReason || res.status || 'Falha de conexão')
-          }
-        } catch (e: any) {
-          uazapiStatus = 'error'
-          const resErrorMsg =
-            e.response?.data?.error || e.response?.message || e.message || 'Erro desconhecido'
-          uazapiMessage = `Falha na integridade da conexão Uazapi para o Telefone de Campanha ${phoneId}: \n\nDetalhe do erro: ${resErrorMsg}`
-
-          await createSystemLog({
-            type: 'uazapi_error',
-            message: `Falha na verificação de integridade do Uazapi`,
-            details: { error: resErrorMsg, phone: phoneId },
-            payload: e.response || {},
-          }).catch(() => {})
-        }
-      } else {
-        uazapiMessage =
-          'ERRO: Telefone de campanha ausente! É obrigatório configurar o uazapi_instance_number para o CRM receber mensagens e validar a conexão.'
-        await createSystemLog({
-          type: 'uazapi_error',
-          message: `Telefone Uazapi ausente na verificação`,
-          details: { error: 'Telefone de campanha (instance number) não configurado' },
-          payload: {},
-        }).catch(() => {})
-      }
-
-      newResults.push({
-        name: `Integridade da Conexão Uazapi (${phoneId})`,
-        status: uazapiStatus,
-        message: uazapiMessage,
-        payload: { uazapi_instance_number: phoneId, listening: hasPhone },
-      })
-      setResults([...newResults])
-
-      // 3. Cadence Audit
-      setProgress(40)
+      // 2. Cadence Audit
+      setProgress(30)
       const cadences = await getCadences()
       const activeCadences = cadences.filter((c) => c.is_active)
 
@@ -396,8 +333,8 @@ export function DiagnosticCenter() {
       })
       setResults([...newResults])
 
-      // 4. Meta Validation
-      setProgress(60)
+      // 3. Meta Validation
+      setProgress(50)
       const testCount = loopEnabled ? 5 : 1
       let metaSuccesses = 0
       const pixelId = currentUser?.meta_pixel_id || 'Não configurado'
@@ -423,7 +360,7 @@ export function DiagnosticCenter() {
           payload: {},
         }).catch(() => {})
 
-        setProgress(90)
+        setProgress(80)
       } else {
         let lastErrorMsg = ''
         for (let i = 0; i < testCount; i++) {
@@ -453,7 +390,6 @@ export function DiagnosticCenter() {
             }
             lastErrorMsg = msg
 
-            // Log the error to system_logs
             await createSystemLog({
               type: 'meta_error',
               message: `Falha na conexão com Meta Pixel ${pixelId}`,
@@ -461,7 +397,7 @@ export function DiagnosticCenter() {
               payload: e.response || {},
             }).catch(() => {})
           }
-          setProgress(60 + ((i + 1) / testCount) * 30)
+          setProgress(50 + ((i + 1) / testCount) * 30)
           if (i < testCount - 1) await new Promise((r) => setTimeout(r, 1500))
         }
 
@@ -482,8 +418,8 @@ export function DiagnosticCenter() {
           },
         })
       }
-      // 5. Website Integration Check
-      setProgress(80)
+      // 4. Website Integration Check
+      setProgress(90)
       const websiteUrl = currentUser?.website_url || ''
       const expectedWebsite = 'brfimoveis.com.br'
       const hasValidWebsite = websiteUrl.toLowerCase().includes(expectedWebsite)
@@ -497,8 +433,8 @@ export function DiagnosticCenter() {
       })
       setResults([...newResults])
 
-      // 6. Chaves na Mão Portal Check
-      setProgress(90)
+      // 5. Chaves na Mão Portal Check
+      setProgress(95)
       try {
         const portalRes = await pb.send('/backend/v1/chaves_na_mao_webhook/status', {
           method: 'GET',
@@ -518,7 +454,7 @@ export function DiagnosticCenter() {
           name: 'Portal Chaves na Mão',
           status: 'warning',
           message: 'Não foi possível verificar o status do portal Chaves na Mão.',
-          payload: { error: portalErr.message },
+          payload: { error: (portalErr as any)?.message },
         })
       }
       setResults([...newResults])
@@ -530,7 +466,6 @@ export function DiagnosticCenter() {
         details: {
           loop: loopEnabled,
           meta: `${metaSuccesses}/${testCount}`,
-          uazapi: hasPhone ? 'Online' : 'Offline',
           cadences: cadences.length,
         },
         payload: newResults,
@@ -635,56 +570,6 @@ export function DiagnosticCenter() {
 
       {/* Integrações em Tempo Real */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {/* Uazapi Status */}
-        <Card className="border-border shadow-elevation">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Activity className="h-5 w-5 text-blue-500" />
-                Uazapi (WhatsApp)
-              </CardTitle>
-            </div>
-            <CardDescription className="font-mono text-xs">
-              {currentUser?.uazapi_instance_number || 'Sem número configurado'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 mb-2">
-              <Badge
-                variant="outline"
-                className={cn(
-                  currentUser?.uazapi_status === 'connected'
-                    ? 'bg-green-500/10 text-green-600 border-green-500/20'
-                    : 'bg-destructive/10 text-destructive border-destructive/20',
-                )}
-              >
-                {currentUser?.uazapi_status === 'connected'
-                  ? 'Conectado'
-                  : currentUser?.uazapi_status || 'Desconectado'}
-              </Badge>
-            </div>
-            {currentUser?.uazapi_status !== 'connected' && currentUser?.uazapi_error && (
-              <div className="mt-3 text-xs text-destructive flex gap-1 items-start bg-destructive/10 p-2 rounded-md">
-                <span className="whitespace-pre-wrap">{currentUser.uazapi_error}</span>
-              </div>
-            )}
-            <div className="mt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full text-xs"
-                onClick={() => {
-                  setDialogType('uazapi')
-                  setNewTokenValue('')
-                  setIsTokenDialogOpen(true)
-                }}
-              >
-                Atualizar Token Uazapi
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Meta CAPI Status */}
         <Card className="border-border shadow-elevation">
           <CardHeader className="pb-2">
@@ -748,7 +633,6 @@ export function DiagnosticCenter() {
                 size="sm"
                 className="w-full text-xs"
                 onClick={() => {
-                  setDialogType('meta_capi')
                   setNewTokenValue('')
                   setIsTokenDialogOpen(true)
                 }}
@@ -807,7 +691,7 @@ export function DiagnosticCenter() {
             <div>
               <CardTitle className="text-xl">Centro de Diagnóstico de Integridade</CardTitle>
               <CardDescription>
-                Verifique conexões externas (Meta, Uazapi) e a saúde interna do sistema de IA.
+                Verifique conexões externas (Meta) e a saúde interna do sistema.
               </CardDescription>
             </div>
           </div>
@@ -930,26 +814,11 @@ export function DiagnosticCenter() {
                             variant="default"
                             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                             onClick={() => {
-                              setDialogType('meta_capi')
                               setNewTokenValue('')
                               setIsTokenDialogOpen(true)
                             }}
                           >
                             Atualizar Token
-                          </Button>
-                        )}
-                        {res.status === 'error' && res.name.includes('Uazapi') && (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                            onClick={() => {
-                              setDialogType('uazapi')
-                              setNewTokenValue('')
-                              setIsTokenDialogOpen(true)
-                            }}
-                          >
-                            Re-autenticar
                           </Button>
                         )}
                         <Button
@@ -977,54 +846,47 @@ export function DiagnosticCenter() {
           <Dialog open={isTokenDialogOpen} onOpenChange={setIsTokenDialogOpen}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>
-                  {dialogType === 'meta_capi'
-                    ? 'Atualizar Token Meta CAPI'
-                    : 'Atualizar Credenciais Uazapi'}
-                </DialogTitle>
+                <DialogTitle>Atualizar Token Meta CAPI</DialogTitle>
                 <DialogDescription>
-                  {dialogType === 'meta_capi'
-                    ? 'Siga os passos abaixo para gerar e inserir o seu Token de Acesso da API de Conversões do Meta.'
-                    : 'Insira o novo Instance Token (API Key) para restaurar a conexão Uazapi.'}
+                  Siga os passos abaixo para gerar e inserir o seu Token de Acesso da API de
+                  Conversões do Meta.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                {dialogType === 'meta_capi' && (
-                  <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md border space-y-2">
-                    <p className="font-medium text-foreground">Guia de Configuração (CAPI):</p>
-                    <ol className="list-decimal list-inside space-y-1 ml-1">
-                      <li>
-                        Acesse o{' '}
-                        <a
-                          href="https://business.facebook.com/events_manager2/"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-primary hover:underline"
-                        >
-                          Meta Events Manager
-                        </a>
-                        .
-                      </li>
-                      <li>
-                        Clique em <strong>Fontes de Dados</strong> e selecione o Pixel{' '}
-                        <strong>{currentUser?.meta_pixel_id || 'Não configurado'}</strong>.
-                      </li>
-                      <li>
-                        Navegue até a aba <strong>Configurações</strong>.
-                      </li>
-                      <li>
-                        Role até <strong>API de Conversões</strong> e clique em{' '}
-                        <strong>Gerar token de acesso</strong>.
-                      </li>
-                      <li>Copie o token gerado e cole no campo abaixo.</li>
-                    </ol>
-                  </div>
-                )}
+                <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md border space-y-2">
+                  <p className="font-medium text-foreground">Guia de Configuração (CAPI):</p>
+                  <ol className="list-decimal list-inside space-y-1 ml-1">
+                    <li>
+                      Acesse o{' '}
+                      <a
+                        href="https://business.facebook.com/events_manager2/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Meta Events Manager
+                      </a>
+                      .
+                    </li>
+                    <li>
+                      Clique em <strong>Fontes de Dados</strong> e selecione o Pixel{' '}
+                      <strong>{currentUser?.meta_pixel_id || 'Não configurado'}</strong>.
+                    </li>
+                    <li>
+                      Navegue até a aba <strong>Configurações</strong>.
+                    </li>
+                    <li>
+                      Role até <strong>API de Conversões</strong> e clique em{' '}
+                      <strong>Gerar token de acesso</strong>.
+                    </li>
+                    <li>Copie o token gerado e cole no campo abaixo.</li>
+                  </ol>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="token_input">Novo Token de Acesso</Label>
                   <Input
                     id="token_input"
-                    placeholder={dialogType === 'meta_capi' ? 'EAAI...' : '6df3aaaa-...'}
+                    placeholder="EAAI..."
                     value={newTokenValue}
                     onChange={(e) => setNewTokenValue(e.target.value)}
                   />
@@ -1040,18 +902,11 @@ export function DiagnosticCenter() {
                     if (!user?.id) return
                     setIsUpdatingToken(true)
                     try {
-                      if (dialogType === 'meta_capi') {
-                        await pb.collection('users').update(user.id, {
-                          meta_capi_token: newTokenValue.trim(),
-                          meta_capi_status: 'connected',
-                          meta_token_status: 'valid',
-                        })
-                      } else {
-                        await pb.collection('users').update(user.id, {
-                          uazapi_token: newTokenValue.trim(),
-                          uazapi_status: 'connected',
-                        })
-                      }
+                      await pb.collection('users').update(user.id, {
+                        meta_capi_token: newTokenValue.trim(),
+                        meta_capi_status: 'connected',
+                        meta_token_status: 'valid',
+                      })
 
                       toast({
                         title: 'Token atualizado',

@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Users, MessageSquare, Bot, Activity, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 export default function Dashboard() {
@@ -35,27 +34,6 @@ export default function Dashboard() {
 
         const iaRes = await pb.collection('leads').getList(1, 1, { fields: 'id' })
         setIaInteractions(iaRes.totalItems)
-
-        // Poll Uazapi status silently so dashboard shows updated state
-        pb.send('/backend/v1/uazapi/status', { method: 'GET' })
-          .then((res) => {
-            if (res?.data) {
-              const rawState = res.state || 'unknown'
-              const normalizedState = rawState === 'open' ? 'connected' : rawState
-              setCurrentUser((prev: any) => ({
-                ...prev,
-                uazapi_status: normalizedState,
-                uazapi_error: res.data.lastDisconnectReason || res.data.message || '',
-                profileName: res.data.profileName,
-                currentPresence: res.data.currentPresence,
-              }))
-            }
-          })
-          .catch((err) => {
-            const errorMsg =
-              err?.response?.message || err?.message || 'Falha ao verificar conexão com o Uazapi.'
-            toast.error('Erro de Conexão Uazapi', { description: errorMsg })
-          })
       } catch (err) {
         console.error(err)
       }
@@ -70,11 +48,7 @@ export default function Dashboard() {
     pb.collection('users')
       .getOne(user.id)
       .then((res) => {
-        setCurrentUser((prev: any) => ({
-          ...res,
-          profileName: prev?.profileName,
-          currentPresence: prev?.currentPresence,
-        }))
+        setCurrentUser(res)
       })
       .catch(console.error)
   })
@@ -107,7 +81,7 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-sm font-medium">Clientes Ativos</CardTitle>
@@ -126,64 +100,6 @@ export default function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{cadenceCount}</div>
             <p className="text-xs text-muted-foreground">Ativas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Uazapi Status</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-3 w-3">
-                <span
-                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentUser?.uazapi_status === 'connected' || currentUser?.uazapi_status === 'online' ? 'bg-emerald-400' : 'bg-red-400'}`}
-                ></span>
-                <span
-                  className={`relative inline-flex rounded-full h-3 w-3 ${currentUser?.uazapi_status === 'connected' || currentUser?.uazapi_status === 'online' ? 'bg-emerald-500' : currentUser?.uazapi_status === 'qr_ready' ? 'bg-amber-500' : 'bg-red-500'}`}
-                ></span>
-              </span>
-              <div
-                className={`text-2xl font-bold ${currentUser?.uazapi_status === 'connected' || currentUser?.uazapi_status === 'online' ? 'text-emerald-600' : currentUser?.uazapi_status === 'qr_ready' ? 'text-amber-600' : 'text-red-600'}`}
-              >
-                {currentUser?.uazapi_status === 'connected' ||
-                currentUser?.uazapi_status === 'online'
-                  ? 'Conectado'
-                  : currentUser?.uazapi_status === 'offline'
-                    ? 'Desconectado'
-                    : 'Erro'}
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground truncate mt-1">
-              Instância: {currentUser?.uazapi_instance_number || '554892098050'}
-            </p>
-            <p
-              className={cn(
-                'text-xs text-muted-foreground truncate mt-0.5',
-                !(
-                  currentUser?.profileName &&
-                  (currentUser?.uazapi_status === 'connected' ||
-                    currentUser?.uazapi_status === 'online')
-                ) && 'hidden',
-              )}
-            >
-              Perfil: {currentUser?.profileName || ''}
-              {currentUser?.currentPresence ? ` (${currentUser.currentPresence})` : ''}
-            </p>
-            <p
-              className={cn(
-                'text-xs text-red-500 mt-1 line-clamp-2',
-                !(
-                  currentUser?.uazapi_error &&
-                  (currentUser?.uazapi_status === 'error' ||
-                    currentUser?.uazapi_status === 'offline' ||
-                    currentUser?.uazapi_status === 'disconnected')
-                ) && 'hidden',
-              )}
-              title={currentUser?.uazapi_error || ''}
-            >
-              Erro: {currentUser?.uazapi_error || ''}
-            </p>
           </CardContent>
         </Card>
         <Card>
@@ -270,20 +186,6 @@ export default function Dashboard() {
             <CardDescription>Acesso rápido aos módulos principais da plataforma.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/20">
-              <div className="space-y-1">
-                <h4 className="font-medium text-sm">Integração WhatsApp</h4>
-                <p className="text-xs text-muted-foreground max-w-sm">
-                  Gerencie sua conexão com o Uazapi, número da instância e tokens de acesso para
-                  garantir o funcionamento da IA.
-                </p>
-              </div>
-              <Button asChild variant="outline" size="sm">
-                <Link to="/settings/connections">
-                  Configurar Uazapi <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
             <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/20">
               <div className="space-y-1">
                 <h4 className="font-medium text-sm">Integração Meta CAPI</h4>
