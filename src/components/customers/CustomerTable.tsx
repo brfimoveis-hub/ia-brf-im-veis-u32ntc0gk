@@ -25,6 +25,7 @@ import { RemarketingSyncModal } from './RemarketingSyncModal'
 import { useState, useMemo } from 'react'
 import { CustomerDetailDrawer } from './CustomerDetailDrawer'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
+import pb from '@/lib/pocketbase/client'
 
 const COLUMNS = [
   { key: 'name', label: 'Nome' },
@@ -55,6 +56,7 @@ export function CustomerTable({
   const hasFilter = !!searchTerm || !!phaseFilter || Array.from(searchParams.keys()).length > 0
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [selectAllLoading, setSelectAllLoading] = useState(false)
 
   const selectedIds = useCustomerSelection()
 
@@ -62,11 +64,37 @@ export function CustomerTable({
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected
 
-  const handleSelectAll = () => {
+  const handleSelectAll = async () => {
     if (allVisibleSelected) {
       customerSelectionStore.removeMany(visibleIds)
-    } else {
+      return
+    }
+
+    setSelectAllLoading(true)
+    try {
+      const filters: string[] = []
+      if (searchTerm) {
+        const safeSearch = searchTerm.replace(/"/g, '\\"')
+        filters.push(
+          `(name ~ "${safeSearch}" || email ~ "${safeSearch}" || phone ~ "${safeSearch}" || first_name ~ "${safeSearch}" || email_1_value ~ "${safeSearch}" || phone_1_value ~ "${safeSearch}")`,
+        )
+      }
+      if (phaseFilter && phaseFilter !== 'all') {
+        const safePhase = phaseFilter.replace(/"/g, '\\"')
+        filters.push(`status = "${safePhase}"`)
+      }
+      const sourceFilterVal = searchParams.get('source') || ''
+      if (sourceFilterVal) {
+        const safeSource = sourceFilterVal.replace(/"/g, '\\"')
+        filters.push(`source ~ "${safeSource}"`)
+      }
+      const filterString = filters.join(' && ')
+      const allRecords = await pb.collection('customers').getFullList({ filter: filterString })
+      customerSelectionStore.addMany(allRecords.map((r) => r.id))
+    } catch (err) {
       customerSelectionStore.addMany(visibleIds)
+    } finally {
+      setSelectAllLoading(false)
     }
   }
 
@@ -90,6 +118,7 @@ export function CustomerTable({
         onClose={() => setIsSyncModalOpen(false)}
         leads={leads}
         searchTerm={searchTerm}
+        phaseFilter={phaseFilter}
         selectedIds={hasSelection ? selectedIdArray : undefined}
       />
 
@@ -144,7 +173,7 @@ export function CustomerTable({
                   }
                   onCheckedChange={handleSelectAll}
                   aria-label="Selecionar todos"
-                  disabled={loading || leads.length === 0}
+                  disabled={loading || leads.length === 0 || selectAllLoading}
                 />
               </TableHead>
               <TableHead className="whitespace-nowrap font-semibold">Fase/Status</TableHead>

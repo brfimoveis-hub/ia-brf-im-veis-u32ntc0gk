@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   StopCircle,
   Settings,
+  RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { useNavigate } from 'react-router-dom'
@@ -50,18 +51,18 @@ export function RemarketingSyncModal({
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'stopped' | 'finished'>('idle')
-  const isSyncing = syncStatus === 'syncing'
+  const [syncStatus, setSyncStatus] = useState<
+    'idle' | 'syncing' | 'stopped' | 'finished' | 'paused'
+  >('idle')
+  const isSyncing = syncStatus === 'syncing' || syncStatus === 'paused'
 
   const [isLoading, setIsLoading] = useState(true)
   const [validLeads, setValidLeads] = useState<Customer[]>([])
   const [syncError, setSyncError] = useState<string | null>(null)
 
-  // Sync Settings
-  const [batchSize, setBatchSize] = useState<number>(50)
+  const [batchSize, setBatchSize] = useState<number>(100)
   const [intervalMinutes, setIntervalMinutes] = useState<number>(2)
 
-  // Resume Strategies & Selection
   const [resumeMode, setResumeMode] = useState<'all' | 'sequence' | 'letter_from' | 'letter_exact'>(
     'all',
   )
@@ -69,17 +70,22 @@ export function RemarketingSyncModal({
   const [containsFilter, setContainsFilter] = useState('')
   const [lastSyncLog, setLastSyncLog] = useState<SystemLog | null>(null)
 
-  // Progress state
   const [progress, setProgress] = useState(0)
   const [syncedCount, setSyncedCount] = useState(0)
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0)
   const [totalBatches, setTotalBatches] = useState(0)
+  const [totalLeads, setTotalLeads] = useState(0)
   const [failedLeads, setFailedLeads] = useState<{ lead: Customer; error: string }[]>([])
+  const [pausedError, setPausedError] = useState<string | null>(null)
 
   const isStoppedRef = useRef(false)
+  const resolvePauseRef = useRef<((decision: 'retry' | 'skip') => void) | null>(null)
 
   useEffect(() => {
     if (!isOpen) {
+      isStoppedRef.current = true
+      resolvePauseRef.current?.('skip')
+      resolvePauseRef.current = null
       setSyncStatus('idle')
       setProgress(0)
       setSyncedCount(0)
@@ -87,13 +93,14 @@ export function RemarketingSyncModal({
       setSyncError(null)
       setContainsFilter('')
       setResumeMode('all')
+      setPausedError(null)
+      setTotalLeads(0)
       return
     }
 
     const fetchInitialData = async () => {
       setIsLoading(true)
       try {
-        // Fetch last sync log for resuming
         const logs = await pb.collection('system_logs').getList<SystemLog>(1, 1, {
           filter: 'type = "remarketing_log"',
           sort: '-created',
@@ -122,8 +129,7 @@ export function RemarketingSyncModal({
 
         const allLeads = await pb.collection('customers').getFullList<Customer>({
           filter: filterString,
-          sort: 'name', // Sorted by name to make sequence and letter strategies logical
-          requestKey: null,
+          sort: 'name',
         })
 
         let valid = allLeads.filter((l) => {
@@ -221,22 +227,14 @@ export function RemarketingSyncModal({
     setProgress(0)
     setSyncedCount(0)
     setFailedLeads([])
+    setPausedError(null)
 
-    // Freeze list to process so it doesn't mutate during the loop if lastSyncLog updates
     const listToProcess = [...leadsToSync]
+    setTotalLeads(listToProcess.length)
     setTotalBatches(Math.ceil(listToProcess.length / Math.max(1, batchSize)))
     setCurrentBatchIndex(0)
 
-    // Pre-flight check
-    const lastValidatedStr = user?.meta_last_validated
-    let needsValidation = true
-    if (lastValidatedStr && user?.meta_token_status === 'valid') {
-      const lastValidated = new Date(lastValidatedStr).getTime()
-      if (Date.now() - lastValidated < 24 * 60 * 60 * 1000) {
-        needsValidation = false
-      }
-    }
-
+    const needsValidation = user?.meta_token_status !== 'valid'
     if (needsValidation) {
       try {
         await pb.send('/backend/v1/meta-test-connection', {
@@ -296,7 +294,10 @@ export function RemarketingSyncModal({
             type: 'remarketing_log',
             message: `Remarketing sync batch processed`,
             details: `Synced up to ${lastCustomer.name}`,
-            payload: { last_customer_id: lastCustomer.id, last_customer_name: lastCustomer.name },
+            payload: {
+              last_customer_id: lastCustomer.id,
+              last_customer_name: lastCustomer.name,
+            },
             user_id: user?.id,
           })
           setLastSyncLog(newLog)
@@ -304,16 +305,32 @@ export function RemarketingSyncModal({
       } catch (error: unknown) {
         const errorObj = error as any
         let errorMsg = getErrorMessage(error)
-        if (errorObj?.response?.message) {
-          errorMsg = errorObj.response.message
-        }
-        if (errorObj?.response?.code) {
-          errorMsg += ` (Code: ${errorObj.response.code})`
-        }
+        if (errorObj?.response?.message) errorMsg = errorObj.response.message
+        if (errorObj?.response?.code) errorMsg += ` (Code: ${errorObj.response.code})`
         if (errorMsg.includes('Unsupported post request') || errorMsg.includes('does not exist')) {
           errorMsg = `Meta API Rejeitou o ID: O Pixel ou Dataset informado não existe ou a conta não tem permissão. Detalhes: ${errorMsg}`
         }
+
+        setPausedError(errorMsg)
+        setSyncStatus('paused')
+
+        const decision = await new Promise<'retry' | 'skip'>((resolve) => {
+          resolvePauseRef.current = resolve
+        })
+        resolvePauseRef.current = null
+
+        if (isStoppedRef.current) break
+
+        if (decision === 'retry') {
+          setSyncStatus('syncing')
+          setPausedError(null)
+          i -= currentBatchSize
+          continue
+        }
+
         setFailedLeads((prev) => [...prev, ...batch.map((lead) => ({ lead, error: errorMsg }))])
+        setSyncStatus('syncing')
+        setPausedError(null)
       }
 
       setProgress(Math.round(((i + batch.length) / listToProcess.length) * 100))
@@ -355,6 +372,9 @@ export function RemarketingSyncModal({
     }
   }
 
+  const leadRangeStart = Math.min((currentBatchIndex - 1) * batchSize + 1, totalLeads)
+  const leadRangeEnd = Math.min(currentBatchIndex * batchSize, totalLeads)
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-xl max-h-[95vh] flex flex-col p-0">
@@ -373,7 +393,8 @@ export function RemarketingSyncModal({
                 className={`space-y-4 transition-opacity ${isSyncing ? 'opacity-50 pointer-events-none' : ''}`}
               >
                 <p className="text-sm text-muted-foreground">
-                  Envie leads para o Meta para criar campanhas de remarketing segmentadas.
+                  Envie leads para o Meta em lotes de 100 para criar campanhas de remarketing
+                  segmentadas.
                 </p>
                 <div className="text-sm text-muted-foreground bg-muted p-3 rounded-md border space-y-2">
                   <p className="text-primary font-medium flex items-center gap-2">
@@ -387,9 +408,7 @@ export function RemarketingSyncModal({
 
                 <div className="space-y-4 p-4 border rounded-md bg-card shadow-sm">
                   <div className="space-y-2">
-                    <Label className="text-sm font-semibold">
-                      Selecionar por todos os lyds que contém ........
-                    </Label>
+                    <Label className="text-sm font-semibold">Selecionar leads que contêm</Label>
                     <Input
                       placeholder="Ex: interessado, VIP, projeto X..."
                       value={containsFilter}
@@ -436,7 +455,7 @@ export function RemarketingSyncModal({
 
                   {(resumeMode === 'letter_from' || resumeMode === 'letter_exact') && (
                     <div className="space-y-1.5 pt-2">
-                      <Label className="text-xs text-muted-foreground">Letra Inicial</Label>
+                      <Label className="xs text-muted-foreground">Letra Inicial</Label>
                       <Input
                         maxLength={1}
                         value={resumeLetter}
@@ -543,7 +562,13 @@ export function RemarketingSyncModal({
                     <h3 className="font-semibold flex items-center gap-2">
                       {syncStatus === 'syncing' && (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" /> Sincronizando...
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                          Sincronizando...
+                        </>
+                      )}
+                      {syncStatus === 'paused' && (
+                        <>
+                          <AlertCircle className="h-4 w-4 text-orange-500" /> Pausado — Erro no Lote
                         </>
                       )}
                       {syncStatus === 'stopped' && (
@@ -563,8 +588,8 @@ export function RemarketingSyncModal({
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm font-medium">
                       <span>
-                        {syncStatus === 'syncing'
-                          ? `Enviando lote ${currentBatchIndex}/${totalBatches}...`
+                        {syncStatus === 'syncing' || syncStatus === 'paused'
+                          ? `Processando leads ${leadRangeStart} a ${leadRangeEnd} de ${totalLeads} • Lote ${currentBatchIndex}/${totalBatches}`
                           : 'Progresso Final'}
                       </span>
                       <span>{progress}%</span>
@@ -586,6 +611,36 @@ export function RemarketingSyncModal({
                       </div>
                     </div>
                   </div>
+
+                  {syncStatus === 'paused' && pausedError && (
+                    <div className="space-y-3 p-4 rounded-md border border-orange-500 bg-orange-500/10">
+                      <div className="flex gap-2 items-start">
+                        <AlertTriangle className="h-5 w-5 shrink-0 text-orange-500 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-orange-700">
+                            Erro no lote {currentBatchIndex} de {totalBatches}
+                          </p>
+                          <p className="text-xs text-orange-600 mt-1 break-words">{pausedError}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => resolvePauseRef.current?.('retry')}
+                        >
+                          <RefreshCw className="h-4 w-4 mr-1" /> Tentar novamente
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => resolvePauseRef.current?.('skip')}
+                        >
+                          Pular e continuar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {failedLeads.length > 0 && (
                     <div className="space-y-2">
@@ -630,6 +685,19 @@ export function RemarketingSyncModal({
             <Button onClick={onClose} className="w-full">
               Concluir
             </Button>
+          ) : syncStatus === 'paused' ? (
+            <div className="flex w-full gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => resolvePauseRef.current?.('skip')}
+              >
+                Pular e continuar
+              </Button>
+              <Button className="flex-1" onClick={() => resolvePauseRef.current?.('retry')}>
+                <RefreshCw className="h-4 w-4 mr-2" /> Tentar novamente
+              </Button>
+            </div>
           ) : syncStatus === 'syncing' ? (
             <Button
               variant="destructive"
