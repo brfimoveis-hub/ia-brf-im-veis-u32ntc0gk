@@ -3,9 +3,11 @@ import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, User, Phone, Calendar } from 'lucide-react'
+import { Loader2, User, Phone, Calendar, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, formatPhone } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { ImportCustomersModal } from '@/components/email-marketing/ImportCustomersModal'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -28,6 +30,7 @@ export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [showImport, setShowImport] = useState(false)
 
   const loadData = async () => {
     try {
@@ -122,6 +125,10 @@ export default function Customers() {
             Acompanhe e movimente os leads pelas fases da cadência.
           </p>
         </div>
+        <Button variant="outline" onClick={() => setShowImport(true)}>
+          <Upload className="h-4 w-4 mr-2" />
+          Importar Clientes
+        </Button>
       </div>
 
       <div className="flex flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-2 custom-scrollbar">
@@ -201,6 +208,8 @@ export default function Customers() {
           )
         })}
       </div>
+
+      <ImportCustomersModal open={showImport} onOpenChange={setShowImport} onSuccess={loadData} />
     </div>
   )
 }

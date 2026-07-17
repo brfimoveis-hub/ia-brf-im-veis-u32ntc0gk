@@ -21,6 +21,8 @@ import Dashboard from './pages/Index'
 import Customers from './pages/Customers'
 import CustomerList from './pages/CustomerList'
 import Cadences from './pages/Cadences'
+import EmailMarketing from './pages/EmailMarketing'
+import EmailCampaignDetail from './pages/EmailCampaignDetail'
 import SettingsRemarketing from './pages/SettingsRemarketing'
 import SettingsConnections from './pages/SettingsConnections'
 import SettingsAI from './pages/SettingsAI'
@@ -171,6 +173,14 @@ const router = createBrowserRouter(
                 {
                   path: 'cadences',
                   element: <Cadences />,
+                },
+                {
+                  path: 'email-marketing',
+                  element: <EmailMarketing />,
+                },
+                {
+                  path: 'email-marketing/:campaignId',
+                  element: <EmailCampaignDetail />,
                 },
                 {
                   path: 'settings/remarketing',

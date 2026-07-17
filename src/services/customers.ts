@@ -42,6 +42,21 @@ export const updateCustomer = (id: string, data: Partial<Customer>) =>
   pb.collection('customers').update<Customer>(id, data)
 export const deleteCustomer = (id: string) => pb.collection('customers').delete(id)
 
+export const createCustomerWithRetry = async (
+  data: Partial<Customer>,
+  retries = 3,
+): Promise<Customer> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await pb.collection('customers').create<Customer>(data)
+    } catch (err: any) {
+      if (i === retries - 1) throw err
+      await new Promise((r) => setTimeout(r, 1000 * (i + 1)))
+    }
+  }
+  throw new Error('Failed to create customer after retries')
+}
+
 export const syncRemarketing = async (
   payloads: SyncRemarketingPayload[],
   searchTerm: string,
