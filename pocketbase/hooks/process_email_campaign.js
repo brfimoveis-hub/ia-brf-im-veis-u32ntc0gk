@@ -27,6 +27,10 @@ routerAdd(
     campaign.set('status', 'sending')
     campaign.set('success_count', 0)
     campaign.set('failure_count', 0)
+    campaign.set('unique_opens', 0)
+    campaign.set('unique_clicks', 0)
+    campaign.set('total_opens', 0)
+    campaign.set('total_clicks', 0)
     $app.save(campaign)
 
     const filter = body.filter || {}
@@ -74,6 +78,8 @@ routerAdd(
         delivery.set('campaign_id', campaignId)
         delivery.set('customer_id', customer.id)
         delivery.set('status', 'pending')
+        delivery.set('open_count', 0)
+        delivery.set('click_count', 0)
         $app.save(delivery)
       } catch (_) {
         failureCount++
@@ -98,12 +104,28 @@ routerAdd(
         .replace(/<[^>]*>/g, '')
         .replace(/&nbsp;/g, ' ')
         .trim()
+
+      var trackBaseUrl = ($secrets.get('PB_INSTANCE_URL') || '').replace(/\/+$/, '')
+      if (!trackBaseUrl) trackBaseUrl = 'https://' + e.request.host
+      var trackOpenUrl = trackBaseUrl + '/backend/v1/email/track-open/' + delivery.id
+      var trackClickBase = trackBaseUrl + '/backend/v1/email/track-click/' + delivery.id + '?url='
+
+      var trackedBody = personalizedBody.replace(
+        /href=["'](https?:\/\/[^"']+)["']/g,
+        function (match, href) {
+          return 'href="' + trackClickBase + encodeURIComponent(href) + '"'
+        },
+      )
+
       const htmlBody =
         '<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;"><p>Olá ' +
         customerName +
         ',</p><div style="white-space:pre-wrap;line-height:1.6;">' +
-        personalizedBody +
-        '</div><br><p style="color:#888;font-size:12px;">Enviado via BRF Imóveis CRM</p></div>'
+        trackedBody +
+        '</div><br><p style="color:#888;font-size:12px;">Enviado via BRF Imóveis CRM</p>' +
+        '<img src="' +
+        trackOpenUrl +
+        '" width="1" height="1" alt="" style="display:none;border:0;"/></div>'
 
       try {
         const message = new MailMessage({
