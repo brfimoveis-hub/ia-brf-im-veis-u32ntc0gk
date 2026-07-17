@@ -16,12 +16,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import { MoreHorizontal, Edit, Trash2, RefreshCw, X } from 'lucide-react'
+import { MoreHorizontal, Edit, Trash2, RefreshCw, X, Mail } from 'lucide-react'
 import { Customer } from '@/services/customers'
 import { PHASES } from './constants'
 import { cn, formatPhone } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
 import { RemarketingSyncModal } from './RemarketingSyncModal'
+import { BulkEmailModal } from './BulkEmailModal'
 import { useState, useMemo } from 'react'
 import { CustomerDetailDrawer } from './CustomerDetailDrawer'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
@@ -55,6 +56,7 @@ export function CustomerTable({
   const phaseFilter = searchParams.get('phase') || searchParams.get('status') || ''
   const hasFilter = !!searchTerm || !!phaseFilter || Array.from(searchParams.keys()).length > 0
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
+  const [isBulkEmailModalOpen, setIsBulkEmailModalOpen] = useState(false)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [selectAllLoading, setSelectAllLoading] = useState(false)
 
@@ -121,6 +123,11 @@ export function CustomerTable({
         phaseFilter={phaseFilter}
         selectedIds={hasSelection ? selectedIdArray : undefined}
       />
+      <BulkEmailModal
+        isOpen={isBulkEmailModalOpen}
+        onClose={() => setIsBulkEmailModalOpen(false)}
+        customers={leads.filter((l) => selectedIds.has(l.id))}
+      />
 
       {hasSelection && (
         <div className="flex items-center justify-between gap-3 rounded-lg border bg-primary/5 px-4 py-2.5 animate-fade-in">
@@ -142,9 +149,19 @@ export function CustomerTable({
               <X className="mr-1 h-3.5 w-3.5" /> Limpar
             </Button>
           </div>
-          <Button onClick={() => setIsSyncModalOpen(true)} size="sm" className="gap-2">
-            <RefreshCw className="h-4 w-4" /> Sincronizar Remarketing
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setIsBulkEmailModalOpen(true)}
+              size="sm"
+              variant="outline"
+              className="gap-2"
+            >
+              <Mail className="h-4 w-4" /> Enviar Email
+            </Button>
+            <Button onClick={() => setIsSyncModalOpen(true)} size="sm" className="gap-2">
+              <RefreshCw className="h-4 w-4" /> Sincronizar Remarketing
+            </Button>
+          </div>
         </div>
       )}
 

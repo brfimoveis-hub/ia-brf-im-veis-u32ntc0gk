@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -9,51 +9,51 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
-import { sendEmail } from '@/services/email'
+import { bulkSendEmail } from '@/services/email'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { TemplateSelector } from './TemplateSelector'
 import { RichTextEditor } from './RichTextEditor'
-import { Loader2, Mail, Send } from 'lucide-react'
+import { Loader2, Mail, Send, AlertCircle, Users } from 'lucide-react'
 
-interface EmailComposerModalProps {
-  customerId: string
-  customerName: string
-  customerEmail: string
+interface BulkEmailModalProps {
   isOpen: boolean
   onClose: () => void
+  customers: Array<{ id: string; name: string; email?: string; email_1_value?: string }>
 }
 
-export function EmailComposerModal({
-  customerId,
-  customerName,
-  customerEmail,
-  isOpen,
-  onClose,
-}: EmailComposerModalProps) {
+export function BulkEmailModal({ isOpen, onClose, customers }: BulkEmailModalProps) {
   const { toast } = useToast()
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
 
+  const validRecipients = useMemo(
+    () => customers.filter((c) => c.email?.trim() || c.email_1_value?.trim()),
+    [customers],
+  )
+  const invalidCount = customers.length - validRecipients.length
+
   const handleSend = async () => {
-    if (!subject.trim() || !body.trim()) return
+    if (!subject.trim() || !body.trim() || validRecipients.length === 0) return
     setSending(true)
     try {
-      const result = await sendEmail(customerId, subject.trim(), body.trim())
-      toast({
-        title: 'Email enviado!',
-        description: `Enviado para ${result.recipient || customerEmail}`,
-      })
+      const result = await bulkSendEmail(
+        validRecipients.map((c) => c.id),
+        subject.trim(),
+        body.trim(),
+      )
+      toast({ title: 'Emails enviados!', description: result.message })
       setSubject('')
       setBody('')
       onClose()
     } catch (error: unknown) {
-      const msg = getErrorMessage(error)
       toast({
-        title: 'Erro ao enviar email',
-        description: msg,
+        title: 'Erro ao enviar emails',
+        description: getErrorMessage(error),
         variant: 'destructive',
       })
     } finally {
@@ -74,19 +74,32 @@ export function EmailComposerModal({
         <DialogHeader className="p-6 pb-3">
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-5 w-5 text-primary" />
-            Compor Email
+            Enviar Email em Massa
           </DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="flex-1 px-6">
           <div className="space-y-4 pb-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Para</Label>
-              <div className="bg-muted/50 rounded-md px-3 py-2 text-sm font-medium border">
-                {customerName}{' '}
-                <span className="text-muted-foreground">&lt;{customerEmail}&gt;</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="gap-1.5">
+                <Users className="h-3.5 w-3.5" />
+                {validRecipients.length} destinatário(s)
+              </Badge>
+              {invalidCount > 0 && (
+                <Badge variant="outline" className="text-amber-600 border-amber-300">
+                  {invalidCount} sem email
+                </Badge>
+              )}
             </div>
+
+            {invalidCount > 0 && (
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-700 text-xs">
+                  {invalidCount} contato(s) serão ignorados por não terem endereço de email válido.
+                </AlertDescription>
+              </Alert>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Template</Label>
@@ -97,10 +110,10 @@ export function EmailComposerModal({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="email-subject">Assunto</Label>
+              <Label htmlFor="bulk-subject">Assunto</Label>
               <Input
-                id="email-subject"
-                placeholder="Digite o assunto do email..."
+                id="bulk-subject"
+                placeholder="Digite o assunto..."
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 disabled={sending}
@@ -109,12 +122,12 @@ export function EmailComposerModal({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="email-body">Mensagem</Label>
+              <Label htmlFor="bulk-body">Mensagem</Label>
               <RichTextEditor
                 value={body}
                 onChange={setBody}
                 disabled={sending}
-                placeholder="Digite a mensagem que será enviada ao cliente..."
+                placeholder="Digite a mensagem que será enviada..."
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -134,7 +147,7 @@ export function EmailComposerModal({
           </Button>
           <Button
             onClick={handleSend}
-            disabled={sending || !subject.trim() || !body.trim()}
+            disabled={sending || !subject.trim() || !body.trim() || validRecipients.length === 0}
             className="w-full sm:w-auto"
           >
             {sending ? (
@@ -145,7 +158,7 @@ export function EmailComposerModal({
             ) : (
               <>
                 <Send className="h-4 w-4 mr-2" />
-                Enviar Email
+                Enviar para {validRecipients.length}
               </>
             )}
           </Button>

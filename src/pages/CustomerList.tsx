@@ -19,11 +19,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Search, Loader2, RefreshCw, X } from 'lucide-react'
+import { Search, Loader2, RefreshCw, X, Mail } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { format } from 'date-fns'
 import { RemarketingSyncModal } from '@/components/customers/RemarketingSyncModal'
+import { BulkEmailModal } from '@/components/customers/BulkEmailModal'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 
 const PIPELINE_STAGES = [
@@ -45,6 +46,7 @@ export default function CustomerList() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
+  const [isBulkEmailModalOpen, setIsBulkEmailModalOpen] = useState(false)
 
   const selectedIds = useCustomerSelection()
 
@@ -126,6 +128,11 @@ export default function CustomerList() {
         phaseFilter={statusFilter}
         selectedIds={hasSelection ? selectedIdArray : undefined}
       />
+      <BulkEmailModal
+        isOpen={isBulkEmailModalOpen}
+        onClose={() => setIsBulkEmailModalOpen(false)}
+        customers={filteredCustomers.filter((c) => selectedIds.has(c.id))}
+      />
 
       <div className="flex items-center justify-between">
         <div>
@@ -185,9 +192,19 @@ export default function CustomerList() {
                   <X className="mr-1 h-3.5 w-3.5" /> Limpar
                 </Button>
               </div>
-              <Button onClick={() => setIsSyncModalOpen(true)} size="sm" className="gap-2">
-                <RefreshCw className="h-4 w-4" /> Sincronizar Remarketing
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setIsBulkEmailModalOpen(true)}
+                  size="sm"
+                  variant="outline"
+                  className="gap-2"
+                >
+                  <Mail className="h-4 w-4" /> Enviar Email
+                </Button>
+                <Button onClick={() => setIsSyncModalOpen(true)} size="sm" className="gap-2">
+                  <RefreshCw className="h-4 w-4" /> Sincronizar Remarketing
+                </Button>
+              </div>
             </div>
           )}
 

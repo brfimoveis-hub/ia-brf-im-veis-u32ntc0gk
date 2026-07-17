@@ -34,6 +34,15 @@ routerAdd(
     const cleanEmail = email.trim()
     const customerName = customer.getString('name') || 'Cliente'
     const senderName = user.getString('name') || 'BRF Imóveis'
+    const firstNameVal =
+      customer.getString('first_name') || (customerName ? customerName.split(' ')[0] : '')
+    const phoneVal = customer.getString('phone') || customer.getString('phone_1_value') || ''
+
+    let personalizedBody = messageBody
+    personalizedBody = personalizedBody.replace(/\{\{name\}\}/g, customerName)
+    personalizedBody = personalizedBody.replace(/\{\{first_name\}\}/g, firstNameVal)
+    personalizedBody = personalizedBody.replace(/\{\{email\}\}/g, cleanEmail)
+    personalizedBody = personalizedBody.replace(/\{\{phone\}\}/g, phoneVal)
 
     const htmlBody =
       '<div style="font-family: Arial, Helvetica, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">' +
@@ -41,7 +50,7 @@ routerAdd(
       customerName +
       ',</p>' +
       "<div style='white-space: pre-wrap; line-height: 1.6;'>" +
-      messageBody.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') +
+      personalizedBody +
       '</div>' +
       "<br><p style='color: #888; font-size: 12px;'>Enviado via BRF Imóveis CRM</p>" +
       '</div>'
@@ -69,7 +78,16 @@ routerAdd(
       const convCol = $app.findCollectionByNameOrId('conversations')
       const conv = new Record(convCol)
       conv.set('customer_id', customerId)
-      conv.set('content', '📧 ' + subject + '\n\n' + messageBody)
+      conv.set(
+        'content',
+        '📧 ' +
+          subject +
+          '\n\n' +
+          personalizedBody
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .trim(),
+      )
       conv.set('sender', 'agent')
       $app.save(conv)
     } catch (err) {
