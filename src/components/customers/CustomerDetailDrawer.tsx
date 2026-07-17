@@ -24,7 +24,19 @@ import { useToast } from '@/hooks/use-toast'
 import { useRealtime } from '@/hooks/use-realtime'
 import { getCustomer, updateCustomer, deleteCustomer, type Customer } from '@/services/customers'
 import { getConversations, createConversation, type Conversation } from '@/services/conversations'
-import { Send, User, Bot, CheckCircle2, Sparkles, Trash2, Ban, Save, BookOpen } from 'lucide-react'
+import { EmailComposerModal } from '@/components/customers/EmailComposerModal'
+import {
+  Send,
+  User,
+  Bot,
+  CheckCircle2,
+  Sparkles,
+  Trash2,
+  Ban,
+  Save,
+  BookOpen,
+  Mail,
+} from 'lucide-react'
 import { cn, formatPhone } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
@@ -48,6 +60,7 @@ export function CustomerDetailDrawer({
   const [notes, setNotes] = useState('')
   const [isSavingNotes, setIsSavingNotes] = useState(false)
   const [currentCadence, setCurrentCadence] = useState<any | null>(null)
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -244,6 +257,16 @@ export function CustomerDetailDrawer({
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 h-8"
+                    onClick={() => setIsEmailModalOpen(true)}
+                    disabled={!customer.email && !customer.email_1_value}
+                  >
+                    <Mail className="h-4 w-4" />
+                    Email
+                  </Button>
                   <div className="flex items-center gap-2">
                     <Label
                       htmlFor="block-toggle"
@@ -522,6 +545,15 @@ export function CustomerDetailDrawer({
           </>
         )}
       </SheetContent>
+      {customer && (
+        <EmailComposerModal
+          customerId={customer.id}
+          customerName={customer.name}
+          customerEmail={customer.email || customer.email_1_value || ''}
+          isOpen={isEmailModalOpen}
+          onClose={() => setIsEmailModalOpen(false)}
+        />
+      )}
     </Sheet>
   )
 }
