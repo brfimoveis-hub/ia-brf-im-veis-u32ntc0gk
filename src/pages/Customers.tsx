@@ -79,7 +79,7 @@ export default function Customers() {
 
   const handleSelectFirst50 = () => {
     customerSelectionStore.addMany(filtered.slice(0, 50).map((c) => c.id))
-    toast.success('Primeiros 50 leads selecionados')
+    toast.success('50 leads selecionados')
   }
 
   const selectedCount = selectedIds.size
@@ -126,7 +126,7 @@ export default function Customers() {
       <Tabs defaultValue="pipeline" className="flex-1 flex flex-col min-h-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <TabsList>
-            <TabsTrigger value="pipeline">Pipeline (Kanban)</TabsTrigger>
+            <TabsTrigger value="pipeline">Pipeline Kanban</TabsTrigger>
             <TabsTrigger value="list">Lista de Clientes</TabsTrigger>
           </TabsList>
           <div className="relative w-full sm:w-72">
@@ -162,7 +162,7 @@ export default function Customers() {
           </span>
           <div className="h-5 w-px bg-border" />
           <Button size="sm" variant="ghost" onClick={handleSelectFirst50}>
-            <Users className="h-4 w-4 mr-1" /> Primeiros 50
+            <Users className="h-4 w-4 mr-1" /> Selecionar 50
           </Button>
           <Button size="sm" variant="ghost" onClick={() => customerSelectionStore.clear()}>
             <X className="h-4 w-4 mr-1" /> Limpar
