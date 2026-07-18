@@ -36,10 +36,10 @@ export class ErrorBoundary extends Component<Props, State> {
               componentStack: errorInfo.componentStack,
             },
           })
-          .catch(console.error)
+          .catch(() => {})
       }
-    } catch (e) {
-      console.error('Failed to log error to backend', e)
+    } catch {
+      // Silently ignore — never let error logging cause cascading failures
     }
   }
 

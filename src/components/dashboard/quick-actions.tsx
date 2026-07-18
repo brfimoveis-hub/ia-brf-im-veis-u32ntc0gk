@@ -6,19 +6,19 @@ export function QuickActions() {
   return (
     <div className="flex flex-wrap gap-2">
       <Button asChild variant="default" size="sm">
-        <Link to="/clientes">
+        <Link to="/customers">
           <PlusCircle className="mr-2 h-4 w-4" />
           Adicionar Lead
         </Link>
       </Button>
       <Button asChild variant="secondary" size="sm">
-        <Link to="/configuracoes">
+        <Link to="/settings/ai">
           <Settings className="mr-2 h-4 w-4" />
           Configurar IA
         </Link>
       </Button>
       <Button asChild variant="outline" size="sm">
-        <Link to="/configuracoes/meta-capi">
+        <Link to="/settings/connections">
           <Share2 className="mr-2 h-4 w-4" />
           Atualizar Token Meta
         </Link>
