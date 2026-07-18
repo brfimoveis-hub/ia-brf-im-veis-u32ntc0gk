@@ -111,16 +111,16 @@ const RouteTracker = () => {
 }
 
 const Root = () => {
-  const { loading, user } = useAuth()
+  const { loading } = useAuth()
   return (
-    <div className="contents">
+    <>
       <RouteTracker />
       <ErrorBoundary fallback={null}>
         <GTMTracker />
         <MetaPixel />
       </ErrorBoundary>
       {loading ? <PageLoader /> : <Outlet />}
-    </div>
+    </>
   )
 }
 

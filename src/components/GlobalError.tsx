@@ -42,9 +42,9 @@ export function GlobalError() {
             Tentar Novamente
           </Button>
           <Button asChild className="w-full sm:w-auto gap-2">
-            <Link to="/crm">
+            <Link to="/dashboard">
               <LayoutDashboard className="h-4 w-4" />
-              Voltar ao CRM
+              Voltar ao Dashboard
             </Link>
           </Button>
         </CardFooter>

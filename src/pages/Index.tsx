@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, type ReactNode } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
@@ -7,6 +7,28 @@ import { Button } from '@/components/ui/button'
 import { Users, Bot, Layers, Target, Activity, AlertCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+
+function WidgetFallback() {
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Dados indisponíveis no momento</span>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function WidgetBoundary({ children }: { children: ReactNode }) {
+  return <ErrorBoundary fallback={<WidgetFallback />}>{children}</ErrorBoundary>
+}
+
+function StatValue({ loading, value }: { loading: boolean; value: number | string }) {
+  return <span className="tabular-nums">{loading ? '—' : value}</span>
+}
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -43,20 +65,10 @@ export default function Dashboard() {
     }
   }, [user])
 
-  const checkConnections = useCallback(async () => {
-    setRetrying(true)
-    try {
-      await refreshUserStatus()
-    } finally {
-      setRetrying(false)
-    }
-  }, [refreshUserStatus])
-
   useEffect(() => {
     loadStats()
     refreshUserStatus()
-    checkConnections()
-  }, [loadStats, refreshUserStatus, checkConnections])
+  }, [loadStats, refreshUserStatus])
 
   useRealtime('users', () => {
     refreshUserStatus()
@@ -70,12 +82,18 @@ export default function Dashboard() {
     loadStats()
   })
 
-  const handleRetry = useCallback(() => {
+  const handleRetry = useCallback(async () => {
+    setRetrying(true)
     toast.info('Re-validando conexões...', {
       description: 'Verificando status da Meta CAPI.',
     })
-    checkConnections()
-  }, [checkConnections])
+    try {
+      await refreshUserStatus()
+      await loadStats()
+    } finally {
+      setRetrying(false)
+    }
+  }, [refreshUserStatus, loadStats])
 
   const isMetaCapiConnected =
     metaCapiStatus === 'connected' || metaCapiStatus === 'active' || metaCapiStatus === 'valid'
@@ -96,102 +114,123 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Novos Leads</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{loading ? '-' : stats.leads}</div>
-            <p className="text-xs text-muted-foreground mt-1">Aguardando conversão no Pipeline</p>
-          </CardContent>
-        </Card>
+        <WidgetBoundary>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Novos Leads</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                <StatValue loading={loading} value={stats.leads} />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Aguardando conversão no Pipeline</p>
+            </CardContent>
+          </Card>
+        </WidgetBoundary>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clientes no Pipeline</CardTitle>
-            <Layers className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{loading ? '-' : stats.customers}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total de oportunidades ativas</p>
-          </CardContent>
-        </Card>
+        <WidgetBoundary>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Clientes no Pipeline</CardTitle>
+              <Layers className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                <StatValue loading={loading} value={stats.customers} />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Total de oportunidades ativas</p>
+            </CardContent>
+          </Card>
+        </WidgetBoundary>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Estágios do Pipeline</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">10</div>
-            <p className="text-xs text-muted-foreground mt-1">D0 até D9 estruturados</p>
-          </CardContent>
-        </Card>
+        <WidgetBoundary>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Estágios do Pipeline</CardTitle>
+              <Target className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                <span className="tabular-nums">10</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">D0 até D9 estruturados</p>
+            </CardContent>
+          </Card>
+        </WidgetBoundary>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Atividade da BIA</CardTitle>
-            <Bot className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">Ativa</div>
-            <p className="text-xs text-muted-foreground mt-1">Monitorando interações</p>
-          </CardContent>
-        </Card>
+        <WidgetBoundary>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Atividade da BIA</CardTitle>
+              <Bot className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                <span>Ativa</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Monitorando interações</p>
+            </CardContent>
+          </Card>
+        </WidgetBoundary>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Meta CAPI</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-3 w-3">
-                <span
-                  className={cn(
-                    'animate-ping absolute inline-flex h-full w-full rounded-full opacity-75',
-                    metaPingClass,
-                  )}
-                />
-                <span className={cn('relative inline-flex rounded-full h-3 w-3', metaDotClass)} />
-              </span>
-              <span className={cn('text-lg font-bold', metaTextClass)}>{metaLabel}</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Pixel ID: {pixelId || 'Não configurado'}
-            </p>
-            {!isMetaCapiConnected && metaCapiError && (
-              <p className="text-xs text-red-500 mt-1 line-clamp-2" title={metaCapiError}>
-                Erro: {metaCapiError}
+        <WidgetBoundary>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Meta CAPI</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-3 w-3">
+                  <span
+                    className={cn(
+                      'animate-ping absolute inline-flex h-full w-full rounded-full opacity-75',
+                      metaPingClass,
+                    )}
+                  />
+                  <span className={cn('relative inline-flex rounded-full h-3 w-3', metaDotClass)} />
+                </span>
+                <span className={cn('text-lg font-bold', metaTextClass)}>{metaLabel}</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                <span>Pixel ID: </span>
+                <span>{pixelId || 'Não configurado'}</span>
               </p>
-            )}
-          </CardContent>
-        </Card>
+              {!isMetaCapiConnected && metaCapiError && (
+                <p className="text-xs text-red-500 mt-1 line-clamp-2" title={metaCapiError}>
+                  <span>Erro: {metaCapiError}</span>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </WidgetBoundary>
       </div>
 
       {hasConnectionIssues && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
-                <div>
-                  <p className="font-medium text-sm">Conexões requerem atenção</p>
-                  <p className="text-xs text-muted-foreground">
-                    Algumas integrações não estão conectadas. Tente re-validar.
-                  </p>
+        <WidgetBoundary>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
+                  <div>
+                    <p className="font-medium text-sm">Conexões requerem atenção</p>
+                    <p className="text-xs text-muted-foreground">
+                      Algumas integrações não estão conectadas. Tente re-validar.
+                    </p>
+                  </div>
                 </div>
+                <Button onClick={handleRetry} disabled={retrying} variant="outline" size="sm">
+                  <RefreshCw className={cn('mr-2 h-4 w-4', retrying && 'animate-spin')} />
+                  Tentar novamente
+                </Button>
               </div>
-              <Button onClick={handleRetry} disabled={retrying} variant="outline" size="sm">
-                <RefreshCw className={cn('mr-2 h-4 w-4', retrying && 'animate-spin')} />
-                Tentar novamente
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </WidgetBoundary>
       )}
     </div>
   )
