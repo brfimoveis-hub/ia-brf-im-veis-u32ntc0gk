@@ -4,13 +4,14 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Search, Upload, RefreshCw, Mail, X, Users } from 'lucide-react'
+import { Loader2, Search, Upload, RefreshCw, Mail, X, Users, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { ImportCustomersModal } from '@/components/email-marketing/ImportCustomersModal'
 import { RemarketingSyncModal } from '@/components/customers/RemarketingSyncModal'
 import { BulkEmailModal } from '@/components/customers/BulkEmailModal'
 import { UnifiedKanban } from '@/components/customers/UnifiedKanban'
 import { UnifiedTable } from '@/components/customers/UnifiedTable'
+import { UnifiedStatisticsDashboard } from '@/components/customers/UnifiedStatisticsDashboard'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 
 export default function Customers() {
@@ -79,7 +80,7 @@ export default function Customers() {
 
   const handleSelectFirst50 = () => {
     customerSelectionStore.addMany(filtered.slice(0, 50).map((c) => c.id))
-    toast.success('50 leads selecionados')
+    toast.success('50 clientes selecionados')
   }
 
   const selectedCount = selectedIds.size
@@ -123,6 +124,8 @@ export default function Customers() {
         </Button>
       </div>
 
+      <UnifiedStatisticsDashboard />
+
       <Tabs defaultValue="pipeline" className="flex-1 flex flex-col min-h-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <TabsList>
@@ -146,7 +149,9 @@ export default function Customers() {
               {selectedCount}
             </span>
             <span className="text-sm font-medium hidden sm:inline">
-              {selectedCount === 1 ? '1 lead selecionado' : `${selectedCount} leads selecionados`}
+              {selectedCount === 1
+                ? '1 cliente selecionado'
+                : `${selectedCount} clientes selecionados`}
             </span>
             <div className="h-5 w-px bg-border" />
             <Button size="sm" variant="ghost" onClick={handleSelectFirst50}>
@@ -160,7 +165,7 @@ export default function Customers() {
               <Mail className="h-4 w-4 mr-1" /> Email
             </Button>
             <Button size="sm" onClick={() => setIsSyncModalOpen(true)}>
-              <RefreshCw className="h-4 w-4 mr-1" /> Remarketing
+              <Send className="h-4 w-4 mr-1" /> Enviar Mensagem
             </Button>
           </div>
         )}

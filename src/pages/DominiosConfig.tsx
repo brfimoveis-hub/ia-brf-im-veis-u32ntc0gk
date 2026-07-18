@@ -18,26 +18,26 @@ import { useRealtime } from '@/hooks/use-realtime'
 
 export function DominiosConfig() {
   const { user } = useAuth()
-  const [domain, setDomain] = useState(user?.uazapi_domain || '')
+  const [domain, setDomain] = useState(user?.website_url || '')
   const [domainStatus, setDomainStatus] = useState<'Pendente' | 'Ativo' | 'Erro'>('Pendente')
   const [isVerifying, setIsVerifying] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (user?.uazapi_domain) {
-      setDomain(user.uazapi_domain)
-      setDomainStatus(user.uazapi_domain.startsWith('https://') ? 'Ativo' : 'Pendente')
+    if (user?.website_url) {
+      setDomain(user.website_url)
+      setDomainStatus(user.website_url.startsWith('https://') ? 'Ativo' : 'Pendente')
     } else {
       setDomainStatus('Pendente')
     }
-  }, [user?.uazapi_domain])
+  }, [user?.website_url])
 
   useRealtime('users', (e) => {
     if (e.record.id === user?.id) {
-      if (e.record.uazapi_domain !== domain) {
-        setDomain(e.record.uazapi_domain || '')
+      if (e.record.website_url !== domain) {
+        setDomain(e.record.website_url || '')
       }
-      setDomainStatus(e.record.uazapi_domain?.startsWith('https://') ? 'Ativo' : 'Pendente')
+      setDomainStatus(e.record.website_url?.startsWith('https://') ? 'Ativo' : 'Pendente')
     }
   })
 
@@ -60,7 +60,7 @@ export function DominiosConfig() {
     setIsVerifying(true)
 
     try {
-      await pb.collection('users').update(user!.id, { uazapi_domain: finalDomain })
+      await pb.collection('users').update(user!.id, { website_url: finalDomain })
       await pb.collection('users').authRefresh()
       setDomainStatus('Ativo')
       toast.success('Domínio verificado e salvo com sucesso!')
