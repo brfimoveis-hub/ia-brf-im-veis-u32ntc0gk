@@ -140,6 +140,31 @@ export default function Customers() {
           </div>
         </div>
 
+        {selectedCount > 0 && (
+          <div className="flex items-center gap-3 rounded-xl border bg-background shadow-sm px-4 py-3 mt-3 animate-fade-in-down">
+            <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-semibold text-primary-foreground">
+              {selectedCount}
+            </span>
+            <span className="text-sm font-medium hidden sm:inline">
+              {selectedCount === 1 ? '1 lead selecionado' : `${selectedCount} leads selecionados`}
+            </span>
+            <div className="h-5 w-px bg-border" />
+            <Button size="sm" variant="ghost" onClick={handleSelectFirst50}>
+              <Users className="h-4 w-4 mr-1" /> Selecionar 50
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => customerSelectionStore.clear()}>
+              <X className="h-4 w-4 mr-1" /> Limpar
+            </Button>
+            <div className="h-5 w-px bg-border" />
+            <Button size="sm" variant="outline" onClick={() => setIsBulkEmailModalOpen(true)}>
+              <Mail className="h-4 w-4 mr-1" /> Email
+            </Button>
+            <Button size="sm" onClick={() => setIsSyncModalOpen(true)}>
+              <RefreshCw className="h-4 w-4 mr-1" /> Remarketing
+            </Button>
+          </div>
+        )}
+
         <TabsContent
           value="pipeline"
           className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col"
@@ -151,31 +176,6 @@ export default function Customers() {
           <UnifiedTable customers={filtered} />
         </TabsContent>
       </Tabs>
-
-      {selectedCount > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl border bg-background shadow-2xl px-4 py-3 animate-fade-in-up">
-          <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-semibold text-primary-foreground">
-            {selectedCount}
-          </span>
-          <span className="text-sm font-medium hidden sm:inline">
-            {selectedCount === 1 ? '1 lead selecionado' : `${selectedCount} leads selecionados`}
-          </span>
-          <div className="h-5 w-px bg-border" />
-          <Button size="sm" variant="ghost" onClick={handleSelectFirst50}>
-            <Users className="h-4 w-4 mr-1" /> Selecionar 50
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => customerSelectionStore.clear()}>
-            <X className="h-4 w-4 mr-1" /> Limpar
-          </Button>
-          <div className="h-5 w-px bg-border" />
-          <Button size="sm" variant="outline" onClick={() => setIsBulkEmailModalOpen(true)}>
-            <Mail className="h-4 w-4 mr-1" /> Email
-          </Button>
-          <Button size="sm" onClick={() => setIsSyncModalOpen(true)}>
-            <RefreshCw className="h-4 w-4 mr-1" /> Remarketing
-          </Button>
-        </div>
-      )}
 
       <ImportCustomersModal open={showImport} onOpenChange={setShowImport} onSuccess={loadData} />
     </div>
