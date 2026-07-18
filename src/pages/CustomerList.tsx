@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Table,
   TableBody,
@@ -51,6 +51,7 @@ export default function CustomerList() {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
 
   const selectedIds = useCustomerSelection()
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadData = async () => {
     try {
@@ -65,16 +66,14 @@ export default function CustomerList() {
 
   useEffect(() => {
     loadData()
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    }
   }, [])
 
-  useRealtime('customers', (e) => {
-    if (e.action === 'create') {
-      setCustomers((prev) => [e.record, ...prev])
-    } else if (e.action === 'update') {
-      setCustomers((prev) => prev.map((c) => (c.id === e.record.id ? e.record : c)))
-    } else if (e.action === 'delete') {
-      setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
-    }
+  useRealtime('customers', () => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    refreshTimerRef.current = setTimeout(loadData, 300)
   })
 
   const filteredCustomers = useMemo(() => {
@@ -179,8 +178,8 @@ export default function CustomerList() {
                 </span>
                 <span className="text-sm font-medium text-foreground">
                   {selectedCount === 1
-                    ? '1 lead selecionado'
-                    : `${selectedCount} leads selecionados`}
+                    ? '1 contato selecionado'
+                    : `${selectedCount} contatos selecionados`}
                 </span>
                 <Button
                   variant="ghost"

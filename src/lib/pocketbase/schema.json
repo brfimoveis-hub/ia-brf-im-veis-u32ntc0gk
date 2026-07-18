@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-18T16:25:38.790Z",
+  "generatedAt": "2026-07-18T17:02:59.038Z",
   "collections": [
     {
       "name": "users",
@@ -37,42 +37,6 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
-        },
-        {
-          "name": "uazapi_domain",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "uazapi_token",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "uazapi_admin_token",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "uazapi_instance_number",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "uazapi_status",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "uazapi_error",
-          "type": "text",
-          "required": false,
-          "system": false
         },
         {
           "name": "meta_whatsapp_status",

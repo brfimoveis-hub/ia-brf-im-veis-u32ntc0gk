@@ -713,9 +713,6 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         $app.logger().error('Failed to update customer status', 'error', String(err))
       }
 
-      let uazapiUrl = $secrets.get('UAZAPI_URL') || ''
-      let uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
-
       let metaToken = userRecord ? userRecord.getString('meta_whatsapp_access_token') : ''
       let metaPhoneId = userRecord ? userRecord.getString('meta_whatsapp_phone_number_id') : ''
 
@@ -837,60 +834,6 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
             $app.logger().error('Video generation failed', 'error', String(err))
           }
         }
-      } else if (uazapiUrl && uazapiKey && customerPhone) {
-        try {
-          const source = customer.getString('source') || ''
-          const phone = customer.getString('phone') || ''
-
-          let instanceName = '48992098050'
-          if (source.includes('Uazapi - ')) {
-            instanceName = source.replace('Uazapi - ', '').trim()
-          }
-
-          const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
-
-          let uazapiAttempt = 0
-          const uazapiMaxRetries = 3
-          let uazapiRes = null
-          const backoffs = [1000, 3000, 9000]
-          const randomDelay = Math.floor(Math.random() * (180000 - 60000 + 1)) + 60000
-
-          while (uazapiAttempt <= uazapiMaxRetries) {
-            try {
-              uazapiRes = $http.send({
-                url: `${cleanUrl}/message/sendText/${instanceName}`,
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
-                body: JSON.stringify({
-                  number: phone,
-                  options: { delay: randomDelay, presence: 'composing' },
-                  textMessage: { text: responseText },
-                }),
-                timeout: 15,
-              })
-
-              if (uazapiRes && (uazapiRes.statusCode === 200 || uazapiRes.statusCode === 201)) break
-              if (
-                uazapiRes &&
-                uazapiRes.statusCode !== 404 &&
-                uazapiRes.statusCode !== 504 &&
-                uazapiRes.statusCode !== 500 &&
-                uazapiRes.statusCode !== 0
-              ) {
-                break
-              }
-            } catch (e) {}
-
-            if (uazapiAttempt < uazapiMaxRetries) {
-              const sleepMs = backoffs[uazapiAttempt] || 9000
-              const start = new Date().getTime()
-              while (new Date().getTime() - start < sleepMs) {}
-            }
-            uazapiAttempt++
-          }
-        } catch (err) {
-          $app.logger().error('Error routing message to Uazapi', 'error', String(err))
-        }
       }
 
       if (detectedHandover) {
@@ -944,27 +887,6 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
                 text: { body: summaryText },
               }),
             )
-          } else if (uazapiUrl && uazapiKey) {
-            try {
-              const cleanUrlHandover = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
-
-              let source = customerRec.getString('source') || ''
-              let instanceName = '48992098050'
-              if (source.includes('Uazapi - '))
-                instanceName = source.replace('Uazapi - ', '').trim()
-
-              $http.send({
-                url: `${cleanUrlHandover}/message/sendText/${instanceName}`,
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
-                body: JSON.stringify({
-                  number: agentPhone,
-                  options: { delay: 1000 },
-                  textMessage: { text: summaryText },
-                }),
-                timeout: 15,
-              })
-            } catch (e) {}
           }
         } catch (e) {}
       }

@@ -26,7 +26,6 @@ export default function Customers() {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
 
   const selectedIds = useCustomerSelection()
-  const updatesRef = useRef<any[]>([])
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const customersRef = useRef(customers)
   customersRef.current = customers
@@ -35,35 +34,6 @@ export default function Customers() {
     const t = setTimeout(() => setSearch(searchInput), 250)
     return () => clearTimeout(t)
   }, [searchInput])
-
-  const flushUpdates = useCallback(() => {
-    if (updatesRef.current.length === 0) return
-    const updates = updatesRef.current.splice(0)
-    setCustomers((prev) => {
-      let next = prev
-      let changed = false
-      for (const e of updates) {
-        if (e.action === 'create') {
-          if (!next.some((c) => c.id === e.record.id)) {
-            next = [e.record, ...next]
-            changed = true
-          }
-        } else if (e.action === 'update') {
-          if (next.some((c) => c.id === e.record.id)) {
-            next = next.map((c) => (c.id === e.record.id ? e.record : c))
-            changed = true
-          } else {
-            next = [e.record, ...next]
-            changed = true
-          }
-        } else if (e.action === 'delete') {
-          next = next.filter((c) => c.id !== e.record.id)
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [])
 
   useEffect(() => {
     return () => {
@@ -87,10 +57,9 @@ export default function Customers() {
     loadData()
   }, [loadData])
 
-  useRealtime('customers', (e) => {
-    updatesRef.current.push(e)
+  useRealtime('customers', () => {
     if (flushTimerRef.current) clearTimeout(flushTimerRef.current)
-    flushTimerRef.current = setTimeout(flushUpdates, 100)
+    flushTimerRef.current = setTimeout(loadData, 300)
   })
 
   const filtered = useMemo(() => {
@@ -201,7 +170,7 @@ export default function Customers() {
             <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-semibold text-primary-foreground">
               {selectedCount}
             </span>
-            <span className="text-sm font-medium">{selectedCount} selecionados</span>
+            <span className="text-sm font-medium">{selectedCount} contatos selecionados</span>
             <div className="h-5 w-px bg-border" />
             <Button size="sm" variant="ghost" onClick={() => customerSelectionStore.clear()}>
               <X className="h-4 w-4 mr-1" /> Limpar
