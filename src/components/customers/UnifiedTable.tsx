@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, memo } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import {
   Table,
   TableBody,
@@ -23,18 +23,36 @@ interface Props {
   customers: any[]
 }
 
-function UnifiedTableBase({ customers }: Props) {
+function formatDateSafe(dateStr: string | undefined | null, fmt: string): string {
+  if (!dateStr) return '—'
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return '—'
+    return format(d, fmt, { locale: ptBR })
+  } catch {
+    return '—'
+  }
+}
+
+export function UnifiedTable({ customers }: Props) {
   const [page, setPage] = useState(1)
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const selectedIds = useCustomerSelection()
 
   useEffect(() => {
     setPage(1)
+  }, [customers])
+
+  useEffect(() => {
     setDrawerId(null)
   }, [customers])
 
-  const totalPages = Math.max(1, Math.ceil(customers.length / PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(customers.length / PAGE_SIZE)),
+    [customers.length],
+  )
+
+  const currentPage = useMemo(() => Math.min(page, totalPages), [page, totalPages])
 
   const pageItems = useMemo(
     () => customers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
@@ -42,19 +60,43 @@ function UnifiedTableBase({ customers }: Props) {
   )
 
   const pageIds = useMemo(() => pageItems.map((c) => c.id), [pageItems])
-  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id))
-  const somePageSelected = pageIds.some((id) => selectedIds.has(id)) && !allPageSelected
 
-  const handleSelectAllPage = () => {
+  const allPageSelected = useMemo(
+    () => pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id)),
+    [pageIds, selectedIds],
+  )
+
+  const somePageSelected = useMemo(
+    () => pageIds.some((id) => selectedIds.has(id)) && !allPageSelected,
+    [pageIds, selectedIds, allPageSelected],
+  )
+
+  const handleSelectAllPage = useCallback(() => {
     if (allPageSelected) customerSelectionStore.removeMany(pageIds)
     else customerSelectionStore.addMany(pageIds)
-  }
+  }, [allPageSelected, pageIds])
 
-  const handleToggle = (id: string) => customerSelectionStore.toggle(id)
+  const handleToggle = useCallback((id: string) => {
+    customerSelectionStore.toggle(id)
+  }, [])
 
-  const handleCloseDrawer = (open: boolean) => {
+  const handleCloseDrawer = useCallback((open: boolean) => {
     if (!open) setDrawerId(null)
-  }
+  }, [])
+
+  const handleRowClick = useCallback((id: string) => {
+    setDrawerId(id)
+  }, [])
+
+  const handlePrevPage = useCallback(() => {
+    setPage((p) => Math.max(1, p - 1))
+  }, [])
+
+  const handleNextPage = useCallback(() => {
+    setPage((p) => Math.min(totalPages, p + 1))
+  }, [totalPages])
+
+  const checkboxChecked = allPageSelected ? true : somePageSelected ? 'indeterminate' : false
 
   return (
     <>
@@ -65,7 +107,7 @@ function UnifiedTableBase({ customers }: Props) {
               <TableRow>
                 <TableHead className="w-[44px] pl-4">
                   <Checkbox
-                    checked={allPageSelected ? true : somePageSelected ? 'indeterminate' : false}
+                    checked={checkboxChecked}
                     onCheckedChange={handleSelectAllPage}
                     aria-label="Selecionar página"
                   />
@@ -81,7 +123,7 @@ function UnifiedTableBase({ customers }: Props) {
             </TableHeader>
             <TableBody>
               {pageItems.length === 0 ? (
-                <TableRow>
+                <TableRow key="empty-row">
                   <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                     Nenhum cliente encontrado.
                   </TableCell>
@@ -93,7 +135,7 @@ function UnifiedTableBase({ customers }: Props) {
                     <TableRow
                       key={c.id}
                       className={isSelected ? 'bg-primary/5 cursor-pointer' : 'cursor-pointer'}
-                      onClick={() => setDrawerId(c.id)}
+                      onClick={() => handleRowClick(c.id)}
                     >
                       <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
@@ -118,15 +160,11 @@ function UnifiedTableBase({ customers }: Props) {
                         <Badge variant="outline">{c.status || 'Sem status'}</Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {c.last_sent_at
-                          ? format(new Date(c.last_sent_at), 'dd/MM/yyyy', { locale: ptBR })
-                          : '—'}
+                        {formatDateSafe(c.last_sent_at, 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {c.created
-                          ? format(new Date(c.created), 'dd/MM/yyyy', { locale: ptBR })
-                          : '-'}
-                      </TableCell>{' '}
+                        {formatDateSafe(c.created, 'dd/MM/yyyy')}
+                      </TableCell>
                     </TableRow>
                   )
                 })
@@ -142,7 +180,7 @@ function UnifiedTableBase({ customers }: Props) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={handlePrevPage}
               disabled={currentPage <= 1}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -150,7 +188,7 @@ function UnifiedTableBase({ customers }: Props) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={handleNextPage}
               disabled={currentPage >= totalPages}
             >
               <ChevronRight className="h-4 w-4" />
@@ -166,5 +204,3 @@ function UnifiedTableBase({ customers }: Props) {
     </>
   )
 }
-
-export const UnifiedTable = memo(UnifiedTableBase)

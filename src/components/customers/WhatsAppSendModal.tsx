@@ -148,13 +148,19 @@ export function WhatsAppSendModal({ isOpen, onClose, customers }: WhatsAppSendMo
               <Button
                 onClick={handleSend}
                 disabled={sending || validCustomers.length === 0 || !message.trim()}
+                className="min-w-[200px]"
               >
                 {sending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Enviando...
+                  </>
                 ) : (
-                  <Send className="h-4 w-4 mr-2" />
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Enviar Mensagem para {validCustomers.length} destinatário(s)
+                  </>
                 )}
-                Enviar Mensagem para {validCustomers.length} destinatário(s)
               </Button>
             </>
           )}

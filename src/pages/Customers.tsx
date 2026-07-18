@@ -14,11 +14,13 @@ import { UnifiedKanban } from '@/components/customers/UnifiedKanban'
 import { UnifiedTable } from '@/components/customers/UnifiedTable'
 import { UnifiedStatisticsDashboard } from '@/components/customers/UnifiedStatisticsDashboard'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { cn } from '@/lib/utils'
 
 const QUICK_FILTERS = [
   { label: 'Todos', value: '' },
   { label: 'Villa dos Açores', value: 'Villa dos Açores' },
+  { label: 'Sem Envio', value: '__no_send__' },
 ]
 
 export default function Customers() {
@@ -72,8 +74,11 @@ export default function Customers() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     const src = sourceFilter.toLowerCase().trim()
+    const isNoSendFilter = sourceFilter === '__no_send__'
     return customers.filter((c) => {
-      if (
+      if (isNoSendFilter) {
+        if (c.last_sent_at) return false
+      } else if (
         src &&
         !(c.source || '').toLowerCase().includes(src) &&
         !(c.neighborhood || '').toLowerCase().includes(src)
@@ -177,7 +182,7 @@ export default function Customers() {
       <UnifiedStatisticsDashboard />
 
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-medium text-muted-foreground mr-1">Filtrar por origem:</span>
+        <span className="text-xs font-medium text-muted-foreground mr-1">Filtros rápidos:</span>
         {QUICK_FILTERS.map((f) => (
           <button
             key={f.value || 'all'}
@@ -193,7 +198,6 @@ export default function Customers() {
           </button>
         ))}
       </div>
-
       <Tabs defaultValue="pipeline" className="flex-1 flex flex-col min-h-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <TabsList>
@@ -241,11 +245,27 @@ export default function Customers() {
           value="pipeline"
           className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col"
         >
-          <UnifiedKanban customers={filtered} onUpdateStatus={handleUpdateStatus} />
+          <ErrorBoundary
+            fallback={
+              <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
+                Erro ao carregar o Pipeline Kanban. Recarregue a página.
+              </div>
+            }
+          >
+            <UnifiedKanban customers={filtered} onUpdateStatus={handleUpdateStatus} />
+          </ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="list" className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col">
-          <UnifiedTable customers={filtered} />
+          <ErrorBoundary
+            fallback={
+              <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
+                Erro ao carregar a lista de clientes. Recarregue a página.
+              </div>
+            }
+          >
+            <UnifiedTable customers={filtered} />
+          </ErrorBoundary>
         </TabsContent>
       </Tabs>
 

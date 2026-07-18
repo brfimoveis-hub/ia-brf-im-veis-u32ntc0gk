@@ -1,4 +1,4 @@
-import { useState, DragEvent } from 'react'
+import { useState, useCallback, DragEvent } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { User, Phone, Calendar } from 'lucide-react'
@@ -27,30 +27,60 @@ interface Props {
   onUpdateStatus: (id: string, status: string) => Promise<void>
 }
 
+function formatDateSafe(dateStr: string | undefined | null, fmt: string): string {
+  if (!dateStr) return '--/--'
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return '--/--'
+    return format(d, fmt, { locale: ptBR })
+  } catch {
+    return '--/--'
+  }
+}
+
 export function UnifiedKanban({ customers, onUpdateStatus }: Props) {
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [drawerId, setDrawerId] = useState<string | null>(null)
 
-  const handleDragStart = (e: DragEvent<HTMLDivElement>, id: string) => {
+  const handleDragStart = useCallback((e: DragEvent<HTMLDivElement>, id: string) => {
     e.dataTransfer.setData('text/plain', id)
     e.dataTransfer.effectAllowed = 'move'
-    setTimeout(() => setDraggingId(id), 0)
-  }
+    setDraggingId(id)
+  }, [])
 
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-  }
+  }, [])
 
-  const handleDrop = async (e: DragEvent<HTMLDivElement>, targetStatus: string) => {
-    e.preventDefault()
-    const id = e.dataTransfer.getData('text/plain')
+  const handleDrop = useCallback(
+    async (e: DragEvent<HTMLDivElement>, targetStatus: string) => {
+      e.preventDefault()
+      const id = e.dataTransfer.getData('text/plain')
+      setDraggingId(null)
+      if (!id) return
+      const customer = customers.find((c) => c.id === id)
+      if (!customer || customer.status === targetStatus) return
+      try {
+        await onUpdateStatus(id, targetStatus)
+      } catch (err) {
+        console.error('Failed to update status:', err)
+      }
+    },
+    [customers, onUpdateStatus],
+  )
+
+  const handleDragEnd = useCallback(() => {
     setDraggingId(null)
-    if (!id) return
-    const customer = customers.find((c) => c.id === id)
-    if (!customer || customer.status === targetStatus) return
-    await onUpdateStatus(id, targetStatus)
-  }
+  }, [])
+
+  const handleCardClick = useCallback((id: string) => {
+    setDrawerId(id)
+  }, [])
+
+  const handleCloseDrawer = useCallback((open: boolean) => {
+    if (!open) setDrawerId(null)
+  }, [])
 
   return (
     <>
@@ -61,7 +91,7 @@ export function UnifiedKanban({ customers, onUpdateStatus }: Props) {
           )
           return (
             <div
-              key={stage}
+              key={`stage-${stage}`}
               className="flex w-[280px] shrink-0 flex-col rounded-xl bg-muted/40 border border-border/50 p-3"
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, stage)}
@@ -78,8 +108,8 @@ export function UnifiedKanban({ customers, onUpdateStatus }: Props) {
                     key={customer.id}
                     draggable
                     onDragStart={(e) => handleDragStart(e, customer.id)}
-                    onDragEnd={() => setDraggingId(null)}
-                    onClick={() => setDrawerId(customer.id)}
+                    onDragEnd={handleDragEnd}
+                    onClick={() => handleCardClick(customer.id)}
                     className={cn(
                       'cursor-grab active:cursor-grabbing hover:border-primary/40 hover:shadow-sm transition-all bg-background',
                       draggingId === customer.id && 'opacity-40 border-dashed border-primary',
@@ -102,7 +132,7 @@ export function UnifiedKanban({ customers, onUpdateStatus }: Props) {
                         <div className="flex items-center justify-between mt-1 pt-2 border-t border-border/50 text-[10px] text-muted-foreground">
                           <div className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            {format(new Date(customer.created), 'dd/MM', { locale: ptBR })}
+                            {formatDateSafe(customer.created, 'dd/MM')}
                           </div>
                           {customer.source && (
                             <Badge
@@ -131,9 +161,7 @@ export function UnifiedKanban({ customers, onUpdateStatus }: Props) {
       <CustomerDetailDrawer
         customerId={drawerId}
         open={!!drawerId}
-        onOpenChange={(open) => {
-          if (!open) setDrawerId(null)
-        }}
+        onOpenChange={handleCloseDrawer}
       />
     </>
   )
