@@ -4,7 +4,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Search, Upload, RefreshCw, Mail, X, Users, Send } from 'lucide-react'
+import { Loader2, Search, Upload, RefreshCw, Mail, X, Users, Send, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { ImportCustomersModal } from '@/components/email-marketing/ImportCustomersModal'
 import { RemarketingSyncModal } from '@/components/customers/RemarketingSyncModal'
@@ -14,12 +14,19 @@ import { UnifiedKanban } from '@/components/customers/UnifiedKanban'
 import { UnifiedTable } from '@/components/customers/UnifiedTable'
 import { UnifiedStatisticsDashboard } from '@/components/customers/UnifiedStatisticsDashboard'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
+import { cn } from '@/lib/utils'
+
+const QUICK_FILTERS = [
+  { label: 'Todos', value: '' },
+  { label: 'Villa dos Açores', value: 'Villa dos Açores' },
+]
 
 export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
+  const [sourceFilter, setSourceFilter] = useState('')
   const [showImport, setShowImport] = useState(false)
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
   const [isBulkEmailModalOpen, setIsBulkEmailModalOpen] = useState(false)
@@ -64,15 +71,22 @@ export default function Customers() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return customers
-    return customers.filter(
-      (c) =>
+    const src = sourceFilter.toLowerCase().trim()
+    return customers.filter((c) => {
+      if (src && !(c.source || '').toLowerCase().includes(src)) return false
+      if (!q) return true
+      return (
         (c.name || '').toLowerCase().includes(q) ||
-        (c.phone || '').includes(q) ||
+        (c.first_name || '').toLowerCase().includes(q) ||
+        (c.phone || '').toLowerCase().includes(q) ||
+        (c.phone_1_value || '').toLowerCase().includes(q) ||
         (c.email || '').toLowerCase().includes(q) ||
-        (c.email_1_value || '').toLowerCase().includes(q),
-    )
-  }, [customers, search])
+        (c.email_1_value || '').toLowerCase().includes(q) ||
+        (c.source || '').toLowerCase().includes(q) ||
+        (c.neighborhood || '').toLowerCase().includes(q)
+      )
+    })
+  }, [customers, search, sourceFilter])
 
   const handleUpdateStatus = useCallback(async (id: string, status: string) => {
     const oldStatus = customersRef.current.find((c) => c.id === id)?.status
@@ -92,6 +106,11 @@ export default function Customers() {
   const handleSelectFirst50 = useCallback(() => {
     customerSelectionStore.addMany(filtered.slice(0, 50).map((c) => c.id))
     toast.success('50 clientes selecionados')
+  }, [filtered])
+
+  const handleSelectAll = useCallback(() => {
+    customerSelectionStore.addMany(filtered.map((c) => c.id))
+    toast.success(`${filtered.length} clientes selecionados`)
   }, [filtered])
 
   const selectedCount = selectedIds.size
@@ -127,17 +146,21 @@ export default function Customers() {
         customers={selectedCustomers}
       />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Central de Clientes</h1>
           <p className="text-muted-foreground">
-            Gerencie leads no Pipeline Kanban e na lista em um unico lugar.
+            Gerencie leads no Pipeline Kanban e na lista em um único lugar.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={handleSelectFirst50}>
             <Users className="h-4 w-4 mr-2" />
             Selecionar 50
+          </Button>
+          <Button variant="outline" onClick={handleSelectAll}>
+            <CheckCheck className="h-4 w-4 mr-2" />
+            Selecionar Todos
           </Button>
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <Upload className="h-4 w-4 mr-2" />
@@ -148,6 +171,24 @@ export default function Customers() {
 
       <UnifiedStatisticsDashboard />
 
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-medium text-muted-foreground mr-1">Filtrar por origem:</span>
+        {QUICK_FILTERS.map((f) => (
+          <button
+            key={f.value || 'all'}
+            onClick={() => setSourceFilter(f.value)}
+            className={cn(
+              'rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150',
+              sourceFilter === f.value
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80',
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       <Tabs defaultValue="pipeline" className="flex-1 flex flex-col min-h-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <TabsList>
@@ -157,7 +198,7 @@ export default function Customers() {
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por nome, telefone ou email..."
+              placeholder="Buscar por nome, telefone, email ou origem..."
               className="pl-9"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
@@ -166,11 +207,14 @@ export default function Customers() {
         </div>
 
         {selectedCount > 0 && (
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-background shadow-sm px-4 py-3 mt-3 animate-fade-in-down">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-background shadow-sm px-4 py-3 mt-3">
             <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-semibold text-primary-foreground">
               {selectedCount}
             </span>
-            <span className="text-sm font-medium">{selectedCount} contatos selecionados</span>
+            <span className="text-sm font-medium">
+              {selectedCount}{' '}
+              {selectedCount === 1 ? 'contato selecionado' : 'contatos selecionados'}
+            </span>
             <div className="h-5 w-px bg-border" />
             <Button size="sm" variant="ghost" onClick={() => customerSelectionStore.clear()}>
               <X className="h-4 w-4 mr-1" /> Limpar

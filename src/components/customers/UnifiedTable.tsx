@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, memo } from 'react'
 import {
   Table,
   TableBody,
@@ -23,19 +23,25 @@ interface Props {
   customers: any[]
 }
 
-export function UnifiedTable({ customers }: Props) {
+function UnifiedTableBase({ customers }: Props) {
   const [page, setPage] = useState(1)
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const selectedIds = useCustomerSelection()
 
+  useEffect(() => {
+    setPage(1)
+    setDrawerId(null)
+  }, [customers])
+
   const totalPages = Math.max(1, Math.ceil(customers.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
+
   const pageItems = useMemo(
     () => customers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
     [customers, currentPage],
   )
 
-  const pageIds = pageItems.map((c) => c.id)
+  const pageIds = useMemo(() => pageItems.map((c) => c.id), [pageItems])
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id))
   const somePageSelected = pageIds.some((id) => selectedIds.has(id)) && !allPageSelected
 
@@ -45,6 +51,10 @@ export function UnifiedTable({ customers }: Props) {
   }
 
   const handleToggle = (id: string) => customerSelectionStore.toggle(id)
+
+  const handleCloseDrawer = (open: boolean) => {
+    if (!open) setDrawerId(null)
+  }
 
   return (
     <>
@@ -63,6 +73,7 @@ export function UnifiedTable({ customers }: Props) {
                 <TableHead>Nome</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Origem</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Criado em</TableHead>
               </TableRow>
@@ -70,7 +81,7 @@ export function UnifiedTable({ customers }: Props) {
             <TableBody>
               {pageItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     Nenhum cliente encontrado.
                   </TableCell>
                 </TableRow>
@@ -98,6 +109,9 @@ export function UnifiedTable({ customers }: Props) {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {c.email || c.email_1_value || '-'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {c.source || '-'}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{c.status || 'Sem status'}</Badge>
@@ -141,10 +155,10 @@ export function UnifiedTable({ customers }: Props) {
       <CustomerDetailDrawer
         customerId={drawerId}
         open={!!drawerId}
-        onOpenChange={(open) => {
-          if (!open) setDrawerId(null)
-        }}
+        onOpenChange={handleCloseDrawer}
       />
     </>
   )
 }
+
+export const UnifiedTable = memo(UnifiedTableBase)
