@@ -1,43 +1,31 @@
-import { useEffect, useState, DragEvent } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Loader2, User, Phone, Calendar, Upload } from 'lucide-react'
-import { toast } from 'sonner'
-import { cn, formatPhone } from '@/lib/utils'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Loader2, Search, Upload, RefreshCw, Mail, X, Users } from 'lucide-react'
+import { toast } from 'sonner'
 import { ImportCustomersModal } from '@/components/email-marketing/ImportCustomersModal'
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-
-const STAGES = [
-  'Novo',
-  'D0 - Contato Imediato',
-  'D1 - Follow up 1',
-  'D2 - Follow up 2',
-  'D3 - Follow up 3',
-  'D4 - Follow up 4',
-  'D5 - Follow up 5',
-  'D6 - Follow up 6',
-  'D7 - Follow up 7',
-  'D8 - Follow up 8',
-  'D9 - Despedida/Nutrição',
-  'Fechamento',
-]
+import { RemarketingSyncModal } from '@/components/customers/RemarketingSyncModal'
+import { BulkEmailModal } from '@/components/customers/BulkEmailModal'
+import { UnifiedKanban } from '@/components/customers/UnifiedKanban'
+import { UnifiedTable } from '@/components/customers/UnifiedTable'
+import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 
 export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [showImport, setShowImport] = useState(false)
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
+  const [isBulkEmailModalOpen, setIsBulkEmailModalOpen] = useState(false)
+
+  const selectedIds = useCustomerSelection()
 
   const loadData = async () => {
     try {
-      const records = await pb.collection('customers').getFullList({
-        sort: '-created',
-        filter: "status != 'closed' && status != 'Fechamento e Pós-Venda'",
-      })
+      const records = await pb.collection('customers').getFullList({ sort: '-created' })
       setCustomers(records)
     } catch (err) {
       console.error(err)
@@ -53,60 +41,53 @@ export default function Customers() {
 
   useRealtime('customers', (e) => {
     if (e.action === 'create') {
-      setCustomers((prev) => {
-        if (prev.some((c) => c.id === e.record.id)) return prev
-        return [e.record, ...prev]
-      })
+      setCustomers((prev) => (prev.some((c) => c.id === e.record.id) ? prev : [e.record, ...prev]))
     } else if (e.action === 'update') {
       setCustomers((prev) => {
         const exists = prev.some((c) => c.id === e.record.id)
-        if (exists) {
-          return prev.map((c) => (c.id === e.record.id ? e.record : c))
-        }
-        return [e.record, ...prev]
+        return exists ? prev.map((c) => (c.id === e.record.id ? e.record : c)) : [e.record, ...prev]
       })
     } else if (e.action === 'delete') {
       setCustomers((prev) => prev.filter((c) => c.id !== e.record.id))
     }
   })
 
-  const handleDragStart = (e: DragEvent<HTMLDivElement>, id: string) => {
-    e.dataTransfer.setData('text/plain', id)
-    e.dataTransfer.effectAllowed = 'move'
-    // Delay setting the state so the browser can capture the original element's style for the drag image
-    setTimeout(() => setDraggingId(id), 0)
-  }
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim()
+    if (!q) return customers
+    return customers.filter(
+      (c) =>
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.phone || '').includes(q) ||
+        (c.email || '').toLowerCase().includes(q) ||
+        (c.email_1_value || '').toLowerCase().includes(q),
+    )
+  }, [customers, search])
 
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }
-
-  const handleDrop = async (e: DragEvent<HTMLDivElement>, targetStatus: string) => {
-    e.preventDefault()
-    const id = e.dataTransfer.getData('text/plain')
-    if (!id) return
-
-    const customer = customers.find((c) => c.id === id)
-    if (!customer || customer.status === targetStatus) {
-      setDraggingId(null)
-      return
-    }
-
-    const previousStatus = customer.status
-
-    setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, status: targetStatus } : c)))
-    setDraggingId(null)
-
+  const handleUpdateStatus = async (id: string, status: string) => {
+    const prev = customers
+    setCustomers((arr) => arr.map((c) => (c.id === id ? { ...c, status } : c)))
     try {
-      await pb.collection('customers').update(id, { status: targetStatus })
+      await pb.collection('customers').update(id, { status })
       toast.success('Lead movido com sucesso')
     } catch (err) {
       console.error(err)
       toast.error('Erro ao mover lead')
-      setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, status: previousStatus } : c)))
+      setCustomers(prev)
     }
   }
+
+  const handleSelectFirst50 = () => {
+    customerSelectionStore.addMany(filtered.slice(0, 50).map((c) => c.id))
+    toast.success('Primeiros 50 leads selecionados')
+  }
+
+  const selectedCount = selectedIds.size
+  const selectedIdArray = useMemo(() => Array.from(selectedIds), [selectedIds])
+  const selectedCustomers = useMemo(
+    () => filtered.filter((c) => selectedIds.has(c.id)),
+    [filtered, selectedIds],
+  )
 
   if (loading) {
     return (
@@ -118,11 +99,22 @@ export default function Customers() {
 
   return (
     <div className="flex h-[calc(100vh-6rem)] flex-col space-y-4">
+      <RemarketingSyncModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        selectedIds={selectedCount > 0 ? selectedIdArray : undefined}
+      />
+      <BulkEmailModal
+        isOpen={isBulkEmailModalOpen}
+        onClose={() => setIsBulkEmailModalOpen(false)}
+        customers={selectedCustomers}
+      />
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pipeline Kanban</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Central de Clientes</h1>
           <p className="text-muted-foreground">
-            Acompanhe e movimente os leads pelas fases da cadência.
+            Gerencie leads no pipeline e na lista em um único lugar.
           </p>
         </div>
         <Button variant="outline" onClick={() => setShowImport(true)}>
@@ -131,83 +123,59 @@ export default function Customers() {
         </Button>
       </div>
 
-      <div className="flex flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-2 custom-scrollbar">
-        {STAGES.map((stage) => {
-          const stageCustomers = customers.filter(
-            (c) => c.status === stage || (stage === 'Novo' && (!c.status || c.status === 'lead')),
-          )
+      <Tabs defaultValue="pipeline" className="flex-1 flex flex-col min-h-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <TabsList>
+            <TabsTrigger value="pipeline">Pipeline (Kanban)</TabsTrigger>
+            <TabsTrigger value="list">Lista de Clientes</TabsTrigger>
+          </TabsList>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, telefone ou email..."
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
 
-          return (
-            <div
-              key={stage}
-              className="flex w-[280px] shrink-0 flex-col rounded-xl bg-muted/40 border border-border/50 p-3"
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, stage)}
-            >
-              <div className="mb-4 flex items-center justify-between px-1">
-                <h3 className="font-semibold text-sm text-foreground/80">{stage}</h3>
-                <Badge variant="secondary" className="font-mono text-xs px-2 py-0.5 h-auto">
-                  {stageCustomers.length}
-                </Badge>
-              </div>
+        <TabsContent
+          value="pipeline"
+          className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col"
+        >
+          <UnifiedKanban customers={filtered} onUpdateStatus={handleUpdateStatus} />
+        </TabsContent>
 
-              <div className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-[150px] pr-1 pb-2 custom-scrollbar">
-                {stageCustomers.map((customer) => (
-                  <Card
-                    key={customer.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, customer.id)}
-                    onDragEnd={() => setDraggingId(null)}
-                    className={cn(
-                      'cursor-grab active:cursor-grabbing hover:border-primary/40 hover:shadow-sm transition-all bg-background',
-                      draggingId === customer.id && 'opacity-40 border-dashed border-primary',
-                    )}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex flex-col gap-2">
-                        <div className="font-medium text-sm leading-tight flex items-start gap-2">
-                          <User className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
-                          <span className="line-clamp-2">
-                            {customer.name || customer.first_name || 'Sem nome'}
-                          </span>
-                        </div>
+        <TabsContent value="list" className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col">
+          <UnifiedTable customers={filtered} />
+        </TabsContent>
+      </Tabs>
 
-                        {customer.phone && (
-                          <div className="text-xs text-muted-foreground flex items-center gap-2">
-                            <Phone className="h-3 w-3 shrink-0" />
-                            {formatPhone(customer.phone)}
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between mt-1 pt-2 border-t border-border/50 text-[10px] text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {format(new Date(customer.created), 'dd/MM', { locale: ptBR })}
-                          </div>
-                          {customer.source && (
-                            <Badge
-                              variant="outline"
-                              className="text-[9px] px-1.5 py-0 h-4 bg-muted/50 border-muted font-normal"
-                            >
-                              {customer.source.substring(0, 15)}
-                              {customer.source.length > 15 ? '...' : ''}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-                {stageCustomers.length === 0 && (
-                  <div className="flex h-20 items-center justify-center rounded-lg border border-dashed border-border/50 text-xs text-muted-foreground pointer-events-none">
-                    Solte aqui
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      {selectedCount > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl border bg-background shadow-2xl px-4 py-3 animate-fade-in-up">
+          <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-semibold text-primary-foreground">
+            {selectedCount}
+          </span>
+          <span className="text-sm font-medium hidden sm:inline">
+            {selectedCount === 1 ? '1 lead selecionado' : `${selectedCount} leads selecionados`}
+          </span>
+          <div className="h-5 w-px bg-border" />
+          <Button size="sm" variant="ghost" onClick={handleSelectFirst50}>
+            <Users className="h-4 w-4 mr-1" /> Primeiros 50
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => customerSelectionStore.clear()}>
+            <X className="h-4 w-4 mr-1" /> Limpar
+          </Button>
+          <div className="h-5 w-px bg-border" />
+          <Button size="sm" variant="outline" onClick={() => setIsBulkEmailModalOpen(true)}>
+            <Mail className="h-4 w-4 mr-1" /> Email
+          </Button>
+          <Button size="sm" onClick={() => setIsSyncModalOpen(true)}>
+            <RefreshCw className="h-4 w-4 mr-1" /> Remarketing
+          </Button>
+        </div>
+      )}
 
       <ImportCustomersModal open={showImport} onOpenChange={setShowImport} onSuccess={loadData} />
     </div>
