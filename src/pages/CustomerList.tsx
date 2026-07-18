@@ -19,12 +19,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Search, Loader2, RefreshCw, X, Mail } from 'lucide-react'
+import { Search, Loader2, RefreshCw, X, Mail, Users, Send } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { format } from 'date-fns'
 import { RemarketingSyncModal } from '@/components/customers/RemarketingSyncModal'
 import { BulkEmailModal } from '@/components/customers/BulkEmailModal'
+import { WhatsAppSendModal } from '@/components/customers/WhatsAppSendModal'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 
 const PIPELINE_STAGES = [
@@ -37,7 +38,7 @@ const PIPELINE_STAGES = [
   'D6 - Follow up 6',
   'D7 - Follow up 7',
   'D8 - Follow up 8',
-  'D9 - Despedida/Nutrição',
+  'D9 - Despedida/Nutricao',
 ]
 
 export default function CustomerList() {
@@ -47,14 +48,13 @@ export default function CustomerList() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
   const [isBulkEmailModalOpen, setIsBulkEmailModalOpen] = useState(false)
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
 
   const selectedIds = useCustomerSelection()
 
   const loadData = async () => {
     try {
-      const records = await pb.collection('customers').getFullList({
-        sort: '-created',
-      })
+      const records = await pb.collection('customers').getFullList({ sort: '-created' })
       setCustomers(records)
     } catch (err) {
       console.error(err)
@@ -83,9 +83,7 @@ export default function CustomerList() {
         (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (c.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (c.phone || '').includes(searchTerm)
-
       const matchesStatus = statusFilter === 'all' || c.status === statusFilter
-
       return matchesSearch && matchesStatus
     })
   }, [customers, searchTerm, statusFilter])
@@ -95,20 +93,18 @@ export default function CustomerList() {
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected
 
   const handleSelectAll = () => {
-    if (allVisibleSelected) {
-      customerSelectionStore.removeMany(visibleIds)
-    } else {
-      customerSelectionStore.addMany(visibleIds)
-    }
+    if (allVisibleSelected) customerSelectionStore.removeMany(visibleIds)
+    else customerSelectionStore.addMany(visibleIds)
   }
 
-  const handleToggleRow = (id: string) => {
-    customerSelectionStore.toggle(id)
+  const handleSelectFirst50 = () => {
+    customerSelectionStore.addMany(filteredCustomers.slice(0, 50).map((c) => c.id))
   }
 
   const selectedCount = selectedIds.size
   const hasSelection = selectedCount > 0
   const selectedIdArray = useMemo(() => Array.from(selectedIds), [selectedIds])
+  const selectedCustomers = filteredCustomers.filter((c) => selectedIds.has(c.id))
 
   if (loading) {
     return (
@@ -131,16 +127,19 @@ export default function CustomerList() {
       <BulkEmailModal
         isOpen={isBulkEmailModalOpen}
         onClose={() => setIsBulkEmailModalOpen(false)}
-        customers={filteredCustomers.filter((c) => selectedIds.has(c.id))}
+        customers={selectedCustomers}
+      />
+      <WhatsAppSendModal
+        isOpen={isWhatsAppModalOpen}
+        onClose={() => setIsWhatsAppModalOpen(false)}
+        customers={selectedCustomers}
       />
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Lista de Clientes</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gerencie e visualize todos os clientes de forma tabular.
-          </p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Lista de Clientes</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Gerencie e visualize todos os clientes de forma tabular.
+        </p>
       </div>
 
       <Card>
@@ -173,7 +172,7 @@ export default function CustomerList() {
         </CardHeader>
         <CardContent>
           {hasSelection && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border bg-primary/5 px-4 py-2.5 mb-4 animate-fade-in">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-primary/5 px-4 py-2.5 mb-4 animate-fade-in">
               <div className="flex items-center gap-3">
                 <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-semibold text-primary-foreground">
                   {selectedCount}
@@ -183,6 +182,14 @@ export default function CustomerList() {
                     ? '1 lead selecionado'
                     : `${selectedCount} leads selecionados`}
                 </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={handleSelectFirst50}
+                >
+                  <Users className="mr-1 h-3.5 w-3.5" /> Selecionar 50
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -199,26 +206,20 @@ export default function CustomerList() {
                   variant="outline"
                   className="gap-2"
                 >
-                  <Mail className="h-4 w-4" /> Enviar Email
+                  <Mail className="h-4 w-4" /> Email
+                </Button>
+                <Button
+                  onClick={() => setIsWhatsAppModalOpen(true)}
+                  size="sm"
+                  variant="outline"
+                  className="gap-2"
+                >
+                  <Send className="h-4 w-4" /> WhatsApp
                 </Button>
                 <Button onClick={() => setIsSyncModalOpen(true)} size="sm" className="gap-2">
-                  <RefreshCw className="h-4 w-4" /> Sincronizar Remarketing
+                  <RefreshCw className="h-4 w-4" /> Remarketing
                 </Button>
               </div>
-            </div>
-          )}
-
-          {!hasSelection && filteredCustomers.length > 0 && (
-            <div className="flex justify-end mb-4">
-              <Button
-                onClick={() => setIsSyncModalOpen(true)}
-                variant="outline"
-                className="gap-2"
-                disabled
-                title="Selecione ao menos um lead"
-              >
-                <RefreshCw className="h-4 w-4" /> Sincronizar Remarketing
-              </Button>
             </div>
           )}
 
@@ -241,14 +242,13 @@ export default function CustomerList() {
                   <TableHead>Status</TableHead>
                   <TableHead>Origem</TableHead>
                   <TableHead>Bairro</TableHead>
-                  <TableHead>Faixa de Preço</TableHead>
                   <TableHead>Criado em</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredCustomers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                       Nenhum cliente encontrado.
                     </TableCell>
                   </TableRow>
@@ -260,7 +260,7 @@ export default function CustomerList() {
                         <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={isSelected}
-                            onCheckedChange={() => handleToggleRow(customer.id)}
+                            onCheckedChange={() => customerSelectionStore.toggle(customer.id)}
                             aria-label={`Selecionar ${customer.name || customer.id}`}
                           />
                         </TableCell>
@@ -280,7 +280,6 @@ export default function CustomerList() {
                         </TableCell>
                         <TableCell>{customer.source || '-'}</TableCell>
                         <TableCell>{customer.neighborhood || '-'}</TableCell>
-                        <TableCell>{customer.price_range || '-'}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {customer.created
                             ? format(new Date(customer.created), 'dd/MM/yyyy')

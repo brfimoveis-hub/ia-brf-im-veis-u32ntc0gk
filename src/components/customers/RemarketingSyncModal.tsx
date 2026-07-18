@@ -522,7 +522,7 @@ export function RemarketingSyncModal({
                       className="w-fit mt-1 bg-amber-600 hover:bg-amber-700 text-white border-none"
                       onClick={() => {
                         onClose()
-                        navigate('/configuracoes')
+                        navigate('/settings/connections')
                       }}
                     >
                       <Settings className="h-4 w-4 mr-2" />
@@ -545,7 +545,7 @@ export function RemarketingSyncModal({
                         className="w-fit mt-1"
                         onClick={() => {
                           onClose()
-                          navigate('/configuracoes')
+                          navigate('/settings/connections')
                         }}
                       >
                         <Settings className="h-4 w-4 mr-2" />
