@@ -139,7 +139,7 @@ export function WhatsAppSendModal({ isOpen, onClose, customers }: WhatsAppSendMo
                 ) : (
                   <Send className="h-4 w-4 mr-2" />
                 )}
-                Enviar para {validCustomers.length} destinatario(s)
+                Enviar Mensagem para {validCustomers.length} destinatário(s)
               </Button>
             </>
           )}

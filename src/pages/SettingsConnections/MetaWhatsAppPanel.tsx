@@ -147,14 +147,6 @@ export function MetaWhatsAppPanel() {
     })
   }, [webhookUrl, toast])
 
-  const statusLabel = isConnected
-    ? 'Active'
-    : status.toLowerCase() === 'error'
-      ? 'Error'
-      : status && status !== 'disconnected'
-        ? status
-        : 'Pending'
-
   const isConnected = status.toLowerCase() === 'connected' || status.toLowerCase() === 'active'
 
   if (!user) {

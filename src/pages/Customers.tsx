@@ -165,10 +165,16 @@ export default function Customers() {
             Gerencie leads no Pipeline Kanban e na lista em um unico lugar.
           </p>
         </div>
-        <Button variant="outline" onClick={() => setShowImport(true)}>
-          <Upload className="h-4 w-4 mr-2" />
-          Importar Clientes
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleSelectFirst50}>
+            <Users className="h-4 w-4 mr-2" />
+            Selecionar 50
+          </Button>
+          <Button variant="outline" onClick={() => setShowImport(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Importar Clientes
+          </Button>
+        </div>
       </div>
 
       <UnifiedStatisticsDashboard />
@@ -195,15 +201,8 @@ export default function Customers() {
             <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-semibold text-primary-foreground">
               {selectedCount}
             </span>
-            <span className="text-sm font-medium hidden sm:inline">
-              {selectedCount === 1
-                ? '1 cliente selecionado'
-                : `${selectedCount} clientes selecionados`}
-            </span>
+            <span className="text-sm font-medium">{selectedCount} selecionados</span>
             <div className="h-5 w-px bg-border" />
-            <Button size="sm" variant="ghost" onClick={handleSelectFirst50}>
-              <Users className="h-4 w-4 mr-1" /> Selecionar 50
-            </Button>
             <Button size="sm" variant="ghost" onClick={() => customerSelectionStore.clear()}>
               <X className="h-4 w-4 mr-1" /> Limpar
             </Button>
@@ -211,10 +210,10 @@ export default function Customers() {
             <Button size="sm" variant="outline" onClick={() => setIsBulkEmailModalOpen(true)}>
               <Mail className="h-4 w-4 mr-1" /> Email
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setIsWhatsAppModalOpen(true)}>
-              <Send className="h-4 w-4 mr-1" /> WhatsApp
+            <Button size="sm" onClick={() => setIsWhatsAppModalOpen(true)}>
+              <Send className="h-4 w-4 mr-1" /> Enviar Mensagem
             </Button>
-            <Button size="sm" onClick={() => setIsSyncModalOpen(true)}>
+            <Button size="sm" variant="outline" onClick={() => setIsSyncModalOpen(true)}>
               <RefreshCw className="h-4 w-4 mr-1" /> Remarketing
             </Button>
           </div>
