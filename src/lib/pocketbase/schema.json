@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-18T17:10:55.687Z",
+  "generatedAt": "2026-07-18T17:24:23.039Z",
   "collections": [
     {
       "name": "users",
@@ -345,6 +345,12 @@
           "required": false,
           "system": false,
           "selectValues": ["Investidor", "Morador", "Primeiro Imóvel", "Veranista"]
+        },
+        {
+          "name": "last_sent_at",
+          "type": "date",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX `idx_customers_urgency` ON `customers` (urgency)"]

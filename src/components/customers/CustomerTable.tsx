@@ -20,6 +20,8 @@ import { MoreHorizontal, Edit, Trash2, RefreshCw, X, Mail } from 'lucide-react'
 import { Customer } from '@/services/customers'
 import { PHASES } from './constants'
 import { cn, formatPhone } from '@/lib/utils'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 import { useSearchParams } from 'react-router-dom'
 import { RemarketingSyncModal } from './RemarketingSyncModal'
 import { BulkEmailModal } from './BulkEmailModal'
@@ -32,6 +34,7 @@ const COLUMNS = [
   { key: 'name', label: 'Nome' },
   { key: 'phone', label: 'Telefone' },
   { key: 'email', label: 'E-mail' },
+  { key: 'last_sent_at', label: 'Último Envio' },
 ]
 
 interface CustomerTableProps {
@@ -293,6 +296,10 @@ export function CustomerTable({
                         val = lead.phone ? formatPhone(lead.phone) : '—'
                       } else if (col.key === 'name') {
                         val = lead.name && lead.name.trim() !== '' ? lead.name : 'Sem nome'
+                      } else if (col.key === 'last_sent_at') {
+                        val = lead.last_sent_at
+                          ? format(new Date(lead.last_sent_at), 'dd/MM/yyyy', { locale: ptBR })
+                          : '—'
                       }
 
                       return (

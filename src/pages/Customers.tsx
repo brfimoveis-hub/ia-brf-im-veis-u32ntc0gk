@@ -73,7 +73,12 @@ export default function Customers() {
     const q = search.toLowerCase().trim()
     const src = sourceFilter.toLowerCase().trim()
     return customers.filter((c) => {
-      if (src && !(c.source || '').toLowerCase().includes(src)) return false
+      if (
+        src &&
+        !(c.source || '').toLowerCase().includes(src) &&
+        !(c.neighborhood || '').toLowerCase().includes(src)
+      )
+        return false
       if (!q) return true
       return (
         (c.name || '').toLowerCase().includes(q) ||

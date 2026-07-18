@@ -19,6 +19,7 @@ export interface Customer {
   urgency?: number
   neighborhood?: string
   price_range?: string
+  last_sent_at?: string
 }
 
 export interface SyncRemarketingPayload {

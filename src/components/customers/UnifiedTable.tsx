@@ -75,13 +75,14 @@ function UnifiedTableBase({ customers }: Props) {
                 <TableHead>Email</TableHead>
                 <TableHead>Origem</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Último Envio</TableHead>
                 <TableHead>Criado em</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {pageItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                     Nenhum cliente encontrado.
                   </TableCell>
                 </TableRow>
@@ -117,10 +118,15 @@ function UnifiedTableBase({ customers }: Props) {
                         <Badge variant="outline">{c.status || 'Sem status'}</Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
+                        {c.last_sent_at
+                          ? format(new Date(c.last_sent_at), 'dd/MM/yyyy', { locale: ptBR })
+                          : '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
                         {c.created
                           ? format(new Date(c.created), 'dd/MM/yyyy', { locale: ptBR })
                           : '-'}
-                      </TableCell>
+                      </TableCell>{' '}
                     </TableRow>
                   )
                 })

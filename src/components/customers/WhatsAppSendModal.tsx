@@ -13,6 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Loader2, Send, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { sendWhatsAppMessages, type WhatsAppSendResult } from '@/services/meta_whatsapp'
+import pb from '@/lib/pocketbase/client'
 
 interface WhatsAppSendModalProps {
   isOpen: boolean
@@ -42,6 +43,20 @@ export function WhatsAppSendModal({ isOpen, onClose, customers }: WhatsAppSendMo
       }))
       const res = await sendWhatsAppMessages(recipients, message.trim())
       setResult(res)
+
+      const sentPhones = new Set(res.results.filter((r) => r.status === 'sent').map((r) => r.phone))
+      const now = new Date().toISOString()
+      await Promise.all(
+        validCustomers
+          .filter((c) => sentPhones.has(c.phone_1_value || c.phone || ''))
+          .map((c) =>
+            pb
+              .collection('customers')
+              .update(c.id, { last_sent_at: now })
+              .catch(() => {}),
+          ),
+      )
+
       if (res.failed === 0) {
         toast.success(`${res.success} mensagens enviadas`)
       } else {

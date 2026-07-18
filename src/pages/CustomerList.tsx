@@ -241,13 +241,14 @@ export default function CustomerList() {
                   <TableHead>Status</TableHead>
                   <TableHead>Origem</TableHead>
                   <TableHead>Bairro</TableHead>
+                  <TableHead>Último Envio</TableHead>
                   <TableHead>Criado em</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredCustomers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       Nenhum cliente encontrado.
                     </TableCell>
                   </TableRow>
@@ -279,6 +280,11 @@ export default function CustomerList() {
                         </TableCell>
                         <TableCell>{customer.source || '-'}</TableCell>
                         <TableCell>{customer.neighborhood || '-'}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {customer.last_sent_at
+                            ? format(new Date(customer.last_sent_at), 'dd/MM/yyyy')
+                            : '—'}
+                        </TableCell>
                         <TableCell className="text-muted-foreground">
                           {customer.created
                             ? format(new Date(customer.created), 'dd/MM/yyyy')

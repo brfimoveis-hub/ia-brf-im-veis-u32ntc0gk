@@ -9,4 +9,5 @@ export interface Customer {
   price_range: string
   created: string
   updated: string
+  last_sent_at?: string
 }
