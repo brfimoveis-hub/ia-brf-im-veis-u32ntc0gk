@@ -19,6 +19,9 @@ import {
 } from 'lucide-react'
 import { RemarketingStatusBanner } from '@/components/remarketing/RemarketingStatusBanner'
 import { StatusMappingCard } from '@/components/remarketing/StatusMappingCard'
+import { RemarketingListTab } from '@/components/remarketing/RemarketingListTab'
+import { RemarketingEventsTab } from '@/components/remarketing/RemarketingEventsTab'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   getRemarketingPreferences,
   saveRemarketingPreferences,
@@ -115,6 +118,19 @@ export default function SettingsRemarketing() {
         tokenStatus={tokenStatus}
         appId={appId}
       />
+
+      <Tabs defaultValue="list" className="w-full">
+        <TabsList>
+          <TabsTrigger value="list">Por Lista</TabsTrigger>
+          <TabsTrigger value="events">Por Eventos</TabsTrigger>
+        </TabsList>
+        <TabsContent value="list">
+          <RemarketingListTab />
+        </TabsContent>
+        <TabsContent value="events">
+          <RemarketingEventsTab />
+        </TabsContent>
+      </Tabs>
 
       <Card className="border-blue-200 bg-blue-50/50">
         <CardContent className="flex items-center justify-between p-4">
