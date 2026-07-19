@@ -1,14 +1,41 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { BookOpen, ExternalLink } from 'lucide-react'
+import {
+  BookOpen,
+  ExternalLink,
+  Globe,
+  Settings,
+  MousePointerClick,
+  Clipboard,
+  KeyRound,
+  CheckCircle2,
+} from 'lucide-react'
 
 const STEPS = [
-  'Acesse o Meta Developer Portal e selecione seu App do WhatsApp.',
-  'Navegue até WhatsApp > Configuração.',
-  'Clique em "Editar" e cole a URL do Webhook (Callback URL) fornecida acima.',
-  'Cole o Token de Verificação fornecido acima.',
-  'Clique em "Verificar e Salvar".',
-  'Em "Campos do Webhook", clique em "Gerenciar" e inscreva-se em messages.',
+  {
+    icon: Globe,
+    text: 'Acesse o Meta Developer Portal e faça login com suas credenciais de desenvolvedor.',
+  },
+  {
+    icon: Settings,
+    text: 'Navegue até WhatsApp > Configuração no menu lateral.',
+  },
+  {
+    icon: MousePointerClick,
+    text: 'Clique em "Editar" na seção de Webhooks.',
+  },
+  {
+    icon: Clipboard,
+    text: 'Cole a URL do Webhook fornecida no CRM no campo "Callback URL".',
+  },
+  {
+    icon: KeyRound,
+    text: 'Cole o Token de Verificação fornecido no CRM no campo "Verify Token".',
+  },
+  {
+    icon: CheckCircle2,
+    text: 'Clique em "Verificar e Salvar" e certifique-se de que o campo "messages" está inscrito em "Campos do Webhook".',
+  },
 ]
 
 export function MetaSetupGuide() {
@@ -17,7 +44,7 @@ export function MetaSetupGuide() {
       <CardHeader className="bg-slate-50/50 border-b">
         <div className="flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-primary" />
-          <CardTitle className="text-lg">Guia de Configuração Meta</CardTitle>
+          <CardTitle className="text-lg">Guia de Configuração Meta — Passo a Passo</CardTitle>
         </div>
       </CardHeader>
       <CardContent className="pt-6">
@@ -30,7 +57,10 @@ export function MetaSetupGuide() {
               >
                 {i + 1}
               </Badge>
-              <span className="text-sm text-muted-foreground pt-0.5">{step}</span>
+              <div className="flex items-start gap-2 pt-0.5">
+                <step.icon className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                <span className="text-sm text-muted-foreground">{step.text}</span>
+              </div>
             </li>
           ))}
         </ol>

@@ -90,7 +90,7 @@ export default function SettingsConnections() {
           <CardContent className="flex items-center justify-between p-4">
             <div className="flex items-center gap-2">
               <MessageCircle className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium">Meta WhatsApp Token</span>
+              <span className="text-sm font-medium">Meta Token Status</span>
             </div>
             {getStatusBadge(user?.meta_token_status)}
           </CardContent>
@@ -99,7 +99,7 @@ export default function SettingsConnections() {
           <CardContent className="flex items-center justify-between p-4">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium">Meta CAPI</span>
+              <span className="text-sm font-medium">CAPI Status</span>
             </div>
             {getStatusBadge(user?.meta_capi_status)}
           </CardContent>
