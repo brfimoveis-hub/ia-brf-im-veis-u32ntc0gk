@@ -1,47 +1,50 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { useToast } from '@/hooks/use-toast'
 import {
   BookOpen,
-  ExternalLink,
   Globe,
   Settings,
   MousePointerClick,
   Clipboard,
   KeyRound,
   CheckCircle2,
+  Copy,
+  ExternalLink,
 } from 'lucide-react'
+
+interface MetaSetupGuideProps {
+  webhookUrl?: string
+  verifyToken?: string
+}
 
 const STEPS = [
   {
     icon: Globe,
     text: 'Acesse o Meta Developer Portal e faça login com suas credenciais de desenvolvedor.',
   },
-  {
-    icon: Settings,
-    text: 'Navegue até WhatsApp > Configuração no menu lateral.',
-  },
-  {
-    icon: MousePointerClick,
-    text: 'Clique em "Editar" na seção de Webhooks.',
-  },
-  {
-    icon: Clipboard,
-    text: 'Cole a URL do Webhook fornecida no CRM no campo "Callback URL".',
-  },
-  {
-    icon: KeyRound,
-    text: 'Cole o Token de Verificação fornecido no CRM no campo "Verify Token".',
-  },
+  { icon: Settings, text: 'Navegue até WhatsApp > Configuration no menu lateral.' },
+  { icon: MousePointerClick, text: 'Clique em "Editar" na seção de Webhooks.' },
+  { icon: Clipboard, text: 'Cole a URL do Webhook no campo "Callback URL".' },
+  { icon: KeyRound, text: 'Cole o Token de Verificação no campo "Verify Token".' },
   {
     icon: CheckCircle2,
-    text: 'Clique em "Verificar e Salvar" e certifique-se de que o campo "messages" está inscrito em "Campos do Webhook".',
+    text: 'Selecione o campo "messages" em Webhook Subscriptions e clique em "Verificar e Salvar".',
   },
 ]
 
-export function MetaSetupGuide() {
+export function MetaSetupGuide({ webhookUrl, verifyToken }: MetaSetupGuideProps) {
+  const { toast } = useToast()
+
+  const copy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text)
+    toast({ title: `${label} copiado` })
+  }
+
   return (
-    <Card className="shadow-sm border-slate-200">
-      <CardHeader className="bg-slate-50/50 border-b">
+    <Card>
+      <CardHeader className="bg-muted/30 border-b">
         <div className="flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-primary" />
           <CardTitle className="text-lg">Guia de Configuração Meta — Passo a Passo</CardTitle>
@@ -59,7 +62,37 @@ export function MetaSetupGuide() {
               </Badge>
               <div className="flex items-start gap-2 pt-0.5">
                 <step.icon className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                <span className="text-sm text-muted-foreground">{step.text}</span>
+                <div className="space-y-1">
+                  <span className="text-sm text-muted-foreground">{step.text}</span>
+                  {i === 3 && webhookUrl && (
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-muted rounded text-xs break-all font-mono max-w-md inline-block">
+                        {webhookUrl}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copy(webhookUrl, 'URL do Webhook')}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {i === 4 && verifyToken && (
+                    <div className="flex items-center gap-2">
+                      <code className="px-2 py-1 bg-muted rounded text-xs font-mono">
+                        {verifyToken}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copy(verifyToken, 'Token de Verificação')}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
             </li>
           ))}

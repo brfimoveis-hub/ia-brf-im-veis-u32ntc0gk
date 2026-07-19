@@ -16,6 +16,14 @@ export const getSystemLogs = async (page = 1, perPage = 500) => {
   })
 }
 
+export const getMetaLogs = async () => {
+  return pb.collection('system_logs').getList<SystemLog>(1, 5, {
+    sort: '-created',
+    filter:
+      "type ~ 'meta' || type ~ 'webhook' || type ~ 'capi' || type ~ 'connection' || type ~ 'api_integration'",
+  })
+}
+
 export const createSystemLog = async (data: Partial<SystemLog>) => {
   return pb.collection('system_logs').create<SystemLog>(data)
 }
