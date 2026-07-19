@@ -48,111 +48,8 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
       $app.logger().error('Failed to save raw webhook log', err)
     }
 
-    // --- Uazapi / Evolution API Fallback ---
-    if ((body.event === 'messages.upsert' || body.event === 'message.upsert') && body.data) {
-      try {
-        const msgData = body.data
-        const messageInfo = msgData.message || {}
-        const keyInfo = msgData.key || {}
-
-        if (!keyInfo.fromMe && keyInfo.remoteJid) {
-          const phone = keyInfo.remoteJid.split('@')[0]
-          const text =
-            messageInfo.conversation ||
-            (messageInfo.extendedTextMessage && messageInfo.extendedTextMessage.text) ||
-            ''
-
-          if (text) {
-            let targetUserId = globalUserId
-            let receiverPhone = body.instance || '48992098050'
-
-            try {
-              const allUsers = $app.findRecordsByFilter(
-                'users',
-                "meta_campaign_phone != ''",
-                '',
-                100,
-                0,
-              )
-              for (const u of allUsers) {
-                const cp = u.getString('meta_campaign_phone').replace(/\D/g, '')
-                if (cp && (receiverPhone.includes(cp) || cp.includes(receiverPhone))) {
-                  targetUserId = u.id
-                  break
-                }
-              }
-            } catch (_) {}
-
-            let customer = null
-            try {
-              const phoneNorm = phone.replace(/\D/g, '')
-              customer = $app.findFirstRecordByFilter(
-                'customers',
-                `phone ~ '${phoneNorm}' || phone_1_value ~ '${phoneNorm}'`,
-              )
-            } catch (_) {}
-
-            if (!customer && targetUserId) {
-              const customersCol = $app.findCollectionByNameOrId('customers')
-              customer = new Record(customersCol)
-              customer.set('user_id', targetUserId)
-              customer.set('name', msgData.pushName || `Lead-Uazapi-${phone}`)
-              customer.set('phone', phone.replace(/\D/g, ''))
-
-              let initialStatus = 'Base de Clientes/Novo LYD'
-              try {
-                const activeCadences = $app.findRecordsByFilter(
-                  'cadences',
-                  `user_id = '${targetUserId}' && is_active = true`,
-                  'order',
-                  1,
-                  0,
-                )
-                if (activeCadences.length > 0) {
-                  initialStatus =
-                    activeCadences[0].getString('title') || 'Base de Clientes/Novo LYD'
-                }
-              } catch (_) {}
-              customer.set('status', initialStatus)
-
-              customer.set('source', `Uazapi - ${receiverPhone}`)
-              $app.save(customer)
-
-              const logsCol = $app.findCollectionByNameOrId('system_logs')
-              const logRecord = new Record(logsCol)
-              logRecord.set('user_id', targetUserId)
-              logRecord.set('type', 'diagnostic_log')
-              logRecord.set(
-                'message',
-                `Novo lead capturado via Uazapi: ${customer.getString('name')}`,
-              )
-              logRecord.set('details', `Telefone: ${phone}. Origem Uazapi - ${receiverPhone}`)
-              logRecord.set('payload', {
-                customer_id: customer.id,
-                phone,
-                source: customer.getString('source'),
-              })
-              $app.save(logRecord)
-            }
-
-            if (customer) {
-              const userId = customer.getString('user_id')
-              const conversation = new Record($app.findCollectionByNameOrId('conversations'))
-              conversation.set('customer_id', customer.id)
-              conversation.set('user_id', userId)
-              conversation.set('content', text)
-              conversation.set('sender', 'user')
-              $app.save(conversation)
-            }
-          }
-        }
-      } catch (err) {
-        $app.logger().error('Uazapi payload error', err)
-      }
-    }
     // --- Meta Ads / Instagram / FB Forms ---
-    else if (body.object === 'page' && body.entry) {
-      // Handle Meta Lead Form (leadgen) mapping to Website
+    if (body.object === 'page' && body.entry) {
       for (const entry of body.entry) {
         for (const change of entry.changes || []) {
           if (change.field === 'leadgen') {
@@ -162,7 +59,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
             const leadId = value.leadgen_id
             const formId = value.form_id
             const contactName = `Lead-Meta-${leadId || new Date().getTime()}`
-            const phone = `+5500000000000` // Placeholder for generic page leadgen without auth token
+            const phone = `+5500000000000`
 
             try {
               const customersCol = $app.findCollectionByNameOrId('customers')
@@ -191,7 +88,6 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
         }
       }
     } else if (body.object === 'instagram' && body.entry) {
-      // Handle Instagram Messages
       for (const entry of body.entry) {
         for (const messaging of entry.messaging || []) {
           const senderId = messaging.sender?.id
@@ -311,7 +207,6 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                   }
                 } catch (_) {}
 
-                // AC: Fallback to phone number if name is missing to prevent constraint errors
                 let contactName = `Lead-Meta-${phone}`
                 if (value.contacts && value.contacts.length > 0) {
                   const contact = value.contacts.find((c) => c.wa_id === phone)
@@ -354,7 +249,6 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     customer.set('status', initialStatus)
 
                     let source = 'Meta'
-
                     let notes = ''
                     if (msg.referral) {
                       notes = `Origem: Anúncio Meta\nHeadline: ${msg.referral.headline || 'N/A'}\nAd ID: ${msg.referral.source_id || 'N/A'}`

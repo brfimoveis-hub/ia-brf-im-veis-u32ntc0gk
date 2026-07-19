@@ -78,12 +78,6 @@ onRecordAfterCreateSuccess((e) => {
     return e.next()
   }
 
-  const apiKey = $secrets.get('OPENAI_API_KEY')
-  if (!apiKey) {
-    $app.logger().warn('AI Trigger skipped: No OPENAI_API_KEY on create')
-    return e.next()
-  }
-
   try {
     const logsCol = $app.findCollectionByNameOrId('system_logs')
     const logRecord = new Record(logsCol)
@@ -94,15 +88,10 @@ onRecordAfterCreateSuccess((e) => {
       'details',
       `Novo lead capturado com status '${status}'. Preparando primeira interação usando cadência específica.`,
     )
-    logRecord.set('payload', {
-      customer_id: customerId,
-      status: status,
-    })
+    logRecord.set('payload', { customer_id: customerId, status: status })
     $app.saveNoValidate(logRecord)
   } catch (_) {}
 
-  // If there are already messages, this might conflict with ai_auto_reply.
-  // We check if there are any conversations. If there are, it means ai_auto_reply will handle it.
   try {
     const existingMsgs = $app.findRecordsByFilter(
       'conversations',
@@ -137,78 +126,78 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se 
   messages.push({ role: 'system', content: systemPrompt })
   messages.push({ role: 'user', content: '(Inicie a conversa com o lead)' })
 
-  const chatRes = $http.send({
-    url: 'https://api.openai.com/v1/chat/completions',
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: messages,
-      temperature: 0.3,
-      max_tokens: 400,
-    }),
-    timeout: 30,
-  })
+  try {
+    const chatRes = $ai.chat({ model: 'fast', messages: messages })
 
-  if (chatRes.statusCode === 200 && chatRes.json?.choices?.[0]?.message?.content) {
-    let responseText = chatRes.json.choices[0].message.content.trim()
+    if (chatRes.choices && chatRes.choices[0] && chatRes.choices[0].message) {
+      let responseText = chatRes.choices[0].message.content.trim()
+      responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
 
-    responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+      if (responseText !== 'SKIP_MESSAGE' && responseText !== '') {
+        try {
+          const reply = new Record($app.findCollectionByNameOrId('conversations'))
+          reply.set('user_id', userId)
+          reply.set('customer_id', customerId)
+          reply.set('sender', 'ai')
+          reply.set('content', responseText)
+          $app.save(reply)
 
-    if (responseText !== 'SKIP_MESSAGE' && responseText !== '') {
-      try {
-        const reply = new Record($app.findCollectionByNameOrId('conversations'))
-        reply.set('user_id', userId)
-        reply.set('customer_id', customerId)
-        reply.set('sender', 'ai')
-        reply.set('content', responseText)
-        $app.save(reply)
-
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', userId)
-        logRecord.set('type', 'diagnostic')
-        logRecord.set('message', 'IA enviou primeira mensagem para novo lead')
-        logRecord.set('details', `Mensagem de abordagem gerada para a fase ${status}.`)
-        logRecord.set('payload', { customer_id: customerId, text: responseText })
-        $app.saveNoValidate(logRecord)
-      } catch (err) {
-        $app.logger().error('Error saving AI initial reply', err)
-      }
-
-      try {
-        const phone = e.record.getString('phone') || ''
-        const source = e.record.getString('source') || ''
-        const uazapiUrl = $secrets.get('UAZAPI_URL') || ''
-        const uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
-
-        if (
-          phone &&
-          uazapiUrl &&
-          uazapiKey &&
-          (phone.includes('48992098050') || source.includes('Uazapi') || source.includes('Meta - '))
-        ) {
-          let instanceName = '48992098050'
-          if (source.includes('Uazapi - ')) {
-            instanceName = source.replace('Uazapi - ', '').trim()
-          } else if (source.includes('Meta - ')) {
-            instanceName = source.replace('Meta - ', '').trim()
-          }
-          const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
-          $http.send({
-            url: `${cleanUrl}/message/sendText/${instanceName}`,
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
-            body: JSON.stringify({
-              number: phone,
-              options: { delay: 1200, presence: 'composing' },
-              textMessage: { text: responseText },
-            }),
-            timeout: 15,
-          })
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRecord = new Record(logsCol)
+          logRecord.set('user_id', userId)
+          logRecord.set('type', 'diagnostic')
+          logRecord.set('message', 'IA enviou primeira mensagem para novo lead')
+          logRecord.set('details', `Mensagem de abordagem gerada para a fase ${status}.`)
+          logRecord.set('payload', { customer_id: customerId, text: responseText })
+          $app.saveNoValidate(logRecord)
+        } catch (err) {
+          $app.logger().error('Error saving AI initial reply', err)
         }
-      } catch (_) {}
+
+        try {
+          const phone = e.record.getString('phone') || ''
+          if (phone && userRecord) {
+            let metaToken = userRecord.getString('meta_whatsapp_access_token') || ''
+            let metaPhoneId = userRecord.getString('meta_whatsapp_phone_number_id') || ''
+
+            if (!metaToken || !metaPhoneId) {
+              const usersWithMeta = $app.findRecordsByFilter(
+                'users',
+                "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+                '-created',
+                1,
+                0,
+              )
+              if (usersWithMeta.length > 0) {
+                metaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
+                metaPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
+              }
+            }
+
+            if (metaToken && metaPhoneId) {
+              const cleanPhone = phone.replace(/\D/g, '')
+              $http.send({
+                url: `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${metaToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  to: cleanPhone,
+                  type: 'text',
+                  text: { body: responseText },
+                }),
+                timeout: 15,
+              })
+            }
+          }
+        } catch (_) {}
+      }
     }
+  } catch (err) {
+    $app.logger().error('Skip AI Chat failed on customer create', 'error', String(err))
   }
 
   return e.next()

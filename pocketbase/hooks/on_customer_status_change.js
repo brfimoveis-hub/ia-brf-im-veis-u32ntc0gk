@@ -182,37 +182,45 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase
           $app.logger().error('Error saving AI reply for status change', err)
         }
 
-        // Send to Uazapi
+        // Send via Meta WhatsApp API
         try {
           const phone = e.record.getString('phone') || ''
-          const source = e.record.getString('source') || ''
-          const uazapiUrl = $secrets.get('UAZAPI_URL') || ''
-          const uazapiKey = $secrets.get('UAZAPI_API_KEY') || ''
+          if (phone && userRecord) {
+            let metaToken = userRecord.getString('meta_whatsapp_access_token') || ''
+            let metaPhoneId = userRecord.getString('meta_whatsapp_phone_number_id') || ''
 
-          if (
-            phone &&
-            uazapiUrl &&
-            uazapiKey &&
-            (phone.includes('48992098050') || source.includes('Uazapi'))
-          ) {
-            let instanceName = '48992098050'
-            if (source.includes('Uazapi - ')) {
-              instanceName = source.replace('Uazapi - ', '').trim()
-            } else if (source.includes('Meta - ')) {
-              instanceName = source.replace('Meta - ', '').trim()
+            if (!metaToken || !metaPhoneId) {
+              const usersWithMeta = $app.findRecordsByFilter(
+                'users',
+                "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+                '-created',
+                1,
+                0,
+              )
+              if (usersWithMeta.length > 0) {
+                metaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
+                metaPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
+              }
             }
-            const cleanUrl = uazapiUrl.endsWith('/') ? uazapiUrl.slice(0, -1) : uazapiUrl
-            $http.send({
-              url: `${cleanUrl}/message/sendText/${instanceName}`,
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', apikey: uazapiKey },
-              body: JSON.stringify({
-                number: phone,
-                options: { delay: 1200, presence: 'composing' },
-                textMessage: { text: responseText },
-              }),
-              timeout: 15,
-            })
+
+            if (metaToken && metaPhoneId) {
+              const cleanPhone = phone.replace(/\D/g, '')
+              $http.send({
+                url: `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${metaToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  to: cleanPhone,
+                  type: 'text',
+                  text: { body: responseText },
+                }),
+                timeout: 15,
+              })
+            }
           }
         } catch (_) {}
       } else {
