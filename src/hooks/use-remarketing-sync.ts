@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
-import { syncRemarketing, type Customer } from '@/services/customers'
+import type { Customer } from '@/services/customers'
+import { syncRemarketing } from '@/services/remarketing-sync'
 import pb from '@/lib/pocketbase/client'
 
 interface SyncState {
@@ -19,21 +20,6 @@ const INITIAL_STATE: SyncState = {
   failedCount: 0,
   totalSelected: 0,
   status: 'idle',
-}
-
-async function sha256(message: string): Promise<string> {
-  const msgBuffer = new TextEncoder().encode(message)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-function formatPhone(phone: string): string {
-  let cleaned = phone.replace(/[^0-9]/g, '')
-  if (cleaned.length === 10 || cleaned.length === 11) {
-    cleaned = '55' + cleaned
-  }
-  return cleaned
 }
 
 export function useRemarketingSync() {
@@ -61,21 +47,19 @@ export function useRemarketingSync() {
         if (isStoppedRef.current) break
 
         const chunk = customers.slice(i, i + batch)
-        const payloads = await Promise.all(
-          chunk.map(async (c) => {
-            const email = (c.email_1_value || c.email || '').trim().toLowerCase()
-            const phone = formatPhone(c.phone_1_value || c.phone || '')
-            return {
-              id: c.id,
-              name: c.name || c.first_name || 'Sem nome',
-              em: email ? await sha256(email) : undefined,
-              ph: phone ? await sha256(phone) : undefined,
-            }
-          }),
-        )
+        const payloads = chunk.map((c) => {
+          const email = (c.email_1_value || c.email || '').trim().toLowerCase()
+          const phone = (c.phone_1_value || c.phone || '').trim()
+          return {
+            id: c.id,
+            name: c.name || c.first_name || 'Sem nome',
+            em: email || undefined,
+            ph: phone || undefined,
+          }
+        })
 
         try {
-          await syncRemarketing(payloads, '', 'Lead', batch, 0)
+          await syncRemarketing(payloads, 'Lead')
           synced += chunk.length
           const now = new Date().toISOString()
           await Promise.all(
@@ -86,8 +70,16 @@ export function useRemarketingSync() {
                 .catch(() => {}),
             ),
           )
-        } catch {
+        } catch (err: any) {
           failed += chunk.length
+          if (i === 0) {
+            const msg = err?.response?.message || err?.message || 'Falha ao enviar para Meta'
+            toast({
+              title: 'Erro na sincronização',
+              description: msg,
+              variant: 'destructive',
+            })
+          }
         }
 
         setState((prev) => ({

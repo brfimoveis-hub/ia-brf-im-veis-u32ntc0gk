@@ -9,8 +9,16 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Label } from '@/components/ui/label'
-import { Search, Send, Loader2, AlertCircle, StopCircle } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Search, Send, Loader2, AlertCircle, StopCircle, Filter } from 'lucide-react'
 import { SyncProgressTracker } from './SyncProgressTracker'
+import { CUSTOMER_STATUSES } from '@/services/remarketing'
 import type { Customer } from '@/services/customers'
 
 const PRESETS = [1, 10, 50, 100, 200, 500]
@@ -21,6 +29,7 @@ export function RemarketingListTab() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const sync = useRemarketingSync()
 
@@ -44,6 +53,10 @@ export function RemarketingListTab() {
   const hasCredentials = !!user?.meta_pixel_id?.trim() && !!user?.meta_capi_token?.trim()
 
   const filtered = customers.filter((c) => {
+    if (statusFilter !== 'all') {
+      const cStatus = c.status || 'Sem Status'
+      if (cStatus !== statusFilter) return false
+    }
     if (!search) return true
     const q = search.toLowerCase()
     return (
@@ -80,6 +93,9 @@ export function RemarketingListTab() {
   const handleSync = () => {
     const selected = customers.filter((c) => selectedIds.has(c.id))
     sync.sync(selected, 100)
+    if (statusFilter !== 'all') {
+      setStatusFilter('all')
+    }
   }
 
   return (
@@ -94,14 +110,30 @@ export function RemarketingListTab() {
             Credenciais Meta não configuradas. Acesse as Conexões para configurar.
           </div>
         )}
-        <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome, email ou telefone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1"
-          />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <div className="flex items-center gap-2 flex-1 w-full">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Input
+              placeholder="Buscar por nome, email ou telefone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter} disabled={sync.isSyncing}>
+            <SelectTrigger className="w-full sm:w-[220px]">
+              <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+              <SelectValue placeholder="Filtrar por status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os status</SelectItem>
+              {CUSTOMER_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex flex-wrap gap-2">
           {PRESETS.map((n) => (
@@ -127,6 +159,9 @@ export function RemarketingListTab() {
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
             {syncable.length} leads com contato • {availableForPreset.length} disponíveis
+            {statusFilter !== 'all' && (
+              <span className="ml-1 text-primary">• Filtrando: {statusFilter}</span>
+            )}
           </span>
           <span className="font-medium text-foreground">{selectedIds.size} selecionados</span>
         </div>

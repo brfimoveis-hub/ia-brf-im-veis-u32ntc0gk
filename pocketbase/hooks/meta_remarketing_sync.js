@@ -12,9 +12,15 @@ routerAdd(
     const pixelId = user.getString('meta_pixel_id')
     const capiToken = user.getString('meta_capi_token')
 
-    if (!pixelId || !capiToken) {
+    if (!pixelId) {
       throw new BadRequestError(
-        'O ID do Pixel ou Token da API de Conversões (CAPI) não estão configurados no perfil.',
+        'O ID do Pixel Meta não está configurado no seu perfil. Acesse Conexões → Meta CAPI para configurar.',
+      )
+    }
+
+    if (!capiToken) {
+      throw new BadRequestError(
+        'O Token da API de Conversões (CAPI) não está configurado no seu perfil. Acesse Conexões → Meta CAPI para configurar.',
       )
     }
 
@@ -24,7 +30,6 @@ routerAdd(
     }
 
     const eventName = body.eventName || 'Lead'
-    const testCode = user.getString('meta_test_event_code')
 
     const data = payloads.map((p) => {
       const userData = {
@@ -34,9 +39,11 @@ routerAdd(
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SkipCloud/1.0',
       }
 
-      if (p.em) userData.em = [$security.sha256(p.em.trim().toLowerCase())]
+      if (p.em) {
+        userData.em = [$security.sha256(String(p.em).trim().toLowerCase())]
+      }
       if (p.ph) {
-        let cleanPhone = p.ph.replace(/\D/g, '')
+        var cleanPhone = String(p.ph).replace(/\D/g, '')
         if (cleanPhone.length === 10 || cleanPhone.length === 11) {
           cleanPhone = '55' + cleanPhone
         }
@@ -49,7 +56,6 @@ routerAdd(
         action_source: 'system',
         user_data: userData,
         custom_data: {
-          tags: p.tags || [],
           lead_name: p.name || 'Desconhecido',
           lead_id: p.id || '',
         },
@@ -57,14 +63,12 @@ routerAdd(
     })
 
     const payload = { data: data }
-    if (testCode) {
-      payload.test_event_code = testCode
-    }
 
     const metaUrl = 'https://graph.facebook.com/v21.0/' + pixelId + '/events'
 
+    var res
     try {
-      const res = $http.send({
+      res = $http.send({
         url: metaUrl,
         method: 'POST',
         headers: {
@@ -74,91 +78,101 @@ routerAdd(
         body: JSON.stringify(payload),
         timeout: 30,
       })
-
-      let resJson = null
-      try {
-        resJson = res.json
-      } catch (_) {
-        resJson = null
-      }
-
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        payloads.forEach((p) => {
-          try {
-            const record = $app.findRecordById('customers', p.id)
-            record.set('meta_sync_status', 'synced')
-            $app.saveNoValidate(record)
-          } catch (errInner) {}
-        })
-
-        return e.json(200, {
-          success: true,
-          synced: payloads.length,
-          message: 'Sincronização concluída com sucesso no Meta',
-        })
-      } else {
-        const errorBody = resJson ? JSON.stringify(resJson) : 'Unknown Error'
-        $app
-          .logger()
-          .error('Meta CAPI Sync Error', 'status', String(res.statusCode), 'response', errorBody)
-
-        let errorMessage = 'Erro na API do Meta (Status ' + res.statusCode + ')'
-        let apiErrMsg = errorMessage
-        if (resJson && resJson.error && resJson.error.message) {
-          apiErrMsg = resJson.error.message
-          errorMessage = resJson.error.message
-        }
-
-        if (
-          errorMessage.includes('Unsupported post request') ||
-          errorMessage.includes('does not exist')
-        ) {
-          errorMessage = `ID inválido: O Dataset/Pixel ID '${pixelId}' não existe ou o token não tem permissão. Verifique se não é um App ID.`
-          apiErrMsg = errorMessage
-        }
-
-        payloads.forEach((p) => {
-          try {
-            const record = $app.findRecordById('customers', p.id)
-            record.set('meta_sync_status', 'error')
-            $app.saveNoValidate(record)
-          } catch (errInner2) {}
-        })
-
-        try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const logRecord = new Record(logsCol)
-          logRecord.set('user_id', user.id)
-          logRecord.set('type', 'Remarketing Error')
-          logRecord.set('message', apiErrMsg)
-          logRecord.set('details', {
-            leads: payloads.map((p) => ({ name: p.name, id: p.id })),
-            metaId: pixelId,
-          })
-          logRecord.set('payload', resJson || { raw: errorBody })
-          $app.saveNoValidate(logRecord)
-        } catch (errInner3) {}
-
-        throw new BadRequestError(errorMessage)
-      }
-    } catch (err) {
-      $app.logger().error('Meta CAPI Request Failed', 'error', String(err))
+    } catch (transportErr) {
+      $app.logger().error('Meta CAPI Transport Error', 'error', String(transportErr))
 
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const logRecord = new Record(logsCol)
-        logRecord.set('user_id', user.id)
-        logRecord.set('type', 'Remarketing Error')
-        logRecord.set('message', String(err))
+        logRecord.set('type', 'remarketing_error')
+        logRecord.set('message', 'Falha de conexão com a API do Meta: ' + String(transportErr))
         logRecord.set('details', {
           leads: payloads.map((p) => ({ name: p.name, id: p.id })),
           metaId: pixelId,
         })
         $app.saveNoValidate(logRecord)
-      } catch (err2) {}
+      } catch (_) {}
 
-      throw new InternalServerError('Falha de conexão com a API do Meta: ' + String(err))
+      throw new InternalServerError(
+        'Falha de conexão com a API do Meta. Verifique sua internet e tente novamente.',
+      )
     }
+
+    var resJson = null
+    try {
+      resJson = res.json
+    } catch (_) {
+      resJson = null
+    }
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRecord = new Record(logsCol)
+        logRecord.set('type', 'remarketing_sync_success')
+        logRecord.set(
+          'message',
+          'Sincronização concluída: ' + payloads.length + ' leads enviados para o Meta',
+        )
+        logRecord.set('details', {
+          synced: payloads.length,
+          eventName: eventName,
+          metaId: pixelId,
+          http_status: res.statusCode,
+        })
+        $app.saveNoValidate(logRecord)
+      } catch (_) {}
+
+      return e.json(200, {
+        success: true,
+        synced: payloads.length,
+        message: 'Sincronização concluída com sucesso no Meta',
+      })
+    }
+
+    var errorMessage = 'Erro na API do Meta (Status ' + res.statusCode + ')'
+    var apiErrMsg = errorMessage
+    if (resJson && resJson.error && resJson.error.message) {
+      apiErrMsg = resJson.error.message
+      errorMessage = resJson.error.message
+    }
+
+    if (
+      errorMessage.includes('Unsupported post request') ||
+      errorMessage.includes('does not exist')
+    ) {
+      errorMessage =
+        "ID inválido: O Pixel ID '" +
+        pixelId +
+        "' não existe ou o token não tem permissão. Verifique se não é um App ID."
+      apiErrMsg = errorMessage
+    }
+
+    $app
+      .logger()
+      .error(
+        'Meta CAPI Sync Error',
+        'status',
+        String(res.statusCode),
+        'response',
+        resJson ? JSON.stringify(resJson) : 'Unknown Error',
+      )
+
+    try {
+      const logsCol = $app.findCollectionByNameOrId('system_logs')
+      const logRecord = new Record(logsCol)
+      logRecord.set('type', 'remarketing_error')
+      logRecord.set('message', apiErrMsg)
+      logRecord.set('details', {
+        leads: payloads.map((p) => ({ name: p.name, id: p.id })),
+        metaId: pixelId,
+        http_status: res.statusCode,
+      })
+      logRecord.set('payload', resJson || { raw: 'Unknown Error' })
+      $app.saveNoValidate(logRecord)
+    } catch (_) {}
+
+    throw new BadRequestError(errorMessage)
   },
   $apis.requireAuth(),
 )
