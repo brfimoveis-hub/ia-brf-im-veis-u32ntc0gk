@@ -50,7 +50,7 @@ export default function Layout() {
   const SidebarContent = () => (
     <div className="flex h-full flex-col bg-slate-900 text-slate-100">
       <div className="flex h-16 items-center px-6 text-lg font-semibold border-b border-slate-800">
-        BRF Imóveis CRM
+        BRF IA CRM
       </div>
       <div className="flex-1 overflow-y-auto py-4">
         <nav className="space-y-1 px-3">
@@ -132,7 +132,7 @@ export default function Layout() {
       <div className="flex flex-col flex-1 md:pl-64">
         {/* Mobile header */}
         <div className="sticky top-0 z-10 flex h-16 flex-shrink-0 bg-white border-b shadow-sm md:hidden px-4 justify-between items-center">
-          <div className="font-semibold text-lg">BRF Imóveis CRM</div>
+          <div className="font-semibold text-lg">BRF IA CRM</div>
           <Sheet>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon">

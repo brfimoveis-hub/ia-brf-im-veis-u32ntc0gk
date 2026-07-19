@@ -9,7 +9,8 @@ import { useToast } from '@/hooks/use-toast'
 import { MetaWhatsAppPanel } from './SettingsConnections/MetaWhatsAppPanel'
 import ChavesNaMao from './SettingsConnections/ChavesNaMao'
 import pb from '@/lib/pocketbase/client'
-import { Loader2, Save, TrendingUp } from 'lucide-react'
+import { Loader2, Save, TrendingUp, MessageCircle } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 export default function SettingsConnections() {
   const { user } = useAuth()
@@ -53,6 +54,20 @@ export default function SettingsConnections() {
     }
   }
 
+  const getStatusBadge = (status: string | undefined) => {
+    const s = (status || '').toLowerCase()
+    const isActive = s === 'active' || s === 'connected'
+    const isError = s === 'error'
+    return (
+      <Badge
+        variant={isError ? 'destructive' : isActive ? 'default' : 'secondary'}
+        className={isActive ? 'bg-green-500 hover:bg-green-600' : ''}
+      >
+        {status || 'Não configurado'}
+      </Badge>
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
@@ -68,6 +83,27 @@ export default function SettingsConnections() {
         <p className="text-muted-foreground">
           Meta WhatsApp Business API, Conversions API e ChavesNaMao.
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Meta WhatsApp Token</span>
+            </div>
+            {getStatusBadge(user?.meta_token_status)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Meta CAPI</span>
+            </div>
+            {getStatusBadge(user?.meta_capi_status)}
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="whatsapp">
