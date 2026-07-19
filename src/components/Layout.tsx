@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { ConnectionAlertBanner } from '@/components/ConnectionAlertBanner'
 
 export default function Layout() {
   const { user, signOut } = useAuth()
@@ -144,6 +145,9 @@ export default function Layout() {
             </SheetContent>
           </Sheet>
         </div>
+
+        {/* Connection Alert Banner */}
+        <ConnectionAlertBanner />
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
