@@ -21,6 +21,21 @@ const INITIAL_STATE: SyncState = {
   status: 'idle',
 }
 
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function formatPhone(phone: string): string {
+  let cleaned = phone.replace(/[^0-9]/g, '')
+  if (cleaned.length === 10 || cleaned.length === 11) {
+    cleaned = '55' + cleaned
+  }
+  return cleaned
+}
+
 export function useRemarketingSync() {
   const { toast } = useToast()
   const [state, setState] = useState<SyncState>(INITIAL_STATE)
@@ -46,13 +61,18 @@ export function useRemarketingSync() {
         if (isStoppedRef.current) break
 
         const chunk = customers.slice(i, i + batch)
-        const payloads = chunk.map((c) => ({
-          id: c.id,
-          name: c.name || c.first_name || 'Sem nome',
-          em: (c.email_1_value || c.email || '').trim().toLowerCase() || undefined,
-          ph: (c.phone_1_value || c.phone || '').replace(/[^0-9]/g, '') || undefined,
-          tags: c.tags || [],
-        }))
+        const payloads = await Promise.all(
+          chunk.map(async (c) => {
+            const email = (c.email_1_value || c.email || '').trim().toLowerCase()
+            const phone = formatPhone(c.phone_1_value || c.phone || '')
+            return {
+              id: c.id,
+              name: c.name || c.first_name || 'Sem nome',
+              em: email ? await sha256(email) : undefined,
+              ph: phone ? await sha256(phone) : undefined,
+            }
+          }),
+        )
 
         try {
           await syncRemarketing(payloads, '', 'Lead', batch, 0)
