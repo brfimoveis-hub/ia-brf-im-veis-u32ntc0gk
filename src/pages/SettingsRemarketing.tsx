@@ -116,6 +116,7 @@ export default function SettingsRemarketing() {
       <RemarketingStatusBanner
         hasAccessToken={hasAccessToken}
         tokenStatus={tokenStatus}
+        capiStatus={currentUser?.meta_capi_status || ''}
         appId={appId}
       />
 

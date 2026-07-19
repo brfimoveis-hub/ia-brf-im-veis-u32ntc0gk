@@ -146,7 +146,7 @@ export function RemarketingEventsTab() {
               onClick={handleSync}
               disabled={selectedCustomers.length === 0 || !hasCredentials}
             >
-              <Send className="h-4 w-4 mr-2" /> Sincronizar ({selectedCustomers.length})
+              <Send className="h-4 w-4 mr-2" /> Enviar para Meta ({selectedCustomers.length})
             </Button>
           )}
         </div>

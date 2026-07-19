@@ -30,7 +30,7 @@ export function SyncProgressTracker({
         {isSuccess && <CheckCircle2 className="h-4 w-4 text-green-500" />}
         {isError && <XCircle className="h-4 w-4 text-destructive" />}
         <span className="text-sm font-medium">
-          {isSyncing ? 'Sincronizando...' : isSuccess ? 'Concluído!' : 'Falha na sincronização'}
+          {isSyncing ? 'Enviando para Meta...' : isSuccess ? 'Concluído!' : 'Falha no envio'}
         </span>
         <span className="text-sm text-muted-foreground ml-auto">{progress}%</span>
       </div>

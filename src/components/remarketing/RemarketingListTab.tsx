@@ -184,7 +184,7 @@ export function RemarketingListTab() {
             </Button>
           ) : (
             <Button onClick={handleSync} disabled={selectedIds.size === 0 || !hasCredentials}>
-              <Send className="h-4 w-4 mr-2" /> Sincronizar ({selectedIds.size})
+              <Send className="h-4 w-4 mr-2" /> Enviar para Meta ({selectedIds.size})
             </Button>
           )}
         </div>

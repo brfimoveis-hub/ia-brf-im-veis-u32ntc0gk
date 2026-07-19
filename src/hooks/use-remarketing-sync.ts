@@ -91,19 +91,19 @@ export function useRemarketingSync() {
       if (!wasStopped) {
         if (!allFailed && !partial) {
           toast({
-            title: 'Sincronização concluída',
-            description: `${synced} leads sincronizados com o Meta.`,
+            title: 'Envio concluído',
+            description: `${synced} leads enviados para o Meta.`,
           })
         } else if (partial) {
           toast({
-            title: 'Sincronização parcial',
-            description: `${synced} sincronizados, ${failed} com falha.`,
+            title: 'Envio parcial',
+            description: `${synced} enviados, ${failed} com falha.`,
             variant: 'destructive',
           })
         } else {
           toast({
-            title: 'Falha na sincronização',
-            description: 'Nenhum lead pôde ser sincronizado.',
+            title: 'Falha no envio',
+            description: 'Nenhum lead pôde ser enviado para o Meta.',
             variant: 'destructive',
           })
         }
