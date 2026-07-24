@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Users, MessageSquare, Bot, Activity, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { MessageVolumeChart } from '@/components/dashboard/message-volume-chart'
 import { AIResponseMetricsCard } from '@/components/dashboard/ai-response-metrics'
@@ -106,66 +107,42 @@ export default function Dashboard() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Meta CAPI Status</CardTitle>
+            <CardTitle className="text-sm font-medium">Integrações</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-3 w-3">
-                <span
-                  className={cn(
-                    'animate-ping absolute inline-flex h-full w-full rounded-full opacity-75',
-                    currentUser?.meta_capi_status === 'connected' ||
-                      currentUser?.meta_capi_status === 'active' ||
-                      currentUser?.meta_capi_status === 'valid'
-                      ? 'bg-emerald-400'
-                      : 'bg-red-400',
-                  )}
-                ></span>
-                <span
-                  className={cn(
-                    'relative inline-flex rounded-full h-3 w-3',
-                    currentUser?.meta_capi_status === 'connected' ||
-                      currentUser?.meta_capi_status === 'active' ||
-                      currentUser?.meta_capi_status === 'valid'
-                      ? 'bg-emerald-500'
-                      : 'bg-red-500',
-                  )}
-                ></span>
-              </span>
-              <div
-                className={cn(
-                  'text-2xl font-bold',
-                  currentUser?.meta_capi_status === 'connected' ||
-                    currentUser?.meta_capi_status === 'active' ||
-                    currentUser?.meta_capi_status === 'valid'
-                    ? 'text-emerald-600'
-                    : 'text-red-600',
-                )}
-              >
-                {currentUser?.meta_capi_status === 'connected' ||
-                currentUser?.meta_capi_status === 'active' ||
-                currentUser?.meta_capi_status === 'valid'
-                  ? 'Conectado'
-                  : 'Desconectado'}
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground truncate mt-1">
-              Pixel ID:{' '}
-              {currentUser?.meta_dataset_id || currentUser?.meta_pixel_id || '1093869151209421'}
-            </p>
-            <p
-              className={cn(
-                'text-xs text-red-500 mt-1 line-clamp-2',
-                !(
-                  currentUser?.meta_capi_error &&
-                  (currentUser?.meta_capi_status === 'error' ||
-                    currentUser?.meta_capi_status === 'disconnected')
-                ) && 'hidden',
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">WhatsApp API</span>
+              {currentUser?.meta_token_status === 'active' ? (
+                <Badge className="bg-green-500 hover:bg-green-600 text-xs">Ativo</Badge>
+              ) : currentUser?.meta_token_status === 'error' ? (
+                <Badge variant="destructive" className="text-xs">
+                  Falha
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="text-xs">
+                  Não testado
+                </Badge>
               )}
-              title={currentUser?.meta_capi_error || ''}
-            >
-              Erro: {currentUser?.meta_capi_error || ''}
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">CAPI</span>
+              {currentUser?.meta_capi_status === 'connected' ||
+              currentUser?.meta_capi_status === 'active' ||
+              currentUser?.meta_capi_status === 'valid' ? (
+                <Badge className="bg-green-500 hover:bg-green-600 text-xs">Conectado</Badge>
+              ) : currentUser?.meta_capi_status === 'error' ? (
+                <Badge variant="destructive" className="text-xs">
+                  Falha
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="text-xs">
+                  Não testado
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground truncate">
+              Pixel: {currentUser?.meta_dataset_id || currentUser?.meta_pixel_id || '—'}
             </p>
           </CardContent>
         </Card>

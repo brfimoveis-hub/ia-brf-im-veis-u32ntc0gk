@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import { AlertTriangle, X, ArrowRight } from 'lucide-react'
 
-const UNHEALTHY_STATES = ['error', 'expired', 'disconnected']
+const UNHEALTHY_STATES = ['error', 'expired']
 
 export function ConnectionAlertBanner() {
   const { user } = useAuth()

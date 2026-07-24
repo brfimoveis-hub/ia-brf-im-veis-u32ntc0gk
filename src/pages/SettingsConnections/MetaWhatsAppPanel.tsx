@@ -13,7 +13,17 @@ import { Badge } from '@/components/ui/badge'
 import { MetaSetupGuide } from './MetaSetupGuide'
 import { StatusTrafficLight } from './StatusTrafficLight'
 import { MaskedInput } from './MaskedInput'
-import { Loader2, MessageCircle, CheckCircle2, AlertCircle, Copy, Phone, Info } from 'lucide-react'
+import {
+  Loader2,
+  MessageCircle,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
+  Phone,
+  Info,
+  Clock,
+  XCircle,
+} from 'lucide-react'
 
 const WEBHOOK_BASE = `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/meta_whatsapp_webhook`
 
@@ -29,6 +39,8 @@ export function MetaWhatsAppPanel() {
   const [displayNumber, setDisplayNumber] = useState(user?.meta_whatsapp_status || '')
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [testError, setTestError] = useState('')
+  const [lastTestAt, setLastTestAt] = useState('')
 
   useRealtime('users', (e) => {
     if (!user?.id || e.record.id !== user.id) return
@@ -38,11 +50,71 @@ export function MetaWhatsAppPanel() {
 
   const webhookUrl = user?.id ? `${WEBHOOK_BASE}?user_id=${user.id}` : WEBHOOK_BASE
   const isActive = tokenStatus === 'active'
+  const isError = tokenStatus === 'error'
   const formattedNumber = formatDisplayPhone(displayNumber)
 
   const copy = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
     toast({ title: `${label} copiado` })
+  }
+
+  const runTest = async () => {
+    if (!user) return
+    const pnId = phoneId.trim()
+    const tok = accessToken.trim()
+    if (!pnId || !tok) {
+      toast({
+        variant: 'destructive',
+        title: 'Campos obrigatórios',
+        description: 'Phone Number ID e Access Token são obrigatórios para testar.',
+      })
+      return
+    }
+    setTesting(true)
+    setTestError('')
+    try {
+      const res: any = await pb.send('/backend/v1/meta_whatsapp_test', {
+        method: 'POST',
+        body: {
+          phone_number_id: pnId,
+          access_token: tok,
+          business_id: businessId.trim(),
+        },
+      })
+      const testedAt = res?.tested_at || new Date().toISOString()
+      setLastTestAt(testedAt)
+      if (res?.success === false) {
+        const errMsg = res?.error || 'Falha ao testar conexão WhatsApp'
+        setTokenStatus('error')
+        setDisplayNumber('')
+        setTestError(errMsg)
+        toast({
+          variant: 'destructive',
+          title: 'Falha na conexão WhatsApp',
+          description: errMsg,
+        })
+      } else {
+        setTokenStatus('active')
+        if (res?.display_phone_number) {
+          setDisplayNumber(res.display_phone_number)
+        }
+        setTestError('')
+        toast({ title: 'Conexão validada', description: 'Meta WhatsApp API está funcionando.' })
+      }
+    } catch (err: any) {
+      setLastTestAt(new Date().toISOString())
+      setTokenStatus('error')
+      setDisplayNumber('')
+      const errMsg = err?.message || 'Erro ao testar conexão'
+      setTestError(errMsg)
+      toast({
+        variant: 'destructive',
+        title: 'Falha na conexão',
+        description: errMsg,
+      })
+    } finally {
+      setTesting(false)
+    }
   }
 
   const handleSave = async () => {
@@ -57,50 +129,15 @@ export function MetaWhatsAppPanel() {
       })
       pb.authStore.save(pb.authStore.token, updated)
       toast({ title: 'Credenciais salvas com sucesso' })
+      setSaving(false)
+      await runTest()
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao salvar', description: err.message })
-    } finally {
       setSaving(false)
     }
   }
 
-  const handleTest = async () => {
-    if (!user) return
-    if (!phoneId.trim() || !accessToken.trim()) {
-      toast({
-        variant: 'destructive',
-        title: 'Campos obrigatórios',
-        description: 'Phone Number ID e Access Token são obrigatórios para testar.',
-      })
-      return
-    }
-    setTesting(true)
-    try {
-      const res: any = await pb.send('/backend/v1/meta_whatsapp_test', {
-        method: 'POST',
-        body: {
-          phone_number_id: phoneId.trim(),
-          access_token: accessToken.trim(),
-          business_id: businessId.trim(),
-        },
-      })
-      setTokenStatus('active')
-      if (res?.display_phone_number) {
-        setDisplayNumber(res.display_phone_number)
-      }
-      toast({ title: 'Conexão validada', description: 'Meta WhatsApp API está funcionando.' })
-    } catch (err: any) {
-      setTokenStatus('error')
-      setDisplayNumber('')
-      toast({
-        variant: 'destructive',
-        title: 'Falha na conexão',
-        description: err?.message || 'Erro ao testar conexão',
-      })
-    } finally {
-      setTesting(false)
-    }
-  }
+  const handleTest = () => runTest()
 
   if (!user) {
     return (
@@ -138,6 +175,31 @@ export function MetaWhatsAppPanel() {
                     {formattedNumber}
                   </Badge>
                 </div>
+                {lastTestAt && (
+                  <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
+                    <Clock className="h-3 w-3" />
+                    Último teste bem-sucedido: {new Date(lastTestAt).toLocaleString('pt-BR')}
+                  </div>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {isError && (
+            <Alert className="border-red-500/50 bg-red-500/10 animate-fade-in">
+              <XCircle className="h-4 w-4 text-red-600" />
+              <AlertTitle className="text-red-700">Falha na Conexão WhatsApp</AlertTitle>
+              <AlertDescription className="text-red-600">
+                <p className="text-sm">
+                  {testError ||
+                    'A última tentativa de conexão falhou. Verifique as credenciais e tente novamente.'}
+                </p>
+                {lastTestAt && (
+                  <div className="flex items-center gap-1 mt-2 text-xs">
+                    <Clock className="h-3 w-3" />
+                    Último teste: {new Date(lastTestAt).toLocaleString('pt-BR')}
+                  </div>
+                )}
               </AlertDescription>
             </Alert>
           )}
@@ -224,7 +286,7 @@ export function MetaWhatsAppPanel() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving || testing}>
               {saving ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -232,7 +294,7 @@ export function MetaWhatsAppPanel() {
               )}
               Salvar Credenciais
             </Button>
-            <Button onClick={handleTest} disabled={testing} variant="outline">
+            <Button onClick={handleTest} disabled={saving || testing} variant="outline">
               {testing ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -241,6 +303,12 @@ export function MetaWhatsAppPanel() {
               Testar Conexão WhatsApp
             </Button>
           </div>
+
+          {(saving || testing) && (
+            <p className="text-xs text-muted-foreground animate-fade-in">
+              {saving ? 'Salvando credenciais...' : 'Testando conexão com a Meta API...'}
+            </p>
+          )}
         </CardContent>
       </Card>
 
