@@ -6,6 +6,7 @@ import pb from '@/lib/pocketbase/client'
 interface Props {
   children?: ReactNode
   fallback?: ReactNode
+  logType?: string
 }
 
 interface State {
@@ -27,13 +28,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
     try {
       if (pb.authStore.isValid) {
+        const userId = pb.authStore.record?.id || 'unknown'
         pb.collection('system_logs')
           .create({
-            type: 'frontend_error',
+            type: this.props.logType || 'frontend_error',
             message: error.message || 'React Rendering Error',
             details: {
               stack: error.stack,
               componentStack: errorInfo.componentStack,
+              user_id: userId,
             },
           })
           .catch(() => {})

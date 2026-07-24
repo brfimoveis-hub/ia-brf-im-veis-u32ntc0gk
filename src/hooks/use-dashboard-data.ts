@@ -81,6 +81,24 @@ export function useDashboardData() {
     }
   }, [])
 
+  const logMetaError = useCallback(async (error: unknown, userId: string) => {
+    try {
+      const errMessage = error instanceof Error ? error.message : String(error)
+      const errStack = error instanceof Error ? error.stack : undefined
+      await pb.collection('system_logs').create({
+        type: 'dashboard_meta_error',
+        message: `Failed to fetch Meta WhatsApp status: ${errMessage}`,
+        details: {
+          stack: errStack,
+          user_id: userId,
+          timestamp: new Date().toISOString(),
+        },
+      })
+    } catch {
+      // Silently ignore — logging must never crash the dashboard
+    }
+  }, [])
+
   const refreshMeta = useCallback(async () => {
     if (!user) return
     try {
@@ -91,10 +109,16 @@ export function useDashboardData() {
         pixelId: usr.meta_pixel_id || '',
       })
       setErrors((prev) => ({ ...prev, meta: false }))
-    } catch {
+    } catch (error) {
       setErrors((prev) => ({ ...prev, meta: true }))
+      setMeta((prev) => ({
+        ...prev,
+        status: 'error',
+        error: 'Failed to fetch Meta status',
+      }))
+      void logMetaError(error, user.id)
     }
-  }, [user])
+  }, [user, logMetaError])
 
   const loadAll = useCallback(async () => {
     setLoading(true)
