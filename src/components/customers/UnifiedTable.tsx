@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import {
   Table,
   TableBody,
@@ -9,19 +9,24 @@ import {
 } from '@/components/ui/table'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
 import { formatPhone } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import pb from '@/lib/pocketbase/client'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 import { CustomerDetailDrawer } from './CustomerDetailDrawer'
-
-const PAGE_SIZE = 25
+import { PaginationBar } from './PaginationBar'
+import { SortableTableHead } from './SortableTableHead'
 
 interface Props {
-  customers: any[]
+  filter: string
+  sort: string
+  onSortChange: (sort: string) => void
+  refreshKey: number
 }
+
+const PAGE_SIZE = 20
 
 function formatDateSafe(dateStr: string | undefined | null, fmt: string): string {
   if (!dateStr) return '—'
@@ -34,42 +39,47 @@ function formatDateSafe(dateStr: string | undefined | null, fmt: string): string
   }
 }
 
-export function UnifiedTable({ customers }: Props) {
+export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) {
   const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(PAGE_SIZE)
+  const [items, setItems] = useState<any[]>([])
+  const [totalItems, setTotalItems] = useState(0)
+  const [loading, setLoading] = useState(true)
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const selectedIds = useCustomerSelection()
+  const requestIdRef = useRef(0)
 
   useEffect(() => {
     setPage(1)
-  }, [customers])
+  }, [filter, sort, perPage])
 
   useEffect(() => {
-    setDrawerId(null)
-  }, [customers])
+    const rid = ++requestIdRef.current
+    setLoading(true)
+    ;(async () => {
+      try {
+        const result = await pb.collection('customers').getList(page, perPage, {
+          filter: filter || undefined,
+          sort,
+        })
+        if (rid !== requestIdRef.current) return
+        setItems(result.items)
+        setTotalItems(result.totalItems)
+      } catch (err) {
+        console.error(err)
+        if (rid === requestIdRef.current) setItems([])
+      } finally {
+        if (rid === requestIdRef.current) setLoading(false)
+      }
+    })()
+  }, [filter, sort, page, perPage, refreshKey])
 
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(customers.length / PAGE_SIZE)),
-    [customers.length],
-  )
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
+  const currentPage = Math.min(page, totalPages)
 
-  const currentPage = useMemo(() => Math.min(page, totalPages), [page, totalPages])
-
-  const pageItems = useMemo(
-    () => customers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [customers, currentPage],
-  )
-
-  const pageIds = useMemo(() => pageItems.map((c) => c.id), [pageItems])
-
-  const allPageSelected = useMemo(
-    () => pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id)),
-    [pageIds, selectedIds],
-  )
-
-  const somePageSelected = useMemo(
-    () => pageIds.some((id) => selectedIds.has(id)) && !allPageSelected,
-    [pageIds, selectedIds, allPageSelected],
-  )
+  const pageIds = useMemo(() => items.map((c) => c.id), [items])
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id))
+  const somePageSelected = pageIds.some((id) => selectedIds.has(id)) && !allPageSelected
 
   const handleSelectAllPage = useCallback(() => {
     if (allPageSelected) customerSelectionStore.removeMany(pageIds)
@@ -80,21 +90,16 @@ export function UnifiedTable({ customers }: Props) {
     customerSelectionStore.toggle(id)
   }, [])
 
-  const handleCloseDrawer = useCallback((open: boolean) => {
-    if (!open) setDrawerId(null)
-  }, [])
-
-  const handleRowClick = useCallback((id: string) => {
-    setDrawerId(id)
-  }, [])
-
-  const handlePrevPage = useCallback(() => {
-    setPage((p) => Math.max(1, p - 1))
-  }, [])
-
-  const handleNextPage = useCallback(() => {
-    setPage((p) => Math.min(totalPages, p + 1))
-  }, [totalPages])
+  const toggleSort = useCallback(
+    (field: string) => {
+      let next: string
+      if (sort === field) next = `-${field}`
+      else if (sort === `-${field}`) next = field
+      else next = field
+      onSortChange(next)
+    },
+    [sort, onSortChange],
+  )
 
   const checkboxChecked = allPageSelected ? true : somePageSelected ? 'indeterminate' : false
 
@@ -112,30 +117,68 @@ export function UnifiedTable({ customers }: Props) {
                     aria-label="Selecionar página"
                   />
                 </TableHead>
-                <TableHead>Nome</TableHead>
+                <SortableTableHead
+                  label="Nome"
+                  field="name"
+                  currentSort={sort}
+                  onToggleSort={toggleSort}
+                />
                 <TableHead>Telefone</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Origem</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Último Envio</TableHead>
-                <TableHead>Criado em</TableHead>
+                <SortableTableHead
+                  label="Origem"
+                  field="source"
+                  currentSort={sort}
+                  onToggleSort={toggleSort}
+                />
+                <SortableTableHead
+                  label="Status"
+                  field="status"
+                  currentSort={sort}
+                  onToggleSort={toggleSort}
+                />
+                <SortableTableHead
+                  label="Último Envio"
+                  field="last_sent_at"
+                  currentSort={sort}
+                  onToggleSort={toggleSort}
+                />
+                <SortableTableHead
+                  label="Criado em"
+                  field="created"
+                  currentSort={sort}
+                  onToggleSort={toggleSort}
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pageItems.length === 0 ? (
-                <TableRow key="empty-row">
+              {loading ? (
+                Array.from({ length: Math.min(perPage, 10) }).map((_, i) => (
+                  <TableRow key={`sk-${i}`}>
+                    <TableCell className="pl-4">
+                      <Skeleton className="h-5 w-5" />
+                    </TableCell>
+                    {Array.from({ length: 7 }).map((_, j) => (
+                      <TableCell key={j}>
+                        <Skeleton className="h-5 w-full" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : items.length === 0 ? (
+                <TableRow>
                   <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                     Nenhum cliente encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
-                pageItems.map((c) => {
+                items.map((c) => {
                   const isSelected = selectedIds.has(c.id)
                   return (
                     <TableRow
                       key={c.id}
                       className={isSelected ? 'bg-primary/5 cursor-pointer' : 'cursor-pointer'}
-                      onClick={() => handleRowClick(c.id)}
+                      onClick={() => setDrawerId(c.id)}
                     >
                       <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
@@ -172,34 +215,21 @@ export function UnifiedTable({ customers }: Props) {
             </TableBody>
           </Table>
         </div>
-        <div className="flex items-center justify-between border-t px-4 py-2 bg-background">
-          <span className="text-xs text-muted-foreground">
-            {customers.length} clientes • Página {currentPage} de {totalPages}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrevPage}
-              disabled={currentPage <= 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNextPage}
-              disabled={currentPage >= totalPages}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <PaginationBar
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          perPage={perPage}
+          onPageChange={setPage}
+          onPerPageChange={setPerPage}
+          disabled={loading}
+          itemName="clientes"
+        />
       </div>
       <CustomerDetailDrawer
         customerId={drawerId}
         open={!!drawerId}
-        onOpenChange={handleCloseDrawer}
+        onOpenChange={(open) => !open && setDrawerId(null)}
       />
     </>
   )

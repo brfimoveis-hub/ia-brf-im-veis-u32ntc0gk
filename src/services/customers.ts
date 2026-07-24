@@ -76,3 +76,24 @@ export const syncRemarketing = async (
     },
   })
 }
+
+export const fetchAllCustomerIds = async (filter: string): Promise<string[]> => {
+  const records = await pb.collection('customers').getFullList({ filter: filter || undefined })
+  return records.map((r) => r.id)
+}
+
+export const fetchCustomersByIds = async (ids: string[]): Promise<Customer[]> => {
+  if (ids.length === 0) return []
+  const all: Customer[] = []
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50)
+    const f = chunk.map((id) => `id = "${id}"`).join(' || ')
+    try {
+      const res = await pb.collection('customers').getList<Customer>(1, 50, { filter: f })
+      all.push(...res.items)
+    } catch (err) {
+      console.error('fetchCustomersByIds error', err)
+    }
+  }
+  return all
+}
