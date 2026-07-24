@@ -23,7 +23,9 @@ import {
   Info,
   Clock,
   XCircle,
+  HelpCircle,
 } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 const WEBHOOK_BASE = `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/meta_whatsapp_webhook`
 
@@ -41,6 +43,9 @@ export function MetaWhatsAppPanel() {
   const [testing, setTesting] = useState(false)
   const [testError, setTestError] = useState('')
   const [lastTestAt, setLastTestAt] = useState('')
+  const [phoneIdTouched, setPhoneIdTouched] = useState(false)
+  const phoneIdInvalid = !phoneId.trim() || !/^\d+$/.test(phoneId.trim())
+  const phoneIdError = phoneIdTouched && phoneIdInvalid ? 'Insira um ID numérico válido' : ''
 
   useRealtime('users', (e) => {
     if (!user?.id || e.record.id !== user.id) return
@@ -70,6 +75,15 @@ export function MetaWhatsAppPanel() {
       })
       return
     }
+    if (!/^\d+$/.test(pnId)) {
+      setPhoneIdTouched(true)
+      toast({
+        variant: 'destructive',
+        title: 'Phone Number ID inválido',
+        description: 'O ID deve conter apenas dígitos numéricos.',
+      })
+      return
+    }
     setTesting(true)
     setTestError('')
     try {
@@ -84,7 +98,8 @@ export function MetaWhatsAppPanel() {
       const testedAt = res?.tested_at || new Date().toISOString()
       setLastTestAt(testedAt)
       if (res?.success === false) {
-        const errMsg = res?.error || 'Falha ao testar conexão WhatsApp'
+        const errMsg =
+          res?.error || 'Falha ao validar a conexão. Verifique o Phone Number ID e o Access Token.'
         setTokenStatus('error')
         setDisplayNumber('')
         setTestError(errMsg)
@@ -105,7 +120,9 @@ export function MetaWhatsAppPanel() {
       setLastTestAt(new Date().toISOString())
       setTokenStatus('error')
       setDisplayNumber('')
-      const errMsg = err?.message || 'Erro ao testar conexão'
+      const errMsg =
+        err?.message ||
+        'Falha ao testar a conexão WhatsApp. Verifique as credenciais e tente novamente.'
       setTestError(errMsg)
       toast({
         variant: 'destructive',
@@ -119,6 +136,15 @@ export function MetaWhatsAppPanel() {
 
   const handleSave = async () => {
     if (!user) return
+    if (phoneIdInvalid) {
+      setPhoneIdTouched(true)
+      toast({
+        variant: 'destructive',
+        title: 'Phone Number ID inválido',
+        description: 'Corrija o ID antes de salvar.',
+      })
+      return
+    }
     setSaving(true)
     try {
       const updated = await pb.collection('users').update(user.id, {
@@ -229,14 +255,64 @@ export function MetaWhatsAppPanel() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label>
-                ID do Número de Telefone <span className="text-destructive">*</span>
-              </Label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Label>
+                  ID do Número de Telefone <span className="text-destructive">*</span>
+                </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <HelpCircle className="h-3.5 w-3.5" />
+                      Como encontrar meu Phone Number ID?
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Como encontrar seu Phone Number ID:</p>
+                      <ol className="text-xs space-y-1.5 list-decimal list-inside text-muted-foreground">
+                        <li>
+                          Acesse o{' '}
+                          <a
+                            href="https://developers.facebook.com"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            Meta Developer Portal
+                          </a>
+                          .
+                        </li>
+                        <li>Selecione seu aplicativo.</li>
+                        <li>
+                          No menu esquerdo, vá em <strong>WhatsApp &gt; API Setup</strong>.
+                        </li>
+                        <li>
+                          Na seção <strong>Phone Number ID</strong>, copie o número exibido (apenas
+                          dígitos).
+                        </li>
+                        <li>Cole este número no campo correspondente na tela de conexões.</li>
+                      </ol>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
               <Input
                 value={phoneId}
-                onChange={(e) => setPhoneId(e.target.value)}
+                onChange={(e) => {
+                  setPhoneId(e.target.value)
+                  setPhoneIdTouched(true)
+                }}
+                onBlur={() => setPhoneIdTouched(true)}
                 placeholder="Ex: 1122334455"
+                aria-invalid={!!phoneIdError}
+                className={phoneIdError ? 'border-red-500 focus-visible:ring-red-500' : ''}
               />
+              {phoneIdError && (
+                <p className="text-xs text-red-500 animate-fade-in">{phoneIdError}</p>
+              )}
               <p className="text-xs text-muted-foreground flex items-start gap-1">
                 <Info className="h-3 w-3 mt-0.5 shrink-0" />
                 Encontre em: Meta Developer Portal &gt; WhatsApp &gt; API Setup &gt; "Phone Number
@@ -286,7 +362,7 @@ export function MetaWhatsAppPanel() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
-            <Button onClick={handleSave} disabled={saving || testing}>
+            <Button onClick={handleSave} disabled={saving || testing || phoneIdInvalid}>
               {saving ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -294,7 +370,11 @@ export function MetaWhatsAppPanel() {
               )}
               Salvar Credenciais
             </Button>
-            <Button onClick={handleTest} disabled={saving || testing} variant="outline">
+            <Button
+              onClick={handleTest}
+              disabled={saving || testing || phoneIdInvalid}
+              variant="outline"
+            >
               {testing ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (

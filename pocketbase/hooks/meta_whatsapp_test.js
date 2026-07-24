@@ -23,6 +23,46 @@ routerAdd(
       )
     }
 
+    if (!/^\d+$/.test(phone_number_id.trim())) {
+      const formatTestedAt = new Date().toISOString()
+      try {
+        const fmtCol = $app.findCollectionByNameOrId('system_logs')
+        const fmtLog = new Record(fmtCol)
+        fmtLog.set('type', 'whatsapp_test_error')
+        fmtLog.set('message', 'Phone Number ID inválido: formato não numérico')
+        fmtLog.set('details', {
+          phone_number_id: phone_number_id,
+          tested_at: formatTestedAt,
+          reason: 'non_numeric_format',
+        })
+        fmtLog.set('payload', { phone_number_id: phone_number_id })
+        $app.save(fmtLog)
+      } catch (_) {}
+      if (userRecord) {
+        userRecord.set('meta_token_status', 'error')
+        userRecord.set('meta_whatsapp_status', '')
+        try {
+          $app.saveNoValidate(userRecord)
+        } catch (_) {}
+      }
+      $app
+        .logger()
+        .error(
+          'WhatsApp test failed: invalid Phone Number ID format',
+          'user_id',
+          e.auth.id,
+          'phone_number_id',
+          phone_number_id,
+        )
+      return e.json(200, {
+        success: false,
+        error:
+          'Phone Number ID inválido. Verifique o ID no Meta Developer Portal em WhatsApp > API Setup.',
+        error_code: 'invalid_format',
+        tested_at: formatTestedAt,
+      })
+    }
+
     const tokenPrefix = access_token.length > 12 ? access_token.substring(0, 12) + '...' : '***'
     const testedAt = new Date().toISOString()
 
@@ -30,7 +70,7 @@ routerAdd(
       try {
         const col = $app.findCollectionByNameOrId('system_logs')
         const log = new Record(col)
-        log.set('type', 'whatsapp_test_failure')
+        log.set('type', 'whatsapp_test_error')
         log.set('message', String(message || 'unknown error'))
         log.set('details', {
           phone_number_id: phone_number_id,
@@ -127,7 +167,10 @@ routerAdd(
         metaError = { message: 'Non-JSON response from Meta API' }
       }
       var errorMsg =
-        metaError.message || 'Failed to connect to Meta WhatsApp API (HTTP ' + res.statusCode + ')'
+        metaError.message ||
+        'Falha na API do WhatsApp (HTTP ' +
+          res.statusCode +
+          '). Verifique o Phone Number ID e o Access Token.'
       var errorCode = metaError.code || 0
       var errorSubcode = metaError.error_subcode || 0
 
@@ -136,10 +179,10 @@ routerAdd(
           'Token expirado ou inválido. Gere um novo token de acesso permanente no Meta Developer Portal.'
       } else if (errorCode === 100 && errorSubcode === 33) {
         errorMsg =
-          'Phone Number ID inválido. Verifique o ID no Meta Developer Portal > WhatsApp > API Setup.'
+          'Phone Number ID inválido. Verifique o ID no Meta Developer Portal em WhatsApp > API Setup.'
       } else if (errorMsg.indexOf('Unsupported get request') !== -1) {
         errorMsg =
-          'Phone Number ID inválido ou sem permissão. Verifique se o ID está correto e se o token tem as permissões necessárias.'
+          'Phone Number ID inválido. Verifique o ID no Meta Developer Portal em WhatsApp > API Setup.'
       } else if (errorMsg.indexOf('Permission') !== -1 || errorMsg.indexOf('permission') !== -1) {
         errorMsg =
           'Permissões insuficientes no token. Garanta que o token tenha acesso ao WhatsApp Business Account.'
@@ -176,7 +219,10 @@ routerAdd(
         tested_at: testedAt,
       })
     } catch (err) {
-      var transportError = 'Erro de conexão com a Meta API: ' + (err.message || 'unknown')
+      var transportError =
+        'Falha de comunicação com a Meta API (erro de rede): ' +
+        (err.message || 'unknown') +
+        '. Verifique sua conexão e tente novamente.'
       setStatus('error', '')
       logFailure(transportError, {
         error: err.message || 'unknown',
