@@ -45,7 +45,7 @@ export function MetaWhatsAppPanel() {
   const [lastTestAt, setLastTestAt] = useState('')
   const [phoneIdTouched, setPhoneIdTouched] = useState(false)
   const phoneIdInvalid = !phoneId.trim() || !/^\d+$/.test(phoneId.trim())
-  const phoneIdError = phoneIdTouched && phoneIdInvalid ? 'Insira um ID numérico válido' : ''
+  const phoneIdError = phoneIdInvalid ? 'O Phone Number ID deve conter apenas números.' : ''
 
   useRealtime('users', (e) => {
     if (!user?.id || e.record.id !== user.id) return
@@ -273,27 +273,14 @@ export function MetaWhatsAppPanel() {
                     <div className="space-y-2">
                       <p className="text-sm font-medium">Como encontrar seu Phone Number ID:</p>
                       <ol className="text-xs space-y-1.5 list-decimal list-inside text-muted-foreground">
+                        <li>Acesse o Meta Developer Portal.</li>
                         <li>
-                          Acesse o{' '}
-                          <a
-                            href="https://developers.facebook.com"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline"
-                          >
-                            Meta Developer Portal
-                          </a>
-                          .
-                        </li>
-                        <li>Selecione seu aplicativo.</li>
-                        <li>
-                          No menu esquerdo, vá em <strong>WhatsApp &gt; API Setup</strong>.
+                          Vá para seu aplicativo → <strong>WhatsApp → API Setup</strong>.
                         </li>
                         <li>
-                          Na seção <strong>Phone Number ID</strong>, copie o número exibido (apenas
-                          dígitos).
+                          Copie o número exato listado em <strong>'Phone Number ID'</strong>.
                         </li>
-                        <li>Cole este número no campo correspondente na tela de conexões.</li>
+                        <li>Cole o número (somente dígitos) no campo acima.</li>
                       </ol>
                     </div>
                   </PopoverContent>
@@ -302,11 +289,12 @@ export function MetaWhatsAppPanel() {
               <Input
                 value={phoneId}
                 onChange={(e) => {
-                  setPhoneId(e.target.value)
+                  setPhoneId(e.target.value.replace(/\D/g, ''))
                   setPhoneIdTouched(true)
                 }}
                 onBlur={() => setPhoneIdTouched(true)}
                 placeholder="Ex: 1122334455"
+                inputMode="numeric"
                 aria-invalid={!!phoneIdError}
                 className={phoneIdError ? 'border-red-500 focus-visible:ring-red-500' : ''}
               />

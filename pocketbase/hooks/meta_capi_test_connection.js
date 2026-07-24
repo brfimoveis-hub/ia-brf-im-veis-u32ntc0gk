@@ -174,7 +174,6 @@ routerAdd(
           userRecord.set('meta_whatsapp_business_id', businessId)
           userRecord.set('meta_whatsapp_status', 'active')
         }
-        userRecord.set('meta_token_status', 'valid')
         userRecord.set('meta_capi_status', 'connected')
         userRecord.set('meta_capi_error', '')
         try {

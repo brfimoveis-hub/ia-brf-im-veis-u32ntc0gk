@@ -28,8 +28,8 @@ routerAdd(
       try {
         const fmtCol = $app.findCollectionByNameOrId('system_logs')
         const fmtLog = new Record(fmtCol)
-        fmtLog.set('type', 'whatsapp_test_error')
-        fmtLog.set('message', 'Phone Number ID inválido: formato não numérico')
+        fmtLog.set('type', 'whatsapp_test')
+        fmtLog.set('message', 'failure')
         fmtLog.set('details', {
           phone_number_id: phone_number_id,
           tested_at: formatTestedAt,
@@ -70,9 +70,10 @@ routerAdd(
       try {
         const col = $app.findCollectionByNameOrId('system_logs')
         const log = new Record(col)
-        log.set('type', 'whatsapp_test_error')
-        log.set('message', String(message || 'unknown error'))
+        log.set('type', 'whatsapp_test')
+        log.set('message', 'failure')
         log.set('details', {
+          error_message: String(message || 'unknown error'),
           phone_number_id: phone_number_id,
           business_id: business_id || '',
           token_prefix: tokenPrefix,
@@ -92,9 +93,14 @@ routerAdd(
       try {
         const col = $app.findCollectionByNameOrId('system_logs')
         const log = new Record(col)
-        log.set('type', 'whatsapp_test_success')
-        log.set('message', message)
+        log.set('type', 'whatsapp_test')
+        log.set('message', 'success')
         log.set('details', details)
+        log.set('payload', {
+          phone_number_id: phone_number_id,
+          business_id: business_id || '',
+          token_prefix: tokenPrefix,
+        })
         $app.save(log)
       } catch (_) {}
     }

@@ -20,7 +20,7 @@ export const getMetaLogs = async () => {
   return pb.collection('system_logs').getList<SystemLog>(1, 5, {
     sort: '-created',
     filter:
-      "type ~ 'meta' || type ~ 'webhook' || type ~ 'capi' || type ~ 'connection' || type ~ 'api_integration'",
+      "type ~ 'meta' || type ~ 'webhook' || type ~ 'capi' || type ~ 'connection' || type ~ 'api_integration' || type ~ 'whatsapp'",
   })
 }
 
