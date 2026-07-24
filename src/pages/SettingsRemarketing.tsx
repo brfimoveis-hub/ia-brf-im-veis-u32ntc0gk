@@ -22,6 +22,7 @@ import { RemarketingStatusBanner } from '@/components/remarketing/RemarketingSta
 import { RemarketingCustomerTable } from '@/components/remarketing/RemarketingCustomerTable'
 import { SyncProgressTracker } from '@/components/remarketing/SyncProgressTracker'
 import { RemarketingLogsCard } from '@/components/remarketing/RemarketingLogsCard'
+import { WhatsAppIdentityCard } from '@/components/remarketing/WhatsAppIdentityCard'
 
 export default function SettingsRemarketing() {
   const { user } = useAuth()
@@ -107,6 +108,11 @@ export default function SettingsRemarketing() {
         tokenStatus={currentUser?.meta_token_status || ''}
         capiStatus={currentUser?.meta_capi_status || ''}
         appId={currentUser?.meta_app_id || ''}
+      />
+
+      <WhatsAppIdentityCard
+        tokenStatus={currentUser?.meta_token_status || ''}
+        displayNumber={currentUser?.meta_whatsapp_status || ''}
       />
 
       {!hasCredentials && (

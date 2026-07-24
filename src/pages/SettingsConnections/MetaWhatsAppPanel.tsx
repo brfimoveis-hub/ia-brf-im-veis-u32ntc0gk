@@ -3,15 +3,17 @@ import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
+import { formatDisplayPhone } from '@/lib/meta-format'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { MetaSetupGuide } from './MetaSetupGuide'
 import { StatusTrafficLight } from './StatusTrafficLight'
 import { MaskedInput } from './MaskedInput'
-import { Loader2, MessageCircle, CheckCircle2, AlertCircle, Copy } from 'lucide-react'
+import { Loader2, MessageCircle, CheckCircle2, AlertCircle, Copy, Phone, Info } from 'lucide-react'
 
 const WEBHOOK_BASE = `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/meta_whatsapp_webhook`
 
@@ -24,15 +26,19 @@ export function MetaWhatsAppPanel() {
   const [businessId, setBusinessId] = useState(user?.meta_whatsapp_business_id || '')
   const [verifyToken, setVerifyToken] = useState(user?.meta_whatsapp_verify_token || '')
   const [tokenStatus, setTokenStatus] = useState(user?.meta_token_status || '')
+  const [displayNumber, setDisplayNumber] = useState(user?.meta_whatsapp_status || '')
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
 
   useRealtime('users', (e) => {
     if (!user?.id || e.record.id !== user.id) return
     setTokenStatus(e.record.meta_token_status || '')
+    setDisplayNumber(e.record.meta_whatsapp_status || '')
   })
 
   const webhookUrl = user?.id ? `${WEBHOOK_BASE}?user_id=${user.id}` : WEBHOOK_BASE
+  const isActive = tokenStatus === 'active'
+  const formattedNumber = formatDisplayPhone(displayNumber)
 
   const copy = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
@@ -70,7 +76,7 @@ export function MetaWhatsAppPanel() {
     }
     setTesting(true)
     try {
-      await pb.send('/backend/v1/meta_whatsapp_test', {
+      const res: any = await pb.send('/backend/v1/meta_whatsapp_test', {
         method: 'POST',
         body: {
           phone_number_id: phoneId.trim(),
@@ -79,9 +85,13 @@ export function MetaWhatsAppPanel() {
         },
       })
       setTokenStatus('active')
+      if (res?.display_phone_number) {
+        setDisplayNumber(res.display_phone_number)
+      }
       toast({ title: 'Conexão validada', description: 'Meta WhatsApp API está funcionando.' })
     } catch (err: any) {
       setTokenStatus('error')
+      setDisplayNumber('')
       toast({
         variant: 'destructive',
         title: 'Falha na conexão',
@@ -113,10 +123,25 @@ export function MetaWhatsAppPanel() {
           </div>
           <CardDescription>
             Configure a API do WhatsApp Cloud para envio e recebimento de mensagens integrado ao
-            CRM.
+            CRM. Número alvo: <strong>4448992098050</strong> (exibição +55 48 99209-8050).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 pt-6">
+          {isActive && formattedNumber && (
+            <Alert className="border-green-500/50 bg-green-500/10 animate-fade-in">
+              <Phone className="h-4 w-4 text-green-600" />
+              <AlertTitle className="text-green-700">Número WhatsApp Ativo</AlertTitle>
+              <AlertDescription className="text-green-700">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm">Número verificado conectado:</span>
+                  <Badge variant="secondary" className="font-mono text-sm">
+                    {formattedNumber}
+                  </Badge>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
           <Alert className="border-blue-500/50 bg-blue-500/10">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertTitle className="text-blue-700">URL do Webhook (Callback URL)</AlertTitle>
@@ -150,6 +175,11 @@ export function MetaWhatsAppPanel() {
                 onChange={(e) => setPhoneId(e.target.value)}
                 placeholder="Ex: 1122334455"
               />
+              <p className="text-xs text-muted-foreground flex items-start gap-1">
+                <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                Encontre em: Meta Developer Portal &gt; WhatsApp &gt; API Setup &gt; "Phone Number
+                ID". Este ID vincula o número 4448992098050 à sua integração.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>ID da Conta Business</Label>
@@ -158,6 +188,10 @@ export function MetaWhatsAppPanel() {
                 onChange={(e) => setBusinessId(e.target.value.replace(/\D/g, ''))}
                 placeholder="Ex: 9876543210"
               />
+              <p className="text-xs text-muted-foreground flex items-start gap-1">
+                <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                Encontre em: WhatsApp &gt; API Setup &gt; "WhatsApp Business Account ID".
+              </p>
             </div>
             <MaskedInput
               id="wa_access_token"
@@ -175,6 +209,18 @@ export function MetaWhatsAppPanel() {
               placeholder="MeuTokenDeVerificacao"
               required
             />
+          </div>
+
+          <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground flex items-start gap-2">
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-foreground mb-1">Onde encontrar o Access Token:</p>
+              <p>
+                No Meta Developer Portal, vá em WhatsApp &gt; API Setup &gt; "Permanent access
+                token" (gere um token de sistema no Business Manager se necessário). O token começa
+                com "EAA...".
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">

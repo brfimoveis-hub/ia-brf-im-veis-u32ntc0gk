@@ -25,9 +25,12 @@ routerAdd(
       } catch (_) {}
     }
 
-    const setStatus = (status) => {
+    const setStatus = (tokenStatus, whatsappStatus) => {
       if (!userRecord) return
-      userRecord.set('meta_token_status', status)
+      userRecord.set('meta_token_status', tokenStatus)
+      if (whatsappStatus !== undefined) {
+        userRecord.set('meta_whatsapp_status', whatsappStatus)
+      }
       try {
         $app.saveNoValidate(userRecord)
       } catch (_) {}
@@ -45,22 +48,31 @@ routerAdd(
       })
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        setStatus('active')
-        logResult('WhatsApp connection test successful', { phone_number_id, business_id })
-        return e.json(200, { success: true, data: res.json })
+        const displayNumber = (res.json && res.json.display_phone_number) || ''
+        setStatus('active', displayNumber)
+        logResult('WhatsApp connection test successful', {
+          phone_number_id,
+          business_id,
+          display_number: displayNumber,
+        })
+        return e.json(200, {
+          success: true,
+          data: res.json,
+          display_phone_number: displayNumber,
+        })
       }
 
       const errorMsg =
         (res.json && res.json.error && res.json.error.message) ||
         'Failed to connect to Meta WhatsApp API'
-      setStatus('error')
+      setStatus('error', '')
       logResult('WhatsApp connection test failed: ' + errorMsg, {
         phone_number_id,
         statusCode: res.statusCode,
       })
       return e.json(res.statusCode || 400, { success: false, message: errorMsg })
     } catch (err) {
-      setStatus('error')
+      setStatus('error', '')
       logResult('Transport error: ' + (err.message || 'unknown'), { phone_number_id })
       return e.json(500, { success: false, message: 'Erro de conexão com a Meta API' })
     }
