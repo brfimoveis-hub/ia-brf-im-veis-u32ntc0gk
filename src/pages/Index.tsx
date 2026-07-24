@@ -1,8 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import type { ComponentType, ReactNode } from 'react'
-import { useAuth } from '@/hooks/use-auth'
-import { useRealtime } from '@/hooks/use-realtime'
-import pb from '@/lib/pocketbase/client'
+import { useDashboardData } from '@/hooks/use-dashboard-data'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -48,13 +46,18 @@ function StatCard({
   )
 }
 
-function FallbackCard() {
+function ErrorCard({ onRetry }: { onRetry: () => void }) {
   return (
     <Card>
       <CardContent className="pt-6">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>Dados indisponíveis no momento.</span>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>Falha ao carregar dados. Tente novamente.</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RefreshCw className="mr-2 h-3 w-3" /> Tentar novamente
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -62,97 +65,21 @@ function FallbackCard() {
 }
 
 export default function Dashboard() {
-  const { user } = useAuth()
-  const [stats, setStats] = useState({ leads: 0, customers: 0, cadences: 0 })
-  const [email, setEmail] = useState({ sent: 0, opens: 0, clicks: 0, openRate: 0, clickRate: 0 })
-  const [loading, setLoading] = useState(true)
-  const [meta, setMeta] = useState({ status: 'disconnected', error: '', pixelId: '' })
+  const { stats, email, meta, loading, errors, retry } = useDashboardData()
   const [retrying, setRetrying] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const loadStats = useCallback(async () => {
-    try {
-      const [leadsRes, customersRes, cadencesRes, campaigns] = await Promise.all([
-        pb.collection('leads').getList(1, 1, { filter: "status != 'converted'" }),
-        pb.collection('customers').getList(1, 1),
-        pb.collection('cadences').getList(1, 1, { filter: 'is_active = true' }),
-        pb.collection('email_campaigns').getFullList(),
-      ])
-      setStats({
-        leads: leadsRes.totalItems,
-        customers: customersRes.totalItems,
-        cadences: cadencesRes.totalItems,
-      })
-      const sent = campaigns.reduce((s: number, c: any) => s + (c.success_count || 0), 0)
-      const opens = campaigns.reduce((s: number, c: any) => s + (c.unique_opens || 0), 0)
-      const clicks = campaigns.reduce((s: number, c: any) => s + (c.unique_clicks || 0), 0)
-      setEmail({
-        sent,
-        opens,
-        clicks,
-        openRate: sent > 0 ? Math.round((opens / sent) * 100) : 0,
-        clickRate: opens > 0 ? Math.round((clicks / opens) * 100) : 0,
-      })
-    } catch (err) {
-      console.error('Failed to load stats:', err)
-    }
-  }, [])
-
-  const refreshMeta = useCallback(async () => {
-    if (!user) return
-    try {
-      const usr = await pb.collection('users').getOne(user.id)
-      setMeta({
-        status: usr.meta_capi_status || 'disconnected',
-        error: usr.meta_capi_error || '',
-        pixelId: usr.meta_pixel_id || '',
-      })
-    } catch (err) {
-      console.error('Failed to refresh user:', err)
-    }
-  }, [user])
-
-  useEffect(() => {
-    let mounted = true
-    const init = async () => {
-      await Promise.all([loadStats(), refreshMeta()])
-      if (mounted) setLoading(false)
-    }
-    init()
-    return () => {
-      mounted = false
-    }
-  }, [loadStats, refreshMeta])
-
-  const debouncedRefresh = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => loadStats(), 300)
-  }, [loadStats])
-
-  useRealtime('users', () => refreshMeta())
-  useRealtime('customers', debouncedRefresh)
-  useRealtime('leads', debouncedRefresh)
-  useRealtime('email_campaigns', debouncedRefresh)
-
-  useEffect(
-    () => () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    },
-    [],
-  )
+  const dash = loading ? '—' : null
 
   const handleRetry = useCallback(async () => {
     setRetrying(true)
-    toast.info('Re-validando conexões...')
+    toast.info('Re-validando dados...')
     try {
-      await Promise.all([refreshMeta(), loadStats()])
+      await retry()
     } finally {
       setRetrying(false)
     }
-  }, [refreshMeta, loadStats])
+  }, [retry])
 
   const connected = ['connected', 'active', 'valid'].includes(meta.status)
-  const dash = loading ? '—' : null
 
   return (
     <div className="space-y-6">
@@ -163,36 +90,40 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <ErrorBoundary key="stats-grid" fallback={<FallbackCard />}>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            title="Novos Leads"
-            icon={Users}
-            value={dash ?? stats.leads}
-            subtitle="Aguardando conversão"
-          />
-          <StatCard
-            title="Clientes no Pipeline"
-            icon={Layers}
-            value={dash ?? stats.customers}
-            subtitle="Oportunidades ativas"
-          />
-          <StatCard
-            title="Cadências Ativas"
-            icon={Target}
-            value={dash ?? stats.cadences}
-            subtitle="Follow-ups ativos"
-          />
-          <StatCard
-            title="Atividade da BIA"
-            icon={Bot}
-            value="Ativa"
-            subtitle="Monitorando interações"
-          />
-        </div>
+      <ErrorBoundary key="stats-grid" fallback={<ErrorCard onRetry={handleRetry} />}>
+        {errors.all ? (
+          <ErrorCard onRetry={handleRetry} />
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Novos Leads"
+              icon={Users}
+              value={dash ?? stats.leads}
+              subtitle="Aguardando conversão"
+            />
+            <StatCard
+              title="Clientes no Pipeline"
+              icon={Layers}
+              value={dash ?? stats.customers}
+              subtitle="Oportunidades ativas"
+            />
+            <StatCard
+              title="Cadências Ativas"
+              icon={Target}
+              value={dash ?? stats.cadences}
+              subtitle="Follow-ups ativos"
+            />
+            <StatCard
+              title="Atividade da BIA"
+              icon={Bot}
+              value="Ativa"
+              subtitle="Monitorando interações"
+            />
+          </div>
+        )}
       </ErrorBoundary>
 
-      <ErrorBoundary key="email-grid" fallback={<FallbackCard />}>
+      <ErrorBoundary key="email-grid" fallback={<ErrorCard onRetry={handleRetry} />}>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Emails Enviados"
