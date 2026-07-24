@@ -14,6 +14,7 @@ import { formatPhone } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import pb from '@/lib/pocketbase/client'
+import { toast } from 'sonner'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 import { CustomerDetailDrawer } from './CustomerDetailDrawer'
 import { PaginationBar } from './PaginationBar'
@@ -48,12 +49,22 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const selectedIds = useCustomerSelection()
   const requestIdRef = useRef(0)
+  const prevDepsRef = useRef({ filter, sort, perPage })
 
   useEffect(() => {
-    setPage(1)
-  }, [filter, sort, perPage])
+    const depsChanged =
+      prevDepsRef.current.filter !== filter ||
+      prevDepsRef.current.sort !== sort ||
+      prevDepsRef.current.perPage !== perPage
 
-  useEffect(() => {
+    if (depsChanged) {
+      prevDepsRef.current = { filter, sort, perPage }
+      if (page !== 1) {
+        setPage(1)
+        return
+      }
+    }
+
     const rid = ++requestIdRef.current
     setLoading(true)
     ;(async () => {
@@ -65,9 +76,15 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
         if (rid !== requestIdRef.current) return
         setItems(result.items)
         setTotalItems(result.totalItems)
-      } catch (err) {
-        console.error(err)
-        if (rid === requestIdRef.current) setItems([])
+      } catch (err: any) {
+        console.error('UnifiedTable fetch error:', err)
+        if (rid === requestIdRef.current) {
+          setItems([])
+          setTotalItems(0)
+          toast.error('Erro ao buscar clientes', {
+            description: err?.message || 'Verifique os filtros e tente novamente.',
+          })
+        }
       } finally {
         if (rid === requestIdRef.current) setLoading(false)
       }

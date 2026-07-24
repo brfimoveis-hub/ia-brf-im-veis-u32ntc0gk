@@ -25,7 +25,7 @@ export interface CustomerFilterState {
 }
 
 export function escapeFilterValue(v: string): string {
-  return v.replace(/"/g, '\\"')
+  return v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
 export function buildBaseFilter(filters: CustomerFilterState): string {

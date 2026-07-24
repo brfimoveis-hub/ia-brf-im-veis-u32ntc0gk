@@ -6,6 +6,7 @@ import { formatPhone } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import pb from '@/lib/pocketbase/client'
+import { toast } from 'sonner'
 import { buildStageFilter, combineFilters } from '@/lib/customer-filters'
 
 const PER_PAGE = 50
@@ -76,12 +77,15 @@ export function KanbanColumn({
         pageRef.current = 2
         setHasMore(result.items.length === PER_PAGE)
         hasMoreRef.current = result.items.length === PER_PAGE
-      } catch (err) {
+      } catch (err: any) {
         console.error('Kanban load error', err)
         if (!cancelled) {
           setItems([])
           setHasMore(false)
           hasMoreRef.current = false
+          toast.error('Erro ao carregar coluna do pipeline', {
+            description: err?.message || 'Tente novamente.',
+          })
         }
       } finally {
         if (!cancelled) {
@@ -113,8 +117,11 @@ export function KanbanColumn({
       pageRef.current += 1
       setHasMore(result.items.length === PER_PAGE)
       hasMoreRef.current = result.items.length === PER_PAGE
-    } catch (err) {
+    } catch (err: any) {
       console.error('Kanban load more error', err)
+      toast.error('Erro ao carregar mais clientes', {
+        description: err?.message || 'Tente novamente.',
+      })
     } finally {
       setLoading(false)
       loadingRef.current = false
