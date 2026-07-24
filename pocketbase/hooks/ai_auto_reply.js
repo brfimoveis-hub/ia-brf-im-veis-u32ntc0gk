@@ -131,7 +131,7 @@ onRecordAfterCreateSuccess((e) => {
     const customerSource = customer.getString('source') || ''
 
     let receiverPhone = ''
-    const sourceMatch = customerSource.match(/(?:Uazapi|Meta)\s*-\s*(\d+)/)
+    const sourceMatch = customerSource.match(/Meta\s*-\s*(\d+)/)
     if (sourceMatch) {
       receiverPhone = sourceMatch[1]
     } else if (customerPhone.includes('48992098050') || customerSource.includes('48992098050')) {
