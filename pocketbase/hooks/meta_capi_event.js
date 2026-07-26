@@ -2,7 +2,34 @@ onRecordAfterUpdateSuccess((e) => {
   const newStatus = e.record.getString('status')
   const oldStatus = e.record.original().getString('status')
 
-  if (newStatus && newStatus !== oldStatus) {
+  const PHASE_EVENT_MAP = {
+    Novo: 'Lead',
+    Qualificação: 'Contact',
+    Engajamento: 'Engage',
+    'Demo Realiz.': 'Schedule',
+    Visita: 'Submit',
+    Fechamento: 'Purchase',
+  }
+
+  const ALIAS_TO_PHASE = {
+    lead: 'Novo',
+    'Lead Novo': 'Novo',
+    '': 'Novo',
+    contact: 'Engajamento',
+    closed: 'Fechamento',
+  }
+
+  const resolvePhase = (status) => {
+    if (PHASE_EVENT_MAP[status]) return status
+    if (ALIAS_TO_PHASE[status]) return ALIAS_TO_PHASE[status]
+    return null
+  }
+
+  const newPhase = PHASE_EVENT_MAP[newStatus] ? newStatus : null
+  const oldPhase = resolvePhase(oldStatus)
+
+  if (newPhase && newPhase !== oldPhase) {
+    const eventName = PHASE_EVENT_MAP[newPhase]
     const userId = e.record.getString('user_id')
 
     let testCode = $secrets.get('META_TEST_EVENT_CODE')
@@ -111,7 +138,7 @@ onRecordAfterUpdateSuccess((e) => {
     const payload = {
       data: [
         {
-          event_name: newStatus,
+          event_name: eventName,
           event_time: Math.floor(Date.now() / 1000),
           action_source: 'website',
           event_source_url: user
