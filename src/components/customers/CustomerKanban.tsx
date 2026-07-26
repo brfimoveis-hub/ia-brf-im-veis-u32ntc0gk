@@ -58,17 +58,12 @@ export function CustomerKanban({
   return (
     <div className="flex h-full gap-4 overflow-x-auto pb-4 items-start">
       {PHASES.map((phase) => {
-        const columnLeads = leads.filter(
-          (l) =>
-            l.status === phase.title ||
-            (l.status === '' && phase.title === 'Base de Clientes/Novo LYD') ||
-            (l.status === 'Lead Novo' && phase.title === 'Base de Clientes/Novo LYD'),
-        )
+        const columnLeads = leads.filter((l) => phase.aliases.includes(l.status || ''))
         return (
           <div
             key={phase.id}
             className="flex flex-col min-w-[320px] max-w-[320px] bg-muted/40 rounded-xl p-3 shrink-0 h-full border"
-            onDrop={(e) => handleDrop(e, phase.title)}
+            onDrop={(e) => handleDrop(e, phase.id)}
             onDragOver={handleDragOver}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
@@ -79,7 +74,7 @@ export function CustomerKanban({
                 {phase.title}
               </h3>
               <div className="flex items-center gap-2">
-                {phase.title === 'Base de Clientes/Novo LYD' && (
+                {phase.id === 'Novo' && (
                   <>
                     <Button
                       variant="ghost"
@@ -118,7 +113,8 @@ export function CustomerKanban({
                 >
                   <div className="flex items-start gap-3 relative">
                     {(lead.status === 'Lead Novo' ||
-                      lead.status === 'Base de Clientes/Novo LYD' ||
+                      lead.status === 'Novo' ||
+                      lead.status === 'lead' ||
                       lead.status === '') && (
                       <span
                         className="absolute -top-1 -right-1 flex h-3 w-3 z-10"
