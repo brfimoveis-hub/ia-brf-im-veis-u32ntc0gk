@@ -14,7 +14,7 @@ export const MetaPixel = () => {
   const { user } = useAuth()
 
   useEffect(() => {
-    // Falls back to the required pixel if not set
+    // Falls back to the active "Pixel BRF IMÓVEIS" if not set
     const pixelId = user?.meta_pixel_id || '1093869151209421'
 
     if (!pixelId) return

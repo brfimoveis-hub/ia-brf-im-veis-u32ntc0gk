@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { StatusTrafficLight } from './StatusTrafficLight'
 import { MaskedInput } from './MaskedInput'
-import { Loader2, TrendingUp, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Loader2, TrendingUp, CheckCircle2, AlertCircle, Info } from 'lucide-react'
 
 export function CapiPanel() {
   const { user } = useAuth()
@@ -154,6 +154,18 @@ export function CapiPanel() {
           Configure a Conversions API para rastreamento de eventos de conversão e integração com o
           Pixel.
         </CardDescription>
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-blue-500/50 bg-blue-500/10 p-3 animate-fade-in">
+          <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+          <div className="text-sm text-blue-700">
+            <p className="font-medium">Limpeza de datasets antigos no Meta Business Suite</p>
+            <p className="text-blue-600 mt-1">
+              Os datasets antigos <strong>“Brfimóveis Eireli Me”</strong> e{' '}
+              <strong>“brfimoveis Eireli Me”</strong> não são mais usados pelo sistema e podem ser
+              arquivados/excluídos manualmente no Meta Business Suite (Events Manager → Data
+              Sources) para evitar confusão. Esta limpeza não é automatizada.
+            </p>
+          </div>
+        </div>
         {isError && capiError && (
           <div className="mt-3 flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3 animate-fade-in">
             <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
