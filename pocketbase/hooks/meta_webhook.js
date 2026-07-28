@@ -67,7 +67,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer.set('user_id', globalUserId)
               customer.set('name', contactName)
               customer.set('phone', phone)
-              customer.set('status', 'Base de Clientes/Novo LYD')
+              customer.set('status', 'Novo')
               customer.set('source', 'Meta')
               customer.set(
                 'notes',
@@ -111,7 +111,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               customer = new Record(customersCol)
               customer.set('user_id', targetUserId)
               customer.set('name', contactName)
-              customer.set('status', 'Lead Novo')
+              customer.set('status', 'Novo')
               customer.set('source', 'Meta')
               customer.set('notes', `IG Sender ID: ${senderId}\nOrigin: Meta Instagram`)
               $app.save(customer)
@@ -232,7 +232,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     customer.set('name', contactName)
                     customer.set('phone', phone.replace(/\D/g, ''))
 
-                    let initialStatus = 'Base de Clientes/Novo LYD'
+                    let initialStatus = 'Novo'
                     try {
                       const activeCadences = $app.findRecordsByFilter(
                         'cadences',
