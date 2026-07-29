@@ -19,7 +19,7 @@ migrate(
       }
     } catch (_) {}
 
-    col.removeField('tags')
+    col.fields.removeByName('tags')
     col.fields.add(new JSONField({ name: 'tags' }))
     app.save(col)
 
@@ -75,7 +75,7 @@ migrate(
     try {
       const col = app.findCollectionByNameOrId('customers')
       if (col.fields.getByName('tags')) {
-        col.removeField('tags')
+        col.fields.removeByName('tags')
       }
       col.fields.add(new TextField({ name: 'tags' }))
       app.save(col)

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-29T19:08:39.172Z",
+  "generatedAt": "2026-07-29T19:16:03.837Z",
   "collections": [
     {
       "name": "users",
@@ -353,12 +353,6 @@
           "system": false
         },
         {
-          "name": "tags",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
           "name": "is_blocked",
           "type": "bool",
           "required": false,
@@ -367,6 +361,12 @@
         {
           "name": "phase",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tags",
+          "type": "json",
           "required": false,
           "system": false
         }
