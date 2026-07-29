@@ -280,6 +280,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               conversation.set('user_id', globalUserId)
               conversation.set('content', text)
               conversation.set('sender', 'customer')
+              conversation.set('channel', 'messenger')
               $app.save(conversation)
             } catch (err) {
               saveLog(
@@ -333,6 +334,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               conversation.set('user_id', globalUserId)
               conversation.set('content', text)
               conversation.set('sender', 'customer')
+              conversation.set('channel', 'messenger')
               $app.save(conversation)
             } catch (err) {
               saveLog(globalUserId, 'meta_error', 'Erro ao salvar conversa standby', String(err), {
@@ -447,6 +449,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               conversation.set('user_id', globalUserId)
               conversation.set('content', text)
               conversation.set('sender', 'customer')
+              conversation.set('channel', 'instagram')
               $app.save(conversation)
             } catch (err) {
               saveLog(
@@ -602,6 +605,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     conversation.set('user_id', userId)
                     conversation.set('content', text)
                     conversation.set('sender', 'customer')
+                    conversation.set('channel', 'whatsapp')
                     $app.save(conversation)
 
                     saveLog(

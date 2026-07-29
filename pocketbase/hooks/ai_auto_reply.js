@@ -49,6 +49,16 @@ onRecordAfterCreateSuccess((e) => {
     const customerInitialCheck = $app.findRecordById('customers', customerId)
     if (customerInitialCheck.get('is_blocked') === true) {
       $app.logger().info('AI trigger skipped: customer is blocked', 'customerId', customerId)
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const blockLog = new Record(logsCol)
+        blockLog.set('user_id', customerInitialCheck.getString('user_id') || '')
+        blockLog.set('type', 'ai_reply_skipped')
+        blockLog.set('message', 'IA nao respondeu: cliente bloqueado')
+        blockLog.set('details', 'Customer is blocked. AI auto-reply skipped.')
+        blockLog.set('payload', JSON.stringify({ customer_id: customerId }))
+        $app.saveNoValidate(blockLog)
+      } catch (_) {}
       return e.next()
     }
 
@@ -238,6 +248,7 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     const customerMessage = e.record.getString('content') || ''
+    const conversationChannel = e.record.getString('channel') || 'whatsapp'
     const currentStatus = customer.getString('status') || 'Novo'
     let activeCadenceText = ''
 
@@ -603,6 +614,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
       reply.set('customer_id', customerId)
       reply.set('sender', 'ai')
       reply.set('content', responseText)
+      reply.set('channel', conversationChannel)
 
       $app.save(reply)
 
@@ -737,7 +749,11 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
       const cleanPhone = customerPhone.replace(/\D/g, '')
 
-      if (metaToken && metaPhoneId) {
+      if (
+        (conversationChannel === 'whatsapp' || !conversationChannel) &&
+        metaToken &&
+        metaPhoneId
+      ) {
         if (responseText) {
           callMetaWithRetry(
             `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
@@ -839,45 +855,150 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         }
       }
 
-      try {
-        const customerNotes = customer.getString('notes') || ''
-        if (customerNotes.includes('IG Sender ID:') && responseText) {
-          const senderMatch = customerNotes.match(/IG Sender ID:\s*(\S+)/)
-          const recipientMatch = customerNotes.match(/IG Recipient ID:\s*(\S+)/)
-          if (senderMatch && recipientMatch && recipientMatch[1]) {
-            const igSenderId = senderMatch[1]
-            const igRecipientId = recipientMatch[1]
-            const igToken = userRecord ? userRecord.getString('meta_capi_token') : ''
-            if (igToken) {
-              try {
-                $http.send({
-                  url: 'https://graph.facebook.com/v21.0/' + igRecipientId + '/messages',
-                  method: 'POST',
-                  headers: {
-                    Authorization: 'Bearer ' + igToken,
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    recipient: { id: igSenderId },
-                    message: { text: responseText },
-                  }),
-                  timeout: 20,
-                })
-              } catch (igErr) {
+      if (conversationChannel === 'messenger' && responseText) {
+        try {
+          const messengerNotes = customer.getString('notes') || ''
+          const psidMatch = messengerNotes.match(/Messenger PSID:\s*(\S+)/)
+          const psid = psidMatch ? psidMatch[1] : ''
+          const pageToken = userRecord
+            ? userRecord.getString('meta_page_access_token') ||
+              userRecord.getString('meta_instagram_page_token') ||
+              ''
+            : ''
+          if (psid && pageToken) {
+            callMetaWithRetry(
+              'https://graph.facebook.com/v22.0/me/messages',
+              'POST',
+              { Authorization: 'Bearer ' + pageToken, 'Content-Type': 'application/json' },
+              JSON.stringify({ recipient: { id: psid }, message: { text: responseText } }),
+            )
+          } else {
+            try {
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const warnLog = new Record(logsCol)
+              warnLog.set('user_id', userId)
+              warnLog.set('type', 'ai_reply_error')
+              warnLog.set('message', 'Messenger send skipped: missing PSID or page token')
+              warnLog.set(
+                'payload',
+                JSON.stringify({ conversationId: customerId, channel: 'messenger' }),
+              )
+              $app.saveNoValidate(warnLog)
+            } catch (_) {}
+          }
+        } catch (mErr) {
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const errLog = new Record(logsCol)
+            errLog.set('user_id', userId)
+            errLog.set('type', 'ai_reply_error')
+            errLog.set('message', 'Falha ao enviar resposta via Messenger API')
+            errLog.set('details', String(mErr))
+            errLog.set(
+              'payload',
+              JSON.stringify({ conversationId: customerId, channel: 'messenger' }),
+            )
+            $app.saveNoValidate(errLog)
+          } catch (_) {}
+        }
+      }
+
+      if (conversationChannel === 'instagram' && responseText) {
+        try {
+          const igNotes = customer.getString('notes') || ''
+          const igSenderIdMatch = igNotes.match(/IG Sender ID:\s*(\S+)/)
+          const igSenderId = igSenderIdMatch ? igSenderIdMatch[1] : ''
+          const igToken = userRecord
+            ? userRecord.getString('meta_instagram_page_token') ||
+              userRecord.getString('meta_capi_token') ||
+              ''
+            : ''
+          const igBusinessId = userRecord
+            ? userRecord.getString('meta_instagram_business_id') || ''
+            : ''
+          if (igSenderId && igToken) {
+            callMetaWithRetry(
+              'https://graph.facebook.com/v22.0/' + (igBusinessId || 'me') + '/messages',
+              'POST',
+              { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
+              JSON.stringify({ recipient: { id: igSenderId }, message: { text: responseText } }),
+            )
+          } else {
+            try {
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const warnLog = new Record(logsCol)
+              warnLog.set('user_id', userId)
+              warnLog.set('type', 'ai_reply_error')
+              warnLog.set('message', 'Instagram send skipped: missing sender ID or token')
+              warnLog.set(
+                'payload',
+                JSON.stringify({ conversationId: customerId, channel: 'instagram' }),
+              )
+              $app.saveNoValidate(warnLog)
+            } catch (_) {}
+          }
+        } catch (igErr) {
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const errLog = new Record(logsCol)
+            errLog.set('user_id', userId)
+            errLog.set('type', 'ai_reply_error')
+            errLog.set('message', 'Falha ao enviar resposta via Instagram API')
+            errLog.set('details', String(igErr))
+            errLog.set(
+              'payload',
+              JSON.stringify({ conversationId: customerId, channel: 'instagram' }),
+            )
+            $app.saveNoValidate(errLog)
+          } catch (_) {}
+        }
+      }
+
+      if (
+        conversationChannel !== 'messenger' &&
+        conversationChannel !== 'instagram' &&
+        conversationChannel !== 'whatsapp'
+      ) {
+        try {
+          const customerNotes = customer.getString('notes') || ''
+          if (customerNotes.includes('IG Sender ID:') && responseText) {
+            const senderMatch = customerNotes.match(/IG Sender ID:\s*(\S+)/)
+            const recipientMatch = customerNotes.match(/IG Recipient ID:\s*(\S+)/)
+            if (senderMatch && recipientMatch && recipientMatch[1]) {
+              const igSenderId = senderMatch[1]
+              const igRecipientId = recipientMatch[1]
+              const igToken = userRecord ? userRecord.getString('meta_capi_token') : ''
+              if (igToken) {
                 try {
-                  const logsCol = $app.findCollectionByNameOrId('system_logs')
-                  const igLog = new Record(logsCol)
-                  igLog.set('user_id', userId)
-                  igLog.set('type', 'instagram_send_error')
-                  igLog.set('message', 'Falha ao enviar resposta via Instagram Messaging API')
-                  igLog.set('details', String(igErr))
-                  $app.saveNoValidate(igLog)
-                } catch (_) {}
+                  $http.send({
+                    url: 'https://graph.facebook.com/v21.0/' + igRecipientId + '/messages',
+                    method: 'POST',
+                    headers: {
+                      Authorization: 'Bearer ' + igToken,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      recipient: { id: igSenderId },
+                      message: { text: responseText },
+                    }),
+                    timeout: 20,
+                  })
+                } catch (igErr) {
+                  try {
+                    const logsCol = $app.findCollectionByNameOrId('system_logs')
+                    const igLog = new Record(logsCol)
+                    igLog.set('user_id', userId)
+                    igLog.set('type', 'instagram_send_error')
+                    igLog.set('message', 'Falha ao enviar resposta via Instagram Messaging API')
+                    igLog.set('details', String(igErr))
+                    $app.saveNoValidate(igLog)
+                  } catch (_) {}
+                }
               }
             }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
 
       if (detectedHandover) {
         let summary = 'A IA transferiu este lead para o atendimento humano.'

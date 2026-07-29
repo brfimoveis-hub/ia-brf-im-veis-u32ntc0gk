@@ -181,6 +181,81 @@ routerAdd(
       })
     }
 
+    if (shouldCheck('instagram')) {
+      const igBizId = userRecord.getString('meta_instagram_business_id')
+      const igToken = userRecord.getString('meta_instagram_page_token')
+      if (!igBizId || !igToken) {
+        results.push({
+          name: 'Instagram Business',
+          key: 'instagram',
+          status: 'not_configured',
+          timestamp: ts,
+          message: 'Instagram Business ID ou Page Token não configurados',
+        })
+      } else {
+        try {
+          const igRes = $http.send({
+            url: 'https://graph.facebook.com/v22.0/' + igBizId + '?fields=id,name,username',
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + igToken },
+            timeout: 15,
+          })
+          if (igRes.statusCode >= 200 && igRes.statusCode < 300) {
+            var igName = ''
+            try {
+              igName = (igRes.json && (igRes.json.name || igRes.json.username)) || ''
+            } catch (_) {}
+            results.push({
+              name: 'Instagram Business',
+              key: 'instagram',
+              status: 'connected',
+              timestamp: ts,
+              message: 'Conectado ✅' + (igName ? ' — @' + igName : ''),
+            })
+          } else {
+            results.push({
+              name: 'Instagram Business',
+              key: 'instagram',
+              status: 'error',
+              timestamp: ts,
+              message: 'HTTP ' + igRes.statusCode,
+            })
+          }
+        } catch (e4) {
+          results.push({
+            name: 'Instagram Business',
+            key: 'instagram',
+            status: 'error',
+            timestamp: ts,
+            message: 'Erro de rede: ' + (e4.message || 'unknown'),
+          })
+        }
+      }
+    }
+
+    if (shouldCheck('messenger')) {
+      const pageToken =
+        userRecord.getString('meta_page_access_token') ||
+        userRecord.getString('meta_instagram_page_token')
+      if (!pageToken) {
+        results.push({
+          name: 'Messenger',
+          key: 'messenger',
+          status: 'not_configured',
+          timestamp: ts,
+          message: 'Page Access Token não configurado',
+        })
+      } else {
+        results.push({
+          name: 'Messenger',
+          key: 'messenger',
+          status: 'connected',
+          timestamp: ts,
+          message: 'Page Token configurado ✅ — pronto para receber mensagens',
+        })
+      }
+    }
+
     return e.json(200, { success: true, results: results, timestamp: ts })
   },
   $apis.requireAuth(),

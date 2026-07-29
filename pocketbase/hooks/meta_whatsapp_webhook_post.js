@@ -155,6 +155,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
               newMsg.set('user_id', userId)
               newMsg.set('sender', 'customer')
               newMsg.set('content', content)
+              newMsg.set('channel', 'whatsapp')
               $app.save(newMsg)
             } catch (err) {
               $app
