@@ -65,6 +65,11 @@ export default function Login() {
           <CardTitle className="text-2xl">Bem-vindo(a) de volta</CardTitle>
           <CardDescription>Acesse o CRM para gerenciar seus clientes.</CardDescription>
         </CardHeader>
+        {location.state?.sessionExpired && (
+          <div className="mx-6 -mt-2 mb-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm text-center animate-fade-in-down">
+            Sessão expirada. Faça login novamente.
+          </div>
+        )}
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">

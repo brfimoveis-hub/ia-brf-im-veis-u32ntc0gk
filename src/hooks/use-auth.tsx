@@ -7,6 +7,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => void
   loading: boolean
+  sessionExpired: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -22,6 +23,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     pb.authStore.isValid ? pb.authStore.record : null,
   )
   const [loading, setLoading] = useState(true)
+  const [sessionExpired, setSessionExpired] = useState(false)
 
   useEffect(() => {
     const unsubscribe = pb.authStore.onChange((_token, record) => {
@@ -40,6 +42,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (error.status === 401 || error.status === 403 || error.status === 404) {
             pb.authStore.clear()
             setUser(null)
+            setSessionExpired(true)
           }
         }
       }
@@ -57,6 +60,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const authData = await pb.collection('users').authWithPassword(email, password)
       setUser(authData.record)
+      setSessionExpired(false)
       return { error: null }
     } catch (error: any) {
       return { error }
@@ -69,7 +73,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }
 
   return (
-    <AuthContext.Provider value={{ user, signIn, signOut, loading }}>
+    <AuthContext.Provider value={{ user, signIn, signOut, loading, sessionExpired }}>
       {children}
     </AuthContext.Provider>
   )

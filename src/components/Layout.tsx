@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ConnectionAlertBanner } from '@/components/ConnectionAlertBanner'
+import { BugScanner } from '@/components/BugScanner'
 
 export default function Layout() {
   const { user, signOut } = useAuth()
@@ -110,14 +111,17 @@ export default function Layout() {
               {currentUser?.email}
             </span>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={signOut}
-            className="text-slate-400 hover:text-white hover:bg-slate-800"
-          >
-            <LogOut className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <BugScanner className="text-slate-400 hover:text-white hover:bg-slate-800" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={signOut}
+              className="text-slate-400 hover:text-white hover:bg-slate-800"
+            >
+              <LogOut className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -134,16 +138,19 @@ export default function Layout() {
         {/* Mobile header */}
         <div className="sticky top-0 z-10 flex h-16 flex-shrink-0 bg-white border-b shadow-sm md:hidden px-4 justify-between items-center">
           <div className="font-semibold text-lg">BRF IA CRM</div>
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Menu className="h-6 w-6" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-64 bg-slate-900 border-none">
-              <SidebarContent />
-            </SheetContent>
-          </Sheet>
+          <div className="flex items-center gap-1">
+            <BugScanner />
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-6 w-6" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="p-0 w-64 bg-slate-900 border-none">
+                <SidebarContent />
+              </SheetContent>
+            </Sheet>
+          </div>
         </div>
 
         {/* Connection Alert Banner */}

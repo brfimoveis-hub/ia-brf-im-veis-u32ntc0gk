@@ -38,11 +38,11 @@ const PageLoader = () => (
 )
 
 const ProtectedRoute = () => {
-  const { user, loading } = useAuth()
+  const { user, loading, sessionExpired } = useAuth()
   const location = useLocation()
 
   if (loading) return <PageLoader />
-  if (!user) return <Navigate to="/login" state={{ from: location }} replace />
+  if (!user) return <Navigate to="/login" state={{ from: location, sessionExpired }} replace />
   return <Outlet />
 }
 

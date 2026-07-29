@@ -86,20 +86,21 @@ export default function Dashboard() {
   return (
     <ErrorBoundary
       key="dashboard-root"
-      fallback={
-        <div className="space-y-6">
-          <div className="flex flex-col space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight">Cérebro do Sistema</h1>
-            <p className="text-muted-foreground">
-              Visão geral do seu Pipeline e atividade da Inteligência Artificial.
-            </p>
-          </div>
-          <ErrorCard onRetry={handleRetry} />
-        </div>
-      }
+      title="Dashboard"
+      message="Alguns dados não puderam ser carregados. Tente recarregar a página."
+      onRetry={handleRetry}
+      logType="dashboard_error"
     >
       <div className="space-y-6">
-        <DashboardMetaBanner show={showMetaBanner} message={meta.error || undefined} />
+        <ErrorBoundary
+          key="meta-banner"
+          title="Status do WhatsApp"
+          message="Status do WhatsApp indisponível"
+          onRetry={handleRetry}
+          logType="dashboard_meta_error"
+        >
+          <DashboardMetaBanner show={showMetaBanner} message={meta.error || undefined} />
+        </ErrorBoundary>
         <div className="flex flex-col space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">Cérebro do Sistema</h1>
           <p className="text-muted-foreground">
@@ -107,7 +108,13 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <ErrorBoundary key="stats-grid" fallback={<ErrorCard onRetry={handleRetry} />}>
+        <ErrorBoundary
+          key="stats-grid"
+          title="Estatísticas"
+          message="Alguns dados não puderam ser carregados. Tente novamente."
+          onRetry={handleRetry}
+          logType="dashboard_stats_error"
+        >
           {errors.all ? (
             <ErrorCard onRetry={handleRetry} />
           ) : (
@@ -142,7 +149,9 @@ export default function Dashboard() {
 
         <ErrorBoundary
           key="email-grid"
-          fallback={<ErrorCard onRetry={handleRetry} />}
+          title="Email & Meta CAPI"
+          message="Alguns dados não puderam ser carregados. Tente novamente."
+          onRetry={handleRetry}
           logType="dashboard_meta_error"
         >
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -207,7 +216,7 @@ export default function Dashboard() {
           </div>
         </ErrorBoundary>
 
-        <ErrorBoundary key="quick-actions" fallback={null}>
+        <ErrorBoundary key="quick-actions" title="Ações Rápidas" onRetry={handleRetry}>
           <Card>
             <CardContent className="pt-6">
               <div className="flex flex-col gap-4">
