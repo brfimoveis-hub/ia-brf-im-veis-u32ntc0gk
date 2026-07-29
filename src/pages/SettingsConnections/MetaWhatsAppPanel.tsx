@@ -128,9 +128,7 @@ export function MetaWhatsAppPanel() {
         })
       } else {
         setTokenStatus('active')
-        if (res?.display_phone_number) {
-          setDisplayNumber(res.display_phone_number)
-        }
+        setDisplayNumber(res?.display_phone_number || 'connected')
         setTestError('')
         toast({ title: 'Conexão validada', description: 'Meta WhatsApp API está funcionando.' })
       }
@@ -195,17 +193,23 @@ export function MetaWhatsAppPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 pt-6">
-          {isActive && formattedNumber && (
+          {isActive && (
             <Alert className="border-green-500/50 bg-green-500/10 animate-fade-in">
-              <Phone className="h-4 w-4 text-green-600" />
-              <AlertTitle className="text-green-700">Número WhatsApp Ativo</AlertTitle>
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <AlertTitle className="text-green-700">Conexão WhatsApp Ativa</AlertTitle>
               <AlertDescription className="text-green-700">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm">Número verificado conectado:</span>
-                  <Badge variant="secondary" className="font-mono text-sm">
-                    {formattedNumber}
-                  </Badge>
-                </div>
+                {formattedNumber ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm">Número verificado conectado:</span>
+                    <Badge variant="secondary" className="font-mono text-sm">
+                      {formattedNumber}
+                    </Badge>
+                  </div>
+                ) : (
+                  <span className="text-sm">
+                    Conexão OK — WhatsApp Cloud API ativa e funcionando.
+                  </span>
+                )}
                 {lastTestAt && (
                   <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
                     <Clock className="h-3 w-3" />

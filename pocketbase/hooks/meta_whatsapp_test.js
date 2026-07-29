@@ -86,8 +86,7 @@ routerAdd(
       })
     }
 
-    const requestUrl =
-      'https://graph.facebook.com/v21.0/' + phone_number_id + '?fields=name,quality_rating'
+    const requestUrl = 'https://graph.facebook.com/v21.0/' + phone_number_id
 
     try {
       const res = $http.send({
@@ -101,31 +100,18 @@ routerAdd(
       })
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        const displayNumber = (res.json && res.json.display_phone_number) || ''
-        setStatus('active', displayNumber)
+        setStatus('active', 'connected')
         writeLog('success', 'WhatsApp connection test successful (HTTP ' + res.statusCode + ')', {
           phone_number_id: phone_number_id,
           business_id: business_id || '',
-          display_number: displayNumber,
           http_status: res.statusCode,
-          meta_response: res.json,
           tested_at: testedAt,
         })
         $app
           .logger()
-          .info(
-            'WhatsApp test succeeded',
-            'user_id',
-            userId,
-            'phone_number_id',
-            phone_number_id,
-            'display_number',
-            displayNumber,
-          )
+          .info('WhatsApp test succeeded', 'user_id', userId, 'phone_number_id', phone_number_id)
         return e.json(200, {
           success: true,
-          data: res.json,
-          display_phone_number: displayNumber,
           tested_at: testedAt,
         })
       }

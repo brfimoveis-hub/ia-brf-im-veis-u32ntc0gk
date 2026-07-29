@@ -11,9 +11,7 @@ export const testWhatsApp = async (): Promise<DiagnosticResult> => {
   return {
     name: 'WhatsApp Cloud API',
     success: !!res.success,
-    message: res.success
-      ? `Conectado: ${res.display_phone_number || res.name || 'OK'}`
-      : res.error || 'Falha na conexão.',
+    message: res.success ? 'Conexão OK' : res.error || 'Falha na conexão.',
   }
 }
 

@@ -23,10 +23,7 @@ routerAdd(
 
     try {
       const res = $http.send({
-        url:
-          'https://graph.facebook.com/v21.0/' +
-          phoneNumberId +
-          '?fields=display_phone_number,name,quality_rating',
+        url: 'https://graph.facebook.com/v21.0/' + phoneNumberId,
         method: 'GET',
         headers: { Authorization: 'Bearer ' + accessToken },
         timeout: 15,
@@ -35,9 +32,6 @@ routerAdd(
       if (res.statusCode >= 200 && res.statusCode < 300) {
         return e.json(200, {
           success: true,
-          display_phone_number: (res.json && res.json.display_phone_number) || '',
-          name: (res.json && res.json.name) || '',
-          quality_rating: (res.json && res.json.quality_rating) || '',
         })
       }
 
