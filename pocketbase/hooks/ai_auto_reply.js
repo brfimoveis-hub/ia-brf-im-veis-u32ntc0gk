@@ -55,7 +55,8 @@ onRecordAfterCreateSuccess((e) => {
     try {
       $app.runInTransaction((txApp) => {
         const customer = txApp.findRecordById('customers', customerId)
-        const tags = customer.get('tags') || []
+        let tags = customer.get('tags')
+        if (!Array.isArray(tags)) tags = []
 
         if (tags.includes('ai_processing')) {
           const updatedDate = new Date(customer.getString('updated')).getTime()
@@ -126,7 +127,8 @@ onRecordAfterCreateSuccess((e) => {
 
     const now = new Date()
     const customer = $app.findRecordById('customers', customerId)
-    const tags = customer.get('tags') || []
+    let tags = customer.get('tags')
+    if (!Array.isArray(tags)) tags = []
     const customerPhone = customer.getString('phone') || ''
     const customerSource = customer.getString('source') || ''
 
@@ -680,7 +682,8 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         }
 
         if (detectedHandover) {
-          const tags = custToUpdate.get('tags') || []
+          let tags = custToUpdate.get('tags')
+          if (!Array.isArray(tags)) tags = []
           if (!tags.includes('ai_paused')) {
             tags.push('ai_paused')
             custToUpdate.set('tags', tags)
@@ -898,7 +901,8 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
       try {
         $app.runInTransaction((txApp) => {
           const customer = txApp.findRecordById('customers', customerId)
-          const tags = customer.get('tags') || []
+          let tags = customer.get('tags')
+          if (!Array.isArray(tags)) tags = []
           if (tags.includes('ai_processing')) {
             customer.set(
               'tags',

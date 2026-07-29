@@ -152,6 +152,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
               const convCol = $app.findCollectionByNameOrId('conversations')
               const newMsg = new Record(convCol)
               newMsg.set('customer_id', customer.id)
+              newMsg.set('user_id', userId)
               newMsg.set('sender', 'customer')
               newMsg.set('content', content)
               $app.save(newMsg)

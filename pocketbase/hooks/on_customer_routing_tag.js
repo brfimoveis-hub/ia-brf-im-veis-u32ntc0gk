@@ -4,14 +4,7 @@ onRecordBeforeCreateRequest((e) => {
 
   const record = e.record
 
-  let tags = record.get('tags') || []
-  if (typeof tags === 'string') {
-    try {
-      tags = JSON.parse(tags)
-    } catch (_) {
-      tags = []
-    }
-  }
+  let tags = record.get('tags')
   if (!Array.isArray(tags)) tags = []
 
   const source = record.getString('source') || ''
