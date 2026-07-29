@@ -87,9 +87,7 @@ routerAdd(
     }
 
     const requestUrl =
-      'https://graph.facebook.com/v21.0/' +
-      phone_number_id +
-      '?fields=display_phone_number,name,quality_rating'
+      'https://graph.facebook.com/v21.0/' + phone_number_id + '?fields=name,quality_rating'
 
     try {
       const res = $http.send({
