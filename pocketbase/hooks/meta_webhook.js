@@ -146,8 +146,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
               conversation.set('customer_id', customer.id)
               conversation.set('user_id', targetUserId)
               conversation.set('content', text)
-              conversation.set('sender', 'user')
-              $app.save(conversation)
+              conversation.set('sender', 'customer')              $app.save(conversation)
             } catch (err) {
               $app.logger().error('Erro ao salvar conversa do Instagram', err)
             }
@@ -294,7 +293,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                   try {
                     const recentMsgs = $app.findRecordsByFilter(
                       'conversations',
-                      `customer_id = '${customer.id}' && sender = 'user' && content = {:text}`,
+                      `customer_id = '${customer.id}' && sender = 'customer' && content = {:text}`,
                       '-created',
                       1,
                       0,
@@ -315,7 +314,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     conversation.set('customer_id', customer.id)
                     conversation.set('user_id', userId)
                     conversation.set('content', text)
-                    conversation.set('sender', 'user')
+                    conversation.set('sender', 'customer')
                     $app.save(conversation)
 
                     try {
