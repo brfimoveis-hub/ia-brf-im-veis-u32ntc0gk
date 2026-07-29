@@ -10,16 +10,12 @@ migrate(
 
     const existingData = {}
     try {
-      let page = 0
-      for (;;) {
-        const records = app.findRecordsByFilter('customers', '', '-created', 500, page)
-        if (!records || records.length === 0) break
+      const records = app.findRecordsByFilter('customers', '', '-created', 5000, 0)
+      if (records && records.length > 0) {
         for (const r of records) {
           const tagsVal = r.getString('tags')
           if (tagsVal) existingData[r.id] = tagsVal
         }
-        if (records.length < 500) break
-        page++
       }
     } catch (_) {}
 

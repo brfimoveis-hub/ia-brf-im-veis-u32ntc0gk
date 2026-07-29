@@ -1,4 +1,4 @@
-onRecordBeforeCreateRequest((e) => {
+onRecordCreateRequest((e) => {
   const body = e.requestInfo().body
   if (!body) return e.next()
 
