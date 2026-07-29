@@ -3,10 +3,11 @@ routerAdd(
   '/backend/v1/meta_whatsapp_test',
   (e) => {
     const body = e.requestInfo().body || {}
+    const userId = e.auth ? e.auth.id : ''
 
     let userRecord = null
     try {
-      userRecord = $app.findRecordById('users', e.auth.id)
+      userRecord = $app.findRecordById('users', userId)
     } catch (_) {}
 
     const phone_number_id =
@@ -23,86 +24,27 @@ routerAdd(
       )
     }
 
-    if (!/^\d+$/.test(phone_number_id.trim())) {
-      const formatTestedAt = new Date().toISOString()
-      try {
-        const fmtCol = $app.findCollectionByNameOrId('system_logs')
-        const fmtLog = new Record(fmtCol)
-        fmtLog.set('type', 'whatsapp_test')
-        fmtLog.set('message', 'failure')
-        fmtLog.set('details', {
-          phone_number_id: phone_number_id,
-          tested_at: formatTestedAt,
-          reason: 'non_numeric_format',
-        })
-        fmtLog.set('payload', { phone_number_id: phone_number_id })
-        $app.save(fmtLog)
-      } catch (_) {}
-      if (userRecord) {
-        userRecord.set('meta_token_status', 'error')
-        userRecord.set('meta_whatsapp_status', '')
-        try {
-          $app.saveNoValidate(userRecord)
-        } catch (_) {}
-      }
-      $app
-        .logger()
-        .error(
-          'WhatsApp test failed: invalid Phone Number ID format',
-          'user_id',
-          e.auth.id,
-          'phone_number_id',
-          phone_number_id,
-        )
-      return e.json(200, {
-        success: false,
-        error:
-          'Phone Number ID inválido. Verifique o ID no Meta Developer Portal em WhatsApp > API Setup.',
-        error_code: 'invalid_format',
-        tested_at: formatTestedAt,
-      })
-    }
-
-    const tokenPrefix = access_token.length > 12 ? access_token.substring(0, 12) + '...' : '***'
     const testedAt = new Date().toISOString()
+    const tokenPrefix = access_token.length > 12 ? access_token.substring(0, 12) + '...' : '***'
 
-    const logFailure = (message, details) => {
+    const writeLog = (status, message, details) => {
       try {
         const col = $app.findCollectionByNameOrId('system_logs')
         const log = new Record(col)
         log.set('type', 'whatsapp_test')
-        log.set('message', 'failure')
-        log.set('details', {
-          error_message: String(message || 'unknown error'),
+        log.set('message', status + ': ' + message)
+        log.set('user_id', userId)
+        log.set('details', JSON.stringify(details))
+        log.set('payload', {
           phone_number_id: phone_number_id,
           business_id: business_id || '',
           token_prefix: tokenPrefix,
           tested_at: testedAt,
-          full_meta_response: details,
-        })
-        log.set('payload', {
-          phone_number_id: phone_number_id,
-          business_id: business_id || '',
-          token_prefix: tokenPrefix,
         })
         $app.save(log)
-      } catch (_) {}
-    }
-
-    const logSuccess = (message, details) => {
-      try {
-        const col = $app.findCollectionByNameOrId('system_logs')
-        const log = new Record(col)
-        log.set('type', 'whatsapp_test')
-        log.set('message', 'success')
-        log.set('details', details)
-        log.set('payload', {
-          phone_number_id: phone_number_id,
-          business_id: business_id || '',
-          token_prefix: tokenPrefix,
-        })
-        $app.save(log)
-      } catch (_) {}
+      } catch (logErr) {
+        $app.logger().error('Failed to write whatsapp_test log', 'err', logErr.message || 'unknown')
+      }
     }
 
     const setStatus = (tokenStatus, whatsappStatus) => {
@@ -118,17 +60,40 @@ routerAdd(
       }
     }
 
-    var requestPayload = {
-      url:
-        'https://graph.facebook.com/v21.0/' +
-        phone_number_id +
-        '?fields=display_phone_number,name,quality_rating',
-      method: 'GET',
+    if (!/^\d+$/.test(phone_number_id.trim())) {
+      const reason =
+        'Phone Number ID inválido. Verifique o ID no Meta Developer Portal em WhatsApp > API Setup.'
+      setStatus('error', '')
+      writeLog('failure', reason, {
+        phone_number_id: phone_number_id,
+        reason: 'non_numeric_format',
+        tested_at: testedAt,
+      })
+      $app
+        .logger()
+        .error(
+          'WhatsApp test failed: invalid Phone Number ID format',
+          'user_id',
+          userId,
+          'phone_number_id',
+          phone_number_id,
+        )
+      return e.json(200, {
+        success: false,
+        error: reason,
+        error_code: 'invalid_format',
+        tested_at: testedAt,
+      })
     }
+
+    const requestUrl =
+      'https://graph.facebook.com/v21.0/' +
+      phone_number_id +
+      '?fields=display_phone_number,name,quality_rating'
 
     try {
       const res = $http.send({
-        url: requestPayload.url,
+        url: requestUrl,
         method: 'GET',
         headers: {
           Authorization: 'Bearer ' + access_token,
@@ -140,10 +105,11 @@ routerAdd(
       if (res.statusCode >= 200 && res.statusCode < 300) {
         const displayNumber = (res.json && res.json.display_phone_number) || ''
         setStatus('active', displayNumber)
-        logSuccess('WhatsApp connection test successful', {
+        writeLog('success', 'WhatsApp connection test successful (HTTP ' + res.statusCode + ')', {
           phone_number_id: phone_number_id,
           business_id: business_id || '',
           display_number: displayNumber,
+          http_status: res.statusCode,
           meta_response: res.json,
           tested_at: testedAt,
         })
@@ -152,7 +118,7 @@ routerAdd(
           .info(
             'WhatsApp test succeeded',
             'user_id',
-            e.auth.id,
+            userId,
             'phone_number_id',
             phone_number_id,
             'display_number',
@@ -172,42 +138,50 @@ routerAdd(
       } catch (_) {
         metaError = { message: 'Non-JSON response from Meta API' }
       }
+      var rawErrorMsg = metaError.message || ''
+      var errorCode = metaError.code || 0
+      var errorSubcode = metaError.error_subcode || 0
       var errorMsg =
-        metaError.message ||
+        rawErrorMsg ||
         'Falha na API do WhatsApp (HTTP ' +
           res.statusCode +
           '). Verifique o Phone Number ID e o Access Token.'
-      var errorCode = metaError.code || 0
-      var errorSubcode = metaError.error_subcode || 0
 
       if (errorCode === 190) {
         errorMsg =
-          'Token expirado ou inválido. Gere um novo token de acesso permanente no Meta Developer Portal.'
+          'Token expirado ou inválido (código 190). Gere um novo token de acesso permanente no Meta Developer Portal em Business Settings > System Users.'
       } else if (errorCode === 100 && errorSubcode === 33) {
         errorMsg =
-          'Phone Number ID inválido. Verifique o ID no Meta Developer Portal em WhatsApp > API Setup.'
+          'Phone Number ID inválido (código 100, subcode 33). Verifique o ID no Meta Developer Portal em WhatsApp > API Setup.'
       } else if (errorMsg.indexOf('Unsupported get request') !== -1) {
         errorMsg =
           'Phone Number ID inválido. Verifique o ID no Meta Developer Portal em WhatsApp > API Setup.'
       } else if (errorMsg.indexOf('Permission') !== -1 || errorMsg.indexOf('permission') !== -1) {
         errorMsg =
-          'Permissões insuficientes no token. Garanta que o token tenha acesso ao WhatsApp Business Account.'
+          'Permissões insuficientes no token. Garanta que o token tenha acesso ao WhatsApp Business Account (whatsapp_business_messaging).'
+      } else if (res.statusCode === 403) {
+        errorMsg =
+          'Acesso negado (HTTP 403). Verifique se o token tem as permissões necessárias e se o Phone Number ID pertence à conta.'
+      } else if (res.statusCode === 404) {
+        errorMsg =
+          'Recurso não encontrado (HTTP 404). O Phone Number ID pode estar incorreto ou a versão da API está desatualizada.'
       }
 
       setStatus('error', '')
-      logFailure(errorMsg, {
-        status_code: res.statusCode,
+      writeLog('failure', 'HTTP ' + res.statusCode + ' - ' + errorMsg, {
+        http_status: res.statusCode,
         error_code: errorCode,
         error_subcode: errorSubcode,
         meta_error: metaError,
         raw_response: res.json,
+        tested_at: testedAt,
       })
       $app
         .logger()
         .error(
           'WhatsApp test failed',
           'user_id',
-          e.auth.id,
+          userId,
           'status_code',
           res.statusCode,
           'error',
@@ -222,6 +196,7 @@ routerAdd(
         error: errorMsg,
         status_code: res.statusCode,
         error_code: errorCode,
+        raw_error: rawErrorMsg,
         tested_at: testedAt,
       })
     } catch (err) {
@@ -230,16 +205,17 @@ routerAdd(
         (err.message || 'unknown') +
         '. Verifique sua conexão e tente novamente.'
       setStatus('error', '')
-      logFailure(transportError, {
+      writeLog('failure', transportError, {
         error: err.message || 'unknown',
-        request_url: requestPayload.url,
+        request_url: requestUrl,
+        tested_at: testedAt,
       })
       $app
         .logger()
         .error(
           'WhatsApp test transport error',
           'user_id',
-          e.auth.id,
+          userId,
           'error',
           err.message || 'unknown',
         )

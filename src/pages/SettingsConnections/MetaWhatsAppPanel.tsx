@@ -87,19 +87,37 @@ export function MetaWhatsAppPanel() {
     setTesting(true)
     setTestError('')
     try {
-      const res: any = await pb.send('/backend/v1/meta_whatsapp_test', {
-        method: 'POST',
-        body: {
-          phone_number_id: pnId,
-          access_token: tok,
-          business_id: businessId.trim(),
-        },
-      })
+      let res: any
+      try {
+        res = await pb.send('/backend/v1/meta_whatsapp_test', {
+          method: 'POST',
+          body: {
+            phone_number_id: pnId,
+            access_token: tok,
+            business_id: businessId.trim(),
+          },
+        })
+      } catch (err: any) {
+        res = {
+          success: false,
+          error:
+            err?.message ||
+            'Falha de comunicação ao testar a conexão WhatsApp. Verifique as credenciais e tente novamente.',
+          tested_at: new Date().toISOString(),
+        }
+      }
       const testedAt = res?.tested_at || new Date().toISOString()
       setLastTestAt(testedAt)
       if (res?.success === false) {
+        const rawErr = res?.raw_error ? ` [${res.raw_error}]` : ''
+        const codeInfo = res?.error_code ? ` (código ${res.error_code})` : ''
+        const statusInfo = res?.status_code ? ` HTTP ${res.status_code}.` : ''
         const errMsg =
-          res?.error || 'Falha ao validar a conexão. Verifique o Phone Number ID e o Access Token.'
+          (res?.error ||
+            'Falha ao validar a conexão. Verifique o Phone Number ID e o Access Token.') +
+          statusInfo +
+          codeInfo +
+          rawErr
         setTokenStatus('error')
         setDisplayNumber('')
         setTestError(errMsg)
@@ -116,19 +134,6 @@ export function MetaWhatsAppPanel() {
         setTestError('')
         toast({ title: 'Conexão validada', description: 'Meta WhatsApp API está funcionando.' })
       }
-    } catch (err: any) {
-      setLastTestAt(new Date().toISOString())
-      setTokenStatus('error')
-      setDisplayNumber('')
-      const errMsg =
-        err?.message ||
-        'Falha ao testar a conexão WhatsApp. Verifique as credenciais e tente novamente.'
-      setTestError(errMsg)
-      toast({
-        variant: 'destructive',
-        title: 'Falha na conexão',
-        description: errMsg,
-      })
     } finally {
       setTesting(false)
     }
@@ -226,6 +231,26 @@ export function MetaWhatsAppPanel() {
                     Último teste: {new Date(lastTestAt).toLocaleString('pt-BR')}
                   </div>
                 )}
+                {testError && (
+                  <div className="mt-3 rounded-md bg-red-500/10 border border-red-500/30 p-3">
+                    <p className="text-xs font-semibold text-red-700 mb-1">
+                      Detalhe do erro retornado pela Meta API:
+                    </p>
+                    <p className="text-xs text-red-600 font-mono break-words">{testError}</p>
+                  </div>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {isError && !testError && (
+            <Alert className="border-red-500/50 bg-red-500/10 animate-fade-in">
+              <XCircle className="h-4 w-4 text-red-600" />
+              <AlertTitle className="text-red-700">Falha na Conexão WhatsApp</AlertTitle>
+              <AlertDescription className="text-red-600">
+                <p className="text-sm">
+                  A última tentativa de conexão falhou. Verifique as credenciais e tente novamente.
+                </p>
               </AlertDescription>
             </Alert>
           )}
