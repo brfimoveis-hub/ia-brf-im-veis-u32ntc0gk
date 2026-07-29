@@ -55,9 +55,10 @@ routerAdd('POST', '/backend/v1/chaves_na_mao_webhook', (e) => {
     try {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const log = new Record(logsCol)
+      log.set('user_id', user ? user.id : '')
       log.set('type', 'webhook_success')
       log.set('message', 'Lead do Chaves na Mão recebido com sucesso e adicionado ao Pipeline.')
-      log.set('details', body)
+      log.set('details', JSON.stringify(body))
       $app.save(log)
     } catch (_) {}
 
@@ -72,9 +73,10 @@ routerAdd('POST', '/backend/v1/chaves_na_mao_webhook', (e) => {
     try {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const log = new Record(logsCol)
+      log.set('user_id', user ? user.id : '')
       log.set('type', 'webhook_error')
       log.set('message', 'Erro ao salvar lead do Chaves na Mão no Pipeline')
-      log.set('details', body)
+      log.set('details', JSON.stringify(body))
       $app.save(log)
     } catch (_) {}
 

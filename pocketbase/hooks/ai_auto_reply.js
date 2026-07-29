@@ -839,6 +839,46 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         }
       }
 
+      try {
+        const customerNotes = customer.getString('notes') || ''
+        if (customerNotes.includes('IG Sender ID:') && responseText) {
+          const senderMatch = customerNotes.match(/IG Sender ID:\s*(\S+)/)
+          const recipientMatch = customerNotes.match(/IG Recipient ID:\s*(\S+)/)
+          if (senderMatch && recipientMatch && recipientMatch[1]) {
+            const igSenderId = senderMatch[1]
+            const igRecipientId = recipientMatch[1]
+            const igToken = userRecord ? userRecord.getString('meta_capi_token') : ''
+            if (igToken) {
+              try {
+                $http.send({
+                  url: 'https://graph.facebook.com/v21.0/' + igRecipientId + '/messages',
+                  method: 'POST',
+                  headers: {
+                    Authorization: 'Bearer ' + igToken,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    recipient: { id: igSenderId },
+                    message: { text: responseText },
+                  }),
+                  timeout: 20,
+                })
+              } catch (igErr) {
+                try {
+                  const logsCol = $app.findCollectionByNameOrId('system_logs')
+                  const igLog = new Record(logsCol)
+                  igLog.set('user_id', userId)
+                  igLog.set('type', 'instagram_send_error')
+                  igLog.set('message', 'Falha ao enviar resposta via Instagram Messaging API')
+                  igLog.set('details', String(igErr))
+                  $app.saveNoValidate(igLog)
+                } catch (_) {}
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
       if (detectedHandover) {
         let summary = 'A IA transferiu este lead para o atendimento humano.'
         try {

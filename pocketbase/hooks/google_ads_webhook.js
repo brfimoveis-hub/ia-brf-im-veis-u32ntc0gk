@@ -84,8 +84,10 @@ routerAdd('POST', '/backend/v1/google-ads-webhook', (e) => {
 
     const logsCol = $app.findCollectionByNameOrId('system_logs')
     const log = new Record(logsCol)
+    log.set('user_id', uid)
     log.set('type', 'google_ads_webhook_success')
     log.set('message', `Lead recebido do Google Ads: ${name || email || phone || 'Desconhecido'}`)
+    log.set('details', JSON.stringify(body))
     log.set('payload', body)
     $app.save(log)
 
@@ -96,9 +98,10 @@ routerAdd('POST', '/backend/v1/google-ads-webhook', (e) => {
     try {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const log = new Record(logsCol)
+      log.set('user_id', uid)
       log.set('type', 'google_ads_webhook_error')
       log.set('message', 'Erro ao salvar lead do Google Ads')
-      log.set('details', { error: err.message })
+      log.set('details', 'Erro: ' + err.message)
       log.set('payload', body)
       $app.save(log)
     } catch (_) {}
