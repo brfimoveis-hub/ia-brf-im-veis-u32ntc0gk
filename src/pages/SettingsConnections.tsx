@@ -8,6 +8,7 @@ import CapiPanel from './SettingsConnections/CapiPanel'
 import IntegrationLogs from './SettingsConnections/IntegrationLogs'
 import ChavesNaMao from './SettingsConnections/ChavesNaMao'
 import { StatusTrafficLight } from './SettingsConnections/StatusTrafficLight'
+import { ConnectionHealthDashboard } from './SettingsConnections/ConnectionHealthDashboard'
 import { MessageCircle, TrendingUp } from 'lucide-react'
 
 export default function SettingsConnections() {
@@ -60,6 +61,8 @@ export default function SettingsConnections() {
           </CardContent>
         </Card>
       </div>
+
+      <ConnectionHealthDashboard />
 
       <Tabs defaultValue="meta">
         <TabsList className="flex-wrap h-auto">

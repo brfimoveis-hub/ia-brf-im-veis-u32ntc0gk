@@ -196,7 +196,7 @@ export function MetaWhatsAppPanel() {
           {isActive && (
             <Alert className="border-green-500/50 bg-green-500/10 animate-fade-in">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertTitle className="text-green-700">Conexão WhatsApp Ativa</AlertTitle>
+              <AlertTitle className="text-green-700">Conectado ✅</AlertTitle>
               <AlertDescription className="text-green-700">
                 {formattedNumber ? (
                   <div className="flex items-center gap-2 flex-wrap">

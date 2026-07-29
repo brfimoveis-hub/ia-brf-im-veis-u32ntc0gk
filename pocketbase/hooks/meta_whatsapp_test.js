@@ -107,11 +107,17 @@ routerAdd(
           http_status: res.statusCode,
           tested_at: testedAt,
         })
+        var displayPhone = ''
+        try {
+          displayPhone =
+            res.json && res.json.display_phone_number ? res.json.display_phone_number : ''
+        } catch (_) {}
         $app
           .logger()
           .info('WhatsApp test succeeded', 'user_id', userId, 'phone_number_id', phone_number_id)
         return e.json(200, {
           success: true,
+          display_phone_number: displayPhone,
           tested_at: testedAt,
         })
       }
