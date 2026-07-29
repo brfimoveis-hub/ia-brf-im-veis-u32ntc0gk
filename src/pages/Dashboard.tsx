@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { MessageVolumeChart } from '@/components/dashboard/message-volume-chart'
 import { AIResponseMetricsCard } from '@/components/dashboard/ai-response-metrics'
+import { IntegrityDiagnostics } from '@/components/dashboard/integrity-diagnostics'
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -181,6 +182,8 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <IntegrityDiagnostics />
 
       {/* Performance Dashboard */}
       <div className="space-y-4">
