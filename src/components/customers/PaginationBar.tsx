@@ -54,6 +54,9 @@ export function PaginationBar({
         <span className="text-xs text-muted-foreground whitespace-nowrap">
           Mostrando {first}–{last} de {totalItems} {itemName}
         </span>
+        <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">
+          Página {currentPage} de {totalPages}
+        </span>
         <Select
           value={String(perPage)}
           onValueChange={(v) => onPerPageChange(Number(v))}

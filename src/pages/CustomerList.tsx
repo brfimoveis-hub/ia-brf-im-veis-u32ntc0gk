@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useCallback } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Table,
   TableBody,
@@ -99,6 +100,29 @@ export default function CustomerList() {
     initialSort: '-created',
     searchFields: ['name', 'phone', 'email', 'email_1_value', 'first_name', 'phone_1_value'],
   })
+
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    const pageParam = searchParams.get('page')
+    const urlPage = pageParam ? parseInt(pageParam, 10) : 1
+    if (!isNaN(urlPage) && urlPage >= 1 && urlPage !== currentPage) {
+      setPage(urlPage)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
+  useEffect(() => {
+    const pageParam = searchParams.get('page')
+    const currentPageStr = String(currentPage)
+    if ((pageParam || '1') !== currentPageStr) {
+      const next = new URLSearchParams(searchParams)
+      if (currentPage > 1) next.set('page', currentPageStr)
+      else next.delete('page')
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage])
 
   useRealtime('customers', () => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
