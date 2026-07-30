@@ -80,6 +80,8 @@ const RouteTracker = () => {
       component = 'CustomerList'
     } else if (lowerPath.startsWith('/cadences')) {
       component = 'Cadences'
+    } else if (lowerPath.startsWith('/email-marketing')) {
+      component = 'EmailMarketing'
     } else if (lowerPath === '/') {
       component = 'Root'
     }
