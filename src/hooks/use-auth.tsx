@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import pb from '@/lib/pocketbase/client'
-import type { AuthModel } from 'pocketbase'
 
 interface AuthContextType {
-  user: AuthModel | null
+  user: any
+  isAuthenticated: boolean
+  signUp: (email: string, password: string) => Promise<{ error: any }>
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => void
   loading: boolean
@@ -19,61 +20,82 @@ export const useAuth = () => {
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<AuthModel | null>(
-    pb.authStore.isValid ? pb.authStore.record : null,
-  )
+  const [user, setUser] = useState<any>(pb.authStore.isValid ? pb.authStore.record : null)
+  const [isAuthenticated, setIsAuthenticated] = useState(pb.authStore.isValid)
   const [loading, setLoading] = useState(true)
   const [sessionExpired, setSessionExpired] = useState(false)
 
   useEffect(() => {
     const unsubscribe = pb.authStore.onChange((_token, record) => {
-      if (!pb.authStore.isValid) {
-        setUser(null)
-      } else {
-        setUser(record)
+      const isValid = pb.authStore.isValid
+      setUser(isValid ? record : null)
+      setIsAuthenticated(isValid)
+      if (!isValid && pb.authStore.record) {
+        setSessionExpired(true)
       }
     })
 
-    const initAuth = async () => {
-      if (pb.authStore.isValid) {
-        try {
-          await pb.collection('users').authRefresh()
-        } catch (error: any) {
-          if (error.status === 401 || error.status === 403 || error.status === 404) {
-            pb.authStore.clear()
-            setUser(null)
-            setSessionExpired(true)
-          }
-        }
+    if (pb.authStore.isValid) {
+      pb.collection('users')
+        .authRefresh()
+        .then(() => {
+          setSessionExpired(false)
+        })
+        .catch(() => {
+          pb.authStore.clear()
+          setSessionExpired(true)
+        })
+        .finally(() => setLoading(false))
+    } else {
+      if (pb.authStore.record) {
+        pb.authStore.clear()
       }
       setLoading(false)
     }
-
-    initAuth()
 
     return () => {
       unsubscribe()
     }
   }, [])
 
-  const signIn = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string) => {
     try {
-      const authData = await pb.collection('users').authWithPassword(email, password)
-      setUser(authData.record)
+      await pb.collection('users').create({ email, password, passwordConfirm: password })
+      await pb.collection('users').authWithPassword(email, password)
       setSessionExpired(false)
       return { error: null }
-    } catch (error: any) {
+    } catch (error) {
       return { error }
     }
   }
 
-  const signOut = () => {
-    pb.authStore.clear()
-    setUser(null)
+  const signIn = async (email: string, password: string) => {
+    try {
+      await pb.collection('users').authWithPassword(email, password)
+      setSessionExpired(false)
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
   }
 
+  const signOut = useCallback(() => {
+    pb.authStore.clear()
+    setSessionExpired(false)
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ user, signIn, signOut, loading, sessionExpired }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated,
+        signUp,
+        signIn,
+        signOut,
+        loading,
+        sessionExpired,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
