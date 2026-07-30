@@ -109,10 +109,6 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
     })()
   }, [filter, sort, page, perPage, refreshKey, retryKey])
 
-  const handleRetry = useCallback(() => {
-    setRetryKey((k) => k + 1)
-  }, [])
-
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
   const currentPage = Math.min(page, totalPages)
 
@@ -142,23 +138,8 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
 
   const checkboxChecked = allPageSelected ? true : somePageSelected ? 'indeterminate' : false
 
-  if (fetchError && !loading) {
-    return (
-      <>
-        <div className="rounded-md border flex-1 flex flex-col">
-          <TableErrorState onRetry={handleRetry} retrying={retrying} />
-        </div>
-        <CustomerDetailDrawer
-          customerId={drawerId}
-          open={!!drawerId}
-          onOpenChange={(open) => !open && setDrawerId(null)}
-        />
-      </>
-    )
-  }
-
   const handleRetryClick = useCallback(() => {
-    setRefreshKeyProp((k) => k + 1)
+    setRetryKey((k) => k + 1)
   }, [])
 
   if (fetchError && !loading) {
@@ -247,7 +228,6 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
               ) : (
                 items.map((c) => {
                   const isSelected = selectedIds.has(c.id)
-                  void handleRetry
                   return (
                     <TableRow
                       key={c.id}
