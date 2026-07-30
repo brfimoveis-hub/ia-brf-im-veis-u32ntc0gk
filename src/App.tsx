@@ -17,7 +17,7 @@ import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-import Dashboard from './pages/Index'
+import Dashboard from './pages/Dashboard'
 import Customers from './pages/Customers'
 import CustomerList from './pages/CustomerList'
 import Cadences from './pages/Cadences'
@@ -66,11 +66,14 @@ const RouteTracker = () => {
 
     const lowerPath = path.toLowerCase()
 
-    if (lowerPath === '/settings/connections') {
+    if (lowerPath === '/settings/connections' || lowerPath.startsWith('/settings/connections/')) {
       component = 'SettingsConnections'
-    } else if (lowerPath === '/settings/remarketing') {
+    } else if (
+      lowerPath === '/settings/remarketing' ||
+      lowerPath.startsWith('/settings/remarketing/')
+    ) {
       component = 'SettingsRemarketing'
-    } else if (lowerPath === '/settings/ai') {
+    } else if (lowerPath === '/settings/ai' || lowerPath.startsWith('/settings/ai/')) {
       component = 'SettingsAI'
     } else if (lowerPath.startsWith('/dashboard')) {
       component = 'Dashboard'
@@ -80,8 +83,18 @@ const RouteTracker = () => {
       component = 'CustomerList'
     } else if (lowerPath.startsWith('/cadences')) {
       component = 'Cadences'
+    } else if (lowerPath.startsWith('/email-marketing/') && lowerPath !== '/email-marketing') {
+      component = 'EmailCampaignDetail'
     } else if (lowerPath.startsWith('/email-marketing')) {
       component = 'EmailMarketing'
+    } else if (lowerPath === '/settings') {
+      component = 'Settings'
+    } else if (lowerPath === '/login') {
+      component = 'Login'
+    } else if (lowerPath === '/forgot-password') {
+      component = 'ForgotPassword'
+    } else if (lowerPath === '/reset-password') {
+      component = 'ResetPassword'
     } else if (lowerPath === '/') {
       component = 'Root'
     }
@@ -94,18 +107,22 @@ const RouteTracker = () => {
 
     try {
       const existing = localStorage.getItem('route-store')
+      const newState = { currentRoute: routeData }
       if (existing) {
         const parsed = JSON.parse(existing)
         localStorage.setItem(
           'route-store',
           JSON.stringify({
             ...parsed,
-            state: { ...parsed.state, currentRoute: routeData },
+            state: { ...parsed.state, ...newState },
           }),
         )
+      } else {
+        localStorage.setItem('route-store', JSON.stringify({ state: newState }))
       }
     } catch (e) {
-      // Ignore parse errors
+      localStorage.removeItem('route-store')
+      localStorage.setItem('currentRoute', JSON.stringify(routeData))
     }
   }, [location])
 
@@ -195,6 +212,10 @@ const router = createBrowserRouter(
                 {
                   path: 'settings/ai',
                   element: <SettingsAI />,
+                },
+                {
+                  path: 'settings',
+                  element: <Navigate to="/settings/ai" replace />,
                 },
               ],
             },
