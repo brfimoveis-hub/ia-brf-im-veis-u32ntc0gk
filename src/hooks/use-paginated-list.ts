@@ -94,10 +94,7 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
     }
   }, [currentPage, totalPages, totalItems])
 
-  const setPage = useCallback(
-    (page: number) => setCurrentPage(Math.min(Math.max(1, page), totalPages)),
-    [totalPages],
-  )
+  const setPage = useCallback((page: number) => setCurrentPage(Math.max(1, page)), [])
 
   const handleSetPerPage = useCallback((size: number) => {
     setPerPage(size)
