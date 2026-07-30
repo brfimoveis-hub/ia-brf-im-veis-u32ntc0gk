@@ -24,6 +24,7 @@ import { Search, X, Mail, Send, RefreshCw } from 'lucide-react'
 import { useRealtime } from '@/hooks/use-realtime'
 import { usePaginatedList } from '@/hooks/use-paginated-list'
 import { format } from 'date-fns'
+import { TableErrorState } from '@/components/customers/TableErrorState'
 import { RemarketingSyncModal } from '@/components/customers/RemarketingSyncModal'
 import { BulkEmailModal } from '@/components/customers/BulkEmailModal'
 import { WhatsAppSendModal } from '@/components/customers/WhatsAppSendModal'
@@ -80,6 +81,8 @@ export default function CustomerList() {
     perPage,
     sort,
     loading,
+    error,
+    retry,
     searchInput,
     search,
     setPage,
@@ -361,6 +364,16 @@ export default function CustomerList() {
                         ))}
                       </TableRow>
                     ))
+                  ) : error ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="p-0">
+                        <TableErrorState
+                          message="Não foi possível carregar a lista de clientes."
+                          onRetry={retry}
+                          retrying={loading}
+                        />
+                      </TableCell>
+                    </TableRow>
                   ) : customers.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">

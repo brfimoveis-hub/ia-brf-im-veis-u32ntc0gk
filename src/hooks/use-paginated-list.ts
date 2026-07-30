@@ -27,6 +27,7 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -60,6 +61,7 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
   const loadData = useCallback(async () => {
     const requestId = ++requestIdRef.current
     setLoading(true)
+    setError(false)
     try {
       const result = await pb.collection(collection).getList<T>(currentPage, perPage, {
         sort,
@@ -71,7 +73,10 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
       setTotalItems(result.totalItems)
     } catch (err) {
       console.error(err)
-      if (requestId === requestIdRef.current) setItems([])
+      if (requestId === requestIdRef.current) {
+        setItems([])
+        setError(true)
+      }
     } finally {
       if (requestId === requestIdRef.current) setLoading(false)
     }
@@ -133,6 +138,12 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
 
+  const retry = useCallback(() => {
+    setError(false)
+    setCurrentPage(1)
+    setRefreshKey((k) => k + 1)
+  }, [])
+
   return {
     items,
     totalItems,
@@ -141,6 +152,7 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
     perPage,
     sort,
     loading,
+    error,
     searchInput,
     search,
     filters,
@@ -153,5 +165,6 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
     setFilter,
     clearFilters,
     refresh,
+    retry,
   }
 }
