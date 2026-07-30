@@ -1,9 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, MessageSquare, Bot, Activity, ArrowRight } from 'lucide-react'
+import {
+  Users,
+  MessageSquare,
+  Bot,
+  Activity,
+  ArrowRight,
+  AlertCircle,
+  RefreshCw,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,41 +19,94 @@ import { cn } from '@/lib/utils'
 import { MessageVolumeChart } from '@/components/dashboard/message-volume-chart'
 import { AIResponseMetricsCard } from '@/components/dashboard/ai-response-metrics'
 import { IntegrityDiagnostics } from '@/components/dashboard/integrity-diagnostics'
+import { reportError } from '@/lib/error-reporter'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export default function Dashboard() {
   const { user } = useAuth()
   const [customerCount, setCustomerCount] = useState(0)
   const [cadenceCount, setCadenceCount] = useState(0)
   const [iaInteractions, setIaInteractions] = useState(0)
-
+  const [statsError, setStatsError] = useState(false)
+  const [statsLoading, setStatsLoading] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(user)
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        if (user) {
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true)
+    setStatsError(false)
+    try {
+      if (user) {
+        try {
           const usr = await pb.collection('users').getOne(user.id)
           setCurrentUser(usr)
+        } catch (err) {
+          reportError({
+            type: 'dashboard_user_error',
+            message: err instanceof Error ? err.message : 'Failed to fetch user',
+            details: { user_id: user.id },
+          })
         }
-
-        const customersRes = await pb.collection('customers').getList(1, 1, { fields: 'id' })
-        setCustomerCount(customersRes.totalItems)
-
-        const cadencesRes = await pb
-          .collection('cadences')
-          .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
-        setCadenceCount(cadencesRes.totalItems)
-
-        const iaRes = await pb.collection('leads').getList(1, 1, { fields: 'id' })
-        setIaInteractions(iaRes.totalItems)
-      } catch (err) {
-        console.error(err)
       }
+
+      const results = await Promise.allSettled([
+        pb.collection('customers').getList(1, 1, { fields: 'id' }),
+        pb.collection('cadences').getList(1, 1, { filter: 'is_active = true', fields: 'id' }),
+        pb.collection('leads').getList(1, 1, { fields: 'id' }),
+      ])
+
+      const [customersRes, cadencesRes, iaRes] = results
+
+      if (customersRes.status === 'fulfilled') {
+        setCustomerCount(customersRes.value.totalItems)
+      } else {
+        reportError({
+          type: 'dashboard_customers_error',
+          message: 'Failed to fetch customers count',
+          details: { reason: String(customersRes.reason) },
+        })
+      }
+      if (cadencesRes.status === 'fulfilled') {
+        setCadenceCount(cadencesRes.value.totalItems)
+      } else {
+        reportError({
+          type: 'dashboard_cadences_error',
+          message: 'Failed to fetch cadences count',
+          details: { reason: String(cadencesRes.reason) },
+        })
+      }
+      if (iaRes.status === 'fulfilled') {
+        setIaInteractions(iaRes.value.totalItems)
+      } else {
+        reportError({
+          type: 'dashboard_leads_error',
+          message: 'Failed to fetch leads count',
+          details: { reason: String(iaRes.reason) },
+        })
+      }
+
+      const anyError =
+        customersRes.status === 'rejected' ||
+        cadencesRes.status === 'rejected' ||
+        iaRes.status === 'rejected'
+      setStatsError(anyError)
+    } catch (err) {
+      console.error(err)
+      setStatsError(true)
+      reportError({
+        type: 'dashboard_stats_error',
+        message: err instanceof Error ? err.message : 'Dashboard stats fetch failed',
+        details: { stack: err instanceof Error ? err.stack : undefined },
+      })
+    } finally {
+      setStatsLoading(false)
     }
+  }, [user])
+
+  useEffect(() => {
     if (user) {
       fetchStats()
     }
-  }, [user])
+  }, [user, fetchStats])
 
   useRealtime('users', (e) => {
     if (!user?.id || e.record.id !== user.id) return
@@ -61,7 +122,14 @@ export default function Dashboard() {
     pb.collection('customers')
       .getList(1, 1, { fields: 'id' })
       .then((res) => setCustomerCount(res.totalItems))
-      .catch(console.error)
+      .catch((err) => {
+        console.error(err)
+        reportError({
+          type: 'dashboard_customers_error',
+          message: err instanceof Error ? err.message : 'Realtime customers fetch failed',
+          details: {},
+        })
+      })
   })
   useRealtime('cadences', () => {
     pb.collection('cadences')
@@ -85,6 +153,26 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {statsError && (
+        <ErrorBoundary
+          key="stats-error-banner"
+          title="Estatísticas"
+          onRetry={fetchStats}
+          logType="dashboard_stats_error"
+        >
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-center gap-2 text-sm text-amber-800">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>Alguns dados não puderam ser carregados. Tente novamente.</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={fetchStats} disabled={statsLoading}>
+              <RefreshCw className={cn('mr-2 h-4 w-4', statsLoading && 'animate-spin')} />
+              Tentar novamente
+            </Button>
+          </div>
+        </ErrorBoundary>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -92,7 +180,9 @@ export default function Dashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{customerCount}</div>
+            <div className="text-2xl font-bold">
+              {statsLoading && customerCount === 0 ? '—' : customerCount}
+            </div>
             <p className="text-xs text-muted-foreground">Na base de dados</p>
           </CardContent>
         </Card>

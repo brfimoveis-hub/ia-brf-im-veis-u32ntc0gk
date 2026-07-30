@@ -14,11 +14,12 @@ import { formatPhone } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import pb from '@/lib/pocketbase/client'
-import { toast } from 'sonner'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 import { CustomerDetailDrawer } from './CustomerDetailDrawer'
 import { PaginationBar } from './PaginationBar'
 import { SortableTableHead } from './SortableTableHead'
+import { TableErrorState } from './TableErrorState'
+import { reportError } from '@/lib/error-reporter'
 
 interface Props {
   filter: string
@@ -46,6 +47,9 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
   const [items, setItems] = useState<any[]>([])
   const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const selectedIds = useCustomerSelection()
   const requestIdRef = useRef(0)
@@ -67,6 +71,7 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
 
     const rid = ++requestIdRef.current
     setLoading(true)
+    if (retryKey > 0) setRetrying(true)
     ;(async () => {
       try {
         const result = await pb.collection('customers').getList(page, perPage, {
@@ -76,20 +81,37 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
         if (rid !== requestIdRef.current) return
         setItems(result.items)
         setTotalItems(result.totalItems)
+        setFetchError(false)
       } catch (err: any) {
         console.error('UnifiedTable fetch error:', err)
         if (rid === requestIdRef.current) {
           setItems([])
           setTotalItems(0)
-          toast.error('Erro ao buscar clientes', {
-            description: err?.message || 'Verifique os filtros e tente novamente.',
+          setFetchError(true)
+          reportError({
+            type: 'customers_list_error',
+            message: err?.message || 'Failed to fetch customer list',
+            details: {
+              filter,
+              sort,
+              page,
+              perPage,
+              stack: err?.stack,
+            },
           })
         }
       } finally {
-        if (rid === requestIdRef.current) setLoading(false)
+        if (rid === requestIdRef.current) {
+          setLoading(false)
+          setRetrying(false)
+        }
       }
     })()
-  }, [filter, sort, page, perPage, refreshKey])
+  }, [filter, sort, page, perPage, refreshKey, retryKey])
+
+  const handleRetry = useCallback(() => {
+    setRetryKey((k) => k + 1)
+  }, [])
 
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
   const currentPage = Math.min(page, totalPages)
@@ -119,6 +141,40 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
   )
 
   const checkboxChecked = allPageSelected ? true : somePageSelected ? 'indeterminate' : false
+
+  if (fetchError && !loading) {
+    return (
+      <>
+        <div className="rounded-md border flex-1 flex flex-col">
+          <TableErrorState onRetry={handleRetry} retrying={retrying} />
+        </div>
+        <CustomerDetailDrawer
+          customerId={drawerId}
+          open={!!drawerId}
+          onOpenChange={(open) => !open && setDrawerId(null)}
+        />
+      </>
+    )
+  }
+
+  const handleRetryClick = useCallback(() => {
+    setRefreshKeyProp((k) => k + 1)
+  }, [])
+
+  if (fetchError && !loading) {
+    return (
+      <>
+        <div className="rounded-md border flex-1 flex flex-col">
+          <TableErrorState onRetry={handleRetryClick} retrying={retrying} />
+        </div>
+        <CustomerDetailDrawer
+          customerId={drawerId}
+          open={!!drawerId}
+          onOpenChange={(open) => !open && setDrawerId(null)}
+        />
+      </>
+    )
+  }
 
   return (
     <>
@@ -191,6 +247,7 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
               ) : (
                 items.map((c) => {
                   const isSelected = selectedIds.has(c.id)
+                  void handleRetry
                   return (
                     <TableRow
                       key={c.id}

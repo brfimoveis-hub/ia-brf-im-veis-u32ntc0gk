@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
+import { reportError } from '@/lib/error-reporter'
 
 export interface DashboardStats {
   leads: number
@@ -56,10 +57,42 @@ export function useDashboardData() {
         cadences: cadencesRes.status === 'fulfilled' ? cadencesRes.value.totalItems : 0,
       })
 
-      if (leadsRes.status === 'rejected') newErrors.leads = true
-      if (customersRes.status === 'rejected') newErrors.customers = true
-      if (cadencesRes.status === 'rejected') newErrors.cadences = true
-      if (campaignsRes.status === 'rejected') newErrors.email = true
+      if (leadsRes.status === 'rejected') {
+        newErrors.leads = true
+        void logError(
+          leadsRes.reason,
+          user?.id || 'unknown',
+          'dashboard_stats_error',
+          'Failed to fetch leads count',
+        )
+      }
+      if (customersRes.status === 'rejected') {
+        newErrors.customers = true
+        void logError(
+          customersRes.reason,
+          user?.id || 'unknown',
+          'dashboard_stats_error',
+          'Failed to fetch customers count',
+        )
+      }
+      if (cadencesRes.status === 'rejected') {
+        newErrors.cadences = true
+        void logError(
+          cadencesRes.reason,
+          user?.id || 'unknown',
+          'dashboard_stats_error',
+          'Failed to fetch cadences count',
+        )
+      }
+      if (campaignsRes.status === 'rejected') {
+        newErrors.email = true
+        void logError(
+          campaignsRes.reason,
+          user?.id || 'unknown',
+          'dashboard_stats_error',
+          'Failed to fetch email campaigns',
+        )
+      }
 
       if (campaignsRes.status === 'fulfilled') {
         const campaigns = campaignsRes.value as any[]
@@ -76,28 +109,43 @@ export function useDashboardData() {
       }
 
       setErrors(newErrors)
-    } catch {
+    } catch (error) {
       setErrors({ all: true })
+      void logError(
+        error,
+        user?.id || 'unknown',
+        'dashboard_stats_error',
+        'Dashboard stats fetch failed',
+      )
     }
-  }, [])
+  }, [user, logError])
 
-  const logMetaError = useCallback(async (error: unknown, userId: string) => {
-    try {
-      const errMessage = error instanceof Error ? error.message : String(error)
-      const errStack = error instanceof Error ? error.stack : undefined
-      await pb.collection('system_logs').create({
-        type: 'dashboard_meta_error',
-        message: `Failed to fetch Meta WhatsApp status: ${errMessage}`,
-        details: {
-          stack: errStack,
-          user_id: userId,
-          timestamp: new Date().toISOString(),
-        },
-      })
-    } catch {
-      // Silently ignore — logging must never crash the dashboard
-    }
-  }, [])
+  const logError = useCallback(
+    async (error: unknown, userId: string, logType: string, contextMsg: string) => {
+      try {
+        const errMessage = error instanceof Error ? error.message : String(error)
+        const errStack = error instanceof Error ? error.stack : undefined
+        await pb.collection('system_logs').create({
+          type: logType,
+          message: `${contextMsg}: ${errMessage}`,
+          details: {
+            stack: errStack,
+            user_id: userId,
+            timestamp: new Date().toISOString(),
+          },
+        })
+      } catch {
+        // Silently ignore — logging must never crash the dashboard
+      }
+    },
+    [],
+  )
+
+  const logMetaError = useCallback(
+    (error: unknown, userId: string) =>
+      logError(error, userId, 'dashboard_meta_error', 'Failed to fetch Meta WhatsApp status'),
+    [logError],
+  )
 
   const refreshMeta = useCallback(async () => {
     if (!user) return
