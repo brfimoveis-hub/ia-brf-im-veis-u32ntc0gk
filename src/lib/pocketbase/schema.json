@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-29T22:16:14.040Z",
+  "generatedAt": "2026-07-29T22:20:37.717Z",
   "collections": [
     {
       "name": "users",
@@ -29,14 +29,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "meta_whatsapp_status",
@@ -330,14 +335,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "urgency",
@@ -362,7 +372,12 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["Investidor", "Morador", "Primeiro Imóvel", "Veranista"]
+          "selectValues": [
+            "Investidor",
+            "Morador",
+            "Primeiro Imóvel",
+            "Veranista"
+          ]
         },
         {
           "name": "last_sent_at",
@@ -471,14 +486,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
@@ -518,14 +538,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "name",
@@ -583,21 +608,31 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["customer", "agent", "ai", "system"]
+          "selectValues": [
+            "customer",
+            "agent",
+            "ai",
+            "system"
+          ]
         },
         {
           "name": "created",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "user_id",
@@ -611,7 +646,11 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["whatsapp", "messenger", "instagram"]
+          "selectValues": [
+            "whatsapp",
+            "messenger",
+            "instagram"
+          ]
         }
       ],
       "indexes": []
@@ -650,14 +689,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "user_id",
@@ -715,7 +759,12 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["draft", "sending", "completed", "failed"]
+          "selectValues": [
+            "draft",
+            "sending",
+            "completed",
+            "failed"
+          ]
         },
         {
           "name": "total_recipients",
@@ -740,14 +789,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "unique_opens",
@@ -806,7 +860,11 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["pending", "sent", "failed"]
+          "selectValues": [
+            "pending",
+            "sent",
+            "failed"
+          ]
         },
         {
           "name": "error_message",
@@ -819,14 +877,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "opened_at",
