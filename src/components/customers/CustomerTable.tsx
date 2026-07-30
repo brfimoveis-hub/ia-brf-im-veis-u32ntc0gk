@@ -1,3 +1,5 @@
+import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Table,
   TableBody,
@@ -22,11 +24,11 @@ import { PHASES } from './constants'
 import { cn, formatPhone } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { useSearchParams } from 'react-router-dom'
 import { RemarketingSyncModal } from './RemarketingSyncModal'
 import { BulkEmailModal } from './BulkEmailModal'
-import { useState, useMemo } from 'react'
 import { CustomerDetailDrawer } from './CustomerDetailDrawer'
+import { PaginationBar } from './PaginationBar'
+import { TableErrorState } from './TableErrorState'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 import pb from '@/lib/pocketbase/client'
 
@@ -43,6 +45,7 @@ interface CustomerTableProps {
   error: boolean
   onEdit: (lead: Customer) => void
   onDelete: (id: string) => void
+  onRetry?: () => void
   lastElementRef?: (node: HTMLTableRowElement | null) => void
 }
 
@@ -52,20 +55,35 @@ export function CustomerTable({
   error,
   onEdit,
   onDelete,
-  lastElementRef,
+  onRetry,
 }: CustomerTableProps) {
   const [searchParams] = useSearchParams()
   const searchTerm = searchParams.get('search') || searchParams.get('q') || ''
   const phaseFilter = searchParams.get('phase') || searchParams.get('status') || ''
-  const hasFilter = !!searchTerm || !!phaseFilter || Array.from(searchParams.keys()).length > 0
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
   const [isBulkEmailModalOpen, setIsBulkEmailModalOpen] = useState(false)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [selectAllLoading, setSelectAllLoading] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [perPage, setPerPage] = useState(20)
+
+  const totalItems = leads.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(1)
+  }, [currentPage, totalPages])
+
+  const paginatedLeads = useMemo(() => {
+    const start = (currentPage - 1) * perPage
+    return leads.slice(start, start + perPage)
+  }, [leads, currentPage, perPage])
 
   const selectedIds = useCustomerSelection()
+  const selectedCount = selectedIds.size
+  const hasSelection = selectedCount > 0
 
-  const visibleIds = useMemo(() => leads.map((l) => l.id), [leads])
+  const visibleIds = useMemo(() => paginatedLeads.map((l) => l.id), [paginatedLeads])
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected
 
@@ -74,7 +92,6 @@ export function CustomerTable({
       customerSelectionStore.removeMany(visibleIds)
       return
     }
-
     setSelectAllLoading(true)
     try {
       const filters: string[] = []
@@ -107,9 +124,11 @@ export function CustomerTable({
     customerSelectionStore.toggle(id)
   }
 
-  const selectedCount = selectedIds.size
-  const hasSelection = selectedCount > 0
   const selectedIdArray = useMemo(() => Array.from(selectedIds), [selectedIds])
+
+  const handleRetry = () => {
+    if (onRetry) onRetry()
+  }
 
   return (
     <div className="space-y-4">
@@ -133,7 +152,7 @@ export function CustomerTable({
       />
 
       {hasSelection && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border bg-primary/5 px-4 py-2.5 animate-fade-in">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-primary/5 px-4 py-2.5 animate-fade-in">
           <div className="flex items-center gap-3">
             <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-primary px-2 text-sm font-semibold text-primary-foreground">
               {selectedCount}
@@ -193,7 +212,7 @@ export function CustomerTable({
                   }
                   onCheckedChange={handleSelectAll}
                   aria-label="Selecionar todos"
-                  disabled={loading || leads.length === 0 || selectAllLoading}
+                  disabled={loading || paginatedLeads.length === 0 || selectAllLoading}
                 />
               </TableHead>
               <TableHead className="whitespace-nowrap font-semibold">Fase/Status</TableHead>
@@ -207,14 +226,20 @@ export function CustomerTable({
           </TableHeader>
           <TableBody>
             {loading ? (
-              Array.from({ length: 15 }).map((_, i) => (
+              Array.from({ length: Math.min(perPage, 15) }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell colSpan={COLUMNS.length + 3} className="py-3">
                     <Skeleton className="h-8 w-full" />
                   </TableCell>
                 </TableRow>
               ))
-            ) : leads.length === 0 ? (
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={COLUMNS.length + 3} className="p-0">
+                  <TableErrorState onRetry={handleRetry} />
+                </TableCell>
+              </TableRow>
+            ) : paginatedLeads.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={COLUMNS.length + 3}
@@ -224,19 +249,17 @@ export function CustomerTable({
                 </TableCell>
               </TableRow>
             ) : (
-              leads.map((lead, index) => {
+              paginatedLeads.map((lead) => {
                 const phase = PHASES.find(
                   (p) =>
                     p.id === lead.status ||
                     p.title === lead.status ||
                     (p.aliases && p.aliases.includes(lead.status)),
                 )
-                const isLast = index === leads.length - 1
                 const isSelected = selectedIds.has(lead.id)
                 return (
                   <TableRow
                     key={lead.id}
-                    ref={isLast ? lastElementRef : null}
                     className={cn(
                       'group hover:bg-muted/50 transition-colors',
                       isSelected && 'bg-primary/5',
@@ -271,25 +294,7 @@ export function CustomerTable({
                       </div>
                     </TableCell>
                     {COLUMNS.map((col) => {
-                      if (col.key === 'tags') {
-                        return (
-                          <TableCell
-                            key={col.key}
-                            className="whitespace-nowrap cursor-pointer"
-                            onClick={() => setSelectedCustomerId(lead.id)}
-                          >
-                            <div className="flex gap-1">
-                              {(lead.tags || []).map((t: string, i: number) => (
-                                <Badge key={i} variant="outline" className="text-xs">
-                                  {t}
-                                </Badge>
-                              ))}
-                            </div>
-                          </TableCell>
-                        )
-                      }
                       let val = (lead as any)[col.key]
-
                       if (col.key === 'email') {
                         val = lead.email || '—'
                       } else if (col.key === 'phone') {
@@ -301,7 +306,6 @@ export function CustomerTable({
                           ? format(new Date(lead.last_sent_at), 'dd/MM/yyyy', { locale: ptBR })
                           : '—'
                       }
-
                       return (
                         <TableCell
                           key={col.key}
@@ -344,6 +348,19 @@ export function CustomerTable({
             )}
           </TableBody>
         </Table>
+        <PaginationBar
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          perPage={perPage}
+          onPageChange={setCurrentPage}
+          onPerPageChange={(size) => {
+            setPerPage(size)
+            setCurrentPage(1)
+          }}
+          disabled={loading}
+          itemName="clientes"
+        />
       </div>
     </div>
   )

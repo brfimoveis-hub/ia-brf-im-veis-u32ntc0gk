@@ -81,12 +81,14 @@ export function PaginationBar({
         </Button>
         <Button
           variant="outline"
-          size="icon"
-          className="h-7 w-7"
+          size="sm"
+          className="h-7 gap-1 px-2"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={disabled || currentPage <= 1}
+          aria-label="Anterior"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Anterior</span>
         </Button>
         {pageNumbers.map((p, i) =>
           p === 'ellipsis' ? (
@@ -108,12 +110,14 @@ export function PaginationBar({
         )}
         <Button
           variant="outline"
-          size="icon"
-          className="h-7 w-7"
+          size="sm"
+          className="h-7 gap-1 px-2"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={disabled || currentPage >= totalPages}
+          aria-label="Próximo"
         >
           <ChevronRight className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Próximo</span>
         </Button>
         <Button
           variant="outline"
