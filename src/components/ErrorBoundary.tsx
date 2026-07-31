@@ -32,22 +32,28 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo)
 
-    reportError({
-      type: this.props.logType || 'frontend_error',
-      message: error.message || 'React Rendering Error',
-      details: {
-        stack: error.stack,
-        componentStack: errorInfo.componentStack,
-        title: this.props.title,
-      },
-    })
+    const logType = this.props.logType || 'frontend_error'
+    const title = this.props.title
+    const message =
+      this.props.message ||
+      error.message ||
+      'Ocorreu um erro inesperado ao renderizar este componente.'
 
-    toast.error(this.props.title || 'Erro ao carregar', {
-      description:
-        this.props.message ||
-        error.message ||
-        'Ocorreu um erro inesperado ao renderizar este componente.',
-    })
+    setTimeout(() => {
+      reportError({
+        type: logType,
+        message: error.message || 'React Rendering Error',
+        details: {
+          stack: error.stack,
+          componentStack: errorInfo.componentStack,
+          title,
+        },
+      })
+
+      toast.error(title || 'Erro ao carregar', {
+        description: message,
+      })
+    }, 0)
   }
 
   private handleRetry = () => {

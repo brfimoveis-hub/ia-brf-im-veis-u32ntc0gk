@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   getCampaign,
@@ -32,6 +32,14 @@ export default function EmailCampaignDetail() {
   const [engagedIds, setEngagedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const loadData = useCallback(async () => {
     if (!campaignId) return
@@ -43,13 +51,14 @@ export default function EmailCampaignDetail() {
         getDeliveries(campaignId),
         getEngagedCustomerIds(),
       ])
+      if (!mountedRef.current) return
       setCampaign(c)
       setDeliveries(d)
       setEngagedIds(engaged)
     } catch {
-      setError(true)
+      if (mountedRef.current) setError(true)
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }, [campaignId])
 

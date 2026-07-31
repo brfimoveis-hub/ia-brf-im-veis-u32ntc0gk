@@ -32,6 +32,14 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestIdRef = useRef(0)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
@@ -68,17 +76,17 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
         filter: filterString || undefined,
         expand,
       })
-      if (requestId !== requestIdRef.current) return
+      if (requestId !== requestIdRef.current || !isMountedRef.current) return
       setItems(result.items)
       setTotalItems(result.totalItems)
     } catch (err) {
       console.error(err)
-      if (requestId === requestIdRef.current) {
+      if (requestId === requestIdRef.current && isMountedRef.current) {
         setItems([])
         setError(true)
       }
     } finally {
-      if (requestId === requestIdRef.current) setLoading(false)
+      if (requestId === requestIdRef.current && isMountedRef.current) setLoading(false)
     }
   }, [collection, currentPage, perPage, sort, filterString, expand])
 

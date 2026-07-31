@@ -179,11 +179,19 @@ const router = createBrowserRouter(
               children: [
                 {
                   path: 'dashboard',
-                  element: <Dashboard />,
+                  element: (
+                    <ErrorBoundary>
+                      <Dashboard />
+                    </ErrorBoundary>
+                  ),
                 },
                 {
                   path: 'customers/*',
-                  element: <Customers />,
+                  element: (
+                    <ErrorBoundary>
+                      <Customers />
+                    </ErrorBoundary>
+                  ),
                 },
                 {
                   path: 'customer-list/*',
@@ -215,15 +223,27 @@ const router = createBrowserRouter(
                 },
                 {
                   path: 'settings/remarketing',
-                  element: <SettingsRemarketing />,
+                  element: (
+                    <ErrorBoundary>
+                      <SettingsRemarketing />
+                    </ErrorBoundary>
+                  ),
                 },
                 {
                   path: 'settings/connections/*',
-                  element: <SettingsConnections />,
+                  element: (
+                    <ErrorBoundary>
+                      <SettingsConnections />
+                    </ErrorBoundary>
+                  ),
                 },
                 {
                   path: 'settings/ai',
-                  element: <SettingsAI />,
+                  element: (
+                    <ErrorBoundary>
+                      <SettingsAI />
+                    </ErrorBoundary>
+                  ),
                 },
                 {
                   path: 'settings',
