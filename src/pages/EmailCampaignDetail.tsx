@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   getCampaign,
@@ -7,13 +7,11 @@ import {
   type EmailCampaign,
   type EmailDelivery,
 } from '@/services/email_campaigns'
-import { useRealtime } from '@/hooks/use-realtime'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { CampaignInteractions } from '@/components/email-marketing/CampaignInteractions'
 import {
-  Loader2,
   ArrowLeft,
   CheckCircle,
   XCircle,
@@ -21,6 +19,8 @@ import {
   Mail,
   MailOpen,
   MousePointerClick,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -31,9 +31,12 @@ export default function EmailCampaignDetail() {
   const [deliveries, setDeliveries] = useState<EmailDelivery[]>([])
   const [engagedIds, setEngagedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!campaignId) return
+    setLoading(true)
+    setError(false)
     try {
       const [c, d, engaged] = await Promise.all([
         getCampaign(campaignId),
@@ -44,29 +47,48 @@ export default function EmailCampaignDetail() {
       setDeliveries(d)
       setEngagedIds(engaged)
     } catch {
-      /* ignore */
+      setError(true)
     } finally {
       setLoading(false)
     }
-  }
+  }, [campaignId])
 
   useEffect(() => {
     loadData()
-  }, [campaignId])
-  useRealtime('email_deliveries', () => {
-    if (campaignId) loadData()
-  })
-  useRealtime('email_campaigns', () => {
-    if (campaignId) loadData()
-  })
+  }, [loadData])
 
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <RefreshCw className="h-8 w-8 animate-spin text-primary" />
       </div>
     )
   }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Button asChild variant="ghost" size="icon">
+            <Link to="/email-marketing">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+          </Button>
+          <h1 className="text-2xl font-bold tracking-tight">Detalhes da Campanha</h1>
+        </div>
+        <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed rounded-lg">
+          <AlertCircle className="h-10 w-10 text-destructive mb-3" />
+          <p className="text-lg font-medium mb-1">Alguns dados não podem ser carregados.</p>
+          <p className="text-sm text-muted-foreground mb-4">Tente novamente.</p>
+          <Button onClick={loadData} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (!campaign) {
     return <div className="p-8 text-center text-muted-foreground">Campanha não encontrada.</div>
   }
@@ -91,6 +113,9 @@ export default function EmailCampaignDetail() {
           <h1 className="text-2xl font-bold tracking-tight">{campaign.name}</h1>
           <p className="text-sm text-muted-foreground">{campaign.subject}</p>
         </div>
+        <Button variant="outline" size="icon" onClick={loadData} title="Atualizar">
+          <RefreshCw className="h-4 w-4" />
+        </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

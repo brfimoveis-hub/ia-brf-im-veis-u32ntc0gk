@@ -92,10 +92,8 @@ export default function Cadences() {
         </div>
         <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed rounded-lg">
           <AlertCircle className="h-10 w-10 text-destructive mb-3" />
-          <p className="text-lg font-medium mb-1">Não foi possível carregar as cadências</p>
-          <p className="text-sm text-muted-foreground mb-4">
-            Verifique sua conexão e tente novamente.
-          </p>
+          <p className="text-lg font-medium mb-1">Alguns dados não podem ser carregados.</p>
+          <p className="text-sm text-muted-foreground mb-4">Tente novamente.</p>
           <Button onClick={retry} variant="outline">
             <RefreshCw className="h-4 w-4 mr-2" />
             Tentar novamente

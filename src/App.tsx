@@ -191,15 +191,27 @@ const router = createBrowserRouter(
                 },
                 {
                   path: 'cadences',
-                  element: <Cadences />,
+                  element: (
+                    <ErrorBoundary>
+                      <Cadences />
+                    </ErrorBoundary>
+                  ),
                 },
                 {
                   path: 'email-marketing',
-                  element: <EmailMarketing />,
+                  element: (
+                    <ErrorBoundary>
+                      <EmailMarketing />
+                    </ErrorBoundary>
+                  ),
                 },
                 {
                   path: 'email-marketing/:campaignId',
-                  element: <EmailCampaignDetail />,
+                  element: (
+                    <ErrorBoundary>
+                      <EmailCampaignDetail />
+                    </ErrorBoundary>
+                  ),
                 },
                 {
                   path: 'settings/remarketing',

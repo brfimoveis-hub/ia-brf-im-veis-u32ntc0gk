@@ -1,14 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getCampaigns, deleteCampaign, type EmailCampaign } from '@/services/email_campaigns'
-import { useRealtime } from '@/hooks/use-realtime'
+import { usePaginatedList } from '@/hooks/use-paginated-list'
+import { deleteCampaign, type EmailCampaign } from '@/services/email_campaigns'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CreateCampaignModal } from '@/components/email-marketing/CreateCampaignModal'
 import { ImportCustomersModal } from '@/components/email-marketing/ImportCustomersModal'
 import {
-  Loader2,
   Plus,
   Upload,
   Trash2,
@@ -17,38 +16,40 @@ import {
   Mail,
   MailOpen,
   MousePointerClick,
+  AlertCircle,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 
 export default function EmailMarketing() {
-  const [campaigns, setCampaigns] = useState<EmailCampaign[]>([])
-  const [loading, setLoading] = useState(true)
+  const {
+    items: campaigns,
+    loading,
+    error,
+    refresh,
+    retry,
+    currentPage,
+    totalPages,
+    totalItems,
+    setPage,
+  } = usePaginatedList<EmailCampaign>({
+    collection: 'email_campaigns',
+    perPage: 20,
+    initialSort: '-created',
+    searchFields: ['name', 'subject'],
+  })
   const [showCreate, setShowCreate] = useState(false)
   const [showImport, setShowImport] = useState(false)
-
-  const loadData = async () => {
-    try {
-      setCampaigns(await getCampaigns())
-    } catch {
-      toast.error('Erro ao carregar campanhas')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadData()
-  }, [])
-  useRealtime('email_campaigns', () => {
-    loadData()
-  })
 
   const handleDelete = async (id: string) => {
     try {
       await deleteCampaign(id)
       toast.success('Campanha excluída')
+      refresh()
     } catch {
       toast.error('Erro ao excluir')
     }
@@ -66,7 +67,29 @@ export default function EmailMarketing() {
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Email Marketing</h1>
+            <p className="text-muted-foreground">Gerencie campanhas e monitore engajamento.</p>
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed rounded-lg">
+          <AlertCircle className="h-10 w-10 text-destructive mb-3" />
+          <p className="text-lg font-medium mb-1">Alguns dados não podem ser carregados.</p>
+          <p className="text-sm text-muted-foreground mb-4">Tente novamente.</p>
+          <Button onClick={retry} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Tentar novamente
+          </Button>
+        </div>
       </div>
     )
   }
@@ -248,11 +271,36 @@ export default function EmailMarketing() {
               </tbody>
             </table>
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-3 py-2 border-t">
+              <span className="text-sm text-muted-foreground">
+                Página {currentPage} de {totalPages} ({totalItems} campanhas)
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <CreateCampaignModal open={showCreate} onOpenChange={setShowCreate} onSuccess={loadData} />
-      <ImportCustomersModal open={showImport} onOpenChange={setShowImport} onSuccess={() => {}} />
+      <CreateCampaignModal open={showCreate} onOpenChange={setShowCreate} onSuccess={refresh} />
+      <ImportCustomersModal open={showImport} onOpenChange={setShowImport} onSuccess={refresh} />
     </div>
   )
 }

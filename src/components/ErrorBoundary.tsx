@@ -69,7 +69,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <AlertCircle className="h-8 w-8 mb-2 opacity-80" />
           {this.props.title && <h3 className="font-semibold text-base mb-1">{this.props.title}</h3>}
           <p className="text-sm opacity-80 mb-3 max-w-[400px]">
-            {this.props.message || 'Alguns dados não puderam ser carregados. Tente novamente.'}
+            {this.props.message || 'Alguns dados não podem ser carregados. Tente novamente.'}
           </p>
           <Button variant="outline" size="sm" onClick={this.handleRetry}>
             <RefreshCw className="mr-2 h-3.5 w-3.5" />
