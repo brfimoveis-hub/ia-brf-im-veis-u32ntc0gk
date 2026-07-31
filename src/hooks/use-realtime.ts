@@ -29,7 +29,7 @@ export function useRealtime<TRecord extends RecordModel = RecordModel>(
 
     pb.collection<TRecord>(collectionName)
       .subscribe('*', (e) => {
-        if (!cancelled) callbackRef.current(e)
+        callbackRef.current(e)
       })
       .then((fn) => {
         if (cancelled) {
