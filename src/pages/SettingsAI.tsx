@@ -67,12 +67,37 @@ export default function SettingsAI() {
   const [projectData, setProjectData] = useState<ProjectData>({ ...DEFAULT_PROJECT })
 
   useEffect(() => {
-    if (user) {
-      setAiName(user.ai_name || 'Bia')
-      setBiaInstructions(user.bia_instructions || '')
-      setAiInstructions(user.ai_instructions || '')
-      setProjectData(parseProjectData(user.project_data))
-      setLoading(false)
+    if (!user?.id) return
+    let cancelled = false
+    let retried = false
+
+    const loadUserData = async () => {
+      try {
+        const userData = await pb.collection('users').getOne(user.id)
+        if (cancelled) return
+        setAiName(userData.ai_name || 'Bia')
+        setBiaInstructions(userData.bia_instructions || '')
+        setAiInstructions(userData.ai_instructions || '')
+        setProjectData(parseProjectData(userData.project_data))
+        if (!cancelled) setLoading(false)
+      } catch {
+        if (cancelled) return
+        if (!retried) {
+          retried = true
+          setTimeout(loadUserData, 1500)
+          return
+        }
+        setAiName(user.ai_name || 'Bia')
+        setBiaInstructions(user.bia_instructions || '')
+        setAiInstructions(user.ai_instructions || '')
+        setProjectData(parseProjectData(user.project_data))
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadUserData()
+    return () => {
+      cancelled = true
     }
   }, [user])
 

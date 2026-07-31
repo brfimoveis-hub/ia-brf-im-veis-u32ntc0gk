@@ -45,7 +45,9 @@ export default function EmailCampaignDetail() {
     if (!campaignId) return
     setLoading(true)
     setError(false)
-    try {
+    let retried = false
+
+    const fetchAll = async () => {
       const [c, d, engaged] = await Promise.all([
         getCampaign(campaignId),
         getDeliveries(campaignId),
@@ -55,10 +57,30 @@ export default function EmailCampaignDetail() {
       setCampaign(c)
       setDeliveries(d)
       setEngagedIds(engaged)
-    } catch {
-      if (mountedRef.current) setError(true)
-    } finally {
+    }
+
+    try {
+      await fetchAll()
       if (mountedRef.current) setLoading(false)
+    } catch {
+      if (!mountedRef.current) return
+      if (!retried) {
+        retried = true
+        setTimeout(async () => {
+          try {
+            await fetchAll()
+            if (mountedRef.current) setLoading(false)
+          } catch {
+            if (mountedRef.current) {
+              setError(true)
+              setLoading(false)
+            }
+          }
+        }, 1500)
+        return
+      }
+      setError(true)
+      setLoading(false)
     }
   }, [campaignId])
 

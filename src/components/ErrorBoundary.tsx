@@ -20,6 +20,8 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  private toastTimer: ReturnType<typeof setTimeout> | null = null
+
   public state: State = {
     hasError: false,
     retryCount: 0,
@@ -32,14 +34,18 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo)
 
-    const logType = this.props.logType || 'frontend_error'
-    const title = this.props.title
-    const message =
-      this.props.message ||
-      error.message ||
-      'Ocorreu um erro inesperado ao renderizar este componente.'
+    if (this.toastTimer) clearTimeout(this.toastTimer)
 
-    setTimeout(() => {
+    this.toastTimer = setTimeout(() => {
+      if (!this.state.hasError) return
+
+      const logType = this.props.logType || 'frontend_error'
+      const title = this.props.title
+      const message =
+        this.props.message ||
+        error.message ||
+        'Ocorreu um erro inesperado ao renderizar este componente.'
+
       reportError({
         type: logType,
         message: error.message || 'React Rendering Error',
@@ -53,10 +59,21 @@ export class ErrorBoundary extends Component<Props, State> {
       toast.error(title || 'Erro ao carregar', {
         description: message,
       })
-    }, 0)
+    }, 1500)
+  }
+
+  public componentWillUnmount() {
+    if (this.toastTimer) {
+      clearTimeout(this.toastTimer)
+      this.toastTimer = null
+    }
   }
 
   private handleRetry = () => {
+    if (this.toastTimer) {
+      clearTimeout(this.toastTimer)
+      this.toastTimer = null
+    }
     this.setState((prev) => ({
       hasError: false,
       error: undefined,

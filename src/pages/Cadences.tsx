@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
 import { Plus, Trash2, Edit, RefreshCw, AlertCircle } from 'lucide-react'
 import { CadenceFormDialog } from '@/components/cadences/CadenceFormDialog'
+import { useAutoRetry } from '@/hooks/use-auto-retry'
 
 export default function Cadences() {
   const { user } = useAuth()
@@ -25,6 +26,7 @@ export default function Cadences() {
     initialSort: 'order',
     searchFields: ['title', 'description'],
   })
+  const { isRetrying } = useAutoRetry(error, retry)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCadence, setEditingCadence] = useState<Cadence | null>(null)
 
@@ -74,7 +76,7 @@ export default function Cadences() {
     }
   }
 
-  if (loading)
+  if (loading || (error && isRetrying))
     return (
       <div className="flex h-[calc(100vh-10rem)] w-full items-center justify-center">
         Carregando...

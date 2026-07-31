@@ -24,6 +24,7 @@ import {
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
+import { useAutoRetry } from '@/hooks/use-auto-retry'
 
 export default function EmailMarketing() {
   const {
@@ -42,6 +43,7 @@ export default function EmailMarketing() {
     initialSort: '-created',
     searchFields: ['name', 'subject'],
   })
+  const { isRetrying } = useAutoRetry(error, retry)
   const [showCreate, setShowCreate] = useState(false)
   const [showImport, setShowImport] = useState(false)
 
@@ -64,7 +66,7 @@ export default function EmailMarketing() {
   const successRate =
     totalSent + totalFailed > 0 ? Math.round((totalSent / (totalSent + totalFailed)) * 100) : 0
 
-  if (loading) {
+  if (loading || (error && isRetrying)) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <RefreshCw className="h-8 w-8 animate-spin text-primary" />
