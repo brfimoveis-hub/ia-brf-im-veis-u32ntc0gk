@@ -4,7 +4,6 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard,
   Users,
   Settings,
   LogOut,
@@ -40,8 +39,7 @@ export default function Layout() {
 
   const navItems = [
     { name: 'Cérebro do Sistema', path: '/dashboard', icon: Bot },
-    { name: 'Pipeline Kanban', path: '/customers', icon: LayoutDashboard },
-    { name: 'Lista de Clientes', path: '/customer-list', icon: Users },
+    { name: 'Clientes', path: '/customers', icon: Users },
     { name: 'Cadências', path: '/cadences', icon: Settings },
     { name: 'Email Marketing', path: '/email-marketing', icon: Mail },
     { name: 'Remarketing', path: '/settings/remarketing', icon: Target },

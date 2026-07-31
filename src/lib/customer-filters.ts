@@ -21,6 +21,7 @@ export interface CustomerFilterState {
   source: string
   neighborhood: string
   leadProfile: string
+  urgency: string
   noSend: boolean
 }
 
@@ -45,6 +46,22 @@ export function buildBaseFilter(filters: CustomerFilterState): string {
   }
   if (filters.leadProfile && filters.leadProfile !== 'all') {
     parts.push(`lead_profile = "${escapeFilterValue(filters.leadProfile)}"`)
+  }
+  if (filters.urgency && filters.urgency !== 'all') {
+    switch (filters.urgency) {
+      case 'high':
+        parts.push('urgency >= 7')
+        break
+      case 'medium':
+        parts.push('urgency >= 4 && urgency <= 6')
+        break
+      case 'low':
+        parts.push('urgency >= 1 && urgency <= 3')
+        break
+      case 'none':
+        parts.push('urgency = 0')
+        break
+    }
   }
   if (filters.noSend) {
     parts.push(`(last_sent_at = null || last_sent_at = "")`)

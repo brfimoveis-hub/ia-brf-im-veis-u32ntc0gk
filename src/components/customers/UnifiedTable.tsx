@@ -192,11 +192,18 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
                   onToggleSort={toggleSort}
                 />
                 <SortableTableHead
+                  label="Urgência"
+                  field="urgency"
+                  currentSort={sort}
+                  onToggleSort={toggleSort}
+                />
+                <SortableTableHead
                   label="Último Envio"
                   field="last_sent_at"
                   currentSort={sort}
                   onToggleSort={toggleSort}
                 />
+                <TableHead>Tags</TableHead>
                 <SortableTableHead
                   label="Criado em"
                   field="created"
@@ -212,7 +219,7 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
                     <TableCell className="pl-4">
                       <Skeleton className="h-5 w-5" />
                     </TableCell>
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 9 }).map((_, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-5 w-full" />
                       </TableCell>
@@ -221,7 +228,7 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
                 ))
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
                     Nenhum cliente encontrado.
                   </TableCell>
                 </TableRow>
@@ -257,7 +264,16 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
                         <Badge variant="outline">{c.status || 'Sem status'}</Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
+                        {c.urgency != null ? c.urgency : '-'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
                         {formatDateSafe(c.last_sent_at, 'dd/MM/yyyy')}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {Array.isArray(c.tags) && c.tags.length > 0
+                          ? c.tags.slice(0, 2).join(', ') +
+                            (c.tags.length > 2 ? ` +${c.tags.length - 2}` : '')
+                          : '-'}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatDateSafe(c.created, 'dd/MM/yyyy')}

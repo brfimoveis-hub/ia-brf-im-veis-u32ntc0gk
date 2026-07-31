@@ -1,9 +1,18 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
-import { useRealtime } from '@/hooks/use-realtime'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Upload, RefreshCw, Mail, X, Users, Send, CheckCheck } from 'lucide-react'
+import {
+  Upload,
+  RefreshCw,
+  Mail,
+  X,
+  Users,
+  Send,
+  CheckCheck,
+  Download,
+  Loader2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { ImportCustomersModal } from '@/components/email-marketing/ImportCustomersModal'
 import { RemarketingSyncModal } from '@/components/customers/RemarketingSyncModal'
@@ -16,6 +25,7 @@ import { CustomerFilterBar } from '@/components/customers/CustomerFilterBar'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { fetchAllCustomerIds, fetchCustomersByIds } from '@/services/customers'
+import { exportCustomersToCSV } from '@/lib/csv-export'
 import {
   buildBaseFilter,
   combineFilters,
@@ -30,6 +40,7 @@ export default function Customers() {
   const [sourceFilter, setSourceFilter] = useState('all')
   const [neighborhood, setNeighborhood] = useState('')
   const [leadProfile, setLeadProfile] = useState('all')
+  const [urgencyFilter, setUrgencyFilter] = useState('all')
   const [noSend, setNoSend] = useState(false)
   const [sort, setSort] = useState('-created')
   const [refreshKey, setRefreshKey] = useState(0)
@@ -38,7 +49,7 @@ export default function Customers() {
   const [isBulkEmailModalOpen, setIsBulkEmailModalOpen] = useState(false)
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
   const [modalCustomers, setModalCustomers] = useState<any[]>([])
-  const rtTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const selectedIds = useCustomerSelection()
 
@@ -47,16 +58,12 @@ export default function Customers() {
     return () => clearTimeout(t)
   }, [searchInput])
 
-  useRealtime('customers', () => {
-    if (rtTimerRef.current) clearTimeout(rtTimerRef.current)
-    rtTimerRef.current = setTimeout(() => setRefreshKey((k) => k + 1), 600)
-  })
-
   const filters: CustomerFilterState = {
     search,
     source: sourceFilter,
     neighborhood,
     leadProfile,
+    urgency: urgencyFilter,
     noSend,
   }
   const baseFilter = buildBaseFilter(filters)
@@ -71,6 +78,7 @@ export default function Customers() {
     sourceFilter !== 'all' ||
     !!neighborhood.trim() ||
     leadProfile !== 'all' ||
+    urgencyFilter !== 'all' ||
     noSend
 
   const handleClearFilters = useCallback(() => {
@@ -80,6 +88,7 @@ export default function Customers() {
     setSourceFilter('all')
     setNeighborhood('')
     setLeadProfile('all')
+    setUrgencyFilter('all')
     setNoSend(false)
   }, [])
 
@@ -92,6 +101,10 @@ export default function Customers() {
       toast.error('Erro ao mover lead')
       throw err
     }
+  }, [])
+
+  const handleRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1)
   }, [])
 
   const handleSelectFirst50 = useCallback(async () => {
@@ -111,6 +124,22 @@ export default function Customers() {
       toast.success(`${ids.length} clientes selecionados`)
     } catch {
       toast.error('Erro ao selecionar clientes')
+    }
+  }, [listFilter])
+
+  const handleExportCSV = useCallback(async () => {
+    setExporting(true)
+    try {
+      const records = await pb.collection('customers').getFullList({
+        filter: listFilter || undefined,
+        sort: '-created',
+      })
+      exportCustomersToCSV(records as any)
+      toast.success(`${records.length} clientes exportados`)
+    } catch {
+      toast.error('Erro ao exportar CSV')
+    } finally {
+      setExporting(false)
     }
   }, [listFilter])
 
@@ -156,6 +185,17 @@ export default function Customers() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
+          </Button>
+          <Button variant="outline" onClick={handleExportCSV} disabled={exporting}>
+            {exporting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Exportar CSV
+          </Button>
           <Button variant="outline" onClick={handleSelectFirst50}>
             <Users className="h-4 w-4 mr-2" /> Selecionar 50
           </Button>
@@ -181,6 +221,8 @@ export default function Customers() {
         onNeighborhoodChange={setNeighborhood}
         leadProfile={leadProfile}
         onLeadProfileChange={setLeadProfile}
+        urgencyFilter={urgencyFilter}
+        onUrgencyChange={setUrgencyFilter}
         noSend={noSend}
         onNoSendChange={setNoSend}
         onClear={handleClearFilters}
@@ -218,8 +260,8 @@ export default function Customers() {
 
       <Tabs defaultValue="pipeline" className="flex-1 flex flex-col min-h-0">
         <TabsList>
-          <TabsTrigger value="pipeline">Pipeline Kanban</TabsTrigger>
-          <TabsTrigger value="list">Lista de Clientes</TabsTrigger>
+          <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+          <TabsTrigger value="list">Lista</TabsTrigger>
         </TabsList>
 
         <TabsContent

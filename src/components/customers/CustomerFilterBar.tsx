@@ -22,6 +22,8 @@ interface Props {
   onNeighborhoodChange: (v: string) => void
   leadProfile: string
   onLeadProfileChange: (v: string) => void
+  urgencyFilter: string
+  onUrgencyChange: (v: string) => void
   noSend: boolean
   onNoSendChange: (v: boolean) => void
   onClear: () => void
@@ -39,6 +41,8 @@ export function CustomerFilterBar({
   onNeighborhoodChange,
   leadProfile,
   onLeadProfileChange,
+  urgencyFilter,
+  onUrgencyChange,
   noSend,
   onNoSendChange,
   onClear,
@@ -93,6 +97,18 @@ export function CustomerFilterBar({
                 {p}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={urgencyFilter} onValueChange={onUrgencyChange}>
+          <SelectTrigger className="w-full lg:w-40">
+            <SelectValue placeholder="Urgência" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toda Urgência</SelectItem>
+            <SelectItem value="high">Alta (7+)</SelectItem>
+            <SelectItem value="medium">Média (4-6)</SelectItem>
+            <SelectItem value="low">Baixa (1-3)</SelectItem>
+            <SelectItem value="none">Sem urgência</SelectItem>
           </SelectContent>
         </Select>
         <Input
