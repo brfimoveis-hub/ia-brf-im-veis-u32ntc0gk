@@ -9,64 +9,42 @@ export function useAutoRetry(
   isLoading?: boolean,
 ): { isRetrying: boolean } {
   const [isRetrying, setIsRetrying] = useState(false)
-  const mountedRef = useRef(false)
-  const prevErrorRef = useRef(false)
-  const retriedRef = useRef(false)
   const retryCountRef = useRef(0)
+  const retryingRef = useRef(false)
   const retryRef = useRef(retryFn)
   retryRef.current = retryFn
-
   const hasError = !!error
 
-  if (hasError && !prevErrorRef.current && mountedRef.current && isLoading !== true) {
-    if (retryCountRef.current < MAX_AUTO_RETRIES) {
-      setIsRetrying(true)
-    }
-  }
-  prevErrorRef.current = hasError
-
   useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!mountedRef.current) return
-
     if (!hasError) {
-      retryCountRef.current = 0
-      retriedRef.current = false
-      setIsRetrying(false)
+      if (retryingRef.current && isLoading !== true) {
+        retryingRef.current = false
+        retryCountRef.current = 0
+        setIsRetrying(false)
+      }
       return
     }
 
     if (isLoading === true) {
+      return
+    }
+
+    if (retryCountRef.current >= MAX_AUTO_RETRIES) {
+      retryingRef.current = false
       setIsRetrying(false)
       return
     }
 
-    if (retriedRef.current || retryCountRef.current >= MAX_AUTO_RETRIES) {
-      setIsRetrying(false)
-      return
-    }
-
-    retriedRef.current = true
     retryCountRef.current++
+    retryingRef.current = true
     setIsRetrying(true)
 
     const timer = setTimeout(() => {
-      if (!mountedRef.current) {
-        setIsRetrying(false)
-        return
-      }
-      setIsRetrying(false)
       retryRef.current()
     }, delay)
 
     return () => clearTimeout(timer)
-  }, [hasError, delay, isLoading])
+  }, [hasError, isLoading, delay])
 
   return { isRetrying }
 }
