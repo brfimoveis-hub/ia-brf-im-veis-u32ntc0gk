@@ -33,6 +33,8 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestIdRef = useRef(0)
   const isMountedRef = useRef(true)
+  const searchFieldsRef = useRef(searchFields)
+  searchFieldsRef.current = searchFields
 
   useEffect(() => {
     isMountedRef.current = true
@@ -57,17 +59,18 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
     const q = search.trim()
     if (q) {
       const safeQ = q.replace(/"/g, '\\"')
-      const searchParts = searchFields.map((f) => `${f} ~ "${safeQ}"`)
+      const searchParts = searchFieldsRef.current.map((f) => `${f} ~ "${safeQ}"`)
       parts.push(`(${searchParts.join(' || ')})`)
     }
     for (const expr of Object.values(filters)) {
       if (expr) parts.push(expr)
     }
     return parts.join(' && ')
-  }, [search, filters, searchFields])
+  }, [search, filters])
 
   const loadData = useCallback(async () => {
     const requestId = ++requestIdRef.current
+    if (!isMountedRef.current) return
     setLoading(true)
     setError(false)
     try {
@@ -144,6 +147,7 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
 
   const retry = useCallback(() => {
+    requestIdRef.current++
     setError(false)
     setLoading(true)
     setRefreshKey((k) => k + 1)

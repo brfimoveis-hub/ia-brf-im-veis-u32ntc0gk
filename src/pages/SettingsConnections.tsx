@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import { MetaWhatsAppPanel } from './SettingsConnections/MetaWhatsAppPanel'
@@ -12,7 +13,7 @@ import { ConnectionHealthDashboard } from './SettingsConnections/ConnectionHealt
 import { MessageCircle, TrendingUp } from 'lucide-react'
 
 export default function SettingsConnections() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const [metaStatus, setMetaStatus] = useState('')
   const [capiStatus, setCapiStatus] = useState('')
   const [capiError, setCapiError] = useState('')
@@ -31,6 +32,23 @@ export default function SettingsConnections() {
     setCapiStatus(e.record.meta_capi_status || '')
     setCapiError(e.record.meta_capi_error || '')
   })
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-6 max-w-5xl mx-auto animate-fade-in">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-4 w-96 max-w-full" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton className="h-16 w-full rounded-lg" />
+        </div>
+        <Skeleton className="h-32 w-full rounded-lg" />
+        <Skeleton className="h-96 w-full rounded-lg" />
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">

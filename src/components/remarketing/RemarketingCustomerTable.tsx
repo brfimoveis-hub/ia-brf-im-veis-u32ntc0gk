@@ -21,8 +21,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Search, ChevronLeft, ChevronRight, Loader2, CheckCheck, X } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, Loader2, CheckCheck, X, Download } from 'lucide-react'
 import { CUSTOMER_STATUSES } from '@/services/remarketing'
+import { exportCustomersToCSV } from '@/lib/csv-export'
 import { formatPhone } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -54,6 +55,7 @@ export function RemarketingCustomerTable({
   const [statusFilter, setStatusFilter] = useState('all')
   const [leadProfileFilter, setLeadProfileFilter] = useState('all')
   const [selectingAll, setSelectingAll] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const buildFilter = useCallback(() => {
     const parts: string[] = []
@@ -106,6 +108,18 @@ export function RemarketingCustomerTable({
       /* ignore */
     } finally {
       setSelectingAll(false)
+    }
+  }
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const all = await pb.collection('customers').getFullList({ filter: buildFilter() })
+      exportCustomersToCSV(all)
+    } catch {
+      /* ignore */
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -181,19 +195,34 @@ export function RemarketingCustomerTable({
             <span className="text-muted-foreground">{totalItems} clientes</span>
           )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleSelectAllFiltered}
-          disabled={selectingAll || totalItems === 0}
-        >
-          {selectingAll ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <CheckCheck className="h-4 w-4 mr-2" />
-          )}
-          Selecionar todos ({totalItems})
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={exporting || totalItems === 0}
+          >
+            {exporting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Exportar
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSelectAllFiltered}
+            disabled={selectingAll || totalItems === 0}
+          >
+            {selectingAll ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCheck className="h-4 w-4 mr-2" />
+            )}
+            Selecionar todos ({totalItems})
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-md border overflow-hidden">

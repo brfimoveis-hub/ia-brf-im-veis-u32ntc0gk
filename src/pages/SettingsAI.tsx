@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useAutoRetry } from '@/hooks/use-auto-retry'
 import {
   Card,
   CardContent,
@@ -13,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { Loader2, Bot, Save, Building2, AlertCircle, RefreshCw } from 'lucide-react'
 
@@ -68,39 +70,28 @@ export default function SettingsAI() {
   const [aiInstructions, setAiInstructions] = useState('')
   const [projectData, setProjectData] = useState<ProjectData>({ ...DEFAULT_PROJECT })
 
-  useEffect(() => {
+  const loadUserData = useCallback(async () => {
     if (!user?.id) return
-    let cancelled = false
-    let retried = false
-
-    const loadUserData = async () => {
-      try {
-        setLoading(true)
-        setError(false)
-        const userData = await pb.collection('users').getOne(user.id)
-        if (cancelled) return
-        setAiName(userData.ai_name || 'Bia')
-        setBiaInstructions(userData.bia_instructions || '')
-        setAiInstructions(userData.ai_instructions || '')
-        setProjectData(parseProjectData(userData.project_data))
-        if (!cancelled) setLoading(false)
-      } catch {
-        if (cancelled) return
-        if (!retried) {
-          retried = true
-          setTimeout(loadUserData, 800)
-          return
-        }
-        setError(true)
-        if (!cancelled) setLoading(false)
-      }
+    setLoading(true)
+    setError(false)
+    try {
+      const userData = await pb.collection('users').getOne(user.id)
+      setAiName(userData.ai_name || 'Bia')
+      setBiaInstructions(userData.bia_instructions || '')
+      setAiInstructions(userData.ai_instructions || '')
+      setProjectData(parseProjectData(userData.project_data))
+    } catch {
+      setError(true)
+    } finally {
+      setLoading(false)
     }
+  }, [user?.id])
 
+  useEffect(() => {
     loadUserData()
-    return () => {
-      cancelled = true
-    }
-  }, [user, refreshKey])
+  }, [loadUserData, refreshKey])
+
+  const { isRetrying } = useAutoRetry(error, () => loadUserData(), 800, loading)
 
   const handleRetry = () => {
     setError(false)
@@ -126,10 +117,35 @@ export default function SettingsAI() {
     }
   }
 
-  if (loading) {
+  if (loading || (error && isRetrying)) {
     return (
-      <div className="flex justify-center p-12">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex-1 space-y-6 p-8 pt-6 max-w-5xl mx-auto w-full">
+        <Skeleton className="h-8 w-64" />
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-64" />
+            <Skeleton className="h-4 w-96 max-w-full" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-4 w-80 max-w-full" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </CardContent>
+        </Card>
       </div>
     )
   }

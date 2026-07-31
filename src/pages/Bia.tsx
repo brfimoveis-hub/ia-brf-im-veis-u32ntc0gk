@@ -13,11 +13,12 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/hooks/use-toast'
 import { Bot, Save, FileUp, Upload } from 'lucide-react'
 
 export default function Bia() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     ai_name: '',
@@ -77,7 +78,20 @@ export default function Bia() {
     }
   }
 
-  if (!user) return null
+  if (authLoading || !user) {
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto animate-fade-in">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-14 w-14 rounded-full" />
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+        </div>
+        <Skeleton className="h-96 w-full rounded-lg" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">

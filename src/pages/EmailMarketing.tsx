@@ -2,9 +2,19 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePaginatedList } from '@/hooks/use-paginated-list'
 import { deleteCampaign, type EmailCampaign } from '@/services/email_campaigns'
+import pb from '@/lib/pocketbase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { CreateCampaignModal } from '@/components/email-marketing/CreateCampaignModal'
 import { ImportCustomersModal } from '@/components/email-marketing/ImportCustomersModal'
 import {
@@ -20,11 +30,62 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  Search,
+  Download,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { useAutoRetry } from '@/hooks/use-auto-retry'
+import { exportCampaignsToCSV } from '@/lib/csv-export'
+
+function EmailMarketingSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-10 w-36" />
+          <Skeleton className="h-10 w-36" />
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent className="p-4 flex items-center gap-3">
+              <Skeleton className="h-9 w-9 rounded-lg" />
+              <div className="space-y-1">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-6 w-12" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Skeleton className="h-10 flex-1" />
+        <Skeleton className="h-10 w-[180px]" />
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="border-b p-3 flex items-center gap-4">
+              <Skeleton className="h-4 flex-1" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-8 w-20" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
 
 export default function EmailMarketing() {
   const {
@@ -37,15 +98,30 @@ export default function EmailMarketing() {
     totalPages,
     totalItems,
     setPage,
+    searchInput,
+    setSearchInput,
+    setFilter,
+    filterString,
   } = usePaginatedList<EmailCampaign>({
     collection: 'email_campaigns',
     perPage: 20,
     initialSort: '-created',
     searchFields: ['name', 'subject'],
   })
-  const { isRetrying } = useAutoRetry(error, retry)
+  const { isRetrying } = useAutoRetry(error, retry, 800, loading)
   const [showCreate, setShowCreate] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [exporting, setExporting] = useState(false)
+
+  const handleStatusFilter = (value: string) => {
+    setStatusFilter(value)
+    if (value === 'all') {
+      setFilter('status', '')
+    } else {
+      setFilter('status', `status = "${value}"`)
+    }
+  }
 
   const handleDelete = async (id: string) => {
     try {
@@ -54,6 +130,22 @@ export default function EmailMarketing() {
       refresh()
     } catch {
       toast.error('Erro ao excluir')
+    }
+  }
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const allCampaigns = await pb.collection('email_campaigns').getFullList<EmailCampaign>({
+        filter: filterString || undefined,
+        sort: '-created',
+      })
+      exportCampaignsToCSV(allCampaigns)
+      toast.success('Campanhas exportadas')
+    } catch {
+      toast.error('Erro ao exportar')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -67,11 +159,7 @@ export default function EmailMarketing() {
     totalSent + totalFailed > 0 ? Math.round((totalSent / (totalSent + totalFailed)) * 100) : 0
 
   if (loading || (error && isRetrying)) {
-    return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
+    return <EmailMarketingSkeleton />
   }
 
   if (error) {
@@ -189,6 +277,38 @@ export default function EmailMarketing() {
         </Card>
       </div>
 
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex items-center gap-2 flex-1">
+          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Input
+            placeholder="Buscar por nome ou assunto..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="flex-1"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={handleStatusFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="draft">Rascunho</SelectItem>
+            <SelectItem value="sending">Enviando</SelectItem>
+            <SelectItem value="completed">Concluída</SelectItem>
+            <SelectItem value="failed">Falhou</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" onClick={handleExport} disabled={exporting || totalItems === 0}>
+          {exporting ? (
+            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4 mr-2" />
+          )}
+          Exportar
+        </Button>
+      </div>
+
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -209,7 +329,7 @@ export default function EmailMarketing() {
                 {campaigns.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="text-center p-8 text-muted-foreground">
-                      Nenhuma campanha criada ainda.
+                      Nenhuma campanha encontrada.
                     </td>
                   </tr>
                 ) : (

@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
+import { useAutoRetry } from '@/hooks/use-auto-retry'
 import { useRemarketingSync } from '@/hooks/use-remarketing-sync'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Send, ArrowRight, AlertCircle, Loader2, StopCircle } from 'lucide-react'
+import { Send, ArrowRight, AlertCircle, Loader2, StopCircle, RefreshCw } from 'lucide-react'
 import { RemarketingStatusBanner } from '@/components/remarketing/RemarketingStatusBanner'
 import { RemarketingCustomerTable } from '@/components/remarketing/RemarketingCustomerTable'
 import { SyncProgressTracker } from '@/components/remarketing/SyncProgressTracker'
@@ -31,16 +33,44 @@ export default function SettingsRemarketing() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [fetching, setFetching] = useState(false)
+  const [loadingUser, setLoadingUser] = useState(true)
+  const [errorUser, setErrorUser] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
   const sync = useRemarketingSync()
 
   useEffect(() => {
-    if (user?.id) {
-      pb.collection('users')
-        .getOne(user.id)
-        .then(setCurrentUser)
-        .catch(() => {})
+    if (!user?.id) {
+      setLoadingUser(false)
+      return
     }
-  }, [user])
+    let cancelled = false
+    setLoadingUser(true)
+    setErrorUser(false)
+    pb.collection('users')
+      .getOne(user.id)
+      .then((data) => {
+        if (!cancelled) {
+          setCurrentUser(data)
+          setLoadingUser(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setErrorUser(true)
+          setLoadingUser(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, refreshKey])
+
+  const { isRetrying } = useAutoRetry(
+    errorUser,
+    () => setRefreshKey((k) => k + 1),
+    800,
+    loadingUser,
+  )
 
   useRealtime('users', (e) => {
     if (user?.id && e.record.id === user.id) setCurrentUser(e.record)
@@ -92,6 +122,43 @@ export default function SettingsRemarketing() {
         description: err.message || 'Falha ao buscar clientes selecionados.',
       })
     }
+  }
+
+  if (loadingUser || (errorUser && isRetrying)) {
+    return (
+      <div className="container mx-auto py-8 max-w-6xl space-y-6">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-5 w-96 max-w-full" />
+        </div>
+        <Skeleton className="h-16 w-full rounded-lg" />
+        <Skeleton className="h-24 w-full rounded-lg" />
+        <Skeleton className="h-32 w-full rounded-lg" />
+        <Skeleton className="h-64 w-full rounded-lg" />
+      </div>
+    )
+  }
+
+  if (errorUser) {
+    return (
+      <div className="container mx-auto py-8 max-w-6xl space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Remarketing (Meta)</h1>
+          <p className="text-muted-foreground mt-2 text-lg max-w-2xl">
+            Selecione segmentos de clientes e envie para o Meta via Conversions API (CAPI).
+          </p>
+        </div>
+        <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed rounded-lg">
+          <AlertCircle className="h-10 w-10 text-destructive mb-3" />
+          <p className="text-lg font-medium mb-1">Alguns dados não podem ser carregados.</p>
+          <p className="text-sm text-muted-foreground mb-4">Tente novamente.</p>
+          <Button onClick={() => setRefreshKey((k) => k + 1)} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
