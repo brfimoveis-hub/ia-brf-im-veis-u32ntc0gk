@@ -145,6 +145,7 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
 
   const retry = useCallback(() => {
     setError(false)
+    setLoading(true)
     setRefreshKey((k) => k + 1)
   }, [])
 

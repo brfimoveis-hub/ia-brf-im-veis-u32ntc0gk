@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 export function useAutoRetry(
   error: unknown,
@@ -10,7 +10,7 @@ export function useAutoRetry(
   const retryRef = useRef(retryFn)
   retryRef.current = retryFn
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const hasError = !!error
 
     if (!hasError) {

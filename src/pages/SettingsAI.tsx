@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { Loader2, Bot, Save, Building2 } from 'lucide-react'
+import { Loader2, Bot, Save, Building2, AlertCircle, RefreshCw } from 'lucide-react'
 
 interface ProjectData {
   name: string
@@ -61,6 +61,8 @@ export default function SettingsAI() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
   const [aiName, setAiName] = useState('Bia')
   const [biaInstructions, setBiaInstructions] = useState('')
   const [aiInstructions, setAiInstructions] = useState('')
@@ -73,6 +75,8 @@ export default function SettingsAI() {
 
     const loadUserData = async () => {
       try {
+        setLoading(true)
+        setError(false)
         const userData = await pb.collection('users').getOne(user.id)
         if (cancelled) return
         setAiName(userData.ai_name || 'Bia')
@@ -84,13 +88,10 @@ export default function SettingsAI() {
         if (cancelled) return
         if (!retried) {
           retried = true
-          setTimeout(loadUserData, 1500)
+          setTimeout(loadUserData, 800)
           return
         }
-        setAiName(user.ai_name || 'Bia')
-        setBiaInstructions(user.bia_instructions || '')
-        setAiInstructions(user.ai_instructions || '')
-        setProjectData(parseProjectData(user.project_data))
+        setError(true)
         if (!cancelled) setLoading(false)
       }
     }
@@ -99,7 +100,13 @@ export default function SettingsAI() {
     return () => {
       cancelled = true
     }
-  }, [user])
+  }, [user, refreshKey])
+
+  const handleRetry = () => {
+    setError(false)
+    setLoading(true)
+    setRefreshKey((k) => k + 1)
+  }
 
   const handleSave = async () => {
     if (!user) return
@@ -123,6 +130,25 @@ export default function SettingsAI() {
     return (
       <div className="flex justify-center p-12">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 space-y-6 p-8 pt-6 max-w-5xl mx-auto w-full">
+        <div className="flex items-center justify-between space-y-2">
+          <h2 className="text-3xl font-bold tracking-tight">Cérebro da IA (BIA)</h2>
+        </div>
+        <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed rounded-lg">
+          <AlertCircle className="h-10 w-10 text-destructive mb-3" />
+          <p className="text-lg font-medium mb-1">Alguns dados não podem ser carregados.</p>
+          <p className="text-sm text-muted-foreground mb-4">Tente novamente.</p>
+          <Button onClick={handleRetry} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Tentar novamente
+          </Button>
+        </div>
       </div>
     )
   }
