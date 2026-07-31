@@ -11,6 +11,7 @@ export const CUSTOMER_STAGES = [
   'D8 - Follow up 8',
   'D9 - Despedida/Nutrição',
   'Fechamento',
+  'closed',
 ]
 
 export const SOURCE_OPTIONS = ['Villa dos Açores', 'Google Ads', 'Meta Ads', 'Instagram', 'Website']
@@ -23,6 +24,7 @@ export interface CustomerFilterState {
   leadProfile: string
   urgency: string
   noSend: boolean
+  tags: string
 }
 
 export function escapeFilterValue(v: string): string {
@@ -65,6 +67,9 @@ export function buildBaseFilter(filters: CustomerFilterState): string {
   }
   if (filters.noSend) {
     parts.push(`(last_sent_at = null || last_sent_at = "")`)
+  }
+  if (filters.tags && filters.tags.trim()) {
+    parts.push(`tags ~ "${escapeFilterValue(filters.tags.trim())}"`)
   }
   return parts.join(' && ')
 }

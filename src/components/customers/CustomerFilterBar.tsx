@@ -26,6 +26,8 @@ interface Props {
   onUrgencyChange: (v: string) => void
   noSend: boolean
   onNoSendChange: (v: boolean) => void
+  tags: string
+  onTagsChange: (v: string) => void
   onClear: () => void
   hasActiveFilters: boolean
 }
@@ -45,6 +47,8 @@ export function CustomerFilterBar({
   onUrgencyChange,
   noSend,
   onNoSendChange,
+  tags,
+  onTagsChange,
   onClear,
   hasActiveFilters,
 }: Props) {
@@ -116,6 +120,12 @@ export function CustomerFilterBar({
           className="w-full lg:w-40"
           value={neighborhood}
           onChange={(e) => onNeighborhoodChange(e.target.value)}
+        />
+        <Input
+          placeholder="Tags..."
+          className="w-full lg:w-40"
+          value={tags}
+          onChange={(e) => onTagsChange(e.target.value)}
         />
         <label className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap cursor-pointer select-none px-2">
           <Checkbox checked={noSend} onCheckedChange={(v) => onNoSendChange(!!v)} />

@@ -78,7 +78,10 @@ export const syncRemarketing = async (
 }
 
 export const fetchAllCustomerIds = async (filter: string): Promise<string[]> => {
-  const records = await pb.collection('customers').getFullList({ filter: filter || undefined })
+  const records = await pb.collection('customers').getFullList({
+    filter: filter || undefined,
+    fields: 'id',
+  })
   return records.map((r) => r.id)
 }
 

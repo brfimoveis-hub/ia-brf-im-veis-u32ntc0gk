@@ -42,6 +42,7 @@ export default function Customers() {
   const [leadProfile, setLeadProfile] = useState('all')
   const [urgencyFilter, setUrgencyFilter] = useState('all')
   const [noSend, setNoSend] = useState(false)
+  const [tags, setTags] = useState('')
   const [sort, setSort] = useState('-created')
   const [refreshKey, setRefreshKey] = useState(0)
   const [showImport, setShowImport] = useState(false)
@@ -65,6 +66,7 @@ export default function Customers() {
     leadProfile,
     urgency: urgencyFilter,
     noSend,
+    tags,
   }
   const baseFilter = buildBaseFilter(filters)
   const listFilter = combineFilters(
@@ -90,6 +92,7 @@ export default function Customers() {
     setLeadProfile('all')
     setUrgencyFilter('all')
     setNoSend(false)
+    setTags('')
   }, [])
 
   const handleUpdateStatus = useCallback(async (id: string, status: string) => {
@@ -133,6 +136,8 @@ export default function Customers() {
       const records = await pb.collection('customers').getFullList({
         filter: listFilter || undefined,
         sort: '-created',
+        fields:
+          'id,name,first_name,phone,phone_1_value,email,email_1_value,status,urgency,source,neighborhood,last_sent_at,tags',
       })
       exportCustomersToCSV(records as any)
       toast.success(`${records.length} clientes exportados`)
@@ -225,6 +230,8 @@ export default function Customers() {
         onUrgencyChange={setUrgencyFilter}
         noSend={noSend}
         onNoSendChange={setNoSend}
+        tags={tags}
+        onTagsChange={setTags}
         onClear={handleClearFilters}
         hasActiveFilters={hasActiveFilters}
       />

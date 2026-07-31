@@ -49,6 +49,7 @@ export function KanbanColumn({
   unregisterHandle,
 }: KanbanColumnProps) {
   const [items, setItems] = useState<any[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
@@ -74,6 +75,7 @@ export function KanbanColumn({
         })
         if (cancelled) return
         setItems(result.items)
+        setTotalCount(result.totalItems)
         pageRef.current = 2
         setHasMore(result.items.length === PER_PAGE)
         hasMoreRef.current = result.items.length === PER_PAGE
@@ -130,8 +132,14 @@ export function KanbanColumn({
 
   useEffect(() => {
     registerHandle(stage, {
-      addItem: (item) => setItems((prev) => [item, ...prev.filter((c) => c.id !== item.id)]),
-      removeItem: (id) => setItems((prev) => prev.filter((c) => c.id !== id)),
+      addItem: (item) => {
+        setItems((prev) => [item, ...prev.filter((c) => c.id !== item.id)])
+        setTotalCount((prev) => prev + 1)
+      },
+      removeItem: (id) => {
+        setItems((prev) => prev.filter((c) => c.id !== id))
+        setTotalCount((prev) => Math.max(0, prev - 1))
+      },
     })
     return () => unregisterHandle(stage)
   }, [stage, registerHandle, unregisterHandle])
@@ -162,7 +170,7 @@ export function KanbanColumn({
       <div className="mb-4 flex items-center justify-between px-1">
         <h3 className="font-semibold text-sm text-foreground/80">{stage}</h3>
         <Badge variant="secondary" className="font-mono text-xs px-2 py-0.5 h-auto">
-          {items.length}
+          {totalCount}
         </Badge>
       </div>
       <div
