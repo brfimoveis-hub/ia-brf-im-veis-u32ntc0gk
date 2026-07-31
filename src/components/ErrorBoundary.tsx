@@ -1,4 +1,4 @@
-import { Component, ErrorInfo, ReactNode } from 'react'
+import { Component, ErrorInfo, ReactNode, Fragment } from 'react'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -16,14 +16,16 @@ interface Props {
 interface State {
   hasError: boolean
   error?: Error
+  retryCount: number
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
+    retryCount: 0,
   }
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error }
   }
 
@@ -49,7 +51,11 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleRetry = () => {
-    this.setState({ hasError: false, error: undefined })
+    this.setState((prev) => ({
+      hasError: false,
+      error: undefined,
+      retryCount: prev.retryCount + 1,
+    }))
     this.props.onRetry?.()
   }
 
@@ -65,16 +71,14 @@ export class ErrorBoundary extends Component<Props, State> {
           <p className="text-sm opacity-80 mb-3 max-w-[400px]">
             {this.props.message || 'Alguns dados não puderam ser carregados. Tente novamente.'}
           </p>
-          {this.props.onRetry && (
-            <Button variant="outline" size="sm" onClick={this.handleRetry}>
-              <RefreshCw className="mr-2 h-3.5 w-3.5" />
-              Tentar novamente
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={this.handleRetry}>
+            <RefreshCw className="mr-2 h-3.5 w-3.5" />
+            Tentar novamente
+          </Button>
         </div>
       )
     }
 
-    return this.props.children
+    return <Fragment key={this.state.retryCount}>{this.props.children}</Fragment>
   }
 }

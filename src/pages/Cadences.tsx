@@ -1,98 +1,55 @@
-import { useState, useEffect } from 'react'
-import {
-  getCadences,
-  createCadence,
-  updateCadence,
-  deleteCadence,
-  type Cadence,
-} from '@/services/cadences'
+import { useState } from 'react'
+import { usePaginatedList } from '@/hooks/use-paginated-list'
+import { createCadence, updateCadence, deleteCadence, type Cadence } from '@/services/cadences'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Plus, Trash2, Edit } from 'lucide-react'
+import { Plus, Trash2, Edit, RefreshCw, AlertCircle } from 'lucide-react'
+import { CadenceFormDialog } from '@/components/cadences/CadenceFormDialog'
 
 export default function Cadences() {
   const { user } = useAuth()
   const { toast } = useToast()
-  const [cadences, setCadences] = useState<Cadence[]>([])
-  const [loading, setLoading] = useState(true)
-  const [open, setOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-
-  const [formData, setFormData] = useState<Partial<Cadence>>({
-    title: '',
-    description: '',
-    content: '',
-    ai_instructions: '',
-    order: 1,
-    is_active: true,
+  const {
+    items: cadences,
+    loading,
+    error,
+    refresh,
+    retry,
+  } = usePaginatedList<Cadence>({
+    collection: 'cadences',
+    perPage: 50,
+    initialSort: 'order',
+    searchFields: ['title', 'description'],
   })
-
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    try {
-      const data = await getCadences()
-      setCadences(data)
-    } catch (error) {
-      toast({ title: 'Erro ao carregar cadências', variant: 'destructive' })
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingCadence, setEditingCadence] = useState<Cadence | null>(null)
 
   const handleOpenNew = () => {
-    setEditingId(null)
-    setFormData({
-      title: '',
-      description: '',
-      content: '',
-      ai_instructions: '',
-      order: cadences.length + 1,
-      is_active: true,
-    })
-    setOpen(true)
+    setEditingCadence(null)
+    setDialogOpen(true)
   }
 
   const handleOpenEdit = (cadence: Cadence) => {
-    setEditingId(cadence.id)
-    setFormData(cadence)
-    setOpen(true)
+    setEditingCadence(cadence)
+    setDialogOpen(true)
   }
 
-  const handleSave = async () => {
-    if (!formData.title || !formData.content) {
-      toast({ title: 'Preencha os campos obrigatórios', variant: 'destructive' })
-      return
-    }
-
+  const handleSave = async (data: Partial<Cadence>, editingId: string | null) => {
     try {
       if (editingId) {
-        await updateCadence(editingId, formData)
+        await updateCadence(editingId, data)
         toast({ title: 'Cadência atualizada com sucesso' })
       } else {
-        await createCadence({ ...formData, user_id: user.id } as Partial<Cadence>)
+        await createCadence({ ...data, user_id: user.id } as Partial<Cadence>)
         toast({ title: 'Cadência criada com sucesso' })
       }
-      setOpen(false)
-      loadData()
-    } catch (error) {
+      setDialogOpen(false)
+      refresh()
+    } catch {
       toast({ title: 'Erro ao salvar cadência', variant: 'destructive' })
     }
   }
@@ -102,8 +59,8 @@ export default function Cadences() {
     try {
       await deleteCadence(id)
       toast({ title: 'Cadência excluída com sucesso' })
-      loadData()
-    } catch (error) {
+      refresh()
+    } catch {
       toast({ title: 'Erro ao excluir', variant: 'destructive' })
     }
   }
@@ -111,8 +68,8 @@ export default function Cadences() {
   const handleToggleActive = async (id: string, active: boolean) => {
     try {
       await updateCadence(id, { is_active: active })
-      loadData()
-    } catch (error) {
+      refresh()
+    } catch {
       toast({ title: 'Erro ao atualizar', variant: 'destructive' })
     }
   }
@@ -121,6 +78,29 @@ export default function Cadences() {
     return (
       <div className="flex h-[calc(100vh-10rem)] w-full items-center justify-center">
         Carregando...
+      </div>
+    )
+
+  if (error)
+    return (
+      <div className="space-y-6 max-w-5xl mx-auto">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Cadências de Evolução</h1>
+          <p className="text-muted-foreground">
+            Configure os até 10 passos do funil automatizado da IA.
+          </p>
+        </div>
+        <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed rounded-lg">
+          <AlertCircle className="h-10 w-10 text-destructive mb-3" />
+          <p className="text-lg font-medium mb-1">Não foi possível carregar as cadências</p>
+          <p className="text-sm text-muted-foreground mb-4">
+            Verifique sua conexão e tente novamente.
+          </p>
+          <Button onClick={retry} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Tentar novamente
+          </Button>
+        </div>
       </div>
     )
 
@@ -133,9 +113,14 @@ export default function Cadences() {
             Configure os até 10 passos do funil automatizado da IA.
           </p>
         </div>
-        <Button onClick={handleOpenNew} disabled={cadences.length >= 10}>
-          <Plus className="h-4 w-4 mr-2" /> Novo Passo ({cadences.length}/10)
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={refresh} title="Atualizar">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button onClick={handleOpenNew} disabled={cadences.length >= 10}>
+            <Plus className="h-4 w-4 mr-2" /> Novo Passo ({cadences.length}/10)
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4">
@@ -198,87 +183,13 @@ export default function Cadences() {
         )}
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Editar Passo' : 'Novo Passo de Cadência'}</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="max-h-[70vh]">
-            <div className="space-y-4 p-1">
-              <div className="grid grid-cols-4 gap-4">
-                <div className="col-span-3 space-y-2">
-                  <Label>Título (Nome da Fase/Status)</Label>
-                  <Input
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="Ex: Contato 1, Qualificação..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Ordem</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={formData.order}
-                    onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) })}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Descrição Interna</Label>
-                <Input
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Ex: Primeira tentativa de contato após cadastro"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Conteúdo Base (O que a IA deve falar/vender)</Label>
-                <Textarea
-                  value={formData.content}
-                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  placeholder="Escreva o script principal desta fase..."
-                  className="min-h-[100px]"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>
-                  Diretrizes Específicas para IA (Como a IA deve se comportar nesta fase)
-                </Label>
-                <Textarea
-                  value={formData.ai_instructions}
-                  onChange={(e) => setFormData({ ...formData, ai_instructions: e.target.value })}
-                  placeholder="Ex: Seja mais insistente, ofereça um agendamento. Se o cliente disser X, avance para [STATUS: Qualificação]."
-                  className="min-h-[100px]"
-                />
-              </div>
-
-              <div className="flex items-center justify-between bg-muted/50 p-3 rounded-md">
-                <div>
-                  <Label className="font-semibold text-base">Passo Ativo</Label>
-                  <p className="text-xs text-muted-foreground">
-                    A IA utilizará esta fase no fluxo automático.
-                  </p>
-                </div>
-                <Switch
-                  checked={formData.is_active}
-                  onCheckedChange={(c) => setFormData({ ...formData, is_active: c })}
-                />
-              </div>
-            </div>
-          </ScrollArea>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSave}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CadenceFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        cadence={editingCadence}
+        cadenceCount={cadences.length}
+        onSave={handleSave}
+      />
     </div>
   )
 }
