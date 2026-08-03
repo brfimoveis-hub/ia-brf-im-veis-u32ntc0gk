@@ -111,7 +111,7 @@ export function ConnectionHealthDashboard() {
       </CardHeader>
       <CardContent className="pt-6">
         {results.length === 0 ? (
-          <div className="text-center py-8">
+          <div key="health-empty" className="text-center py-8">
             <ShieldCheck className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">
               Clique em &quot;Verificar Todas&quot; para executar uma verificação não destrutiva de
@@ -119,7 +119,7 @@ export function ConnectionHealthDashboard() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div key="health-results" className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {results.map((r) => (
               <div
                 key={r.key}

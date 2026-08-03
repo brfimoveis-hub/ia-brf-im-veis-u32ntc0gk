@@ -193,69 +193,64 @@ export function MetaWhatsAppPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 pt-6">
-          {isActive && (
-            <Alert className="border-green-500/50 bg-green-500/10 animate-fade-in">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertTitle className="text-green-700">Conectado ✅</AlertTitle>
-              <AlertDescription className="text-green-700">
-                {formattedNumber ? (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm">Número verificado conectado:</span>
-                    <Badge variant="secondary" className="font-mono text-sm">
-                      {formattedNumber}
-                    </Badge>
-                  </div>
-                ) : (
-                  <span className="text-sm">
-                    Conexão OK — WhatsApp Cloud API ativa e funcionando.
-                  </span>
-                )}
-                {lastTestAt && (
-                  <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                    <Clock className="h-3 w-3" />
-                    Último teste bem-sucedido: {new Date(lastTestAt).toLocaleString('pt-BR')}
-                  </div>
-                )}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {isError && (
-            <Alert className="border-red-500/50 bg-red-500/10 animate-fade-in">
-              <XCircle className="h-4 w-4 text-red-600" />
-              <AlertTitle className="text-red-700">Falha na Conexão WhatsApp</AlertTitle>
-              <AlertDescription className="text-red-600">
-                <p className="text-sm">
-                  {testError ||
-                    'A última tentativa de conexão falhou. Verifique as credenciais e tente novamente.'}
-                </p>
-                {lastTestAt && (
-                  <div className="flex items-center gap-1 mt-2 text-xs">
-                    <Clock className="h-3 w-3" />
-                    Último teste: {new Date(lastTestAt).toLocaleString('pt-BR')}
-                  </div>
-                )}
-                {testError && (
-                  <div className="mt-3 rounded-md bg-red-500/10 border border-red-500/30 p-3">
-                    <p className="text-xs font-semibold text-red-700 mb-1">
-                      Detalhe do erro retornado pela Meta API:
+          {(isActive || isError) && (
+            <Alert
+              key="whatsapp-status-alert"
+              className={
+                isActive ? 'border-green-500/50 bg-green-500/10' : 'border-red-500/50 bg-red-500/10'
+              }
+            >
+              {isActive ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <AlertTitle className="text-green-700">Conectado ✅</AlertTitle>
+                  <AlertDescription className="text-green-700">
+                    {formattedNumber ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm">Número verificado conectado:</span>
+                        <Badge variant="secondary" className="font-mono text-sm">
+                          {formattedNumber}
+                        </Badge>
+                      </div>
+                    ) : (
+                      <span className="text-sm">
+                        Conexão OK — WhatsApp Cloud API ativa e funcionando.
+                      </span>
+                    )}
+                    {lastTestAt && (
+                      <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
+                        <Clock className="h-3 w-3" />
+                        Último teste bem-sucedido: {new Date(lastTestAt).toLocaleString('pt-BR')}
+                      </div>
+                    )}
+                  </AlertDescription>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-4 w-4 text-red-600" />
+                  <AlertTitle className="text-red-700">Falha na Conexão WhatsApp</AlertTitle>
+                  <AlertDescription className="text-red-600">
+                    <p className="text-sm">
+                      {testError ||
+                        'A última tentativa de conexão falhou. Verifique as credenciais e tente novamente.'}
                     </p>
-                    <p className="text-xs text-red-600 font-mono break-words">{testError}</p>
-                  </div>
-                )}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {isError && !testError && (
-            <Alert className="border-red-500/50 bg-red-500/10 animate-fade-in">
-              <XCircle className="h-4 w-4 text-red-600" />
-              <AlertTitle className="text-red-700">Falha na Conexão WhatsApp</AlertTitle>
-              <AlertDescription className="text-red-600">
-                <p className="text-sm">
-                  A última tentativa de conexão falhou. Verifique as credenciais e tente novamente.
-                </p>
-              </AlertDescription>
+                    {lastTestAt && (
+                      <div className="flex items-center gap-1 mt-2 text-xs">
+                        <Clock className="h-3 w-3" />
+                        Último teste: {new Date(lastTestAt).toLocaleString('pt-BR')}
+                      </div>
+                    )}
+                    {testError && (
+                      <div className="mt-3 rounded-md bg-red-500/10 border border-red-500/30 p-3">
+                        <p className="text-xs font-semibold text-red-700 mb-1">
+                          Detalhe do erro retornado pela Meta API:
+                        </p>
+                        <p className="text-xs text-red-600 font-mono break-words">{testError}</p>
+                      </div>
+                    )}
+                  </AlertDescription>
+                </>
+              )}
             </Alert>
           )}
 
@@ -278,6 +273,19 @@ export function MetaWhatsAppPanel() {
                 >
                   <Copy className="h-4 w-4" />
                 </Button>
+              </div>
+              <div className="mt-3 flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/5 p-2.5">
+                <Info className="h-3.5 w-3.5 text-blue-600 mt-0.5 shrink-0" />
+                <p className="text-xs text-blue-600">
+                  <span className="font-semibold">Sobre o endereço técnico acima:</span> O domínio
+                  exibido na URL acima é um endereço técnico fixo definido pela plataforma de
+                  hospedagem e <strong>não pode ser renomeado</strong>. Ele é apenas o endereço de
+                  servidor do backend e{' '}
+                  <strong>não indica o uso de nenhuma integração de terceiros</strong> — o sistema
+                  utiliza exclusivamente a API oficial do Meta (WhatsApp Cloud API). O endpoint{' '}
+                  <span className="font-mono">meta_whatsapp_webhook</span> é o webhook oficial do
+                  Meta WhatsApp e continua funcionando normalmente.
+                </p>
               </div>
             </AlertDescription>
           </Alert>
@@ -328,7 +336,9 @@ export function MetaWhatsAppPanel() {
                 className={phoneIdError ? 'border-red-500 focus-visible:ring-red-500' : ''}
               />
               {phoneIdError && (
-                <p className="text-xs text-red-500 animate-fade-in">{phoneIdError}</p>
+                <p key="phone-id-error" className="text-xs text-red-500">
+                  {phoneIdError}
+                </p>
               )}
               <p className="text-xs text-muted-foreground flex items-start gap-1">
                 <Info className="h-3 w-3 mt-0.5 shrink-0" />
@@ -402,7 +412,7 @@ export function MetaWhatsAppPanel() {
           </div>
 
           {(saving || testing) && (
-            <p className="text-xs text-muted-foreground animate-fade-in">
+            <p key="saving-status" className="text-xs text-muted-foreground">
               {saving ? 'Salvando credenciais...' : 'Testando conexão com a Meta API...'}
             </p>
           )}

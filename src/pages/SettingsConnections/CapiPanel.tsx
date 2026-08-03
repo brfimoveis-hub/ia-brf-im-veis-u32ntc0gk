@@ -154,7 +154,10 @@ export function CapiPanel() {
           Configure a Conversions API para rastreamento de eventos de conversão e integração com o
           Pixel.
         </CardDescription>
-        <div className="mt-3 flex items-start gap-2 rounded-md border border-blue-500/50 bg-blue-500/10 p-3 animate-fade-in">
+        <div
+          key="capi-info-note"
+          className="mt-3 flex items-start gap-2 rounded-md border border-blue-500/50 bg-blue-500/10 p-3"
+        >
           <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
           <div className="text-sm text-blue-700">
             <p className="font-medium">Limpeza de datasets antigos no Meta Business Suite</p>
@@ -167,7 +170,10 @@ export function CapiPanel() {
           </div>
         </div>
         {isError && capiError && (
-          <div className="mt-3 flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3 animate-fade-in">
+          <div
+            key="capi-error-alert"
+            className="mt-3 flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3"
+          >
             <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
             <div>
               <p className="text-sm font-medium text-red-700">Erro</p>
@@ -225,7 +231,10 @@ export function CapiPanel() {
         </div>
 
         {Object.values(fieldErrors).some(Boolean) && (
-          <div className="flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3">
+          <div
+            key="capi-field-errors"
+            className="flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3"
+          >
             <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
             <div className="text-sm text-red-600 space-y-1">
               {Object.entries(fieldErrors).map(
@@ -260,7 +269,10 @@ export function CapiPanel() {
         </div>
 
         {inlineError && !isError && (
-          <div className="flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3 animate-fade-in">
+          <div
+            key="capi-inline-error"
+            className="flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3"
+          >
             <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
             <p className="text-sm text-red-600">{inlineError}</p>
           </div>
