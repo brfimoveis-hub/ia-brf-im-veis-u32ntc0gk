@@ -24,6 +24,7 @@ import {
   Clock,
   XCircle,
   HelpCircle,
+  KeyRound,
 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
@@ -287,6 +288,53 @@ export function MetaWhatsAppPanel() {
                   Meta WhatsApp e continua funcionando normalmente.
                 </p>
               </div>
+            </AlertDescription>
+          </Alert>
+
+          <Alert className="border-purple-500/50 bg-purple-500/10">
+            <KeyRound className="h-4 w-4 text-purple-600" />
+            <AlertTitle className="text-purple-700">Token de Verificação (Verify Token)</AlertTitle>
+            <AlertDescription className="text-purple-600">
+              <p className="mb-2 text-sm">
+                Copie este token exato e cole no campo <strong>"Verify Token"</strong> do Meta
+                Developer Portal (WhatsApp &gt; Configuration &gt; Webhook). O token deve ser
+                idêntico ao cadastrado aqui — qualquer diferença causará o erro{' '}
+                <em>"Não foi possível validar a URL de callback ou o token de verificação"</em>.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 px-3 py-2 bg-white rounded text-sm text-slate-800 break-all font-mono select-all">
+                  {verifyToken || '(nenhum token definido — digite um abaixo e salve)'}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copy(verifyToken, 'Token de Verificação')}
+                  disabled={!verifyToken}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              {isError && (
+                <div className="mt-3 rounded-md bg-red-500/10 border border-red-500/30 p-3">
+                  <p className="text-xs font-semibold text-red-700 mb-1">
+                    Dica de solução para erro de validação:
+                  </p>
+                  <ul className="text-xs text-red-600 space-y-1 list-disc list-inside">
+                    <li>
+                      Certifique-se de que o token acima é <strong>idêntico</strong> ao digitado no
+                      Meta Developer Portal (sem espaços extras).
+                    </li>
+                    <li>
+                      A Callback URL deve incluir{' '}
+                      <code className="font-mono">?user_id={user?.id}</code>.
+                    </li>
+                    <li>
+                      Após salvar o token aqui, clique novamente em "Verificar e Salvar" no Meta
+                      Developer Portal.
+                    </li>
+                  </ul>
+                </div>
+              )}
             </AlertDescription>
           </Alert>
 
