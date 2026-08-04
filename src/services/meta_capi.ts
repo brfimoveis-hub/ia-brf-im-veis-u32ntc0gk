@@ -8,17 +8,18 @@ export const testMetaCapiConnectionService = async (
   const cleanDatasetId = datasetId.replace(/\D/g, '').trim()
   return pb.send('/backend/v1/meta_capi_test_connection', {
     method: 'POST',
-    body: {
+    body: JSON.stringify({
       business_id: businessId.replace(/\D/g, '').trim(),
       pixel_id: cleanDatasetId,
       dataset_id: cleanDatasetId,
       access_token: accessToken.trim(),
-    },
+    }),
+    headers: { 'Content-Type': 'application/json' },
   })
 }
 
 export const updateMetaCapiStatus = async (userId: string, status: string) => {
-  return pb.collection('users').update(userId, { meta_token_status: status })
+  return pb.collection('users').update(userId, { meta_capi_status: status })
 }
 
 export const saveMetaCapiSettings = async (

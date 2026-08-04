@@ -91,8 +91,10 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive flex flex-col items-center justify-center text-center w-full min-h-[120px] animate-in fade-in zoom-in-95">
           <AlertCircle className="h-8 w-8 mb-2 opacity-80" />
           {this.props.title && <h3 className="font-semibold text-base mb-1">{this.props.title}</h3>}
-          <p className="text-sm opacity-80 mb-3 max-w-[400px]">
-            {this.props.message || 'Alguns dados não podem ser carregados. Tente novamente.'}
+          <p className="text-sm opacity-80 mb-3 max-w-[400px] break-words">
+            {this.props.message ||
+              this.state.error?.message ||
+              'Ocorreu um erro inesperado ao renderizar este componente.'}
           </p>
           <Button variant="outline" size="sm" onClick={this.handleRetry}>
             <RefreshCw className="mr-2 h-3.5 w-3.5" />

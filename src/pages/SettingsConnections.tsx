@@ -13,6 +13,7 @@ import { ConnectionHealthDashboard } from './SettingsConnections/ConnectionHealt
 import { InstagramConnect } from './SettingsConnections/InstagramConnect'
 import { VerifiableConnectionCard } from './SettingsConnections/VerifiableConnectionCard'
 import { MessageCircle, TrendingUp, Instagram, MessageSquare } from 'lucide-react'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export default function SettingsConnections() {
   const { user, loading } = useAuth()
@@ -73,50 +74,54 @@ export default function SettingsConnections() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium">Meta WhatsApp API</span>
-            </div>
-            <StatusTrafficLight status={metaStatus} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium">Conversions API (CAPI)</span>
-            </div>
-            <StatusTrafficLight status={capiStatus} error={capiError} />
-          </CardContent>
-        </Card>
-        <VerifiableConnectionCard
-          icon={<Instagram className="h-5 w-5 text-muted-foreground" />}
-          title="Instagram Business"
-          status={instagramStatus}
-          error={instagramErrorMsg}
-          connectionKey="instagram"
-          onStatusChange={(s, e) => {
-            setInstagramStatus(s)
-            setInstagramErrorMsg(e || '')
-          }}
-        />
-        <VerifiableConnectionCard
-          icon={<MessageSquare className="h-5 w-5 text-muted-foreground" />}
-          title="Messenger"
-          status={messengerStatus}
-          error={messengerErrorMsg}
-          connectionKey="messenger"
-          onStatusChange={(s, e) => {
-            setMessengerStatus(s)
-            setMessengerErrorMsg(e || '')
-          }}
-        />
-      </div>
+      <ErrorBoundary logType="connections_summary_error">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="flex items-center justify-between p-4">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5 text-muted-foreground" />
+                <span className="text-sm font-medium">Meta WhatsApp API</span>
+              </div>
+              <StatusTrafficLight status={metaStatus} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="flex items-center justify-between p-4">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                <span className="text-sm font-medium">Conversions API (CAPI)</span>
+              </div>
+              <StatusTrafficLight status={capiStatus} error={capiError} />
+            </CardContent>
+          </Card>
+          <VerifiableConnectionCard
+            icon={<Instagram className="h-5 w-5 text-muted-foreground" />}
+            title="Instagram Business"
+            status={instagramStatus}
+            error={instagramErrorMsg}
+            connectionKey="instagram"
+            onStatusChange={(s, e) => {
+              setInstagramStatus(s)
+              setInstagramErrorMsg(e || '')
+            }}
+          />
+          <VerifiableConnectionCard
+            icon={<MessageSquare className="h-5 w-5 text-muted-foreground" />}
+            title="Messenger"
+            status={messengerStatus}
+            error={messengerErrorMsg}
+            connectionKey="messenger"
+            onStatusChange={(s, e) => {
+              setMessengerStatus(s)
+              setMessengerErrorMsg(e || '')
+            }}
+          />
+        </div>
+      </ErrorBoundary>
 
-      <ConnectionHealthDashboard />
+      <ErrorBoundary logType="connection_health_error">
+        <ConnectionHealthDashboard />
+      </ErrorBoundary>
 
       <Tabs defaultValue="meta">
         <TabsList className="flex-wrap h-auto">
@@ -127,20 +132,28 @@ export default function SettingsConnections() {
         </TabsList>
 
         <TabsContent value="meta" className="mt-4 space-y-4">
-          <InstagramConnect />
-          <MetaWhatsAppPanel />
+          <ErrorBoundary logType="meta_panel_error">
+            <InstagramConnect />
+            <MetaWhatsAppPanel />
+          </ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="capi" className="mt-4">
-          <CapiPanel />
+          <ErrorBoundary logType="capi_panel_error">
+            <CapiPanel />
+          </ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="logs" className="mt-4">
-          <IntegrationLogs />
+          <ErrorBoundary logType="logs_panel_error">
+            <IntegrationLogs />
+          </ErrorBoundary>
         </TabsContent>
 
         <TabsContent value="chaves" className="mt-4">
-          <ChavesNaMao />
+          <ErrorBoundary logType="chaves_panel_error">
+            <ChavesNaMao />
+          </ErrorBoundary>
         </TabsContent>
       </Tabs>
     </div>

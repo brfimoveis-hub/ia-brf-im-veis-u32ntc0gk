@@ -19,6 +19,7 @@ export interface HealthCheckResponse {
 export const runHealthCheck = async (connection?: string): Promise<HealthCheckResponse> => {
   return pb.send('/backend/v1/connection_health_check', {
     method: 'POST',
-    body: connection ? { connection } : {},
+    body: JSON.stringify(connection ? { connection } : {}),
+    headers: { 'Content-Type': 'application/json' },
   })
 }

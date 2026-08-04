@@ -28,7 +28,7 @@ export function ConnectionHealthDashboard() {
       else setChecking(true)
       try {
         const res = await runHealthCheck(connection)
-        if (res.success && res.results) {
+        if (res?.success && Array.isArray(res.results)) {
           setResults((prev) => {
             const map = new Map(prev.map((r) => [r.key, r]))
             for (const r of res.results) map.set(r.key, r)
@@ -37,7 +37,7 @@ export function ConnectionHealthDashboard() {
           setLastCheck(res.timestamp)
           toast({
             title: 'Verificação concluída',
-            description: `${res.results.length} integração(ões) verificada(s) — somente leitura.`,
+            description: `${res.results?.length || 0} integração(ões) verificada(s) — somente leitura.`,
           })
         } else {
           toast({

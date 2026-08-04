@@ -55,7 +55,11 @@ export function CapiPanel() {
         meta_app_secret: form.meta_app_secret.trim(),
         meta_offline_event_set_id: form.meta_offline_event_set_id.trim(),
       })
-      pb.authStore.save(pb.authStore.token, updated)
+      try {
+        pb.authStore.save(pb.authStore.token || '', updated)
+      } catch {
+        // realtime will sync the user object
+      }
       toast({ title: 'Credenciais CAPI salvas com sucesso' })
     } catch (err: any) {
       const errors = extractFieldErrors(err)
@@ -86,14 +90,15 @@ export function CapiPanel() {
     try {
       const res: any = await pb.send('/backend/v1/meta_capi_test_connection', {
         method: 'POST',
-        body: {
+        body: JSON.stringify({
           business_id: form.meta_whatsapp_business_id.trim(),
           dataset_id: form.meta_dataset_id.trim(),
           pixel_id: form.meta_pixel_id.trim() || form.meta_dataset_id.trim(),
           access_token: form.meta_capi_token.trim(),
-        },
+        }),
+        headers: { 'Content-Type': 'application/json' },
       })
-      if (res?.success === false) {
+      if (res && res.success === false) {
         const errMsg = res?.error?.message || 'Falha ao testar conexão CAPI'
         setCapiStatus('error')
         setCapiError(errMsg)
@@ -103,13 +108,16 @@ export function CapiPanel() {
           title: 'Falha na conexão CAPI',
           description: errMsg,
         })
-      } else {
+      } else if (res) {
         setCapiStatus('connected')
         setCapiError('')
         toast({
           title: 'Conexão CAPI validada',
           description: 'Meta Conversions API está funcionando.',
         })
+      } else {
+        setCapiStatus('connected')
+        setCapiError('')
       }
     } catch (err: any) {
       const errMsg =

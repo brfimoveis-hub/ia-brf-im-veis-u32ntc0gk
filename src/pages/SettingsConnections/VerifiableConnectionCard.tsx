@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, RefreshCw, Clock } from 'lucide-react'
@@ -29,12 +29,16 @@ export function VerifiableConnectionCard({
   const [lastCheck, setLastCheck] = useState('')
   const [localError, setLocalError] = useState(error || '')
 
+  useEffect(() => {
+    setLocalError(error || '')
+  }, [error])
+
   const handleVerify = async () => {
     setChecking(true)
     setLocalError('')
     try {
       const res = await runHealthCheck(connectionKey)
-      if (res.success && res.results) {
+      if (res?.success && Array.isArray(res.results)) {
         const result = res.results.find((r) => r.key === connectionKey)
         if (result) {
           setLastCheck(result.timestamp)
