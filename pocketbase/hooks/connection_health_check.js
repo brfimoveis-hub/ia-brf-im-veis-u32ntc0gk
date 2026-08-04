@@ -246,13 +246,47 @@ routerAdd(
           message: 'Page Access Token não configurado',
         })
       } else {
-        results.push({
-          name: 'Messenger',
-          key: 'messenger',
-          status: 'connected',
-          timestamp: ts,
-          message: 'Page Token configurado ✅ — pronto para receber mensagens',
-        })
+        try {
+          const msgRes = $http.send({
+            url: 'https://graph.facebook.com/v22.0/me?access_token=' + pageToken,
+            method: 'GET',
+            timeout: 15,
+          })
+          if (msgRes.statusCode >= 200 && msgRes.statusCode < 300) {
+            var pageName = ''
+            try {
+              pageName = (msgRes.json && msgRes.json.name) || ''
+            } catch (_) {}
+            results.push({
+              name: 'Messenger',
+              key: 'messenger',
+              status: 'connected',
+              timestamp: ts,
+              message: 'Conectado ✅' + (pageName ? ' — ' + pageName : ''),
+            })
+          } else {
+            var mErr = {}
+            try {
+              mErr = msgRes.json && msgRes.json.error ? msgRes.json.error : {}
+            } catch (_) {}
+            results.push({
+              name: 'Messenger',
+              key: 'messenger',
+              status: 'error',
+              timestamp: ts,
+              message:
+                mErr.message || 'Token inválido ou expirado (HTTP ' + msgRes.statusCode + ')',
+            })
+          }
+        } catch (e5) {
+          results.push({
+            name: 'Messenger',
+            key: 'messenger',
+            status: 'error',
+            timestamp: ts,
+            message: 'Erro de rede: ' + (e5.message || 'unknown'),
+          })
+        }
       }
     }
 

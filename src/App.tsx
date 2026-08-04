@@ -30,6 +30,7 @@ import NotFound from './pages/NotFound'
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import InstagramCallback from './pages/InstagramCallback'
 
 const PageLoader = () => (
   <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
@@ -250,6 +251,14 @@ const router = createBrowserRouter(
                   element: <Navigate to="/settings/ai" replace />,
                 },
               ],
+            },
+            {
+              path: 'settings/connections/instagram/callback',
+              element: (
+                <ErrorBoundary>
+                  <InstagramCallback />
+                </ErrorBoundary>
+              ),
             },
           ],
         },

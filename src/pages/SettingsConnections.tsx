@@ -11,6 +11,7 @@ import ChavesNaMao from './SettingsConnections/ChavesNaMao'
 import { StatusTrafficLight } from './SettingsConnections/StatusTrafficLight'
 import { ConnectionHealthDashboard } from './SettingsConnections/ConnectionHealthDashboard'
 import { InstagramConnect } from './SettingsConnections/InstagramConnect'
+import { VerifiableConnectionCard } from './SettingsConnections/VerifiableConnectionCard'
 import { MessageCircle, TrendingUp, Instagram, MessageSquare } from 'lucide-react'
 
 export default function SettingsConnections() {
@@ -20,6 +21,8 @@ export default function SettingsConnections() {
   const [capiError, setCapiError] = useState('')
   const [instagramStatus, setInstagramStatus] = useState('')
   const [messengerStatus, setMessengerStatus] = useState('')
+  const [instagramErrorMsg, setInstagramErrorMsg] = useState('')
+  const [messengerErrorMsg, setMessengerErrorMsg] = useState('')
 
   useEffect(() => {
     if (user) {
@@ -28,6 +31,8 @@ export default function SettingsConnections() {
       setCapiError(user.meta_capi_error || '')
       setInstagramStatus(user.meta_instagram_business_id ? 'connected' : '')
       setMessengerStatus(user.meta_page_access_token ? 'connected' : '')
+      setInstagramErrorMsg('')
+      setMessengerErrorMsg('')
     }
   }, [user])
 
@@ -38,6 +43,8 @@ export default function SettingsConnections() {
     setCapiError(e.record.meta_capi_error || '')
     setInstagramStatus(e.record.meta_instagram_business_id ? 'connected' : '')
     setMessengerStatus(e.record.meta_page_access_token ? 'connected' : '')
+    setInstagramErrorMsg('')
+    setMessengerErrorMsg('')
   })
 
   if (loading) {
@@ -85,24 +92,28 @@ export default function SettingsConnections() {
             <StatusTrafficLight status={capiStatus} error={capiError} />
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-2">
-              <Instagram className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium">Instagram Business</span>
-            </div>
-            <StatusTrafficLight status={instagramStatus} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium">Messenger</span>
-            </div>
-            <StatusTrafficLight status={messengerStatus} />
-          </CardContent>
-        </Card>
+        <VerifiableConnectionCard
+          icon={<Instagram className="h-5 w-5 text-muted-foreground" />}
+          title="Instagram Business"
+          status={instagramStatus}
+          error={instagramErrorMsg}
+          connectionKey="instagram"
+          onStatusChange={(s, e) => {
+            setInstagramStatus(s)
+            setInstagramErrorMsg(e || '')
+          }}
+        />
+        <VerifiableConnectionCard
+          icon={<MessageSquare className="h-5 w-5 text-muted-foreground" />}
+          title="Messenger"
+          status={messengerStatus}
+          error={messengerErrorMsg}
+          connectionKey="messenger"
+          onStatusChange={(s, e) => {
+            setMessengerStatus(s)
+            setMessengerErrorMsg(e || '')
+          }}
+        />
       </div>
 
       <ConnectionHealthDashboard />

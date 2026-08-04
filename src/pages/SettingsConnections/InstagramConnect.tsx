@@ -1,206 +1,125 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useToast } from '@/hooks/use-toast'
+import { useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
-import { getErrorMessage } from '@/lib/pocketbase/errors'
-import pb from '@/lib/pocketbase/client'
-import {
-  getInstagramOAuthUrl,
-  exchangeInstagramCode,
-  testInstagramConnection,
-  testMessengerConnection,
-} from '@/services/instagram'
-import { StatusTrafficLight } from './StatusTrafficLight'
-import { Instagram, MessageSquare, Loader2, RefreshCw, Link2, AlertCircle } from 'lucide-react'
-
-const OAUTH_STATE = 'instagram_oauth'
-const REDIRECT_PATH = '/settings/connections'
+import { useRealtime } from '@/hooks/use-realtime'
+import { useToast } from '@/hooks/use-toast'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Instagram, CheckCircle2, AlertCircle, Info, MessageSquare } from 'lucide-react'
 
 export function InstagramConnect() {
-  const { user, loading } = useAuth()
+  const { user } = useAuth()
   const { toast } = useToast()
-  const [exchanging, setExchanging] = useState(false)
-  const [testingInstagram, setTestingInstagram] = useState(false)
-  const [testingMessenger, setTestingMessenger] = useState(false)
-  const [showMissingConfig, setShowMissingConfig] = useState(false)
 
-  const appId = user?.meta_app_id || ''
-  const appSecret = user?.meta_app_secret || ''
-  const instagramConnected = !!user?.meta_instagram_business_id
-  const messengerConnected = !!user?.meta_page_access_token
+  const [igConnected, setIgConnected] = useState(!!user?.meta_instagram_business_id)
+  const [msgConnected, setMsgConnected] = useState(!!user?.meta_page_access_token)
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
-    const state = params.get('state')
+  useRealtime('users', (e) => {
+    if (!user?.id || e.record.id !== user.id) return
+    const newIg = !!e.record.meta_instagram_business_id
+    const newMsg = !!e.record.meta_page_access_token
+    if (newIg !== igConnected) setIgConnected(newIg)
+    if (newMsg !== msgConnected) setMsgConnected(newMsg)
+  })
 
-    if (!code || state !== OAUTH_STATE) return
+  const hasAppConfig = !!user?.meta_app_id && !!user?.meta_app_secret
+  const redirectUri = `${window.location.origin}/settings/connections/instagram/callback`
 
-    setExchanging(true)
-    const redirectUri = window.location.origin + REDIRECT_PATH
-
-    exchangeInstagramCode(code, redirectUri)
-      .then(async () => {
-        try {
-          await pb.collection('users').authRefresh()
-        } catch {
-          /* intentionally ignored */
-        }
-        toast({ title: 'Instagram conectado com sucesso' })
-      })
-      .catch((err) => {
-        toast({
-          title: `Falha ao conectar Instagram: ${getErrorMessage(err)}`,
-          variant: 'destructive',
-        })
-      })
-      .finally(() => {
-        const url = new URL(window.location.href)
-        url.searchParams.delete('code')
-        url.searchParams.delete('state')
-        window.history.replaceState({}, document.title, url.toString())
-        setExchanging(false)
-      })
-  }, [toast])
-
-  const handleConnect = useCallback(() => {
-    if (!appId || !appSecret) {
-      setShowMissingConfig(true)
+  const handleConnect = () => {
+    if (!hasAppConfig) {
       toast({
-        title:
-          'Preencha o App ID e App Secret na aba Meta API Configuration antes de conectar o Instagram.',
         variant: 'destructive',
+        title: 'Configuração incompleta',
+        description:
+          'Preencha o Meta App ID e App Secret na aba "Meta API Configuration" primeiro.',
       })
       return
     }
-    setShowMissingConfig(false)
-    const redirectUri = window.location.origin + REDIRECT_PATH
-    window.location.href = getInstagramOAuthUrl(appId, redirectUri)
-  }, [appId, appSecret, toast])
 
-  const handleTestInstagram = useCallback(async () => {
-    setTestingInstagram(true)
-    try {
-      await testInstagramConnection()
-      toast({ title: 'Instagram Business: Conectado' })
-    } catch (err) {
-      toast({
-        title: `Instagram Business: ${getErrorMessage(err)}`,
-        variant: 'destructive',
-      })
-    } finally {
-      setTestingInstagram(false)
-    }
-  }, [toast])
+    const scope =
+      'instagram_basic,instagram_manage_messages,pages_manage_metadata,pages_read_engagement,pages_show_list,pages_messaging'
+    const oauthUrl = `https://www.facebook.com/v22.0/dialog/oauth?client_id=${user!.meta_app_id}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code`
 
-  const handleTestMessenger = useCallback(async () => {
-    setTestingMessenger(true)
-    try {
-      await testMessengerConnection()
-      toast({ title: 'Messenger: Conectado' })
-    } catch (err) {
-      toast({
-        title: `Messenger: ${getErrorMessage(err)}`,
-        variant: 'destructive',
-      })
-    } finally {
-      setTestingMessenger(false)
-    }
-  }, [toast])
-
-  if (loading) {
-    return (
-      <Card>
-        <CardContent className="p-6 space-y-3">
-          <div className="h-6 w-48 bg-muted rounded animate-pulse" />
-          <div className="h-10 w-full bg-muted rounded animate-pulse" />
-        </CardContent>
-      </Card>
-    )
+    window.open(oauthUrl, '_blank')
+    toast({
+      title: 'Abrindo login do Facebook',
+      description: 'Uma nova aba foi aberta para você autorizar a conexão.',
+    })
   }
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="border-b">
         <div className="flex items-center gap-2">
-          <Instagram className="h-5 w-5 text-primary" />
-          <div>
-            <CardTitle className="text-lg">Instagram Business & Messenger</CardTitle>
-            <CardDescription>Conecte via Facebook OAuth</CardDescription>
-          </div>
+          <Instagram className="h-6 w-6 text-primary" />
+          <CardTitle className="text-xl">Instagram Business &amp; Messenger</CardTitle>
         </div>
+        <CardDescription>
+          Conecte sua conta do Instagram Business e Messenger para receber mensagens diretamente no
+          CRM.
+        </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {showMissingConfig && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Preencha o App ID e App Secret na aba Meta API Configuration antes de conectar o
-              Instagram.
+      <CardContent className="space-y-4 pt-6">
+        {!hasAppConfig && (
+          <Alert className="border-yellow-500/50 bg-yellow-500/10">
+            <AlertCircle className="h-4 w-4 text-yellow-600" />
+            <AlertTitle className="text-yellow-700">Configuração necessária</AlertTitle>
+            <AlertDescription className="text-yellow-600">
+              Antes de conectar, preencha o <strong>Meta App ID</strong> e{' '}
+              <strong>App Secret</strong> na aba &quot;Meta API Configuration&quot; acima.
             </AlertDescription>
           </Alert>
         )}
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 rounded-lg border">
-            <div className="flex items-center gap-2">
-              <Instagram className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Instagram Business</span>
-              <StatusTrafficLight status={instagramConnected ? 'connected' : ''} />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleTestInstagram}
-              disabled={testingInstagram || !instagramConnected}
-            >
-              {testingInstagram ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-              Verificar Agora
-            </Button>
-          </div>
+        <div className="flex items-center gap-4 flex-wrap">
+          <Button onClick={handleConnect} className="gap-2">
+            <Instagram className="h-4 w-4" />
+            Conectar Instagram
+          </Button>
 
-          <div className="flex items-center justify-between p-3 rounded-lg border">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Messenger</span>
-              <StatusTrafficLight status={messengerConnected ? 'connected' : ''} />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleTestMessenger}
-              disabled={testingMessenger || !messengerConnected}
+          <div className="flex items-center gap-3 flex-wrap">
+            <Badge
+              className={igConnected ? 'bg-green-500/10 text-green-600 border-green-500/20' : ''}
+              variant={igConnected ? 'default' : 'secondary'}
             >
-              {testingMessenger ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {igConnected ? (
+                <>
+                  <CheckCircle2 className="h-3 w-3 mr-1" /> Instagram Conectado
+                </>
               ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
+                'Instagram Aguardando'
               )}
-              Verificar Agora
-            </Button>
+            </Badge>
+            <Badge
+              className={msgConnected ? 'bg-green-500/10 text-green-600 border-green-500/20' : ''}
+              variant={msgConnected ? 'default' : 'secondary'}
+            >
+              {msgConnected ? (
+                <>
+                  <CheckCircle2 className="h-3 w-3 mr-1" /> Messenger Conectado
+                </>
+              ) : (
+                'Messenger Aguardando'
+              )}
+            </Badge>
           </div>
         </div>
 
-        <Button onClick={handleConnect} disabled={exchanging} className="w-full">
-          {exchanging ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Conectando...
-            </>
-          ) : (
-            <>
-              <Link2 className="h-4 w-4" />
-              Conectar Instagram
-            </>
-          )}
-        </Button>
+        <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground flex items-start gap-2">
+          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-foreground mb-1">Como funciona:</p>
+            <p>
+              Clique em &quot;Conectar Instagram&quot; para abrir o login do Facebook em uma nova
+              aba. Após autorizar, o Instagram Business ID e os tokens serão configurados
+              automaticamente. O status dos cards acima será atualizado em tempo real.
+            </p>
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
 }
+
+export default InstagramConnect

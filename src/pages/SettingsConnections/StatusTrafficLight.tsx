@@ -8,9 +8,22 @@ interface StatusTrafficLightProps {
 export function StatusTrafficLight({ status, error }: StatusTrafficLightProps) {
   const s = (status || '').toLowerCase()
   const isActive = ['active', 'connected', 'valid'].includes(s)
-  const isError = ['error', 'expired'].includes(s) || (!!error && !isActive)
-  const label = isActive ? 'Conectado' : isError ? 'Erro' : 'Aguardando'
-  const color = isActive ? 'bg-green-500' : isError ? 'bg-red-500' : 'bg-yellow-400'
+  const isNotConfigured = ['not_configured'].includes(s)
+  const isError = ['error', 'expired'].includes(s) || (!!error && !isActive && !isNotConfigured)
+  const label = isActive
+    ? 'Conectado'
+    : isError
+      ? 'Erro'
+      : isNotConfigured
+        ? 'Não Configurado'
+        : 'Aguardando'
+  const color = isActive
+    ? 'bg-green-500'
+    : isError
+      ? 'bg-red-500'
+      : isNotConfigured
+        ? 'bg-gray-400'
+        : 'bg-yellow-400'
 
   return (
     <div className="flex items-center gap-2">
