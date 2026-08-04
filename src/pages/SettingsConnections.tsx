@@ -10,19 +10,24 @@ import IntegrationLogs from './SettingsConnections/IntegrationLogs'
 import ChavesNaMao from './SettingsConnections/ChavesNaMao'
 import { StatusTrafficLight } from './SettingsConnections/StatusTrafficLight'
 import { ConnectionHealthDashboard } from './SettingsConnections/ConnectionHealthDashboard'
-import { MessageCircle, TrendingUp } from 'lucide-react'
+import { InstagramConnect } from './SettingsConnections/InstagramConnect'
+import { MessageCircle, TrendingUp, Instagram, MessageSquare } from 'lucide-react'
 
 export default function SettingsConnections() {
   const { user, loading } = useAuth()
   const [metaStatus, setMetaStatus] = useState('')
   const [capiStatus, setCapiStatus] = useState('')
   const [capiError, setCapiError] = useState('')
+  const [instagramStatus, setInstagramStatus] = useState('')
+  const [messengerStatus, setMessengerStatus] = useState('')
 
   useEffect(() => {
     if (user) {
       setMetaStatus(user.meta_token_status || '')
       setCapiStatus(user.meta_capi_status || '')
       setCapiError(user.meta_capi_error || '')
+      setInstagramStatus(user.meta_instagram_business_id ? 'connected' : '')
+      setMessengerStatus(user.meta_page_access_token ? 'connected' : '')
     }
   }, [user])
 
@@ -31,6 +36,8 @@ export default function SettingsConnections() {
     setMetaStatus(e.record.meta_token_status || '')
     setCapiStatus(e.record.meta_capi_status || '')
     setCapiError(e.record.meta_capi_error || '')
+    setInstagramStatus(e.record.meta_instagram_business_id ? 'connected' : '')
+    setMessengerStatus(e.record.meta_page_access_token ? 'connected' : '')
   })
 
   if (loading) {
@@ -78,6 +85,24 @@ export default function SettingsConnections() {
             <StatusTrafficLight status={capiStatus} error={capiError} />
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center gap-2">
+              <Instagram className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Instagram Business</span>
+            </div>
+            <StatusTrafficLight status={instagramStatus} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Messenger</span>
+            </div>
+            <StatusTrafficLight status={messengerStatus} />
+          </CardContent>
+        </Card>
       </div>
 
       <ConnectionHealthDashboard />
@@ -90,7 +115,8 @@ export default function SettingsConnections() {
           <TabsTrigger value="chaves">ChavesNaMao</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="meta" className="mt-4">
+        <TabsContent value="meta" className="mt-4 space-y-4">
+          <InstagramConnect />
           <MetaWhatsAppPanel />
         </TabsContent>
 
