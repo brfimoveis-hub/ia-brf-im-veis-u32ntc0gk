@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useRealtime } from '@/hooks/use-realtime'
+import { useDashboardRealtimeEvent } from '@/components/dashboard/dashboard-realtime'
 import {
   getAIResponseMetrics,
   formatResponseTime,
@@ -34,7 +34,10 @@ export function AIResponseMetricsCard() {
     loadData()
   }, [loadData])
 
-  useRealtime('conversations', () => {
+  // Shared dashboard subscription (same channel as MessageVolumeChart), so a
+  // single conversation event triggers one debounced refresh for both cards
+  // instead of two separate fetches.
+  useDashboardRealtimeEvent('conversations', () => {
     loadData()
   })
 

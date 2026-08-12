@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { ShieldCheck, Loader2, CheckCircle2, XCircle, RefreshCw, FileText } from 'lucide-react'
 import { runAllDiagnostics, type DiagnosticResult } from '@/services/diagnostics'
 import { getMetaLogs, type SystemLog } from '@/services/system_logs'
-import { useRealtime } from '@/hooks/use-realtime'
+import { useDashboardRealtimeEvent } from '@/components/dashboard/dashboard-realtime'
 import { cn } from '@/lib/utils'
 
 export function IntegrityDiagnostics() {
@@ -38,13 +38,18 @@ export function IntegrityDiagnostics() {
     setShowLogs(true)
   }, [])
 
-  useRealtime('system_logs', () => {
-    if (showLogs) {
+  // Only subscribe (through the shared provider) while the logs dialog is
+  // open. The provider drops the system_logs channel entirely when there are
+  // no listeners, so the page doesn't keep it alive when nobody is looking.
+  useDashboardRealtimeEvent(
+    'system_logs',
+    () => {
       getMetaLogs()
         .then((res) => setLogs(res.items))
         .catch(() => {})
-    }
-  })
+    },
+    showLogs,
+  )
 
   const passedCount = results.filter((r) => r.success).length
 

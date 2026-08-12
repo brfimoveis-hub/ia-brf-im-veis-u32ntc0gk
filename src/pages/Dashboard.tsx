@@ -1,6 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/hooks/use-auth'
-import { useRealtime } from '@/hooks/use-realtime'
 import pb from '@/lib/pocketbase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -19,11 +18,16 @@ import { cn } from '@/lib/utils'
 import { MessageVolumeChart } from '@/components/dashboard/message-volume-chart'
 import { AIResponseMetricsCard } from '@/components/dashboard/ai-response-metrics'
 import { IntegrityDiagnostics } from '@/components/dashboard/integrity-diagnostics'
+import {
+  DashboardRealtimeProvider,
+  useDashboardRealtimeEvent,
+} from '@/components/dashboard/dashboard-realtime'
 import { reportError } from '@/lib/error-reporter'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-export default function Dashboard() {
+function DashboardInner() {
   const { user } = useAuth()
+  const userId = user?.id
   const [customerCount, setCustomerCount] = useState(0)
   const [cadenceCount, setCadenceCount] = useState(0)
   const [iaInteractions, setIaInteractions] = useState(0)
@@ -31,19 +35,33 @@ export default function Dashboard() {
   const [statsLoading, setStatsLoading] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(user)
 
+  // Keep a ref to the latest user record id so realtime handlers (which are
+  // registered once) can read it without depending on `user` in their closure.
+  const userIdRef = useRef(userId)
+  userIdRef.current = userId
+
+  // Stable callback: only depends on the user id, not the `user` object. An
+  // auth-refresh changes the `user` reference but keeps the id stable, so this
+  // callback is NOT recreated and the initial-fetch effect does not re-fire.
   const fetchStats = useCallback(async () => {
     setStatsLoading(true)
     setStatsError(false)
     try {
-      if (user) {
+      const currentId = userIdRef.current
+      if (currentId) {
         try {
-          const usr = await pb.collection('users').getOne(user.id)
-          setCurrentUser(usr)
+          const usr = await pb.collection('users').getOne(currentId)
+          setCurrentUser((prev) => {
+            // Only update when something actually changed, to avoid a
+            // pointless re-render from an identical record.
+            if (prev && JSON.stringify(prev) === JSON.stringify(usr)) return prev
+            return usr
+          })
         } catch (err) {
           reportError({
             type: 'dashboard_user_error',
             message: err instanceof Error ? err.message : 'Failed to fetch user',
-            details: { user_id: user.id },
+            details: { user_id: currentId },
           })
         }
       }
@@ -100,25 +118,34 @@ export default function Dashboard() {
     } finally {
       setStatsLoading(false)
     }
-  }, [user])
+  }, [])
 
+  // Initial fetch — keyed on the id only, so auth-refresh does not retrigger.
   useEffect(() => {
-    if (user) {
+    if (userId) {
       fetchStats()
     }
-  }, [user, fetchStats])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
 
-  useRealtime('users', (e) => {
-    if (!user?.id || e.record.id !== user.id) return
+  // --- Realtime handlers (registered once via the shared provider) ----------
+  // Only re-fetch the current user record when the event is for THIS user AND
+  // the incoming record actually differs from what we already have.
+  useDashboardRealtimeEvent('users', (e) => {
+    const id = userIdRef.current
+    if (!id || e.record.id !== id) return
     pb.collection('users')
-      .getOne(user.id)
+      .getOne(id)
       .then((res) => {
-        setCurrentUser(res)
+        setCurrentUser((prev) => {
+          if (prev && JSON.stringify(prev) === JSON.stringify(res)) return prev
+          return res
+        })
       })
       .catch(console.error)
   })
 
-  useRealtime('customers', () => {
+  useDashboardRealtimeEvent('customers', () => {
     pb.collection('customers')
       .getList(1, 1, { fields: 'id' })
       .then((res) => setCustomerCount(res.totalItems))
@@ -131,13 +158,15 @@ export default function Dashboard() {
         })
       })
   })
-  useRealtime('cadences', () => {
+
+  useDashboardRealtimeEvent('cadences', () => {
     pb.collection('cadences')
       .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
       .then((res) => setCadenceCount(res.totalItems))
       .catch(console.error)
   })
-  useRealtime('leads', () => {
+
+  useDashboardRealtimeEvent('leads', () => {
     pb.collection('leads')
       .getList(1, 1, { fields: 'id' })
       .then((res) => setIaInteractions(res.totalItems))
@@ -293,5 +322,16 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function Dashboard() {
+  // The provider owns every realtime subscription for the page; child
+  // components subscribe through the shared context instead of each opening
+  // their own channel.
+  return (
+    <DashboardRealtimeProvider>
+      <DashboardInner />
+    </DashboardRealtimeProvider>
   )
 }

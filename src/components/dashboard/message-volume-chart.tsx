@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Bar, BarChart, XAxis, YAxis, Legend } from 'recharts'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { useRealtime } from '@/hooks/use-realtime'
+import { useDashboardRealtimeEvent } from '@/components/dashboard/dashboard-realtime'
 import { getMessageVolume, type MessageVolumeDataPoint } from '@/services/analytics'
 import { Loader2 } from 'lucide-react'
 
@@ -28,7 +28,9 @@ export function MessageVolumeChart() {
     loadData()
   }, [loadData])
 
-  useRealtime('conversations', () => {
+  // Shared dashboard subscription — a single channel for the whole page,
+  // debounced so a burst of conversation events collapses into one refresh.
+  useDashboardRealtimeEvent('conversations', () => {
     loadData()
   })
 
