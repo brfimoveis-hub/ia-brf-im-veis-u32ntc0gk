@@ -52,6 +52,10 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
 
   // system_logs is only subscribed when a listener is registered.
   const [systemLogsActive, setSystemLogsActive] = useState(false)
+  // conversations is only subscribed when a listener is registered (i.e. the
+  // Performance Dashboard section has scrolled into view), so the page does not
+  // open that realtime channel on initial mount before the analytics are needed.
+  const [conversationsActive, setConversationsActive] = useState(false)
 
   const dispatch = useCallback((collection: string) => {
     const set = handlersRef.current.get(collection)
@@ -89,7 +93,11 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
   // One subscription per collection for the lifetime of the dashboard.
   // useRealtime stores the callback in a ref, so the changing closure does not
   // cause re-subscription.
-  useRealtime('conversations', handle('conversations', DEBOUNCED_COLLECTIONS.has('conversations')))
+  useRealtime(
+    'conversations',
+    handle('conversations', DEBOUNCED_COLLECTIONS.has('conversations')),
+    conversationsActive,
+  )
   useRealtime('customers', handle('customers', DEBOUNCED_COLLECTIONS.has('customers')))
   useRealtime('cadences', handle('cadences', DEBOUNCED_COLLECTIONS.has('cadences')))
   useRealtime('leads', handle('leads', DEBOUNCED_COLLECTIONS.has('leads')))
@@ -118,6 +126,9 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
     if (collection === 'system_logs' && set.size === 1) {
       setSystemLogsActive(true)
     }
+    if (collection === 'conversations' && set.size === 1) {
+      setConversationsActive(true)
+    }
     return () => {
       const s = handlersRef.current.get(collection)
       if (!s) return
@@ -126,6 +137,9 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
         handlersRef.current.delete(collection)
         if (collection === 'system_logs') {
           setSystemLogsActive(false)
+        }
+        if (collection === 'conversations') {
+          setConversationsActive(false)
         }
       }
     }

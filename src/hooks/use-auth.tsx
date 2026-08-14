@@ -1,6 +1,29 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import pb from '@/lib/pocketbase/client'
 
+// Module-level in-flight guard: if several AuthProvider instances mount at the
+// same time (React StrictMode double-invokes effects in dev, and React Router
+// can render <AuthProvider> while a previous mount is still settling), they
+// each call authRefresh() — producing the duplicate POST
+// /api/collections/users/auth-refresh seen in the logs at the same millisecond.
+// Deduplicate by sharing a single in-flight promise across all callers.
+let authRefreshInFlight: Promise<void> | null = null
+
+const refreshAuthOnce = (): Promise<void> => {
+  if (authRefreshInFlight) return authRefreshInFlight
+  authRefreshInFlight = pb
+    .collection('users')
+    .authRefresh()
+    .then(() => {
+      authRefreshInFlight = null
+    })
+    .catch((err) => {
+      authRefreshInFlight = null
+      throw err
+    })
+  return authRefreshInFlight
+}
+
 interface AuthContextType {
   user: any
   isAuthenticated: boolean
@@ -36,8 +59,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     })
 
     if (pb.authStore.isValid) {
-      pb.collection('users')
-        .authRefresh()
+      refreshAuthOnce()
         .then(() => {
           setSessionExpired(false)
         })

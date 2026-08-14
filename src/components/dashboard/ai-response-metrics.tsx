@@ -1,46 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDashboardRealtimeEvent } from '@/components/dashboard/dashboard-realtime'
-import {
-  getAIResponseMetrics,
-  formatResponseTime,
-  type AIResponseMetrics,
-} from '@/services/analytics'
+import { formatResponseTime, type AIResponseMetrics } from '@/services/analytics'
 import { Clock, Zap, Gauge, TrendingUp, Loader2 } from 'lucide-react'
 
-const DEFAULT_METRICS: AIResponseMetrics = {
-  averageResponseTimeSeconds: 0,
-  totalPairs: 0,
-  fastestResponseSeconds: 0,
-  slowestResponseSeconds: 0,
+interface AIResponseMetricsCardProps {
+  metrics: AIResponseMetrics
+  loading: boolean
 }
 
-export function AIResponseMetricsCard() {
-  const [metrics, setMetrics] = useState<AIResponseMetrics>(DEFAULT_METRICS)
-  const [loading, setLoading] = useState(true)
-
-  const loadData = useCallback(async () => {
-    try {
-      const result = await getAIResponseMetrics()
-      setMetrics(result)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadData()
-  }, [loadData])
-
-  // Shared dashboard subscription (same channel as MessageVolumeChart), so a
-  // single conversation event triggers one debounced refresh for both cards
-  // instead of two separate fetches.
-  useDashboardRealtimeEvent('conversations', () => {
-    loadData()
-  })
-
+export function AIResponseMetricsCard({ metrics, loading }: AIResponseMetricsCardProps) {
   return (
     <Card className="h-full">
       <CardHeader>

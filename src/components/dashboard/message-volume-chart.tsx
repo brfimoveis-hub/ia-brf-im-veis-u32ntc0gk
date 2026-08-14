@@ -1,44 +1,28 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Bar, BarChart, XAxis, YAxis, Legend } from 'recharts'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { useDashboardRealtimeEvent } from '@/components/dashboard/dashboard-realtime'
-import { getMessageVolume, type MessageVolumeDataPoint } from '@/services/analytics'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
+import type { MessageVolumeDataPoint } from '@/services/analytics'
 
-export function MessageVolumeChart() {
-  const [data, setData] = useState<MessageVolumeDataPoint[]>([])
-  const [period, setPeriod] = useState<'7' | '14'>('7')
-  const [loading, setLoading] = useState(true)
+interface MessageVolumeChartProps {
+  data: MessageVolumeDataPoint[]
+  period: '7' | '14'
+  onPeriodChange: (period: '7' | '14') => void
+  loading: boolean
+}
 
-  const loadData = useCallback(async () => {
-    try {
-      const result = await getMessageVolume(parseInt(period))
-      setData(result)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }, [period])
+const chartConfig = {
+  received: { label: 'Recebidas', color: '#3b82f6' },
+  sent: { label: 'Enviadas', color: '#10b981' },
+}
 
-  useEffect(() => {
-    setLoading(true)
-    loadData()
-  }, [loadData])
-
-  // Shared dashboard subscription — a single channel for the whole page,
-  // debounced so a burst of conversation events collapses into one refresh.
-  useDashboardRealtimeEvent('conversations', () => {
-    loadData()
-  })
-
-  const chartConfig = {
-    received: { label: 'Recebidas', color: '#3b82f6' },
-    sent: { label: 'Enviadas', color: '#10b981' },
-  }
-
+export function MessageVolumeChart({
+  data,
+  period,
+  onPeriodChange,
+  loading,
+}: MessageVolumeChartProps) {
   const hasData = data.some((d) => d.received > 0 || d.sent > 0)
 
   return (
@@ -52,7 +36,7 @@ export function MessageVolumeChart() {
           <ToggleGroup
             type="single"
             value={period}
-            onValueChange={(v) => v && setPeriod(v as '7' | '14')}
+            onValueChange={(v) => v && onPeriodChange(v as '7' | '14')}
           >
             <ToggleGroupItem value="7" className="text-xs">
               7 dias

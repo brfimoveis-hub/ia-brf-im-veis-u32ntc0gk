@@ -15,8 +15,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { MessageVolumeChart } from '@/components/dashboard/message-volume-chart'
-import { AIResponseMetricsCard } from '@/components/dashboard/ai-response-metrics'
+import { PerformanceDashboard } from '@/components/dashboard/performance-dashboard'
 import { IntegrityDiagnostics } from '@/components/dashboard/integrity-diagnostics'
 import {
   DashboardRealtimeProvider,
@@ -304,23 +303,10 @@ function DashboardInner() {
 
       <IntegrityDiagnostics />
 
-      {/* Performance Dashboard */}
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-xl font-semibold tracking-tight">Performance Dashboard</h3>
-          <p className="text-sm text-muted-foreground">
-            Monitoramento de volume e eficiência da IA em tempo real.
-          </p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="col-span-4 lg:col-span-3">
-            <MessageVolumeChart />
-          </div>
-          <div className="col-span-4 lg:col-span-1">
-            <AIResponseMetricsCard />
-          </div>
-        </div>
-      </div>
+      {/* Performance Dashboard — analytics are lazy-loaded (IntersectionObserver)
+          so the heavy conversation fetch is deferred until the section scrolls
+          into view, instead of firing on initial mount alongside the stat cards. */}
+      <PerformanceDashboard />
     </div>
   )
 }
