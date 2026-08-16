@@ -9,9 +9,16 @@ import pb from '@/lib/pocketbase/client'
 // Deduplicate by sharing a single in-flight promise across all callers.
 let authRefreshInFlight: Promise<void> | null = null
 
+const AUTH_REFRESH_TIMEOUT_MS = 10_000
+
 const refreshAuthOnce = (): Promise<void> => {
   if (authRefreshInFlight) return authRefreshInFlight
-  authRefreshInFlight = pb
+
+  // Guard against authRefresh() hanging (the 67s login seen in the logs
+  // suggests the backend can stall). If it does not resolve within 10s,
+  // we treat it as a failure: clear the auth store so the app falls back
+  // to the login screen instead of staying on the loading spinner forever.
+  const refreshPromise = pb
     .collection('users')
     .authRefresh()
     .then(() => {
@@ -21,6 +28,25 @@ const refreshAuthOnce = (): Promise<void> => {
       authRefreshInFlight = null
       throw err
     })
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error('authRefresh timeout'))
+    }, AUTH_REFRESH_TIMEOUT_MS)
+  })
+
+  authRefreshInFlight = Promise.race([refreshPromise, timeoutPromise])
+    .then(() => {
+      authRefreshInFlight = null
+    })
+    .catch((err) => {
+      // On timeout (or underlying failure) clear the stale token so the user
+      // is sent to login instead of being stuck on the loading screen.
+      pb.authStore.clear()
+      authRefreshInFlight = null
+      throw err
+    })
+
   return authRefreshInFlight
 }
 

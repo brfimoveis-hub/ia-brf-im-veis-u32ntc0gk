@@ -8,7 +8,9 @@ import {
   type ReactNode,
 } from 'react'
 import type { RecordSubscription } from 'pocketbase'
+import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
+import { useAuth } from '@/hooks/use-auth'
 
 /**
  * Centralizes all realtime subscriptions used by the Dashboard page so that
@@ -57,6 +59,25 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
   // open that realtime channel on initial mount before the analytics are needed.
   const [conversationsActive, setConversationsActive] = useState(false)
 
+  // Guard: only open realtime subscriptions once the auth store is confirmed
+  // valid AND stable. The AuthProvider keeps `loading` true until the token
+  // refresh resolves (or times out); if we subscribe while the token is still
+  // being refreshed, PocketBase rejects the realtime handshake with
+  // "Missing or invalid client id" (the 404s seen in the logs), and each
+  // failed reconnect attempt stacks up and freezes the page.
+  // We also require `pb.authStore.isValid` directly so that a cleared/invalid
+  // token never reaches the realtime layer.
+  const { loading: authLoading, isAuthenticated } = useAuth()
+  const [authReady, setAuthReady] = useState(false)
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && pb.authStore.isValid) {
+      setAuthReady(true)
+    } else if (!authLoading && !isAuthenticated) {
+      // Auth settled as invalid: never subscribe.
+      setAuthReady(false)
+    }
+  }, [authLoading, isAuthenticated])
+
   const dispatch = useCallback((collection: string) => {
     const set = handlersRef.current.get(collection)
     const e = lastEventRef.current.get(collection)
@@ -93,19 +114,22 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
   // One subscription per collection for the lifetime of the dashboard.
   // useRealtime stores the callback in a ref, so the changing closure does not
   // cause re-subscription.
+  // All subscriptions are gated on `authReady` so we never open a realtime
+  // channel against an unverified/expired token (the source of the
+  // "Missing or invalid client id" 404s in the logs).
   useRealtime(
     'conversations',
     handle('conversations', DEBOUNCED_COLLECTIONS.has('conversations')),
-    conversationsActive,
+    conversationsActive && authReady,
   )
-  useRealtime('customers', handle('customers', DEBOUNCED_COLLECTIONS.has('customers')))
-  useRealtime('cadences', handle('cadences', DEBOUNCED_COLLECTIONS.has('cadences')))
-  useRealtime('leads', handle('leads', DEBOUNCED_COLLECTIONS.has('leads')))
-  useRealtime('users', handle('users', DEBOUNCED_COLLECTIONS.has('users')))
+  useRealtime('customers', handle('customers', DEBOUNCED_COLLECTIONS.has('customers')), authReady)
+  useRealtime('cadences', handle('cadences', DEBOUNCED_COLLECTIONS.has('cadences')), authReady)
+  useRealtime('leads', handle('leads', DEBOUNCED_COLLECTIONS.has('leads')), authReady)
+  useRealtime('users', handle('users', DEBOUNCED_COLLECTIONS.has('users')), authReady)
   useRealtime(
     'system_logs',
     handle('system_logs', DEBOUNCED_COLLECTIONS.has('system_logs')),
-    systemLogsActive,
+    systemLogsActive && authReady,
   )
 
   // Clear any pending timers on unmount.
