@@ -40,7 +40,7 @@ const DEBOUNCE_MS = 1000
 // cascades into reconnect storms that freeze the browser (especially on
 // low-resource / safe-mode machines). Giving the initial render 5s to stabilize
 // before subscribing avoids that cascade.
-const REALTIME_OPEN_DELAY_MS = 5000
+const REALTIME_OPEN_DELAY_MS = 8000
 
 // Collections whose event bursts should collapse into a single delayed refresh.
 const DEBOUNCED_COLLECTIONS = new Set([

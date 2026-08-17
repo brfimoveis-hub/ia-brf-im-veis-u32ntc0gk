@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { lazy, Suspense, useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,14 +15,35 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { PerformanceDashboard } from '@/components/dashboard/performance-dashboard'
-import { IntegrityDiagnostics } from '@/components/dashboard/integrity-diagnostics'
 import {
   DashboardRealtimeProvider,
   useDashboardRealtimeEvent,
 } from '@/components/dashboard/dashboard-realtime'
 import { reportError } from '@/lib/error-reporter'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+
+// Lazy-load the heavy dashboard sections so their (potentially expensive)
+// fetches and realtime channels are not part of the initial bundle/JS
+// evaluation. On low-resource / safe-mode machines loading everything
+// synchronously on mount is what freezes the browser.
+const PerformanceDashboard = lazy(() =>
+  import('@/components/dashboard/performance-dashboard').then((m) => ({
+    default: m.PerformanceDashboard,
+  })),
+)
+const IntegrityDiagnostics = lazy(() =>
+  import('@/components/dashboard/integrity-diagnostics').then((m) => ({
+    default: m.IntegrityDiagnostics,
+  })),
+)
+
+// Minimal fallback for the lazy sections — deliberately cheap to render so it
+// adds no load while the real component is being fetched/instantiated.
+const SectionFallback = () => (
+  <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+    Carregando...
+  </div>
+)
 
 function DashboardInner() {
   const { user } = useAuth()
@@ -284,12 +305,16 @@ function DashboardInner() {
         </Card>
       </div>
 
-      <IntegrityDiagnostics />
+      <Suspense fallback={<SectionFallback />}>
+        <IntegrityDiagnostics />
+      </Suspense>
 
       {/* Performance Dashboard — analytics are lazy-loaded (IntersectionObserver)
           so the heavy conversation fetch is deferred until the section scrolls
           into view, instead of firing on initial mount alongside the stat cards. */}
-      <PerformanceDashboard />
+      <Suspense fallback={<SectionFallback />}>
+        <PerformanceDashboard />
+      </Suspense>
     </div>
   )
 }
