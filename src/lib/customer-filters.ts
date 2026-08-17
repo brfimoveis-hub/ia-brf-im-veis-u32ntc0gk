@@ -1,17 +1,24 @@
+// The canonical 10-step sales pipeline. This MUST match the cadence titles
+// seeded by migration 0102_update_customers_status_10_steps_kanban and the
+// `status` selectValues on the customers collection — it drives both the
+// Kanban columns and the status filter dropdown. The old D0–D9 "Follow up"
+// stages were legacy and left the pipeline "desconfigurada": customers in
+// statuses like "Validação no CRM" had no Kanban column and could not be
+// moved/verified, and the filter dropdown did not offer the real statuses.
+// 'Novo' is the entry bucket (it also groups `lead` and empty status via
+// buildStageFilter); the remaining stages are the 10-step funnel.
 export const CUSTOMER_STAGES = [
   'Novo',
-  'D0 - Contato Imediato',
-  'D1 - Follow up 1',
-  'D2 - Follow up 2',
-  'D3 - Follow up 3',
-  'D4 - Follow up 4',
-  'D5 - Follow up 5',
-  'D6 - Follow up 6',
-  'D7 - Follow up 7',
-  'D8 - Follow up 8',
-  'D9 - Despedida/Nutrição',
-  'Fechamento',
-  'closed',
+  'Captura + Identificação',
+  'Validação no CRM',
+  'Contato Personalizado',
+  'Mapeamento de Perfil',
+  'Nutrição Automática',
+  'Agendamento de Visita',
+  'Pré-Visita',
+  'Pós-Visita',
+  'Proposta e Negociação',
+  'Fechamento e Pós-Venda',
 ]
 
 export const SOURCE_OPTIONS = ['Villa dos Açores', 'Google Ads', 'Meta Ads', 'Instagram', 'Website']
@@ -74,9 +81,23 @@ export function buildBaseFilter(filters: CustomerFilterState): string {
   return parts.join(' && ')
 }
 
+// The 10 real pipeline stages (excludes the 'Novo' entry bucket). Used by
+// buildStageFilter to express "Novo = everything that is not a pipeline stage".
+const PIPELINE_STAGE_VALUES = CUSTOMER_STAGES.filter((s) => s !== 'Novo')
+
 export function buildStageFilter(stage: string): string {
   if (stage === 'Novo') {
-    return `(status = "Novo" || status = "lead" || status = "")`
+    // The entry bucket catches every status that is NOT one of the 10 pipeline
+    // stages — i.e. genuine new leads ('Novo', 'lead', '', 'Lead Novo',
+    // 'Base de Clientes/Novo LYD') AND any legacy status value (D0–D9 follow
+    // ups, 'Qualificação', 'closed', …) that has no dedicated column. This
+    // guarantees no customer is orphaned and every customer can be dragged
+    // into the correct pipeline stage. (A migration normalizes the common
+    // legacy values to their pipeline equivalent so the bucket stays small.)
+    const notPipeline = PIPELINE_STAGE_VALUES.map(
+      (s) => `status != "${escapeFilterValue(s)}"`,
+    ).join(' && ')
+    return `(${notPipeline})`
   }
   return `status = "${escapeFilterValue(stage)}"`
 }

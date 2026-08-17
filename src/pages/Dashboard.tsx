@@ -128,22 +128,12 @@ function DashboardInner() {
   }, [userId])
 
   // --- Realtime handlers (registered once via the shared provider) ----------
-  // Only re-fetch the current user record when the event is for THIS user AND
-  // the incoming record actually differs from what we already have.
-  useDashboardRealtimeEvent('users', (e) => {
-    const id = userIdRef.current
-    if (!id || e.record.id !== id) return
-    pb.collection('users')
-      .getOne(id)
-      .then((res) => {
-        setCurrentUser((prev) => {
-          if (prev && JSON.stringify(prev) === JSON.stringify(res)) return prev
-          return res
-        })
-      })
-      .catch(console.error)
-  })
-
+  // The `users` and `leads` subscriptions were removed from the provider
+  // (users only updates the header name, leads is just a counter — neither
+  // justified a realtime channel on mount). The two handlers that remain
+  // (customers, cadences) are additionally throttled by a per-handler 5s
+  // cooldown inside useDashboardRealtimeEvent so bursts collapse into a
+  // single refetch instead of cascading re-renders.
   useDashboardRealtimeEvent('customers', () => {
     pb.collection('customers')
       .getList(1, 1, { fields: 'id' })
@@ -162,13 +152,6 @@ function DashboardInner() {
     pb.collection('cadences')
       .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
       .then((res) => setCadenceCount(res.totalItems))
-      .catch(console.error)
-  })
-
-  useDashboardRealtimeEvent('leads', () => {
-    pb.collection('leads')
-      .getList(1, 1, { fields: 'id' })
-      .then((res) => setIaInteractions(res.totalItems))
       .catch(console.error)
   })
 

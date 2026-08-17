@@ -34,6 +34,13 @@ interface DashboardRealtimeContextValue {
 const DashboardRealtimeContext = createContext<DashboardRealtimeContextValue | null>(null)
 
 const DEBOUNCE_MS = 1000
+// Cooldown after `authReady` before any realtime channel is opened. The initial
+// Dashboard render fires several getList() calls at once; opening 4 realtime
+// subscriptions on top of that, against a token that may still be settling,
+// cascades into reconnect storms that freeze the browser (especially on
+// low-resource / safe-mode machines). Giving the initial render 5s to stabilize
+// before subscribing avoids that cascade.
+const REALTIME_OPEN_DELAY_MS = 5000
 
 // Collections whose event bursts should collapse into a single delayed refresh.
 const DEBOUNCED_COLLECTIONS = new Set([
@@ -68,10 +75,14 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
   // We also require `pb.authStore.isValid` directly so that a cleared/invalid
   // token never reaches the realtime layer.
   const { loading: authLoading, isAuthenticated } = useAuth()
+  // `authReady` is only flipped to true AFTER a 5s cooldown once auth has
+  // settled, so realtime channels are not opened during the initial render /
+  // token-refresh storm. This is the main fix for the Dashboard freeze.
   const [authReady, setAuthReady] = useState(false)
   useEffect(() => {
     if (!authLoading && isAuthenticated && pb.authStore.isValid) {
-      setAuthReady(true)
+      const t = setTimeout(() => setAuthReady(true), REALTIME_OPEN_DELAY_MS)
+      return () => clearTimeout(t)
     } else if (!authLoading && !isAuthenticated) {
       // Auth settled as invalid: never subscribe.
       setAuthReady(false)
@@ -122,10 +133,13 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
     handle('conversations', DEBOUNCED_COLLECTIONS.has('conversations')),
     conversationsActive && authReady,
   )
+  // Only `customers` and `cadences` need realtime on the Dashboard. `users`
+  // only refreshes the header name and `leads` is just a counter — neither is
+  // worth a realtime channel on mount, and removing them cuts the initial
+  // subscription count (and the reconnect storm) in half. They can still be
+  // refreshed via the manual "Atualizar" flow if needed.
   useRealtime('customers', handle('customers', DEBOUNCED_COLLECTIONS.has('customers')), authReady)
   useRealtime('cadences', handle('cadences', DEBOUNCED_COLLECTIONS.has('cadences')), authReady)
-  useRealtime('leads', handle('leads', DEBOUNCED_COLLECTIONS.has('leads')), authReady)
-  useRealtime('users', handle('users', DEBOUNCED_COLLECTIONS.has('users')), authReady)
   useRealtime(
     'system_logs',
     handle('system_logs', DEBOUNCED_COLLECTIONS.has('system_logs')),
@@ -176,19 +190,32 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
   )
 }
 
+// Minimum interval between fetches triggered by a single realtime handler.
+// Bursty events (a conversation batch, a status migration) collapse so the
+// handler fetches at most once every 5s instead of once per event — the main
+// cause of the cascading re-renders that froze the Dashboard.
+const HANDLER_COOLDOWN_MS = 5000
+
 /**
  * Subscribe a handler to a collection's realtime events through the shared
  * dashboard provider. The handler is kept in a ref so it can change every
- * render without re-registering.
+ * render without re-registering. A per-handler cooldown swallows event bursts
+ * so the wrapped handler runs at most once every HANDLER_COOLDOWN_MS.
  */
 export function useDashboardRealtimeEvent(collection: string, handler: Handler, enabled = true) {
   const ctx = useContext(DashboardRealtimeContext)
   const handlerRef = useRef(handler)
   handlerRef.current = handler
+  const lastRunRef = useRef(0)
 
   useEffect(() => {
     if (!ctx || !enabled) return
-    const unsub = ctx.onEvent(collection, (e) => handlerRef.current(e))
+    const unsub = ctx.onEvent(collection, (e) => {
+      const now = Date.now()
+      if (now - lastRunRef.current < HANDLER_COOLDOWN_MS) return
+      lastRunRef.current = now
+      handlerRef.current(e)
+    })
     return unsub
   }, [ctx, collection, enabled])
 }
