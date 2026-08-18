@@ -27,21 +27,29 @@ export function useRealtime<TRecord extends RecordModel = RecordModel>(
     let unsubscribeFn: (() => Promise<void>) | undefined
     let cancelled = false
 
-    pb.collection<TRecord>(collectionName)
-      .subscribe('*', (e) => {
-        callbackRef.current(e)
-      })
-      .then((fn) => {
-        if (cancelled) {
-          fn().catch(() => {})
-        } else {
-          unsubscribeFn = fn
-        }
-      })
-      .catch(() => {})
+    // Small delay before subscribing. In React StrictMode (dev) effects run
+    // mount -> unmount -> mount in quick succession; without a delay the first
+    // subscribe can still open an SSE connection before the cleanup cancels it,
+    // creating duplicate realtime connections. The timer is cancelled on
+    // cleanup so a rapid unmount never subscribes at all.
+    const subscribeTimer = setTimeout(() => {
+      pb.collection<TRecord>(collectionName)
+        .subscribe('*', (e) => {
+          callbackRef.current(e)
+        })
+        .then((fn) => {
+          if (cancelled) {
+            fn().catch(() => {})
+          } else {
+            unsubscribeFn = fn
+          }
+        })
+        .catch(() => {})
+    }, 50)
 
     return () => {
       cancelled = true
+      clearTimeout(subscribeTimer)
       if (unsubscribeFn) {
         unsubscribeFn().catch(() => {})
       }

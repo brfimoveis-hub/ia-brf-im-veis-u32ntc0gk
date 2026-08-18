@@ -8,6 +8,14 @@ export interface ErrorReport {
 
 const errorListeners = new Set<(report: ErrorReport) => void>()
 
+// Cooldown to prevent burst writes to `system_logs`. Multiple errors arriving
+// in quick succession (e.g. cascading fetch failures) used to fire several
+// POSTs in the same millisecond — each taking ~11s — which worsened the very
+// congestion that caused the errors. Only the first error in a 2s window is
+// persisted; subsequent ones within the window are dropped.
+let lastReportAt = 0
+const REPORT_COOLDOWN_MS = 2000
+
 export function reportError(report: ErrorReport): void {
   errorListeners.forEach((listener) => {
     try {
@@ -19,6 +27,10 @@ export function reportError(report: ErrorReport): void {
 
   try {
     if (pb.authStore.isValid) {
+      const now = Date.now()
+      if (now - lastReportAt < REPORT_COOLDOWN_MS) return
+      lastReportAt = now
+
       const userId = pb.authStore.record?.id || 'unknown'
       pb.collection('system_logs')
         .create({
