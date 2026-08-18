@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils'
 import {
   DashboardRealtimeProvider,
   useDashboardRealtimeEvent,
+  useRealtimePaused,
+  RealtimeToggle,
 } from '@/components/dashboard/dashboard-realtime'
 import { reportError } from '@/lib/error-reporter'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -45,6 +47,28 @@ const SectionFallback = () => (
   </div>
 )
 
+// Lightweight skeleton block used inside the stat cards while the initial
+// sequential fetch is in flight. Replaces the old "—" placeholder: a pulsing
+// bar communicates "loading" without blocking the main thread.
+const StatSkeleton = () => (
+  <div className="h-7 w-12 animate-pulse rounded bg-muted" aria-label="Carregando..." />
+)
+
+// Wraps a lazy realtime-dependent section. While realtime is paused (the
+// default), the section shows a subtle "paused" notice instead of mounting its
+// (potentially expensive) content, so the page never blocks on mount.
+function PausedAwareSection({ paused, children }: { paused: boolean; children: React.ReactNode }) {
+  if (paused) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed py-10 text-sm text-muted-foreground">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span>Dados em tempo real pausados. Clique para ativar.</span>
+      </div>
+    )
+  }
+  return <>{children}</>
+}
+
 function DashboardInner() {
   const { user } = useAuth()
   const userId = user?.id
@@ -54,6 +78,10 @@ function DashboardInner() {
   const [statsError, setStatsError] = useState(false)
   const [statsLoading, setStatsLoading] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(user)
+  // True until the first stats fetch has completed at least once, so the cards
+  // show a skeleton rather than "0" / "—" on initial render.
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const realtimePaused = useRealtimePaused()
 
   // Keep a ref to the latest user record id so realtime handlers (which are
   // registered once) can read it without depending on `user` in their closure.
@@ -63,11 +91,22 @@ function DashboardInner() {
   // Stable callback: only depends on the user id, not the `user` object. An
   // auth-refresh changes the `user` reference but keeps the id stable, so this
   // callback is NOT recreated and the initial-fetch effect does not re-fire.
+  //
+  // Requests are made SEQUENTIALLY (one await at a time) instead of via
+  // Promise.allSettled. On the safe-mode machine, 3+ parallel HTTP requests
+  // fired on mount congest the network pipeline and freeze the browser; doing
+  // them one-by-one keeps the main thread responsive. Each result is applied
+  // to state as soon as it returns so the cards fill in progressively.
   const fetchStats = useCallback(async () => {
     setStatsLoading(true)
     setStatsError(false)
     try {
       const currentId = userIdRef.current
+
+      // 1) User / integration data — fetched first (single request), so the
+      //    Integrações card can render as soon as possible. Integration data
+      //    is not critical for the numeric stats, so a failure here is
+      //    swallowed and does not abort the rest of the fetch.
       if (currentId) {
         try {
           const usr = await pb.collection('users').getOne(currentId)
@@ -86,46 +125,48 @@ function DashboardInner() {
         }
       }
 
-      const results = await Promise.allSettled([
-        pb.collection('customers').getList(1, 1, { fields: 'id' }),
-        pb.collection('cadences').getList(1, 1, { filter: 'is_active = true', fields: 'id' }),
-        pb.collection('leads').getList(1, 1, { fields: 'id' }),
-      ])
-
-      const [customersRes, cadencesRes, iaRes] = results
-
-      if (customersRes.status === 'fulfilled') {
-        setCustomerCount(customersRes.value.totalItems)
-      } else {
+      // 2) Customers count — SEQUENTIAL.
+      let anyError = false
+      try {
+        const customersRes = await pb.collection('customers').getList(1, 1, { fields: 'id' })
+        setCustomerCount(customersRes.totalItems)
+      } catch (err) {
+        anyError = true
         reportError({
           type: 'dashboard_customers_error',
-          message: 'Failed to fetch customers count',
-          details: { reason: String(customersRes.reason) },
-        })
-      }
-      if (cadencesRes.status === 'fulfilled') {
-        setCadenceCount(cadencesRes.value.totalItems)
-      } else {
-        reportError({
-          type: 'dashboard_cadences_error',
-          message: 'Failed to fetch cadences count',
-          details: { reason: String(cadencesRes.reason) },
-        })
-      }
-      if (iaRes.status === 'fulfilled') {
-        setIaInteractions(iaRes.value.totalItems)
-      } else {
-        reportError({
-          type: 'dashboard_leads_error',
-          message: 'Failed to fetch leads count',
-          details: { reason: String(iaRes.reason) },
+          message: err instanceof Error ? err.message : 'Failed to fetch customers count',
+          details: { reason: String(err) },
         })
       }
 
-      const anyError =
-        customersRes.status === 'rejected' ||
-        cadencesRes.status === 'rejected' ||
-        iaRes.status === 'rejected'
+      // 3) Cadences count — SEQUENTIAL.
+      try {
+        const cadencesRes = await pb
+          .collection('cadences')
+          .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
+        setCadenceCount(cadencesRes.totalItems)
+      } catch (err) {
+        anyError = true
+        reportError({
+          type: 'dashboard_cadences_error',
+          message: err instanceof Error ? err.message : 'Failed to fetch cadences count',
+          details: { reason: String(err) },
+        })
+      }
+
+      // 4) Leads / IA interactions count — SEQUENTIAL.
+      try {
+        const iaRes = await pb.collection('leads').getList(1, 1, { fields: 'id' })
+        setIaInteractions(iaRes.totalItems)
+      } catch (err) {
+        anyError = true
+        reportError({
+          type: 'dashboard_leads_error',
+          message: err instanceof Error ? err.message : 'Failed to fetch leads count',
+          details: { reason: String(err) },
+        })
+      }
+
       setStatsError(anyError)
     } catch (err) {
       console.error(err)
@@ -137,16 +178,35 @@ function DashboardInner() {
       })
     } finally {
       setStatsLoading(false)
+      setHasLoaded(true)
     }
   }, [])
 
-  // Initial fetch — keyed on the id only, so auth-refresh does not retrigger.
-  useEffect(() => {
-    if (userId) {
-      fetchStats()
+  // Schedule a fetch without blocking the main thread. requestIdleCallback
+  // lets the browser run the fetch only when the event loop is idle (so the
+  // initial render / paint is never interrupted); setTimeout(...,100) is the
+  // fallback for browsers without rIC.
+  const scheduleFetch = useCallback(() => {
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      ;(window as any).requestIdleCallback(() => fetchStats(), { timeout: 5000 })
+    } else {
+      setTimeout(fetchStats, 100)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId])
+  }, [fetchStats])
+
+  // DEFINITIVE FREEZE FIX: do NOT fetch on mount. Wait 3s after the user id is
+  // available, then schedule the fetch via requestIdleCallback so the initial
+  // render / paint completes and the browser is idle before any network work
+  // begins. This is the single biggest contributor to the freeze: previously
+  // fetchStats fired immediately on mount, racing the auth refresh and the
+  // realtime subscriptions.
+  useEffect(() => {
+    if (!userId) return
+    const timer = setTimeout(() => {
+      scheduleFetch()
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [userId, scheduleFetch])
 
   // --- Realtime handlers (registered once via the shared provider) ----------
   // The `users` and `leads` subscriptions were removed from the provider
@@ -176,20 +236,33 @@ function DashboardInner() {
       .catch(console.error)
   })
 
+  // Whether the numeric stat cards should show a skeleton. A skeleton is shown
+  // while loading AND before the first successful load completes.
+  const showSkeleton = statsLoading || !hasLoaded
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-8">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">CRM Pipeline (Dashboard)</h2>
-        <p className="text-muted-foreground">
-          Bem-vindo de volta, {currentUser?.name || user?.name || 'Administrador'}.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">CRM Pipeline (Dashboard)</h2>
+          <p className="text-muted-foreground">
+            Bem-vindo de volta, {currentUser?.name || user?.name || 'Administrador'}.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <RealtimeToggle />
+          <Button variant="outline" size="sm" onClick={scheduleFetch} disabled={statsLoading}>
+            <RefreshCw className={cn('mr-2 h-4 w-4', statsLoading && 'animate-spin')} />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {statsError && (
         <ErrorBoundary
           key="stats-error-banner"
           title="Estatísticas"
-          onRetry={fetchStats}
+          onRetry={scheduleFetch}
           logType="dashboard_stats_error"
         >
           <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -197,7 +270,7 @@ function DashboardInner() {
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>Alguns dados não puderam ser carregados. Tente novamente.</span>
             </div>
-            <Button variant="outline" size="sm" onClick={fetchStats} disabled={statsLoading}>
+            <Button variant="outline" size="sm" onClick={scheduleFetch} disabled={statsLoading}>
               <RefreshCw className={cn('mr-2 h-4 w-4', statsLoading && 'animate-spin')} />
               Tentar novamente
             </Button>
@@ -213,7 +286,7 @@ function DashboardInner() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {statsLoading && customerCount === 0 ? '—' : customerCount}
+              {showSkeleton ? <StatSkeleton /> : customerCount}
             </div>
             <p className="text-xs text-muted-foreground">Na base de dados</p>
           </CardContent>
@@ -224,7 +297,9 @@ function DashboardInner() {
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{cadenceCount}</div>
+            <div className="text-2xl font-bold">
+              {showSkeleton ? <StatSkeleton /> : cadenceCount}
+            </div>
             <p className="text-xs text-muted-foreground">Ativas</p>
           </CardContent>
         </Card>
@@ -275,7 +350,9 @@ function DashboardInner() {
             <Bot className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{iaInteractions}</div>
+            <div className="text-2xl font-bold">
+              {showSkeleton ? <StatSkeleton /> : iaInteractions}
+            </div>
             <p className="text-xs text-muted-foreground">Leads Totais</p>
           </CardContent>
         </Card>
@@ -306,14 +383,19 @@ function DashboardInner() {
       </div>
 
       <Suspense fallback={<SectionFallback />}>
-        <IntegrityDiagnostics />
+        <PausedAwareSection paused={realtimePaused}>
+          <IntegrityDiagnostics />
+        </PausedAwareSection>
       </Suspense>
 
       {/* Performance Dashboard — analytics are lazy-loaded (IntersectionObserver)
           so the heavy conversation fetch is deferred until the section scrolls
-          into view, instead of firing on initial mount alongside the stat cards. */}
+          into view, instead of firing on initial mount alongside the stat cards.
+          While realtime is paused, a subtle notice is shown instead. */}
       <Suspense fallback={<SectionFallback />}>
-        <PerformanceDashboard />
+        <PausedAwareSection paused={realtimePaused}>
+          <PerformanceDashboard />
+        </PausedAwareSection>
       </Suspense>
     </div>
   )
@@ -322,7 +404,8 @@ function DashboardInner() {
 export default function Dashboard() {
   // The provider owns every realtime subscription for the page; child
   // components subscribe through the shared context instead of each opening
-  // their own channel.
+  // their own channel. Realtime is PAUSED by default inside the provider, so
+  // mounting this page performs zero realtime work until the user activates it.
   return (
     <DashboardRealtimeProvider>
       <DashboardInner />

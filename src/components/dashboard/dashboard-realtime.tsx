@@ -11,6 +11,7 @@ import type { RecordSubscription } from 'pocketbase'
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/hooks/use-auth'
+import { Button } from '@/components/ui/button'
 
 /**
  * Centralizes all realtime subscriptions used by the Dashboard page so that
@@ -22,6 +23,12 @@ import { useAuth } from '@/hooks/use-auth'
  * `system_logs` is special: the provider only subscribes to it when at least
  * one listener is registered (i.e. the logs dialog is open), so the page does
  * not keep that subscription alive when nobody is looking.
+ *
+ * Realtime is PAUSED by default (`paused = true`). On low-resource / safe-mode
+ * machines opening 4 realtime channels on mount — on top of the initial stats
+ * fetches — congests the network pipeline and freezes the browser. The user
+ * must explicitly click "🔴 Realtime pausado" to activate it once the page is
+ * stable. This is the definitive fix for the Dashboard freeze.
  */
 
 type Handler = (e: RecordSubscription) => void
@@ -29,6 +36,12 @@ type Handler = (e: RecordSubscription) => void
 interface DashboardRealtimeContextValue {
   /** Register a handler for a collection's realtime events. Returns an unsubscribe fn. */
   onEvent: (collection: string, handler: Handler) => () => void
+  /** Whether realtime subscriptions are currently paused (default: true). */
+  realtimePaused: boolean
+  /** Enable / disable realtime subscriptions. */
+  setRealtimePaused: (paused: boolean) => void
+  /** Toggle realtime subscriptions on/off. */
+  toggleRealtime: () => void
 }
 
 const DashboardRealtimeContext = createContext<DashboardRealtimeContextValue | null>(null)
@@ -38,7 +51,7 @@ const DEBOUNCE_MS = 1000
 // Dashboard render fires several getList() calls at once; opening 4 realtime
 // subscriptions on top of that, against a token that may still be settling,
 // cascades into reconnect storms that freeze the browser (especially on
-// low-resource / safe-mode machines). Giving the initial render 5s to stabilize
+// low-resource / safe-mode machines). Giving the initial render 8s to stabilize
 // before subscribing avoids that cascade.
 const REALTIME_OPEN_DELAY_MS = 8000
 
@@ -66,6 +79,13 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
   // open that realtime channel on initial mount before the analytics are needed.
   const [conversationsActive, setConversationsActive] = useState(false)
 
+  // Realtime is PAUSED by default. The user must explicitly activate it once
+  // the page has settled, so the initial mount never opens realtime channels
+  // that would congest the network pipeline on low-resource machines.
+  const [paused, setPaused] = useState(true)
+  const setRealtimePaused = useCallback((next: boolean) => setPaused(next), [])
+  const toggleRealtime = useCallback(() => setPaused((p) => !p), [])
+
   // Guard: only open realtime subscriptions once the auth store is confirmed
   // valid AND stable. The AuthProvider keeps `loading` true until the token
   // refresh resolves (or times out); if we subscribe while the token is still
@@ -75,9 +95,9 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
   // We also require `pb.authStore.isValid` directly so that a cleared/invalid
   // token never reaches the realtime layer.
   const { loading: authLoading, isAuthenticated } = useAuth()
-  // `authReady` is only flipped to true AFTER a 5s cooldown once auth has
-  // settled, so realtime channels are not opened during the initial render /
-  // token-refresh storm. This is the main fix for the Dashboard freeze.
+  // `authReady` is only flipped to true AFTER a cooldown once auth has settled,
+  // so realtime channels are not opened during the initial render /
+  // token-refresh storm. This is one of the main fixes for the Dashboard freeze.
   const [authReady, setAuthReady] = useState(false)
   useEffect(() => {
     if (!authLoading && isAuthenticated && pb.authStore.isValid) {
@@ -88,6 +108,11 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
       setAuthReady(false)
     }
   }, [authLoading, isAuthenticated])
+
+  // The effective "open realtime" flag: auth must be ready AND the user must
+  // have explicitly un-paused realtime. While paused, NO subscription is open,
+  // so the page does zero realtime work on mount.
+  const realtimeActive = authReady && !paused
 
   const dispatch = useCallback((collection: string) => {
     const set = handlersRef.current.get(collection)
@@ -125,25 +150,29 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
   // One subscription per collection for the lifetime of the dashboard.
   // useRealtime stores the callback in a ref, so the changing closure does not
   // cause re-subscription.
-  // All subscriptions are gated on `authReady` so we never open a realtime
-  // channel against an unverified/expired token (the source of the
-  // "Missing or invalid client id" 404s in the logs).
+  // All subscriptions are gated on `realtimeActive` (authReady && !paused) so
+  // we never open a realtime channel on mount or against an unverified/expired
+  // token (the source of the "Missing or invalid client id" 404s in the logs).
   useRealtime(
     'conversations',
     handle('conversations', DEBOUNCED_COLLECTIONS.has('conversations')),
-    conversationsActive && authReady,
+    conversationsActive && realtimeActive,
   )
   // Only `customers` and `cadences` need realtime on the Dashboard. `users`
   // only refreshes the header name and `leads` is just a counter — neither is
   // worth a realtime channel on mount, and removing them cuts the initial
   // subscription count (and the reconnect storm) in half. They can still be
   // refreshed via the manual "Atualizar" flow if needed.
-  useRealtime('customers', handle('customers', DEBOUNCED_COLLECTIONS.has('customers')), authReady)
-  useRealtime('cadences', handle('cadences', DEBOUNCED_COLLECTIONS.has('cadences')), authReady)
+  useRealtime(
+    'customers',
+    handle('customers', DEBOUNCED_COLLECTIONS.has('customers')),
+    realtimeActive,
+  )
+  useRealtime('cadences', handle('cadences', DEBOUNCED_COLLECTIONS.has('cadences')), realtimeActive)
   useRealtime(
     'system_logs',
     handle('system_logs', DEBOUNCED_COLLECTIONS.has('system_logs')),
-    systemLogsActive && authReady,
+    systemLogsActive && realtimeActive,
   )
 
   // Clear any pending timers on unmount.
@@ -184,7 +213,9 @@ export function DashboardRealtimeProvider({ children }: { children: ReactNode })
   }, [])
 
   return (
-    <DashboardRealtimeContext.Provider value={{ onEvent }}>
+    <DashboardRealtimeContext.Provider
+      value={{ onEvent, realtimePaused: paused, setRealtimePaused, toggleRealtime }}
+    >
       {children}
     </DashboardRealtimeContext.Provider>
   )
@@ -226,4 +257,28 @@ export function useDashboardRealtime() {
     throw new Error('useDashboardRealtime must be used within DashboardRealtimeProvider')
   }
   return ctx
+}
+
+/**
+ * Reads whether realtime is currently paused. Returns `true` when used outside
+ * a provider (defensive: treat as paused so no realtime UI assumes live data).
+ */
+export function useRealtimePaused() {
+  const ctx = useContext(DashboardRealtimeContext)
+  return ctx ? ctx.realtimePaused : true
+}
+
+/**
+ * Toggle button that shows the current realtime state and lets the user
+ * activate / pause realtime subscriptions. Rendered in the Dashboard header.
+ */
+export function RealtimeToggle() {
+  const ctx = useContext(DashboardRealtimeContext)
+  if (!ctx) return null
+  const { realtimePaused, toggleRealtime } = ctx
+  return (
+    <Button variant="outline" size="sm" onClick={toggleRealtime}>
+      {realtimePaused ? '🔴 Realtime pausado' : '🟢 Realtime ativo'}
+    </Button>
+  )
 }
