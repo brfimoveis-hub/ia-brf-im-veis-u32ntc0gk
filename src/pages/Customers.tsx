@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useLazyMount } from '@/hooks/use-lazy-mount'
 import pb from '@/lib/pocketbase/client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,7 @@ export default function Customers() {
   const [exporting, setExporting] = useState(false)
 
   const selectedIds = useCustomerSelection()
+  const kanbanLazy = useLazyMount('200px')
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 300)
@@ -275,19 +277,28 @@ export default function Customers() {
           value="pipeline"
           className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col"
         >
-          <ErrorBoundary
-            fallback={
-              <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
-                Erro ao carregar o Pipeline Kanban. Recarregue a página.
+          <div ref={kanbanLazy.ref} className="flex-1 min-h-0 flex flex-col">
+            {kanbanLazy.visible ? (
+              <ErrorBoundary
+                fallback={
+                  <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
+                    Erro ao carregar o Pipeline Kanban. Recarregue a página.
+                  </div>
+                }
+              >
+                <UnifiedKanban
+                  filters={filters}
+                  refreshKey={refreshKey}
+                  onUpdateStatus={handleUpdateStatus}
+                />
+              </ErrorBoundary>
+            ) : (
+              <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Carregando pipeline...</span>
               </div>
-            }
-          >
-            <UnifiedKanban
-              filters={filters}
-              refreshKey={refreshKey}
-              onUpdateStatus={handleUpdateStatus}
-            />
-          </ErrorBoundary>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="list" className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col">

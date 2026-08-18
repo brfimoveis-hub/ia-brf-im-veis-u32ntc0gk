@@ -4,6 +4,33 @@ import type { RecordModel, RecordSubscription } from 'pocketbase'
 import pb from '@/lib/pocketbase/client'
 
 /**
+ * Global startup throttle.
+ *
+ * When the module loads we record a timestamp 5s in the future. No
+ * `useRealtime` instance is allowed to open an SSE connection before that
+ * timestamp expires. This prevents the burst of 10+ simultaneous realtime
+ * subscriptions that fire on the first frame of every page (Layout,
+ * ConnectionAlertBanner, DiagnosticCenter, etc.) from overwhelming machines
+ * with limited resources — the single most common cause of the total browser
+ * crash ("Aw, snap!" / CPU 100%) on safe-mode / low-resource environments.
+ *
+ * A subscription requested during the block is simply deferred until the
+ * window expires, not dropped, so functionality is preserved.
+ */
+const STARTUP_BLOCK_MS = 5000
+const startupBlockedUntil = Date.now() + STARTUP_BLOCK_MS
+
+function scheduleAfterStartup(fn: () => void): () => void {
+  const remaining = startupBlockedUntil - Date.now()
+  if (remaining <= 0) {
+    fn()
+    return () => {}
+  }
+  const t = setTimeout(fn, remaining)
+  return () => clearTimeout(t)
+}
+
+/**
  * Hook for real-time subscriptions to a PocketBase collection.
  * ALWAYS use this hook instead of subscribing inline.
  * Uses the per-listener UnsubscribeFunc so multiple components
@@ -27,12 +54,8 @@ export function useRealtime<TRecord extends RecordModel = RecordModel>(
     let unsubscribeFn: (() => Promise<void>) | undefined
     let cancelled = false
 
-    // Small delay before subscribing. In React StrictMode (dev) effects run
-    // mount -> unmount -> mount in quick succession; without a delay the first
-    // subscribe can still open an SSE connection before the cleanup cancels it,
-    // creating duplicate realtime connections. The timer is cancelled on
-    // cleanup so a rapid unmount never subscribes at all.
-    const subscribeTimer = setTimeout(() => {
+    const start = () => {
+      if (cancelled) return
       pb.collection<TRecord>(collectionName)
         .subscribe('*', (e) => {
           callbackRef.current(e)
@@ -45,11 +68,14 @@ export function useRealtime<TRecord extends RecordModel = RecordModel>(
           }
         })
         .catch(() => {})
-    }, 50)
+    }
+
+    // Defer the actual subscription until the global startup block expires.
+    const cancelSchedule = scheduleAfterStartup(start)
 
     return () => {
       cancelled = true
-      clearTimeout(subscribeTimer)
+      cancelSchedule()
       if (unsubscribeFn) {
         unsubscribeFn().catch(() => {})
       }

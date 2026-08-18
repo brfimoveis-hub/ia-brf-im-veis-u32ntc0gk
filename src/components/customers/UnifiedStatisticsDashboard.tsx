@@ -3,7 +3,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Loader2, Send, MessageSquare, Mail, TrendingUp } from 'lucide-react'
 import { getPlatformStats, type PlatformStats } from '@/services/statistics'
-import { useRealtime } from '@/hooks/use-realtime'
 
 export function UnifiedStatisticsDashboard() {
   const [stats, setStats] = useState<PlatformStats | null>(null)
@@ -16,11 +15,33 @@ export function UnifiedStatisticsDashboard() {
   }
 
   useEffect(() => {
-    loadStats()
+    // Defer the 3 heavy getPlatformStats queries (Promise.all of 3x500-record
+    // fetches) until the browser is idle so they never compete with the
+    // initial page render. Falls back to a 2s timeout where
+    // requestIdleCallback is unavailable.
+    let cancelled = false
+    const run = () => {
+      if (cancelled) return
+      loadStats()
+    }
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const handle = (window as any).requestIdleCallback(run, { timeout: 3000 })
+      return () => {
+        cancelled = true
+        ;(window as any).cancelIdleCallback(handle)
+      }
+    }
+    const t = setTimeout(run, 2000)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
   }, [])
 
-  useRealtime('email_campaigns', () => loadStats())
-  useRealtime('system_logs', () => loadStats())
+  // NOTE: real-time subscriptions removed intentionally. These are aggregate
+  // statistics that only need to load once per page view; keeping two SSE
+  // connections open here contributed to the burst of simultaneous realtime
+  // connections that crashed low-resource browsers.
 
   if (loading || !stats) {
     return (
