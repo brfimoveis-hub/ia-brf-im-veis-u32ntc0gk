@@ -485,7 +485,7 @@ export function CustomerDetailDrawer({
                                   </span>
                                 </div>
                               )}
-                              {!isClient && (msg.sender === 'agent' || msg.sender === 'user') && (
+                              {!isClient && msg.sender === 'agent' && (
                                 <div className="flex items-center gap-1 mb-1 opacity-70">
                                   <User className="h-3 w-3 text-amber-600" />
                                   <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">

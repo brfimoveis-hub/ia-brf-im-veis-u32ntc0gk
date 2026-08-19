@@ -1,4 +1,5 @@
 import pb from '@/lib/pocketbase/client'
+import type { Cadence } from '@/services/cadences'
 
 export interface Customer {
   id: string
@@ -11,6 +12,7 @@ export interface Customer {
   created: string
   updated: string
   first_name?: string
+  last_name?: string
   phase?: string
   is_blocked?: boolean
   tags?: string[]
@@ -19,7 +21,49 @@ export interface Customer {
   urgency?: number
   neighborhood?: string
   price_range?: string
+  lead_profile?: string
   last_sent_at?: string
+}
+
+export const createCustomer = (data: Partial<Customer>) =>
+  pb.collection('customers').create<Customer>(data)
+
+export const getActiveCadences = () =>
+  pb.collection('cadences').getFullList<Cadence>({ filter: 'is_active = true', sort: 'order' })
+
+export interface PaginatedCustomersResult {
+  items: Customer[]
+  totalItems: number
+  totalPages: number
+  page: number
+  perPage: number
+}
+
+export const getPaginatedCustomers = async (
+  page: number,
+  perPage: number,
+  search = '',
+  phaseFilter = 'all',
+  sourceFilter = '',
+): Promise<PaginatedCustomersResult> => {
+  const parts: string[] = []
+  if (search.trim()) {
+    const safe = search.trim().replace(/"/g, '\\"')
+    parts.push(
+      `(name ~ "${safe}" || phone ~ "${safe}" || first_name ~ "${safe}" || email ~ "${safe}" || phone_1_value ~ "${safe}" || email_1_value ~ "${safe}")`,
+    )
+  }
+  if (phaseFilter && phaseFilter !== 'all') {
+    parts.push(`status = "${phaseFilter.replace(/"/g, '\\"')}"`)
+  }
+  if (sourceFilter) {
+    parts.push(`source = "${sourceFilter.replace(/"/g, '\\"')}"`)
+  }
+  const filter = parts.join(' && ')
+  return pb.collection('customers').getList<Customer>(page, perPage, {
+    filter: filter || undefined,
+    sort: '-updated',
+  })
 }
 
 export interface SyncRemarketingPayload {

@@ -39,6 +39,35 @@ export function useDashboardData() {
   const [errors, setErrors] = useState<Record<string, boolean>>({})
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // logError is declared BEFORE loadStats so the latter can reference it in its
+  // useCallback dependency array without a "used before declaration" error.
+  const logError = useCallback(
+    async (error: unknown, userId: string, logType: string, contextMsg: string) => {
+      try {
+        const errMessage = error instanceof Error ? error.message : String(error)
+        const errStack = error instanceof Error ? error.stack : undefined
+        await pb.collection('system_logs').create({
+          type: logType,
+          message: `${contextMsg}: ${errMessage}`,
+          details: {
+            stack: errStack,
+            user_id: userId,
+            timestamp: new Date().toISOString(),
+          },
+        })
+      } catch {
+        // Silently ignore — logging must never crash the dashboard
+      }
+    },
+    [],
+  )
+
+  const logMetaError = useCallback(
+    (error: unknown, userId: string) =>
+      logError(error, userId, 'dashboard_meta_error', 'Failed to fetch Meta WhatsApp status'),
+    [logError],
+  )
+
   const loadStats = useCallback(async () => {
     try {
       const results = await Promise.allSettled([
@@ -119,33 +148,6 @@ export function useDashboardData() {
       )
     }
   }, [user, logError])
-
-  const logError = useCallback(
-    async (error: unknown, userId: string, logType: string, contextMsg: string) => {
-      try {
-        const errMessage = error instanceof Error ? error.message : String(error)
-        const errStack = error instanceof Error ? error.stack : undefined
-        await pb.collection('system_logs').create({
-          type: logType,
-          message: `${contextMsg}: ${errMessage}`,
-          details: {
-            stack: errStack,
-            user_id: userId,
-            timestamp: new Date().toISOString(),
-          },
-        })
-      } catch {
-        // Silently ignore — logging must never crash the dashboard
-      }
-    },
-    [],
-  )
-
-  const logMetaError = useCallback(
-    (error: unknown, userId: string) =>
-      logError(error, userId, 'dashboard_meta_error', 'Failed to fetch Meta WhatsApp status'),
-    [logError],
-  )
 
   const refreshMeta = useCallback(async () => {
     if (!user) return

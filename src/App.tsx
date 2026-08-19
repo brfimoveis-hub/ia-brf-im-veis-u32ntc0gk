@@ -144,141 +144,130 @@ const Root = () => {
   )
 }
 
-const router = createBrowserRouter(
-  [
-    {
-      element: <Root />,
-      errorElement: <GlobalError />,
-      children: [
-        {
-          index: true,
-          element: <Navigate to="/dashboard" replace />,
-        },
-        {
-          element: <GuestRoute />,
-          children: [
-            {
-              path: 'login',
-              element: <Login />,
-            },
-            {
-              path: 'forgot-password',
-              element: <ForgotPassword />,
-            },
-            {
-              path: 'reset-password',
-              element: <ResetPassword />,
-            },
-          ],
-        },
-        {
-          element: <ProtectedRoute />,
-          children: [
-            {
-              element: <Layout />,
-              errorElement: <GlobalError />,
-              children: [
-                {
-                  path: 'dashboard',
-                  element: (
-                    <ErrorBoundary>
-                      <Dashboard />
-                    </ErrorBoundary>
-                  ),
-                },
-                {
-                  path: 'customers/*',
-                  element: (
-                    <ErrorBoundary>
-                      <Customers />
-                    </ErrorBoundary>
-                  ),
-                },
-                {
-                  path: 'customer-list/*',
-                  element: <Navigate to="/customers" replace />,
-                },
-                {
-                  path: 'cadences',
-                  element: (
-                    <ErrorBoundary>
-                      <Cadences />
-                    </ErrorBoundary>
-                  ),
-                },
-                {
-                  path: 'email-marketing',
-                  element: (
-                    <ErrorBoundary>
-                      <EmailMarketing />
-                    </ErrorBoundary>
-                  ),
-                },
-                {
-                  path: 'email-marketing/:campaignId',
-                  element: (
-                    <ErrorBoundary>
-                      <EmailCampaignDetail />
-                    </ErrorBoundary>
-                  ),
-                },
-                {
-                  path: 'settings/remarketing',
-                  element: (
-                    <ErrorBoundary>
-                      <SettingsRemarketing />
-                    </ErrorBoundary>
-                  ),
-                },
-                {
-                  path: 'settings/connections/*',
-                  element: (
-                    <ErrorBoundary>
-                      <SettingsConnections />
-                    </ErrorBoundary>
-                  ),
-                },
-                {
-                  path: 'settings/ai',
-                  element: (
-                    <ErrorBoundary>
-                      <SettingsAI />
-                    </ErrorBoundary>
-                  ),
-                },
-                {
-                  path: 'settings',
-                  element: <Navigate to="/settings/ai" replace />,
-                },
-              ],
-            },
-            {
-              path: 'settings/connections/instagram/callback',
-              element: (
-                <ErrorBoundary>
-                  <InstagramCallback />
-                </ErrorBoundary>
-              ),
-            },
-          ],
-        },
-        {
-          path: '*',
-          element: <NotFound />,
-        },
-      ],
-    },
-  ],
+const router = createBrowserRouter([
   {
-    future: {
-      v7_relativeSplatPath: true,
-      v7_fetcherPersist: true,
-      v7_normalizeFormMethod: true,
-      v7_partialHydration: true,
-      v7_skipActionErrorRevalidation: true,
-    },
+    element: <Root />,
+    errorElement: <GlobalError />,
+    children: [
+      {
+        index: true,
+        element: <Navigate to="/dashboard" replace />,
+      },
+      {
+        element: <GuestRoute />,
+        children: [
+          {
+            path: 'login',
+            element: <Login />,
+          },
+          {
+            path: 'forgot-password',
+            element: <ForgotPassword />,
+          },
+          {
+            path: 'reset-password',
+            element: <ResetPassword />,
+          },
+        ],
+      },
+      {
+        element: <ProtectedRoute />,
+        children: [
+          {
+            element: <Layout />,
+            errorElement: <GlobalError />,
+            children: [
+              {
+                path: 'dashboard',
+                element: (
+                  <ErrorBoundary>
+                    <Dashboard />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'customers/*',
+                element: (
+                  <ErrorBoundary>
+                    <Customers />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'customer-list/*',
+                element: <Navigate to="/customers" replace />,
+              },
+              {
+                path: 'cadences',
+                element: (
+                  <ErrorBoundary>
+                    <Cadences />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'email-marketing',
+                element: (
+                  <ErrorBoundary>
+                    <EmailMarketing />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'email-marketing/:campaignId',
+                element: (
+                  <ErrorBoundary>
+                    <EmailCampaignDetail />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'settings/remarketing',
+                element: (
+                  <ErrorBoundary>
+                    <SettingsRemarketing />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'settings/connections/*',
+                element: (
+                  <ErrorBoundary>
+                    <SettingsConnections />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'settings/ai',
+                element: (
+                  <ErrorBoundary>
+                    <SettingsAI />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'settings',
+                element: <Navigate to="/settings/ai" replace />,
+              },
+            ],
+          },
+          {
+            path: 'settings/connections/instagram/callback',
+            element: (
+              <ErrorBoundary>
+                <InstagramCallback />
+              </ErrorBoundary>
+            ),
+          },
+        ],
+      },
+      {
+        path: '*',
+        element: <NotFound />,
+      },
+    ],
   },
-)
+])
 
 const App = () => {
   useEffect(() => {
@@ -298,7 +287,7 @@ const App = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <RouterProvider router={router} future={{ v7_startTransition: true }} />
+        <RouterProvider router={router} />
       </TooltipProvider>
     </AuthProvider>
   )

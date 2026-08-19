@@ -1,282 +1,115 @@
-import { lazy, Suspense, useEffect, useState, useCallback, useRef } from 'react'
-import { useAuth } from '@/hooks/use-auth'
+import { useState, useCallback } from 'react'
 import pb from '@/lib/pocketbase/client'
+import { useAuth } from '@/hooks/use-auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Users,
-  MessageSquare,
-  Bot,
-  Activity,
-  ArrowRight,
-  AlertCircle,
-  RefreshCw,
-} from 'lucide-react'
+import { Users, MessageSquare, Bot, Activity, BarChart3 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import {
-  DashboardRealtimeProvider,
-  useDashboardRealtimeEvent,
-  useRealtimePaused,
-  RealtimeToggle,
-} from '@/components/dashboard/dashboard-realtime'
-import { reportError } from '@/lib/error-reporter'
-import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-// Lazy-load the heavy dashboard sections so their (potentially expensive)
-// fetches and realtime channels are not part of the initial bundle/JS
-// evaluation. On low-resource / safe-mode machines loading everything
-// synchronously on mount is what freezes the browser.
-const PerformanceDashboard = lazy(() =>
-  import('@/components/dashboard/performance-dashboard').then((m) => ({
-    default: m.PerformanceDashboard,
-  })),
-)
-const IntegrityDiagnostics = lazy(() =>
-  import('@/components/dashboard/integrity-diagnostics').then((m) => ({
-    default: m.IntegrityDiagnostics,
-  })),
-)
+// Sequential delay between dashboard fetches (ms). On low-resource / safe-mode
+// machines firing several HTTP requests back-to-back congests the network
+// pipeline and freezes the browser; a short pause between each keeps the main
+// thread responsive.
+const FETCH_DELAY_MS = 500
 
-// Minimal fallback for the lazy sections — deliberately cheap to render so it
-// adds no load while the real component is being fetched/instantiated.
-const SectionFallback = () => (
-  <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
-    Carregando...
-  </div>
-)
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-// Lightweight skeleton block used inside the stat cards while the initial
-// sequential fetch is in flight. Replaces the old "—" placeholder: a pulsing
-// bar communicates "loading" without blocking the main thread.
-const StatSkeleton = () => (
-  <div className="h-7 w-12 animate-pulse rounded bg-muted" aria-label="Carregando..." />
-)
+// Text shown in a stat card before the user has clicked "Carregar Dashboard".
+const PLACEHOLDER = 'Clique em Carregar'
 
-// Wraps a lazy realtime-dependent section. While realtime is paused (the
-// default), the section shows a subtle "paused" notice instead of mounting its
-// (potentially expensive) content, so the page never blocks on mount.
-function PausedAwareSection({ paused, children }: { paused: boolean; children: React.ReactNode }) {
-  if (paused) {
-    return (
-      <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed py-10 text-sm text-muted-foreground">
-        <AlertCircle className="h-4 w-4 shrink-0" />
-        <span>Dados em tempo real pausados. Clique para ativar.</span>
-      </div>
-    )
-  }
-  return <>{children}</>
-}
-
-function DashboardInner() {
+export default function Dashboard() {
   const { user } = useAuth()
-  const userId = user?.id
-  const [customerCount, setCustomerCount] = useState(0)
-  const [cadenceCount, setCadenceCount] = useState(0)
-  const [iaInteractions, setIaInteractions] = useState(0)
-  const [statsError, setStatsError] = useState(false)
-  const [statsLoading, setStatsLoading] = useState(false)
-  const [currentUser, setCurrentUser] = useState<any>(user)
-  // True until the first stats fetch has completed at least once, so the cards
-  // show a skeleton rather than "0" / "—" on initial render.
-  const [hasLoaded, setHasLoaded] = useState(false)
-  const realtimePaused = useRealtimePaused()
 
-  // Keep a ref to the latest user record id so realtime handlers (which are
-  // registered once) can read it without depending on `user` in their closure.
-  const userIdRef = useRef(userId)
-  userIdRef.current = userId
+  // Numbers are null until explicitly loaded via the button. On mount NOTHING
+  // is fetched — no useEffect, no realtime, no polling, no idle callback —
+  // the cards render a static placeholder instead.
+  const [customerCount, setCustomerCount] = useState<number | null>(null)
+  const [cadenceCount, setCadenceCount] = useState<number | null>(null)
+  const [iaInteractions, setIaInteractions] = useState<number | null>(null)
+  const [currentUser, setCurrentUser] = useState<any>(null)
 
-  // Stable callback: only depends on the user id, not the `user` object. An
-  // auth-refresh changes the `user` reference but keeps the id stable, so this
-  // callback is NOT recreated and the initial-fetch effect does not re-fire.
-  //
-  // Requests are made SEQUENTIALLY (one await at a time) instead of via
-  // Promise.allSettled. On the safe-mode machine, 3+ parallel HTTP requests
-  // fired on mount congest the network pipeline and freeze the browser; doing
-  // them one-by-one keeps the main thread responsive. Each result is applied
-  // to state as soon as it returns so the cards fill in progressively.
-  const fetchStats = useCallback(async () => {
-    setStatsLoading(true)
-    setStatsError(false)
+  // Has the user ever clicked the load button? Controls whether cards show
+  // the placeholder ("Clique em Carregar") or their loaded number / state.
+  const [loaded, setLoaded] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  // Fired ONLY by an explicit click on "Carregar Dashboard". Sequential, one
+  // request at a time, with a pause between each. Never runs on mount.
+  const loadDashboard = useCallback(async () => {
+    if (loading) return
+    setLoading(true)
     try {
-      const currentId = userIdRef.current
-
-      // 1) User / integration data — fetched first (single request), so the
-      //    Integrações card can render as soon as possible. Integration data
-      //    is not critical for the numeric stats, so a failure here is
-      //    swallowed and does not abort the rest of the fetch.
-      if (currentId) {
+      // 1) User / integration data (single request).
+      if (user?.id) {
         try {
-          const usr = await pb.collection('users').getOne(currentId)
-          setCurrentUser((prev) => {
-            // Only update when something actually changed, to avoid a
-            // pointless re-render from an identical record.
-            if (prev && JSON.stringify(prev) === JSON.stringify(usr)) return prev
-            return usr
-          })
+          const usr = await pb.collection('users').getOne(user.id)
+          setCurrentUser(usr)
         } catch (err) {
-          reportError({
-            type: 'dashboard_user_error',
-            message: err instanceof Error ? err.message : 'Failed to fetch user',
-            details: { user_id: currentId },
-          })
+          console.error('dashboard user fetch failed', err)
         }
       }
+      await wait(FETCH_DELAY_MS)
 
-      // 2) Customers count — SEQUENTIAL.
-      let anyError = false
+      // 2) Customers count.
       try {
-        const customersRes = await pb.collection('customers').getList(1, 1, { fields: 'id' })
-        setCustomerCount(customersRes.totalItems)
+        const res = await pb.collection('customers').getList(1, 1, { fields: 'id' })
+        setCustomerCount(res.totalItems)
       } catch (err) {
-        anyError = true
-        reportError({
-          type: 'dashboard_customers_error',
-          message: err instanceof Error ? err.message : 'Failed to fetch customers count',
-          details: { reason: String(err) },
-        })
+        console.error('dashboard customers fetch failed', err)
+        setCustomerCount(null)
       }
+      await wait(FETCH_DELAY_MS)
 
-      // 3) Cadences count — SEQUENTIAL.
+      // 3) Cadences count.
       try {
-        const cadencesRes = await pb
+        const res = await pb
           .collection('cadences')
           .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
-        setCadenceCount(cadencesRes.totalItems)
+        setCadenceCount(res.totalItems)
       } catch (err) {
-        anyError = true
-        reportError({
-          type: 'dashboard_cadences_error',
-          message: err instanceof Error ? err.message : 'Failed to fetch cadences count',
-          details: { reason: String(err) },
-        })
+        console.error('dashboard cadences fetch failed', err)
+        setCadenceCount(null)
       }
+      await wait(FETCH_DELAY_MS)
 
-      // 4) Leads / IA interactions count — SEQUENTIAL.
+      // 4) Leads / IA interactions count.
       try {
-        const iaRes = await pb.collection('leads').getList(1, 1, { fields: 'id' })
-        setIaInteractions(iaRes.totalItems)
+        const res = await pb.collection('leads').getList(1, 1, { fields: 'id' })
+        setIaInteractions(res.totalItems)
       } catch (err) {
-        anyError = true
-        reportError({
-          type: 'dashboard_leads_error',
-          message: err instanceof Error ? err.message : 'Failed to fetch leads count',
-          details: { reason: String(err) },
-        })
+        console.error('dashboard leads fetch failed', err)
+        setIaInteractions(null)
       }
-
-      setStatsError(anyError)
-    } catch (err) {
-      console.error(err)
-      setStatsError(true)
-      reportError({
-        type: 'dashboard_stats_error',
-        message: err instanceof Error ? err.message : 'Dashboard stats fetch failed',
-        details: { stack: err instanceof Error ? err.stack : undefined },
-      })
     } finally {
-      setStatsLoading(false)
-      setHasLoaded(true)
+      setLoading(false)
+      setLoaded(true)
     }
-  }, [])
+  }, [loading, user?.id])
 
-  // Schedule a fetch without blocking the main thread. requestIdleCallback
-  // lets the browser run the fetch only when the event loop is idle (so the
-  // initial render / paint is never interrupted); setTimeout(...,100) is the
-  // fallback for browsers without rIC.
-  const scheduleFetch = useCallback(() => {
-    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      ;(window as any).requestIdleCallback(() => fetchStats(), { timeout: 5000 })
-    } else {
-      setTimeout(fetchStats, 100)
-    }
-  }, [fetchStats])
-
-  // DEFINITIVE FREEZE FIX: do NOT fetch on mount. Wait 3s after the user id is
-  // available, then schedule the fetch via requestIdleCallback so the initial
-  // render / paint completes and the browser is idle before any network work
-  // begins. This is the single biggest contributor to the freeze: previously
-  // fetchStats fired immediately on mount, racing the auth refresh and the
-  // realtime subscriptions.
-  useEffect(() => {
-    if (!userId) return
-    const timer = setTimeout(() => {
-      scheduleFetch()
-    }, 3000)
-    return () => clearTimeout(timer)
-  }, [userId, scheduleFetch])
-
-  // --- Realtime handlers (registered once via the shared provider) ----------
-  // The `users` and `leads` subscriptions were removed from the provider
-  // (users only updates the header name, leads is just a counter — neither
-  // justified a realtime channel on mount). The two handlers that remain
-  // (customers, cadences) are additionally throttled by a per-handler 5s
-  // cooldown inside useDashboardRealtimeEvent so bursts collapse into a
-  // single refetch instead of cascading re-renders.
-  useDashboardRealtimeEvent('customers', () => {
-    pb.collection('customers')
-      .getList(1, 1, { fields: 'id' })
-      .then((res) => setCustomerCount(res.totalItems))
-      .catch((err) => {
-        console.error(err)
-        reportError({
-          type: 'dashboard_customers_error',
-          message: err instanceof Error ? err.message : 'Realtime customers fetch failed',
-          details: {},
-        })
-      })
-  })
-
-  useDashboardRealtimeEvent('cadences', () => {
-    pb.collection('cadences')
-      .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
-      .then((res) => setCadenceCount(res.totalItems))
-      .catch(console.error)
-  })
-
-  // Whether the numeric stat cards should show a skeleton. A skeleton is shown
-  // while loading AND before the first successful load completes.
-  const showSkeleton = statsLoading || !hasLoaded
+  // Renders a stat card value: placeholder before first load, the number once
+  // loaded, or a loading indicator while the sequential fetch is in flight.
+  const renderValue = (value: number | null) => {
+    if (loading) return <span className="text-muted-foreground">Carregando…</span>
+    if (!loaded) return <span className="text-muted-foreground">{PLACEHOLDER}</span>
+    return value
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">CRM Pipeline (Dashboard)</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
           <p className="text-muted-foreground">
             Bem-vindo de volta, {currentUser?.name || user?.name || 'Administrador'}.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <RealtimeToggle />
-          <Button variant="outline" size="sm" onClick={scheduleFetch} disabled={statsLoading}>
-            <RefreshCw className={cn('mr-2 h-4 w-4', statsLoading && 'animate-spin')} />
-            Atualizar
-          </Button>
-        </div>
+        <Button onClick={loadDashboard} disabled={loading}>
+          <BarChart3 className={cn('mr-2 h-4 w-4', loading && 'animate-pulse')} />
+          {loading ? 'Carregando...' : loaded ? 'Atualizar Dashboard' : 'Carregar Dashboard'}
+        </Button>
       </div>
-
-      {statsError && (
-        <ErrorBoundary
-          key="stats-error-banner"
-          title="Estatísticas"
-          onRetry={scheduleFetch}
-          logType="dashboard_stats_error"
-        >
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
-            <div className="flex items-center gap-2 text-sm text-amber-800">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>Alguns dados não puderam ser carregados. Tente novamente.</span>
-            </div>
-            <Button variant="outline" size="sm" onClick={scheduleFetch} disabled={statsLoading}>
-              <RefreshCw className={cn('mr-2 h-4 w-4', statsLoading && 'animate-spin')} />
-              Tentar novamente
-            </Button>
-          </div>
-        </ErrorBoundary>
-      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -285,9 +118,7 @@ function DashboardInner() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {showSkeleton ? <StatSkeleton /> : customerCount}
-            </div>
+            <div className="text-2xl font-bold">{renderValue(customerCount)}</div>
             <p className="text-xs text-muted-foreground">Na base de dados</p>
           </CardContent>
         </Card>
@@ -297,9 +128,7 @@ function DashboardInner() {
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {showSkeleton ? <StatSkeleton /> : cadenceCount}
-            </div>
+            <div className="text-2xl font-bold">{renderValue(cadenceCount)}</div>
             <p className="text-xs text-muted-foreground">Ativas</p>
           </CardContent>
         </Card>
@@ -311,36 +140,47 @@ function DashboardInner() {
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">WhatsApp API</span>
-              {currentUser?.meta_token_status === 'active' ? (
-                <Badge className="bg-green-500 hover:bg-green-600 text-xs">Ativo</Badge>
-              ) : currentUser?.meta_token_status === 'error' ? (
-                <Badge variant="destructive" className="text-xs">
-                  Falha
-                </Badge>
+              {loaded ? (
+                currentUser?.meta_token_status === 'active' ? (
+                  <Badge className="bg-green-500 hover:bg-green-600 text-xs">Ativo</Badge>
+                ) : currentUser?.meta_token_status === 'error' ? (
+                  <Badge variant="destructive" className="text-xs">
+                    Falha
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-xs">
+                    Não testado
+                  </Badge>
+                )
               ) : (
-                <Badge variant="secondary" className="text-xs">
-                  Não testado
-                </Badge>
+                <span className="text-xs text-muted-foreground">{PLACEHOLDER}</span>
               )}
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">CAPI</span>
-              {currentUser?.meta_capi_status === 'connected' ||
-              currentUser?.meta_capi_status === 'active' ||
-              currentUser?.meta_capi_status === 'valid' ? (
-                <Badge className="bg-green-500 hover:bg-green-600 text-xs">Conectado</Badge>
-              ) : currentUser?.meta_capi_status === 'error' ? (
-                <Badge variant="destructive" className="text-xs">
-                  Falha
-                </Badge>
+              {loaded ? (
+                currentUser?.meta_capi_status === 'connected' ||
+                currentUser?.meta_capi_status === 'active' ||
+                currentUser?.meta_capi_status === 'valid' ? (
+                  <Badge className="bg-green-500 hover:bg-green-600 text-xs">Conectado</Badge>
+                ) : currentUser?.meta_capi_status === 'error' ? (
+                  <Badge variant="destructive" className="text-xs">
+                    Falha
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-xs">
+                    Não testado
+                  </Badge>
+                )
               ) : (
-                <Badge variant="secondary" className="text-xs">
-                  Não testado
-                </Badge>
+                <span className="text-xs text-muted-foreground">{PLACEHOLDER}</span>
               )}
             </div>
             <p className="text-xs text-muted-foreground truncate">
-              Pixel: {currentUser?.meta_dataset_id || currentUser?.meta_pixel_id || '—'}
+              Pixel:{' '}
+              {loaded
+                ? currentUser?.meta_dataset_id || currentUser?.meta_pixel_id || '—'
+                : PLACEHOLDER}
             </p>
           </CardContent>
         </Card>
@@ -350,9 +190,7 @@ function DashboardInner() {
             <Bot className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {showSkeleton ? <StatSkeleton /> : iaInteractions}
-            </div>
+            <div className="text-2xl font-bold">{renderValue(iaInteractions)}</div>
             <p className="text-xs text-muted-foreground">Leads Totais</p>
           </CardContent>
         </Card>
@@ -373,42 +211,21 @@ function DashboardInner() {
                 </p>
               </div>
               <Button asChild variant="outline" size="sm">
-                <Link to="/settings/connections">
-                  Configurar Meta CAPI <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+                <Link to="/settings/connections">Configurar Meta CAPI</Link>
               </Button>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Suspense fallback={<SectionFallback />}>
-        <PausedAwareSection paused={realtimePaused}>
-          <IntegrityDiagnostics />
-        </PausedAwareSection>
-      </Suspense>
-
-      {/* Performance Dashboard — analytics are lazy-loaded (IntersectionObserver)
-          so the heavy conversation fetch is deferred until the section scrolls
-          into view, instead of firing on initial mount alongside the stat cards.
-          While realtime is paused, a subtle notice is shown instead. */}
-      <Suspense fallback={<SectionFallback />}>
-        <PausedAwareSection paused={realtimePaused}>
-          <PerformanceDashboard />
-        </PausedAwareSection>
-      </Suspense>
+      {/* Advanced features (realtime, performance dashboard, integrity
+          diagnostics) are intentionally NOT rendered here to keep the
+          dashboard 100% static on mount. They remain available on the settings
+          pages. */}
+      <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed py-10 text-sm text-muted-foreground">
+        <Activity className="h-4 w-4 shrink-0" />
+        <span>Recursos avançados disponíveis nas configurações.</span>
+      </div>
     </div>
-  )
-}
-
-export default function Dashboard() {
-  // The provider owns every realtime subscription for the page; child
-  // components subscribe through the shared context instead of each opening
-  // their own channel. Realtime is PAUSED by default inside the provider, so
-  // mounting this page performs zero realtime work until the user activates it.
-  return (
-    <DashboardRealtimeProvider>
-      <DashboardInner />
-    </DashboardRealtimeProvider>
   )
 }

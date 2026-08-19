@@ -115,7 +115,7 @@ export function RemarketingCustomerTable({
     setExporting(true)
     try {
       const all = await pb.collection('customers').getFullList({ filter: buildFilter() })
-      exportCustomersToCSV(all)
+      exportCustomersToCSV(all as unknown as import('@/services/customers').Customer[])
     } catch {
       /* ignore */
     } finally {

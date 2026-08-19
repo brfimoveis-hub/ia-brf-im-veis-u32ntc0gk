@@ -16,6 +16,8 @@ export interface Cadence {
 }
 
 export const getCadences = () => pb.collection('cadences').getFullList<Cadence>({ sort: 'order' })
+export const getActiveCadences = () =>
+  pb.collection('cadences').getFullList<Cadence>({ filter: 'is_active = true', sort: 'order' })
 export const createCadence = (data: Partial<Cadence>) =>
   pb.collection('cadences').create<Cadence>(data)
 export const updateCadence = (id: string, data: Partial<Cadence>) =>
