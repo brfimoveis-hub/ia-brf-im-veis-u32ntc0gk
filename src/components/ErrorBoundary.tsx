@@ -1,4 +1,4 @@
-import { Component, ErrorInfo, ReactNode, Fragment } from 'react'
+import { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -104,6 +104,6 @@ export class ErrorBoundary extends Component<Props, State> {
       )
     }
 
-    return <Fragment key={this.state.retryCount}>{this.props.children}</Fragment>
+    return <div key={this.state.retryCount}>{this.props.children}</div>
   }
 }
