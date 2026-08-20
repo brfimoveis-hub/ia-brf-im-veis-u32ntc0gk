@@ -79,8 +79,10 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
           sort,
         })
         if (rid !== requestIdRef.current) return
-        setItems(result.items)
-        setTotalItems(result.totalItems)
+        setItems(Array.isArray(result?.items) ? result.items : [])
+        setTotalItems(
+          typeof result?.totalItems === 'number' ? result.totalItems : result?.items?.length || 0,
+        )
         setFetchError(false)
       } catch (err: any) {
         console.error('UnifiedTable fetch error:', err)
@@ -109,10 +111,11 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
     })()
   }, [filter, sort, page, perPage, refreshKey, retryKey])
 
-  const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
+  const totalPages = Math.max(1, Math.ceil((totalItems || 0) / (perPage || PAGE_SIZE)))
   const currentPage = Math.min(page, totalPages)
 
-  const pageIds = useMemo(() => items.map((c) => c.id), [items])
+  const safeItems = useMemo(() => (Array.isArray(items) ? items : []), [items])
+  const pageIds = useMemo(() => safeItems.map((c) => c?.id).filter(Boolean), [safeItems])
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id))
   const somePageSelected = pageIds.some((id) => selectedIds.has(id)) && !allPageSelected
 
@@ -226,26 +229,27 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
                     ))}
                   </TableRow>
                 ))
-              ) : items.length === 0 ? (
+              ) : safeItems.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
                     Nenhum cliente encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
-                items.map((c) => {
-                  const isSelected = selectedIds.has(c.id)
+                safeItems.map((c) => {
+                  if (!c) return null
+                  const isSelected = !!c.id && selectedIds.has(c.id)
                   return (
                     <TableRow
-                      key={c.id}
+                      key={c.id || Math.random()}
                       className={isSelected ? 'bg-primary/5 cursor-pointer' : 'cursor-pointer'}
-                      onClick={() => setDrawerId(c.id)}
+                      onClick={() => c.id && setDrawerId(c.id)}
                     >
                       <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={isSelected}
-                          onCheckedChange={() => handleToggle(c.id)}
-                          aria-label={`Selecionar ${c.name || c.id}`}
+                          onCheckedChange={() => c.id && handleToggle(c.id)}
+                          aria-label={`Selecionar ${c.name || c.id || 'cliente'}`}
                         />
                       </TableCell>
                       <TableCell className="font-medium">

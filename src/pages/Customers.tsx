@@ -215,7 +215,15 @@ export default function Customers() {
         </div>
       </div>
 
-      <UnifiedStatisticsDashboard />
+      <ErrorBoundary
+        fallback={
+          <div className="py-2 text-xs text-muted-foreground text-center">
+            Estatísticas indisponíveis no momento.
+          </div>
+        }
+      >
+        <UnifiedStatisticsDashboard />
+      </ErrorBoundary>
 
       <CustomerFilterBar
         searchInput={searchInput}

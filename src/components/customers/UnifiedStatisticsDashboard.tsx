@@ -9,9 +9,15 @@ export function UnifiedStatisticsDashboard() {
   const [loading, setLoading] = useState(true)
 
   const loadStats = async () => {
-    const data = await getPlatformStats()
-    setStats(data)
-    setLoading(false)
+    try {
+      const data = await getPlatformStats()
+      setStats(data)
+    } catch (err) {
+      console.error('UnifiedStatisticsDashboard load error:', err)
+      setStats(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
