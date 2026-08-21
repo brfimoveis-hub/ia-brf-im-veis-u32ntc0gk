@@ -11,8 +11,6 @@ import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import Layout from './components/Layout'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
-import { MetaPixel } from '@/components/MetaPixel'
-import { GTMTracker } from '@/components/GTMTracker'
 import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -60,86 +58,132 @@ const GuestRoute = () => {
 
 const RouteTracker = () => {
   const location = useLocation()
+  const { loading, user } = useAuth()
 
   useEffect(() => {
+    // Zero localStorage writes during auth loading or before user is ready
+    if (loading || !user) return
+
     const path = location.pathname
-    let component = 'Unknown'
+    let isCancelled = false
+    let idleId: any = null
 
-    const lowerPath = path.toLowerCase()
-
-    if (lowerPath === '/settings/connections' || lowerPath.startsWith('/settings/connections/')) {
-      component = 'SettingsConnections'
-    } else if (
-      lowerPath === '/settings/remarketing' ||
-      lowerPath.startsWith('/settings/remarketing/')
-    ) {
-      component = 'SettingsRemarketing'
-    } else if (lowerPath === '/settings/ai' || lowerPath.startsWith('/settings/ai/')) {
-      component = 'SettingsAI'
-    } else if (lowerPath.startsWith('/dashboard')) {
-      component = 'Dashboard'
-    } else if (lowerPath.startsWith('/customers')) {
-      component = 'Customers'
-    } else if (lowerPath.startsWith('/customer-list')) {
-      component = 'Customers'
-    } else if (lowerPath.startsWith('/cadences')) {
-      component = 'Cadences'
-    } else if (lowerPath.startsWith('/email-marketing/') && lowerPath !== '/email-marketing') {
-      component = 'EmailCampaignDetail'
-    } else if (lowerPath.startsWith('/email-marketing')) {
-      component = 'EmailMarketing'
-    } else if (lowerPath === '/settings') {
-      component = 'Settings'
-    } else if (lowerPath === '/login') {
-      component = 'Login'
-    } else if (lowerPath === '/forgot-password') {
-      component = 'ForgotPassword'
-    } else if (lowerPath === '/reset-password') {
-      component = 'ResetPassword'
-    } else if (lowerPath === '/') {
-      component = 'Root'
-    }
-
-    const routeData = { path, component }
-
-    if (component !== 'Root') {
-      localStorage.setItem('currentRoute', JSON.stringify(routeData))
-    }
-
-    try {
-      const existing = localStorage.getItem('route-store')
-      const newState = { currentRoute: routeData }
-      if (existing) {
-        const parsed = JSON.parse(existing)
-        localStorage.setItem(
-          'route-store',
-          JSON.stringify({
-            ...parsed,
-            state: { ...parsed.state, ...newState },
-          }),
-        )
-      } else {
-        localStorage.setItem('route-store', JSON.stringify({ state: newState }))
+    const scheduleTask = (cb: () => void) => {
+      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+        return (window as any).requestIdleCallback(cb, { timeout: 2000 })
       }
-    } catch (e) {
-      localStorage.removeItem('route-store')
-      localStorage.setItem('currentRoute', JSON.stringify(routeData))
+      return setTimeout(cb, 50)
     }
-  }, [location])
+
+    const cancelScheduledTask = (id: any) => {
+      if (
+        typeof window !== 'undefined' &&
+        'cancelIdleCallback' in window &&
+        typeof id === 'number'
+      ) {
+        try {
+          ;(window as any).cancelIdleCallback(id)
+        } catch {
+          clearTimeout(id)
+        }
+      } else {
+        clearTimeout(id)
+      }
+    }
+
+    // Debounce de 2 segundos antes de gravar no localStorage
+    const timeoutId = setTimeout(() => {
+      idleId = scheduleTask(() => {
+        if (isCancelled) return
+
+        let component = 'Unknown'
+        const lowerPath = path.toLowerCase()
+
+        if (
+          lowerPath === '/settings/connections' ||
+          lowerPath.startsWith('/settings/connections/')
+        ) {
+          component = 'SettingsConnections'
+        } else if (
+          lowerPath === '/settings/remarketing' ||
+          lowerPath.startsWith('/settings/remarketing/')
+        ) {
+          component = 'SettingsRemarketing'
+        } else if (lowerPath === '/settings/ai' || lowerPath.startsWith('/settings/ai/')) {
+          component = 'SettingsAI'
+        } else if (lowerPath.startsWith('/dashboard')) {
+          component = 'Dashboard'
+        } else if (lowerPath.startsWith('/customers')) {
+          component = 'Customers'
+        } else if (lowerPath.startsWith('/customer-list')) {
+          component = 'Customers'
+        } else if (lowerPath.startsWith('/cadences')) {
+          component = 'Cadences'
+        } else if (lowerPath.startsWith('/email-marketing/') && lowerPath !== '/email-marketing') {
+          component = 'EmailCampaignDetail'
+        } else if (lowerPath.startsWith('/email-marketing')) {
+          component = 'EmailMarketing'
+        } else if (lowerPath === '/settings') {
+          component = 'Settings'
+        } else if (lowerPath === '/login') {
+          component = 'Login'
+        } else if (lowerPath === '/forgot-password') {
+          component = 'ForgotPassword'
+        } else if (lowerPath === '/reset-password') {
+          component = 'ResetPassword'
+        } else if (lowerPath === '/') {
+          component = 'Root'
+        }
+
+        const routeData = { path, component }
+
+        try {
+          if (component !== 'Root') {
+            localStorage.setItem('currentRoute', JSON.stringify(routeData))
+          }
+
+          const existing = localStorage.getItem('route-store')
+          const newState = { currentRoute: routeData }
+          if (existing) {
+            const parsed = JSON.parse(existing)
+            localStorage.setItem(
+              'route-store',
+              JSON.stringify({
+                ...parsed,
+                state: { ...parsed.state, ...newState },
+              }),
+            )
+          } else {
+            localStorage.setItem('route-store', JSON.stringify({ state: newState }))
+          }
+        } catch {
+          // Ignora erros de storage (ex: modo anônimo ou quota)
+        }
+      })
+    }, 2000)
+
+    return () => {
+      isCancelled = true
+      clearTimeout(timeoutId)
+      if (idleId) cancelScheduledTask(idleId)
+    }
+  }, [location.pathname, loading, user])
 
   return null
 }
 
 const Root = () => {
   const { loading } = useAuth()
+
+  // Durante loading do Auth: renderizar APENAS o PageLoader — NADA de trackers, NADA de scripts externos
+  if (loading) {
+    return <PageLoader />
+  }
+
   return (
     <>
       <RouteTracker />
-      <ErrorBoundary fallback={null}>
-        <GTMTracker />
-        <MetaPixel />
-      </ErrorBoundary>
-      {loading ? <PageLoader /> : <Outlet />}
+      <Outlet />
     </>
   )
 }

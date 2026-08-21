@@ -21,6 +21,8 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ConnectionAlertBanner } from '@/components/ConnectionAlertBanner'
 import { BugScanner } from '@/components/BugScanner'
+import { GTMTracker } from '@/components/GTMTracker'
+import { MetaPixel } from '@/components/MetaPixel'
 
 export default function Layout() {
   const { user, signOut } = useAuth()
@@ -153,6 +155,12 @@ export default function Layout() {
 
         {/* Connection Alert Banner */}
         <ConnectionAlertBanner />
+
+        {/* Trackers lazy mount inside authenticated Layout with safe error boundary */}
+        <ErrorBoundary fallback={null}>
+          <GTMTracker />
+          <MetaPixel />
+        </ErrorBoundary>
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
