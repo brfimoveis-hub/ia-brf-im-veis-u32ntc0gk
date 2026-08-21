@@ -1,5 +1,7 @@
 import pb from '@/lib/pocketbase/client'
 
+export { EMPTY_STATS }
+
 export interface PlatformStats {
   metaCapi: {
     totalEvents: number

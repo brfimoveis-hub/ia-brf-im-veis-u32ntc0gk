@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Send, MessageSquare, Mail, TrendingUp } from 'lucide-react'
-import { getPlatformStats, type PlatformStats } from '@/services/statistics'
+import { MessageSquare, Mail, TrendingUp } from 'lucide-react'
+import { getPlatformStats, EMPTY_STATS, type PlatformStats } from '@/services/statistics'
 
 export function UnifiedStatisticsDashboard() {
-  const [stats, setStats] = useState<PlatformStats | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<PlatformStats>(EMPTY_STATS)
+  const [loading, setLoading] = useState(false)
 
   const loadStats = async () => {
     try {
@@ -14,7 +14,6 @@ export function UnifiedStatisticsDashboard() {
       setStats(data)
     } catch (err) {
       console.error('UnifiedStatisticsDashboard load error:', err)
-      setStats(null)
     } finally {
       setLoading(false)
     }
@@ -48,14 +47,6 @@ export function UnifiedStatisticsDashboard() {
   // statistics that only need to load once per page view; keeping two SSE
   // connections open here contributed to the burst of simultaneous realtime
   // connections that crashed low-resource browsers.
-
-  if (loading || !stats) {
-    return (
-      <div className="flex items-center justify-center py-3">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
 
   const platforms = [
     {
