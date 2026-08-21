@@ -53,9 +53,10 @@ export function UnifiedKanban({ filters, refreshKey, onUpdateStatus }: Props) {
   return (
     <>
       <div className="flex flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-2 custom-scrollbar">
-        {CUSTOMER_STAGES.map((stage) => (
+        {CUSTOMER_STAGES.map((stage, index) => (
           <KanbanColumn
             key={stage}
+            index={index}
             stage={stage}
             filter={filter}
             refreshKey={refreshKey}

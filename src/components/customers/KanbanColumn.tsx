@@ -17,6 +17,7 @@ export interface KanbanColumnHandle {
 }
 
 interface KanbanColumnProps {
+  index?: number
   stage: string
   filter: string
   refreshKey: number
@@ -39,6 +40,7 @@ function formatDateSafe(dateStr: string | undefined | null, fmt: string): string
 }
 
 export function KanbanColumn({
+  index = 0,
   stage,
   filter,
   refreshKey,
@@ -67,7 +69,8 @@ export function KanbanColumn({
     loadingRef.current = true
     setLoading(true)
     hasMoreRef.current = true
-    ;(async () => {
+
+    const timer = setTimeout(async () => {
       try {
         const result = await pb.collection('customers').getList(1, PER_PAGE, {
           filter: fullFilter || undefined,
@@ -101,11 +104,13 @@ export function KanbanColumn({
           loadingRef.current = false
         }
       }
-    })()
+    }, index * 300)
+
     return () => {
       cancelled = true
+      clearTimeout(timer)
     }
-  }, [fullFilter, refreshKey])
+  }, [fullFilter, refreshKey, index])
 
   const loadMore = useCallback(async () => {
     if (loadingRef.current || !hasMoreRef.current) return
