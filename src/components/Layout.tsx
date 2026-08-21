@@ -136,13 +136,13 @@ export default function Layout() {
 
       <div className="flex flex-col flex-1 md:pl-64">
         {/* Mobile header */}
-        <div className="sticky top-0 z-10 flex h-16 flex-shrink-0 bg-white border-b shadow-sm md:hidden px-4 justify-between items-center">
+        <div className="sticky top-0 z-40 flex h-16 flex-shrink-0 bg-white border-b shadow-sm md:hidden px-4 justify-between items-center">
           <div className="font-semibold text-lg">BRF IA CRM</div>
           <div className="flex items-center gap-1">
             <BugScanner />
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" aria-label="Abrir menu">
                   <Menu className="h-6 w-6" />
                 </Button>
               </SheetTrigger>
