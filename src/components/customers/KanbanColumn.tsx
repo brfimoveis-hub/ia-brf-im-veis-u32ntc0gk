@@ -80,8 +80,13 @@ export function KanbanColumn({
         setHasMore(result.items.length === PER_PAGE)
         hasMoreRef.current = result.items.length === PER_PAGE
       } catch (err: any) {
-        console.error('Kanban load error', err)
-        if (!cancelled) {
+        const isAbort =
+          cancelled ||
+          err?.isAbort === true ||
+          err?.name === 'AbortError' ||
+          (err?.name === 'ClientResponseError' && err?.status === 0)
+        if (!isAbort) {
+          console.error('Kanban load error', err)
           setItems([])
           setHasMore(false)
           hasMoreRef.current = false
@@ -120,10 +125,16 @@ export function KanbanColumn({
       setHasMore(result.items.length === PER_PAGE)
       hasMoreRef.current = result.items.length === PER_PAGE
     } catch (err: any) {
-      console.error('Kanban load more error', err)
-      toast.error('Erro ao carregar mais clientes', {
-        description: err?.message || 'Tente novamente.',
-      })
+      const isAbort =
+        err?.isAbort === true ||
+        err?.name === 'AbortError' ||
+        (err?.name === 'ClientResponseError' && err?.status === 0)
+      if (!isAbort) {
+        console.error('Kanban load more error', err)
+        toast.error('Erro ao carregar mais clientes', {
+          description: err?.message || 'Tente novamente.',
+        })
+      }
     } finally {
       setLoading(false)
       loadingRef.current = false
