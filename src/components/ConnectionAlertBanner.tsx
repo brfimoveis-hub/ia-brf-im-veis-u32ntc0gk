@@ -1,36 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
-import { useRealtime } from '@/hooks/use-realtime'
 import { AlertTriangle, X, ArrowRight } from 'lucide-react'
 
 const UNHEALTHY_STATES = ['error', 'expired']
 
 export function ConnectionAlertBanner() {
   const { user } = useAuth()
-  const [currentUser, setCurrentUser] = useState(user)
   const [dismissed, setDismissed] = useState(false)
 
-  useEffect(() => {
-    setCurrentUser(user)
-    setDismissed(false)
-  }, [user])
+  if (!user) return null
 
-  useRealtime('users', (e) => {
-    if (e.record.id === user?.id) {
-      setCurrentUser(e.record)
-      setDismissed(false)
-    }
-  })
-
-  if (!currentUser) return null
-
-  const whatsappUnhealthy = UNHEALTHY_STATES.includes(
-    (currentUser.meta_token_status || '').toLowerCase(),
-  )
-  const capiUnhealthy = UNHEALTHY_STATES.includes(
-    (currentUser.meta_capi_status || '').toLowerCase(),
-  )
+  const whatsappUnhealthy = UNHEALTHY_STATES.includes((user.meta_token_status || '').toLowerCase())
+  const capiUnhealthy = UNHEALTHY_STATES.includes((user.meta_capi_status || '').toLowerCase())
 
   const failing: string[] = []
   if (whatsappUnhealthy) failing.push('Meta WhatsApp API')
