@@ -9,7 +9,7 @@ import pb from '@/lib/pocketbase/client'
 import { toast } from 'sonner'
 import { buildStageFilter, combineFilters } from '@/lib/customer-filters'
 
-const PER_PAGE = 50
+const PER_PAGE = 15
 
 export interface KanbanColumnHandle {
   addItem: (item: any) => void
