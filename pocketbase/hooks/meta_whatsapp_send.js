@@ -9,6 +9,12 @@ routerAdd(
     const user = $app.findRecordById('users', userId)
     const phoneNumberId = user.getString('meta_whatsapp_phone_number_id')
     const accessToken = user.getString('meta_whatsapp_access_token')
+    // appsecret_proof = HMAC-SHA256(access_token, app_secret)
+    // Exigido pela Meta em chamadas server-side à Graph API do WhatsApp.
+    const wsAppSecret = user.getString('meta_app_secret') || ''
+    const wsProof = wsAppSecret
+      ? '?appsecret_proof=' + $security.hs256(accessToken, wsAppSecret)
+      : ''
 
     if (!phoneNumberId || !accessToken) {
       return e.badRequestError('Credenciais do Meta WhatsApp nao configuradas')
@@ -46,7 +52,7 @@ routerAdd(
 
       try {
         const res = $http.send({
-          url: 'https://graph.facebook.com/v18.0/' + phoneNumberId + '/messages',
+          url: 'https://graph.facebook.com/v18.0/' + phoneNumberId + '/messages' + wsProof,
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

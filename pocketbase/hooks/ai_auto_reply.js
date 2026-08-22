@@ -730,6 +730,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
       let metaToken = userRecord ? userRecord.getString('meta_whatsapp_access_token') : ''
       let metaPhoneId = userRecord ? userRecord.getString('meta_whatsapp_phone_number_id') : ''
+      let metaAppSecret = userRecord ? userRecord.getString('meta_app_secret') : ''
 
       if (!metaToken || !metaPhoneId) {
         try {
@@ -743,9 +744,16 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
           if (usersWithMeta.length > 0) {
             metaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
             metaPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
+            metaAppSecret = usersWithMeta[0].getString('meta_app_secret')
           }
         } catch (e) {}
       }
+
+      // appsecret_proof = HMAC-SHA256(access_token, app_secret) — exigido pela Meta em
+      // chamadas server-side à Graph API do WhatsApp. Vai como query parameter.
+      const waProof = metaAppSecret
+        ? '?appsecret_proof=' + $security.hs256(metaToken, metaAppSecret)
+        : ''
 
       const cleanPhone = customerPhone.replace(/\D/g, '')
 
@@ -756,7 +764,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
       ) {
         if (responseText) {
           callMetaWithRetry(
-            `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+            `https://graph.facebook.com/v19.0/${metaPhoneId}/messages${waProof}`,
             'POST',
             { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
             JSON.stringify({
@@ -799,7 +807,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
               bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
 
               const mediaRes = callMetaWithRetry(
-                `https://graph.facebook.com/v19.0/${metaPhoneId}/media`,
+                `https://graph.facebook.com/v19.0/${metaPhoneId}/media${waProof}`,
                 'POST',
                 {
                   Authorization: `Bearer ${metaToken}`,
@@ -810,7 +818,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
               if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json?.id) {
                 callMetaWithRetry(
-                  `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+                  `https://graph.facebook.com/v19.0/${metaPhoneId}/messages${waProof}`,
                   'POST',
                   { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
                   JSON.stringify({
@@ -839,7 +847,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
             const videoUrl = 'https://www.w3schools.com/html/mov_bbb.mp4'
 
             callMetaWithRetry(
-              `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+              `https://graph.facebook.com/v19.0/${metaPhoneId}/messages${waProof}`,
               'POST',
               { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
               JSON.stringify({
@@ -1041,7 +1049,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
           if (metaToken && metaPhoneId) {
             callMetaWithRetry(
-              `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+              `https://graph.facebook.com/v19.0/${metaPhoneId}/messages${waProof}`,
               'POST',
               { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
               JSON.stringify({

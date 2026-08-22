@@ -38,9 +38,15 @@ onRecordAfterUpdateSuccess((e) => {
       if (users.length > 0) {
         const metaToken = users[0].getString('meta_whatsapp_access_token')
         const metaPhoneId = users[0].getString('meta_whatsapp_phone_number_id')
+        // appsecret_proof = HMAC-SHA256(access_token, app_secret)
+        // Exigido pela Meta em chamadas server-side à Graph API do WhatsApp.
+        const uhAppSecret = users[0].getString('meta_app_secret') || ''
+        const uhProof = uhAppSecret
+          ? '?appsecret_proof=' + $security.hs256(metaToken, uhAppSecret)
+          : ''
 
         $http.send({
-          url: `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+          url: `https://graph.facebook.com/v19.0/${metaPhoneId}/messages${uhProof}`,
           method: 'POST',
           headers: { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -56,7 +62,7 @@ onRecordAfterUpdateSuccess((e) => {
         if (customerPhone) {
           const customerPhoneClean = customerPhone.replace(/\D/g, '')
           $http.send({
-            url: `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+            url: `https://graph.facebook.com/v19.0/${metaPhoneId}/messages${uhProof}`,
             method: 'POST',
             headers: { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({

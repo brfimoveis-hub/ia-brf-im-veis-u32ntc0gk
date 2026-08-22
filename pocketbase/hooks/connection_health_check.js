@@ -34,8 +34,14 @@ routerAdd(
         })
       } else {
         try {
+          // appsecret_proof = HMAC-SHA256(access_token, app_secret)
+          // Exigido pela Meta em chamadas server-side à Graph API do WhatsApp.
+          const waAppSecret = userRecord.getString('meta_app_secret') || ''
+          const waProof = waAppSecret
+            ? '?appsecret_proof=' + $security.hs256(token, waAppSecret)
+            : ''
           const res = $http.send({
-            url: 'https://graph.facebook.com/v21.0/' + pnId,
+            url: 'https://graph.facebook.com/v21.0/' + pnId + waProof,
             method: 'GET',
             headers: { Authorization: 'Bearer ' + token },
             timeout: 15,

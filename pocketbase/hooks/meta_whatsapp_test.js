@@ -86,7 +86,13 @@ routerAdd(
       })
     }
 
-    const requestUrl = 'https://graph.facebook.com/v21.0/' + phone_number_id
+    // appsecret_proof = HMAC-SHA256(access_token, app_secret)
+    // Exigido pela Meta em chamadas server-side à Graph API do WhatsApp.
+    const wtAppSecret = (userRecord ? userRecord.getString('meta_app_secret') : '') || ''
+    const wtProof = wtAppSecret
+      ? '?appsecret_proof=' + $security.hs256(access_token, wtAppSecret)
+      : ''
+    const requestUrl = 'https://graph.facebook.com/v21.0/' + phone_number_id + wtProof
 
     try {
       const res = $http.send({
