@@ -94,7 +94,11 @@ export function VerifiableConnectionCard({
           <p
             className={cn(
               'text-xs break-words',
-              status === 'not_configured' ? 'text-yellow-600' : 'text-destructive',
+              status === 'not_configured'
+                ? 'text-yellow-600'
+                : status === 'configured_waiting_token'
+                  ? 'text-blue-600'
+                  : 'text-destructive',
             )}
           >
             {localError}

@@ -9,8 +9,14 @@ routerAdd(
     const businessId = user.getString('meta_instagram_business_id')
     const pageToken = user.getString('meta_instagram_page_token')
 
-    if (!businessId || !pageToken) {
-      return e.badRequestError('Instagram Business ID e Page Token nao configurados')
+    if (!businessId && !pageToken) {
+      return e.badRequestError('Instagram Business ID e Page Token não configurados')
+    }
+    if (businessId && !pageToken) {
+      return e.badRequestError('Instagram Business ID configurado, aguardando Page Token')
+    }
+    if (!businessId && pageToken) {
+      return e.badRequestError('Page Token informado, aguardando Instagram Business ID')
     }
 
     const res = $http.send({

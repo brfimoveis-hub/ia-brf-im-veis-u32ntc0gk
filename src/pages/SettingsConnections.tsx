@@ -30,9 +30,17 @@ export default function SettingsConnections() {
       setMetaStatus(user.meta_token_status || '')
       setCapiStatus(user.meta_capi_status || '')
       setCapiError(user.meta_capi_error || '')
-      setInstagramStatus(user.meta_instagram_business_id ? 'connected' : '')
-      setMessengerStatus(user.meta_page_access_token ? 'connected' : '')
-      setInstagramErrorMsg('')
+      const hasIg = !!user.meta_instagram_business_id
+      const hasToken = !!(user.meta_page_access_token || user.meta_instagram_page_token)
+      setInstagramStatus(hasIg && hasToken ? 'connected' : hasIg ? 'configured_waiting_token' : '')
+      setMessengerStatus(hasToken ? 'connected' : '')
+      setInstagramErrorMsg(
+        hasIg && !hasToken
+          ? 'ID configurado (' +
+              user.meta_instagram_business_id +
+              '). Aguardando Page Token para ativar conexão.'
+          : '',
+      )
       setMessengerErrorMsg('')
     }
   }, [user])
@@ -42,9 +50,17 @@ export default function SettingsConnections() {
     setMetaStatus(e.record.meta_token_status || '')
     setCapiStatus(e.record.meta_capi_status || '')
     setCapiError(e.record.meta_capi_error || '')
-    setInstagramStatus(e.record.meta_instagram_business_id ? 'connected' : '')
-    setMessengerStatus(e.record.meta_page_access_token ? 'connected' : '')
-    setInstagramErrorMsg('')
+    const hasIg = !!e.record.meta_instagram_business_id
+    const hasToken = !!(e.record.meta_page_access_token || e.record.meta_instagram_page_token)
+    setInstagramStatus(hasIg && hasToken ? 'connected' : hasIg ? 'configured_waiting_token' : '')
+    setMessengerStatus(hasToken ? 'connected' : '')
+    setInstagramErrorMsg(
+      hasIg && !hasToken
+        ? 'ID configurado (' +
+            e.record.meta_instagram_business_id +
+            '). Aguardando Page Token para ativar conexão.'
+        : '',
+    )
     setMessengerErrorMsg('')
   })
 

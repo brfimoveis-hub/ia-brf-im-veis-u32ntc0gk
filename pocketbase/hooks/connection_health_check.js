@@ -190,13 +190,29 @@ routerAdd(
     if (shouldCheck('instagram')) {
       const igBizId = userRecord.getString('meta_instagram_business_id')
       const igToken = userRecord.getString('meta_instagram_page_token')
-      if (!igBizId || !igToken) {
+      if (!igBizId && !igToken) {
         results.push({
           name: 'Instagram Business',
           key: 'instagram',
           status: 'not_configured',
           timestamp: ts,
-          message: 'Instagram Business ID ou Page Token não configurados',
+          message: 'Instagram Business ID e Page Token não configurados',
+        })
+      } else if (igBizId && !igToken) {
+        results.push({
+          name: 'Instagram Business',
+          key: 'instagram',
+          status: 'not_configured',
+          timestamp: ts,
+          message: 'Instagram Business ID configurado (' + igBizId + '), aguardando Page Token',
+        })
+      } else if (!igBizId && igToken) {
+        results.push({
+          name: 'Instagram Business',
+          key: 'instagram',
+          status: 'not_configured',
+          timestamp: ts,
+          message: 'Page Token informado, aguardando Instagram Business ID',
         })
       } else {
         try {

@@ -17,9 +17,6 @@ export function InstagramConnect() {
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const [igConnected, setIgConnected] = useState(!!user?.meta_instagram_business_id)
-  const [msgConnected, setMsgConnected] = useState(!!user?.meta_page_access_token)
-
   const [form, setForm] = useState({
     meta_instagram_business_id: user?.meta_instagram_business_id || '',
     meta_instagram_page_token: user?.meta_instagram_page_token || '',
@@ -29,12 +26,24 @@ export function InstagramConnect() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [inlineError, setInlineError] = useState('')
 
+  const hasIgId = !!(form.meta_instagram_business_id || user?.meta_instagram_business_id)
+  const hasPageToken = !!(
+    form.meta_page_access_token ||
+    form.meta_instagram_page_token ||
+    user?.meta_page_access_token ||
+    user?.meta_instagram_page_token
+  )
+  const [igConnected, setIgConnected] = useState(hasIgId && hasPageToken)
+  const [msgConnected, setMsgConnected] = useState(hasPageToken)
+
   useRealtime('users', (e) => {
     if (!user?.id || e.record.id !== user.id) return
-    const newIg = !!e.record.meta_instagram_business_id
-    const newMsg = !!e.record.meta_page_access_token
-    if (newIg !== igConnected) setIgConnected(newIg)
-    if (newMsg !== msgConnected) setMsgConnected(newMsg)
+    const recordIgId = !!e.record.meta_instagram_business_id
+    const recordPageToken = !!(
+      e.record.meta_page_access_token || e.record.meta_instagram_page_token
+    )
+    setIgConnected(recordIgId && recordPageToken)
+    setMsgConnected(recordPageToken)
     setForm({
       meta_instagram_business_id: e.record.meta_instagram_business_id || '',
       meta_instagram_page_token: e.record.meta_instagram_page_token || '',
@@ -174,12 +183,22 @@ export function InstagramConnect() {
 
           <div className="flex items-center gap-3 flex-wrap">
             <Badge
-              className={igConnected ? 'bg-green-500/10 text-green-600 border-green-500/20' : ''}
-              variant={igConnected ? 'default' : 'secondary'}
+              className={
+                igConnected
+                  ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                  : hasIgId
+                    ? 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                    : ''
+              }
+              variant={igConnected || hasIgId ? 'default' : 'secondary'}
             >
               {igConnected ? (
                 <>
                   <CheckCircle2 className="h-3 w-3 mr-1" /> Instagram Conectado
+                </>
+              ) : hasIgId ? (
+                <>
+                  <Info className="h-3 w-3 mr-1" /> ID Configurado (Aguardando Page Token)
                 </>
               ) : (
                 'Instagram Aguardando'
