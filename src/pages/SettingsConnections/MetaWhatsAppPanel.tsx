@@ -54,7 +54,9 @@ export function MetaWhatsAppPanel() {
     setDisplayNumber(e.record.meta_whatsapp_status || '')
   })
 
-  const webhookUrl = user?.id ? `${WEBHOOK_BASE}?user_id=${user.id}` : WEBHOOK_BASE
+  const webhookUrlWithQuery = user?.id ? `${WEBHOOK_BASE}?user_id=${user.id}` : WEBHOOK_BASE
+  const webhookUrlWithPath = user?.id ? `${WEBHOOK_BASE}/${user.id}` : WEBHOOK_BASE
+  const webhookUrl = webhookUrlWithQuery
   const isActive = tokenStatus === 'active'
   const isError = tokenStatus === 'error'
   const formattedNumber = formatDisplayPhone(displayNumber)
@@ -258,39 +260,58 @@ export function MetaWhatsAppPanel() {
           <Alert className="border-blue-500/50 bg-blue-500/10">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertTitle className="text-blue-700">URL do Webhook (Callback URL)</AlertTitle>
-            <AlertDescription className="text-blue-600">
-              <p className="mb-2 text-sm">
-                Copie esta URL e configure-a no Meta Developer Portal (WhatsApp &gt; Configuration
-                &gt; Webhook):
+            <AlertDescription className="text-blue-600 space-y-3">
+              <p className="text-sm">
+                Copie a URL abaixo e configure-a no Meta Developer Portal (WhatsApp &gt;
+                Configuration &gt; Webhook):
               </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 bg-white rounded text-xs text-slate-800 break-all font-mono">
-                  {webhookUrl}
-                </code>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copy(webhookUrl, 'URL do Webhook')}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
+              <div>
+                <span className="text-xs font-semibold text-slate-700 block mb-1">
+                  URL Recomendada (padrão com identificador na rota):
+                </span>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-3 py-2 bg-white rounded text-xs text-slate-800 break-all font-mono select-all">
+                    {webhookUrlWithPath}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copy(webhookUrlWithPath, 'URL do Webhook (Path)')}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="mt-3 flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/5 p-2.5">
+
+              <div>
+                <span className="text-xs font-semibold text-slate-700 block mb-1">
+                  URL Alternativa (com query param):
+                </span>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-3 py-2 bg-white rounded text-xs text-slate-800 break-all font-mono select-all">
+                    {webhookUrlWithQuery}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copy(webhookUrlWithQuery, 'URL do Webhook (Query)')}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/5 p-2.5">
                 <Info className="h-3.5 w-3.5 text-blue-600 mt-0.5 shrink-0" />
                 <p className="text-xs text-blue-600">
-                  <span className="font-semibold">Sobre o endereço técnico acima:</span> O domínio
-                  exibido na URL acima é um endereço técnico fixo definido pela plataforma de
-                  hospedagem e <strong>não pode ser renomeado</strong>. Ele é apenas o endereço de
-                  servidor do backend e{' '}
-                  <strong>não indica o uso de nenhuma integração de terceiros</strong> — o sistema
-                  utiliza exclusivamente a API oficial do Meta (WhatsApp Cloud API). O endpoint{' '}
-                  <span className="font-mono">meta_whatsapp_webhook</span> é o webhook oficial do
-                  Meta WhatsApp e continua funcionando normalmente.
+                  <span className="font-semibold">Resiliência Meta:</span> Ambas as rotas aceitam
+                  requisições com ou sem query params. Caso a Meta remova parâmetros da URL na
+                  verificação, o sistema identifica automaticamente o usuário pelo{' '}
+                  <strong>Token de Verificação ({verifyToken || 'BRF IA CRM'})</strong> cadastrado.
                 </p>
               </div>
             </AlertDescription>
           </Alert>
-
           <Alert className="border-purple-500/50 bg-purple-500/10">
             <KeyRound className="h-4 w-4 text-purple-600" />
             <AlertTitle className="text-purple-700">Token de Verificação (Verify Token)</AlertTitle>
@@ -467,7 +488,7 @@ export function MetaWhatsAppPanel() {
         </CardContent>
       </Card>
 
-      <MetaSetupGuide webhookUrl={webhookUrl} verifyToken={verifyToken} />
+      <MetaSetupGuide webhookUrl={webhookUrlWithPath} verifyToken={verifyToken} />
     </div>
   )
 }
