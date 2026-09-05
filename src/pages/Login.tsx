@@ -107,6 +107,14 @@ export default function Login() {
               {loading ? 'Autenticando...' : 'Entrar'}
             </Button>
           </form>
+          <div className="mt-6 text-center text-xs text-muted-foreground">
+            <Link
+              to="/privacidade"
+              className="hover:underline text-slate-500 hover:text-slate-800 transition-colors"
+            >
+              Política de Privacidade
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

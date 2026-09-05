@@ -29,6 +29,7 @@ import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import InstagramCallback from './pages/InstagramCallback'
+import PrivacyPolicy from './pages/PrivacyPolicy'
 
 const PageLoader = () => (
   <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
@@ -131,6 +132,8 @@ const RouteTracker = () => {
           component = 'ForgotPassword'
         } else if (lowerPath === '/reset-password') {
           component = 'ResetPassword'
+        } else if (lowerPath === '/privacidade') {
+          component = 'PrivacyPolicy'
         } else if (lowerPath === '/') {
           component = 'Root'
         }
@@ -213,6 +216,10 @@ const router = createBrowserRouter([
             element: <ResetPassword />,
           },
         ],
+      },
+      {
+        path: 'privacidade',
+        element: <PrivacyPolicy />,
       },
       {
         element: <ProtectedRoute />,
