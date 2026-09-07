@@ -150,7 +150,7 @@ routerAdd('POST', '/backend/v1/subscribe_waba_app', (e) => {
     results.step_d_verify_subscribed_apps = { error: dErr.message || String(dErr) }
   }
 
-  // 1.e GET https://graph.facebook.com/v21.0/{meta_whatsapp_phone_number_id}?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status
+  // 1.e GET https://graph.facebook.com/v21.0/{meta_whatsapp_phone_number_id}?fields=code_verification_status,quality_rating,status,verified_name,id,display_phone_number
   try {
     console.log(
       '[WABA_SUBSCRIBE] Passo 1.e: Consultando detalhes do número /v21.0/' + phoneId + '...',
@@ -159,7 +159,7 @@ routerAdd('POST', '/backend/v1/subscribe_waba_app', (e) => {
       url:
         'https://graph.facebook.com/v21.0/' +
         phoneId +
-        '?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status',
+        '?fields=code_verification_status,quality_rating,status,verified_name,id,display_phone_number',
       method: 'GET',
       headers: {
         Authorization: 'Bearer ' + token,

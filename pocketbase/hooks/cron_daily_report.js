@@ -10,7 +10,6 @@ cronAdd('daily_performance_report', '0 21 * * *', () => {
     'customers',
     `created >= '${todayStr} 00:00:00' && status = 'Qualificado'`,
   )
-
   try {
     $http.send({
       url: slackWebhook,
