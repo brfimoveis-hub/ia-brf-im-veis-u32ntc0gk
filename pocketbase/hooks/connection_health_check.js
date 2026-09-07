@@ -34,30 +34,49 @@ routerAdd(
         })
       } else {
         try {
-          // appsecret_proof = HMAC-SHA256(access_token, app_secret)
-          // Exigido pela Meta em chamadas server-side à Graph API do WhatsApp.
-          const waAppSecret = userRecord.getString('meta_app_secret') || ''
-          const waProof = waAppSecret
-            ? '?appsecret_proof=' + $security.hs256(token, waAppSecret)
-            : ''
+          // Não enviar appsecret_proof: a Graph API só exige quando habilitado explicitamente no app
+          // e o app_secret pode divergir do app criador do token, gerando "Invalid appsecret_proof".
           const res = $http.send({
-            url: 'https://graph.facebook.com/v21.0/' + pnId + waProof,
+            url:
+              'https://graph.facebook.com/v21.0/' +
+              pnId +
+              '?fields=code_verification_status,quality_rating,status,verified_name,id,display_phone_number',
             method: 'GET',
             headers: { Authorization: 'Bearer ' + token },
             timeout: 15,
           })
           if (res.statusCode >= 200 && res.statusCode < 300) {
+            var dispPhone = ''
+            try {
+              dispPhone =
+                res.json && res.json.display_phone_number ? res.json.display_phone_number : ''
+            } catch (_) {}
+            // Atualiza status no registro do usuário se pertencer a ele
+            try {
+              userRecord.set('meta_token_status', 'active')
+              if (dispPhone) {
+                userRecord.set('meta_whatsapp_status', dispPhone)
+              }
+              $app.saveNoValidate(userRecord)
+            } catch (_) {}
+
             results.push({
               name: 'WhatsApp Cloud API',
               key: 'whatsapp',
               status: 'connected',
               timestamp: ts,
-              message: 'Conectado ✅ — HTTP 200 da Meta Graph API (somente leitura)',
+              message:
+                'Conectado ✅ — ' +
+                (dispPhone ? 'Número: ' + dispPhone : 'HTTP 200 da Meta Graph API'),
             })
           } else {
             var waErr = {}
             try {
               waErr = res.json && res.json.error ? res.json.error : {}
+            } catch (_) {}
+            try {
+              userRecord.set('meta_token_status', 'error')
+              $app.saveNoValidate(userRecord)
             } catch (_) {}
             results.push({
               name: 'WhatsApp Cloud API',

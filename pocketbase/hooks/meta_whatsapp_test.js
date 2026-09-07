@@ -86,13 +86,12 @@ routerAdd(
       })
     }
 
-    // appsecret_proof = HMAC-SHA256(access_token, app_secret)
-    // Exigido pela Meta em chamadas server-side à Graph API do WhatsApp.
-    const wtAppSecret = (userRecord ? userRecord.getString('meta_app_secret') : '') || ''
-    const wtProof = wtAppSecret
-      ? '?appsecret_proof=' + $security.hs256(access_token, wtAppSecret)
-      : ''
-    const requestUrl = 'https://graph.facebook.com/v21.0/' + phone_number_id + wtProof
+    // Não enviar appsecret_proof: a Graph API só exige se 'Require App Secret' estiver ativado no app Meta.
+    // Omitir evita o erro "Invalid appsecret_proof provided in the API argument" quando o app_secret diverge do token.
+    const requestUrl =
+      'https://graph.facebook.com/v21.0/' +
+      phone_number_id +
+      '?fields=code_verification_status,quality_rating,status,verified_name,id,display_phone_number'
 
     try {
       const res = $http.send({
