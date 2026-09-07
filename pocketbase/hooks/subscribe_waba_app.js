@@ -182,6 +182,94 @@ routerAdd('POST', '/backend/v1/subscribe_waba_app', (e) => {
     results.step_e_phone_status = { error: eErr.message || String(eErr) }
   }
 
+  // EXTRA AUDIT FOR CAPI AND TOKENS
+  const capiToken = userRecord.getString('meta_capi_token')
+  const pixelId = userRecord.getString('meta_pixel_id') || userRecord.getString('meta_dataset_id')
+  results.token_audit = { capi: {}, wa: {}, pixelId }
+
+  if (capiToken) {
+    try {
+      const r1 = $http.send({
+        url: 'https://graph.facebook.com/v21.0/me/permissions?access_token=' + capiToken,
+        method: 'GET',
+        timeout: 10,
+      })
+      results.token_audit.capi.permissions = { status: r1.statusCode, body: r1.json }
+    } catch (e1) {
+      results.token_audit.capi.permissions = { error: e1.message }
+    }
+    try {
+      const r2 = $http.send({
+        url:
+          'https://graph.facebook.com/debug_token?input_token=' +
+          capiToken +
+          '&access_token=' +
+          capiToken,
+        method: 'GET',
+        timeout: 10,
+      })
+      results.token_audit.capi.debug_token = { status: r2.statusCode, body: r2.json }
+    } catch (e2) {
+      results.token_audit.capi.debug_token = { error: e2.message }
+    }
+    try {
+      const r3 = $http.send({
+        url: 'https://graph.facebook.com/v21.0/' + pixelId + '?fields=id,name',
+        method: 'GET',
+        headers: { Authorization: 'Bearer ' + capiToken },
+        timeout: 10,
+      })
+      results.token_audit.capi.pixel_get = { status: r3.statusCode, body: r3.json }
+    } catch (e3) {
+      results.token_audit.capi.pixel_get = { error: e3.message }
+    }
+  }
+
+  if (token) {
+    try {
+      const r4 = $http.send({
+        url: 'https://graph.facebook.com/v21.0/me/permissions?access_token=' + token,
+        method: 'GET',
+        timeout: 10,
+      })
+      results.token_audit.wa.permissions = { status: r4.statusCode, body: r4.json }
+    } catch (e4) {
+      results.token_audit.wa.permissions = { error: e4.message }
+    }
+    try {
+      const r6 = $http.send({
+        url: 'https://graph.facebook.com/v21.0/' + pixelId + '?fields=id,name',
+        method: 'GET',
+        headers: { Authorization: 'Bearer ' + token },
+        timeout: 10,
+      })
+      results.token_audit.wa.pixel_get = { status: r6.statusCode, body: r6.json }
+    } catch (e6) {
+      results.token_audit.wa.pixel_get = { error: e6.message }
+    }
+    try {
+      const testEvent = {
+        data: [
+          {
+            event_name: 'TestEvent',
+            event_time: Math.floor(Date.now() / 1000),
+            action_source: 'system_generated',
+            user_data: { client_user_agent: 'TestAgent' },
+          },
+        ],
+      }
+      const r7 = $http.send({
+        url: 'https://graph.facebook.com/v21.0/' + pixelId + '/events',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify(testEvent),
+        timeout: 10,
+      })
+      results.token_audit.wa.pixel_post_event = { status: r7.statusCode, body: r7.json }
+    } catch (e7) {
+      results.token_audit.wa.pixel_post_event = { error: e7.message }
+    }
+  }
   // Registra no system_logs para auditoria
   try {
     const col = $app.findCollectionByNameOrId('system_logs')
