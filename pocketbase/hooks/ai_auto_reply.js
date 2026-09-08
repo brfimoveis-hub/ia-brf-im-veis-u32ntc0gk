@@ -18,22 +18,14 @@ onRecordAfterCreateSuccess((e) => {
           body: bodyData,
           timeout: 20,
         })
-        if (res.statusCode >= 200 && res.statusCode < 300) {
+        if (res && res.statusCode >= 200 && res.statusCode < 300) {
           return res
         }
-        $app
-          .logger()
-          .warn(
-            'Meta HTTP call non-2xx',
-            'url',
-            url,
-            'statusCode',
-            res.statusCode,
-            'response',
-            JSON.stringify(res.json || res.body || ''),
-          )
-      } catch (e) {
-        $app.logger().error('Meta HTTP send exception', 'url', url, 'error', String(e))
+        console.warn(
+          `[AI_REPLY] Meta HTTP call non-2xx: url=${url} statusCode=${res ? res.statusCode : 'none'} response=${JSON.stringify(res ? res.json || res.body || '' : '')}`,
+        )
+      } catch (httpErr) {
+        console.error(`[AI_REPLY] Meta HTTP send exception: url=${url} error=${String(httpErr)}`)
       }
       if (attempt < maxRetries) {
         const sleepMs = backoffs[attempt] || 9000
@@ -48,26 +40,40 @@ onRecordAfterCreateSuccess((e) => {
       const newLog = new Record(logsCol)
       newLog.set('type', 'api_failure')
       newLog.set('message', `Falha Meta API ou Externa (${url}) após ${maxRetries} tentativas.`)
-      newLog.set('payload', JSON.stringify({ statusCode: res?.statusCode, body: res?.json }))
+      newLog.set(
+        'payload',
+        JSON.stringify({ statusCode: res ? res.statusCode : null, body: res ? res.json : null }),
+      )
       $app.saveNoValidate(newLog)
-    } catch (e) {}
+    } catch (_) {}
 
     return res
   }
 
   let acquiredLock = false
   const customerId = e.record.getString('customer_id')
+  const conversationChannel = e.record.getString('channel') || 'whatsapp'
+  const incomingMsgId = e.record.id
+  let userId = e.record.getString('user_id')
+
+  console.log(
+    `[AI_REPLY] Triggered for customer=${customerId} sender=${sender} channel=${conversationChannel} msgId=${incomingMsgId}`,
+  )
 
   try {
     const customerInitialCheck = $app.findRecordById('customers', customerId)
+    if (!userId) {
+      userId = customerInitialCheck.getString('user_id') || ''
+    }
+
     if (customerInitialCheck.get('is_blocked') === true) {
-      $app.logger().info('AI trigger skipped: customer is blocked', 'customerId', customerId)
+      console.log(`[AI_REPLY] Customer ${customerId} is blocked, skipping.`)
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
         const blockLog = new Record(logsCol)
-        blockLog.set('user_id', customerInitialCheck.getString('user_id') || '')
+        blockLog.set('user_id', userId || '')
         blockLog.set('type', 'ai_reply_skipped')
-        blockLog.set('message', 'IA nao respondeu: cliente bloqueado')
+        blockLog.set('message', 'IA não respondeu: cliente bloqueado')
         blockLog.set('details', 'Customer is blocked. AI auto-reply skipped.')
         blockLog.set('payload', JSON.stringify({ customer_id: customerId }))
         $app.saveNoValidate(blockLog)
@@ -75,6 +81,7 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
+    // Lock acquisition with 120s TTL
     try {
       $app.runInTransaction((txApp) => {
         const customer = txApp.findRecordById('customers', customerId)
@@ -97,14 +104,12 @@ onRecordAfterCreateSuccess((e) => {
               break
             }
           }
-          // Note: legacy plain "ai_processing" (without timestamp) is treated as stale and cleaned up
         }
 
         if (activeLock) {
           throw new Error('LOCKED')
         }
 
-        // Clean out any existing ai_processing tags (both legacy and timestamped)
         const newTags = tags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:'))
         newTags.push(`ai_processing:${now}`)
         customer.set('tags', newTags)
@@ -113,17 +118,18 @@ onRecordAfterCreateSuccess((e) => {
       })
     } catch (err) {
       if (err.message === 'LOCKED') {
-        $app
-          .logger()
-          .info(
-            'Prevented concurrent execution: AI is already processing',
-            'customerId',
-            customerId,
-          )
+        console.log(
+          `[AI_REPLY] Customer ${customerId} already has active ai_processing lock, skipping.`,
+        )
         return e.next()
       }
+      console.error(`[AI_REPLY] Lock acquisition error for ${customerId}: ${String(err)}`)
+      return e.next()
     }
 
+    console.log(`[AI_REPLY] Lock acquired successfully for customer=${customerId}`)
+
+    // Check if another message arrived and made this one obsolete
     try {
       const latestMsgs = $app.findRecordsByFilter(
         'conversations',
@@ -134,35 +140,47 @@ onRecordAfterCreateSuccess((e) => {
       )
       if (latestMsgs.length > 0) {
         const lastMsg = latestMsgs[0]
-        if (lastMsg.id !== e.record.id) {
-          $app
-            .logger()
-            .info(
-              'Skipping auto-reply: message is not the latest in conversation',
-              'msgId',
-              e.record.id,
-            )
+        if (lastMsg.id !== incomingMsgId) {
+          console.log(
+            `[AI_REPLY] Skipping: incoming message ${incomingMsgId} is not the latest (latest=${lastMsg.id})`,
+          )
           return e.next()
         }
         const lastSender = lastMsg.getString('sender')
         if (lastSender !== 'customer' && lastSender !== 'user' && lastSender !== 'lead') {
-          $app
-            .logger()
-            .info(
-              'Skipping auto-reply: last message not from customer/user/lead',
-              'lastSender',
-              lastSender,
-            )
+          console.log(`[AI_REPLY] Skipping: last sender is '${lastSender}'`)
           return e.next()
         }
       }
-    } catch (err) {}
+    } catch (err) {
+      console.warn(`[AI_REPLY] Check latest message failed (non-fatal): ${String(err)}`)
+    }
 
-    let userId = e.record.getString('user_id')
     let userRecord = null
     try {
-      if (userId) userRecord = $app.findRecordById('users', userId)
-    } catch (err) {}
+      if (userId) {
+        userRecord = $app.findRecordById('users', userId)
+      }
+    } catch (err) {
+      console.warn(`[AI_REPLY] Could not load user ${userId}: ${String(err)}`)
+    }
+
+    if (!userRecord) {
+      try {
+        const fallbackUsers = $app.findRecordsByFilter(
+          'users',
+          "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+          '-created',
+          1,
+          0,
+        )
+        if (fallbackUsers.length > 0) {
+          userRecord = fallbackUsers[0]
+          userId = userRecord.id
+          console.log(`[AI_REPLY] Resolved fallback user ${userId}`)
+        }
+      } catch (_) {}
+    }
 
     const now = new Date()
     const customer = $app.findRecordById('customers', customerId)
@@ -193,6 +211,7 @@ onRecordAfterCreateSuccess((e) => {
     const isTargetLead =
       customerPhone.includes('48992098050') ||
       customerPhone.includes('4899728050') ||
+      customerPhone.includes('99728050') ||
       customerSource.includes('48992098050') ||
       customerSource.includes('4899728050')
 
@@ -201,13 +220,12 @@ onRecordAfterCreateSuccess((e) => {
       ? userRecord.getString('delivery_start_time') || '09:00'
       : '09:00'
     const deliveryEnd = userRecord ? userRecord.getString('delivery_end_time') || '18:00' : '18:00'
-    const deliveryInterval = userRecord ? userRecord.getInt('delivery_interval') || 5 : 5
     let deliveryDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
     if (userRecord && userRecord.get('delivery_days')) {
       try {
         const parsed = userRecord.get('delivery_days')
         if (Array.isArray(parsed) && parsed.length > 0) deliveryDays = parsed
-      } catch (err) {}
+      } catch (_) {}
     }
 
     const brTime = new Date(now.getTime() - 3 * 3600 * 1000)
@@ -222,7 +240,7 @@ onRecordAfterCreateSuccess((e) => {
     const currentTimeStr = `${hoursStr}:${minutesStr}`
 
     if (!deliveryEnabled) {
-      $app.logger().info('Message deferred: delivery disabled', 'customerId', customerId)
+      console.log(`[AI_REPLY] Message deferred: delivery disabled for user ${userId}`)
       return e.next()
     }
 
@@ -235,7 +253,7 @@ onRecordAfterCreateSuccess((e) => {
         currentTimeStr < deliveryStart ||
         currentTimeStr > deliveryEnd
       ) {
-        $app.logger().info('Message deferred: outside business hours', 'customerId', customerId)
+        console.log(`[AI_REPLY] Message deferred: outside business hours (${currentTimeStr})`)
         try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const log = new Record(logsCol)
@@ -253,9 +271,8 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
+    // Cooldown per customer (min 5 seconds anti-flood)
     try {
-      // Cooldown de intervalo de entrega deve ser POR CLIENTE, nunca global por usuário!
-      // Um cooldown global bloqueava TODAS as respostas para todos os clientes se qualquer cliente recebesse resposta nos últimos 5 minutos.
       const customerLastAiMsgs = $app.findRecordsByFilter(
         'conversations',
         `customer_id = '${customerId}' && sender = 'ai'`,
@@ -265,43 +282,31 @@ onRecordAfterCreateSuccess((e) => {
       )
       if (customerLastAiMsgs.length > 0) {
         const lastAiDate = new Date(customerLastAiMsgs[0].getString('created'))
-        // Intervalo mínimo de 5 segundos contra flood no mesmo cliente
         const minCooldownMs = 5000
         if (now.getTime() - lastAiDate.getTime() < minCooldownMs) {
-          $app
-            .logger()
-            .info(
-              'Message deferred: customer anti-flood cooldown active (<5s)',
-              'customerId',
-              customerId,
-            )
+          console.log(`[AI_REPLY] Anti-flood cooldown active (<5s) for customer ${customerId}`)
           return e.next()
         }
       }
-    } catch (err) {}
+    } catch (err) {
+      console.warn(`[AI_REPLY] Anti-flood check error (non-fatal): ${String(err)}`)
+    }
 
     if (tags.includes('ai_paused')) {
+      console.log(`[AI_REPLY] AI paused for customer ${customerId}`)
       return e.next()
     }
 
     const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
-    const actualAiName = userRecord ? userRecord.getString('ai_name') : ''
     const biaInstructions = userRecord ? userRecord.getString('bia_instructions') : ''
     const motherAiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
 
     const personaInstructions = biaInstructions.trim()
       ? biaInstructions
-      : motherAiInstructions || 'Seja prestativa e educada.'
-
-    const isNameMissing = !actualAiName.trim()
-
-    if (isNameMissing) {
-      $app.logger().warn('AI auto reply skipped due to inactive identity', 'customerId', customerId)
-      return e.next()
-    }
+      : motherAiInstructions ||
+        'Você é a Bia, assistente virtual de vendas imobiliárias da BRF Imóveis. Seja prestativa, educada, empática e conduza o cliente para a compra ou permuta de imóveis.'
 
     const customerMessage = e.record.getString('content') || ''
-    const conversationChannel = e.record.getString('channel') || 'whatsapp'
     const currentStatus = customer.getString('status') || 'Novo'
     let activeCadenceText = ''
 
@@ -340,7 +345,9 @@ onRecordAfterCreateSuccess((e) => {
         activeCadenceText = `\n\n### CADÊNCIA ATUAL (${cTitle}):\nProcedimento: ${cContent}\nDiretriz Específica: ${cInst}`
         if (cSteps) activeCadenceText += `\nPassos Estruturados (JSON): ${cSteps}`
       }
-    } catch (err) {}
+    } catch (err) {
+      console.warn(`[AI_REPLY] Cadence lookup non-fatal error: ${String(err)}`)
+    }
 
     const strictGuidelines = `
 ### REGRAS OBRIGATÓRIAS (SIGA ESTRITAMENTE):
@@ -351,55 +358,53 @@ onRecordAfterCreateSuccess((e) => {
 
     activeCadenceText += `\n\n${strictGuidelines}`
 
-    let queryEmbedding = null
+    // Embeddings & RAG (defensive)
+    let contextChunks = []
     try {
-      const res = $ai.embed({ input: customerMessage })
-      if (res.data && res.data[0]) {
-        queryEmbedding = res.data[0].embedding
+      if (customerMessage.trim()) {
+        const res = $ai.embed({ input: customerMessage })
+        if (res && res.data && res.data[0] && res.data[0].embedding) {
+          const queryEmbedding = res.data[0].embedding
+          const pbaseURL = $os.getenv('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
+
+          const ragRes = $http.send({
+            url: pbaseURL + '/backend/v1/rag-search',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: 'Bearer internal-rag-token-123',
+            },
+            body: JSON.stringify({ query: queryEmbedding, userId: userId }),
+            timeout: 8,
+          })
+
+          if (ragRes && ragRes.statusCode === 200 && ragRes.json) {
+            if (ragRes.json.knowledge_base) {
+              ragRes.json.knowledge_base.forEach((item) => {
+                if (item && item.content) {
+                  contextChunks.push(`### Informação (${item.title || 'Geral'}):\n${item.content}`)
+                }
+              })
+            }
+            if (ragRes.json.cadences) {
+              ragRes.json.cadences.forEach((item) => {
+                if (item && item.content) {
+                  contextChunks.push(
+                    `### Procedimento de Venda (${item.title || 'Fluxo'}):\n${item.content}`,
+                  )
+                }
+                if (item && item.ai_instructions) {
+                  contextChunks.push(
+                    `Diretriz Específica para este Procedimento:\n${item.ai_instructions}`,
+                  )
+                }
+              })
+            }
+          }
+        }
       }
     } catch (err) {
-      $app.logger().error('Embedding failed', 'error', String(err))
-    }
-
-    let contextChunks = []
-
-    if (queryEmbedding) {
-      const pbaseURL = $secrets.get('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
-
-      const ragRes = $http.send({
-        url: pbaseURL + '/backend/v1/rag-search',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer internal-rag-token-123',
-        },
-        body: JSON.stringify({ query: queryEmbedding, userId: userId }),
-        timeout: 15,
-      })
-
-      if (ragRes.statusCode === 200 && ragRes.json) {
-        if (ragRes.json.knowledge_base) {
-          ragRes.json.knowledge_base.forEach((item) => {
-            if (item.content) {
-              contextChunks.push(`### Informação (${item.title || 'Geral'}):\n${item.content}`)
-            }
-          })
-        }
-        if (ragRes.json.cadences) {
-          ragRes.json.cadences.forEach((item) => {
-            if (item.content) {
-              contextChunks.push(
-                `### Procedimento de Venda (${item.title || 'Fluxo'}):\n${item.content}`,
-              )
-            }
-            if (item.ai_instructions) {
-              contextChunks.push(
-                `Diretriz Específica para este Procedimento:\n${item.ai_instructions}`,
-              )
-            }
-          })
-        }
-      }
+      console.warn(`[AI_REPLY] Embedding/RAG search non-fatal error: ${String(err)}`)
     }
 
     let contextText = contextChunks.join('\n\n')
@@ -417,7 +422,7 @@ onRecordAfterCreateSuccess((e) => {
         0,
       )
       historyRecords.reverse()
-    } catch (err) {}
+    } catch (_) {}
 
     let channelContext = ''
     if (receiverPhone.includes('991828050')) {
@@ -426,14 +431,17 @@ onRecordAfterCreateSuccess((e) => {
       channelContext = `\n[PERFIL DE ATENDIMENTO: GERAL]\nO cliente é um lead novo (primeiro contato).\nDIRETRIZES GERAIS:\n- Faça a qualificação inicial.\n`
     }
 
-    let crmPhaseContext = ''
-
     let propertyContext = ''
     if (userRecord) {
       try {
-        const projectDataStr = userRecord.getString('project_data') || ''
-        if (projectDataStr) {
-          const pd = JSON.parse(projectDataStr)
+        const rawPd = userRecord.get('project_data')
+        let pd = null
+        if (typeof rawPd === 'string' && rawPd.trim()) {
+          pd = JSON.parse(rawPd)
+        } else if (rawPd && typeof rawPd === 'object') {
+          pd = rawPd
+        }
+        if (pd) {
           propertyContext = '\n[DADOS DO EMPREENDIMENTO]\n'
           if (pd.name) propertyContext += 'Empreendimento: ' + pd.name + '\n'
           if (pd.neighborhood) propertyContext += 'Localização: ' + pd.neighborhood + '\n'
@@ -449,22 +457,24 @@ onRecordAfterCreateSuccess((e) => {
 
     let filesContextText = ''
     if (userRecord) {
-      const files = userRecord.get('ai_knowledge_files') || []
-      if (files.length > 0) {
-        const pbUrl = $secrets.get('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
-        files.forEach((f) => {
-          if (f.endsWith('.txt') || f.endsWith('.csv')) {
-            const fileUrl = `${pbUrl}/api/files/${userRecord.collectionId}/${userRecord.id}/${f}`
-            try {
-              const res = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
-              if (res.statusCode === 200 && res.body) {
-                const str = String.fromCharCode.apply(null, res.body)
-                filesContextText += `\n--- Arquivo: ${f} ---\n${str}\n`
-              }
-            } catch (err) {}
-          }
-        })
-      }
+      try {
+        const files = userRecord.get('ai_knowledge_files') || []
+        if (Array.isArray(files) && files.length > 0) {
+          const pbUrl = $os.getenv('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
+          files.forEach((f) => {
+            if (typeof f === 'string' && (f.endsWith('.txt') || f.endsWith('.csv'))) {
+              const fileUrl = `${pbUrl}/api/files/${userRecord.collectionId}/${userRecord.id}/${f}`
+              try {
+                const fRes = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
+                if (fRes && fRes.statusCode === 200 && fRes.body) {
+                  const str = String.fromCharCode.apply(null, fRes.body)
+                  filesContextText += `\n--- Arquivo: ${f} ---\n${str}\n`
+                }
+              } catch (_) {}
+            }
+          })
+        }
+      } catch (_) {}
     }
 
     const combinedContextText = `${contextText}\n${filesContextText}`.trim()
@@ -482,7 +492,6 @@ Instruções da IA Mãe (Base de Conhecimento Global):
 ${motherAiInstructions}
 ${clientContext}
 ${channelContext}
-${crmPhaseContext}
 ${propertyContext}
 
 DIRETRIZES RIGOROSAS E REGRAS DE NEGÓCIO (BRF IMÓVEIS):
@@ -490,8 +499,8 @@ DIRETRIZES RIGOROSAS E REGRAS DE NEGÓCIO (BRF IMÓVEIS):
 2. ALUGUEL/LOCAÇÃO: Se o cliente mencionar "aluguel", "alugar" ou "locação", responda: "Trabalhamos apenas com venda e permuta. Gostaria de ver opções para compra?".
 3. PERMUTA: Se o cliente mencionar que tem um imóvel para dar de entrada ou trocar, responda normalmente e inclua a tag [PERMUTA] no final da resposta.
 4. DESCONHECIMENTO/INCERTEZA: Se você não souber a resposta, não estiver na sua base de conhecimento, ou estiver em dúvida, NUNCA invente. Responda educadamente que vai verificar e forneça o link direto para o Mauro: "Qualquer dúvida específica, pode falar direto com o Mauro pelo link: wa.me/5548992098050". Adicione também a tag [HANDOVER: Mauro] no final da sua resposta.
-5. Responda de forma fluida, coerente e humana.
-6. Priorize EXTREMAMENTE as suas "instruções principais" acima e o "CONTEXTO RECUPERADO" abaixo.
+5. Responda de forma fluida, coerente e humana em Português.
+6. Priorize as instruções da persona e o contexto recuperado.
 7. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções".
 8. NUNCA inicie a resposta com frases sistêmicas ou analíticas. Vá direto ao ponto.
 9. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
@@ -520,7 +529,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         const msgSender = msg.getString('sender')
         if (msgSender === 'system') return
         const role = msgSender === 'ai' || msgSender === 'agent' ? 'assistant' : 'user'
-        if (msg.id !== e.record.id) {
+        if (msg.id !== incomingMsgId) {
           messages.push({ role: role, content: msg.getString('content') || '' })
         }
       })
@@ -528,8 +537,9 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
     messages.push({ role: 'user', content: customerMessage })
 
-    let responseText =
-      'Desculpe, estou com uma instabilidade no momento e não consegui gerar uma resposta.'
+    console.log(`[AI_REPLY] Calling $ai.chat (model=fast) with ${messages.length} messages...`)
+
+    let responseText = ''
     let detectedStatus = ''
     let detectedPhase = ''
     let detectedHandover = ''
@@ -540,93 +550,115 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         model: 'fast',
         messages: messages,
       })
-      if (chatRes.choices && chatRes.choices[0] && chatRes.choices[0].message) {
-        responseText = chatRes.choices[0].message.content.trim()
+      if (chatRes && chatRes.choices && chatRes.choices[0] && chatRes.choices[0].message) {
+        responseText = (chatRes.choices[0].message.content || '').trim()
+        console.log(
+          `[AI_REPLY] $ai.chat response received (len=${responseText.length}): "${responseText.substring(0, 80)}..."`,
+        )
+      } else {
+        console.warn(`[AI_REPLY] $ai.chat returned unexpected shape: ${JSON.stringify(chatRes)}`)
       }
     } catch (err) {
-      $app.logger().error('Skip AI Chat failed', 'error', String(err))
+      console.error(`[AI_REPLY] Skip AI Chat exception: ${String(err)}`)
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const aiErrLog = new Record(logsCol)
+        aiErrLog.set('user_id', userId || '')
+        aiErrLog.set('type', 'whatsapp_ai_reply_error')
+        aiErrLog.set('message', 'Erro ao chamar $ai.chat')
+        aiErrLog.set('details', String(err))
+        aiErrLog.set('payload', JSON.stringify({ customer_id: customerId, error: String(err) }))
+        $app.saveNoValidate(aiErrLog)
+      } catch (_) {}
     }
 
-    if (
-      responseText !==
-      'Desculpe, estou com uma instabilidade no momento e não consegui gerar uma resposta.'
-    ) {
-      if (motherAiInstructions) {
-        try {
-          const validationRes = $ai.chat({
-            model: 'fast',
-            messages: [
-              {
-                role: 'system',
-                content: `Você é a IA Mãe, o sistema mestre de supervisão. Avalie se a resposta gerada pela Persona Bia obedece às diretrizes globais de negócio: "${motherAiInstructions}". Responda APENAS com "APROVADO" se estiver correta e dentro das regras, ou reescreva a mensagem corrigindo os desvios e mantendo o mesmo tom original, preservando também as tags sistêmicas se houver.`,
-              },
-              { role: 'user', content: responseText },
-            ],
-          })
+    if (!responseText) {
+      responseText =
+        'Olá! Que bom ter você aqui na BRF Imóveis. Vi seu interesse e quero te ajudar a encontrar o imóvel ideal. Podemos falar sobre o que você procura?'
+      console.log(`[AI_REPLY] Using safe fallback response (len=${responseText.length})`)
+    }
 
+    // Optional Mother AI supervisor validation
+    if (motherAiInstructions && responseText.length > 0) {
+      try {
+        const validationRes = $ai.chat({
+          model: 'fast',
+          messages: [
+            {
+              role: 'system',
+              content: `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie se a resposta obedece: "${motherAiInstructions}". Responda APENAS "APROVADO" ou reescreva corrigindo no mesmo tom.`,
+            },
+            { role: 'user', content: responseText },
+          ],
+        })
+
+        if (
+          validationRes &&
+          validationRes.choices &&
+          validationRes.choices[0] &&
+          validationRes.choices[0].message
+        ) {
+          const motherFeedback = (validationRes.choices[0].message.content || '').trim()
           if (
-            validationRes.choices &&
-            validationRes.choices[0] &&
-            validationRes.choices[0].message
+            motherFeedback &&
+            motherFeedback !== 'APROVADO' &&
+            !motherFeedback.startsWith('APROVADO')
           ) {
-            const motherFeedback = validationRes.choices[0].message.content.trim()
-            if (motherFeedback !== 'APROVADO' && !motherFeedback.startsWith('APROVADO')) {
-              responseText = motherFeedback
-              $app.logger().info('IA Mãe corrigiu a resposta da Bia', 'customerId', customerId)
-            }
+            responseText = motherFeedback
+            console.log(`[AI_REPLY] Mother AI refined the response (len=${responseText.length})`)
           }
-        } catch (err) {
-          $app.logger().error('Mother AI validation failed', 'error', String(err))
         }
+      } catch (err) {
+        console.warn(`[AI_REPLY] Mother AI validation non-fatal error: ${String(err)}`)
       }
-
-      const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
-      if (statusMatch && statusMatch[1]) {
-        detectedStatus = statusMatch[1].trim()
-        responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
-      }
-
-      const phaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
-      if (phaseMatch && phaseMatch[1]) {
-        detectedPhase = phaseMatch[1].trim()
-        responseText = responseText.replace(/\[PHASE:\s*.*?\]/gi, '').trim()
-      }
-
-      const handoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
-      if (handoverMatch && handoverMatch[1]) {
-        detectedHandover = handoverMatch[1].trim()
-        responseText = responseText.replace(/\[HANDOVER:\s*.*?\]/gi, '').trim()
-      }
-
-      const profileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
-      if (profileMatch && profileMatch[1]) {
-        detectedProfile = profileMatch[1].trim()
-        responseText = responseText.replace(/\[PROFILE:\s*.*?\]/gi, '').trim()
-      }
-
-      let detectedPermuta = false
-      if (responseText.includes('[PERMUTA]')) {
-        detectedPermuta = true
-        responseText = responseText.replace(/\[PERMUTA\]/gi, '').trim()
-      }
-
-      responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
-      responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
-      responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
-
-      if (displayName) {
-        responseText = responseText.replace(/\[Nome\]/gi, displayName)
-        responseText = responseText.replace(/\{Nome\}/gi, displayName)
-      } else {
-        responseText = responseText.replace(/,\s*\[Nome\]/gi, '')
-        responseText = responseText.replace(/\[Nome\]/gi, '')
-        responseText = responseText.replace(/,\s*\{Nome\}/gi, '')
-        responseText = responseText.replace(/\{Nome\}/gi, '')
-      }
-    } else {
-      $app.logger().error('OpenAI Chat failed or skipped')
     }
 
+    // Extract business tags from response
+    const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
+    if (statusMatch && statusMatch[1]) {
+      detectedStatus = statusMatch[1].trim()
+      responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+    }
+
+    const phaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
+    if (phaseMatch && phaseMatch[1]) {
+      detectedPhase = phaseMatch[1].trim()
+      responseText = responseText.replace(/\[PHASE:\s*.*?\]/gi, '').trim()
+    }
+
+    const handoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
+    if (handoverMatch && handoverMatch[1]) {
+      detectedHandover = handoverMatch[1].trim()
+      responseText = responseText.replace(/\[HANDOVER:\s*.*?\]/gi, '').trim()
+    }
+
+    const profileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
+    if (profileMatch && profileMatch[1]) {
+      detectedProfile = profileMatch[1].trim()
+      responseText = responseText.replace(/\[PROFILE:\s*.*?\]/gi, '').trim()
+    }
+
+    let detectedPermuta = false
+    if (responseText.includes('[PERMUTA]')) {
+      detectedPermuta = true
+      responseText = responseText.replace(/\[PERMUTA\]/gi, '').trim()
+    }
+
+    responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
+    responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
+    responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
+
+    if (displayName) {
+      responseText = responseText.replace(/\[Nome\]/gi, displayName)
+      responseText = responseText.replace(/\{Nome\}/gi, displayName)
+    } else {
+      responseText = responseText.replace(/,\s*\[Nome\]/gi, '')
+      responseText = responseText.replace(/\[Nome\]/gi, '')
+      responseText = responseText.replace(/,\s*\{Nome\}/gi, '')
+      responseText = responseText.replace(/\{Nome\}/gi, '')
+    }
+
+    // Duplicate message check
     let isDuplicate = false
     try {
       const currentLastMsgs = $app.findRecordsByFilter(
@@ -639,562 +671,420 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
       if (currentLastMsgs.length > 0) {
         const lastMsg = currentLastMsgs[0]
-        if (lastMsg.id !== e.record.id) {
-          isDuplicate = true
-        }
-      }
-
-      if (!isDuplicate) {
-        const lastAiMsgs = $app.findRecordsByFilter(
-          'conversations',
-          `customer_id = '${customerId}' && sender = 'ai'`,
-          '-created',
-          1,
-          0,
-        )
-        if (lastAiMsgs.length > 0) {
-          const lastAiMsg = lastAiMsgs[0]
-          const lastContent = (lastAiMsg.getString('content') || '').trim().toLowerCase()
-          const newContent = responseText.trim().toLowerCase()
-
-          if (lastContent === newContent) {
+        if (lastMsg.id !== incomingMsgId && lastMsg.getString('sender') === 'ai') {
+          const lastContent = (lastMsg.getString('content') || '').trim().toLowerCase()
+          if (lastContent === responseText.trim().toLowerCase()) {
             isDuplicate = true
           }
         }
       }
-    } catch (err) {}
+    } catch (_) {}
 
-    if (!isDuplicate) {
-      let sendAudio = false
-      let sendVideo = false
+    if (isDuplicate) {
+      console.log(
+        `[AI_REPLY] Duplicate response detected for customer ${customerId}, skipping send.`,
+      )
+      return e.next()
+    }
 
-      if (responseText.includes('[AUDIO]')) {
-        sendAudio = true
-        responseText = responseText.replace(/\[AUDIO\]/gi, '').trim()
-      }
-      if (responseText.includes('[VIDEO]')) {
-        sendVideo = true
-        responseText = responseText.replace(/\[VIDEO\]/gi, '').trim()
-      }
+    let sendAudio = false
+    let sendVideo = false
+    if (responseText.includes('[AUDIO]')) {
+      sendAudio = true
+      responseText = responseText.replace(/\[AUDIO\]/gi, '').trim()
+    }
+    if (responseText.includes('[VIDEO]')) {
+      sendVideo = true
+      responseText = responseText.replace(/\[VIDEO\]/gi, '').trim()
+    }
 
+    // Save reply to conversations table
+    try {
       const reply = new Record($app.findCollectionByNameOrId('conversations'))
-      reply.set('user_id', userId)
+      reply.set('user_id', userId || '')
       reply.set('customer_id', customerId)
       reply.set('sender', 'ai')
       reply.set('content', responseText)
       reply.set('channel', conversationChannel)
-
       $app.save(reply)
+      console.log(`[AI_REPLY] Saved AI conversation record for customer=${customerId}`)
+    } catch (saveConvErr) {
+      console.error(`[AI_REPLY] Failed to save conversation record: ${String(saveConvErr)}`)
+    }
+
+    // Update customer CRM status / stage
+    try {
+      const custToUpdate = $app.findRecordById('customers', customerId)
+      const custStatusLower = (custToUpdate.getString('status') || '').toLowerCase()
+
+      let targetStatus = ''
+      const validStatuses = [
+        'Captura + Identificação',
+        'Validação no CRM',
+        'Contato Personalizado',
+        'Mapeamento de Perfil',
+        'Nutrição Automática',
+        'Agendamento de Visita',
+        'Pré-Visita',
+        'Pós-Visita',
+        'Proposta e Negociação',
+        'Fechamento e Pós-Venda',
+        'Novo',
+        'lead',
+        'contact',
+        'Qualificação',
+        'Engajamento',
+        'Demo Realiz.',
+        'Visita',
+        'Proposta',
+        'Fechamento',
+        'closed',
+      ]
+
+      if (detectedStatus && validStatuses.includes(detectedStatus)) {
+        targetStatus = detectedStatus
+      } else if (
+        custStatusLower === 'novo' ||
+        custStatusLower === 'lead novo' ||
+        custStatusLower === 'base de clientes/novo lyd' ||
+        custStatusLower === ''
+      ) {
+        targetStatus = 'Captura + Identificação'
+      }
+
+      let crmUpdated = false
+      if (targetStatus && targetStatus !== custStatusLower) {
+        custToUpdate.set('status', targetStatus)
+        crmUpdated = true
+      }
+
+      const validPhases = ['Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento']
+      let targetPhase = ''
+      if (detectedPhase && validPhases.includes(detectedPhase)) {
+        targetPhase = detectedPhase
+      } else if (targetStatus === 'Fechamento') {
+        targetPhase = 'Fechamento'
+      }
+
+      if (targetPhase && custToUpdate.getString('phase') !== targetPhase) {
+        custToUpdate.set('phase', targetPhase)
+        crmUpdated = true
+      }
+
+      if (detectedPermuta) {
+        const currentNotes = custToUpdate.getString('notes') || ''
+        if (!currentNotes.includes('[INTERESSE EM PERMUTA]')) {
+          custToUpdate.set('notes', `[INTERESSE EM PERMUTA] ${currentNotes}`.trim())
+          crmUpdated = true
+          detectedHandover = detectedHandover || 'Mauro'
+        }
+      }
+
+      if (detectedProfile) {
+        const validProfiles = ['Investidor', 'Morador', 'Primeiro Imóvel', 'Veranista']
+        if (validProfiles.includes(detectedProfile)) {
+          custToUpdate.set('lead_profile', detectedProfile)
+          crmUpdated = true
+        }
+      }
+
+      if (detectedHandover) {
+        let custTags = custToUpdate.get('tags')
+        if (!Array.isArray(custTags)) custTags = []
+        if (!custTags.includes('ai_paused')) {
+          custTags.push('ai_paused')
+          custToUpdate.set('tags', custTags)
+          crmUpdated = true
+        }
+      }
+
+      if (crmUpdated) {
+        $app.save(custToUpdate)
+        console.log(
+          `[AI_REPLY] CRM updated for customer=${customerId} (status=${targetStatus || 'unchanged'})`,
+        )
+      }
+    } catch (crmErr) {
+      console.warn(`[AI_REPLY] CRM status update non-fatal error: ${String(crmErr)}`)
+    }
+
+    // Resolve WhatsApp Meta credentials
+    let metaToken = userRecord ? userRecord.getString('meta_whatsapp_access_token') : ''
+    let metaPhoneId = userRecord ? userRecord.getString('meta_whatsapp_phone_number_id') : ''
+
+    if (!metaToken || !metaPhoneId) {
+      try {
+        const usersWithMeta = $app.findRecordsByFilter(
+          'users',
+          "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+          '-created',
+          1,
+          0,
+        )
+        if (usersWithMeta.length > 0) {
+          metaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
+          metaPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
+        }
+      } catch (_) {}
+    }
+
+    let cleanPhone = customerPhone.replace(/\D/g, '')
+    if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+      cleanPhone = '55' + cleanPhone
+    }
+
+    // Send WhatsApp reply via Meta Cloud API v21.0
+    if ((conversationChannel === 'whatsapp' || !conversationChannel) && metaToken && metaPhoneId) {
+      console.log(
+        `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
+      )
+
+      const sendRes = callMetaWithRetry(
+        `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+        'POST',
+        { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+        JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: cleanPhone,
+          type: 'text',
+          text: { body: responseText },
+        }),
+      )
+
+      const isOk = sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300
+      console.log(
+        `[AI_REPLY] Meta WhatsApp send result: status=${sendRes ? sendRes.statusCode : 'none'} ok=${isOk}`,
+      )
 
       try {
-        const custToUpdate = $app.findRecordById('customers', customerId)
-        const custStatusLower = (custToUpdate.getString('status') || '').toLowerCase()
-
-        let targetStatus = ''
-        const validStatuses = [
-          'Captura + Identificação',
-          'Validação no CRM',
-          'Contato Personalizado',
-          'Mapeamento de Perfil',
-          'Nutrição Automática',
-          'Agendamento de Visita',
-          'Pré-Visita',
-          'Pós-Visita',
-          'Proposta e Negociação',
-          'Fechamento e Pós-Venda',
-          'Novo',
-          'lead',
-          'contact',
-          'Qualificação',
-          'Engajamento',
-          'Demo Realiz.',
-          'Visita',
-          'Proposta',
-          'Fechamento',
-          'closed',
-        ]
-
-        if (detectedStatus && validStatuses.includes(detectedStatus)) {
-          targetStatus = detectedStatus
-        } else if (
-          custStatusLower === 'novo' ||
-          custStatusLower === 'lead novo' ||
-          custStatusLower === 'base de clientes/novo lyd' ||
-          custStatusLower === ''
-        ) {
-          targetStatus = 'Captura + Identificação'
-        }
-
-        let crmUpdated = false
-        if (targetStatus && targetStatus !== custStatusLower) {
-          custToUpdate.set('status', targetStatus)
-          crmUpdated = true
-        }
-
-        const validPhases = ['Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento']
-        let targetPhase = ''
-        if (detectedPhase && validPhases.includes(detectedPhase)) {
-          targetPhase = detectedPhase
-        } else if (targetStatus === 'Fechamento') {
-          targetPhase = 'Fechamento'
-        }
-
-        if (targetPhase && custToUpdate.getString('phase') !== targetPhase) {
-          custToUpdate.set('phase', targetPhase)
-          crmUpdated = true
-        }
-
-        if (detectedPermuta) {
-          const currentNotes = custToUpdate.getString('notes') || ''
-          if (!currentNotes.includes('[INTERESSE EM PERMUTA]')) {
-            custToUpdate.set('notes', `[INTERESSE EM PERMUTA] ${currentNotes}`.trim())
-            crmUpdated = true
-            detectedHandover = detectedHandover || 'Mauro'
-          }
-        }
-
-        if (detectedProfile) {
-          const validProfiles = ['Investidor', 'Morador', 'Primeiro Imóvel', 'Veranista']
-          if (validProfiles.includes(detectedProfile)) {
-            custToUpdate.set('lead_profile', detectedProfile)
-            crmUpdated = true
-          }
-        }
-
-        if (detectedHandover) {
-          let tags = custToUpdate.get('tags')
-          if (!Array.isArray(tags)) tags = []
-          if (!tags.includes('ai_paused')) {
-            tags.push('ai_paused')
-            custToUpdate.set('tags', tags)
-            crmUpdated = true
-          }
-        }
-
-        if (crmUpdated) {
-          $app.save(custToUpdate)
-
-          if (targetStatus === 'Qualificação') {
-            const slackWebhook = $secrets.get('SLACK_WEBHOOK_URL')
-            if (slackWebhook) {
-              try {
-                $http.send({
-                  url: slackWebhook,
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    text: `🚀 *Novo Lead Qualificado!*\n*Nome:* ${custToUpdate.getString('name')}\n*Telefone:* ${custToUpdate.getString('phone')}`,
-                    channel: '#leads-sc',
-                  }),
-                  timeout: 10,
-                })
-              } catch (err) {}
-            }
-          }
-        }
-      } catch (err) {
-        $app.logger().error('Failed to update customer status', 'error', String(err))
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRec = new Record(logsCol)
+        logRec.set('user_id', userId || '')
+        logRec.set('type', 'whatsapp_ai_send')
+        logRec.set(
+          'message',
+          isOk
+            ? `Resposta da IA enviada com sucesso para ${cleanPhone}`
+            : `Falha ao enviar resposta da IA para ${cleanPhone} (status=${sendRes ? sendRes.statusCode : 'none'})`,
+        )
+        logRec.set(
+          'details',
+          JSON.stringify({
+            statusCode: sendRes ? sendRes.statusCode : 0,
+            response: sendRes ? sendRes.json || sendRes.body : null,
+            phone_id: metaPhoneId,
+            to: cleanPhone,
+          }),
+        )
+        logRec.set(
+          'payload',
+          JSON.stringify({
+            preview: responseText.substring(0, 100),
+            customer_id: customerId,
+          }),
+        )
+        $app.saveNoValidate(logRec)
+      } catch (logErr) {
+        console.warn(`[AI_REPLY] Failed to log whatsapp_ai_send: ${String(logErr)}`)
       }
 
-      let metaToken = userRecord ? userRecord.getString('meta_whatsapp_access_token') : ''
-      let metaPhoneId = userRecord ? userRecord.getString('meta_whatsapp_phone_number_id') : ''
-      let metaAppSecret = userRecord ? userRecord.getString('meta_app_secret') : ''
-
-      if (!metaToken || !metaPhoneId) {
-        try {
-          const usersWithMeta = $app.findRecordsByFilter(
-            'users',
-            "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
-            '-created',
-            1,
-            0,
-          )
-          if (usersWithMeta.length > 0) {
-            metaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
-            metaPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
-            metaAppSecret = usersWithMeta[0].getString('meta_app_secret')
-          }
-        } catch (e) {}
-      }
-
-      let cleanPhone = customerPhone.replace(/\D/g, '')
-      if (cleanPhone.length === 10 || cleanPhone.length === 11) {
-        cleanPhone = '55' + cleanPhone
-      }
-
-      if (
-        (conversationChannel === 'whatsapp' || !conversationChannel) &&
-        metaToken &&
-        metaPhoneId
-      ) {
-        if (responseText) {
-          $app
-            .logger()
-            .info(
-              'Sending WhatsApp reply to Meta Cloud API',
-              'phone',
-              cleanPhone,
-              'phone_id',
-              metaPhoneId,
+      // Audio (optional)
+      if (sendAudio) {
+        const openAiKey = $os.getenv('OPENAI_API_KEY')
+        if (openAiKey) {
+          try {
+            const ttsRes = callMetaWithRetry(
+              'https://api.openai.com/v1/audio/speech',
+              'POST',
+              { Authorization: `Bearer ${openAiKey}`, 'Content-Type': 'application/json' },
+              JSON.stringify({
+                model: 'tts-1',
+                input: responseText || 'Olá',
+                voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
+              }),
             )
-          const sendRes = callMetaWithRetry(
+
+            if (ttsRes && ttsRes.statusCode === 200 && ttsRes.body) {
+              const boundary = '----Boundary' + $security.randomString(16)
+              const headerStr = `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n`
+              const footerStr = `\r\n--${boundary}--\r\n`
+
+              const headerBytes = new Uint8Array(headerStr.length)
+              for (let i = 0; i < headerStr.length; i++) headerBytes[i] = headerStr.charCodeAt(i)
+              const footerBytes = new Uint8Array(footerStr.length)
+              for (let i = 0; i < footerStr.length; i++) footerBytes[i] = footerStr.charCodeAt(i)
+
+              const bodyBytes = new Uint8Array(
+                headerBytes.length + ttsRes.body.length + footerBytes.length,
+              )
+              bodyBytes.set(headerBytes, 0)
+              bodyBytes.set(ttsRes.body, headerBytes.length)
+              bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
+
+              const mediaRes = callMetaWithRetry(
+                `https://graph.facebook.com/v21.0/${metaPhoneId}/media`,
+                'POST',
+                {
+                  Authorization: `Bearer ${metaToken}`,
+                  'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                },
+                bodyBytes.buffer,
+              )
+
+              if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json?.id) {
+                callMetaWithRetry(
+                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                  'POST',
+                  { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                  JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: cleanPhone,
+                    type: 'audio',
+                    audio: { id: mediaRes.json.id },
+                  }),
+                )
+              }
+            }
+          } catch (audioErr) {
+            console.warn(`[AI_REPLY] Audio TTS/Upload failed (non-fatal): ${String(audioErr)}`)
+          }
+        }
+      }
+    } else if (conversationChannel === 'whatsapp' && (!metaToken || !metaPhoneId)) {
+      console.warn(
+        `[AI_REPLY] WhatsApp send skipped: missing metaToken or metaPhoneId (token=${!!metaToken}, phoneId=${metaPhoneId})`,
+      )
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const warnLog = new Record(logsCol)
+        warnLog.set('user_id', userId || '')
+        warnLog.set('type', 'whatsapp_ai_reply_error')
+        warnLog.set('message', 'Credenciais Meta WhatsApp ausentes no usuário')
+        warnLog.set('details', `metaToken=${!!metaToken}, metaPhoneId=${metaPhoneId}`)
+        $app.saveNoValidate(warnLog)
+      } catch (_) {}
+    }
+
+    // Messenger channel
+    if (conversationChannel === 'messenger' && responseText) {
+      try {
+        const messengerNotes = customer.getString('notes') || ''
+        const psidMatch = messengerNotes.match(/Messenger PSID:\s*(\S+)/)
+        const psid = psidMatch ? psidMatch[1] : ''
+        const pageToken = userRecord
+          ? userRecord.getString('meta_page_access_token') ||
+            userRecord.getString('meta_instagram_page_token') ||
+            ''
+          : ''
+        if (psid && pageToken) {
+          callMetaWithRetry(
+            'https://graph.facebook.com/v22.0/me/messages',
+            'POST',
+            { Authorization: 'Bearer ' + pageToken, 'Content-Type': 'application/json' },
+            JSON.stringify({ recipient: { id: psid }, message: { text: responseText } }),
+          )
+        }
+      } catch (mErr) {
+        console.warn(`[AI_REPLY] Messenger send error (non-fatal): ${String(mErr)}`)
+      }
+    }
+
+    // Instagram channel
+    if (conversationChannel === 'instagram' && responseText) {
+      try {
+        const igNotes = customer.getString('notes') || ''
+        const igSenderIdMatch = igNotes.match(/IG Sender ID:\s*(\S+)/)
+        const igSenderId = igSenderIdMatch ? igSenderIdMatch[1] : ''
+        const igToken = userRecord
+          ? userRecord.getString('meta_instagram_page_token') ||
+            userRecord.getString('meta_capi_token') ||
+            ''
+          : ''
+        const igBusinessId = userRecord
+          ? userRecord.getString('meta_instagram_business_id') || ''
+          : ''
+        if (igSenderId && igToken) {
+          callMetaWithRetry(
+            'https://graph.facebook.com/v22.0/' + (igBusinessId || 'me') + '/messages',
+            'POST',
+            { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
+            JSON.stringify({ recipient: { id: igSenderId }, message: { text: responseText } }),
+          )
+        }
+      } catch (igErr) {
+        console.warn(`[AI_REPLY] Instagram send error (non-fatal): ${String(igErr)}`)
+      }
+    }
+
+    // Handover notification
+    if (detectedHandover) {
+      try {
+        const summaryText = `*🚨 Transbordo de Lead 🚨*\n*Lead:* ${customer.getString('name')} (${customer.getString('phone')})\n*Destino:* ${detectedHandover}\n*Mensagem:* ${responseText.substring(0, 120)}`
+        const agentPhone = detectedHandover.toLowerCase().includes('mauro')
+          ? '554899728050'
+          : '5548991958012'
+
+        if (metaToken && metaPhoneId) {
+          callMetaWithRetry(
             `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
             'POST',
             { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
             JSON.stringify({
               messaging_product: 'whatsapp',
-              to: cleanPhone,
+              to: agentPhone,
               type: 'text',
-              text: { body: responseText },
+              text: { body: summaryText },
             }),
           )
-
-          try {
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const logRec = new Record(logsCol)
-            logRec.set('user_id', userId || '')
-            logRec.set('type', 'whatsapp_ai_send')
-            const isOk = sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300
-            logRec.set(
-              'message',
-              isOk
-                ? `Resposta da IA enviada com sucesso para ${cleanPhone}`
-                : `Falha ao enviar resposta da IA para ${cleanPhone}`,
-            )
-            logRec.set('level', isOk ? 'info' : 'error')
-            logRec.set(
-              'details',
-              JSON.stringify({
-                statusCode: sendRes ? sendRes.statusCode : 0,
-                response: sendRes ? sendRes.json : sendRes ? sendRes.body : null,
-                phone_id: metaPhoneId,
-                to: cleanPhone,
-              }),
-            )
-            logRec.set(
-              'payload',
-              JSON.stringify({
-                preview: responseText.substring(0, 100),
-                customer_id: customerId,
-              }),
-            )
-            $app.saveNoValidate(logRec)
-          } catch (_) {}
         }
-
-        if (sendAudio) {
-          const openAiKey = $secrets.get('OPENAI_API_KEY')
-          if (openAiKey) {
-            try {
-              const ttsRes = callMetaWithRetry(
-                'https://api.openai.com/v1/audio/speech',
-                'POST',
-                { Authorization: `Bearer ${openAiKey}`, 'Content-Type': 'application/json' },
-                JSON.stringify({
-                  model: 'tts-1',
-                  input: responseText || 'Olá',
-                  voice: userRecord?.getString('ai_voice_id') || 'nova',
-                }),
-              )
-
-              if (ttsRes && ttsRes.statusCode === 200 && ttsRes.body) {
-                const boundary = '----Boundary' + $security.randomString(16)
-                const headerStr = `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n`
-                const footerStr = `\r\n--${boundary}--\r\n`
-
-                const headerBytes = new Uint8Array(headerStr.length)
-                for (let i = 0; i < headerStr.length; i++) headerBytes[i] = headerStr.charCodeAt(i)
-                const footerBytes = new Uint8Array(footerStr.length)
-                for (let i = 0; i < footerStr.length; i++) footerBytes[i] = footerStr.charCodeAt(i)
-
-                const bodyBytes = new Uint8Array(
-                  headerBytes.length + ttsRes.body.length + footerBytes.length,
-                )
-                bodyBytes.set(headerBytes, 0)
-                bodyBytes.set(ttsRes.body, headerBytes.length)
-                bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
-
-                const mediaRes = callMetaWithRetry(
-                  `https://graph.facebook.com/v21.0/${metaPhoneId}/media`,
-                  'POST',
-                  {
-                    Authorization: `Bearer ${metaToken}`,
-                    'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                  },
-                  bodyBytes.buffer,
-                )
-
-                if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json?.id) {
-                  callMetaWithRetry(
-                    `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
-                    'POST',
-                    { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-                    JSON.stringify({
-                      messaging_product: 'whatsapp',
-                      to: cleanPhone,
-                      type: 'audio',
-                      audio: { id: mediaRes.json.id },
-                    }),
-                  )
-                }
-              }
-            } catch (err) {
-              $app.logger().error('Audio TTS/Upload failed', 'error', String(err))
-            }
-          }
-        }
-
-        if (sendVideo) {
-          try {
-            const avatarRes = $http.send({
-              url: 'https://api.heygen.com/v1/video.generate',
-              method: 'POST',
-              headers: { Authorization: `Bearer MOCK`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: responseText, avatar_id: 'bia_default' }),
-              timeout: 5,
-            })
-            const videoUrl = 'https://www.w3schools.com/html/mov_bbb.mp4'
-
-            callMetaWithRetry(
-              `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
-              'POST',
-              { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-              JSON.stringify({
-                messaging_product: 'whatsapp',
-                to: cleanPhone,
-                type: 'video',
-                video: { link: videoUrl, caption: 'Assista a esta apresentação!' },
-              }),
-            )
-          } catch (err) {
-            $app.logger().error('Audio TTS/Upload failed', 'error', String(err))
-          }
-        }
-      }
-      if (conversationChannel === 'messenger' && responseText) {
-        try {
-          const messengerNotes = customer.getString('notes') || ''
-          const psidMatch = messengerNotes.match(/Messenger PSID:\s*(\S+)/)
-          const psid = psidMatch ? psidMatch[1] : ''
-          const pageToken = userRecord
-            ? userRecord.getString('meta_page_access_token') ||
-              userRecord.getString('meta_instagram_page_token') ||
-              ''
-            : ''
-          if (psid && pageToken) {
-            callMetaWithRetry(
-              'https://graph.facebook.com/v22.0/me/messages',
-              'POST',
-              { Authorization: 'Bearer ' + pageToken, 'Content-Type': 'application/json' },
-              JSON.stringify({ recipient: { id: psid }, message: { text: responseText } }),
-            )
-          } else {
-            try {
-              const logsCol = $app.findCollectionByNameOrId('system_logs')
-              const warnLog = new Record(logsCol)
-              warnLog.set('user_id', userId)
-              warnLog.set('type', 'ai_reply_error')
-              warnLog.set('message', 'Messenger send skipped: missing PSID or page token')
-              warnLog.set(
-                'payload',
-                JSON.stringify({ conversationId: customerId, channel: 'messenger' }),
-              )
-              $app.saveNoValidate(warnLog)
-            } catch (_) {}
-          }
-        } catch (mErr) {
-          try {
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const errLog = new Record(logsCol)
-            errLog.set('user_id', userId)
-            errLog.set('type', 'ai_reply_error')
-            errLog.set('message', 'Falha ao enviar resposta via Messenger API')
-            errLog.set('details', String(mErr))
-            errLog.set(
-              'payload',
-              JSON.stringify({ conversationId: customerId, channel: 'messenger' }),
-            )
-            $app.saveNoValidate(errLog)
-          } catch (_) {}
-        }
-      }
-
-      if (conversationChannel === 'instagram' && responseText) {
-        try {
-          const igNotes = customer.getString('notes') || ''
-          const igSenderIdMatch = igNotes.match(/IG Sender ID:\s*(\S+)/)
-          const igSenderId = igSenderIdMatch ? igSenderIdMatch[1] : ''
-          const igToken = userRecord
-            ? userRecord.getString('meta_instagram_page_token') ||
-              userRecord.getString('meta_capi_token') ||
-              ''
-            : ''
-          const igBusinessId = userRecord
-            ? userRecord.getString('meta_instagram_business_id') || ''
-            : ''
-          if (igSenderId && igToken) {
-            callMetaWithRetry(
-              'https://graph.facebook.com/v22.0/' + (igBusinessId || 'me') + '/messages',
-              'POST',
-              { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
-              JSON.stringify({ recipient: { id: igSenderId }, message: { text: responseText } }),
-            )
-          } else {
-            try {
-              const logsCol = $app.findCollectionByNameOrId('system_logs')
-              const warnLog = new Record(logsCol)
-              warnLog.set('user_id', userId)
-              warnLog.set('type', 'ai_reply_error')
-              warnLog.set('message', 'Instagram send skipped: missing sender ID or token')
-              warnLog.set(
-                'payload',
-                JSON.stringify({ conversationId: customerId, channel: 'instagram' }),
-              )
-              $app.saveNoValidate(warnLog)
-            } catch (_) {}
-          }
-        } catch (igErr) {
-          try {
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const errLog = new Record(logsCol)
-            errLog.set('user_id', userId)
-            errLog.set('type', 'ai_reply_error')
-            errLog.set('message', 'Falha ao enviar resposta via Instagram API')
-            errLog.set('details', String(igErr))
-            errLog.set(
-              'payload',
-              JSON.stringify({ conversationId: customerId, channel: 'instagram' }),
-            )
-            $app.saveNoValidate(errLog)
-          } catch (_) {}
-        }
-      }
-
-      if (
-        conversationChannel !== 'messenger' &&
-        conversationChannel !== 'instagram' &&
-        conversationChannel !== 'whatsapp'
-      ) {
-        try {
-          const customerNotes = customer.getString('notes') || ''
-          if (customerNotes.includes('IG Sender ID:') && responseText) {
-            const senderMatch = customerNotes.match(/IG Sender ID:\s*(\S+)/)
-            const recipientMatch = customerNotes.match(/IG Recipient ID:\s*(\S+)/)
-            if (senderMatch && recipientMatch && recipientMatch[1]) {
-              const igSenderId = senderMatch[1]
-              const igRecipientId = recipientMatch[1]
-              const igToken = userRecord ? userRecord.getString('meta_capi_token') : ''
-              if (igToken) {
-                try {
-                  $http.send({
-                    url: 'https://graph.facebook.com/v21.0/' + igRecipientId + '/messages',
-                    method: 'POST',
-                    headers: {
-                      Authorization: 'Bearer ' + igToken,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      recipient: { id: igSenderId },
-                      message: { text: responseText },
-                    }),
-                    timeout: 20,
-                  })
-                } catch (igErr) {
-                  try {
-                    const logsCol = $app.findCollectionByNameOrId('system_logs')
-                    const igLog = new Record(logsCol)
-                    igLog.set('user_id', userId)
-                    igLog.set('type', 'instagram_send_error')
-                    igLog.set('message', 'Falha ao enviar resposta via Instagram Messaging API')
-                    igLog.set('details', String(igErr))
-                    $app.saveNoValidate(igLog)
-                  } catch (_) {}
-                }
-              }
-            }
-          }
-        } catch (_) {}
-      }
-
-      if (detectedHandover) {
-        let summary = 'A IA transferiu este lead para o atendimento humano.'
-        try {
-          const summaryRes = $ai.chat({
-            model: 'fast',
-            messages: [
-              {
-                role: 'system',
-                content:
-                  'Resuma em poucas palavras o interesse ou objeção deste cliente com base nas últimas mensagens da conversa de vendas. Max 3 linhas.',
-              },
-              ...messages.slice(-6),
-            ],
-          })
-          if (summaryRes.choices && summaryRes.choices[0] && summaryRes.choices[0].message) {
-            summary = summaryRes.choices[0].message.content.trim()
-          }
-        } catch (e) {}
-
-        try {
-          const customerRec = $app.findRecordById('customers', customerId)
-          const summaryText = `*🚨 Transbordo de Lead 🚨*\n*Lead:* ${customerRec.getString('name')} (${customerRec.getString('phone')})\n*Destino:* ${detectedHandover}\n*Resumo da Conversa:*\n${summary}`
-          const agentPhone = detectedHandover.toLowerCase().includes('mauro')
-            ? '5548999728050'
-            : '5548991958012'
-
-          const slackWebhook = $secrets.get('SLACK_WEBHOOK_URL')
-          if (slackWebhook) {
-            try {
-              $http.send({
-                url: slackWebhook,
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: summaryText, channel: '#leads-sc' }),
-                timeout: 10,
-              })
-            } catch (e) {}
-          }
-
-          if (metaToken && metaPhoneId) {
-            callMetaWithRetry(
-              `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
-              'POST',
-              { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-              JSON.stringify({
-                messaging_product: 'whatsapp',
-                to: agentPhone,
-                type: 'text',
-                text: { body: summaryText },
-              }),
-            )
-          }
-        } catch (e) {}
+      } catch (handoverErr) {
+        console.warn(`[AI_REPLY] Handover notification error (non-fatal): ${String(handoverErr)}`)
       }
     }
+
+    console.log(`[AI_REPLY] Completed processing for customer=${customerId}`)
   } catch (err) {
-    $app.logger().error('AI Auto Reply Error', 'error', String(err))
+    console.error(`[AI_REPLY] Top-level error for customer ${customerId}: ${String(err)}`)
+    try {
+      const logsCol = $app.findCollectionByNameOrId('system_logs')
+      const errLog = new Record(logsCol)
+      errLog.set('user_id', userId || '')
+      errLog.set('type', 'whatsapp_ai_reply_error')
+      errLog.set(
+        'message',
+        `Erro geral no processamento de resposta da IA: ${err.message || String(err)}`,
+      )
+      errLog.set('details', String(err.stack || err))
+      errLog.set('payload', JSON.stringify({ customer_id: customerId, error: String(err) }))
+      $app.saveNoValidate(errLog)
+    } catch (_) {}
   } finally {
     if (acquiredLock) {
       try {
         $app.runInTransaction((txApp) => {
-          const customer = txApp.findRecordById('customers', customerId)
-          let rawTags = customer.get('tags')
-          let tags = []
+          const cust = txApp.findRecordById('customers', customerId)
+          let rawTags = cust.get('tags')
+          let currentTags = []
           if (Array.isArray(rawTags)) {
-            tags = rawTags.filter((t) => typeof t === 'string')
+            currentTags = rawTags.filter((t) => typeof t === 'string')
           }
-          const hasLockTag = tags.some(
+          const hasLockTag = currentTags.some(
             (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
           )
           if (hasLockTag) {
-            customer.set(
+            cust.set(
               'tags',
-              tags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
+              currentTags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
             )
-            txApp.save(customer)
+            txApp.save(cust)
+            console.log(`[AI_REPLY] Lock released cleanly for customer=${customerId}`)
           }
         })
-      } catch (err) {}
+      } catch (cleanLockErr) {
+        console.error(
+          `[AI_REPLY] Error releasing lock for customer ${customerId}: ${String(cleanLockErr)}`,
+        )
+      }
     }
   }
 
