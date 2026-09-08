@@ -33,6 +33,8 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
   }
 
   const wabaId = userRecord.getString('meta_whatsapp_business_id') || '1727871165105009'
+  const appId = userRecord.getString('meta_app_id') || '2442476629610638'
+  const appSecret = userRecord.getString('meta_app_secret') || 'd085b85d8d534c682f60b6bde8043610'
 
   try {
     // 1. Consultar campos detalhados do número de telefone
@@ -56,21 +58,7 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
       timeout: 15,
     })
 
-    // 2. Tentar consultar também registration_status separadamente se suportado pela versão
-    let regStatusRes = null
-    try {
-      const rReg = $http.send({
-        url: 'https://graph.facebook.com/v21.0/' + phoneNumberId + '?fields=registration_status',
-        method: 'GET',
-        headers: { Authorization: 'Bearer ' + accessToken },
-        timeout: 10,
-      })
-      if (rReg.statusCode >= 200 && rReg.statusCode < 300) {
-        regStatusRes = rReg.json
-      }
-    } catch (_) {}
-
-    // 3. Consultar status da WABA se wabaId disponível
+    // 2. Consultar status da WABA se wabaId disponível
     let wabaData = null
     if (wabaId) {
       try {
@@ -93,7 +81,7 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
       }
     }
 
-    // 4. Consultar apps inscritos na WABA
+    // 3. Consultar apps inscritos na WABA
     let subscribedAppsData = null
     if (wabaId) {
       try {
@@ -115,15 +103,39 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
       }
     }
 
+    // 4. Debug token se necessário
+    let debugTokenData = null
+    const appAccessToken = appId + '|' + appSecret
+    try {
+      const dRes = $http.send({
+        url:
+          'https://graph.facebook.com/debug_token?input_token=' +
+          encodeURIComponent(accessToken) +
+          '&access_token=' +
+          encodeURIComponent(appAccessToken),
+        method: 'GET',
+        timeout: 10,
+      })
+      debugTokenData = dRes.json || dRes.statusCode
+    } catch (dErr) {
+      debugTokenData = { error: dErr.message || String(dErr) }
+    }
+
     if (res.statusCode >= 200 && res.statusCode < 300) {
       const phoneData = res.json || {}
-      if (regStatusRes && regStatusRes.registration_status) {
-        phoneData.registration_status = regStatusRes.registration_status
-      }
 
       const isVerified = phoneData.code_verification_status === 'VERIFIED'
       const isConnected = phoneData.status === 'CONNECTED'
       const isRegistered = isConnected && isVerified
+
+      // Atualiza usuário se conectado
+      try {
+        if (isConnected) {
+          userRecord.set('meta_whatsapp_status', phoneData.display_phone_number || 'connected')
+          userRecord.set('meta_token_status', 'active')
+          $app.saveNoValidate(userRecord)
+        }
+      } catch (_) {}
 
       // Grava no system_logs para histórico
       try {
@@ -146,6 +158,7 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
             phone: phoneData,
             waba: wabaData,
             subscribed_apps: subscribedAppsData,
+            debug_token: debugTokenData,
           }),
         )
         $app.save(log)
@@ -158,6 +171,7 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
         data: phoneData,
         waba: wabaData,
         subscribed_apps: subscribedAppsData,
+        debug_token: debugTokenData,
         is_registered: isRegistered,
         status: phoneData.status || 'UNKNOWN',
         code_verification_status: phoneData.code_verification_status || 'UNKNOWN',
@@ -183,6 +197,32 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
       metaError.code === 190 ||
       (metaError.message && metaError.message.indexOf('Session has expired') !== -1)
 
+    // Grava erro no system_logs
+    try {
+      const col = $app.findCollectionByNameOrId('system_logs')
+      const log = new Record(col)
+      log.set('type', 'whatsapp_diagnostic')
+      log.set(
+        'message',
+        'Diagnostic FAILED: status_code=' +
+          res.statusCode +
+          ' code=' +
+          (metaError.code || 0) +
+          ' msg=' +
+          (metaError.message || 'HTTP ' + res.statusCode),
+      )
+      log.set('user_id', userRecord.id)
+      log.set(
+        'details',
+        JSON.stringify({
+          phone_error: metaError,
+          status_code: res.statusCode,
+          debug_token: debugTokenData,
+        }),
+      )
+      $app.save(log)
+    } catch (_) {}
+
     return e.json(200, {
       success: false,
       error: metaError.message || 'HTTP ' + res.statusCode,
@@ -191,6 +231,7 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
       error_subcode: metaError.error_subcode || 0,
       is_token_expired: isTokenExpired,
       meta_error: metaError,
+      debug_token: debugTokenData,
     })
   } catch (err) {
     return e.json(200, {
