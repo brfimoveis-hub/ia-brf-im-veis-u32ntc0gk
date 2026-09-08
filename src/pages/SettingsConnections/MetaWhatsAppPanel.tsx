@@ -290,9 +290,11 @@ export function MetaWhatsAppPanel() {
               }
             >
               {isActive ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <AlertTitle className="text-green-700">Conectado ✅</AlertTitle>
+                <div key="status-active-content" className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    <AlertTitle className="text-green-700 mb-0">Conectado ✅</AlertTitle>
+                  </div>
                   <AlertDescription className="text-green-700">
                     {formattedNumber ? (
                       <div className="flex items-center gap-2 flex-wrap">
@@ -302,71 +304,210 @@ export function MetaWhatsAppPanel() {
                         </Badge>
                       </div>
                     ) : (
-                      <span className="text-sm">
+                      <p className="text-sm">
                         Conexão OK — WhatsApp Cloud API ativa e funcionando.
-                      </span>
+                      </p>
                     )}
-                    {lastTestAt && (
+                    {lastTestAt ? (
                       <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
                         <Clock className="h-3 w-3" />
-                        Último teste bem-sucedido: {new Date(lastTestAt).toLocaleString('pt-BR')}
+                        <span>
+                          Último teste bem-sucedido: {new Date(lastTestAt).toLocaleString('pt-BR')}
+                        </span>
                       </div>
-                    )}
+                    ) : null}
                   </AlertDescription>
-                </>
+                </div>
               ) : isPending ? (
-                <>
-                  <AlertCircle className="h-4 w-4 text-amber-600" />
-                  <AlertTitle className="text-amber-700">
-                    Pendente de Registro na Cloud API ⚠️
-                  </AlertTitle>
+                <div key="status-pending-content" className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <AlertTitle className="text-amber-700 mb-0">
+                      Pendente de Registro na Cloud API ⚠️
+                    </AlertTitle>
+                  </div>
                   <AlertDescription className="text-amber-700 space-y-2">
                     <p className="text-sm">
-                      O token de Usuário do Sistema é válido e o app está inscrito na WABA, porém o
-                      número <strong>{formattedNumber || '+55 48 9209-8050'}</strong> está com
-                      status{' '}
+                      <span>
+                        O token de Usuário do Sistema é válido e o app está inscrito na WABA, porém
+                        o número{' '}
+                      </span>
+                      <strong>{formattedNumber || '+55 48 9209-8050'}</strong>
+                      <span> está com status </span>
                       <Badge
                         variant="outline"
                         className="font-mono text-xs text-amber-800 border-amber-400"
                       >
                         PENDING
-                      </Badge>{' '}
-                      na Meta.
+                      </Badge>
+                      <span> na Meta.</span>
                     </p>
                     <p className="text-xs">
-                      Para concluir a ativação e receber mensagens na Cloud API, informe o PIN de 6
-                      dígitos abaixo e clique em <strong>"Registrar Número na Meta"</strong>.
+                      <span>
+                        Para concluir a ativação e receber mensagens na Cloud API, informe o PIN de
+                        6 dígitos abaixo e clique em{' '}
+                      </span>
+                      <strong>"Registrar Número na Meta"</strong>
+                      <span>.</span>
                     </p>
                   </AlertDescription>
-                </>
+                </div>
               ) : (
-                <>
-                  <XCircle className="h-4 w-4 text-red-600" />
-                  <AlertTitle className="text-red-700">Falha na Conexão WhatsApp</AlertTitle>
+                <div key="status-error-content" className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-red-600 shrink-0" />
+                    <AlertTitle className="text-red-700 mb-0">Falha na Conexão WhatsApp</AlertTitle>
+                  </div>
                   <AlertDescription className="text-red-600">
                     <p className="text-sm">
                       {testError ||
                         'A última tentativa de conexão falhou. Verifique as credenciais e tente novamente.'}
                     </p>
-                    {lastTestAt && (
+                    {lastTestAt ? (
                       <div className="flex items-center gap-1 mt-2 text-xs">
                         <Clock className="h-3 w-3" />
-                        Último teste: {new Date(lastTestAt).toLocaleString('pt-BR')}
+                        <span>Último teste: {new Date(lastTestAt).toLocaleString('pt-BR')}</span>
                       </div>
-                    )}
-                    {testError && (
+                    ) : null}
+                    {testError ? (
                       <div className="mt-3 rounded-md bg-red-500/10 border border-red-500/30 p-3">
                         <p className="text-xs font-semibold text-red-700 mb-1">
                           Detalhe do erro retornado pela Meta API:
                         </p>
                         <p className="text-xs text-red-600 font-mono break-words">{testError}</p>
                       </div>
-                    )}
+                    ) : null}
                   </AlertDescription>
-                </>
+                </div>
               )}
             </Alert>
           )}
+
+          {/* Seção de Registro com PIN de 6 dígitos (movida para o topo) */}
+          <div
+            key="pin-registration-card"
+            className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-4 space-y-3"
+          >
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              <h4 className="text-sm font-semibold text-foreground">
+                Ativação e Registro do Número na Cloud API (PIN de 6 dígitos)
+              </h4>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              <span>Caso seu número esteja com status </span>
+              <strong>PENDING</strong>
+              <span>
+                {' '}
+                na Meta e não receba mensagens (ex: "o número não está no WhatsApp"), é necessário
+                concluir a chamada de registro{' '}
+              </span>
+              <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">POST /register</code>
+              <span>
+                {' '}
+                com o PIN de 6 dígitos de verificação em duas etapas cadastrado no fluxo da Meta.
+              </span>
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end pt-2">
+              <div className="space-y-1.5 w-full sm:w-64">
+                <Label htmlFor="pin-input" className="text-xs font-medium">
+                  PIN de 6 Dígitos
+                </Label>
+                <Input
+                  id="pin-input"
+                  type="password"
+                  maxLength={6}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  className="font-mono tracking-widest text-center text-lg"
+                />
+              </div>
+              <Button
+                onClick={handleRegisterPin}
+                disabled={registering || pin.length !== 6}
+                className="w-full sm:w-auto"
+              >
+                {registering ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                )}
+                Registrar Número na Meta
+              </Button>
+            </div>
+
+            {registerResult && (
+              <div key="register-result-wrapper" className="mt-3">
+                <Alert
+                  className={
+                    registerResult.success
+                      ? 'border-green-500/50 bg-green-500/10'
+                      : 'border-red-500/50 bg-red-500/10'
+                  }
+                >
+                  {registerResult.success ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <ShieldAlert className="h-4 w-4 text-red-600" />
+                  )}
+                  <AlertTitle
+                    className={registerResult.success ? 'text-green-700' : 'text-red-700'}
+                  >
+                    {registerResult.success
+                      ? 'Sucesso no Registro!'
+                      : registerResult.meta_error?.error_user_title || 'Erro no Registro'}
+                  </AlertTitle>
+                  <AlertDescription
+                    className={`text-xs ${registerResult.success ? 'text-green-700' : 'text-red-600'} space-y-2`}
+                  >
+                    {/* Exibe erro detalhado do usuário retornado pela Meta (ex.: WhatsApp já vinculado a app comum/business) */}
+                    {registerResult.meta_error?.error_user_msg && (
+                      <div className="rounded-md bg-red-500/15 border border-red-500/30 p-2.5 text-xs text-red-800 font-medium">
+                        <p className="font-semibold text-red-900 mb-0.5">
+                          {registerResult.meta_error?.error_user_title || 'Aviso da Meta:'}
+                        </p>
+                        <p>{registerResult.meta_error.error_user_msg}</p>
+                      </div>
+                    )}
+
+                    <p className="leading-relaxed">
+                      {registerResult.message || registerResult.error}
+                    </p>
+
+                    {registerResult.hint && <p className="font-semibold">{registerResult.hint}</p>}
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            {diagInfo && (
+              <div
+                key="diag-info-wrapper"
+                className="mt-3 rounded-md bg-muted/60 p-3 text-xs space-y-1 border"
+              >
+                <p className="font-semibold text-foreground">Diagnóstico Real do Número:</p>
+                <p>
+                  <span>Status: </span>
+                  <span className="font-mono font-bold">{diagInfo.status || 'N/A'}</span>
+                </p>
+                <p>
+                  <span>Verificação do Código: </span>
+                  <span className="font-mono">{diagInfo.code_verification_status || 'N/A'}</span>
+                </p>
+                <p>
+                  <span>Qualidade: </span>
+                  <span className="font-mono">{diagInfo.quality_rating || 'N/A'}</span>
+                </p>
+                <p>
+                  <span>Número Exibido: </span>
+                  <span className="font-mono">{diagInfo.display_phone_number || 'N/A'}</span>
+                </p>
+                {diagInfo.note && <p className="text-muted-foreground pt-1">{diagInfo.note}</p>}
+              </div>
+            )}
+          </div>
 
           <Alert className="border-blue-500/50 bg-blue-500/10">
             <AlertCircle className="h-4 w-4 text-blue-600" />
@@ -612,100 +753,6 @@ export function MetaWhatsAppPanel() {
                   : 'Consultando status detalhado do número na Meta Graph API...'}
             </p>
           )}
-
-          {/* Seção de Registro com PIN de 6 dígitos */}
-          <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-primary" />
-              <h4 className="text-sm font-semibold text-foreground">
-                Ativação e Registro do Número na Cloud API (PIN de 6 dígitos)
-              </h4>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Caso seu número esteja com status <strong>PENDING</strong> na Meta e não receba
-              mensagens (ex: "o número não está no WhatsApp"), é necessário concluir a chamada de
-              registro{' '}
-              <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">POST /register</code>{' '}
-              com o PIN de 6 dígitos de verificação em duas etapas cadastrado no fluxo da Meta.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end pt-2">
-              <div className="space-y-1.5 w-full sm:w-64">
-                <Label htmlFor="pin-input" className="text-xs font-medium">
-                  PIN de 6 Dígitos
-                </Label>
-                <Input
-                  id="pin-input"
-                  type="password"
-                  maxLength={6}
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
-                  className="font-mono tracking-widest text-center text-lg"
-                />
-              </div>
-              <Button
-                onClick={handleRegisterPin}
-                disabled={registering || pin.length !== 6}
-                className="w-full sm:w-auto"
-              >
-                {registering ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                )}
-                Registrar Número na Meta
-              </Button>
-            </div>
-
-            {registerResult && (
-              <Alert
-                className={
-                  registerResult.success
-                    ? 'border-green-500/50 bg-green-500/10 mt-3'
-                    : 'border-red-500/50 bg-red-500/10 mt-3'
-                }
-              >
-                {registerResult.success ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                ) : (
-                  <ShieldAlert className="h-4 w-4 text-red-600" />
-                )}
-                <AlertTitle className={registerResult.success ? 'text-green-700' : 'text-red-700'}>
-                  {registerResult.success ? 'Sucesso no Registro!' : 'Erro no Registro'}
-                </AlertTitle>
-                <AlertDescription
-                  className={`text-xs ${registerResult.success ? 'text-green-700' : 'text-red-600'}`}
-                >
-                  <p>{registerResult.message || registerResult.error}</p>
-                  {registerResult.hint && (
-                    <p className="mt-1 font-semibold">{registerResult.hint}</p>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {diagInfo && (
-              <div className="mt-3 rounded-md bg-muted/60 p-3 text-xs space-y-1 border">
-                <p className="font-semibold text-foreground">Diagnóstico Real do Número:</p>
-                <p>
-                  Status: <span className="font-mono font-bold">{diagInfo.status || 'N/A'}</span>
-                </p>
-                <p>
-                  Verificação do Código:{' '}
-                  <span className="font-mono">{diagInfo.code_verification_status || 'N/A'}</span>
-                </p>
-                <p>
-                  Qualidade: <span className="font-mono">{diagInfo.quality_rating || 'N/A'}</span>
-                </p>
-                <p>
-                  Número Exibido:{' '}
-                  <span className="font-mono">{diagInfo.display_phone_number || 'N/A'}</span>
-                </p>
-                {diagInfo.note && <p className="text-muted-foreground pt-1">{diagInfo.note}</p>}
-              </div>
-            )}
-          </div>
         </CardContent>
       </Card>
 

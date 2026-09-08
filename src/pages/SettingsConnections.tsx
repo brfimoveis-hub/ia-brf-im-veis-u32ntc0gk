@@ -148,8 +148,10 @@ export default function SettingsConnections() {
         </TabsList>
 
         <TabsContent value="meta" className="mt-4 space-y-4">
-          <ErrorBoundary logType="meta_panel_error">
+          <ErrorBoundary logType="instagram_panel_error">
             <InstagramConnect />
+          </ErrorBoundary>
+          <ErrorBoundary logType="meta_whatsapp_panel_error">
             <MetaWhatsAppPanel />
           </ErrorBoundary>
         </TabsContent>
