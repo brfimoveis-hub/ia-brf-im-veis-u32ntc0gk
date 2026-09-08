@@ -65,19 +65,35 @@ onRecordAfterCreateSuccess((e) => {
     try {
       $app.runInTransaction((txApp) => {
         const customer = txApp.findRecordById('customers', customerId)
-        let tags = customer.get('tags')
-        if (!Array.isArray(tags)) tags = []
-
-        if (tags.includes('ai_processing')) {
-          const updatedDate = new Date(customer.getString('updated')).getTime()
-          const now = new Date().getTime()
-          if (now - updatedDate < 120000) {
-            throw new Error('LOCKED')
-          }
+        let rawTags = customer.get('tags')
+        let tags = []
+        if (Array.isArray(rawTags)) {
+          tags = rawTags.filter((t) => typeof t === 'string')
         }
 
-        const newTags = tags.filter((t) => t !== 'ai_processing')
-        newTags.push('ai_processing')
+        const now = new Date().getTime()
+        const lockPrefix = 'ai_processing:'
+        let activeLock = false
+
+        for (const t of tags) {
+          if (t.startsWith(lockPrefix)) {
+            const lockTimeStr = t.substring(lockPrefix.length)
+            const lockTime = parseInt(lockTimeStr, 10)
+            if (!isNaN(lockTime) && now - lockTime < 120000) {
+              activeLock = true
+              break
+            }
+          }
+          // Note: legacy plain "ai_processing" (without timestamp) is treated as stale and cleaned up
+        }
+
+        if (activeLock) {
+          throw new Error('LOCKED')
+        }
+
+        // Clean out any existing ai_processing tags (both legacy and timestamped)
+        const newTags = tags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:'))
+        newTags.push(`ai_processing:${now}`)
         customer.set('tags', newTags)
         txApp.save(customer)
         acquiredLock = true
@@ -137,10 +153,20 @@ onRecordAfterCreateSuccess((e) => {
 
     const now = new Date()
     const customer = $app.findRecordById('customers', customerId)
-    let tags = customer.get('tags')
-    if (!Array.isArray(tags)) tags = []
+    let rawCustomerTags = customer.get('tags')
+    let tags = []
+    if (Array.isArray(rawCustomerTags)) {
+      tags = rawCustomerTags.filter((t) => typeof t === 'string')
+    }
     const customerPhone = customer.getString('phone') || ''
     const customerSource = customer.getString('source') || ''
+    const customerName = (customer.getString('name') || '').trim()
+    const customerFirstName = (customer.getString('first_name') || '').trim()
+    const displayName =
+      customerFirstName ||
+      (customerName && !customerName.includes('+') && !/^\d+$/.test(customerName)
+        ? customerName.split(' ')[0]
+        : '')
 
     let receiverPhone = ''
     const sourceMatch = customerSource.match(/Meta\s*-\s*(\d+)/)
@@ -417,12 +443,17 @@ onRecordAfterCreateSuccess((e) => {
     const combinedContextText = `${contextText}\n${filesContextText}`.trim()
 
     const messages = []
+    const clientContext = displayName
+      ? `\n[DADOS DO CLIENTE]\nNome do cliente: ${displayName} (nome completo: ${customerName})\n`
+      : `\n[DADOS DO CLIENTE]\nCliente sem nome cadastrado ou número apenas. Seja cordial sem usar placeholders tipo [Nome].\n`
+
     const systemPrompt = `Você é ${aiName}.
 Sua identidade e instruções específicas (Persona):
 ${personaInstructions}
 
 Instruções da IA Mãe (Base de Conhecimento Global):
 ${motherAiInstructions}
+${clientContext}
 ${channelContext}
 ${crmPhaseContext}
 ${propertyContext}
@@ -555,6 +586,16 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
       responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
       responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
       responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
+
+      if (displayName) {
+        responseText = responseText.replace(/\[Nome\]/gi, displayName)
+        responseText = responseText.replace(/\{Nome\}/gi, displayName)
+      } else {
+        responseText = responseText.replace(/,\s*\[Nome\]/gi, '')
+        responseText = responseText.replace(/\[Nome\]/gi, '')
+        responseText = responseText.replace(/,\s*\{Nome\}/gi, '')
+        responseText = responseText.replace(/\{Nome\}/gi, '')
+      }
     } else {
       $app.logger().error('OpenAI Chat failed or skipped')
     }
@@ -1064,12 +1105,18 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
       try {
         $app.runInTransaction((txApp) => {
           const customer = txApp.findRecordById('customers', customerId)
-          let tags = customer.get('tags')
-          if (!Array.isArray(tags)) tags = []
-          if (tags.includes('ai_processing')) {
+          let rawTags = customer.get('tags')
+          let tags = []
+          if (Array.isArray(rawTags)) {
+            tags = rawTags.filter((t) => typeof t === 'string')
+          }
+          const hasLockTag = tags.some(
+            (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
+          )
+          if (hasLockTag) {
             customer.set(
               'tags',
-              tags.filter((t) => t !== 'ai_processing'),
+              tags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
             )
             txApp.save(customer)
           }

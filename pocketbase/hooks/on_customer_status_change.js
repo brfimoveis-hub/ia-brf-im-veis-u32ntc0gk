@@ -8,6 +8,13 @@ onRecordAfterUpdateSuccess((e) => {
 
   const customerId = e.record.id
   const userId = e.record.getString('user_id')
+  const customerName = (e.record.getString('name') || '').trim()
+  const customerFirstName = (e.record.getString('first_name') || '').trim()
+  const displayName =
+    customerFirstName ||
+    (customerName && !customerName.includes('+') && !/^\d+$/.test(customerName)
+      ? customerName.split(' ')[0]
+      : '')
 
   let userRecord = null
   try {
@@ -121,15 +128,23 @@ onRecordAfterUpdateSuccess((e) => {
   } catch (_) {}
 
   const messages = []
+  const clientIdentification = displayName
+    ? `Nome do lead: ${displayName} (nome completo: ${customerName})`
+    : `O cliente ainda não informou o nome (número/sem nome). Trate-o cordialmente de forma genérica sem placeholders como [Nome].`
+
   const systemPrompt = `Você é ${aiName}.
 Sua identidade e instruções principais:
 ${aiInstructions}
+
+DADOS DO CLIENTE / LEAD:
+${clientIdentification}
 
 EVENTO ATUAL:
 O cliente acabou de ser movido pelo agente para a fase de funil: "${newStatus}". (Fase anterior: "${oldStatus}").
 
 SUA TAREFA:
 Analise o histórico da conversa e as instruções. Se houver uma mensagem ideal ou um follow-up que deve ser enviado AGORA nesta nova fase, escreva essa mensagem.
+${displayName ? `Use o primeiro nome do cliente ("${displayName}") se for saudar.` : 'NÃO invente um nome e NUNCA deixe marcadores como "[Nome]" ou "{nome}".'}
 Seja direta, empática e humana.
 NUNCA mencione que você viu uma mudança de status no sistema. A mensagem deve parecer natural.
 NUNCA comece com confirmações tipo "Entendido" ou "Vou enviar". Apenas escreva a mensagem para o cliente.
@@ -159,6 +174,17 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase
 
       // Sanitize in case AI includes the STATUS tag by mistake
       responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+
+      // Safety guard against literal [Nome] placeholder leakage
+      if (displayName) {
+        responseText = responseText.replace(/\[Nome\]/gi, displayName)
+        responseText = responseText.replace(/\{Nome\}/gi, displayName)
+      } else {
+        responseText = responseText.replace(/,\s*\[Nome\]/gi, '')
+        responseText = responseText.replace(/\[Nome\]/gi, '')
+        responseText = responseText.replace(/,\s*\{Nome\}/gi, '')
+        responseText = responseText.replace(/\{Nome\}/gi, '')
+      }
 
       if (responseText !== 'SKIP_MESSAGE' && responseText !== '') {
         try {

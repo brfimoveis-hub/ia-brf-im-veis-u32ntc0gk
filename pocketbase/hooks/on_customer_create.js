@@ -2,6 +2,13 @@ onRecordAfterCreateSuccess((e) => {
   const customerId = e.record.id
   const userId = e.record.getString('user_id')
   const status = e.record.getString('status') || 'Novo'
+  const customerName = (e.record.getString('name') || '').trim()
+  const customerFirstName = (e.record.getString('first_name') || '').trim()
+  const displayName =
+    customerFirstName ||
+    (customerName && !customerName.includes('+') && !/^\d+$/.test(customerName)
+      ? customerName.split(' ')[0]
+      : '')
 
   let userRecord = null
   try {
@@ -109,22 +116,33 @@ onRecordAfterCreateSuccess((e) => {
   } catch (_) {}
 
   const messages = []
+  const clientIdentification = displayName
+    ? `Nome do lead: ${displayName} (nome completo: ${customerName})`
+    : `O cliente ainda não informou o nome (número/sem nome). Trate-o cordialmente de forma genérica sem placeholders como [Nome].`
+
   const systemPrompt = `Você é ${aiName}.
 Sua identidade e instruções principais:
 ${aiInstructions}
+
+DADOS DO CLIENTE / LEAD:
+${clientIdentification}
 
 EVENTO ATUAL:
 Um novo lead acabou de entrar no sistema na fase "${status}".
 
 SUA TAREFA:
 Baseado nas instruções e no procedimento da cadência para a fase atual, escreva a primeira mensagem de abordagem/engajamento (outbound) para este cliente.
+${displayName ? `Use o primeiro nome do cliente ("${displayName}") na saudação.` : 'NÃO invente um nome e NUNCA deixe marcadores como "[Nome]" ou "{nome}". Se não souber o nome, diga apenas "Olá!" ou "Olá, tudo bem?".'}
 Seja direta, empática e humana.
 NUNCA mencione que você viu o lead entrar no sistema. A mensagem deve parecer natural.
 NUNCA comece com confirmações tipo "Entendido" ou "Vou enviar". Apenas escreva a mensagem para o cliente.
 Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se não for o momento adequado, responda EXATAMENTE com "SKIP_MESSAGE".`
 
   messages.push({ role: 'system', content: systemPrompt })
-  messages.push({ role: 'user', content: '(Inicie a conversa com o lead)' })
+  const userPrompt = displayName
+    ? `(Inicie a conversa com o lead. O primeiro nome dele é ${displayName})`
+    : '(Inicie a conversa com o lead)'
+  messages.push({ role: 'user', content: userPrompt })
 
   try {
     const chatRes = $ai.chat({ model: 'fast', messages: messages })
@@ -132,6 +150,17 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se 
     if (chatRes.choices && chatRes.choices[0] && chatRes.choices[0].message) {
       let responseText = chatRes.choices[0].message.content.trim()
       responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+
+      // Safety guard against literal [Nome] placeholder leakage
+      if (displayName) {
+        responseText = responseText.replace(/\[Nome\]/gi, displayName)
+        responseText = responseText.replace(/\{Nome\}/gi, displayName)
+      } else {
+        responseText = responseText.replace(/,\s*\[Nome\]/gi, '')
+        responseText = responseText.replace(/\[Nome\]/gi, '')
+        responseText = responseText.replace(/,\s*\{Nome\}/gi, '')
+        responseText = responseText.replace(/\{Nome\}/gi, '')
+      }
 
       if (responseText !== 'SKIP_MESSAGE' && responseText !== '') {
         try {
