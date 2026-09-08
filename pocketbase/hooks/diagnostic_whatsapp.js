@@ -128,15 +128,21 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
       const isConnected = phoneData.status === 'CONNECTED'
       const isRegistered = isConnected && isVerified
 
-      // Atualiza usuário se conectado
+      // Atualiza usuário conforme status real
       try {
         if (isConnected) {
           userRecord.set('meta_whatsapp_status', phoneData.display_phone_number || 'connected')
           userRecord.set('meta_token_status', 'active')
           $app.saveNoValidate(userRecord)
+        } else if (phoneData.status === 'PENDING') {
+          userRecord.set(
+            'meta_whatsapp_status',
+            phoneData.display_phone_number || '+55 48 9209-8050',
+          )
+          userRecord.set('meta_token_status', 'pending')
+          $app.saveNoValidate(userRecord)
         }
       } catch (_) {}
-
       // Grava no system_logs para histórico
       try {
         const col = $app.findCollectionByNameOrId('system_logs')

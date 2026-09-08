@@ -68,7 +68,8 @@ export function MetaWhatsAppPanel() {
   const webhookUrlWithQuery = user?.id ? `${WEBHOOK_BASE}?user_id=${user.id}` : WEBHOOK_BASE
   const webhookUrlWithPath = user?.id ? `${WEBHOOK_BASE}/${user.id}` : WEBHOOK_BASE
   const webhookUrl = webhookUrlWithQuery
-  const isActive = tokenStatus === 'active'
+  const isActive = tokenStatus === 'active' || tokenStatus === 'valid'
+  const isPending = tokenStatus === 'pending' || tokenStatus === 'pending_registration'
   const isError = tokenStatus === 'error'
   const formattedNumber = formatDisplayPhone(displayNumber)
 
@@ -277,11 +278,15 @@ export function MetaWhatsAppPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 pt-6">
-          {(isActive || isError) && (
+          {(isActive || isPending || isError) && (
             <Alert
               key="whatsapp-status-alert"
               className={
-                isActive ? 'border-green-500/50 bg-green-500/10' : 'border-red-500/50 bg-red-500/10'
+                isActive
+                  ? 'border-green-500/50 bg-green-500/10'
+                  : isPending
+                    ? 'border-amber-500/50 bg-amber-500/10'
+                    : 'border-red-500/50 bg-red-500/10'
               }
             >
               {isActive ? (
@@ -307,6 +312,31 @@ export function MetaWhatsAppPanel() {
                         Último teste bem-sucedido: {new Date(lastTestAt).toLocaleString('pt-BR')}
                       </div>
                     )}
+                  </AlertDescription>
+                </>
+              ) : isPending ? (
+                <>
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertTitle className="text-amber-700">
+                    Pendente de Registro na Cloud API ⚠️
+                  </AlertTitle>
+                  <AlertDescription className="text-amber-700 space-y-2">
+                    <p className="text-sm">
+                      O token de Usuário do Sistema é válido e o app está inscrito na WABA, porém o
+                      número <strong>{formattedNumber || '+55 48 9209-8050'}</strong> está com
+                      status{' '}
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-xs text-amber-800 border-amber-400"
+                      >
+                        PENDING
+                      </Badge>{' '}
+                      na Meta.
+                    </p>
+                    <p className="text-xs">
+                      Para concluir a ativação e receber mensagens na Cloud API, informe o PIN de 6
+                      dígitos abaixo e clique em <strong>"Registrar Número na Meta"</strong>.
+                    </p>
                   </AlertDescription>
                 </>
               ) : (

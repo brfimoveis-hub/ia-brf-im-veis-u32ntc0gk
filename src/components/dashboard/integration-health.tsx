@@ -6,7 +6,8 @@ export function IntegrationHealth({ user }: { user: any }) {
   const isMetaConnected =
     user?.meta_capi_status === 'connected' ||
     user?.meta_capi_status === 'active' ||
-    user?.meta_token_status === 'valid'
+    user?.meta_token_status === 'valid' ||
+    user?.meta_token_status === 'active'
 
   return (
     <Card className="h-full animate-fade-in-up">

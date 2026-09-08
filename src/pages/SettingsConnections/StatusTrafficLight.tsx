@@ -9,28 +9,33 @@ export function StatusTrafficLight({ status, error }: StatusTrafficLightProps) {
   const s = (status || '').toLowerCase()
   const isActive = ['active', 'connected', 'valid'].includes(s)
   const isPendingToken = ['configured_waiting_token'].includes(s)
+  const isPendingRegistration = ['pending', 'pending_registration'].includes(s)
   const isNotConfigured = ['not_configured'].includes(s)
   const isError =
     ['error', 'expired'].includes(s) ||
-    (!!error && !isActive && !isNotConfigured && !isPendingToken)
+    (!!error && !isActive && !isNotConfigured && !isPendingToken && !isPendingRegistration)
   const label = isActive
     ? 'Conectado'
-    : isPendingToken
-      ? 'Aguardando Token'
-      : isError
-        ? 'Erro'
-        : isNotConfigured
-          ? 'Não Configurado'
-          : 'Aguardando'
+    : isPendingRegistration
+      ? 'Pendente de Registro (PIN)'
+      : isPendingToken
+        ? 'Aguardando Token'
+        : isError
+          ? 'Erro'
+          : isNotConfigured
+            ? 'Não Configurado'
+            : 'Aguardando'
   const color = isActive
     ? 'bg-green-500'
-    : isPendingToken
-      ? 'bg-blue-500'
-      : isError
-        ? 'bg-red-500'
-        : isNotConfigured
-          ? 'bg-gray-400'
-          : 'bg-yellow-400'
+    : isPendingRegistration
+      ? 'bg-amber-500'
+      : isPendingToken
+        ? 'bg-blue-500'
+        : isError
+          ? 'bg-red-500'
+          : isNotConfigured
+            ? 'bg-gray-400'
+            : 'bg-yellow-400'
 
   return (
     <div className="flex items-center gap-2">
