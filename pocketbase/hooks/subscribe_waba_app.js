@@ -13,8 +13,8 @@ routerAdd('POST', '/backend/v1/subscribe_waba_app', (e) => {
     }
   }
 
-  const wabaId = userRecord.getString('meta_whatsapp_business_id') || '1727871165105009'
-  const phoneId = userRecord.getString('meta_whatsapp_phone_number_id') || '1324150594116725'
+  const wabaId = userRecord.getString('meta_whatsapp_business_id') || '3542548689255402'
+  const phoneId = userRecord.getString('meta_whatsapp_phone_number_id') || '1239571259250639'
   const token = userRecord.getString('meta_whatsapp_access_token')
 
   console.log(

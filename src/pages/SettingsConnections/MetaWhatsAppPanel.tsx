@@ -63,6 +63,12 @@ export function MetaWhatsAppPanel() {
     if (!user?.id || e.record.id !== user.id) return
     setTokenStatus(e.record.meta_token_status || '')
     setDisplayNumber(e.record.meta_whatsapp_status || '')
+    if (e.record.meta_whatsapp_phone_number_id) {
+      setPhoneId(e.record.meta_whatsapp_phone_number_id)
+    }
+    if (e.record.meta_whatsapp_business_id) {
+      setBusinessId(e.record.meta_whatsapp_business_id)
+    }
   })
 
   const webhookUrlWithQuery = user?.id ? `${WEBHOOK_BASE}?user_id=${user.id}` : WEBHOOK_BASE
@@ -274,7 +280,7 @@ export function MetaWhatsAppPanel() {
           </div>
           <CardDescription>
             Configure a API do WhatsApp Cloud para envio e recebimento de mensagens integrado ao
-            CRM. Número alvo: <strong>4448992098050</strong> (exibição +55 48 99209-8050).
+            CRM. Número alvo: <strong>+55 48 9209-8050</strong>.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 pt-6">
@@ -299,8 +305,17 @@ export function MetaWhatsAppPanel() {
                     {formattedNumber ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm">Número verificado conectado:</span>
-                        <Badge variant="secondary" className="font-mono text-sm">
+                        <Badge
+                          variant="secondary"
+                          className="font-mono text-sm bg-green-100 text-green-900 border-green-300"
+                        >
                           {formattedNumber}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="font-mono text-xs text-green-800 border-green-400"
+                        >
+                          STATUS: CONNECTED (LIVE)
                         </Badge>
                       </div>
                     ) : (
@@ -308,6 +323,15 @@ export function MetaWhatsAppPanel() {
                         Conexão OK — WhatsApp Cloud API ativa e funcionando.
                       </p>
                     )}
+                    <div className="mt-2 text-xs text-green-800 space-y-0.5 font-mono">
+                      <p>
+                        Phone Number ID ativo:{' '}
+                        <strong>{phoneId || user?.meta_whatsapp_phone_number_id}</strong>
+                      </p>
+                      <p>
+                        WABA ativa: <strong>{businessId || user?.meta_whatsapp_business_id}</strong>
+                      </p>
+                    </div>
                     {lastTestAt ? (
                       <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
                         <Clock className="h-3 w-3" />
@@ -316,7 +340,7 @@ export function MetaWhatsAppPanel() {
                         </span>
                       </div>
                     ) : null}
-                  </AlertDescription>
+                  </AlertDescription>{' '}
                 </div>
               ) : isPending ? (
                 <div key="status-pending-content" className="space-y-1">
@@ -342,6 +366,15 @@ export function MetaWhatsAppPanel() {
                       </Badge>
                       <span> na Meta.</span>
                     </p>
+                    <div className="text-xs text-amber-800 font-mono space-y-0.5">
+                      <p>
+                        Phone Number ID atual:{' '}
+                        <strong>{phoneId || user?.meta_whatsapp_phone_number_id}</strong>
+                      </p>
+                      <p>
+                        WABA atual: <strong>{businessId || user?.meta_whatsapp_business_id}</strong>
+                      </p>
+                    </div>
                     <p className="text-xs">
                       <span>
                         Para concluir a ativação e receber mensagens na Cloud API, informe o PIN de
@@ -375,6 +408,16 @@ export function MetaWhatsAppPanel() {
                           Detalhe do erro retornado pela Meta API:
                         </p>
                         <p className="text-xs text-red-600 font-mono break-words">{testError}</p>
+                        <div className="mt-2 text-xs text-red-800 font-mono space-y-0.5">
+                          <p>
+                            Phone Number ID utilizado:{' '}
+                            <strong>{phoneId || user?.meta_whatsapp_phone_number_id}</strong>
+                          </p>
+                          <p>
+                            WABA utilizada:{' '}
+                            <strong>{businessId || user?.meta_whatsapp_business_id}</strong>
+                          </p>
+                        </div>
                       </div>
                     ) : null}
                   </AlertDescription>
@@ -462,6 +505,19 @@ export function MetaWhatsAppPanel() {
                   <AlertDescription
                     className={`text-xs ${registerResult.success ? 'text-green-700' : 'text-red-600'} space-y-2`}
                   >
+                    {/* Exibe IDs utilizados na chamada para diagnóstico rápido */}
+                    {(registerResult.phone_number_id || registerResult.waba_id) && (
+                      <div className="rounded-md bg-muted/60 p-2 font-mono text-[11px] text-foreground space-y-0.5 border">
+                        <p>
+                          <strong>Phone Number ID chamado:</strong>{' '}
+                          {registerResult.phone_number_id || 'N/A'}
+                        </p>
+                        <p>
+                          <strong>WABA ID:</strong> {registerResult.waba_id || 'N/A'}
+                        </p>
+                      </div>
+                    )}
+
                     {/* Exibe erro detalhado do usuário retornado pela Meta (ex.: WhatsApp já vinculado a app comum/business) */}
                     {registerResult.meta_error?.error_user_msg && (
                       <div className="rounded-md bg-red-500/15 border border-red-500/30 p-2.5 text-xs text-red-800 font-medium">
@@ -503,6 +559,14 @@ export function MetaWhatsAppPanel() {
                 <p>
                   <span>Número Exibido: </span>
                   <span className="font-mono">{diagInfo.display_phone_number || 'N/A'}</span>
+                </p>
+                <p>
+                  <span>Phone Number ID: </span>
+                  <span className="font-mono">{diagInfo.phone_number_id || 'N/A'}</span>
+                </p>
+                <p>
+                  <span>WABA ID: </span>
+                  <span className="font-mono">{diagInfo.waba_id || 'N/A'}</span>
                 </p>
                 {diagInfo.note && <p className="text-muted-foreground pt-1">{diagInfo.note}</p>}
               </div>

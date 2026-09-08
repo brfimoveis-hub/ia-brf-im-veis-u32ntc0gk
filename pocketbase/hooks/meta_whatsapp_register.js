@@ -47,7 +47,8 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_register', (e) => {
     return e.json(404, { success: false, error: 'Usuário não encontrado.' })
   }
 
-  const phoneNumberId = userRecord.getString('meta_whatsapp_phone_number_id') || '1324150594116725'
+  const phoneNumberId = userRecord.getString('meta_whatsapp_phone_number_id') || '1239571259250639'
+  const wabaId = userRecord.getString('meta_whatsapp_business_id') || '3542548689255402'
   const accessToken = userRecord.getString('meta_whatsapp_access_token')
 
   if (!phoneNumberId || !accessToken) {
@@ -55,10 +56,12 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_register', (e) => {
       success: false,
       error: 'meta_whatsapp_phone_number_id e meta_whatsapp_access_token não estão configurados.',
       error_code: 'missing_credentials',
+      phone_number_id: phoneNumberId,
+      waba_id: wabaId,
     })
   }
 
-  // Monta payload de registro
+  // Monta payload de registro estrito conforme documentação da Meta Cloud API
   const registerPayload = {
     messaging_product: 'whatsapp',
     pin: pin,
@@ -87,6 +90,8 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_register', (e) => {
       success: false,
       error: 'Falha de conexão com a Meta Graph API: ' + (netErr.message || String(netErr)),
       error_code: 'network_error',
+      phone_number_id: phoneNumberId,
+      waba_id: wabaId,
     })
   }
 
@@ -143,6 +148,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_register', (e) => {
           status_code: registerRes.statusCode,
           meta_error: metaError,
           phone_number_id: phoneNumberId,
+          waba_id: wabaId,
         }),
       )
       $app.save(log)
@@ -156,6 +162,8 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_register', (e) => {
       error_code: errorCode,
       error_subcode: errorSubcode,
       meta_error: metaError,
+      phone_number_id: phoneNumberId,
+      waba_id: wabaId,
     })
   }
 
@@ -231,6 +239,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_register', (e) => {
     registered: true,
     message: 'Número registrado com sucesso na WhatsApp Cloud API!',
     phone_number_id: phoneNumberId,
+    waba_id: wabaId,
     register_response: registerJson,
     verification: postRegisterCheck,
     is_connected: phoneStatus === 'CONNECTED',

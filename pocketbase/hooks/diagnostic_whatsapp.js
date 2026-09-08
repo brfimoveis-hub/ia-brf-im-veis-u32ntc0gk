@@ -22,7 +22,7 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
     return e.json(200, { success: false, error: 'Usuário não encontrado.' })
   }
 
-  const phoneNumberId = userRecord.getString('meta_whatsapp_phone_number_id') || '1324150594116725'
+  const phoneNumberId = userRecord.getString('meta_whatsapp_phone_number_id') || '1239571259250639'
   const accessToken = userRecord.getString('meta_whatsapp_access_token')
 
   if (!phoneNumberId || !accessToken) {
@@ -32,7 +32,7 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
     })
   }
 
-  const wabaId = userRecord.getString('meta_whatsapp_business_id') || '1727871165105009'
+  const wabaId = userRecord.getString('meta_whatsapp_business_id') || '3542548689255402'
   const appId = userRecord.getString('meta_app_id') || '2442476629610638'
   const appSecret = userRecord.getString('meta_app_secret') || 'd085b85d8d534c682f60b6bde8043610'
 
