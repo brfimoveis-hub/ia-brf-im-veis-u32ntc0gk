@@ -41,11 +41,19 @@ routerAdd('POST', '/backend/v1/subscribe_waba_app', (e) => {
     step_debug_token: null,
   }
 
-  // Debug: inspecionar token (debug_token)
+  const appId = userRecord.getString('meta_app_id') || '2442476629610638'
+  const appSecret = userRecord.getString('meta_app_secret') || 'd085b85d8d534c682f60b6bde8043610'
+  const appAccessToken = appId + '|' + appSecret
+
+  // Debug: inspecionar token (debug_token com app access token)
   try {
     console.log('[WABA_SUBSCRIBE] Inspecionando token via debug_token...')
     const debugRes = $http.send({
-      url: 'https://graph.facebook.com/debug_token?input_token=' + token + '&access_token=' + token,
+      url:
+        'https://graph.facebook.com/debug_token?input_token=' +
+        encodeURIComponent(token) +
+        '&access_token=' +
+        encodeURIComponent(appAccessToken),
       method: 'GET',
       timeout: 15,
     })
@@ -62,6 +70,71 @@ routerAdd('POST', '/backend/v1/subscribe_waba_app', (e) => {
   } catch (dErr) {
     console.log('[WABA_SUBSCRIBE] debug_token exceção: ' + (dErr.message || dErr))
     results.step_debug_token = { error: dErr.message || String(dErr) }
+  }
+
+  // Tentativa de exchange para long-lived token se necessário
+  results.step_token_exchange = null
+  try {
+    console.log('[WABA_SUBSCRIBE] Tentando exchange para long-lived token...')
+    const exchangeUrl =
+      'https://graph.facebook.com/v21.0/oauth/access_token?' +
+      'grant_type=fb_exchange_token' +
+      '&client_id=' +
+      encodeURIComponent(appId) +
+      '&client_secret=' +
+      encodeURIComponent(appSecret) +
+      '&fb_exchange_token=' +
+      encodeURIComponent(token)
+
+    const exchRes = $http.send({
+      url: exchangeUrl,
+      method: 'GET',
+      timeout: 15,
+    })
+    console.log(
+      '[WABA_SUBSCRIBE] exchange status=' +
+        exchRes.statusCode +
+        ' body=' +
+        JSON.stringify(exchRes.json),
+    )
+    results.step_token_exchange = {
+      statusCode: exchRes.statusCode,
+      body: exchRes.json,
+    }
+    if (
+      exchRes.statusCode >= 200 &&
+      exchRes.statusCode < 300 &&
+      exchRes.json &&
+      exchRes.json.access_token
+    ) {
+      const longLivedToken = exchRes.json.access_token
+      console.log('[WABA_SUBSCRIBE] Sucesso na troca de token! Salvando token de longa duração...')
+      userRecord.set('meta_whatsapp_access_token', longLivedToken)
+      $app.saveNoValidate(userRecord)
+      results.step_token_exchange.saved = true
+
+      // Re-debug com o novo token de longa duração
+      try {
+        const debugLivedRes = $http.send({
+          url:
+            'https://graph.facebook.com/debug_token?input_token=' +
+            encodeURIComponent(longLivedToken) +
+            '&access_token=' +
+            encodeURIComponent(appAccessToken),
+          method: 'GET',
+          timeout: 15,
+        })
+        results.step_debug_token_long_lived = {
+          statusCode: debugLivedRes.statusCode,
+          body: debugLivedRes.json,
+        }
+      } catch (dlErr) {
+        results.step_debug_token_long_lived = { error: dlErr.message || String(dlErr) }
+      }
+    }
+  } catch (exErr) {
+    console.log('[WABA_SUBSCRIBE] exchange exceção: ' + (exErr.message || exErr))
+    results.step_token_exchange = { error: exErr.message || String(exErr) }
   }
 
   // 1.b GET https://graph.facebook.com/v21.0/{meta_whatsapp_business_id}/subscribed_apps
