@@ -21,7 +21,17 @@ onRecordAfterCreateSuccess((e) => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           return res
         }
-        $app.logger().warn('Meta HTTP call non-2xx', 'url', url, 'statusCode', res.statusCode, 'response', JSON.stringify(res.json || res.body || ''))
+        $app
+          .logger()
+          .warn(
+            'Meta HTTP call non-2xx',
+            'url',
+            url,
+            'statusCode',
+            res.statusCode,
+            'response',
+            JSON.stringify(res.json || res.body || ''),
+          )
       } catch (e) {
         $app.logger().error('Meta HTTP send exception', 'url', url, 'error', String(e))
       }
@@ -232,7 +242,10 @@ onRecordAfterCreateSuccess((e) => {
           log.set('user_id', userId || '')
           log.set('type', 'ai_reply_deferred')
           log.set('message', 'IA adiada: fora do horário de atendimento')
-          log.set('details', `Horário atual: ${currentTimeStr}, expediente: ${deliveryStart}-${deliveryEnd}`)
+          log.set(
+            'details',
+            `Horário atual: ${currentTimeStr}, expediente: ${deliveryStart}-${deliveryEnd}`,
+          )
           log.set('payload', JSON.stringify({ customer_id: customerId }))
           $app.saveNoValidate(log)
         } catch (_) {}
@@ -815,7 +828,15 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         metaPhoneId
       ) {
         if (responseText) {
-          $app.logger().info('Sending WhatsApp reply to Meta Cloud API', 'phone', cleanPhone, 'phone_id', metaPhoneId)
+          $app
+            .logger()
+            .info(
+              'Sending WhatsApp reply to Meta Cloud API',
+              'phone',
+              cleanPhone,
+              'phone_id',
+              metaPhoneId,
+            )
           const sendRes = callMetaWithRetry(
             `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
             'POST',
@@ -834,17 +855,29 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
             logRec.set('user_id', userId || '')
             logRec.set('type', 'whatsapp_ai_send')
             const isOk = sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300
-            logRec.set('message', isOk ? `Resposta da IA enviada com sucesso para ${cleanPhone}` : `Falha ao enviar resposta da IA para ${cleanPhone}`)
-            logRec.set('details', JSON.stringify({
-              statusCode: sendRes ? sendRes.statusCode : 0,
-              response: sendRes ? sendRes.json : null,
-              phone_id: metaPhoneId,
-              to: cleanPhone
-            }))
-            logRec.set('payload', JSON.stringify({
-              preview: responseText.substring(0, 100),
-              customer_id: customerId
-            }))
+            logRec.set(
+              'message',
+              isOk
+                ? `Resposta da IA enviada com sucesso para ${cleanPhone}`
+                : `Falha ao enviar resposta da IA para ${cleanPhone}`,
+            )
+            logRec.set('level', isOk ? 'info' : 'error')
+            logRec.set(
+              'details',
+              JSON.stringify({
+                statusCode: sendRes ? sendRes.statusCode : 0,
+                response: sendRes ? sendRes.json : sendRes ? sendRes.body : null,
+                phone_id: metaPhoneId,
+                to: cleanPhone,
+              }),
+            )
+            logRec.set(
+              'payload',
+              JSON.stringify({
+                preview: responseText.substring(0, 100),
+                customer_id: customerId,
+              }),
+            )
             $app.saveNoValidate(logRec)
           } catch (_) {}
         }
@@ -864,49 +897,50 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
                 }),
               )
 
-            if (ttsRes && ttsRes.statusCode === 200 && ttsRes.body) {
-              const boundary = '----Boundary' + $security.randomString(16)
-              const headerStr = `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n`
-              const footerStr = `\r\n--${boundary}--\r\n`
+              if (ttsRes && ttsRes.statusCode === 200 && ttsRes.body) {
+                const boundary = '----Boundary' + $security.randomString(16)
+                const headerStr = `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n`
+                const footerStr = `\r\n--${boundary}--\r\n`
 
-              const headerBytes = new Uint8Array(headerStr.length)
-              for (let i = 0; i < headerStr.length; i++) headerBytes[i] = headerStr.charCodeAt(i)
-              const footerBytes = new Uint8Array(footerStr.length)
-              for (let i = 0; i < footerStr.length; i++) footerBytes[i] = footerStr.charCodeAt(i)
+                const headerBytes = new Uint8Array(headerStr.length)
+                for (let i = 0; i < headerStr.length; i++) headerBytes[i] = headerStr.charCodeAt(i)
+                const footerBytes = new Uint8Array(footerStr.length)
+                for (let i = 0; i < footerStr.length; i++) footerBytes[i] = footerStr.charCodeAt(i)
 
-              const bodyBytes = new Uint8Array(
-                headerBytes.length + ttsRes.body.length + footerBytes.length,
-              )
-              bodyBytes.set(headerBytes, 0)
-              bodyBytes.set(ttsRes.body, headerBytes.length)
-              bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
-
-              const mediaRes = callMetaWithRetry(
-                `https://graph.facebook.com/v21.0/${metaPhoneId}/media`,
-                'POST',
-                {
-                  Authorization: `Bearer ${metaToken}`,
-                  'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                },
-                bodyBytes.buffer,
-              )
-
-              if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json?.id) {
-                callMetaWithRetry(
-                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
-                  'POST',
-                  { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-                  JSON.stringify({
-                    messaging_product: 'whatsapp',
-                    to: cleanPhone,
-                    type: 'audio',
-                    audio: { id: mediaRes.json.id },
-                  }),
+                const bodyBytes = new Uint8Array(
+                  headerBytes.length + ttsRes.body.length + footerBytes.length,
                 )
+                bodyBytes.set(headerBytes, 0)
+                bodyBytes.set(ttsRes.body, headerBytes.length)
+                bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
+
+                const mediaRes = callMetaWithRetry(
+                  `https://graph.facebook.com/v21.0/${metaPhoneId}/media`,
+                  'POST',
+                  {
+                    Authorization: `Bearer ${metaToken}`,
+                    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                  },
+                  bodyBytes.buffer,
+                )
+
+                if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json?.id) {
+                  callMetaWithRetry(
+                    `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                    'POST',
+                    { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                    JSON.stringify({
+                      messaging_product: 'whatsapp',
+                      to: cleanPhone,
+                      type: 'audio',
+                      audio: { id: mediaRes.json.id },
+                    }),
+                  )
+                }
               }
+            } catch (err) {
+              $app.logger().error('Audio TTS/Upload failed', 'error', String(err))
             }
-          } catch (err) {
-            $app.logger().error('Audio TTS/Upload failed', 'error', String(err))
           }
         }
 
