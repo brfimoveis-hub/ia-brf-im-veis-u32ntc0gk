@@ -39,7 +39,7 @@ onRecordAfterUpdateSuccess((e) => {
         const metaToken = users[0].getString('meta_whatsapp_access_token')
         const metaPhoneId = users[0].getString('meta_whatsapp_phone_number_id')
         $http.send({
-          url: `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+          url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
           method: 'POST',
           headers: { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -53,9 +53,12 @@ onRecordAfterUpdateSuccess((e) => {
         sentToBroker = true
 
         if (customerPhone) {
-          const customerPhoneClean = customerPhone.replace(/\D/g, '')
+          let customerPhoneClean = customerPhone.replace(/\D/g, '')
+          if (customerPhoneClean.length === 10 || customerPhoneClean.length === 11) {
+            customerPhoneClean = '55' + customerPhoneClean
+          }
           $http.send({
-            url: `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
             method: 'POST',
             headers: { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({

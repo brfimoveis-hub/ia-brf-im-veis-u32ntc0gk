@@ -46,7 +46,7 @@ routerAdd(
 
       try {
         const res = $http.send({
-          url: 'https://graph.facebook.com/v18.0/' + phoneNumberId + '/messages',
+          url: 'https://graph.facebook.com/v21.0/' + phoneNumberId + '/messages',
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

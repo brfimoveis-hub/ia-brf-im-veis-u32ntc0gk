@@ -204,9 +204,12 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se 
             }
 
             if (metaToken && metaPhoneId) {
-              const cleanPhone = phone.replace(/\D/g, '')
+              let cleanPhone = phone.replace(/\D/g, '')
+              if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+                cleanPhone = '55' + cleanPhone
+              }
               $http.send({
-                url: `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+                url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
                 method: 'POST',
                 headers: {
                   Authorization: `Bearer ${metaToken}`,

@@ -21,7 +21,10 @@ onRecordAfterCreateSuccess((e) => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           return res
         }
-      } catch (e) {}
+        $app.logger().warn('Meta HTTP call non-2xx', 'url', url, 'statusCode', res.statusCode, 'response', JSON.stringify(res.json || res.body || ''))
+      } catch (e) {
+        $app.logger().error('Meta HTTP send exception', 'url', url, 'error', String(e))
+      }
       if (attempt < maxRetries) {
         const sleepMs = backoffs[attempt] || 9000
         const start = new Date().getTime()
@@ -178,7 +181,10 @@ onRecordAfterCreateSuccess((e) => {
       receiverPhone = '48991828050'
     }
     const isTargetLead =
-      customerPhone.includes('48992098050') || customerSource.includes('48992098050')
+      customerPhone.includes('48992098050') ||
+      customerPhone.includes('4899728050') ||
+      customerSource.includes('48992098050') ||
+      customerSource.includes('4899728050')
 
     const deliveryEnabled = userRecord ? userRecord.get('delivery_enabled') !== false : true
     const deliveryStart = userRecord
@@ -210,7 +216,8 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
-    const is24_7Flow = receiverPhone.includes('992098050') || isTargetLead
+    const isWhatsAppDirect = conversationChannel === 'whatsapp' || !conversationChannel
+    const is24_7Flow = receiverPhone.includes('992098050') || isTargetLead || isWhatsAppDirect
 
     if (!is24_7Flow) {
       if (
@@ -219,26 +226,39 @@ onRecordAfterCreateSuccess((e) => {
         currentTimeStr > deliveryEnd
       ) {
         $app.logger().info('Message deferred: outside business hours', 'customerId', customerId)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const log = new Record(logsCol)
+          log.set('user_id', userId || '')
+          log.set('type', 'ai_reply_deferred')
+          log.set('message', 'IA adiada: fora do horário de atendimento')
+          log.set('details', `Horário atual: ${currentTimeStr}, expediente: ${deliveryStart}-${deliveryEnd}`)
+          log.set('payload', JSON.stringify({ customer_id: customerId }))
+          $app.saveNoValidate(log)
+        } catch (_) {}
         return e.next()
       }
     }
 
     try {
-      const globalLastAiMsgs = $app.findRecordsByFilter(
+      // Cooldown de intervalo de entrega deve ser POR CLIENTE, nunca global por usuário!
+      // Um cooldown global bloqueava TODAS as respostas para todos os clientes se qualquer cliente recebesse resposta nos últimos 5 minutos.
+      const customerLastAiMsgs = $app.findRecordsByFilter(
         'conversations',
-        `user_id = '${userId}' && sender = 'ai'`,
+        `customer_id = '${customerId}' && sender = 'ai'`,
         '-created',
         1,
         0,
       )
-      if (globalLastAiMsgs.length > 0) {
-        const lastAiDate = new Date(globalLastAiMsgs[0].getString('created'))
-        const cooldownMs = deliveryInterval * 60000
-        if (now.getTime() - lastAiDate.getTime() < cooldownMs) {
+      if (customerLastAiMsgs.length > 0) {
+        const lastAiDate = new Date(customerLastAiMsgs[0].getString('created'))
+        // Intervalo mínimo de 5 segundos contra flood no mesmo cliente
+        const minCooldownMs = 5000
+        if (now.getTime() - lastAiDate.getTime() < minCooldownMs) {
           $app
             .logger()
             .info(
-              `Message deferred: interval cooldown active (${deliveryInterval}m)`,
+              'Message deferred: customer anti-flood cooldown active (<5s)',
               'customerId',
               customerId,
             )
@@ -248,12 +268,6 @@ onRecordAfterCreateSuccess((e) => {
     } catch (err) {}
 
     if (tags.includes('ai_paused')) {
-      return e.next()
-    }
-
-    const apiKey = $secrets.get('OPENAI_API_KEY')
-    if (!apiKey) {
-      $app.logger().warn('OPENAI_API_KEY missing for ai auto reply')
       return e.next()
     }
 
@@ -790,7 +804,10 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         } catch (e) {}
       }
 
-      const cleanPhone = customerPhone.replace(/\D/g, '')
+      let cleanPhone = customerPhone.replace(/\D/g, '')
+      if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+        cleanPhone = '55' + cleanPhone
+      }
 
       if (
         (conversationChannel === 'whatsapp' || !conversationChannel) &&
@@ -798,8 +815,9 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
         metaPhoneId
       ) {
         if (responseText) {
-          callMetaWithRetry(
-            `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+          $app.logger().info('Sending WhatsApp reply to Meta Cloud API', 'phone', cleanPhone, 'phone_id', metaPhoneId)
+          const sendRes = callMetaWithRetry(
+            `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
             'POST',
             { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
             JSON.stringify({
@@ -809,20 +827,42 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
               text: { body: responseText },
             }),
           )
+
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const logRec = new Record(logsCol)
+            logRec.set('user_id', userId || '')
+            logRec.set('type', 'whatsapp_ai_send')
+            const isOk = sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300
+            logRec.set('message', isOk ? `Resposta da IA enviada com sucesso para ${cleanPhone}` : `Falha ao enviar resposta da IA para ${cleanPhone}`)
+            logRec.set('details', JSON.stringify({
+              statusCode: sendRes ? sendRes.statusCode : 0,
+              response: sendRes ? sendRes.json : null,
+              phone_id: metaPhoneId,
+              to: cleanPhone
+            }))
+            logRec.set('payload', JSON.stringify({
+              preview: responseText.substring(0, 100),
+              customer_id: customerId
+            }))
+            $app.saveNoValidate(logRec)
+          } catch (_) {}
         }
 
         if (sendAudio) {
-          try {
-            const ttsRes = callMetaWithRetry(
-              'https://api.openai.com/v1/audio/speech',
-              'POST',
-              { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-              JSON.stringify({
-                model: 'tts-1',
-                input: responseText || 'Olá',
-                voice: userRecord?.getString('ai_voice_id') || 'nova',
-              }),
-            )
+          const openAiKey = $secrets.get('OPENAI_API_KEY')
+          if (openAiKey) {
+            try {
+              const ttsRes = callMetaWithRetry(
+                'https://api.openai.com/v1/audio/speech',
+                'POST',
+                { Authorization: `Bearer ${openAiKey}`, 'Content-Type': 'application/json' },
+                JSON.stringify({
+                  model: 'tts-1',
+                  input: responseText || 'Olá',
+                  voice: userRecord?.getString('ai_voice_id') || 'nova',
+                }),
+              )
 
             if (ttsRes && ttsRes.statusCode === 200 && ttsRes.body) {
               const boundary = '----Boundary' + $security.randomString(16)
@@ -842,7 +882,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
               bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
 
               const mediaRes = callMetaWithRetry(
-                `https://graph.facebook.com/v19.0/${metaPhoneId}/media`,
+                `https://graph.facebook.com/v21.0/${metaPhoneId}/media`,
                 'POST',
                 {
                   Authorization: `Bearer ${metaToken}`,
@@ -853,7 +893,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
               if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json?.id) {
                 callMetaWithRetry(
-                  `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
                   'POST',
                   { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
                   JSON.stringify({
@@ -882,7 +922,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
             const videoUrl = 'https://www.w3schools.com/html/mov_bbb.mp4'
 
             callMetaWithRetry(
-              `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+              `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
               'POST',
               { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
               JSON.stringify({
@@ -893,11 +933,10 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
               }),
             )
           } catch (err) {
-            $app.logger().error('Video generation failed', 'error', String(err))
+            $app.logger().error('Audio TTS/Upload failed', 'error', String(err))
           }
         }
       }
-
       if (conversationChannel === 'messenger' && responseText) {
         try {
           const messengerNotes = customer.getString('notes') || ''
@@ -1084,7 +1123,7 @@ ${combinedContextText || '(Nenhum contexto específico encontrado na base para e
 
           if (metaToken && metaPhoneId) {
             callMetaWithRetry(
-              `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`,
+              `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
               'POST',
               { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
               JSON.stringify({
