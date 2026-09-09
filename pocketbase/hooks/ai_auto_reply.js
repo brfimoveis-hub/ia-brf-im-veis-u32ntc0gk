@@ -584,9 +584,22 @@ onRecordAfterCreateSuccess((e) => {
         { key: 'biguacu', filter: "city ~ 'Biguaçu' || city ~ 'Biguacu'" },
         { key: 'trindade', filter: "neighborhood ~ 'Trindade'" },
         { key: 'canasvieiras', filter: "neighborhood ~ 'Canasvieiras'" },
+        { key: 'canas vieiras', filter: "neighborhood ~ 'Canasvieiras' || title ~ 'Canasvieiras'" },
         { key: 'ingleses', filter: "neighborhood ~ 'Ingleses'" },
         { key: 'jurere', filter: "neighborhood ~ 'Jurerê' || title ~ 'Jurerê'" },
         { key: 'jurerê', filter: "neighborhood ~ 'Jurerê' || title ~ 'Jurerê'" },
+        {
+          key: 'açores',
+          filter: "neighborhood ~ 'Açores' || title ~ 'Açores' || title ~ 'Acores'",
+        },
+        {
+          key: 'acores',
+          filter: "neighborhood ~ 'Açores' || title ~ 'Açores' || title ~ 'Acores'",
+        },
+        {
+          key: 'rio caveiras',
+          filter: "neighborhood ~ 'Rio Caveiras' || city ~ 'Biguaçu' || city ~ 'Biguacu'",
+        },
       ]
 
       for (const locItem of locationsMap) {
@@ -755,12 +768,12 @@ ${propertyContext}
 REGRA DE OURO SOBRE IMÓVEIS (TOLERÂNCIA ZERO PARA ALUCINAÇÃO):
 - NUNCA invente imóveis, códigos, preços, bairros ou links. Use SOMENTE os imóveis fornecidos no contexto acima (seção [CATÁLOGO DE IMÓVEIS REAIS]).
 - NUNCA monte links com URLs imaginárias (como /101/, /102/ ou links quebrados). Use EXATAMENTE os links oficiais fornecidos no catálogo.
-- Se não houver imóvel perfeitamente compatível com o pedido do cliente, diga expressamente que vai consultar as opções disponíveis e apresente os imóveis mais próximos do catálogo real fornecido no contexto, ou direcione para o site www.brfimoveis.com.br e para o Mauro.
+- Se não houver imóvel perfeitamente compatível com o pedido do cliente (ex: pediu estúdio ou bairro específico onde não temos ativo no momento), SEJA HONESTO E TRANSPARENTE: diga claramente que no momento não temos esse formato específico/nessa região exata, E IMEDIATAMENTE apresente 1 a 3 das melhores opções ativas mais próximas do catálogo real fornecido no contexto com link oficial, ou direcione para o catálogo geral no site https://www.brfimoveis.com.br/imoveis/venda e para o Mauro (wa.me/5548992098050). NUNCA faça mais perguntas de qualificação em loop quando o cliente já pediu opções!
 
 DIRETRIZES FUNDAMENTAIS E REGRAS DE ATENDIMENTO (BRF IMÓVEIS):
 1. RESPOSTA DIRETA AO QUE FOI PEDIDO PRIMEIRO:
-   - Se o cliente perguntou "quais imóveis até 500k?", "manda opções", "manda os links", "o que você tem?": RESPONDA IMEDIATAMENTE apresentando 2 a 3 imóveis reais da seção [CATÁLOGO DE IMÓVEIS REAIS].
-   - É TOTALMENTE PROIBIDO responder com perguntas de qualificação como "o que é mais importante além do valor?" quando o cliente acabou de pedir imóveis ou links.
+   - Se o cliente perguntou "quais imóveis até 500k?", "manda opções", "manda os links", "o que você tem?", ou pediu regiões específicas: RESPONDA IMEDIATAMENTE apresentando 2 a 3 imóveis reais da seção [CATÁLOGO DE IMÓVEIS REAIS].
+   - É TOTALMENTE PROIBIDO responder com perguntas de qualificação como "o que é mais importante além do valor?" ou enrolar quando o cliente pediu opções ou informações sobre imóveis.
    - SEMPRE forneça os dados reais dos imóveis do catálogo: Código, Bairro/Cidade, Valor, Quartos e o LINK OFICIAL DO SITE que está listado.
 
 2. SEMPRE INCLUIR O LINK DO SITE DO IMÓVEL:
@@ -845,6 +858,121 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       console.log(`[AI_REPLY] Using safe fallback response (len=${responseText.length})`)
     }
 
+    // Hard Anti-Repetition & Canned Response Overhaul (handles all Unicode hyphens U+2010..U+2015, non-breaking spaces, punctuation, accents)
+    function isCannedValuesSentence(txt) {
+      if (!txt) return false
+      // Normalize hyphens and dashes (including U+2010..U+2015, non-breaking hyphen U+2011) to standard '-'
+      // Also normalize non-breaking spaces (\u00A0, \u202F) to normal space
+      const normalized = txt
+        .toLowerCase()
+        .replace(/[\u2010-\u2015\u2212\uFE63\uFF0D]/g, '-')
+        .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+        .replace(/\s+/g, ' ')
+
+      return (
+        normalized.includes('vou te passar os valores') ||
+        normalized.includes('passar os valores agora mesmo') ||
+        normalized.includes('passar os valores agora') ||
+        (normalized.includes('custo-beneficio') && normalized.includes('alem do valor')) ||
+        (normalized.includes('custo-benefício') && normalized.includes('além do valor')) ||
+        (normalized.includes('custobeneficio') && normalized.includes('alem do valor')) ||
+        (normalized.includes('melhor custo') && normalized.includes('alem do valor')) ||
+        (normalized.includes('melhor custo') && normalized.includes('além do valor')) ||
+        (normalized.includes('melhor custo') &&
+          normalized.includes('o que é mais importante para você além do valor')) ||
+        (normalized.includes('unidade com o melhor') && normalized.includes('além do valor')) ||
+        (normalized.includes('unidade com o melhor') && normalized.includes('alem do valor')) ||
+        (normalized.includes('unidade com o melhor custo') && normalized.includes('perfil'))
+      )
+    }
+
+    // Function to thoroughly clean internal LLM / supervisor / prompt artifacts
+    function sanitizeAiResponse(raw) {
+      if (!raw) return ''
+      let clean = raw.trim()
+
+      // 1. Remove supervisor delimiters: "Reescrita corrigida --- [conteúdo]" or "*** ---"
+      // Split on sequences of hyphens/em-dashes (2 or more)
+      if (/[-—–]{2,}/.test(clean)) {
+        const parts = clean.split(/\s*[-—–]{2,}\s*/)
+        if (parts.length > 1) {
+          // If first part has supervisor markers, take remainder
+          if (
+            /aprovado|reescrita|mensagem|corrigida|supervisor|avalia|cadência|cadencia/i.test(
+              parts[0],
+            )
+          ) {
+            clean = parts.slice(1).join(' ').trim()
+          }
+        }
+      }
+
+      // 2. Aggressive regex removal of leading review / rewrite / approval prefixes
+      // Matches e.g.: "**Reescrita corrigida**", "*Reescrita*", "APROVADO:", "Reescrita:", "Mensagem corrigida:", etc.
+      const leadingArtifacts = [
+        /^(\*\*|\*|#+|\s)*APROVADO(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+        /^(\*\*|\*|#+|\s)*REPROVADO(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+        /^(\*\*|\*|#+|\s)*Reescrita(\s+corrigida|\s+sugerida)?(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+        /^(\*\*|\*|#+|\s)*Mensagem\s*(corrigida|reescrita|ajustada)(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+        /^(\*\*|\*|#+|\s)*Resposta\s*(da\s*IA|sugerida|corrigida)?(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+        /^(\*\*|\*|#+|\s)*Versão\s*(corrigida|final)(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+        /^A\s*mensagem\s*foi\s*reescrita\s*para.*?:?\s*(\n+|$)/i,
+        /^Aqui\s*(está|vai)\s*a\s*(mensagem|resposta)\s*(corrigida|reescrita|ajustada):?\s*(\n+|$)/i,
+      ]
+
+      let changed = true
+      while (changed) {
+        changed = false
+        for (const pattern of leadingArtifacts) {
+          if (pattern.test(clean)) {
+            clean = clean.replace(pattern, '').trim()
+            changed = true
+          }
+        }
+        // Also strip any residual leading separators like "---", "–-", "—"
+        if (/^[-—–\s*#]+$/.test(clean)) {
+          clean = ''
+          break
+        }
+        if (/^[-—–]+\s*/.test(clean)) {
+          clean = clean.replace(/^[-—–]+\s*/, '').trim()
+          changed = true
+        }
+      }
+
+      // 3. Remove lines that are purely supervisor commentary
+      const lines = clean.split('\n')
+      const filteredLines = []
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (
+          /^(\*\*|\*)?(APROVADO|REPROVADO|Reescrita corrigida|Mensagem corrigida|Versão corrigida)(\*\*|\*)?$/i.test(
+            trimmed,
+          ) ||
+          /^(\*\*|\*)?Cadência\s*\d+/i.test(trimmed) ||
+          /A mensagem foi reescrita para obedecer/i.test(trimmed) ||
+          /^[-—–=]{2,}$/.test(trimmed)
+        ) {
+          continue
+        }
+        filteredLines.push(line)
+      }
+      clean = filteredLines.join('\n').trim()
+
+      return clean
+    }
+
+    // Intercept canned phrase if generated by primary model before Mother AI
+    if (isCannedValuesSentence(responseText)) {
+      console.warn(
+        '[AI_REPLY] Primary model generated canned phrase, triggering fallback generation early.',
+      )
+      const earlyFallback = generateCatalogFallbackMessage(matchedProps)
+      if (earlyFallback && earlyFallback.trim()) {
+        responseText = earlyFallback
+      }
+    }
+
     // Optional Mother AI supervisor validation
     if (motherAiInstructions && responseText.length > 0) {
       try {
@@ -853,7 +981,7 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
           messages: [
             {
               role: 'system',
-              content: `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie se a resposta obedece: "${motherAiInstructions}". REGRA VITAL: NUNCA invente imóveis ou links. Use APENAS imóveis reais fornecidos no contexto. Se estiver aprovada, responda APENAS a palavra APROVADO sem nada mais. Se precisar de ajuste, forneça APENAS o texto da mensagem final pronto para o cliente no WhatsApp, SEM nenhum comentário, cabeçalho, introdução, explicação ou rótulo como "Reescrita" ou "APROVADO".`,
+              content: `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie se a resposta obedece: "${motherAiInstructions}". REGRA VITAL: NUNCA invente imóveis ou links. Use APENAS imóveis reais fornecidos no contexto. NUNCA reintroduza a pergunta enlatada "o que é mais importante além do valor". Se estiver aprovada, responda APENAS a palavra APROVADO sem nada mais. Se precisar de ajuste, forneça APENAS o texto da mensagem final pronto para o cliente no WhatsApp, SEM nenhum comentário, cabeçalho, introdução, explicação ou rótulo como "Reescrita" ou "APROVADO" ou travessões "---".`,
             },
             { role: 'user', content: responseText },
           ],
@@ -871,77 +999,26 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
             motherFeedback !== 'APROVADO' &&
             !motherFeedback.match(/^(\*\*|\*)?APROVADO(\*\*|\*)?$/i)
           ) {
-            // Strip any explanation header if supervisor wrote "APROVADO - ..." or "Reescrita corrigida ---"
-            if (motherFeedback.includes('---')) {
-              const parts = motherFeedback.split('---')
-              motherFeedback = parts[parts.length - 1].trim()
-            }
+            // Sanitize Mother AI response immediately
+            motherFeedback = sanitizeAiResponse(motherFeedback)
             if (motherFeedback) {
-              responseText = motherFeedback
-              console.log(`[AI_REPLY] Mother AI refined the response (len=${responseText.length})`)
+              // Ensure Mother AI did not reintroduce the canned values sentence
+              if (!isCannedValuesSentence(motherFeedback)) {
+                responseText = motherFeedback
+                console.log(
+                  `[AI_REPLY] Mother AI refined the response (len=${responseText.length})`,
+                )
+              } else {
+                console.warn(
+                  '[AI_REPLY] Mother AI attempted to reintroduce canned phrase, discarded.',
+                )
+              }
             }
           }
         }
       } catch (err) {
         console.warn(`[AI_REPLY] Mother AI validation non-fatal error: ${String(err)}`)
       }
-    }
-
-    // Function to thoroughly clean internal LLM / supervisor / prompt artifacts
-    function sanitizeAiResponse(raw) {
-      if (!raw) return ''
-      let clean = raw
-
-      // 1. Remove delimiter markers like --- or ***
-      if (clean.includes('---')) {
-        const parts = clean.split(/\n?---+\n?/)
-        // If the first part contains review meta words, drop it
-        if (
-          /aprovado|reescrita|cadência|cadencia|mensagem foi reescrita|supervisor|avalia/i.test(
-            parts[0],
-          )
-        ) {
-          clean = parts.slice(1).join('\n\n').trim()
-        }
-      }
-
-      // 2. Remove leading metadata prefixes / lines
-      clean = clean.replace(/^(\*\*|\*)?APROVADO(\*\*|\*)?(\s*[-–—:]\s*.*?)?(\n+|$)/i, '')
-      clean = clean.replace(
-        /^(\*\*|\*)?Reescrita\s*(corrigida)?(\*\*|\*)?(\s*[-–—:]\s*.*?)?(\n+|$)/i,
-        '',
-      )
-      clean = clean.replace(
-        /^(\*\*|\*)?Mensagem\s*corrigida(\*\*|\*)?(\s*[-–—:]\s*.*?)?(\n+|$)/i,
-        '',
-      )
-      clean = clean.replace(/^A\s*mensagem\s*foi\s*reescrita\s*para.*?:?\s*(\n+|$)/i, '')
-      clean = clean.replace(
-        /^Aqui\s*(está|vai)\s*a\s*(mensagem|resposta)\s*(corrigida|reescrita|ajustada):?\s*(\n+|$)/i,
-        '',
-      )
-      clean = clean.replace(/^Resposta\s*(da\s*IA|sugerida)?:?\s*(\n+|$)/i, '')
-
-      // 3. Remove lines that are purely supervisor commentary
-      const lines = clean.split('\n')
-      const filteredLines = []
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (
-          /^(\*\*|\*)?(APROVADO|Reescrita corrigida|Mensagem corrigida)(\*\*|\*)?$/i.test(
-            trimmed,
-          ) ||
-          /^(\*\*|\*)?Cadência\s*\d+/i.test(trimmed) ||
-          /A mensagem foi reescrita para obedecer/i.test(trimmed) ||
-          /^---+$/.test(trimmed)
-        ) {
-          continue
-        }
-        filteredLines.push(line)
-      }
-      clean = filteredLines.join('\n').trim()
-
-      return clean
     }
 
     // Strict validation of properties mentioned in AI response against properties collection
@@ -1172,30 +1249,6 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
 
     responseText = sanitizeAiResponse(responseText)
 
-    // Hard Anti-Repetition & Canned Response Overhaul (handles all Unicode hyphens U+2010..U+2015, punctuation, accents)
-    const isCannedValuesSentence = (txt) => {
-      if (!txt) return false
-      // Normalize hyphens and dashes (including U+2010, U+2011, U+2012, U+2013, U+2014, U+2015) to standard '-'
-      const normalized = txt
-        .toLowerCase()
-        .replace(/[\u2010-\u2015]/g, '-')
-        .replace(/\s+/g, ' ')
-
-      return (
-        normalized.includes('vou te passar os valores') ||
-        normalized.includes('passar os valores agora mesmo') ||
-        (normalized.includes('custo-beneficio') && normalized.includes('alem do valor')) ||
-        (normalized.includes('custo-benefício') && normalized.includes('além do valor')) ||
-        (normalized.includes('custobeneficio') && normalized.includes('alem do valor')) ||
-        (normalized.includes('melhor custo') && normalized.includes('alem do valor')) ||
-        (normalized.includes('melhor custo') && normalized.includes('além do valor')) ||
-        (normalized.includes('melhor custo') &&
-          normalized.includes('o que é mais importante para você além do valor')) ||
-        (normalized.includes('unidade com o melhor') && normalized.includes('além do valor')) ||
-        (normalized.includes('unidade com o melhor') && normalized.includes('alem do valor'))
-      )
-    }
-
     // Check recent AI messages sent to this customer
     let recentAiMessages = []
     try {
@@ -1403,6 +1456,15 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
           $app.saveNoValidate(fbErrLog)
         } catch (_) {}
       }
+    }
+
+    // FINAL UNCONDITIONAL SANITIZATION & CANNED INTERCEPTION
+    // Guarantee that no supervisor metadata, headers, or canned sentences can slip through to WhatsApp
+    responseText = sanitizeAiResponse(responseText)
+    if (isCannedValuesSentence(responseText)) {
+      console.warn('[AI_REPLY] Final check detected canned sentence, forcing catalog fallback')
+      responseText = generateCatalogFallbackMessage(matchedProps)
+      responseText = sanitizeAiResponse(responseText)
     }
 
     // Duplicate message final guard
