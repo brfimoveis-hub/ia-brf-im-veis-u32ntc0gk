@@ -797,7 +797,12 @@ DIRETRIZES FUNDAMENTAIS E REGRAS DE ATENDIMENTO (BRF IMÓVEIS):
 
 8. HANDOVER HUMANO: Se o cliente pedir expressamente corretor humano ou você não souber uma informação super técnica de condomínio/documento, informe que Mauro pode atendê-lo: https://wa.me/5548992098050 e inclua [HANDOVER: Mauro].
 
-9. SAÍDA LIMPA: NUNCA mencione processos internos, "catálogo", "contexto", "IA supervisora", "banco de dados" ou "instruções". Envie APENAS a mensagem conversacional em Português do Brasil.
+9. CANAL DO YOUTUBE OFICIAL DA BRF IMÓVEIS:
+   - A BRF Imóveis possui um canal oficial no YouTube ("BRFIMOVEIS EIRELI ME" / Mauro Fengler) com vídeos e tours de imóveis: https://www.youtube.com/channel/UCA2JsoiTVTf8vKgWG65YH_g
+   - Você PODE e DEVE compartilhar o link oficial do canal (https://www.youtube.com/channel/UCA2JsoiTVTf8vKgWG65YH_g) quando o cliente solicitar vídeos, tours virtuais, gravações dos imóveis ou materiais audiovisuais.
+   - NUNCA invente links de vídeos específicos individuais que não constem expressamente no contexto. Ao citar vídeos, compartilhe o canal oficial em si para que o cliente explore os vídeos disponíveis.
+
+10. SAÍDA LIMPA: NUNCA mencione processos internos, "catálogo", "contexto", "IA supervisora", "banco de dados" ou "instruções". Envie APENAS a mensagem conversacional em Português do Brasil.
 
 CONTEXTO RECUPERADO:
 ${combinedContextText || '(Nenhum contexto adicional na base)'}`
@@ -1070,32 +1075,58 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
         const trimmedBlock = block.trim()
         if (!trimmedBlock) continue
 
-        // Extract any brfimoveis.com.br URLs in this block
-        const urlMatches =
-          trimmedBlock.match(/https?:\/\/(?:www\.)?brfimoveis\.com\.br\/[^\s\)\>\"\'\`]+/gi) || []
+        // Extract any brfimoveis.com.br or external URLs in this block
+        const urlMatches = trimmedBlock.match(/https?:\/\/[^\s\)\>\"\'\`]+/gi) || []
         let hasInvalidUrl = false
         if (urlMatches.length > 0) {
           for (const rawUrl of urlMatches) {
             const cleanUrl = rawUrl.toLowerCase().replace(/[\.,;:!\?]+$/, '')
-            // Check if it matches an active property url or valid static page
-            const isCatalogStaticPage =
-              cleanUrl.includes('/imoveis') ||
-              cleanUrl.includes('/venda') ||
-              cleanUrl.endsWith('brfimoveis.com.br') ||
-              cleanUrl.endsWith('brfimoveis.com.br/')
-            const numMatch = cleanUrl.match(/brfimoveis\.com\.br\/(\d+)/i)
-            if (numMatch) {
-              const urlNum = numMatch[1]
-              if (!activeUrlNumbers.has(urlNum)) {
+
+            // ALLOWLIST: Legitimate non-property links (YouTube channel BRF, WhatsApp, social networks)
+            const isAllowlistedUrl =
+              cleanUrl.includes('youtube.com/channel/uca2jsoitvtf8vkgwg65yh_g') ||
+              cleanUrl.includes('youtube.com/@maurofenglerbrf') ||
+              cleanUrl.includes('youtube.com/@brfimoveis') ||
+              cleanUrl.includes('youtube.com/@brfimoveiseirelime') ||
+              cleanUrl.includes('youtube.com/watch') ||
+              cleanUrl.includes('youtu.be/') ||
+              cleanUrl.includes('wa.me/') ||
+              cleanUrl.includes('api.whatsapp.com/') ||
+              cleanUrl.includes('instagram.com/mauro.brfimoveis')
+
+            if (isAllowlistedUrl) {
+              continue
+            }
+
+            // Only check domain brfimoveis.com.br for catalog property validation
+            if (cleanUrl.includes('brfimoveis.com.br')) {
+              // Check if it matches an active property url or valid static page
+              const isCatalogStaticPage =
+                cleanUrl.includes('/imoveis') ||
+                cleanUrl.includes('/venda') ||
+                cleanUrl.endsWith('brfimoveis.com.br') ||
+                cleanUrl.endsWith('brfimoveis.com.br/')
+              const numMatch = cleanUrl.match(/brfimoveis\.com\.br\/(\d+)/i)
+              if (numMatch) {
+                const urlNum = numMatch[1]
+                if (!activeUrlNumbers.has(urlNum)) {
+                  hasInvalidUrl = true
+                  console.warn(
+                    `[AI_PROPERTY_VALIDATION] Invalid/Hallucinated property URL detected: ${rawUrl}`,
+                  )
+                  break
+                }
+              } else if (!isCatalogStaticPage && !activeUrls.has(cleanUrl)) {
                 hasInvalidUrl = true
                 console.warn(
-                  `[AI_PROPERTY_VALIDATION] Invalid/Hallucinated property URL detected: ${rawUrl}`,
+                  `[AI_PROPERTY_VALIDATION] Non-existent specific URL detected: ${rawUrl}`,
                 )
                 break
               }
-            } else if (!isCatalogStaticPage && !activeUrls.has(cleanUrl)) {
+            } else {
+              // Other untrusted unknown domains - flag as invalid url
               hasInvalidUrl = true
-              console.warn(`[AI_PROPERTY_VALIDATION] Non-existent specific URL detected: ${rawUrl}`)
+              console.warn(`[AI_PROPERTY_VALIDATION] Unrecognized external URL detected: ${rawUrl}`)
               break
             }
           }

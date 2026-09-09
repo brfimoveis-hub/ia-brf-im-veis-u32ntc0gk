@@ -161,6 +161,25 @@ cronAdd('sync_properties_instant_trigger', '* * * * *', () => {
         let code = codeMatch ? codeMatch[1].trim() : `BRF-${propId}`
         code = code.replace(/\s+/g, ' ').trim()
 
+        // Known priority launches manual normalization by ID or URL
+        if (propId === '329' || url.includes('/329/')) {
+          code = 'LM 329'
+        } else if (propId === '301' || url.includes('/301/')) {
+          code = 'LM 301'
+        } else if (propId === '295' || url.includes('/295/')) {
+          code = 'LM 295'
+        } else if (propId === '310' || url.includes('/310/')) {
+          code = 'LM 310'
+        } else if (propId === '330' || url.includes('/330/')) {
+          code = 'LM 330'
+        } else if (propId === '289' || url.includes('/289/')) {
+          code = 'LM 289'
+        } else if (propId === '311' || url.includes('/311/')) {
+          code = 'LM 311'
+        } else if (propId === '342' || url.includes('/342/')) {
+          code = 'LM 342'
+        }
+
         let title = ''
         const h1Match = pageHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
         if (h1Match) {
@@ -271,12 +290,12 @@ cronAdd('sync_properties_instant_trigger', '* * * * *', () => {
 
         let existing = null
         try {
-          existing = $app.findFirstRecordByData('properties', 'code', code)
+          existing = $app.findFirstRecordByData('properties', 'url', url)
         } catch (_) {}
 
         if (!existing) {
           try {
-            existing = $app.findFirstRecordByData('properties', 'url', url)
+            existing = $app.findFirstRecordByData('properties', 'code', code)
           } catch (_) {}
         }
 
@@ -520,6 +539,25 @@ cronAdd('sync_properties_from_site', '0 * * * *', () => {
         // Clean any code formatting like trailing dots or excessive spaces
         code = code.replace(/\s+/g, ' ').trim()
 
+        // Known priority launches manual normalization by ID or URL
+        if (propId === '329' || url.includes('/329/')) {
+          code = 'LM 329'
+        } else if (propId === '301' || url.includes('/301/')) {
+          code = 'LM 301'
+        } else if (propId === '295' || url.includes('/295/')) {
+          code = 'LM 295'
+        } else if (propId === '310' || url.includes('/310/')) {
+          code = 'LM 310'
+        } else if (propId === '330' || url.includes('/330/')) {
+          code = 'LM 330'
+        } else if (propId === '289' || url.includes('/289/')) {
+          code = 'LM 289'
+        } else if (propId === '311' || url.includes('/311/')) {
+          code = 'LM 311'
+        } else if (propId === '342' || url.includes('/342/')) {
+          code = 'LM 342'
+        }
+
         // Parse Title (<h1 ...> or <h2>)
         let title = ''
         const h1Match = pageHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
@@ -634,15 +672,15 @@ cronAdd('sync_properties_from_site', '0 * * * *', () => {
           if (description.length > 500) description = description.substring(0, 500) + '...'
         }
 
-        // Check if existing record by code OR by url
+        // Check if existing record by url OR by code
         let existing = null
         try {
-          existing = $app.findFirstRecordByData('properties', 'code', code)
+          existing = $app.findFirstRecordByData('properties', 'url', url)
         } catch (_) {}
 
         if (!existing) {
           try {
-            existing = $app.findFirstRecordByData('properties', 'url', url)
+            existing = $app.findFirstRecordByData('properties', 'code', code)
           } catch (_) {}
         }
 
@@ -912,6 +950,25 @@ routerAdd('GET', '/backend/v1/sync-properties-run', (e) => {
         let code = codeMatch ? codeMatch[1].trim() : `BRF-${propId}`
         code = code.replace(/\s+/g, ' ').trim()
 
+        // Known priority launches manual normalization by ID or URL
+        if (propId === '329' || url.includes('/329/')) {
+          code = 'LM 329'
+        } else if (propId === '301' || url.includes('/301/')) {
+          code = 'LM 301'
+        } else if (propId === '295' || url.includes('/295/')) {
+          code = 'LM 295'
+        } else if (propId === '310' || url.includes('/310/')) {
+          code = 'LM 310'
+        } else if (propId === '330' || url.includes('/330/')) {
+          code = 'LM 330'
+        } else if (propId === '289' || url.includes('/289/')) {
+          code = 'LM 289'
+        } else if (propId === '311' || url.includes('/311/')) {
+          code = 'LM 311'
+        } else if (propId === '342' || url.includes('/342/')) {
+          code = 'LM 342'
+        }
+
         let title = ''
         const h1Match = pageHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
         if (h1Match) {
@@ -1017,12 +1074,12 @@ routerAdd('GET', '/backend/v1/sync-properties-run', (e) => {
 
         let existing = null
         try {
-          existing = $app.findFirstRecordByData('properties', 'code', code)
+          existing = $app.findFirstRecordByData('properties', 'url', url)
         } catch (_) {}
 
         if (!existing) {
           try {
-            existing = $app.findFirstRecordByData('properties', 'url', url)
+            existing = $app.findFirstRecordByData('properties', 'code', code)
           } catch (_) {}
         }
 
