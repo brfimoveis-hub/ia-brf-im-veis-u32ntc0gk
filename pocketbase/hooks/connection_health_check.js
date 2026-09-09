@@ -113,55 +113,48 @@ routerAdd(
         })
       } else {
         try {
-          const permRes = $http.send({
-            url: 'https://graph.facebook.com/v21.0/me/permissions?access_token=' + capiToken,
-            method: 'GET',
+          // Tokens CAPI diretos são write-only para o dataset. Validação via envio POST /events:
+          const pxRes = $http.send({
+            url: 'https://graph.facebook.com/v21.0/' + pixelId + '/events',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: 'Bearer ' + capiToken,
+            },
+            body: JSON.stringify({
+              data: [
+                {
+                  event_name: 'Lead',
+                  event_time: Math.floor(Date.now() / 1000),
+                  action_source: 'system_generated',
+                  user_data: {
+                    em: [$security.sha256('healthcheck@brfimoveis.com.br')],
+                  },
+                },
+              ],
+            }),
             timeout: 15,
           })
-          if (permRes.statusCode >= 400) {
-            var pErr = {}
+          if (pxRes.statusCode >= 200 && pxRes.statusCode < 300) {
+            results.push({
+              name: 'Meta Conversions API (CAPI)',
+              key: 'capi',
+              status: 'connected',
+              timestamp: ts,
+              message: 'Conectado ✅ — Dataset ' + pixelId,
+            })
+          } else {
+            var xErr = {}
             try {
-              pErr = permRes.json && permRes.json.error ? permRes.json.error : {}
+              xErr = pxRes.json && pxRes.json.error ? pxRes.json.error : {}
             } catch (_) {}
             results.push({
               name: 'Meta Conversions API (CAPI)',
               key: 'capi',
               status: 'error',
               timestamp: ts,
-              message: pErr.message || 'Token inválido ou expirado',
+              message: xErr.message || 'Erro ao validar Dataset (HTTP ' + pxRes.statusCode + ')',
             })
-          } else {
-            const pxRes = $http.send({
-              url: 'https://graph.facebook.com/v21.0/' + pixelId + '?fields=id,name',
-              method: 'GET',
-              headers: { Authorization: 'Bearer ' + capiToken },
-              timeout: 15,
-            })
-            if (pxRes.statusCode >= 200 && pxRes.statusCode < 300) {
-              var pxName = ''
-              try {
-                pxName = pxRes.json && pxRes.json.name ? pxRes.json.name : ''
-              } catch (_) {}
-              results.push({
-                name: 'Meta Conversions API (CAPI)',
-                key: 'capi',
-                status: 'connected',
-                timestamp: ts,
-                message: 'Conectado ✅' + (pxName ? ' — ' + pxName : ''),
-              })
-            } else {
-              var xErr = {}
-              try {
-                xErr = pxRes.json && pxRes.json.error ? pxRes.json.error : {}
-              } catch (_) {}
-              results.push({
-                name: 'Meta Conversions API (CAPI)',
-                key: 'capi',
-                status: 'error',
-                timestamp: ts,
-                message: xErr.message || 'Pixel não encontrado (HTTP ' + pxRes.statusCode + ')',
-              })
-            }
           }
         } catch (e3) {
           results.push({

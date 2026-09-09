@@ -93,53 +93,9 @@ routerAdd(
 
     const cleanPixelId = pixelIdDigits
 
-    const permUrl = 'https://graph.facebook.com/v21.0/me/permissions?access_token=' + accessToken
-    const permRes = $http.send({ url: permUrl, method: 'GET', timeout: 15 })
-
-    if (permRes.statusCode >= 400) {
-      const msg = permRes.json?.error?.message || 'Token de Acesso inválido ou expirado.'
-      setErrorState(msg)
-      logIntegrationError('invalid_token', msg, {
-        statusCode: permRes.statusCode,
-        response: permRes.json,
-      })
-      return e.json(400, {
-        success: false,
-        error: { code: 'invalid_token', message: msg },
-      })
-    }
-
-    const perms = permRes.json?.data || []
-    const grantedPerms = perms
-      .filter(function (p) {
-        return p.status === 'granted'
-      })
-      .map(function (p) {
-        return p.permission
-      })
-
-    const requiredPerms = ['ads_management', 'business_management', 'ads_read']
-    const missingPerms = requiredPerms.filter(function (p) {
-      return grantedPerms.indexOf(p) === -1
-    })
-
-    if (missingPerms.length > 0) {
-      const msg =
-        'Token válido e permanente (expires_at=0), porém faltam permissões de anúncio na Meta: ' +
-        missingPerms.join(', ') +
-        '. Permissões concedidas: ' +
-        grantedPerms.join(', ') +
-        '. Para liberar a Conversions API (CAPI), atribua as permissões de anúncio ao usuário do sistema no Meta Business Suite.'
-      setErrorState(msg)
-      logIntegrationError('insufficient_permissions', msg, {
-        granted: grantedPerms,
-        missing: missingPerms,
-      })
-      return e.json(400, {
-        success: false,
-        error: { code: 'insufficient_permissions', message: msg },
-      })
-    }
+    // Tokens gerados no Events Manager (Dataset Quality API / Conversions API direto)
+    // possuem escopo write-only ou read_ads_dataset_quality para o dataset específico.
+    // A validação definitiva é o envio direto de um evento de teste via POST /events.
 
     const url = 'https://graph.facebook.com/v21.0/' + cleanPixelId + '/events'
 

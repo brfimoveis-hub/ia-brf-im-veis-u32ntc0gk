@@ -17,7 +17,7 @@ export const MetaPixel = () => {
     // Regra de ouro: NUNCA carregar antes de auth estar concluído ou se não houver usuário
     if (loading || !user) return
 
-    const pixelId = user?.meta_pixel_id || '1093869151209421'
+    const pixelId = user?.meta_pixel_id || '1086520410503224'
     if (!pixelId) return
 
     let isCancelled = false

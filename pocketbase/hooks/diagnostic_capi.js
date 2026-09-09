@@ -22,41 +22,47 @@ routerAdd(
     }
 
     try {
-      const permRes = $http.send({
-        url: 'https://graph.facebook.com/v21.0/me/permissions?access_token=' + accessToken,
-        method: 'GET',
+      // Tokens de CAPI do Events Manager são write-only (ou apenas read_ads_dataset_quality).
+      // Requisições GET /{pixelId} sempre retornam erro de permissão.
+      // O teste real é o envio de evento de teste no endpoint /events.
+      const eventRes = $http.send({
+        url: 'https://graph.facebook.com/v21.0/' + pixelId + '/events',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + accessToken,
+        },
+        body: JSON.stringify({
+          data: [
+            {
+              event_name: 'Lead',
+              event_time: Math.floor(Date.now() / 1000),
+              action_source: 'system_generated',
+              user_data: {
+                em: [$security.sha256('teste@brfimoveis.com.br')],
+              },
+            },
+          ],
+        }),
         timeout: 15,
       })
 
-      if (permRes.statusCode >= 400) {
-        var permError = (permRes.json && permRes.json.error) || {}
-        return e.json(200, {
-          success: false,
-          error: permError.message || 'Token inválido ou expirado.',
-          status_code: permRes.statusCode,
-        })
-      }
-
-      const pixelRes = $http.send({
-        url: 'https://graph.facebook.com/v21.0/' + pixelId + '?fields=id,name',
-        method: 'GET',
-        headers: { Authorization: 'Bearer ' + accessToken },
-        timeout: 15,
-      })
-
-      if (pixelRes.statusCode >= 200 && pixelRes.statusCode < 300) {
+      if (eventRes.statusCode >= 200 && eventRes.statusCode < 300) {
+        const eventsReceived = (eventRes.json && eventRes.json.events_received) || 0
         return e.json(200, {
           success: true,
-          pixel_name: (pixelRes.json && pixelRes.json.name) || '',
+          pixel_name: 'Dataset ' + pixelId,
           pixel_id: pixelId,
+          events_received: eventsReceived,
         })
       }
 
-      var pixelError = (pixelRes.json && pixelRes.json.error) || {}
+      var pixelError = (eventRes.json && eventRes.json.error) || {}
       return e.json(200, {
         success: false,
-        error: pixelError.message || 'Pixel não encontrado (HTTP ' + pixelRes.statusCode + ').',
-        status_code: pixelRes.statusCode,
+        error:
+          pixelError.message || 'Erro ao enviar evento CAPI (HTTP ' + eventRes.statusCode + ').',
+        status_code: eventRes.statusCode,
       })
     } catch (err) {
       return e.json(200, {
