@@ -460,6 +460,8 @@ onRecordAfterCreateSuccess((e) => {
     let extractedMaxPrice = 0
     let extractedBedrooms = 0
     let extractedLocation = ''
+    let matchedLocFilter = ''
+    let matchedProps = []
 
     try {
       // Build search text using current customer message AND recent customer messages
@@ -587,7 +589,6 @@ onRecordAfterCreateSuccess((e) => {
         { key: 'jurerê', filter: "neighborhood ~ 'Jurerê' || title ~ 'Jurerê'" },
       ]
 
-      let matchedLocFilter = ''
       for (const locItem of locationsMap) {
         if (combinedCustText.includes(locItem.key)) {
           matchedLocFilter = locItem.filter
@@ -595,8 +596,6 @@ onRecordAfterCreateSuccess((e) => {
           break
         }
       }
-
-      let matchedProps = []
 
       // 1. Check if customer mentioned a specific property code (e.g. AP-320, AP343, AP308, LM326, 343)
       const codeRegexMatch = combinedCustText.match(
@@ -1232,15 +1231,85 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
 
     const cannedDetected = isCannedValuesSentence(responseText)
 
-    // Fallback function to generate 2-3 real catalog properties
-    function generateCatalogFallbackMessage() {
-      const activeFallback =
-        matchedProps && matchedProps.length > 0
-          ? matchedProps.filter((p) => p.get('is_active') === true)
-          : $app.findRecordsByFilter('properties', 'is_active = true', 'price', 3, 0)
+    // Fallback function to generate 2-3 real catalog properties from properties collection
+    function generateCatalogFallbackMessage(propsCandidateList) {
+      let activeProps = []
 
-      if (activeFallback && activeFallback.length > 0) {
-        const topProps = activeFallback.slice(0, 3)
+      // 1. Check passed candidates or outer matchedProps safely
+      const candidates =
+        Array.isArray(propsCandidateList) && propsCandidateList.length > 0
+          ? propsCandidateList
+          : typeof matchedProps !== 'undefined' &&
+              Array.isArray(matchedProps) &&
+              matchedProps.length > 0
+            ? matchedProps
+            : []
+
+      if (candidates.length > 0) {
+        activeProps = candidates.filter((p) => {
+          try {
+            return p && (p.get('is_active') === true || p.getBool?.('is_active') === true)
+          } catch (_) {
+            return true
+          }
+        })
+      }
+
+      // 2. If candidates list is empty or had no active items, query the catalog directly
+      if (activeProps.length === 0) {
+        try {
+          // If criteria were extracted, try to filter by price / bedrooms
+          let filterParts = ['is_active = true']
+          if (typeof extractedMaxPrice === 'number' && extractedMaxPrice > 0) {
+            filterParts.push(`price <= ${extractedMaxPrice}`)
+          }
+          if (typeof extractedBedrooms === 'number' && extractedBedrooms > 0) {
+            filterParts.push(`bedrooms >= ${extractedBedrooms}`)
+          }
+          if (typeof matchedLocFilter === 'string' && matchedLocFilter) {
+            filterParts.push(`(${matchedLocFilter})`)
+          }
+
+          if (filterParts.length > 1) {
+            activeProps = $app.findRecordsByFilter(
+              'properties',
+              filterParts.join(' && '),
+              'price',
+              3,
+              0,
+            )
+          }
+
+          // Relax location if empty
+          if (
+            activeProps.length === 0 &&
+            typeof matchedLocFilter === 'string' &&
+            matchedLocFilter &&
+            (extractedMaxPrice > 0 || extractedBedrooms > 0)
+          ) {
+            let relaxed = ['is_active = true']
+            if (extractedMaxPrice > 0) relaxed.push(`price <= ${extractedMaxPrice}`)
+            if (extractedBedrooms > 0) relaxed.push(`bedrooms >= ${extractedBedrooms}`)
+            activeProps = $app.findRecordsByFilter(
+              'properties',
+              relaxed.join(' && '),
+              'price',
+              3,
+              0,
+            )
+          }
+
+          // Global fallback: any active properties
+          if (activeProps.length === 0) {
+            activeProps = $app.findRecordsByFilter('properties', 'is_active = true', 'price', 3, 0)
+          }
+        } catch (dbErr) {
+          console.warn(`[AI_REPLY] Error querying properties for fallback: ${String(dbErr)}`)
+        }
+      }
+
+      if (activeProps && activeProps.length > 0) {
+        const topProps = activeProps.slice(0, 3)
         let generatedCatalogReply = ''
         if (displayName) {
           generatedCatalogReply += `Oi, ${displayName}! `
@@ -1248,26 +1317,41 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
           generatedCatalogReply += `Olá! `
         }
 
-        if (extractedMaxPrice > 0 || extractedBedrooms > 0) {
+        const maxP = typeof extractedMaxPrice === 'number' ? extractedMaxPrice : 0
+        const beds = typeof extractedBedrooms === 'number' ? extractedBedrooms : 0
+
+        if (maxP > 0 || beds > 0) {
           generatedCatalogReply += `Separei aqui opções reais do nosso catálogo que se encaixam no que você procura`
-          if (extractedBedrooms > 0) generatedCatalogReply += ` (${extractedBedrooms} dormitórios`
-          if (extractedMaxPrice > 0)
-            generatedCatalogReply += `, até R$ ${(extractedMaxPrice / 1000).toFixed(0)}k)`
-          else if (extractedBedrooms > 0) generatedCatalogReply += `)`
+          if (beds > 0) generatedCatalogReply += ` (${beds} dormitórios`
+          if (maxP > 0) generatedCatalogReply += `, até R$ ${(maxP / 1000).toFixed(0)}k)`
+          else if (beds > 0) generatedCatalogReply += `)`
           generatedCatalogReply += `:\n\n`
         } else {
           generatedCatalogReply += `Aqui estão excelentes opções do nosso catálogo oficial:\n\n`
         }
 
         topProps.forEach((p) => {
-          const pCode = p.getString('code')
-          const pTitle = p.getString('title')
-          const pUrl = p.getString('url')
-          const pCity = p.getString('city')
-          const pNeigh = p.getString('neighborhood')
-          const pPrice = p.getString('price_formatted')
+          const pCode = (p.getString('code') || '').trim()
+          const pTitle = (p.getString('title') || '').trim()
+          let pUrl = (p.getString('url') || '').trim()
+          const pCity = (p.getString('city') || '').trim()
+          const pNeigh = (p.getString('neighborhood') || '').trim()
+          let pPrice = (p.getString('price_formatted') || '').trim()
           const pBeds = p.getInt('bedrooms')
           const pSuites = p.getInt('suites')
+
+          if (!pPrice) {
+            const rawPrice = p.getFloat('price')
+            if (rawPrice > 0) {
+              pPrice = `R$ ${rawPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            } else {
+              pPrice = 'Consulte valores'
+            }
+          }
+
+          if (!pUrl) {
+            pUrl = 'https://www.brfimoveis.com.br/imoveis/venda'
+          }
 
           generatedCatalogReply += `📍 *${pCode}* - ${pTitle}\n`
           generatedCatalogReply += `• Localização: ${pNeigh ? pNeigh + ', ' : ''}${pCity}\n`
@@ -1298,7 +1382,27 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       console.log(
         `[AI_REPLY] Overriding with real catalog fallback for customer ${customerId} (canned=${cannedDetected}, similar=${isTooSimilar}, needsFallback=${needsCatalogFallback}).`,
       )
-      responseText = generateCatalogFallbackMessage()
+      try {
+        const catalogMsg = generateCatalogFallbackMessage(matchedProps)
+        if (catalogMsg && catalogMsg.trim()) {
+          responseText = catalogMsg
+        }
+      } catch (fbErr) {
+        console.error(`[AI_REPLY] generateCatalogFallbackMessage error: ${String(fbErr)}`)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const fbErrLog = new Record(logsCol)
+          fbErrLog.set('user_id', userId || '')
+          fbErrLog.set('type', 'whatsapp_ai_reply_error')
+          fbErrLog.set(
+            'message',
+            `Erro no generateCatalogFallbackMessage: ${fbErr.message || String(fbErr)}`,
+          )
+          fbErrLog.set('details', String(fbErr.stack || fbErr))
+          fbErrLog.set('payload', JSON.stringify({ customer_id: customerId, error: String(fbErr) }))
+          $app.saveNoValidate(fbErrLog)
+        } catch (_) {}
+      }
     }
 
     // Duplicate message final guard
@@ -1688,6 +1792,8 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
     console.log(`[AI_REPLY] Completed processing for customer=${customerId}`)
   } catch (err) {
     console.error(`[AI_REPLY] Top-level error for customer ${customerId}: ${String(err)}`)
+    let topLevelErrorDetails = String(err.stack || err)
+    let topLevelErrorMessage = err.message || String(err)
     try {
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const errLog = new Record(logsCol)
@@ -1695,12 +1801,159 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       errLog.set('type', 'whatsapp_ai_reply_error')
       errLog.set(
         'message',
-        `Erro geral no processamento de resposta da IA: ${err.message || String(err)}`,
+        `Erro geral no processamento de resposta da IA: ${topLevelErrorMessage}`,
       )
-      errLog.set('details', String(err.stack || err))
-      errLog.set('payload', JSON.stringify({ customer_id: customerId, error: String(err) }))
+      errLog.set('details', topLevelErrorDetails)
+      errLog.set(
+        'payload',
+        JSON.stringify({ customer_id: customerId, error: topLevelErrorMessage }),
+      )
       $app.saveNoValidate(errLog)
     } catch (_) {}
+
+    // Resilient fallback: attempt to send real catalog properties or safety response
+    try {
+      if (customerId && (conversationChannel === 'whatsapp' || !conversationChannel)) {
+        console.log(
+          `[AI_REPLY] Top-level catch attempting emergency catalog fallback for ${customerId}...`,
+        )
+        let emergencyReply = ''
+
+        // Try to query active properties directly
+        try {
+          const fallbackProps = $app.findRecordsByFilter(
+            'properties',
+            'is_active = true',
+            'price',
+            3,
+            0,
+          )
+          if (fallbackProps && fallbackProps.length > 0) {
+            let custDisplayName = ''
+            try {
+              const custRec = $app.findRecordById('customers', customerId)
+              const cName = (
+                custRec.getString('first_name') ||
+                custRec.getString('name') ||
+                ''
+              ).trim()
+              if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
+                custDisplayName = cName.split(' ')[0]
+              }
+            } catch (_) {}
+
+            emergencyReply = custDisplayName ? `Oi, ${custDisplayName}! ` : `Olá! `
+            emergencyReply += `Separei aqui excelentes opções reais do nosso catálogo oficial da BRF Imóveis:\n\n`
+
+            fallbackProps.forEach((p) => {
+              const pCode = (p.getString('code') || '').trim()
+              const pTitle = (p.getString('title') || '').trim()
+              let pUrl =
+                (p.getString('url') || '').trim() || 'https://www.brfimoveis.com.br/imoveis/venda'
+              const pCity = (p.getString('city') || '').trim()
+              const pNeigh = (p.getString('neighborhood') || '').trim()
+              let pPrice = (p.getString('price_formatted') || '').trim()
+              const pBeds = p.getInt('bedrooms')
+              const pSuites = p.getInt('suites')
+
+              if (!pPrice) {
+                const rawPrice = p.getFloat('price')
+                pPrice =
+                  rawPrice > 0
+                    ? `R$ ${rawPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                    : 'Consulte valores'
+              }
+
+              emergencyReply += `📍 *${pCode}* - ${pTitle}\n`
+              emergencyReply += `• Localização: ${pNeigh ? pNeigh + ', ' : ''}${pCity}\n`
+              emergencyReply += `• Valor: ${pPrice}\n`
+              if (pBeds > 0) {
+                emergencyReply += `• Dormitórios: ${pBeds}${pSuites > 0 ? ` (${pSuites} suítes)` : ''}\n`
+              }
+              emergencyReply += `• Link com fotos e detalhes: ${pUrl}\n\n`
+            })
+            emergencyReply += `Dá uma olhada nos links! Qual dessas opções você achou mais interessante? Se quiser, posso agendar para você conhecer pessoalmente.`
+          }
+        } catch (catDbErr) {
+          console.warn(`[AI_REPLY] Emergency catalog lookup error: ${String(catDbErr)}`)
+        }
+
+        // If catalog lookup also failed, use minimal safety message
+        if (!emergencyReply) {
+          emergencyReply = `Olá! Você pode conferir nosso catálogo completo de imóveis diretamente no site: https://www.brfimoveis.com.br/imoveis/venda. Se preferir um atendimento exclusivo com o corretor Mauro, ele atende no link: https://wa.me/5548992098050`
+        }
+
+        // Save conversation record
+        try {
+          const convCol = $app.findCollectionByNameOrId('conversations')
+          const rec = new Record(convCol)
+          rec.set('user_id', userId || '')
+          rec.set('customer_id', customerId)
+          rec.set('sender', 'ai')
+          rec.set('content', emergencyReply)
+          rec.set('channel', conversationChannel || 'whatsapp')
+          $app.save(rec)
+        } catch (_) {}
+
+        // Resolve meta credentials if needed
+        let emMetaToken = ''
+        let emPhoneId = ''
+        try {
+          const usersWithMeta = $app.findRecordsByFilter(
+            'users',
+            "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+            '-created',
+            1,
+            0,
+          )
+          if (usersWithMeta.length > 0) {
+            emMetaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
+            emPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
+          }
+        } catch (_) {}
+
+        let emCustomerPhone = ''
+        try {
+          const cRec = $app.findRecordById('customers', customerId)
+          emCustomerPhone = cRec.getString('phone') || ''
+        } catch (_) {}
+
+        let emCleanPhone = emCustomerPhone.replace(/\D/g, '')
+        if (emCleanPhone.length === 10 || emCleanPhone.length === 11) {
+          emCleanPhone = '55' + emCleanPhone
+        }
+
+        if (emMetaToken && emPhoneId && emCleanPhone) {
+          callMetaWithRetry(
+            `https://graph.facebook.com/v21.0/${emPhoneId}/messages`,
+            'POST',
+            { Authorization: `Bearer ${emMetaToken}`, 'Content-Type': 'application/json' },
+            JSON.stringify({
+              messaging_product: 'whatsapp',
+              to: emCleanPhone,
+              type: 'text',
+              text: { body: emergencyReply },
+            }),
+          )
+          console.log(`[AI_REPLY] Emergency fallback sent to ${emCleanPhone}`)
+        }
+      }
+    } catch (emergencyErr) {
+      console.error(`[AI_REPLY] Fatal: emergency fallback failed too: ${String(emergencyErr)}`)
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const failLog = new Record(logsCol)
+        failLog.set('user_id', userId || '')
+        failLog.set('type', 'whatsapp_ai_emergency_fail')
+        failLog.set(
+          'message',
+          `Falha crítica no fallback de emergência: ${emergencyErr.message || String(emergencyErr)}`,
+        )
+        failLog.set('details', String(emergencyErr.stack || emergencyErr))
+        failLog.set('payload', JSON.stringify({ customer_id: customerId }))
+        $app.saveNoValidate(failLog)
+      } catch (_) {}
+    }
   } finally {
     if (acquiredLock) {
       try {
