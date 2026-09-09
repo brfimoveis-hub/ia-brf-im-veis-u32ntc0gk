@@ -124,7 +124,12 @@ routerAdd(
     })
 
     if (missingPerms.length > 0) {
-      const msg = 'Permissões insuficientes. Faltam: ' + missingPerms.join(', ')
+      const msg =
+        'Token válido e permanente (expires_at=0), porém faltam permissões de anúncio na Meta: ' +
+        missingPerms.join(', ') +
+        '. Permissões concedidas: ' +
+        grantedPerms.join(', ') +
+        '. Para liberar a Conversions API (CAPI), atribua as permissões de anúncio ao usuário do sistema no Meta Business Suite.'
       setErrorState(msg)
       logIntegrationError('insufficient_permissions', msg, {
         granted: grantedPerms,

@@ -180,12 +180,20 @@ export function CapiPanel() {
         {isError && capiError && (
           <div
             key="capi-error-alert"
-            className="mt-3 flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3"
+            className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3"
           >
-            <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-red-700">Erro</p>
-              <p className="text-sm text-red-600">{capiError}</p>
+            <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-amber-800">Atenção na Conexão Meta CAPI</p>
+              <p className="text-sm text-amber-700">{capiError}</p>
+              <p className="text-xs text-amber-600 mt-1">
+                <strong>Dica:</strong> O token colado é permanente (não expira), mas possui
+                permissões exclusivas de WhatsApp. Para habilitar o CAPI no Gerenciador de Negócios
+                da Meta (Meta Business Suite): Configurações do Negócio → Usuários do Sistema →
+                Gerar Novo Token ou Adicionar Ativos com permissões de Anúncios (
+                <code>ads_management</code>, <code>ads_read</code>, <code>business_management</code>
+                ).
+              </p>
             </div>
           </div>
         )}
