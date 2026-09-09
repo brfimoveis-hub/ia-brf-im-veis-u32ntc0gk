@@ -610,18 +610,70 @@ onRecordAfterCreateSuccess((e) => {
         }
       }
 
-      // 1. Check if customer mentioned a specific property code (e.g. AP-320, AP343, AP308, LM326, 343)
-      const codeRegexMatch = combinedCustText.match(
-        /(ap[-\s]?\d+|lm[-\s]?\d+|tr[-\s]?\d+|aru[-\s]?\d+|cs[-\s]?\d+|\b\d{3}\b)/i,
-      )
-      if (codeRegexMatch) {
-        const rawCode = codeRegexMatch[1].toUpperCase().replace(/\s+/g, '')
-        const numOnly = rawCode.replace(/\D/g, '')
+      // 1. Check if customer mentioned a specific property code or known project name
+      // (e.g. AP-320, LM 329, Terrá, Viva Trindade, Villa Areias, Villa dos Acordes/Açores, Viva Balneário, Colinas de São Pedro, Solar Di Plaza)
+      const knownProjects = [
+        {
+          regex: /terr[aá]/i,
+          filter: "is_active = true && (title ~ 'Terrá' || title ~ 'Terra' || code ~ '329')",
+        },
+        {
+          regex: /viva\s*trindade/i,
+          filter: "is_active = true && (title ~ 'Viva Trindade' || code ~ '301')",
+        },
+        {
+          regex: /villa\s*(?:dos\s*)?ac[oó]rdes|villa\s*(?:dos\s*)?a[cç][oó]res/i,
+          filter:
+            "is_active = true && (title ~ 'Acordes' || title ~ 'Açores' || title ~ 'Acores' || code ~ '280')",
+        },
+        {
+          regex: /villa\s*areias|residencial\s*areias/i,
+          filter: "is_active = true && (title ~ 'Areias' || code ~ '295')",
+        },
+        {
+          regex: /viva\s*balne[aá]rio/i,
+          filter:
+            "is_active = true && (title ~ 'Viva Balneário' || title ~ 'Viva Balneario' || code ~ '342')",
+        },
+        {
+          regex: /colinas\s*(?:de\s*)?s[aã]o\s*pedro/i,
+          filter:
+            "is_active = true && (title ~ 'Colinas' || code ~ '326' || code ~ '337' || code ~ '333')",
+        },
+        {
+          regex: /solar\s*(?:di\s*)?plaza/i,
+          filter: "is_active = true && (title ~ 'Solar' || code ~ '327')",
+        },
+        {
+          regex: /neo\s*continente/i,
+          filter: "is_active = true && (title ~ 'Neo Continente' || code ~ '289')",
+        },
+      ]
 
-        let codeFilter = `is_active = true && (code ~ '${rawCode}' || url ~ '/${numOnly}/')`
-        const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 3, 0)
-        if (codeResults.length > 0) {
-          matchedProps = codeResults
+      for (const proj of knownProjects) {
+        if (proj.regex.test(combinedCustText)) {
+          const projResults = $app.findRecordsByFilter('properties', proj.filter, '-created', 3, 0)
+          if (projResults.length > 0) {
+            matchedProps = projResults
+            break
+          }
+        }
+      }
+
+      // 1b. Check if customer mentioned a specific property code (e.g. AP-320, AP343, AP308, LM326, 343)
+      if (matchedProps.length === 0) {
+        const codeRegexMatch = combinedCustText.match(
+          /(ap[-\s]?\d+|lm[-\s]?\d+|tr[-\s]?\d+|aru[-\s]?\d+|cs[-\s]?\d+|\b\d{3}\b)/i,
+        )
+        if (codeRegexMatch) {
+          const rawCode = codeRegexMatch[1].toUpperCase().replace(/\s+/g, '')
+          const numOnly = rawCode.replace(/\D/g, '')
+
+          let codeFilter = `is_active = true && (code ~ '${rawCode}' || url ~ '/${numOnly}/')`
+          const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 3, 0)
+          if (codeResults.length > 0) {
+            matchedProps = codeResults
+          }
         }
       }
 
