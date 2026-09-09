@@ -301,10 +301,29 @@ onRecordAfterCreateSuccess((e) => {
     const biaInstructions = userRecord ? userRecord.getString('bia_instructions') : ''
     const motherAiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
 
-    const personaInstructions = biaInstructions.trim()
-      ? biaInstructions
-      : motherAiInstructions ||
-        'Você é a Bia, assistente virtual de vendas imobiliárias da BRF Imóveis. Seja prestativa, educada, empática e conduza o cliente para a compra ou permuta de imóveis.'
+    // Clean persona and mother instructions from canned loop phrase
+    const cleanInstructionText = (txt) => {
+      if (!txt) return ''
+      return txt
+        .replace(/3\.\s*Gestão de Interrupções:.*?\(Retorno à Cadência 2\)\./gi, '')
+        .replace(/1\.\s*GESTÃO DE INTERRUPÇÕES\s*—.*?sem confrontar o cliente\./gi, '')
+        .replace(
+          /responda EXATAMENTE:\s*"Com certeza, vou te passar os valores agora mesmo.*?"/gi,
+          'apresente os imóveis e valores do catálogo imediatamente com os links oficiais.',
+        )
+        .replace(
+          /responda:\s*"Com certeza, vou te passar os valores agora mesmo.*?"/gi,
+          'apresente os imóveis e valores do catálogo imediatamente com os links oficiais.',
+        )
+    }
+
+    const personaInstructions = cleanInstructionText(
+      biaInstructions.trim()
+        ? biaInstructions
+        : motherAiInstructions ||
+            'Você é a Bia, assistente virtual de vendas imobiliárias da BRF Imóveis. Seja prestativa, educada, empática e conduza o cliente para a compra ou permuta de imóveis.',
+    )
+    const cleanMotherAiInstructions = cleanInstructionText(motherAiInstructions)
 
     const customerMessage = e.record.getString('content') || ''
     const currentStatus = customer.getString('status') || 'Novo'
@@ -433,101 +452,216 @@ onRecordAfterCreateSuccess((e) => {
 
     // Real Estate Properties Catalog from Database (brfimoveis.com.br)
     let propertyContext = ''
+    let isRequestingOptions = false
+    let extractedMaxPrice = 0
+    let extractedBedrooms = 0
+    let extractedLocation = ''
+
     try {
-      const lowerMsg = customerMessage.toLowerCase()
+      // Build search text using current customer message AND recent customer messages
+      let customerHistoryTexts = [customerMessage.toLowerCase()]
+      if (historyRecords && historyRecords.length > 0) {
+        historyRecords.forEach((h) => {
+          const s = h.getString('sender')
+          if (s === 'customer' || s === 'user' || s === 'lead') {
+            customerHistoryTexts.push((h.getString('content') || '').toLowerCase())
+          }
+        })
+      }
+      const combinedCustText = customerHistoryTexts.join(' ')
+
+      // Detect if user is asking for options / listings / links
+      const optionTriggers = [
+        'opções',
+        'opcoes',
+        'opção',
+        'opcao',
+        'links',
+        'link',
+        'imóveis',
+        'imoveis',
+        'o que vc tem',
+        'o que você tem',
+        'o que voce tem',
+        'o que tem',
+        'quais imóveis',
+        'quais imoveis',
+        'quais apartamentos',
+        'quais aptos',
+        'tem algo',
+        'me passa',
+        'manda os link',
+        'manda as opções',
+        'manda opcoes',
+        'manda opções',
+        'apresentar opções',
+        'apresentar opcoes',
+        'mostrar',
+        'fotos',
+        'catalogo',
+        'catálogo',
+      ]
+      isRequestingOptions = optionTriggers.some((trig) =>
+        customerMessage.toLowerCase().includes(trig),
+      )
+
+      // Extract price filter (e.g. "até 500k", "500 k", "até 500 mil", "500000", "400k", "1 milhão")
+      const priceKMatch = combinedCustText.match(
+        /(?:até|ate|maximo|máximo|de|por)?\s*(\d+[\.,]?\d*)\s*(?:k|mil(?:hões|hoes|hao|hão)?)/i,
+      )
+      if (priceKMatch) {
+        let numVal = parseFloat(priceKMatch[1].replace(',', '.'))
+        if (/milh/i.test(priceKMatch[0])) {
+          extractedMaxPrice = numVal * 1000000
+        } else {
+          // e.g. 500k or 500 mil
+          extractedMaxPrice = numVal < 10000 ? numVal * 1000 : numVal
+        }
+      } else {
+        const rawNumMatch = combinedCustText.match(
+          /(?:até|ate|valor|preço|preco)\s*(?:de|r\$)?\s*(\d{3,7})/i,
+        )
+        if (rawNumMatch) {
+          extractedMaxPrice = parseFloat(rawNumMatch[1])
+        }
+      }
+
+      // Extract bedrooms filter (e.g. "2 dorms", "2 dormitórios", "2 quartos", "3 dorm", "1 quarto")
+      const bedMatch = combinedCustText.match(/(\d+)\s*(?:dorm|quarto|suite|suíte)/i)
+      if (bedMatch) {
+        extractedBedrooms = parseInt(bedMatch[1], 10)
+      } else if (
+        combinedCustText.includes('dois dorm') ||
+        combinedCustText.includes('dois quarto')
+      ) {
+        extractedBedrooms = 2
+      } else if (
+        combinedCustText.includes('tres dorm') ||
+        combinedCustText.includes('três dorm') ||
+        combinedCustText.includes('tres quarto')
+      ) {
+        extractedBedrooms = 3
+      } else if (combinedCustText.includes('um dorm') || combinedCustText.includes('um quarto')) {
+        extractedBedrooms = 1
+      }
+
+      // Extract location / city / neighborhood / continente
+      const locationsMap = [
+        {
+          key: 'continente',
+          filter:
+            "city ~ 'São José' || city ~ 'Sao Jose' || neighborhood ~ 'Capoeiras' || neighborhood ~ 'Estreito' || neighborhood ~ 'Coqueiros' || neighborhood ~ 'Balneário' || neighborhood ~ 'Barreiros' || neighborhood ~ 'Continente'",
+        },
+        {
+          key: 'perto a ilha',
+          filter:
+            "neighborhood ~ 'Capoeiras' || neighborhood ~ 'Estreito' || neighborhood ~ 'Coqueiros' || neighborhood ~ 'Balneário'",
+        },
+        {
+          key: 'perto da ilha',
+          filter:
+            "neighborhood ~ 'Capoeiras' || neighborhood ~ 'Estreito' || neighborhood ~ 'Coqueiros' || neighborhood ~ 'Balneário'",
+        },
+        { key: 'capoeiras', filter: "neighborhood ~ 'Capoeiras'" },
+        { key: 'coqueiros', filter: "neighborhood ~ 'Coqueiros'" },
+        { key: 'estreito', filter: "neighborhood ~ 'Estreito' || neighborhood ~ 'Balneário'" },
+        { key: 'balneário', filter: "neighborhood ~ 'Balneário'" },
+        { key: 'balneario', filter: "neighborhood ~ 'Balneário'" },
+        { key: 'areias', filter: "neighborhood ~ 'Areias'" },
+        { key: 'barreiros', filter: "neighborhood ~ 'Barreiros'" },
+        { key: 'floresta', filter: "neighborhood ~ 'Floresta'" },
+        { key: 'são josé', filter: "city ~ 'São José' || city ~ 'Sao Jose'" },
+        { key: 'sao jose', filter: "city ~ 'São José' || city ~ 'Sao Jose'" },
+        { key: 'palhoça', filter: "city ~ 'Palhoça' || city ~ 'Palhoca'" },
+        { key: 'palhoca', filter: "city ~ 'Palhoça' || city ~ 'Palhoca'" },
+        { key: 'biguaçu', filter: "city ~ 'Biguaçu' || city ~ 'Biguacu'" },
+        { key: 'biguacu', filter: "city ~ 'Biguaçu' || city ~ 'Biguacu'" },
+        { key: 'trindade', filter: "neighborhood ~ 'Trindade'" },
+        { key: 'canasvieiras', filter: "neighborhood ~ 'Canasvieiras'" },
+        { key: 'ingleses', filter: "neighborhood ~ 'Ingleses'" },
+        { key: 'jurere', filter: "neighborhood ~ 'Jurerê' || title ~ 'Jurerê'" },
+        { key: 'jurerê', filter: "neighborhood ~ 'Jurerê' || title ~ 'Jurerê'" },
+      ]
+
+      let matchedLocFilter = ''
+      for (const locItem of locationsMap) {
+        if (combinedCustText.includes(locItem.key)) {
+          matchedLocFilter = locItem.filter
+          extractedLocation = locItem.key
+          break
+        }
+      }
+
       let matchedProps = []
 
-      // 1. Check if customer mentioned a specific code (e.g. AP-320, AP387, LM326, 320, 343)
-      const codeRegexMatch = lowerMsg.match(
+      // 1. Check if customer mentioned a specific property code (e.g. AP-320, AP343, AP308, LM326, 343)
+      const codeRegexMatch = combinedCustText.match(
         /(ap[-\s]?\d+|lm[-\s]?\d+|tr[-\s]?\d+|aru[-\s]?\d+|cs[-\s]?\d+|\b\d{3}\b)/i,
       )
       if (codeRegexMatch) {
         const rawCode = codeRegexMatch[1].toUpperCase().replace(/\s+/g, '')
         const numOnly = rawCode.replace(/\D/g, '')
 
-        let codeFilter = `code ~ '${rawCode}' || url ~ '/${numOnly}/'`
+        let codeFilter = `is_active = true && (code ~ '${rawCode}' || url ~ '/${numOnly}/')`
         const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 3, 0)
         if (codeResults.length > 0) {
           matchedProps = codeResults
         }
       }
 
-      // 2. If no code match, check for location / city / neighborhood
-      if (matchedProps.length === 0) {
-        const citiesAndNeighborhoods = [
-          'balneário camboriú',
-          'balneario camboriu',
-          'jurere',
-          'jurerê',
-          'capoeiras',
-          'estreito',
-          'balneário',
-          'balneario',
-          'coqueiros',
-          'areias',
-          'floresta',
-          'são josé',
-          'sao jose',
-          'palhoça',
-          'palhoca',
-          'biguaçu',
-          'biguacu',
-          'são joaquim',
-          'sao joaquim',
-          'canasvieiras',
-          'ingleses',
-          'trindade',
-          'barreiros',
-        ]
-
-        let matchedLoc = ''
-        for (const loc of citiesAndNeighborhoods) {
-          if (lowerMsg.includes(loc)) {
-            matchedLoc = loc
-            break
-          }
+      // 2. Filter by criteria (Price <= X, Bedrooms >= Y, Location)
+      if (
+        matchedProps.length === 0 &&
+        (extractedMaxPrice > 0 || extractedBedrooms > 0 || matchedLocFilter)
+      ) {
+        let filterParts = ['is_active = true']
+        if (extractedMaxPrice > 0) {
+          filterParts.push(`price <= ${extractedMaxPrice}`)
+        }
+        if (extractedBedrooms > 0) {
+          filterParts.push(`bedrooms >= ${extractedBedrooms}`)
+        }
+        if (matchedLocFilter) {
+          filterParts.push(`(${matchedLocFilter})`)
         }
 
-        if (matchedLoc) {
-          // Normalize search term
-          let searchTerm = matchedLoc
-          if (matchedLoc.includes('jurere')) searchTerm = 'Jurerê'
-          else if (
-            matchedLoc.includes('balneário camboriú') ||
-            matchedLoc.includes('balneario camboriu')
-          )
-            searchTerm = 'Balneário Camboriú'
-          else if (matchedLoc.includes('coqueiros')) searchTerm = 'Coqueiros'
-          else if (matchedLoc.includes('capoeiras')) searchTerm = 'Capoeiras'
-          else if (matchedLoc.includes('areias')) searchTerm = 'Areias'
-          else if (matchedLoc.includes('barreiros')) searchTerm = 'Barreiros'
-          else if (matchedLoc.includes('palho')) searchTerm = 'Palhoça'
-          else if (matchedLoc.includes('são josé') || matchedLoc.includes('sao jose'))
-            searchTerm = 'São José'
-          else if (matchedLoc.includes('bigua')) searchTerm = 'Biguaçu'
+        const criteriaFilter = filterParts.join(' && ')
+        console.log(`[AI_REPLY] Searching properties by criteria: ${criteriaFilter}`)
+        let criteriaResults = $app.findRecordsByFilter('properties', criteriaFilter, 'price', 4, 0)
 
-          const locResults = $app.findRecordsByFilter(
+        // If location made criteria too strict, fallback to price + bedrooms
+        if (
+          criteriaResults.length === 0 &&
+          matchedLocFilter &&
+          (extractedMaxPrice > 0 || extractedBedrooms > 0)
+        ) {
+          let relaxedParts = ['is_active = true']
+          if (extractedMaxPrice > 0) relaxedParts.push(`price <= ${extractedMaxPrice}`)
+          if (extractedBedrooms > 0) relaxedParts.push(`bedrooms >= ${extractedBedrooms}`)
+          console.log(`[AI_REPLY] Relaxing location filter: ${relaxedParts.join(' && ')}`)
+          criteriaResults = $app.findRecordsByFilter(
             'properties',
-            `city ~ '${searchTerm}' || neighborhood ~ '${searchTerm}' || title ~ '${searchTerm}'`,
-            '-created',
+            relaxedParts.join(' && '),
+            'price',
             4,
             0,
           )
-          if (locResults.length > 0) {
-            matchedProps = locResults
-          }
+        }
+
+        if (criteriaResults.length > 0) {
+          matchedProps = criteriaResults
         }
       }
 
-      // 3. Fallback: load top active properties so AI always has real options
+      // 3. Fallback: if user asked for options or no match, load top active properties
       if (matchedProps.length === 0) {
-        matchedProps = $app.findRecordsByFilter('properties', 'is_active = true', '-created', 4, 0)
+        matchedProps = $app.findRecordsByFilter('properties', 'is_active = true', 'price', 4, 0)
       }
 
       if (matchedProps.length > 0) {
         propertyContext = '\n[CATÁLOGO DE IMÓVEIS REAIS - BRF IMÓVEIS (www.brfimoveis.com.br)]\n'
         propertyContext +=
-          'Abaixo estão os imóveis reais disponíveis para apresentar ao cliente:\n\n'
+          'ATENÇÃO: Abaixo estão os imóveis reais do banco de dados da imobiliária. Cada imóvel possui um LINK OFICIAL que DEVE ser enviado ao cliente:\n\n'
 
         matchedProps.forEach((p, idx) => {
           const pCode = p.getString('code')
@@ -543,7 +677,7 @@ onRecordAfterCreateSuccess((e) => {
           const pArea = p.getFloat('area_privativa')
           const pDesc = p.getString('description')
 
-          propertyContext += `--- OPÇÃO ${idx + 1} ---\n`
+          propertyContext += `--- IMÓVEL ${idx + 1} ---\n`
           propertyContext += `Código: ${pCode}\n`
           propertyContext += `Título: ${pTitle}\n`
           propertyContext += `Link Oficial do Imóvel: ${pUrl}\n`
@@ -610,46 +744,39 @@ Sua identidade e instruções específicas (Persona):
 ${personaInstructions}
 
 Instruções da IA Mãe (Base de Conhecimento Global):
-${motherAiInstructions}
+${cleanMotherAiInstructions}
 ${clientContext}
 ${channelContext}
 ${propertyContext}
 
-DIRETRIZES RIGOROSAS E REGRAS DE NEGÓCIO (BRF IMÓVEIS):
-1. ENVIO DE OPÇÕES DE IMÓVEIS COM LINKS REAIS: Quando o cliente pedir opções de imóveis, sugestões ou perguntar o que você tem disponível (ex: "manda opções", "o que você tem?", "tem imóveis em tal bairro?"), NUNCA fique fazendo perguntas estáticas ou dizendo que vai transferir sem apresentar opções. Apresente de imediato de 2 a 3 opções REAIS da seção [CATÁLOGO DE IMÓVEIS REAIS], informando:
-   - Título e Código do imóvel (ex: AP-320, AP387, LM326);
-   - Localização (Bairro/Cidade);
-   - Valor e quantidade de dormitórios/suítes/vagas;
-   - Link exato e público do imóvel no site www.brfimoveis.com.br (wa.me friendly, exatamente o link informado no catálogo);
-   - Convide cordialmente o cliente a abrir o link ou agendar uma visita.
+DIRETRIZES FUNDAMENTAIS E REGRAS DE ATENDIMENTO (BRF IMÓVEIS):
+1. RESPOSTA DIRETA AO QUE FOI PEDIDO PRIMEIRO:
+   - Se o cliente perguntou "quais imóveis até 500k?", "manda opções", "manda os links", "o que você tem?": RESPONDA IMEDIATAMENTE apresentando 2 a 3 imóveis reais da seção [CATÁLOGO DE IMÓVEIS REAIS].
+   - É TOTALMENTE PROIBIDO responder com perguntas de qualificação como "o que é mais importante além do valor?" quando o cliente acabou de pedir imóveis ou links.
+   - SEMPRE forneça os dados reais: Código, Bairro/Cidade, Valor, Quartos e o LINK OFICIAL DO SITE.
 
-2. DETALHES DE IMÓVEL ESPECÍFICO: Quando o cliente citar um imóvel específico, código ou perguntar detalhes (preço, quartos, condomínio, localização), forneça os dados REAIS presentes no [CATÁLOGO DE IMÓVEIS REAIS] com o link do imóvel. NÃO responda de forma genérica.
+2. SEMPRE INCLUIR O LINK DO SITE DO IMÓVEL:
+   - Toda vez que citar qualquer imóvel, inclua obrigatoriamente a URL oficial que consta no catálogo (ex: https://www.brfimoveis.com.br/343/imoveis/venda-apartamento-2-quartos-capoeiras-florianopolis-sc).
+   - O cliente não quer apenas descrições vagas; ele quer abrir o link do imóvel no site.
 
-3. EVITAR LOOPS ESTÁTICOS: NUNCA repita perguntas ou mensagens que você já fez nas mensagens anteriores. Se o cliente já pediu opções ou respondeu algo, avance sempre entregando valor, opções concretas e propondo o próximo passo (ex: visitar o imóvel ou conversar com Mauro).
+3. LIMITE DE QUALIFICAÇÃO (MÁXIMO 2 PERGUNTAS NA CONVERSA INTEIRA):
+   - Se o cliente já informou 1 ou 2 critérios (ex: dormitórios, valor ou região), NÃO faça mais perguntas de qualificação em sequência. APRESENTE OS IMÓVEIS.
+   - NUNCA repita uma pergunta já feita no histórico da conversa. Verifique o que já foi perguntado antes de enviar.
 
-4. IDENTIFICAÇÃO DO IMÓVEL: Apenas na PRIMEIRA mensagem absoluta do lead, se não houver NENHUM dado sobre o que o cliente procura, cumprimente com energia e simpatia. Mas se o cliente pediu opções ou citou um perfil, NUNCA pergunte de novo "qual chamou sua atenção" sem mandar as opções!
+4. NÃO EMPURRAR PROPOSTA OU FECHAMENTO PRECOCE:
+   - Só fale sobre proposta formal, documentação ou contrato quando o cliente demonstrar interesse explícito em uma unidade específica (ex: "gostei do AP343", "como faço pra comprar?").
+   - Quando apresentar opções pela primeira vez, convide suavemente o cliente a ver as fotos pelo link ou tirar dúvidas sobre as opções.
 
-5. ALUGUEL/LOCAÇÃO: Se o cliente mencionar "aluguel", "alugar" ou "locação", responda: "Trabalhamos exclusivamente com venda e permuta de imóveis selecionados. Gostaria de ver opções para compra ou investimento?".
+5. PROIBIÇÃO DE MENSAGENS ENLATADAS / CANNED RESPONSES:
+   - NUNCA use a frase "Com certeza, vou te passar os valores agora mesmo. Apenas para eu te enviar a unidade com o melhor custo-benefício para o seu perfil, o que é mais importante para você além do valor?". Se o cliente perguntou preço ou opções, envie os imóveis e os valores reais imediatamente!
 
-6. PERMUTA: Se o cliente mencionar que tem um imóvel para dar de entrada ou trocar, acolha positivamente e inclua a tag [PERMUTA] no final da resposta.
+6. ALUGUEL/LOCAÇÃO: Se o cliente mencionar "aluguel" ou "locação", responda cordialmente: "Trabalhamos exclusivamente com venda e permuta de imóveis selecionados. Gostaria de ver opções para compra ou investimento?".
 
-7. DESCONHECIMENTO/INCERTEZA: Se você não souber uma informação super específica e não estiver na base de conhecimento, NUNCA invente. Forneça o que souber com honestidade e informe que Mauro pode tirar dúvidas detalhadas pelo WhatsApp: wa.me/5548992098050. Adicione a tag [HANDOVER: Mauro].
+7. PERMUTA: Se o cliente mencionar que tem um imóvel para troca ou entrada, acolha positivamente e inclua a tag [PERMUTA] no final da resposta.
 
-8. Responda de forma natural, amigável, consultiva e humana em Português do Brasil. NUNCA mencione processos internos, "catálogo", "contexto", "instruções" ou "banco de dados".
+8. HANDOVER HUMANO: Se o cliente pedir expressamente corretor humano ou você não souber uma informação super técnica de condomínio/documento, informe que Mauro pode atendê-lo: https://wa.me/5548992098050 e inclua [HANDOVER: Mauro].
 
-9. EVOLUÇÃO DE CADÊNCIA (10 PASSOS): Acompanhe a cadência atual e se o cliente avançar, inclua [STATUS: NovoStatus]. Se pedir para agendar visita presencial ou negociar proposta, inclua [HANDOVER: Mauro].
-
-### METODOLOGIA DOS 10 PASSOS DA BIA:
-1. CLASSIFICACAO DO LEAD: Identifique o perfil (Investidor, Morador, Primeiro Imovel, Veranista). Inclua [PROFILE: TipoPerfil] no final.
-2. ABERTURA PERSONALIZADA: Adapte a saudacao ao perfil identificado.
-3. DIAGNOSTICO SPIN: Mapeie Situacao, Problema, Implicacao, Necessidade. Inclua [STATUS: Mapeamento de Perfil] ao concluir.
-4. 5 WHYS: Aprofunde a motivacao emocional perguntando "Por que?". Inclua [STATUS: Nutricao Automatica] ao identificar.
-5. APRESENTACAO MATCH: Apresente os imóveis do catálogo que dão match com a necessidade do cliente, com link direto do site.
-6. TRATAMENTO DE OBJECOES: Esclareça dúvidas com dados reais do imóvel. Inclua [STATUS: Proposta e Negociacao] ao avancar.
-7. GATILHOS MENTAIS: Escassez ("unidade exclusiva", "um por andar", "revenda única"), Urgência, Prova Social.
-8. FECHAMENTO: Proponha visita com Mauro: [HANDOVER: Mauro].
-9. FOLLOW-UP: Nutricao contínua com novos links e oportunidades.
-10. POS-VENDA: Acompanhamento e satisfação.
+9. SAÍDA LIMPA: NUNCA mencione processos internos, "catálogo", "contexto", "IA supervisora", "banco de dados" ou "instruções". Envie APENAS a mensagem conversacional em Português do Brasil.
 
 CONTEXTO RECUPERADO:
 ${combinedContextText || '(Nenhum contexto adicional na base)'}`
@@ -718,7 +845,7 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
           messages: [
             {
               role: 'system',
-              content: `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie se a resposta obedece: "${motherAiInstructions}". Responda APENAS "APROVADO" ou reescreva corrigindo no mesmo tom.`,
+              content: `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie se a resposta obedece: "${motherAiInstructions}". Se estiver aprovada, responda APENAS a palavra APROVADO sem nada mais. Se precisar de ajuste, forneça APENAS o texto da mensagem final pronto para o cliente no WhatsApp, SEM nenhum comentário, cabeçalho, introdução, explicação ou rótulo como "Reescrita" ou "APROVADO".`,
             },
             { role: 'user', content: responseText },
           ],
@@ -730,20 +857,86 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
           validationRes.choices[0] &&
           validationRes.choices[0].message
         ) {
-          const motherFeedback = (validationRes.choices[0].message.content || '').trim()
+          let motherFeedback = (validationRes.choices[0].message.content || '').trim()
           if (
             motherFeedback &&
             motherFeedback !== 'APROVADO' &&
-            !motherFeedback.startsWith('APROVADO')
+            !motherFeedback.match(/^(\*\*|\*)?APROVADO(\*\*|\*)?$/i)
           ) {
-            responseText = motherFeedback
-            console.log(`[AI_REPLY] Mother AI refined the response (len=${responseText.length})`)
+            // Strip any explanation header if supervisor wrote "APROVADO - ..." or "Reescrita corrigida ---"
+            if (motherFeedback.includes('---')) {
+              const parts = motherFeedback.split('---')
+              motherFeedback = parts[parts.length - 1].trim()
+            }
+            if (motherFeedback) {
+              responseText = motherFeedback
+              console.log(`[AI_REPLY] Mother AI refined the response (len=${responseText.length})`)
+            }
           }
         }
       } catch (err) {
         console.warn(`[AI_REPLY] Mother AI validation non-fatal error: ${String(err)}`)
       }
     }
+
+    // Function to thoroughly clean internal LLM / supervisor / prompt artifacts
+    function sanitizeAiResponse(raw) {
+      if (!raw) return ''
+      let clean = raw
+
+      // 1. Remove delimiter markers like --- or ***
+      if (clean.includes('---')) {
+        const parts = clean.split(/\n?---+\n?/)
+        // If the first part contains review meta words, drop it
+        if (
+          /aprovado|reescrita|cadência|cadencia|mensagem foi reescrita|supervisor|avalia/i.test(
+            parts[0],
+          )
+        ) {
+          clean = parts.slice(1).join('\n\n').trim()
+        }
+      }
+
+      // 2. Remove leading metadata prefixes / lines
+      clean = clean.replace(/^(\*\*|\*)?APROVADO(\*\*|\*)?(\s*[-–—:]\s*.*?)?(\n+|$)/i, '')
+      clean = clean.replace(
+        /^(\*\*|\*)?Reescrita\s*(corrigida)?(\*\*|\*)?(\s*[-–—:]\s*.*?)?(\n+|$)/i,
+        '',
+      )
+      clean = clean.replace(
+        /^(\*\*|\*)?Mensagem\s*corrigida(\*\*|\*)?(\s*[-–—:]\s*.*?)?(\n+|$)/i,
+        '',
+      )
+      clean = clean.replace(/^A\s*mensagem\s*foi\s*reescrita\s*para.*?:?\s*(\n+|$)/i, '')
+      clean = clean.replace(
+        /^Aqui\s*(está|vai)\s*a\s*(mensagem|resposta)\s*(corrigida|reescrita|ajustada):?\s*(\n+|$)/i,
+        '',
+      )
+      clean = clean.replace(/^Resposta\s*(da\s*IA|sugerida)?:?\s*(\n+|$)/i, '')
+
+      // 3. Remove lines that are purely supervisor commentary
+      const lines = clean.split('\n')
+      const filteredLines = []
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (
+          /^(\*\*|\*)?(APROVADO|Reescrita corrigida|Mensagem corrigida)(\*\*|\*)?$/i.test(
+            trimmed,
+          ) ||
+          /^(\*\*|\*)?Cadência\s*\d+/i.test(trimmed) ||
+          /A mensagem foi reescrita para obedecer/i.test(trimmed) ||
+          /^---+$/.test(trimmed)
+        ) {
+          continue
+        }
+        filteredLines.push(line)
+      }
+      clean = filteredLines.join('\n').trim()
+
+      return clean
+    }
+
+    responseText = sanitizeAiResponse(responseText)
 
     // Extract business tags from response
     const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
@@ -790,7 +983,114 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       responseText = responseText.replace(/\{Nome\}/gi, '')
     }
 
-    // Duplicate message check
+    responseText = sanitizeAiResponse(responseText)
+
+    // Hard Anti-Repetition & Canned Response Overhaul
+    const isCannedValuesSentence = (txt) => {
+      if (!txt) return false
+      const lower = txt.toLowerCase()
+      return (
+        lower.includes('vou te passar os valores agora mesmo') ||
+        (lower.includes('custo‑benefício') && lower.includes('além do valor')) ||
+        (lower.includes('custo-benefício') && lower.includes('além do valor')) ||
+        (lower.includes('melhor custo') &&
+          lower.includes('o que é mais importante para você além do valor'))
+      )
+    }
+
+    // Check recent AI messages sent to this customer
+    let recentAiMessages = []
+    try {
+      const recentAiRecords = $app.findRecordsByFilter(
+        'conversations',
+        `customer_id = '${customerId}' && sender = 'ai'`,
+        '-created',
+        5,
+        0,
+      )
+      recentAiMessages = recentAiRecords.map((r) => (r.getString('content') || '').trim())
+    } catch (_) {}
+
+    let isTooSimilar = false
+    const normResp = responseText
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\s]/gi, '')
+
+    if (recentAiMessages.length > 0) {
+      const lastAiMsg = recentAiMessages[0]
+      const normLast = lastAiMsg.toLowerCase().replace(/[^\w\s]/gi, '')
+
+      // Check if identical or canned
+      if (
+        normResp === normLast ||
+        (normResp.length > 30 && normLast.includes(normResp)) ||
+        isCannedValuesSentence(responseText)
+      ) {
+        isTooSimilar = true
+      }
+    }
+
+    // If response was repetitive or a canned qualification response while customer already gave filters or asked for options, replace with real catalog options!
+    if (
+      isTooSimilar ||
+      (isRequestingOptions &&
+        !responseText.includes('http') &&
+        matchedProps &&
+        matchedProps.length > 0)
+    ) {
+      console.log(
+        `[AI_REPLY] Repetitive or canned response detected for customer ${customerId}. Overriding with real catalog options.`,
+      )
+
+      if (matchedProps && matchedProps.length > 0) {
+        const topProps = matchedProps.slice(0, 3)
+        let generatedCatalogReply = ''
+        if (displayName) {
+          generatedCatalogReply += `Oi, ${displayName}! `
+        } else {
+          generatedCatalogReply += `Olá! `
+        }
+
+        if (extractedMaxPrice > 0 || extractedBedrooms > 0) {
+          generatedCatalogReply += `Separei aqui as melhores opções do nosso catálogo que se encaixam no que você procura`
+          if (extractedBedrooms > 0) generatedCatalogReply += ` (${extractedBedrooms} dormitórios`
+          if (extractedMaxPrice > 0)
+            generatedCatalogReply += `, até R$ ${(extractedMaxPrice / 1000).toFixed(0)}k)`
+          else if (extractedBedrooms > 0) generatedCatalogReply += `)`
+          generatedCatalogReply += `:\n\n`
+        } else {
+          generatedCatalogReply += `Aqui estão excelentes opções do nosso catálogo no site:\n\n`
+        }
+
+        topProps.forEach((p, idx) => {
+          const pCode = p.getString('code')
+          const pTitle = p.getString('title')
+          const pUrl = p.getString('url')
+          const pCity = p.getString('city')
+          const pNeigh = p.getString('neighborhood')
+          const pPrice = p.getString('price_formatted')
+          const pBeds = p.getInt('bedrooms')
+          const pSuites = p.getInt('suites')
+
+          generatedCatalogReply += `📍 *${pCode}* - ${pTitle}\n`
+          generatedCatalogReply += `• Localização: ${pNeigh ? pNeigh + ', ' : ''}${pCity}\n`
+          generatedCatalogReply += `• Valor: ${pPrice}\n`
+          if (pBeds > 0) {
+            generatedCatalogReply += `• Dormitórios: ${pBeds}${pSuites > 0 ? ` (${pSuites} suítes)` : ''}\n`
+          }
+          generatedCatalogReply += `• Link com fotos e detalhes: ${pUrl}\n\n`
+        })
+
+        generatedCatalogReply += `Dá uma olhada nos links! Qual dessas opções você achou mais interessante? Se quiser, posso agendar para você conhecer pessoalmente.`
+        responseText = generatedCatalogReply
+      } else {
+        // Fallback without properties
+        responseText = `Olá! Você pode conferir nosso catálogo completo de imóveis diretamente no site: https://www.brfimoveis.com.br/imoveis/venda. Se preferir um atendimento exclusivo com o corretor Mauro, ele atende no link: https://wa.me/5548992098050`
+      }
+    }
+
+    // Duplicate message final guard
     let isDuplicate = false
     try {
       const currentLastMsgs = $app.findRecordsByFilter(
