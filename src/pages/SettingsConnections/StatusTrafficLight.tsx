@@ -7,7 +7,7 @@ interface StatusTrafficLightProps {
 
 export function StatusTrafficLight({ status, error }: StatusTrafficLightProps) {
   const s = (status || '').toLowerCase()
-  const isActive = ['active', 'connected', 'valid'].includes(s)
+  const isActive = ['active', 'connected', 'valid', 'ok'].includes(s)
   const isPendingToken = ['configured_waiting_token'].includes(s)
   const isPendingRegistration = ['pending', 'pending_registration'].includes(s)
   const isNotConfigured = ['not_configured'].includes(s)

@@ -177,7 +177,6 @@ routerAdd(
         userRecord.set('meta_capi_token', accessToken)
         if (businessId) {
           userRecord.set('meta_whatsapp_business_id', businessId)
-          userRecord.set('meta_whatsapp_status', 'active')
         }
         userRecord.set('meta_capi_status', 'connected')
         userRecord.set('meta_capi_error', '')

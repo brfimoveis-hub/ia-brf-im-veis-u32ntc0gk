@@ -161,6 +161,7 @@ export default function Dashboard() {
               {loaded ? (
                 currentUser?.meta_capi_status === 'connected' ||
                 currentUser?.meta_capi_status === 'active' ||
+                currentUser?.meta_capi_status === 'ok' ||
                 currentUser?.meta_capi_status === 'valid' ? (
                   <Badge className="bg-green-500 hover:bg-green-600 text-xs">Conectado</Badge>
                 ) : currentUser?.meta_capi_status === 'error' ? (

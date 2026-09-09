@@ -91,7 +91,8 @@ export default function Layout() {
               className={cn(
                 'flex h-2.5 w-2.5 rounded-full',
                 currentUser?.meta_capi_status?.toLowerCase() === 'active' ||
-                  currentUser?.meta_capi_status?.toLowerCase() === 'connected'
+                  currentUser?.meta_capi_status?.toLowerCase() === 'connected' ||
+                  currentUser?.meta_capi_status?.toLowerCase() === 'ok'
                   ? 'bg-green-500'
                   : currentUser?.meta_capi_status?.toLowerCase() === 'error'
                     ? 'bg-red-500'

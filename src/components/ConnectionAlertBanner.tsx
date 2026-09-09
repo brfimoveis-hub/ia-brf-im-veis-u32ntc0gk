@@ -15,7 +15,8 @@ export function ConnectionAlertBanner() {
   const waStatus = (user.meta_token_status || '').toLowerCase()
   const whatsappUnhealthy = UNHEALTHY_STATES.includes(waStatus)
   const whatsappPendingPin = waStatus === 'pending' || waStatus === 'pending_registration'
-  const capiUnhealthy = UNHEALTHY_STATES.includes((user.meta_capi_status || '').toLowerCase())
+  const capiStatus = (user.meta_capi_status || '').toLowerCase()
+  const capiUnhealthy = UNHEALTHY_STATES.includes(capiStatus)
 
   const failing: string[] = []
   if (whatsappUnhealthy) failing.push('Meta WhatsApp API (Erro)')
