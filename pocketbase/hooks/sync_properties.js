@@ -7,6 +7,77 @@ cronAdd('sync_properties_from_site', '0 * * * *', () => {
   console.log('[PROPERTIES_SYNC] Starting scheduled sync from brfimoveis.com.br...')
   let syncedCount = 0
   let errorCount = 0
+  let skippedJunkCount = 0
+
+  function decodeUtf8(bytes) {
+    if (!bytes || bytes.length === 0) return ''
+    try {
+      let out = ''
+      let i = 0
+      const len = bytes.length
+      while (i < len) {
+        const c = bytes[i++]
+        if (c < 0x80) {
+          out += String.fromCharCode(c)
+        } else if (c > 0xbf && c < 0xe0) {
+          if (i >= len) break
+          const c2 = bytes[i++]
+          out += String.fromCharCode(((c & 0x1f) << 6) | (c2 & 0x3f))
+        } else if (c > 0xdf && c < 0xf0) {
+          if (i + 1 >= len) break
+          const c2 = bytes[i++]
+          const c3 = bytes[i++]
+          out += String.fromCharCode(((c & 0x0f) << 12) | ((c2 & 0x3f) << 6) | (c3 & 0x3f))
+        } else if (c > 0xef && c < 0xf8) {
+          if (i + 2 >= len) break
+          const c2 = bytes[i++]
+          const c3 = bytes[i++]
+          const c4 = bytes[i++]
+          let codePoint =
+            ((c & 0x07) << 18) | ((c2 & 0x3f) << 12) | ((c3 & 0x3f) << 6) | (c4 & 0x3f)
+          codePoint -= 0x10000
+          out += String.fromCharCode(0xd800 + (codePoint >> 10), 0xdc00 + (codePoint & 0x3ff))
+        }
+      }
+      return out
+    } catch (_) {
+      return String.fromCharCode.apply(null, bytes)
+    }
+  }
+
+  function fixMojibake(text) {
+    if (!text || typeof text !== 'string') return ''
+    if (!/[ÃÂÁÀÉÈÍÌÓÒÚÙÇãâáàéèíìóòúùç]/.test(text)) {
+      return text
+    }
+    try {
+      const codeUnits = []
+      for (let i = 0; i < text.length; i++) {
+        codeUnits.push(text.charCodeAt(i) & 0xff)
+      }
+      const reDecoded = decodeUtf8(codeUnits)
+      if (reDecoded && !reDecoded.includes('Ã') && !reDecoded.includes('\ufffd')) {
+        return reDecoded
+      }
+    } catch (_) {}
+    return text
+  }
+
+  function containsJunkOrScript(str) {
+    if (!str || typeof str !== 'string') return false
+    const lower = str.toLowerCase()
+    return (
+      lower.includes('function(') ||
+      lower.includes('fbq(') ||
+      lower.includes('<script') ||
+      lower.includes('!function') ||
+      lower.includes('window.') ||
+      lower.includes('document.') ||
+      lower.includes('var ') ||
+      lower.includes('eval(') ||
+      lower.includes('javascript:')
+    )
+  }
 
   try {
     const sitemapRes = $http.send({
@@ -22,7 +93,7 @@ cronAdd('sync_properties_from_site', '0 * * * *', () => {
       )
     }
 
-    const sitemapText = String.fromCharCode.apply(null, sitemapRes.body)
+    const sitemapText = decodeUtf8(sitemapRes.body)
     const propertyUrlRegex = /https:\/\/www\.brfimoveis\.com\.br\/(\d+)\/imoveis\/([^\s<"]+)/g
     const foundUrls = new Map()
 
@@ -39,7 +110,7 @@ cronAdd('sync_properties_from_site', '0 * * * *', () => {
 
     const propertiesCol = $app.findCollectionByNameOrId('properties')
     let processed = 0
-    // Sample/scrape up to 10 at a time to prevent rate-limit
+    // Sample/scrape up to 12 at a time
     for (const [propId, url] of foundUrls.entries()) {
       if (processed >= 12) break
       processed++
@@ -56,7 +127,7 @@ cronAdd('sync_properties_from_site', '0 * * * *', () => {
           continue
         }
 
-        const pageHtml = String.fromCharCode.apply(null, pageRes.body)
+        const pageHtml = decodeUtf8(pageRes.body)
 
         // Parse Code (e.g. Cód. AP-320 or AP343)
         const codeMatch = pageHtml.match(/C[óo]d\.?\s*([A-Za-z0-9\-_]+)/i)
@@ -68,9 +139,7 @@ cronAdd('sync_properties_from_site', '0 * * * *', () => {
         if (h1Match) {
           title = h1Match[1].replace(/<[^>]+>/g, '').trim()
         }
-        if (!title) {
-          title = `Imóvel Cód. ${code}`
-        }
+        title = fixMojibake(title)
 
         // Parse Price
         let price = 0
@@ -132,22 +201,79 @@ cronAdd('sync_properties_from_site', '0 * * * *', () => {
         if (neighMatch) {
           neighborhood = neighMatch[1].replace(/<[^>]+>/g, '').trim()
         }
+        neighborhood = fixMojibake(neighborhood)
 
+        // Parse Property Type & Transaction Type
+        let propType = 'Apartamento'
+        if (/casa|sobrado/i.test(title) || /casa/i.test(url)) {
+          propType = 'Casa'
+        } else if (/terreno|lote/i.test(title) || /terreno|area/i.test(url)) {
+          propType = 'Terreno'
+        } else if (/lançamento|lancamento/i.test(title) || /lancamento/i.test(url)) {
+          propType = 'Lançamento'
+        }
+
+        // Check if existing record
         let existing = null
         try {
           existing = $app.findFirstRecordByData('properties', 'code', code)
         } catch (_) {}
+
+        // VALIDATION: Reject junk / scripts / invalid records
+        const isJunk =
+          containsJunkOrScript(neighborhood) ||
+          containsJunkOrScript(title) ||
+          containsJunkOrScript(city) ||
+          !title ||
+          title.length < 5 ||
+          title.includes('Ã') ||
+          neighborhood.includes('Ã') ||
+          city.includes('Ã') ||
+          price <= 0 ||
+          isNaN(price) ||
+          !url.startsWith('https://www.brfimoveis.com.br/')
+
+        if (isJunk) {
+          skippedJunkCount++
+          console.warn(
+            `[PROPERTIES_SYNC] Discarding junk/corrupt property record (code=${code}, url=${url}, neigh=${neighborhood.substring(0, 30)})`,
+          )
+          if (existing) {
+            existing.set('is_active', false)
+            $app.save(existing)
+          }
+
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const jLog = new Record(logsCol)
+            jLog.set('type', 'properties_sync_junk_rejected')
+            jLog.set('message', `Imóvel rejeitado pelo filtro de validação: Cód. ${code}`)
+            jLog.set(
+              'details',
+              JSON.stringify({
+                code,
+                url,
+                title: title.substring(0, 60),
+                neighborhood: neighborhood.substring(0, 60),
+                price,
+              }),
+            )
+            $app.saveNoValidate(jLog)
+          } catch (_) {}
+
+          continue
+        }
 
         const rec = existing || new Record(propertiesCol)
         rec.set('code', code)
         rec.set('title', title)
         rec.set('url', url)
         rec.set('city', city)
-        if (neighborhood) rec.set('neighborhood', neighborhood)
-        if (price > 0) {
-          rec.set('price', price)
-          rec.set('price_formatted', priceFormatted)
-        }
+        rec.set('neighborhood', neighborhood)
+        rec.set('property_type', propType)
+        rec.set('transaction_type', 'Venda')
+        rec.set('price', price)
+        rec.set('price_formatted', priceFormatted || `R$ ${price.toLocaleString('pt-BR')}`)
         if (bedrooms > 0) rec.set('bedrooms', bedrooms)
         if (suites > 0) rec.set('suites', suites)
         if (bathrooms > 0) rec.set('bathrooms', bathrooms)
@@ -169,13 +295,18 @@ cronAdd('sync_properties_from_site', '0 * * * *', () => {
       logRec.set('type', 'properties_sync')
       logRec.set(
         'message',
-        `Sincronização de imóveis concluída: ${syncedCount} atualizados, ${errorCount} erros`,
+        `Sincronização de imóveis concluída: ${syncedCount} atualizados, ${skippedJunkCount} descartados/desativados, ${errorCount} erros`,
       )
-      logRec.set('payload', JSON.stringify({ synced: syncedCount, errors: errorCount }))
+      logRec.set(
+        'payload',
+        JSON.stringify({ synced: syncedCount, skipped_junk: skippedJunkCount, errors: errorCount }),
+      )
       $app.saveNoValidate(logRec)
     } catch (_) {}
 
-    console.log(`[PROPERTIES_SYNC] Done: ${syncedCount} synced, ${errorCount} errors`)
+    console.log(
+      `[PROPERTIES_SYNC] Done: ${syncedCount} synced, ${skippedJunkCount} junk skipped, ${errorCount} errors`,
+    )
   } catch (err) {
     console.error(`[PROPERTIES_SYNC] General sync failure: ${String(err)}`)
     try {
@@ -197,6 +328,77 @@ routerAdd('POST', '/backend/v1/sync-properties', (e) => {
   console.log('[PROPERTIES_SYNC] Manual sync requested...')
   let syncedCount = 0
   let errorCount = 0
+  let skippedJunkCount = 0
+
+  function decodeUtf8(bytes) {
+    if (!bytes || bytes.length === 0) return ''
+    try {
+      let out = ''
+      let i = 0
+      const len = bytes.length
+      while (i < len) {
+        const c = bytes[i++]
+        if (c < 0x80) {
+          out += String.fromCharCode(c)
+        } else if (c > 0xbf && c < 0xe0) {
+          if (i >= len) break
+          const c2 = bytes[i++]
+          out += String.fromCharCode(((c & 0x1f) << 6) | (c2 & 0x3f))
+        } else if (c > 0xdf && c < 0xf0) {
+          if (i + 1 >= len) break
+          const c2 = bytes[i++]
+          const c3 = bytes[i++]
+          out += String.fromCharCode(((c & 0x0f) << 12) | ((c2 & 0x3f) << 6) | (c3 & 0x3f))
+        } else if (c > 0xef && c < 0xf8) {
+          if (i + 2 >= len) break
+          const c2 = bytes[i++]
+          const c3 = bytes[i++]
+          const c4 = bytes[i++]
+          let codePoint =
+            ((c & 0x07) << 18) | ((c2 & 0x3f) << 12) | ((c3 & 0x3f) << 6) | (c4 & 0x3f)
+          codePoint -= 0x10000
+          out += String.fromCharCode(0xd800 + (codePoint >> 10), 0xdc00 + (codePoint & 0x3ff))
+        }
+      }
+      return out
+    } catch (_) {
+      return String.fromCharCode.apply(null, bytes)
+    }
+  }
+
+  function fixMojibake(text) {
+    if (!text || typeof text !== 'string') return ''
+    if (!/[ÃÂÁÀÉÈÍÌÓÒÚÙÇãâáàéèíìóòúùç]/.test(text)) {
+      return text
+    }
+    try {
+      const codeUnits = []
+      for (let i = 0; i < text.length; i++) {
+        codeUnits.push(text.charCodeAt(i) & 0xff)
+      }
+      const reDecoded = decodeUtf8(codeUnits)
+      if (reDecoded && !reDecoded.includes('Ã') && !reDecoded.includes('\ufffd')) {
+        return reDecoded
+      }
+    } catch (_) {}
+    return text
+  }
+
+  function containsJunkOrScript(str) {
+    if (!str || typeof str !== 'string') return false
+    const lower = str.toLowerCase()
+    return (
+      lower.includes('function(') ||
+      lower.includes('fbq(') ||
+      lower.includes('<script') ||
+      lower.includes('!function') ||
+      lower.includes('window.') ||
+      lower.includes('document.') ||
+      lower.includes('var ') ||
+      lower.includes('eval(') ||
+      lower.includes('javascript:')
+    )
+  }
 
   try {
     const sitemapRes = $http.send({
@@ -212,7 +414,7 @@ routerAdd('POST', '/backend/v1/sync-properties', (e) => {
       )
     }
 
-    const sitemapText = String.fromCharCode.apply(null, sitemapRes.body)
+    const sitemapText = decodeUtf8(sitemapRes.body)
     const propertyUrlRegex = /https:\/\/www\.brfimoveis\.com\.br\/(\d+)\/imoveis\/([^\s<"]+)/g
     const foundUrls = new Map()
 
@@ -243,7 +445,7 @@ routerAdd('POST', '/backend/v1/sync-properties', (e) => {
           continue
         }
 
-        const pageHtml = String.fromCharCode.apply(null, pageRes.body)
+        const pageHtml = decodeUtf8(pageRes.body)
         const codeMatch = pageHtml.match(/C[óo]d\.?\s*([A-Za-z0-9\-_]+)/i)
         const code = codeMatch ? codeMatch[1].trim() : `BRF-${propId}`
 
@@ -252,9 +454,7 @@ routerAdd('POST', '/backend/v1/sync-properties', (e) => {
         if (h1Match) {
           title = h1Match[1].replace(/<[^>]+>/g, '').trim()
         }
-        if (!title) {
-          title = `Imóvel Cód. ${code}`
-        }
+        title = fixMojibake(title)
 
         let price = 0
         let priceFormatted = ''
@@ -309,22 +509,74 @@ routerAdd('POST', '/backend/v1/sync-properties', (e) => {
         if (neighMatch) {
           neighborhood = neighMatch[1].replace(/<[^>]+>/g, '').trim()
         }
+        neighborhood = fixMojibake(neighborhood)
+
+        let propType = 'Apartamento'
+        if (/casa|sobrado/i.test(title) || /casa/i.test(url)) {
+          propType = 'Casa'
+        } else if (/terreno|lote/i.test(title) || /terreno|area/i.test(url)) {
+          propType = 'Terreno'
+        } else if (/lançamento|lancamento/i.test(title) || /lancamento/i.test(url)) {
+          propType = 'Lançamento'
+        }
 
         let existing = null
         try {
           existing = $app.findFirstRecordByData('properties', 'code', code)
         } catch (_) {}
 
+        // VALIDATION: Reject junk / scripts / invalid records
+        const isJunk =
+          containsJunkOrScript(neighborhood) ||
+          containsJunkOrScript(title) ||
+          containsJunkOrScript(city) ||
+          !title ||
+          title.length < 5 ||
+          title.includes('Ã') ||
+          neighborhood.includes('Ã') ||
+          city.includes('Ã') ||
+          price <= 0 ||
+          isNaN(price) ||
+          !url.startsWith('https://www.brfimoveis.com.br/')
+
+        if (isJunk) {
+          skippedJunkCount++
+          if (existing) {
+            existing.set('is_active', false)
+            $app.save(existing)
+          }
+
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const jLog = new Record(logsCol)
+            jLog.set('type', 'properties_sync_junk_rejected')
+            jLog.set('message', `Imóvel rejeitado pelo filtro de validação: Cód. ${code}`)
+            jLog.set(
+              'details',
+              JSON.stringify({
+                code,
+                url,
+                title: title.substring(0, 60),
+                neighborhood: neighborhood.substring(0, 60),
+                price,
+              }),
+            )
+            $app.saveNoValidate(jLog)
+          } catch (_) {}
+
+          continue
+        }
+
         const rec = existing || new Record(propertiesCol)
         rec.set('code', code)
         rec.set('title', title)
         rec.set('url', url)
         rec.set('city', city)
-        if (neighborhood) rec.set('neighborhood', neighborhood)
-        if (price > 0) {
-          rec.set('price', price)
-          rec.set('price_formatted', priceFormatted)
-        }
+        rec.set('neighborhood', neighborhood)
+        rec.set('property_type', propType)
+        rec.set('transaction_type', 'Venda')
+        rec.set('price', price)
+        rec.set('price_formatted', priceFormatted || `R$ ${price.toLocaleString('pt-BR')}`)
         if (bedrooms > 0) rec.set('bedrooms', bedrooms)
         if (suites > 0) rec.set('suites', suites)
         if (bathrooms > 0) rec.set('bathrooms', bathrooms)
@@ -345,13 +597,21 @@ routerAdd('POST', '/backend/v1/sync-properties', (e) => {
       logRec.set('type', 'properties_sync')
       logRec.set(
         'message',
-        `Sincronização manual de imóveis: ${syncedCount} atualizados, ${errorCount} erros`,
+        `Sincronização manual de imóveis: ${syncedCount} atualizados, ${skippedJunkCount} descartados/desativados, ${errorCount} erros`,
       )
-      logRec.set('payload', JSON.stringify({ synced: syncedCount, errors: errorCount }))
+      logRec.set(
+        'payload',
+        JSON.stringify({ synced: syncedCount, skipped_junk: skippedJunkCount, errors: errorCount }),
+      )
       $app.saveNoValidate(logRec)
     } catch (_) {}
 
-    return e.json(200, { ok: true, synced: syncedCount, errors: errorCount })
+    return e.json(200, {
+      ok: true,
+      synced: syncedCount,
+      skipped_junk: skippedJunkCount,
+      errors: errorCount,
+    })
   } catch (err) {
     return e.json(500, { ok: false, error: String(err) })
   }

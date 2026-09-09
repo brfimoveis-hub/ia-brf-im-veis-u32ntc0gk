@@ -753,14 +753,19 @@ ${clientContext}
 ${channelContext}
 ${propertyContext}
 
+REGRA DE OURO SOBRE IMÓVEIS (TOLERÂNCIA ZERO PARA ALUCINAÇÃO):
+- NUNCA invente imóveis, códigos, preços, bairros ou links. Use SOMENTE os imóveis fornecidos no contexto acima (seção [CATÁLOGO DE IMÓVEIS REAIS]).
+- NUNCA monte links com URLs imaginárias (como /101/, /102/ ou links quebrados). Use EXATAMENTE os links oficiais fornecidos no catálogo.
+- Se não houver imóvel perfeitamente compatível com o pedido do cliente, diga expressamente que vai consultar as opções disponíveis e apresente os imóveis mais próximos do catálogo real fornecido no contexto, ou direcione para o site www.brfimoveis.com.br e para o Mauro.
+
 DIRETRIZES FUNDAMENTAIS E REGRAS DE ATENDIMENTO (BRF IMÓVEIS):
 1. RESPOSTA DIRETA AO QUE FOI PEDIDO PRIMEIRO:
    - Se o cliente perguntou "quais imóveis até 500k?", "manda opções", "manda os links", "o que você tem?": RESPONDA IMEDIATAMENTE apresentando 2 a 3 imóveis reais da seção [CATÁLOGO DE IMÓVEIS REAIS].
    - É TOTALMENTE PROIBIDO responder com perguntas de qualificação como "o que é mais importante além do valor?" quando o cliente acabou de pedir imóveis ou links.
-   - SEMPRE forneça os dados reais: Código, Bairro/Cidade, Valor, Quartos e o LINK OFICIAL DO SITE.
+   - SEMPRE forneça os dados reais dos imóveis do catálogo: Código, Bairro/Cidade, Valor, Quartos e o LINK OFICIAL DO SITE que está listado.
 
 2. SEMPRE INCLUIR O LINK DO SITE DO IMÓVEL:
-   - Toda vez que citar qualquer imóvel, inclua obrigatoriamente a URL oficial que consta no catálogo (ex: https://www.brfimoveis.com.br/343/imoveis/venda-apartamento-2-quartos-capoeiras-florianopolis-sc).
+   - Toda vez que citar qualquer imóvel, inclua obrigatoriamente a URL oficial que consta no catálogo fornecido (ex: https://www.brfimoveis.com.br/343/imoveis/venda-apartamento-2-quartos-capoeiras-florianopolis-sc).
    - O cliente não quer apenas descrições vagas; ele quer abrir o link do imóvel no site.
 
 3. LIMITE DE QUALIFICAÇÃO (MÁXIMO 2 PERGUNTAS NA CONVERSA INTEIRA):
@@ -849,7 +854,7 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
           messages: [
             {
               role: 'system',
-              content: `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie se a resposta obedece: "${motherAiInstructions}". Se estiver aprovada, responda APENAS a palavra APROVADO sem nada mais. Se precisar de ajuste, forneça APENAS o texto da mensagem final pronto para o cliente no WhatsApp, SEM nenhum comentário, cabeçalho, introdução, explicação ou rótulo como "Reescrita" ou "APROVADO".`,
+              content: `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie se a resposta obedece: "${motherAiInstructions}". REGRA VITAL: NUNCA invente imóveis ou links. Use APENAS imóveis reais fornecidos no contexto. Se estiver aprovada, responda APENAS a palavra APROVADO sem nada mais. Se precisar de ajuste, forneça APENAS o texto da mensagem final pronto para o cliente no WhatsApp, SEM nenhum comentário, cabeçalho, introdução, explicação ou rótulo como "Reescrita" ou "APROVADO".`,
             },
             { role: 'user', content: responseText },
           ],
@@ -940,7 +945,186 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       return clean
     }
 
+    // Strict validation of properties mentioned in AI response against properties collection
+    function validateAndSanitizePropertiesInOutput(text) {
+      if (!text) return { sanitizedText: '', removedBlocks: [], hadHallucinatedProperty: false }
+
+      let activeCatalogProps = []
+      try {
+        activeCatalogProps = $app.findRecordsByFilter(
+          'properties',
+          'is_active = true',
+          'price',
+          100,
+          0,
+        )
+      } catch (e) {
+        console.warn(`[AI_PROPERTY_VALIDATION] Failed to load catalog: ${String(e)}`)
+      }
+
+      const activeCodes = new Set()
+      const activeUrls = new Set()
+      const activeUrlNumbers = new Set()
+
+      activeCatalogProps.forEach((p) => {
+        const c = (p.getString('code') || '').trim().toUpperCase()
+        if (c) {
+          activeCodes.add(c)
+          activeCodes.add(c.replace(/\s+/g, ''))
+          activeCodes.add(c.replace(/[-_\s]+/g, ''))
+        }
+        const u = (p.getString('url') || '').trim().toLowerCase()
+        if (u) {
+          activeUrls.add(u)
+          const numMatch = u.match(/brfimoveis\.com\.br\/(\d+)/i)
+          if (numMatch) {
+            activeUrlNumbers.add(numMatch[1])
+          }
+        }
+      })
+
+      // Split text into blocks / paragraphs (separated by double newlines or list items / tables)
+      // Check each block: does it cite a property code or a brfimoveis link?
+      const rawBlocks = text.split(/\n\s*\n/)
+      const validBlocks = []
+      const removedBlocks = []
+      let hadHallucinatedProperty = false
+
+      for (const block of rawBlocks) {
+        const trimmedBlock = block.trim()
+        if (!trimmedBlock) continue
+
+        // Extract any brfimoveis.com.br URLs in this block
+        const urlMatches =
+          trimmedBlock.match(/https?:\/\/(?:www\.)?brfimoveis\.com\.br\/[^\s\)\>\"\'\`]+/gi) || []
+        let hasInvalidUrl = false
+        if (urlMatches.length > 0) {
+          for (const rawUrl of urlMatches) {
+            const cleanUrl = rawUrl.toLowerCase().replace(/[\.,;:!\?]+$/, '')
+            // Check if it matches an active property url or valid static page
+            const isCatalogStaticPage =
+              cleanUrl.includes('/imoveis') ||
+              cleanUrl.includes('/venda') ||
+              cleanUrl.endsWith('brfimoveis.com.br') ||
+              cleanUrl.endsWith('brfimoveis.com.br/')
+            const numMatch = cleanUrl.match(/brfimoveis\.com\.br\/(\d+)/i)
+            if (numMatch) {
+              const urlNum = numMatch[1]
+              if (!activeUrlNumbers.has(urlNum)) {
+                hasInvalidUrl = true
+                console.warn(
+                  `[AI_PROPERTY_VALIDATION] Invalid/Hallucinated property URL detected: ${rawUrl}`,
+                )
+                break
+              }
+            } else if (!isCatalogStaticPage && !activeUrls.has(cleanUrl)) {
+              hasInvalidUrl = true
+              console.warn(`[AI_PROPERTY_VALIDATION] Non-existent specific URL detected: ${rawUrl}`)
+              break
+            }
+          }
+        }
+
+        // Extract property code patterns: e.g. AB 101, AP 343, AP343, CS331, LM326, TR338, ARU341, BRF-101
+        // Look for typical property identifiers like "**AB 101**", "Código: AP-320", "📍 AP343", "*AP 343*"
+        let hasInvalidCode = false
+        const codeMatches =
+          trimmedBlock.match(
+            /(?:código|cod|cód\.?|ref\.?|\b)\s*[*_`]*([A-Z]{2,4}\s*[-_]?\s*\d{2,4})[*_`]*/gi,
+          ) || []
+        for (const matchStr of codeMatches) {
+          const extracted = matchStr
+            .replace(/^(?:código|cod|cód\.?|ref\.?)\s*/i, '')
+            .replace(/[*_`]/g, '')
+            .trim()
+            .toUpperCase()
+          const normExtracted = extracted.replace(/\s+/g, '').replace(/[-_]/g, '')
+          // Exclude generic numbers or dates
+          if (
+            normExtracted.length >= 3 &&
+            !normExtracted.startsWith('R$') &&
+            !normExtracted.startsWith('BR101')
+          ) {
+            // Check if this code belongs to active properties
+            let existsInCatalog = false
+            for (const ac of activeCodes) {
+              if (
+                ac === extracted ||
+                ac === normExtracted ||
+                normExtracted.includes(ac) ||
+                ac.includes(normExtracted)
+              ) {
+                existsInCatalog = true
+                break
+              }
+            }
+            if (!existsInCatalog) {
+              // Extra check: maybe it's just mentioning BR-101 highway
+              if (/BR[-\s]?101/i.test(extracted)) {
+                continue
+              }
+              hasInvalidCode = true
+              console.warn(
+                `[AI_PROPERTY_VALIDATION] Invalid/Hallucinated property code detected: ${extracted} in block: "${trimmedBlock.substring(0, 60)}"`,
+              )
+              break
+            }
+          }
+        }
+
+        if (hasInvalidUrl || hasInvalidCode) {
+          hadHallucinatedProperty = true
+          removedBlocks.push(trimmedBlock)
+          console.log(
+            `[AI_PROPERTY_VALIDATION] Removing hallucinated property block: "${trimmedBlock.substring(0, 100)}..."`,
+          )
+        } else {
+          validBlocks.push(trimmedBlock)
+        }
+      }
+
+      const sanitizedText = validBlocks.join('\n\n').trim()
+      return { sanitizedText, removedBlocks, hadHallucinatedProperty }
+    }
+
     responseText = sanitizeAiResponse(responseText)
+
+    // Run hard property validation on the generated response
+    const validationResult = validateAndSanitizePropertiesInOutput(responseText)
+    if (validationResult.hadHallucinatedProperty) {
+      console.warn(
+        `[AI_PROPERTY_VALIDATION] Hallucinated content detected! Removed ${validationResult.removedBlocks.length} block(s).`,
+      )
+      responseText = validationResult.sanitizedText
+
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const valLog = new Record(logsCol)
+        valLog.set('user_id', userId || '')
+        valLog.set('type', 'ai_property_validation')
+        valLog.set(
+          'message',
+          `IA alucinou imóvel/link fora do catálogo. ${validationResult.removedBlocks.length} bloco(s) removido(s) antes do envio.`,
+        )
+        valLog.set(
+          'details',
+          JSON.stringify({
+            removed_blocks: validationResult.removedBlocks,
+            customer_id: customerId,
+          }),
+        )
+        valLog.set(
+          'payload',
+          JSON.stringify({
+            removed_count: validationResult.removedBlocks.length,
+            preview_removed: validationResult.removedBlocks.map((b) => b.substring(0, 120)),
+          }),
+        )
+        $app.saveNoValidate(valLog)
+      } catch (logErr) {
+        console.warn(`[AI_PROPERTY_VALIDATION] Log write failed: ${String(logErr)}`)
+      }
+    }
 
     // Extract business tags from response
     const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
@@ -1048,21 +1232,15 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
 
     const cannedDetected = isCannedValuesSentence(responseText)
 
-    // If response was repetitive or a canned qualification response while customer already gave filters or asked for options, replace with real catalog options!
-    if (
-      cannedDetected ||
-      isTooSimilar ||
-      (isRequestingOptions &&
-        !responseText.includes('http') &&
-        matchedProps &&
-        matchedProps.length > 0)
-    ) {
-      console.log(
-        `[AI_REPLY] Repetitive or canned response detected for customer ${customerId}. Overriding with real catalog options.`,
-      )
+    // Fallback function to generate 2-3 real catalog properties
+    function generateCatalogFallbackMessage() {
+      const activeFallback =
+        matchedProps && matchedProps.length > 0
+          ? matchedProps.filter((p) => p.get('is_active') === true)
+          : $app.findRecordsByFilter('properties', 'is_active = true', 'price', 3, 0)
 
-      if (matchedProps && matchedProps.length > 0) {
-        const topProps = matchedProps.slice(0, 3)
+      if (activeFallback && activeFallback.length > 0) {
+        const topProps = activeFallback.slice(0, 3)
         let generatedCatalogReply = ''
         if (displayName) {
           generatedCatalogReply += `Oi, ${displayName}! `
@@ -1071,17 +1249,17 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
         }
 
         if (extractedMaxPrice > 0 || extractedBedrooms > 0) {
-          generatedCatalogReply += `Separei aqui as melhores opções do nosso catálogo que se encaixam no que você procura`
+          generatedCatalogReply += `Separei aqui opções reais do nosso catálogo que se encaixam no que você procura`
           if (extractedBedrooms > 0) generatedCatalogReply += ` (${extractedBedrooms} dormitórios`
           if (extractedMaxPrice > 0)
             generatedCatalogReply += `, até R$ ${(extractedMaxPrice / 1000).toFixed(0)}k)`
           else if (extractedBedrooms > 0) generatedCatalogReply += `)`
           generatedCatalogReply += `:\n\n`
         } else {
-          generatedCatalogReply += `Aqui estão excelentes opções do nosso catálogo no site:\n\n`
+          generatedCatalogReply += `Aqui estão excelentes opções do nosso catálogo oficial:\n\n`
         }
 
-        topProps.forEach((p, idx) => {
+        topProps.forEach((p) => {
           const pCode = p.getString('code')
           const pTitle = p.getString('title')
           const pUrl = p.getString('url')
@@ -1101,11 +1279,26 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
         })
 
         generatedCatalogReply += `Dá uma olhada nos links! Qual dessas opções você achou mais interessante? Se quiser, posso agendar para você conhecer pessoalmente.`
-        responseText = generatedCatalogReply
-      } else {
-        // Fallback without properties
-        responseText = `Olá! Você pode conferir nosso catálogo completo de imóveis diretamente no site: https://www.brfimoveis.com.br/imoveis/venda. Se preferir um atendimento exclusivo com o corretor Mauro, ele atende no link: https://wa.me/5548992098050`
+        return generatedCatalogReply
       }
+
+      return `Olá! Você pode conferir nosso catálogo completo de imóveis diretamente no site: https://www.brfimoveis.com.br/imoveis/venda. Se preferir um atendimento exclusivo com o corretor Mauro, ele atende no link: https://wa.me/5548992098050`
+    }
+
+    // Check if after sanitation the response became empty or lacks real properties when requested
+    const needsCatalogFallback =
+      !responseText.trim() ||
+      (validationResult.hadHallucinatedProperty &&
+        (!responseText.includes('http') || responseText.length < 30)) ||
+      (isRequestingOptions &&
+        (!responseText.includes('http') || !responseText.includes('brfimoveis.com.br')))
+
+    // If response was repetitive, canned, or stripped of hallucinated properties, replace with real catalog options!
+    if (cannedDetected || isTooSimilar || needsCatalogFallback) {
+      console.log(
+        `[AI_REPLY] Overriding with real catalog fallback for customer ${customerId} (canned=${cannedDetected}, similar=${isTooSimilar}, needsFallback=${needsCatalogFallback}).`,
+      )
+      responseText = generateCatalogFallbackMessage()
     }
 
     // Duplicate message final guard
