@@ -431,28 +431,149 @@ onRecordAfterCreateSuccess((e) => {
       channelContext = `\n[PERFIL DE ATENDIMENTO: GERAL]\nO cliente é um lead novo (primeiro contato).\nDIRETRIZES GERAIS:\n- Faça a qualificação inicial.\n`
     }
 
+    // Real Estate Properties Catalog from Database (brfimoveis.com.br)
     let propertyContext = ''
-    if (userRecord) {
+    try {
+      const lowerMsg = customerMessage.toLowerCase()
+      let matchedProps = []
+
+      // 1. Check if customer mentioned a specific code (e.g. AP-320, AP387, LM326, 320, 343)
+      const codeRegexMatch = lowerMsg.match(
+        /(ap[-\s]?\d+|lm[-\s]?\d+|tr[-\s]?\d+|aru[-\s]?\d+|cs[-\s]?\d+|\b\d{3}\b)/i,
+      )
+      if (codeRegexMatch) {
+        const rawCode = codeRegexMatch[1].toUpperCase().replace(/\s+/g, '')
+        const numOnly = rawCode.replace(/\D/g, '')
+
+        let codeFilter = `code ~ '${rawCode}' || url ~ '/${numOnly}/'`
+        const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 3, 0)
+        if (codeResults.length > 0) {
+          matchedProps = codeResults
+        }
+      }
+
+      // 2. If no code match, check for location / city / neighborhood
+      if (matchedProps.length === 0) {
+        const citiesAndNeighborhoods = [
+          'balneário camboriú',
+          'balneario camboriu',
+          'jurere',
+          'jurerê',
+          'capoeiras',
+          'estreito',
+          'balneário',
+          'balneario',
+          'coqueiros',
+          'areias',
+          'floresta',
+          'são josé',
+          'sao jose',
+          'palhoça',
+          'palhoca',
+          'biguaçu',
+          'biguacu',
+          'são joaquim',
+          'sao joaquim',
+          'canasvieiras',
+          'ingleses',
+          'trindade',
+          'barreiros',
+        ]
+
+        let matchedLoc = ''
+        for (const loc of citiesAndNeighborhoods) {
+          if (lowerMsg.includes(loc)) {
+            matchedLoc = loc
+            break
+          }
+        }
+
+        if (matchedLoc) {
+          // Normalize search term
+          let searchTerm = matchedLoc
+          if (matchedLoc.includes('jurere')) searchTerm = 'Jurerê'
+          else if (
+            matchedLoc.includes('balneário camboriú') ||
+            matchedLoc.includes('balneario camboriu')
+          )
+            searchTerm = 'Balneário Camboriú'
+          else if (matchedLoc.includes('coqueiros')) searchTerm = 'Coqueiros'
+          else if (matchedLoc.includes('capoeiras')) searchTerm = 'Capoeiras'
+          else if (matchedLoc.includes('areias')) searchTerm = 'Areias'
+          else if (matchedLoc.includes('barreiros')) searchTerm = 'Barreiros'
+          else if (matchedLoc.includes('palho')) searchTerm = 'Palhoça'
+          else if (matchedLoc.includes('são josé') || matchedLoc.includes('sao jose'))
+            searchTerm = 'São José'
+          else if (matchedLoc.includes('bigua')) searchTerm = 'Biguaçu'
+
+          const locResults = $app.findRecordsByFilter(
+            'properties',
+            `city ~ '${searchTerm}' || neighborhood ~ '${searchTerm}' || title ~ '${searchTerm}'`,
+            '-created',
+            4,
+            0,
+          )
+          if (locResults.length > 0) {
+            matchedProps = locResults
+          }
+        }
+      }
+
+      // 3. Fallback: load top active properties so AI always has real options
+      if (matchedProps.length === 0) {
+        matchedProps = $app.findRecordsByFilter('properties', 'is_active = true', '-created', 4, 0)
+      }
+
+      if (matchedProps.length > 0) {
+        propertyContext = '\n[CATÁLOGO DE IMÓVEIS REAIS - BRF IMÓVEIS (www.brfimoveis.com.br)]\n'
+        propertyContext +=
+          'Abaixo estão os imóveis reais disponíveis para apresentar ao cliente:\n\n'
+
+        matchedProps.forEach((p, idx) => {
+          const pCode = p.getString('code')
+          const pTitle = p.getString('title')
+          const pUrl = p.getString('url')
+          const pCity = p.getString('city')
+          const pNeigh = p.getString('neighborhood')
+          const pPrice = p.getString('price_formatted')
+          const pBeds = p.getInt('bedrooms')
+          const pSuites = p.getInt('suites')
+          const pBaths = p.getInt('bathrooms')
+          const pParking = p.getInt('parking_spaces')
+          const pArea = p.getFloat('area_privativa')
+          const pDesc = p.getString('description')
+
+          propertyContext += `--- OPÇÃO ${idx + 1} ---\n`
+          propertyContext += `Código: ${pCode}\n`
+          propertyContext += `Título: ${pTitle}\n`
+          propertyContext += `Link Oficial do Imóvel: ${pUrl}\n`
+          propertyContext += `Localização: ${pNeigh ? pNeigh + ', ' : ''}${pCity}\n`
+          propertyContext += `Valor: ${pPrice}\n`
+          if (pBeds > 0)
+            propertyContext += `Dormitórios: ${pBeds}${pSuites > 0 ? ` (${pSuites} suítes)` : ''}\n`
+          if (pBaths > 0) propertyContext += `Banheiros: ${pBaths}\n`
+          if (pParking > 0) propertyContext += `Vagas de garagem: ${pParking}\n`
+          if (pArea > 0) propertyContext += `Área Privativa: ${pArea} m²\n`
+          if (pDesc) propertyContext += `Destaques: ${pDesc}\n`
+          propertyContext += '\n'
+        })
+      }
+    } catch (propErr) {
+      console.warn(`[AI_REPLY] Error querying properties catalog (non-fatal): ${String(propErr)}`)
       try {
-        const rawPd = userRecord.get('project_data')
-        let pd = null
-        if (typeof rawPd === 'string' && rawPd.trim()) {
-          pd = JSON.parse(rawPd)
-        } else if (rawPd && typeof rawPd === 'object') {
-          pd = rawPd
-        }
-        if (pd) {
-          propertyContext = '\n[DADOS DO EMPREENDIMENTO]\n'
-          if (pd.name) propertyContext += 'Empreendimento: ' + pd.name + '\n'
-          if (pd.neighborhood) propertyContext += 'Localização: ' + pd.neighborhood + '\n'
-          if (pd.starting_price) propertyContext += 'Preço Inicial: ' + pd.starting_price + '\n'
-          if (pd.key_features) propertyContext += 'Diferenciais: ' + pd.key_features + '\n'
-        }
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const pErrLog = new Record(logsCol)
+        pErrLog.set('user_id', userId || '')
+        pErrLog.set('type', 'properties_lookup_error')
+        pErrLog.set('message', 'Erro não-fatal ao buscar imóveis para o contexto da IA')
+        pErrLog.set('details', String(propErr))
+        $app.saveNoValidate(pErrLog)
       } catch (_) {}
     }
+
     if (!propertyContext) {
       propertyContext =
-        '\n[DADOS DO EMPREENDIMENTO]\nEmpreendimento: Villa dos Açores\nLocalização: Biguaçu / Rio Caveiras\n'
+        '\n[CATÁLOGO DE IMÓVEIS]\nSite oficial: https://www.brfimoveis.com.br\nPara opções personalizadas e links diretos, consulte com Mauro: wa.me/5548992098050\n'
     }
 
     let filesContextText = ''
@@ -484,7 +605,7 @@ onRecordAfterCreateSuccess((e) => {
       ? `\n[DADOS DO CLIENTE]\nNome do cliente: ${displayName} (nome completo: ${customerName})\n`
       : `\n[DADOS DO CLIENTE]\nCliente sem nome cadastrado ou número apenas. Seja cordial sem usar placeholders tipo [Nome].\n`
 
-    const systemPrompt = `Você é ${aiName}.
+    const systemPrompt = `Você é ${aiName}, assistente virtual de vendas imobiliárias da BRF Imóveis (www.brfimoveis.com.br).
 Sua identidade e instruções específicas (Persona):
 ${personaInstructions}
 
@@ -495,32 +616,43 @@ ${channelContext}
 ${propertyContext}
 
 DIRETRIZES RIGOROSAS E REGRAS DE NEGÓCIO (BRF IMÓVEIS):
-1. IDENTIFICAÇÃO DO IMÓVEL: Se não houver contexto sobre qual imóvel o cliente tem interesse, sua PRIMEIRA interação deve ser: "Vi que você se interessou por um imóvel nosso! Me diz qual deles chamou sua atenção?".
-2. ALUGUEL/LOCAÇÃO: Se o cliente mencionar "aluguel", "alugar" ou "locação", responda: "Trabalhamos apenas com venda e permuta. Gostaria de ver opções para compra?".
-3. PERMUTA: Se o cliente mencionar que tem um imóvel para dar de entrada ou trocar, responda normalmente e inclua a tag [PERMUTA] no final da resposta.
-4. DESCONHECIMENTO/INCERTEZA: Se você não souber a resposta, não estiver na sua base de conhecimento, ou estiver em dúvida, NUNCA invente. Responda educadamente que vai verificar e forneça o link direto para o Mauro: "Qualquer dúvida específica, pode falar direto com o Mauro pelo link: wa.me/5548992098050". Adicione também a tag [HANDOVER: Mauro] no final da sua resposta.
-5. Responda de forma fluida, coerente e humana em Português.
-6. Priorize as instruções da persona e o contexto recuperado.
-7. NUNCA mencione seus processos internos, "base de conhecimento", "cadências", "contexto", ou "instruções".
-8. NUNCA inicie a resposta com frases sistêmicas ou analíticas. Vá direto ao ponto.
-9. Analise o histórico da conversa e NUNCA repita a mesma mensagem que você enviou recentemente.
-10. EVOLUÇÃO DE CADÊNCIA (10 PASSOS): Acompanhe os 'Passos Estruturados' da cadência atual. Se o cliente evoluir, inclua a tag [STATUS: NovoStatus] no final.
-11. TRANSBORDO (HANDOVER): Se o cliente pedir para falar com um humano, agendar visita presencial, ou a conversa avançar para negociação, inclua a tag [HANDOVER: Mauro].
+1. ENVIO DE OPÇÕES DE IMÓVEIS COM LINKS REAIS: Quando o cliente pedir opções de imóveis, sugestões ou perguntar o que você tem disponível (ex: "manda opções", "o que você tem?", "tem imóveis em tal bairro?"), NUNCA fique fazendo perguntas estáticas ou dizendo que vai transferir sem apresentar opções. Apresente de imediato de 2 a 3 opções REAIS da seção [CATÁLOGO DE IMÓVEIS REAIS], informando:
+   - Título e Código do imóvel (ex: AP-320, AP387, LM326);
+   - Localização (Bairro/Cidade);
+   - Valor e quantidade de dormitórios/suítes/vagas;
+   - Link exato e público do imóvel no site www.brfimoveis.com.br (wa.me friendly, exatamente o link informado no catálogo);
+   - Convide cordialmente o cliente a abrir o link ou agendar uma visita.
+
+2. DETALHES DE IMÓVEL ESPECÍFICO: Quando o cliente citar um imóvel específico, código ou perguntar detalhes (preço, quartos, condomínio, localização), forneça os dados REAIS presentes no [CATÁLOGO DE IMÓVEIS REAIS] com o link do imóvel. NÃO responda de forma genérica.
+
+3. EVITAR LOOPS ESTÁTICOS: NUNCA repita perguntas ou mensagens que você já fez nas mensagens anteriores. Se o cliente já pediu opções ou respondeu algo, avance sempre entregando valor, opções concretas e propondo o próximo passo (ex: visitar o imóvel ou conversar com Mauro).
+
+4. IDENTIFICAÇÃO DO IMÓVEL: Apenas na PRIMEIRA mensagem absoluta do lead, se não houver NENHUM dado sobre o que o cliente procura, cumprimente com energia e simpatia. Mas se o cliente pediu opções ou citou um perfil, NUNCA pergunte de novo "qual chamou sua atenção" sem mandar as opções!
+
+5. ALUGUEL/LOCAÇÃO: Se o cliente mencionar "aluguel", "alugar" ou "locação", responda: "Trabalhamos exclusivamente com venda e permuta de imóveis selecionados. Gostaria de ver opções para compra ou investimento?".
+
+6. PERMUTA: Se o cliente mencionar que tem um imóvel para dar de entrada ou trocar, acolha positivamente e inclua a tag [PERMUTA] no final da resposta.
+
+7. DESCONHECIMENTO/INCERTEZA: Se você não souber uma informação super específica e não estiver na base de conhecimento, NUNCA invente. Forneça o que souber com honestidade e informe que Mauro pode tirar dúvidas detalhadas pelo WhatsApp: wa.me/5548992098050. Adicione a tag [HANDOVER: Mauro].
+
+8. Responda de forma natural, amigável, consultiva e humana em Português do Brasil. NUNCA mencione processos internos, "catálogo", "contexto", "instruções" ou "banco de dados".
+
+9. EVOLUÇÃO DE CADÊNCIA (10 PASSOS): Acompanhe a cadência atual e se o cliente avançar, inclua [STATUS: NovoStatus]. Se pedir para agendar visita presencial ou negociar proposta, inclua [HANDOVER: Mauro].
 
 ### METODOLOGIA DOS 10 PASSOS DA BIA:
 1. CLASSIFICACAO DO LEAD: Identifique o perfil (Investidor, Morador, Primeiro Imovel, Veranista). Inclua [PROFILE: TipoPerfil] no final.
 2. ABERTURA PERSONALIZADA: Adapte a saudacao ao perfil identificado.
 3. DIAGNOSTICO SPIN: Mapeie Situacao, Problema, Implicacao, Necessidade. Inclua [STATUS: Mapeamento de Perfil] ao concluir.
 4. 5 WHYS: Aprofunde a motivacao emocional perguntando "Por que?". Inclua [STATUS: Nutricao Automatica] ao identificar.
-5. APRESENTACAO MATCH: Conecte recursos do empreendimento as dores identificadas.
-6. TRATAMENTO DE OBJECOES: Use rebatidas (preco alto -> comparativos; vou pensar -> reserva 48h). Inclua [STATUS: Proposta e Negociacao] ao avancar.
-7. GATILHOS MENTAIS: Aplique Escassez, Urgencia, Prova Social, Autoridade, Reciprocidade.
-8. FECHAMENTO: Use Premissa, Resumo ou Condicao Especial. Inclua [HANDOVER: Mauro] para finalizar.
-9. FOLLOW-UP: Nutricao em D1, D7, D15, D30. Inclua [STATUS: Agendamento de Visita] ou [STATUS: Pos-Visita].
-10. POS-VENDA: Peca indicacoes e verifique satisfacao.
+5. APRESENTACAO MATCH: Apresente os imóveis do catálogo que dão match com a necessidade do cliente, com link direto do site.
+6. TRATAMENTO DE OBJECOES: Esclareça dúvidas com dados reais do imóvel. Inclua [STATUS: Proposta e Negociacao] ao avancar.
+7. GATILHOS MENTAIS: Escassez ("unidade exclusiva", "um por andar", "revenda única"), Urgência, Prova Social.
+8. FECHAMENTO: Proponha visita com Mauro: [HANDOVER: Mauro].
+9. FOLLOW-UP: Nutricao contínua com novos links e oportunidades.
+10. POS-VENDA: Acompanhamento e satisfação.
 
 CONTEXTO RECUPERADO:
-${combinedContextText || '(Nenhum contexto específico encontrado na base para esta pergunta)'}`
+${combinedContextText || '(Nenhum contexto adicional na base)'}`
 
     messages.push({ role: 'system', content: systemPrompt })
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-08T20:45:35.033Z",
+  "generatedAt": "2026-09-09T11:35:28.824Z",
   "collections": [
     {
       "name": "users",
@@ -872,6 +872,153 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "properties",
+      "type": "base",
+      "apiRules": {
+        "list": "",
+        "view": "",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "code",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "neighborhood",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "property_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "transaction_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price_formatted",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bedrooms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "suites",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bathrooms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parking_spaces",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "area_privativa",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "area_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "features",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "image_url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_properties_code ON properties (code)",
+        "CREATE INDEX idx_properties_city ON properties (city)",
+        "CREATE INDEX idx_properties_neighborhood ON properties (neighborhood)",
+        "CREATE INDEX idx_properties_price ON properties (price)"
+      ]
     }
   ]
 }
