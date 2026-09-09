@@ -610,69 +610,92 @@ onRecordAfterCreateSuccess((e) => {
         }
       }
 
-      // 1. Check if customer mentioned a specific property code or known project name
-      // (e.g. AP-320, LM 329, Terrá, Viva Trindade, Villa Areias, Villa dos Acordes/Açores, Viva Balneário, Colinas de São Pedro, Solar Di Plaza)
+      // 1. Check if customer mentioned known projects / launches (can match MULTIPLE projects at once)
+      // (e.g. AP-320, LM 329, Terrá, Viva Trindade, Villa Areias, Villa dos Acordes/Açores, Studios Canasvieiras, Viva Balneário, Colinas de São Pedro, Solar Di Plaza, etc.)
       const knownProjects = [
         {
           regex: /terr[aá]/i,
-          filter: "is_active = true && (title ~ 'Terrá' || title ~ 'Terra' || code ~ '329')",
+          filter:
+            "is_active = true && (title ~ 'Terrá' || title ~ 'Terra' || features ~ 'Terrá' || code ~ '329')",
         },
         {
           regex: /viva\s*trindade/i,
-          filter: "is_active = true && (title ~ 'Viva Trindade' || code ~ '301')",
+          filter:
+            "is_active = true && (title ~ 'Viva Trindade' || features ~ 'Viva Trindade' || code ~ '301')",
         },
         {
           regex: /villa\s*(?:dos\s*)?ac[oó]rdes|villa\s*(?:dos\s*)?a[cç][oó]res/i,
           filter:
-            "is_active = true && (title ~ 'Acordes' || title ~ 'Açores' || title ~ 'Acores' || code ~ '280')",
+            "is_active = true && (title ~ 'Acordes' || title ~ 'Açores' || title ~ 'Acores' || features ~ 'Villa dos Acordes' || features ~ 'Villa dos Açores' || code ~ '280')",
         },
         {
           regex: /villa\s*areias|residencial\s*areias/i,
-          filter: "is_active = true && (title ~ 'Areias' || code ~ '295')",
+          filter:
+            "is_active = true && (title ~ 'Areias' || features ~ 'Villa Areias' || features ~ 'Residencial Areias' || code ~ '295')",
+        },
+        {
+          regex: /canasvieiras|canas\s*vieiras|studios?\s*canas/i,
+          filter:
+            "is_active = true && (features ~ 'Canasvieiras' || features ~ 'Studios' || title ~ 'Canasvieiras' || code ~ '330')",
         },
         {
           regex: /viva\s*balne[aá]rio/i,
           filter:
-            "is_active = true && (title ~ 'Viva Balneário' || title ~ 'Viva Balneario' || code ~ '342')",
+            "is_active = true && (title ~ 'Viva Balneário' || title ~ 'Viva Balneario' || features ~ 'Viva Balneário' || code ~ '342')",
         },
         {
           regex: /colinas\s*(?:de\s*)?s[aã]o\s*pedro/i,
           filter:
-            "is_active = true && (title ~ 'Colinas' || code ~ '326' || code ~ '337' || code ~ '333')",
+            "is_active = true && (title ~ 'Colinas' || features ~ 'Colinas de São Pedro' || code ~ '326' || code ~ '337' || code ~ '333')",
         },
         {
           regex: /solar\s*(?:di\s*)?plaza/i,
-          filter: "is_active = true && (title ~ 'Solar' || code ~ '327')",
+          filter:
+            "is_active = true && (title ~ 'Solar' || features ~ 'Solar Di Plaza' || code ~ '327')",
         },
         {
           regex: /neo\s*continente/i,
-          filter: "is_active = true && (title ~ 'Neo Continente' || code ~ '289')",
+          filter:
+            "is_active = true && (title ~ 'Neo Continente' || features ~ 'Neo Continente' || code ~ '289')",
+        },
+        {
+          regex: /biguacu\s*rio\s*caveiras|rio\s*caveiras/i,
+          filter: "is_active = true && (features ~ 'Rio Caveiras' || code ~ '310')",
+        },
+        {
+          regex: /opus|agron[oô]mica\s*opus/i,
+          filter: "is_active = true && (features ~ 'Opus' || code ~ '311')",
         },
       ]
 
+      const matchedIds = new Set()
       for (const proj of knownProjects) {
         if (proj.regex.test(combinedCustText)) {
           const projResults = $app.findRecordsByFilter('properties', proj.filter, '-created', 3, 0)
-          if (projResults.length > 0) {
-            matchedProps = projResults
-            break
+          for (const pr of projResults) {
+            if (!matchedIds.has(pr.id)) {
+              matchedIds.add(pr.id)
+              matchedProps.push(pr)
+            }
           }
         }
       }
 
-      // 1b. Check if customer mentioned a specific property code (e.g. AP-320, AP343, AP308, LM326, 343)
-      if (matchedProps.length === 0) {
-        const codeRegexMatch = combinedCustText.match(
-          /(ap[-\s]?\d+|lm[-\s]?\d+|tr[-\s]?\d+|aru[-\s]?\d+|cs[-\s]?\d+|\b\d{3}\b)/i,
-        )
-        if (codeRegexMatch) {
-          const rawCode = codeRegexMatch[1].toUpperCase().replace(/\s+/g, '')
-          const numOnly = rawCode.replace(/\D/g, '')
-
-          let codeFilter = `is_active = true && (code ~ '${rawCode}' || url ~ '/${numOnly}/')`
-          const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 3, 0)
-          if (codeResults.length > 0) {
-            matchedProps = codeResults
+      // 1b. Check if customer mentioned specific property codes (e.g. AP-320, AP343, LM 329, LM330)
+      const codeMatches = combinedCustText.matchAll(
+        /(?:^|\s|\b)(ap[-\s]?\d+|lm[-\s]?\d+|tr[-\s]?\d+|aru[-\s]?\d+|cs[-\s]?\d+|\b\d{3}\b)/gi,
+      )
+      for (const cm of codeMatches) {
+        const rawCode = cm[1].toUpperCase().replace(/\s+/g, '')
+        const numOnly = rawCode.replace(/\D/g, '')
+        if (numOnly) {
+          const codeFilter = `is_active = true && (code ~ '${rawCode}' || url ~ '/${numOnly}/')`
+          const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 2, 0)
+          for (const cr of codeResults) {
+            if (!matchedIds.has(cr.id)) {
+              matchedIds.add(cr.id)
+              matchedProps.push(cr)
+            }
           }
         }
       }
@@ -695,7 +718,7 @@ onRecordAfterCreateSuccess((e) => {
 
         const criteriaFilter = filterParts.join(' && ')
         console.log(`[AI_REPLY] Searching properties by criteria: ${criteriaFilter}`)
-        let criteriaResults = $app.findRecordsByFilter('properties', criteriaFilter, 'price', 4, 0)
+        let criteriaResults = $app.findRecordsByFilter('properties', criteriaFilter, 'price', 6, 0)
 
         // If location made criteria too strict, fallback to price + bedrooms
         if (
@@ -711,25 +734,58 @@ onRecordAfterCreateSuccess((e) => {
             'properties',
             relaxedParts.join(' && '),
             'price',
-            4,
+            6,
             0,
           )
         }
 
         if (criteriaResults.length > 0) {
-          matchedProps = criteriaResults
+          for (const cr of criteriaResults) {
+            if (!matchedIds.has(cr.id)) {
+              matchedIds.add(cr.id)
+              matchedProps.push(cr)
+            }
+          }
         }
       }
 
       // 3. Fallback: if user asked for options or no match, load top active properties
+      // Prioritize official launches (code ~ 'LM') first so Bia always highlights key projects
       if (matchedProps.length === 0) {
-        matchedProps = $app.findRecordsByFilter('properties', 'is_active = true', 'price', 4, 0)
+        const topLaunches = $app.findRecordsByFilter(
+          'properties',
+          "is_active = true && code ~ 'LM'",
+          '-created',
+          4,
+          0,
+        )
+        for (const tl of topLaunches) {
+          if (!matchedIds.has(tl.id)) {
+            matchedIds.add(tl.id)
+            matchedProps.push(tl)
+          }
+        }
+        if (matchedProps.length < 4) {
+          const generalProps = $app.findRecordsByFilter(
+            'properties',
+            'is_active = true',
+            'price',
+            4,
+            0,
+          )
+          for (const gp of generalProps) {
+            if (!matchedIds.has(gp.id) && matchedProps.length < 6) {
+              matchedIds.add(gp.id)
+              matchedProps.push(gp)
+            }
+          }
+        }
       }
 
       if (matchedProps.length > 0) {
         propertyContext = '\n[CATÁLOGO DE IMÓVEIS REAIS - BRF IMÓVEIS (www.brfimoveis.com.br)]\n'
         propertyContext +=
-          'ATENÇÃO: Abaixo estão os imóveis reais do banco de dados da imobiliária. Cada imóvel possui um LINK OFICIAL que DEVE ser enviado ao cliente:\n\n'
+          'ESTES IMÓVEIS ESTÃO CONFIRMADOS E DISPONÍVEIS NO CATÁLOGO. Se o cliente perguntou por eles ou por opções semelhantes, CONFIRME que temos sim disponíveis e apresente as informações e links oficiais abaixo:\n\n'
 
         matchedProps.forEach((p, idx) => {
           const pCode = p.getString('code')
@@ -1028,6 +1084,42 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       if (earlyFallback && earlyFallback.trim()) {
         responseText = earlyFallback
       }
+    }
+
+    // Intercept false negative if model says requested launches are not in catalog when matchedProps actually has them!
+    const claimsCatalogUnavailable =
+      /não estão disponíveis no (?:nosso )?cat[aá]logo|n[aã]o constam no cat[aá]logo|n[aã]o temos esses empreendimentos no cat[aá]logo|esses empreendimentos ainda n[aã]o est[aã]o dispon[ií]veis|nenhum desses empreendimentos constam/i.test(
+        responseText,
+      )
+    if (claimsCatalogUnavailable && Array.isArray(matchedProps) && matchedProps.length > 0) {
+      console.warn(
+        '[AI_REPLY] Model falsely claimed properties are not in catalog even though matchedProps found matching units! Triggering catalog presentation fallback.',
+      )
+      // Pass candidates directly
+      const count = Math.min(matchedProps.length, 6)
+      const selected = matchedProps.slice(0, count)
+      let correctedCatalogMsg =
+        'Temos sim essas excelentes opções disponíveis no nosso catálogo oficial da BRF Imóveis! Confira os detalhes:\n\n'
+      selected.forEach((p, idx) => {
+        const code = p.getString('code')
+        const title = p.getString('title')
+        const price = p.getString('price_formatted')
+        const neigh = p.getString('neighborhood')
+        const city = p.getString('city')
+        const beds = p.getInt('bedrooms')
+        const suites = p.getInt('suites')
+        const url = p.getString('url')
+        correctedCatalogMsg += `${idx + 1}. *${title}* (${code})\n`
+        if (neigh || city)
+          correctedCatalogMsg += `📍 Localização: ${[neigh, city].filter(Boolean).join(', ')}\n`
+        if (price) correctedCatalogMsg += `💰 Valor: ${price}\n`
+        if (beds > 0)
+          correctedCatalogMsg += `🛏️ Dormitórios: ${beds}${suites > 0 ? ` (${suites} suíte${suites > 1 ? 's' : ''})` : ''}\n`
+        if (url) correctedCatalogMsg += `🔗 Link oficial: ${url}\n`
+        correctedCatalogMsg += '\n'
+      })
+      correctedCatalogMsg += 'Qual dessas opções você quer que eu te envie mais fotos e plantas?'
+      responseText = correctedCatalogMsg.trim()
     }
 
     // Optional Mother AI supervisor validation
