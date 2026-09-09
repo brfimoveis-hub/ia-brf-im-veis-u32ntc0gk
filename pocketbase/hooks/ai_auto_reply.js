@@ -113,7 +113,7 @@ onRecordAfterCreateSuccess((e) => {
         const newTags = tags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:'))
         newTags.push(`ai_processing:${now}`)
         customer.set('tags', newTags)
-        txApp.save(customer)
+        txApp.saveNoValidate(customer)
         acquiredLock = true
       })
     } catch (err) {
@@ -301,19 +301,22 @@ onRecordAfterCreateSuccess((e) => {
     const biaInstructions = userRecord ? userRecord.getString('bia_instructions') : ''
     const motherAiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
 
-    // Clean persona and mother instructions from canned loop phrase
+    // Clean persona, mother and cadence instructions from canned loop phrase with unicode / hyphen tolerance
     const cleanInstructionText = (txt) => {
       if (!txt) return ''
       return txt
-        .replace(/3\.\s*Gestão de Interrupções:.*?\(Retorno à Cadência 2\)\./gi, '')
-        .replace(/1\.\s*GESTÃO DE INTERRUPÇÕES\s*—.*?sem confrontar o cliente\./gi, '')
+        .replace(/3\.\s*Gestão de Interrupções:.*?\(Retorno à Cadência 2\)\.?/gi, '')
         .replace(
-          /responda EXATAMENTE:\s*"Com certeza, vou te passar os valores agora mesmo.*?"/gi,
+          /1\.\s*GESTÃO DE INTERRUPÇÕES\s*[\u2010-\u2015\-—].*?sem confrontar o cliente\.?/gi,
+          '',
+        )
+        .replace(
+          /responda\s+(?:EXATAMENTE\s*:\s*)?["'“«]Com certeza,\s*vou te passar os valores agora mesmo.*?["'”»]/gi,
           'apresente os imóveis e valores do catálogo imediatamente com os links oficiais.',
         )
         .replace(
-          /responda:\s*"Com certeza, vou te passar os valores agora mesmo.*?"/gi,
-          'apresente os imóveis e valores do catálogo imediatamente com os links oficiais.',
+          /Com certeza,\s*vou te passar os valores agora mesmo[.\s]*Apenas para eu te enviar a unidade com o melhor custo[\u2010-\u2015\-]benefício para o seu perfil,?\s*o que é mais importante para você além do valor\??/gi,
+          'Apresente os imóveis e valores reais do catálogo imediatamente com os links oficiais.',
         )
     }
 
@@ -356,12 +359,13 @@ onRecordAfterCreateSuccess((e) => {
         const c = cadences[0]
         const cTitle = c.getString('title')
         const cContent = c.getString('content')
-        const cInst = c.getString('ai_instructions')
+        const cInst = cleanInstructionText(c.getString('ai_instructions'))
+        const cCleanContent = cleanInstructionText(cContent)
         let cSteps = ''
         const stepsData = c.get('steps')
         if (stepsData) cSteps = JSON.stringify(stepsData)
 
-        activeCadenceText = `\n\n### CADÊNCIA ATUAL (${cTitle}):\nProcedimento: ${cContent}\nDiretriz Específica: ${cInst}`
+        activeCadenceText = `\n\n### CADÊNCIA ATUAL (${cTitle}):\nProcedimento: ${cCleanContent}\nDiretriz Específica: ${cInst}`
         if (cSteps) activeCadenceText += `\nPassos Estruturados (JSON): ${cSteps}`
       }
     } catch (err) {
@@ -985,16 +989,27 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
 
     responseText = sanitizeAiResponse(responseText)
 
-    // Hard Anti-Repetition & Canned Response Overhaul
+    // Hard Anti-Repetition & Canned Response Overhaul (handles all Unicode hyphens U+2010..U+2015, punctuation, accents)
     const isCannedValuesSentence = (txt) => {
       if (!txt) return false
-      const lower = txt.toLowerCase()
+      // Normalize hyphens and dashes (including U+2010, U+2011, U+2012, U+2013, U+2014, U+2015) to standard '-'
+      const normalized = txt
+        .toLowerCase()
+        .replace(/[\u2010-\u2015]/g, '-')
+        .replace(/\s+/g, ' ')
+
       return (
-        lower.includes('vou te passar os valores agora mesmo') ||
-        (lower.includes('custo‑benefício') && lower.includes('além do valor')) ||
-        (lower.includes('custo-benefício') && lower.includes('além do valor')) ||
-        (lower.includes('melhor custo') &&
-          lower.includes('o que é mais importante para você além do valor'))
+        normalized.includes('vou te passar os valores') ||
+        normalized.includes('passar os valores agora mesmo') ||
+        (normalized.includes('custo-beneficio') && normalized.includes('alem do valor')) ||
+        (normalized.includes('custo-benefício') && normalized.includes('além do valor')) ||
+        (normalized.includes('custobeneficio') && normalized.includes('alem do valor')) ||
+        (normalized.includes('melhor custo') && normalized.includes('alem do valor')) ||
+        (normalized.includes('melhor custo') && normalized.includes('além do valor')) ||
+        (normalized.includes('melhor custo') &&
+          normalized.includes('o que é mais importante para você além do valor')) ||
+        (normalized.includes('unidade com o melhor') && normalized.includes('além do valor')) ||
+        (normalized.includes('unidade com o melhor') && normalized.includes('alem do valor'))
       )
     }
 
@@ -1031,8 +1046,11 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       }
     }
 
+    const cannedDetected = isCannedValuesSentence(responseText)
+
     // If response was repetitive or a canned qualification response while customer already gave filters or asked for options, replace with real catalog options!
     if (
+      cannedDetected ||
       isTooSimilar ||
       (isRequestingOptions &&
         !responseText.includes('http') &&
@@ -1231,7 +1249,7 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       }
 
       if (crmUpdated) {
-        $app.save(custToUpdate)
+        $app.saveNoValidate(custToUpdate)
         console.log(
           `[AI_REPLY] CRM updated for customer=${customerId} (status=${targetStatus || 'unchanged'})`,
         )
@@ -1493,29 +1511,43 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
   } finally {
     if (acquiredLock) {
       try {
-        $app.runInTransaction((txApp) => {
-          const cust = txApp.findRecordById('customers', customerId)
-          let rawTags = cust.get('tags')
-          let currentTags = []
-          if (Array.isArray(rawTags)) {
-            currentTags = rawTags.filter((t) => typeof t === 'string')
-          }
-          const hasLockTag = currentTags.some(
-            (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
+        const cust = $app.findRecordById('customers', customerId)
+        let rawTags = cust.get('tags')
+        let currentTags = []
+        if (Array.isArray(rawTags)) {
+          currentTags = rawTags.filter((t) => typeof t === 'string')
+        } else if (typeof rawTags === 'string') {
+          try {
+            const p = JSON.parse(rawTags)
+            if (Array.isArray(p)) currentTags = p.filter((t) => typeof t === 'string')
+          } catch (_) {}
+        }
+        const hasLockTag = currentTags.some(
+          (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
+        )
+        if (hasLockTag) {
+          cust.set(
+            'tags',
+            currentTags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
           )
-          if (hasLockTag) {
-            cust.set(
-              'tags',
-              currentTags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
-            )
-            txApp.save(cust)
-            console.log(`[AI_REPLY] Lock released cleanly for customer=${customerId}`)
-          }
-        })
+          $app.saveNoValidate(cust)
+          console.log(`[AI_REPLY] Lock released cleanly for customer=${customerId}`)
+        }
       } catch (cleanLockErr) {
         console.error(
           `[AI_REPLY] Error releasing lock for customer ${customerId}: ${String(cleanLockErr)}`,
         )
+        // Fallback: direct SQL update to guarantee lock is released even if record model fails
+        try {
+          $app
+            .db()
+            .newQuery(
+              "UPDATE customers SET tags = (SELECT json_group_array(value) FROM json_each(customers.tags) WHERE value NOT LIKE 'ai_processing%') WHERE id = {:id}",
+            )
+            .bind({ id: customerId })
+            .execute()
+          console.log(`[AI_REPLY] Lock released via SQL fallback for customer=${customerId}`)
+        } catch (_) {}
       }
     }
   }
