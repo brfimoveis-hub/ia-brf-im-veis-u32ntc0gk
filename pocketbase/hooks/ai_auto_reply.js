@@ -1088,11 +1088,16 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
               cleanUrl.includes('youtube.com/@maurofenglerbrf') ||
               cleanUrl.includes('youtube.com/@brfimoveis') ||
               cleanUrl.includes('youtube.com/@brfimoveiseirelime') ||
+              cleanUrl.includes('youtube.com/channel/') ||
+              cleanUrl.includes('youtube.com/c/') ||
+              cleanUrl.includes('youtube.com/@') ||
               cleanUrl.includes('youtube.com/watch') ||
+              cleanUrl.includes('youtube.com/embed') ||
               cleanUrl.includes('youtu.be/') ||
               cleanUrl.includes('wa.me/') ||
               cleanUrl.includes('api.whatsapp.com/') ||
-              cleanUrl.includes('instagram.com/mauro.brfimoveis')
+              cleanUrl.includes('instagram.com/mauro.brfimoveis') ||
+              cleanUrl.includes('instagram.com/brfimoveis')
 
             if (isAllowlistedUrl) {
               continue
