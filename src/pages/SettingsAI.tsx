@@ -258,13 +258,15 @@ export default function SettingsAI() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="biaInstructions">Metodologia dos 10 Passos (BIA)</Label>
+            <Label htmlFor="biaInstructions">
+              Prompt de Sistema da Bia (10 Cadências + Playbooks de Anúncios)
+            </Label>
             <Textarea
               id="biaInstructions"
               value={biaInstructions}
               onChange={(e) => setBiaInstructions(e.target.value)}
-              placeholder="Descreva a metodologia de atendimento: SPIN, 5 Whys, tratamento de objeções, gatilhos mentais..."
-              className="min-h-[200px]"
+              placeholder="Descreva a metodologia de atendimento: 10 Cadências de Eduardo Tevah, integração com Playbooks de Anúncios..."
+              className="min-h-[260px] font-mono text-xs leading-relaxed"
               maxLength={200000}
             />
             <div className="text-xs text-muted-foreground text-right">
