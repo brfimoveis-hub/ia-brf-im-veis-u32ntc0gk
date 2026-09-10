@@ -508,6 +508,91 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                   }
                 }
 
+                const referral = msg.referral || value.referral || null
+                let referralLabel = ''
+                let referralNotesEntry = ''
+
+                if (referral) {
+                  const campaignName = (referral.campaign_name || referral.campaign || '').trim()
+                  const adName = (
+                    referral.ad_name ||
+                    referral.headline ||
+                    referral.source_id ||
+                    ''
+                  ).trim()
+                  let mediaRaw = (referral.media || referral.media_type || '').toLowerCase()
+                  if (
+                    !mediaRaw &&
+                    referral.source_type &&
+                    referral.source_type.toLowerCase() !== 'ad'
+                  ) {
+                    mediaRaw = referral.source_type.toLowerCase()
+                  }
+                  let mediaLabel = ''
+                  if (mediaRaw.indexOf('insta') !== -1) {
+                    mediaLabel = 'Instagram'
+                  } else if (mediaRaw.indexOf('face') !== -1) {
+                    mediaLabel = 'Facebook'
+                  } else if (mediaRaw) {
+                    mediaLabel = mediaRaw.charAt(0).toUpperCase() + mediaRaw.slice(1)
+                  }
+
+                  const labelParts = ['Anúncio Meta']
+                  if (mediaLabel) {
+                    labelParts[0] = 'Anúncio Meta (' + mediaLabel + ')'
+                  }
+                  if (campaignName) labelParts.push(campaignName)
+                  if (adName && adName !== campaignName) labelParts.push(adName)
+                  referralLabel = labelParts.join(' — ')
+
+                  const nowStr = new Date().toLocaleString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo',
+                  })
+                  const notesCampaign = campaignName || 'Campanha Meta'
+                  const notesAd = adName || referral.source_id || 'Anúncio'
+                  referralNotesEntry =
+                    '[Origem: Anúncio Meta — ' +
+                    notesCampaign +
+                    ' — ' +
+                    notesAd +
+                    ', ' +
+                    nowStr +
+                    ']'
+                  if (referral.headline && referral.headline !== adName) {
+                    referralNotesEntry += ' (Headline: ' + referral.headline + ')'
+                  }
+                  if (referral.source_id) {
+                    referralNotesEntry += ' (Ad ID: ' + referral.source_id + ')'
+                  }
+
+                  // Registrar em system_logs (type "ad_referral")
+                  try {
+                    const logsCol = $app.findCollectionByNameOrId('system_logs')
+                    const adLog = new Record(logsCol)
+                    adLog.set('user_id', targetUserId || '')
+                    adLog.set('type', 'ad_referral')
+                    adLog.set('message', 'Referral de anúncio Meta capturado: ' + referralLabel)
+                    adLog.set(
+                      'details',
+                      'Campanha: ' +
+                        (campaignName || 'N/A') +
+                        ' | Anúncio: ' +
+                        (adName || 'N/A') +
+                        ' | Phone: ' +
+                        phone,
+                    )
+                    adLog.set('payload', {
+                      phone: phone,
+                      contact_name: contactName,
+                      referral: referral,
+                      label: referralLabel,
+                    })
+                    $app.saveNoValidate(adLog)
+                  } catch (logErr) {
+                    $app.logger().error('Failed to log ad_referral', 'error', String(logErr))
+                  }
+                }
+
                 let customer = null
                 try {
                   const phoneNorm = phone.replace(/\D/g, '')
@@ -540,17 +625,9 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     } catch (_) {}
                     customer.set('status', initialStatus)
 
-                    let source = 'Meta'
-                    let notes = ''
-                    if (msg.referral) {
-                      notes =
-                        'Origem: Anuncio Meta\nHeadline: ' +
-                        (msg.referral.headline || 'N/A') +
-                        '\nAd ID: ' +
-                        (msg.referral.source_id || 'N/A')
-                    }
+                    let source = referralLabel || 'Meta'
                     customer.set('source', source)
-                    if (notes) customer.set('notes', notes)
+                    if (referralNotesEntry) customer.set('notes', referralNotesEntry)
                     $app.save(customer)
 
                     saveLog(
@@ -562,7 +639,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                         customer_id: customer.id,
                         phone: phone,
                         source: source,
-                        referral: msg.referral || null,
+                        referral: referral,
                       },
                     )
                   } catch (err) {
@@ -573,6 +650,31 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                       String(err),
                       { error: String(err), raw_body: body, phone: phone },
                     )
+                  }
+                } else if (customer) {
+                  try {
+                    let updatedCust = false
+                    if (referralLabel) {
+                      customer.set('source', referralLabel)
+                      updatedCust = true
+                    }
+                    if (referralNotesEntry) {
+                      const currentNotes = (customer.getString('notes') || '').trim()
+                      if (!currentNotes) {
+                        customer.set('notes', referralNotesEntry)
+                        updatedCust = true
+                      } else if (currentNotes.indexOf(referralNotesEntry) === -1) {
+                        customer.set('notes', currentNotes + '\n' + referralNotesEntry)
+                        updatedCust = true
+                      }
+                    }
+                    if (updatedCust) {
+                      $app.save(customer)
+                    }
+                  } catch (uErr) {
+                    $app
+                      .logger()
+                      .error('Failed to update existing customer referral', 'error', String(uErr))
                   }
                 }
 

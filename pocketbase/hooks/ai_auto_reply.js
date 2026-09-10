@@ -191,6 +191,12 @@ onRecordAfterCreateSuccess((e) => {
     }
     const customerPhone = customer.getString('phone') || ''
     const customerSource = customer.getString('source') || ''
+    const customerNotes = (customer.getString('notes') || '').trim()
+    const isAdReferral =
+      customerSource.toLowerCase().includes('anúncio') ||
+      customerSource.toLowerCase().includes('anuncio') ||
+      customerNotes.toLowerCase().includes('origem: anúncio') ||
+      customerNotes.toLowerCase().includes('origem: anuncio')
     const customerName = (customer.getString('name') || '').trim()
     const customerFirstName = (customer.getString('first_name') || '').trim()
     const displayName =
@@ -612,6 +618,9 @@ onRecordAfterCreateSuccess((e) => {
 
       // 1. Check if customer mentioned known projects / launches (can match MULTIPLE projects at once)
       // (e.g. AP-320, LM 329, Terrá, Viva Trindade, Villa Areias, Villa dos Acordes/Açores, Studios Canasvieiras, Viva Balneário, Colinas de São Pedro, Solar Di Plaza, etc.)
+      // Include customer source & notes in the project detection so ad referral triggers catalog matching
+      const combinedCustAndAdText = `${combinedCustText} ${customerSource.toLowerCase()} ${customerNotes.toLowerCase()}`
+
       const knownProjects = [
         {
           regex: /terr[aá]/i,
@@ -634,7 +643,7 @@ onRecordAfterCreateSuccess((e) => {
             "is_active = true && (title ~ 'Areias' || features ~ 'Villa Areias' || features ~ 'Residencial Areias' || code ~ '295')",
         },
         {
-          regex: /canasvieiras|canas\s*vieiras|studios?\s*canas/i,
+          regex: /canasvieiras|canas\s*vieiras|studios?\s*canas|studios?\s*vista\s*mar/i,
           filter:
             "is_active = true && (features ~ 'Canasvieiras' || features ~ 'Studios' || title ~ 'Canasvieiras' || code ~ '330')",
         },
@@ -670,7 +679,7 @@ onRecordAfterCreateSuccess((e) => {
 
       const matchedIds = new Set()
       for (const proj of knownProjects) {
-        if (proj.regex.test(combinedCustText)) {
+        if (proj.regex.test(combinedCustAndAdText)) {
           const projResults = $app.findRecordsByFilter('properties', proj.filter, '-created', 3, 0)
           for (const pr of projResults) {
             if (!matchedIds.has(pr.id)) {
@@ -682,7 +691,7 @@ onRecordAfterCreateSuccess((e) => {
       }
 
       // 1b. Check if customer mentioned specific property codes (e.g. AP-320, AP343, LM 329, LM330)
-      const codeMatches = combinedCustText.matchAll(
+      const codeMatches = combinedCustAndAdText.matchAll(
         /(?:^|\s|\b)(ap[-\s]?\d+|lm[-\s]?\d+|tr[-\s]?\d+|aru[-\s]?\d+|cs[-\s]?\d+|\b\d{3}\b)/gi,
       )
       for (const cm of codeMatches) {
@@ -859,9 +868,23 @@ onRecordAfterCreateSuccess((e) => {
     const combinedContextText = `${contextText}\n${filesContextText}`.trim()
 
     const messages = []
-    const clientContext = displayName
+    let clientContext = displayName
       ? `\n[DADOS DO CLIENTE]\nNome do cliente: ${displayName} (nome completo: ${customerName})\n`
       : `\n[DADOS DO CLIENTE]\nCliente sem nome cadastrado ou número apenas. Seja cordial sem usar placeholders tipo [Nome].\n`
+
+    if (customerSource) {
+      clientContext += `Origem / Canal: ${customerSource}\n`
+    }
+    if (customerNotes) {
+      clientContext += `Observações / Histórico: ${customerNotes}\n`
+    }
+
+    if (isAdReferral) {
+      clientContext += `\n[ATENÇÃO - LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
+      clientContext += `- Este lead acabou de clicar em um anúncio Meta: "${customerSource}".\n`
+      clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA: Ao iniciar a conversa ou recepcionar o lead, mencione cordialmente o empreendimento ou anúncio de origem (exemplo: "Vi que você veio pelo anúncio do lançamento em Canasvieiras...", "Que ótimo que você se interessou pelo nosso lançamento em Canasvieiras...").\n`
+      clientContext += `- Apresente de imediato as informações do empreendimento anunciado e pergunte se gostaria de mais detalhes, fotos ou plantas.\n`
+    }
 
     const systemPrompt = `Você é ${aiName}, assistente virtual de vendas imobiliárias da BRF Imóveis (www.brfimoveis.com.br).
 Sua identidade e instruções específicas (Persona):

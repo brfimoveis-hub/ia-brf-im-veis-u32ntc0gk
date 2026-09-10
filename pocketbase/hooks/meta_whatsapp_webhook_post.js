@@ -141,6 +141,75 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
             (contactInfo && contactInfo.wa_id) ||
             phone
 
+          // Extrai referral do objeto da mensagem ou do change.value (quando click-to-WhatsApp)
+          var referral = msg.referral || value.referral || null
+          var referralLabel = ''
+          var referralNotesEntry = ''
+
+          if (referral) {
+            var campaignName = (referral.campaign_name || referral.campaign || '').trim()
+            var adName = (referral.ad_name || referral.headline || referral.source_id || '').trim()
+            var mediaRaw = (referral.media || referral.media_type || '').toLowerCase()
+            if (!mediaRaw && referral.source_type && referral.source_type.toLowerCase() !== 'ad') {
+              mediaRaw = referral.source_type.toLowerCase()
+            }
+            var mediaLabel = ''
+            if (mediaRaw.indexOf('insta') !== -1) {
+              mediaLabel = 'Instagram'
+            } else if (mediaRaw.indexOf('face') !== -1) {
+              mediaLabel = 'Facebook'
+            } else if (mediaRaw) {
+              mediaLabel = mediaRaw.charAt(0).toUpperCase() + mediaRaw.slice(1)
+            }
+
+            var labelParts = ['Anúncio Meta']
+            if (mediaLabel) {
+              labelParts[0] = 'Anúncio Meta (' + mediaLabel + ')'
+            }
+            if (campaignName) labelParts.push(campaignName)
+            if (adName && adName !== campaignName) labelParts.push(adName)
+            referralLabel = labelParts.join(' — ')
+
+            var nowStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+            var notesCampaign = campaignName || 'Campanha Meta'
+            var notesAd = adName || referral.source_id || 'Anúncio'
+            referralNotesEntry =
+              '[Origem: Anúncio Meta — ' + notesCampaign + ' — ' + notesAd + ', ' + nowStr + ']'
+            if (referral.headline && referral.headline !== adName) {
+              referralNotesEntry += ' (Headline: ' + referral.headline + ')'
+            }
+            if (referral.source_id) {
+              referralNotesEntry += ' (Ad ID: ' + referral.source_id + ')'
+            }
+
+            // Registrar em system_logs (type "ad_referral")
+            try {
+              var logsCol = $app.findCollectionByNameOrId('system_logs')
+              var adLog = new Record(logsCol)
+              adLog.set('user_id', userId || '')
+              adLog.set('type', 'ad_referral')
+              adLog.set('message', 'Referral de anúncio Meta capturado: ' + referralLabel)
+              adLog.set(
+                'details',
+                'Campanha: ' +
+                  (campaignName || 'N/A') +
+                  ' | Anúncio: ' +
+                  (adName || 'N/A') +
+                  ' | Phone: ' +
+                  phone,
+              )
+              adLog.set('payload', {
+                phone: phone,
+                contact_name: contactName,
+                referral: referral,
+                label: referralLabel,
+              })
+              $app.saveNoValidate(adLog)
+            } catch (logErr) {
+              $app.logger().error('Failed to log ad_referral', 'error', String(logErr))
+            }
+          }
+
           var customer = null
           try {
             customer = $app.findFirstRecordByFilter(
@@ -159,17 +228,16 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
               customer.set('name', contactName)
               customer.set('phone', phone)
               customer.set('status', 'Novo')
-              var source = 'Meta - WhatsApp Cloud API'
-              if (displayPhone) source += ' (' + displayPhone + ')'
-              customer.set('source', source)
-              if (msg.referral) {
-                customer.set(
-                  'notes',
-                  'Origem: Anúncio Meta\nHeadline: ' +
-                    (msg.referral.headline || 'N/A') +
-                    '\nAd ID: ' +
-                    (msg.referral.source_id || 'N/A'),
-                )
+
+              var initialSource = referralLabel
+              if (!initialSource) {
+                initialSource = 'Meta - WhatsApp Cloud API'
+                if (displayPhone) initialSource += ' (' + displayPhone + ')'
+              }
+              customer.set('source', initialSource)
+
+              if (referralNotesEntry) {
+                customer.set('notes', referralNotesEntry)
               }
               $app.save(customer)
               isNewCustomer = true
@@ -182,8 +250,33 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
           } else {
             try {
               var custToUpdate = $app.findRecordById('customers', customer.id)
+              var updatedCustomer = false
+
               if (!custToUpdate.getString('user_id')) {
                 custToUpdate.set('user_id', userId)
+                updatedCustomer = true
+              }
+
+              // Se houver referral de anúncio Meta:
+              // 2a. Salvar no source do customer (mantendo anterior se referral for vazio)
+              if (referralLabel) {
+                custToUpdate.set('source', referralLabel)
+                updatedCustomer = true
+              }
+
+              // 2b. Acrescentar nas notes do customer sem sobrescrever o que já existe
+              if (referralNotesEntry) {
+                var currentNotes = (custToUpdate.getString('notes') || '').trim()
+                if (!currentNotes) {
+                  custToUpdate.set('notes', referralNotesEntry)
+                  updatedCustomer = true
+                } else if (currentNotes.indexOf(referralNotesEntry) === -1) {
+                  custToUpdate.set('notes', currentNotes + '\n' + referralNotesEntry)
+                  updatedCustomer = true
+                }
+              }
+
+              if (updatedCustomer) {
                 $app.save(custToUpdate)
               }
             } catch (_) {}
@@ -403,6 +496,75 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
             (contactInfo && contactInfo.wa_id) ||
             phone
 
+          // Extrai referral do objeto da mensagem ou do change.value (quando click-to-WhatsApp)
+          var referral = msg.referral || value.referral || null
+          var referralLabel = ''
+          var referralNotesEntry = ''
+
+          if (referral) {
+            var campaignName = (referral.campaign_name || referral.campaign || '').trim()
+            var adName = (referral.ad_name || referral.headline || referral.source_id || '').trim()
+            var mediaRaw = (referral.media || referral.media_type || '').toLowerCase()
+            if (!mediaRaw && referral.source_type && referral.source_type.toLowerCase() !== 'ad') {
+              mediaRaw = referral.source_type.toLowerCase()
+            }
+            var mediaLabel = ''
+            if (mediaRaw.indexOf('insta') !== -1) {
+              mediaLabel = 'Instagram'
+            } else if (mediaRaw.indexOf('face') !== -1) {
+              mediaLabel = 'Facebook'
+            } else if (mediaRaw) {
+              mediaLabel = mediaRaw.charAt(0).toUpperCase() + mediaRaw.slice(1)
+            }
+
+            var labelParts = ['Anúncio Meta']
+            if (mediaLabel) {
+              labelParts[0] = 'Anúncio Meta (' + mediaLabel + ')'
+            }
+            if (campaignName) labelParts.push(campaignName)
+            if (adName && adName !== campaignName) labelParts.push(adName)
+            referralLabel = labelParts.join(' — ')
+
+            var nowStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+            var notesCampaign = campaignName || 'Campanha Meta'
+            var notesAd = adName || referral.source_id || 'Anúncio'
+            referralNotesEntry =
+              '[Origem: Anúncio Meta — ' + notesCampaign + ' — ' + notesAd + ', ' + nowStr + ']'
+            if (referral.headline && referral.headline !== adName) {
+              referralNotesEntry += ' (Headline: ' + referral.headline + ')'
+            }
+            if (referral.source_id) {
+              referralNotesEntry += ' (Ad ID: ' + referral.source_id + ')'
+            }
+
+            // Registrar em system_logs (type "ad_referral")
+            try {
+              var logsCol = $app.findCollectionByNameOrId('system_logs')
+              var adLog = new Record(logsCol)
+              adLog.set('user_id', userId || '')
+              adLog.set('type', 'ad_referral')
+              adLog.set('message', 'Referral de anúncio Meta capturado: ' + referralLabel)
+              adLog.set(
+                'details',
+                'Campanha: ' +
+                  (campaignName || 'N/A') +
+                  ' | Anúncio: ' +
+                  (adName || 'N/A') +
+                  ' | Phone: ' +
+                  phone,
+              )
+              adLog.set('payload', {
+                phone: phone,
+                contact_name: contactName,
+                referral: referral,
+                label: referralLabel,
+              })
+              $app.saveNoValidate(adLog)
+            } catch (logErr) {
+              $app.logger().error('Failed to log ad_referral', 'error', String(logErr))
+            }
+          }
+
           var customer = null
           try {
             customer = $app.findFirstRecordByFilter(
@@ -421,17 +583,16 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
               customer.set('name', contactName)
               customer.set('phone', phone)
               customer.set('status', 'Novo')
-              var source = 'Meta - WhatsApp Cloud API'
-              if (displayPhone) source += ' (' + displayPhone + ')'
-              customer.set('source', source)
-              if (msg.referral) {
-                customer.set(
-                  'notes',
-                  'Origem: Anúncio Meta\nHeadline: ' +
-                    (msg.referral.headline || 'N/A') +
-                    '\nAd ID: ' +
-                    (msg.referral.source_id || 'N/A'),
-                )
+
+              var initialSource = referralLabel
+              if (!initialSource) {
+                initialSource = 'Meta - WhatsApp Cloud API'
+                if (displayPhone) initialSource += ' (' + displayPhone + ')'
+              }
+              customer.set('source', initialSource)
+
+              if (referralNotesEntry) {
+                customer.set('notes', referralNotesEntry)
               }
               $app.save(customer)
               isNewCustomer = true
@@ -444,8 +605,33 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
           } else {
             try {
               var custToUpdate = $app.findRecordById('customers', customer.id)
+              var updatedCustomer = false
+
               if (!custToUpdate.getString('user_id')) {
                 custToUpdate.set('user_id', userId)
+                updatedCustomer = true
+              }
+
+              // Se houver referral de anúncio Meta:
+              // 2a. Salvar no source do customer (mantendo anterior se referral for vazio)
+              if (referralLabel) {
+                custToUpdate.set('source', referralLabel)
+                updatedCustomer = true
+              }
+
+              // 2b. Acrescentar nas notes do customer sem sobrescrever o que já existe
+              if (referralNotesEntry) {
+                var currentNotes = (custToUpdate.getString('notes') || '').trim()
+                if (!currentNotes) {
+                  custToUpdate.set('notes', referralNotesEntry)
+                  updatedCustomer = true
+                } else if (currentNotes.indexOf(referralNotesEntry) === -1) {
+                  custToUpdate.set('notes', currentNotes + '\n' + referralNotesEntry)
+                  updatedCustomer = true
+                }
+              }
+
+              if (updatedCustomer) {
                 $app.save(custToUpdate)
               }
             } catch (_) {}
