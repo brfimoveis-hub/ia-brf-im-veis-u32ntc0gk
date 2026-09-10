@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T20:35:44.179Z",
+  "generatedAt": "2026-09-10T20:43:19.024Z",
   "collections": [
     {
       "name": "users",
@@ -1321,6 +1321,89 @@
         "CREATE INDEX idx_wa_tmpl_user_status ON whatsapp_templates (user_id, status)",
         "CREATE INDEX idx_wa_tmpl_name ON whatsapp_templates (user_id, name)"
       ]
+    },
+    {
+      "name": "ad_playbooks",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "match_keywords",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empreendimento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pitch",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "objective",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qualifying_questions",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cta_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
     }
   ]
 }

@@ -197,6 +197,46 @@ onRecordAfterCreateSuccess((e) => {
       customerSource.toLowerCase().includes('anuncio') ||
       customerNotes.toLowerCase().includes('origem: anúncio') ||
       customerNotes.toLowerCase().includes('origem: anuncio')
+
+    // Procura por Playbook de Anúncio ativo compatível (ad_playbooks)
+    let matchedPlaybook = null
+    try {
+      const activePlaybooks = $app.findRecordsByFilter(
+        'ad_playbooks',
+        'active = true',
+        '-created',
+        50,
+        0,
+      )
+      const referralSearchText = `${customerSource} ${customerNotes}`.toLowerCase()
+
+      for (const pbItem of activePlaybooks) {
+        let keywords = pbItem.get('match_keywords')
+        if (typeof keywords === 'string') {
+          try {
+            keywords = JSON.parse(keywords)
+          } catch (_) {
+            keywords = [keywords]
+          }
+        }
+        if (Array.isArray(keywords)) {
+          const hasMatch = keywords.some((kw) => {
+            if (!kw || typeof kw !== 'string') return false
+            const trimmedKw = kw.trim().toLowerCase()
+            return trimmedKw.length > 0 && referralSearchText.includes(trimmedKw)
+          })
+          if (hasMatch) {
+            matchedPlaybook = pbItem
+            console.log(
+              `[AI_REPLY] Matched ad playbook: "${pbItem.getString('name')}" (id=${pbItem.id}) for customer=${customerId}`,
+            )
+            break
+          }
+        }
+      }
+    } catch (pbErr) {
+      console.warn(`[AI_REPLY] Error checking ad_playbooks (non-fatal): ${String(pbErr)}`)
+    }
     const customerName = (customer.getString('name') || '').trim()
     const customerFirstName = (customer.getString('first_name') || '').trim()
     const displayName =
@@ -616,6 +656,49 @@ onRecordAfterCreateSuccess((e) => {
         }
       }
 
+      // 0. Priorizar busca do empreendimento do Playbook ativo quando houver match
+      if (matchedPlaybook) {
+        const pbEmpreendimento = (matchedPlaybook.getString('empreendimento') || '').trim()
+        const pbName = (matchedPlaybook.getString('name') || '').trim()
+        let pbKeywords = matchedPlaybook.get('match_keywords') || []
+        if (typeof pbKeywords === 'string') {
+          try {
+            pbKeywords = JSON.parse(pbKeywords)
+          } catch (_) {
+            pbKeywords = [pbKeywords]
+          }
+        }
+
+        const playbookTerms = [
+          pbEmpreendimento,
+          pbName,
+          ...(Array.isArray(pbKeywords) ? pbKeywords : []),
+        ]
+          .filter(Boolean)
+          .map((t) => String(t).trim())
+          .filter((t) => t.length > 2)
+
+        for (const term of playbookTerms) {
+          const safeTerm = term.replace(/'/g, "''")
+          try {
+            const pbProps = $app.findRecordsByFilter(
+              'properties',
+              `is_active = true && (title ~ '${safeTerm}' || features ~ '${safeTerm}' || description ~ '${safeTerm}' || code ~ '${safeTerm}' || neighborhood ~ '${safeTerm}')`,
+              '-created',
+              3,
+              0,
+            )
+            for (const pr of pbProps) {
+              if (!matchedIds.has(pr.id)) {
+                matchedIds.add(pr.id)
+                matchedProps.push(pr)
+              }
+            }
+          } catch (_) {}
+          if (matchedProps.length >= 3) break
+        }
+      }
+
       // 1. Check if customer mentioned known projects / launches (can match MULTIPLE projects at once)
       // (e.g. AP-320, LM 329, Terrá, Viva Trindade, Villa Areias, Villa dos Acordes/Açores, Studios Canasvieiras, Viva Balneário, Colinas de São Pedro, Solar Di Plaza, etc.)
       // Include customer source & notes in the project detection so ad referral triggers catalog matching
@@ -879,7 +962,32 @@ onRecordAfterCreateSuccess((e) => {
       clientContext += `Observações / Histórico: ${customerNotes}\n`
     }
 
-    if (isAdReferral) {
+    if (matchedPlaybook) {
+      const pbName = matchedPlaybook.getString('name') || 'Anúncio'
+      const pbEmpreendimento =
+        matchedPlaybook.getString('empreendimento') || 'Empreendimento Anunciado'
+      const pbPitch = matchedPlaybook.getString('pitch') || ''
+      const pbObjective =
+        matchedPlaybook.getString('objective') || 'levar para fechamento e agendamento'
+      const pbQualifying = matchedPlaybook.getString('qualifying_questions') || ''
+      const pbCta = matchedPlaybook.getString('cta_message') || ''
+
+      clientContext += `\n[PLAYBOOK DE VENDA FOCADA — ANÚNCIO "${customerSource || pbName}"] (ALTA PRIORIDADE):
+Você está atendendo um lead que veio do anúncio do empreendimento ${pbEmpreendimento}.
+ROTEIRO / PITCH COMERCIAL:
+${pbPitch}
+
+OBJETIVO DE FECHAMENTO:
+${pbObjective}
+
+PERGUNTAS DE QUALIFICAÇÃO:
+Faça UMA pergunta de qualificação por vez, dentre:
+${pbQualifying}
+
+DIRETRIZ DE FOCO TOTAL:
+Conduza a conversa exclusivamente para este empreendimento e para o objetivo acima — NÃO ofereça outros imóveis do catálogo, NÃO mude de assunto, NÃO responda perguntas sobre outros empreendimentos a não ser que o cliente pergunte diretamente (nesse caso responda brevemente e retome o foco para este empreendimento).
+Ao detectar interesse ou avançar na conversa, conduza para o fechamento com o seguinte CTA: "${pbCta}".\n`
+    } else if (isAdReferral) {
       clientContext += `\n[ATENÇÃO - LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
       clientContext += `- Este lead acabou de clicar em um anúncio Meta: "${customerSource}".\n`
       clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA: Ao iniciar a conversa ou recepcionar o lead, mencione cordialmente o empreendimento ou anúncio de origem (exemplo: "Vi que você veio pelo anúncio do lançamento em Canasvieiras...", "Que ótimo que você se interessou pelo nosso lançamento em Canasvieiras...").\n`

@@ -29,6 +29,7 @@ import {
   MessageSquare,
   Database,
   FileCheck2,
+  Target,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RemarketingStatusBanner } from '@/components/remarketing/RemarketingStatusBanner'
@@ -39,6 +40,7 @@ import { WhatsAppIdentityCard } from '@/components/remarketing/WhatsAppIdentityC
 import { WhatsAppCampaignComposer } from '@/components/remarketing/WhatsAppCampaignComposer'
 import { WhatsAppCampaignHistory } from '@/components/remarketing/WhatsAppCampaignHistory'
 import { WhatsAppTemplatesManager } from '@/components/remarketing/WhatsAppTemplatesManager'
+import { AdPlaybooksManager } from '@/components/remarketing/AdPlaybooksManager'
 
 export default function SettingsRemarketing() {
   const { user } = useAuth()
@@ -266,31 +268,38 @@ export default function SettingsRemarketing() {
       {/* Tabs principais da tela de Remarketing */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
-          <TabsList className="grid grid-cols-3 w-full sm:w-[600px] h-11 p-1 bg-muted/80">
+          <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full sm:w-[750px] h-auto sm:h-11 p-1 bg-muted/80 gap-1">
+            <TabsTrigger
+              value="playbooks"
+              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 sm:py-0"
+            >
+              <Target className="h-4 w-4 text-indigo-600" />
+              <span>Playbooks de Anúncio</span>
+            </TabsTrigger>
             <TabsTrigger
               value="campaigns"
-              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 sm:py-0"
             >
               <MessageSquare className="h-4 w-4 text-green-600" />
               <span>Campanhas WhatsApp</span>
             </TabsTrigger>
             <TabsTrigger
               value="templates"
-              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 sm:py-0"
             >
               <FileCheck2 className="h-4 w-4 text-primary" />
               <span>Modelos (Templates)</span>
             </TabsTrigger>
             <TabsTrigger
               value="capi-sync"
-              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 sm:py-0"
             >
               <Database className="h-4 w-4 text-blue-600" />
               <span>Sincronização CAPI</span>
             </TabsTrigger>
           </TabsList>
 
-          {activeTab !== 'templates' && (
+          {activeTab !== 'templates' && activeTab !== 'playbooks' && (
             <Button
               variant="outline"
               size="sm"
@@ -301,7 +310,23 @@ export default function SettingsRemarketing() {
               Ver Modelos Meta
             </Button>
           )}
+          {activeTab !== 'playbooks' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleTabChange('playbooks')}
+              className="text-xs gap-1.5 self-start sm:self-auto h-9"
+            >
+              <Target className="h-3.5 w-3.5 text-indigo-600" />
+              Roteiros / Playbooks
+            </Button>
+          )}
         </div>
+
+        {/* ABA 0: Playbooks de Anúncio (Venda focada sem dispersar) */}
+        <TabsContent value="playbooks" className="space-y-6">
+          <AdPlaybooksManager />
+        </TabsContent>
 
         {/* ABA 1: Campanhas WhatsApp + CAPI conjugado */}
         <TabsContent value="campaigns" className="space-y-6">
