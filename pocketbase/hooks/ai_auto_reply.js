@@ -979,14 +979,34 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
       ? `\n[DADOS DO CLIENTE]\nNome do cliente: ${displayName} (nome completo: ${customerName})\n`
       : `\n[DADOS DO CLIENTE]\nCliente sem nome cadastrado ou número apenas. Seja cordial sem usar placeholders tipo [Nome].\n`
 
+    // Detect lead origin type (Trilha A: Lead de Anúncio vs Trilha B: Lead de Imóvel de Terceiros)
+    const isMetaAdSource =
+      isAdReferral ||
+      /meta|facebook|fb|instagram|ig|an[uú]ncio|ads|click[- ]to[- ]whatsapp|campanha/i.test(
+        customerSource || '',
+      )
+
     if (customerSource) {
-      clientContext += `Origem / Canal: ${customerSource}\n`
+      if (isMetaAdSource) {
+        clientContext += `Origem / Canal: anúncio Meta — ${customerSource}\n`
+      } else {
+        clientContext += `Origem / Canal: ${customerSource} (Origem orgânica / terceiros / indicação)\n`
+      }
+    } else {
+      clientContext += `Origem / Canal: Origem não especificada (Tratar pela Trilha B ou conforme demanda)\n`
     }
+
     if (customerNotes) {
       clientContext += `Observações / Histórico: ${customerNotes}\n`
     }
 
-    if (matchedPlaybook) {
+    // Detect if customer mentions intention to sell, rent out, or trade their own property
+    const combinedCustText = `${customerMessage} ${customerNotes}`.toLowerCase()
+    const ownerIntentRegex =
+      /quero vender|tenho um (?:imóvel|apartamento|apto|casa|terreno|imovel)|tenho uma (?:casa|cobertura|sala)|por quanto vendo|colocar (?:à|a) venda|colocar para vender|quero alugar meu|quero anunciar|anunciar meu|administrar meu|captar|avaliação do meu|quanto vale meu/i
+    const isOwnerCaptureLead = ownerIntentRegex.test(combinedCustText)
+
+    if (matchedPlaybook && !isOwnerCaptureLead) {
       const pbName = matchedPlaybook.getString('name') || 'Anúncio'
       const pbEmpreendimento =
         matchedPlaybook.getString('empreendimento') || 'Empreendimento Anunciado'
@@ -996,8 +1016,9 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
       const pbQualifying = matchedPlaybook.getString('qualifying_questions') || ''
       const pbCta = matchedPlaybook.getString('cta_message') || ''
 
-      clientContext += `\n[PLAYBOOK DE VENDA FOCADA — ANÚNCIO "${customerSource || pbName}"] (ALTA PRIORIDADE):
+      clientContext += `\n[ROTEAMENTO: TRILHA A — PLAYBOOK DE VENDA FOCADA — ANÚNCIO "${customerSource || pbName}"] (MÁXIMA PRIORIDADE):
 Você está atendendo um lead que veio do anúncio do empreendimento ${pbEmpreendimento}.
+SIGA RIGOROSAMENTE A TRILHA A:
 ROTEIRO / PITCH COMERCIAL:
 ${pbPitch}
 
@@ -1011,11 +1032,25 @@ ${pbQualifying}
 DIRETRIZ DE FOCO TOTAL:
 Conduza a conversa exclusivamente para este empreendimento e para o objetivo acima — NÃO ofereça outros imóveis do catálogo, NÃO mude de assunto, NÃO responda perguntas sobre outros empreendimentos a não ser que o cliente pergunte diretamente (nesse caso responda brevemente e retome o foco para este empreendimento).
 Ao detectar interesse ou avançar na conversa, conduza para o fechamento com o seguinte CTA: "${pbCta}".\n`
-    } else if (isAdReferral) {
-      clientContext += `\n[ATENÇÃO - LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
-      clientContext += `- Este lead acabou de clicar em um anúncio Meta: "${customerSource}".\n`
-      clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA: Ao iniciar a conversa ou recepcionar o lead, mencione cordialmente o empreendimento ou anúncio de origem (exemplo: "Vi que você veio pelo anúncio do lançamento em Canasvieiras...", "Que ótimo que você se interessou pelo nosso lançamento em Canasvieiras...").\n`
+    } else if (isOwnerCaptureLead) {
+      clientContext += `\n[ROTEAMENTO: TRILHA B — DETECÇÃO DE PROPRIETÁRIO / CAPTAÇÃO DE IMÓVEL PRÓPRIO] (PRIORIDADE ABSOLUTA):
+O cliente manifestou intenção de vender, alugar ou avaliar um imóvel próprio!
+Siga IMEDIATAMENTE as diretrizes da TRILHA B:
+1. Parabenize pela excelente decisão de comercializar o imóvel com a BRF Imóveis.
+2. Posicione a autoridade da BRF: imobiliária especialista na Grande Florianópolis, canal com vídeos e tours no YouTube (https://www.youtube.com/channel/UCA2JsoiTVTf8vKgWG65YH_g) e carteira ativa de compradores.
+3. Mapeie os dados essenciais com naturalidade: tipo do imóvel, bairro/cidade, metragem privativa, dormitórios/suítes, vagas, valor pretendido e urgência.
+4. NUNCA passe avaliação ou preço fechado sem vistoria e análise técnica. Sinalize que a BRF realiza estudo mercadológico gratuito.
+5. Conduza ao fechamento da Trilha B: agendar avaliação/reunião com o Mauro (wa.me/5548992098050).\n`
+    } else if (isMetaAdSource) {
+      clientContext += `\n[ROTEAMENTO: TRILHA A — LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
+      clientContext += `- Este lead veio de anúncio Meta: "${customerSource}".\n`
+      clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA: Ao iniciar a conversa ou recepcionar o lead, mencione cordialmente o empreendimento ou anúncio de origem (exemplo: "Vi que você veio pelo anúncio do lançamento...", "Que ótimo que você se interessou pelo nosso lançamento...").\n`
       clientContext += `- Apresente de imediato as informações do empreendimento anunciado e pergunte se gostaria de mais detalhes, fotos ou plantas.\n`
+    } else {
+      clientContext += `\n[ROTEAMENTO: TRILHA B — LEAD DE IMÓVEL DE TERCEIROS / DEMANDA GERAL]:\n`
+      clientContext += `- Postura consultiva de captação e intermediação especialista da BRF Imóveis.\n`
+      clientContext += `- Se quer vender/alugar imóvel próprio: mapear características (tipo, bairro, metragem, dorms, valor pretendido) e agendar avaliação/reunião com o Mauro.\n`
+      clientContext += `- Se quer comprar/alugar imóvel de terceiros fora do catálogo: acolher com honestidade sobre a disponibilidade daquela unidade específica, apresentar 2 a 3 alternativas reais compatíveis do catálogo BRF OU oferecer busca personalizada na rede de parceiros, com objetivo de cadastrar a demanda e agendar com o Mauro.\n`
     }
 
     const systemPrompt = `Você é ${aiName}, assistente virtual de vendas imobiliárias da BRF Imóveis (www.brfimoveis.com.br).
@@ -1054,7 +1089,9 @@ DIRETRIZES FUNDAMENTAIS E REGRAS DE ATENDIMENTO (BRF IMÓVEIS):
 5. PROIBIÇÃO DE MENSAGENS ENLATADAS / CANNED RESPONSES:
    - NUNCA use a frase "Com certeza, vou te passar os valores agora mesmo. Apenas para eu te enviar a unidade com o melhor custo-benefício para o seu perfil, o que é mais importante para você além do valor?". Se o cliente perguntou preço ou opções, envie os imóveis e os valores reais imediatamente!
 
-6. ALUGUEL/LOCAÇÃO: Se o cliente mencionar "aluguel" ou "locação", responda cordialmente: "Trabalhamos exclusivamente com venda e permuta de imóveis selecionados. Gostaria de ver opções para compra ou investimento?".
+6. ALUGUEL/LOCAÇÃO E CAPTAÇÃO DE TERCEIROS:
+   - Se o cliente for um PROPRIETÁRIO querendo vender ou alugar o imóvel dele (Trilha B): parabenize a decisão, reforce a autoridade da BRF Imóveis, colete as informações do imóvel (tipo, bairro, metragem, dormitórios, valor pretendido) e conduza para agendar avaliação/reunião com o Mauro (wa.me/5548992098050). NUNCA diga secamente que "não trabalhamos com aluguel" quando o cliente for um proprietário oferecendo imóvel para a carteira da BRF!
+   - Se o cliente for um INQUILINO buscando alugar imóvel de terceiros: informe com gentileza que a carteira principal da BRF é focada em compra, investimento e permuta, mas pergunte se ele gostaria de analisar oportunidades acessíveis para aquisição própria ou se prefere que o Mauro busque na rede parceira.
 
 7. PERMUTA: Se o cliente mencionar que tem um imóvel para troca ou entrada, acolha positivamente e inclua a tag [PERMUTA] no final da resposta.
 
