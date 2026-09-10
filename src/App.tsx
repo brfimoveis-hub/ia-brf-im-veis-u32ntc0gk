@@ -197,8 +197,13 @@ const router = createBrowserRouter([
     errorElement: <GlobalError />,
     children: [
       {
-        index: true,
-        element: <Navigate to="/dashboard" replace />,
+        element: <ProtectedRoute />,
+        children: [
+          {
+            index: true,
+            element: <Navigate to="/dashboard" replace />,
+          },
+        ],
       },
       {
         element: <GuestRoute />,
