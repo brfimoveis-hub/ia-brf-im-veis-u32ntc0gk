@@ -1,5 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { getLocalWhatsAppTemplates, WhatsAppTemplate } from '@/services/whatsapp_templates'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -35,6 +43,7 @@ interface WhatsAppCampaignComposerProps {
   selectedCustomerIds: string[]
   hasWhatsAppCredentials: boolean
   hasCapiCredentials: boolean
+  initialTemplateName?: string
   onSuccess?: (result: SendWhatsAppCampaignResponse) => void
 }
 
@@ -50,6 +59,7 @@ export function WhatsAppCampaignComposer({
   selectedCustomerIds,
   hasWhatsAppCredentials,
   hasCapiCredentials,
+  initialTemplateName = '',
   onSuccess,
 }: WhatsAppCampaignComposerProps) {
   const { toast } = useToast()
@@ -57,14 +67,54 @@ export function WhatsAppCampaignComposer({
   const [campaignName, setCampaignName] = useState('')
   const [segmentName, setSegmentName] = useState('')
   const [message, setMessage] = useState(
-    'Olá {{primeiro_nome}}! Aqui é a Bia da BRF Imóveis. Temos excelentes novidades sobre imóveis em {{imovel_interesse}}. Podemos conversar rapidinho?',
+    'Olá {{primeiro_nome}}! Aqui é a Bia, da BRF Imóveis. Ainda temos excelentes unidades de 2 dormitórios com suíte no Villa dos Açores, que você mostrou interesse. Podemos conversar rapidinho?',
   )
-  const [templateName, setTemplateName] = useState('')
+  const [templateName, setTemplateName] = useState(initialTemplateName)
   const [templateLang, setTemplateLang] = useState('pt_BR')
+  const [approvedTemplates, setApprovedTemplates] = useState<WhatsAppTemplate[]>([])
+  const [selectedTemplateOption, setSelectedTemplateOption] = useState<string>('none')
   const [syncWithCapi, setSyncWithCapi] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [lastResult, setLastResult] = useState<SendWhatsAppCampaignResponse | null>(null)
+
+  useEffect(() => {
+    if (initialTemplateName) {
+      setTemplateName(initialTemplateName)
+      setSelectedTemplateOption(initialTemplateName)
+    }
+  }, [initialTemplateName])
+
+  useEffect(() => {
+    getLocalWhatsAppTemplates()
+      .then((tpls) => {
+        const approved = tpls.filter((t) => (t.status || '').toUpperCase() === 'APPROVED')
+        setApprovedTemplates(approved)
+        if (initialTemplateName && approved.some((t) => t.name === initialTemplateName)) {
+          setSelectedTemplateOption(initialTemplateName)
+        }
+      })
+      .catch(() => {})
+  }, [initialTemplateName])
+
+  const handleTemplateSelectChange = (val: string) => {
+    setSelectedTemplateOption(val)
+    if (val === 'none') {
+      setTemplateName('')
+    } else if (val === 'custom') {
+      // Deixa o usuário digitar manualmente no campo abaixo
+    } else {
+      setTemplateName(val)
+      const found = approvedTemplates.find((t) => t.name === val)
+      if (found) {
+        if (found.language) setTemplateLang(found.language)
+        if (found.body_text) {
+          // Atualiza o texto da mensagem no composer se estiver vazio ou padrão
+          setMessage(found.body_text)
+        }
+      }
+    }
+  }
 
   const insertVariable = (tag: string) => {
     setMessage((prev) => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + tag + ' ')
@@ -231,32 +281,78 @@ export function WhatsAppCampaignComposer({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label htmlFor="tpl-name" className="text-xs text-foreground font-medium">
-                Nome do Modelo / Template Aprovado na Meta (opcional)
-              </Label>
-              <Input
-                id="tpl-name"
-                placeholder="Ex: aviso_oferta_imoveis_v1"
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                disabled={isSending}
-                className="text-xs h-8 bg-background"
-              />
-            </div>
+          <div className="space-y-3 pt-1">
             <div className="space-y-1.5">
-              <Label htmlFor="tpl-lang" className="text-xs text-foreground font-medium">
-                Idioma do Modelo
-              </Label>
-              <Input
-                id="tpl-lang"
-                placeholder="pt_BR"
-                value={templateLang}
-                onChange={(e) => setTemplateLang(e.target.value)}
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-foreground font-medium flex items-center gap-1.5">
+                  <span>Selecionar Modelo Aprovado pela Meta</span>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] text-green-700 bg-green-50 border-green-200"
+                  >
+                    {approvedTemplates.length} aprovado(s)
+                  </Badge>
+                </Label>
+                <span className="text-[11px] text-muted-foreground">Gerencie na aba "Modelos"</span>
+              </div>
+
+              <Select
+                value={selectedTemplateOption}
+                onValueChange={handleTemplateSelectChange}
                 disabled={isSending}
-                className="text-xs h-8 bg-background"
-              />
+              >
+                <SelectTrigger className="text-xs h-9 bg-background">
+                  <SelectValue placeholder="Selecione um modelo aprovado..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    Nenhum modelo (Apenas contatos dentro de 24h)
+                  </SelectItem>
+                  {approvedTemplates.map((t) => (
+                    <SelectItem key={t.id} value={t.name}>
+                      ✅ {t.name} ({t.category} - {t.language})
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="custom">Outro modelo (digitar nome manualmente)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2 space-y-1.5">
+                <Label htmlFor="tpl-name" className="text-xs text-foreground font-medium">
+                  Identificador do Modelo (Slug Meta)
+                </Label>
+                <Input
+                  id="tpl-name"
+                  placeholder="Ex: villa_dos_acores"
+                  value={templateName}
+                  onChange={(e) => {
+                    setTemplateName(e.target.value)
+                    if (
+                      selectedTemplateOption !== 'custom' &&
+                      selectedTemplateOption !== e.target.value
+                    ) {
+                      setSelectedTemplateOption('custom')
+                    }
+                  }}
+                  disabled={isSending}
+                  className="text-xs h-8 bg-background font-mono"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="tpl-lang" className="text-xs text-foreground font-medium">
+                  Idioma do Modelo
+                </Label>
+                <Input
+                  id="tpl-lang"
+                  placeholder="pt_BR"
+                  value={templateLang}
+                  onChange={(e) => setTemplateLang(e.target.value)}
+                  disabled={isSending}
+                  className="text-xs h-8 bg-background"
+                />
+              </div>
             </div>
           </div>
         </div>

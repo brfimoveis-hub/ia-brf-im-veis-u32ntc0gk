@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T11:34:47.511Z",
+  "generatedAt": "2026-09-10T11:50:47.560Z",
   "collections": [
     {
       "name": "users",
@@ -1226,6 +1226,100 @@
       "indexes": [
         "CREATE INDEX idx_rem_rec_campaign ON remarketing_recipients (campaign_id, created DESC)",
         "CREATE INDEX idx_rem_rec_phone ON remarketing_recipients (phone)"
+      ]
+    },
+    {
+      "name": "whatsapp_templates",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != '' && user_id = @request.auth.id",
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["MARKETING", "UTILITY", "AUTHENTICATION"]
+        },
+        {
+          "name": "language",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "body_text",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["PENDING", "APPROVED", "REJECTED", "PAUSED", "DISABLED"]
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_template_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "buttons",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "example_values",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_wa_tmpl_user_status ON whatsapp_templates (user_id, status)",
+        "CREATE INDEX idx_wa_tmpl_name ON whatsapp_templates (user_id, name)"
       ]
     }
   ]

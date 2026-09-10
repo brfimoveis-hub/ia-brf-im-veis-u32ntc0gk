@@ -120,6 +120,10 @@ routerAdd(
         imovelInteresse,
       )
       personalizedMessage = personalizedMessage.replace(/\{\{corretor\}\}/gi, brokerName)
+      // Mapeamento automático de variáveis numéricas padrão Meta {{1}}, {{2}}, {{3}}
+      personalizedMessage = personalizedMessage.replace(/\{\{1\}\}/g, firstName)
+      personalizedMessage = personalizedMessage.replace(/\{\{2\}\}/g, imovelInteresse)
+      personalizedMessage = personalizedMessage.replace(/\{\{3\}\}/g, brokerName)
 
       const recipient = new Record(recipientsCol)
       recipient.set('campaign_id', campaign.id)
@@ -183,7 +187,17 @@ routerAdd(
       }
 
       let payloadBody = {}
-      if (!in24hWindow && templateName) {
+      if (templateName) {
+        // Envio via template oficial Meta
+        // Mapeia parâmetros na ordem das variáveis numéricas {{1}}, {{2}}...
+        const templateParameters = [{ type: 'text', text: firstName || custName }]
+        if (messageTemplate.includes('{{2}}')) {
+          templateParameters.push({ type: 'text', text: imovelInteresse })
+        }
+        if (messageTemplate.includes('{{3}}')) {
+          templateParameters.push({ type: 'text', text: brokerName })
+        }
+
         payloadBody = {
           messaging_product: 'whatsapp',
           to: cleanPhone,
@@ -191,14 +205,12 @@ routerAdd(
           template: {
             name: templateName,
             language: { code: templateLanguage || 'pt_BR' },
-            components: personalizedMessage
-              ? [
-                  {
-                    type: 'body',
-                    parameters: [{ type: 'text', text: custName }],
-                  },
-                ]
-              : undefined,
+            components: [
+              {
+                type: 'body',
+                parameters: templateParameters,
+              },
+            ],
           },
         }
       } else {

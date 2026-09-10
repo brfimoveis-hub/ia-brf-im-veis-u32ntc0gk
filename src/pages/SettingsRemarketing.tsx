@@ -28,6 +28,7 @@ import {
   RefreshCw,
   MessageSquare,
   Database,
+  FileCheck2,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RemarketingStatusBanner } from '@/components/remarketing/RemarketingStatusBanner'
@@ -37,6 +38,7 @@ import { RemarketingLogsCard } from '@/components/remarketing/RemarketingLogsCar
 import { WhatsAppIdentityCard } from '@/components/remarketing/WhatsAppIdentityCard'
 import { WhatsAppCampaignComposer } from '@/components/remarketing/WhatsAppCampaignComposer'
 import { WhatsAppCampaignHistory } from '@/components/remarketing/WhatsAppCampaignHistory'
+import { WhatsAppTemplatesManager } from '@/components/remarketing/WhatsAppTemplatesManager'
 
 export default function SettingsRemarketing() {
   const { user } = useAuth()
@@ -48,6 +50,8 @@ export default function SettingsRemarketing() {
   const [loadingUser, setLoadingUser] = useState(true)
   const [errorUser, setErrorUser] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [activeTab, setActiveTab] = useState('campaigns')
+  const [selectedTemplateForCampaign, setSelectedTemplateForCampaign] = useState('')
   const sync = useRemarketingSync()
 
   useEffect(() => {
@@ -238,11 +242,15 @@ export default function SettingsRemarketing() {
       )}
 
       {/* Tabs principais da tela de Remarketing */}
-      <Tabs defaultValue="campaigns" className="space-y-6">
-        <TabsList className="grid grid-cols-2 sm:w-[420px]">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid grid-cols-3 sm:w-[580px]">
           <TabsTrigger value="campaigns" className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
             Campanhas WhatsApp
+          </TabsTrigger>
+          <TabsTrigger value="templates" className="flex items-center gap-2">
+            <FileCheck2 className="h-4 w-4" />
+            Modelos (Templates)
           </TabsTrigger>
           <TabsTrigger value="capi-sync" className="flex items-center gap-2">
             <Database className="h-4 w-4" />
@@ -257,6 +265,7 @@ export default function SettingsRemarketing() {
             selectedCustomerIds={Array.from(selectedIds)}
             hasWhatsAppCredentials={hasWhatsAppCredentials}
             hasCapiCredentials={hasCredentials}
+            initialTemplateName={selectedTemplateForCampaign}
             onSuccess={() => setRefreshKey((k) => k + 1)}
           />
 
@@ -285,7 +294,22 @@ export default function SettingsRemarketing() {
           <WhatsAppCampaignHistory />
         </TabsContent>
 
-        {/* ABA 2: Sincronização direta CAPI pura */}
+        {/* ABA 2: Modelos (Templates de WhatsApp com aprovação Meta ao vivo) */}
+        <TabsContent value="templates" className="space-y-6">
+          <WhatsAppTemplatesManager
+            hasWhatsAppCredentials={hasWhatsAppCredentials}
+            onTemplateSelectedForCampaign={(templateName) => {
+              setSelectedTemplateForCampaign(templateName)
+              setActiveTab('campaigns')
+              toast({
+                title: 'Modelo selecionado',
+                description: `O modelo "${templateName}" foi selecionado na aba Campanhas.`,
+              })
+            }}
+          />
+        </TabsContent>
+
+        {/* ABA 3: Sincronização direta CAPI pura */}
         <TabsContent value="capi-sync" className="space-y-6">
           <div className="space-y-3">
             <div>
