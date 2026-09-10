@@ -59,15 +59,92 @@ export function getInstagramRedirectUri(): string {
   return PROD_REDIRECT_URI
 }
 
-export function getInstagramOAuthUrl(appId: string, redirectUri: string): string {
+export const INSTAGRAM_OAUTH_STATE_KEY = 'instagram_oauth_state'
+
+/**
+ * Gera um token de state aleatório, salva em sessionStorage para prevenção CSRF
+ * e retorna a URL completa do diálogo OAuth da Meta.
+ */
+export function getInstagramOAuthUrl(
+  appId: string,
+  redirectUri: string,
+  customState?: string,
+): string {
+  let state = customState
+  if (!state) {
+    if (
+      typeof window !== 'undefined' &&
+      window.crypto &&
+      typeof window.crypto.randomUUID === 'function'
+    ) {
+      state = `ig_${window.crypto.randomUUID()}`
+    } else {
+      state = `ig_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
+    }
+  }
+
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      window.sessionStorage.setItem(INSTAGRAM_OAUTH_STATE_KEY, state)
+    } catch {
+      // Ignora erro em quota/modo restrito
+    }
+  }
+
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
     scope: INSTAGRAM_OAUTH_SCOPES,
     response_type: 'code',
-    state: 'instagram_oauth',
+    state,
   })
   return `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`
+}
+
+/**
+ * Valida o state recebido contra o armazenado em sessionStorage.
+ * Limpa o state armazenado após leitura (ou tentativa).
+ */
+export function validateAndConsumeInstagramOAuthState(incomingState: string | null): {
+  valid: boolean
+  expected: string | null
+  received: string | null
+} {
+  let stored: string | null = null
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      stored = window.sessionStorage.getItem(INSTAGRAM_OAUTH_STATE_KEY)
+      // Não remove imediatamente para permitir leitura no diagnóstico se necessário,
+      // mas consome ao validar
+      if (stored) {
+        window.sessionStorage.removeItem(INSTAGRAM_OAUTH_STATE_KEY)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Compatibilidade: se o state enviado foi o legado fixo 'instagram_oauth'
+  if (incomingState === 'instagram_oauth') {
+    return { valid: true, expected: stored, received: incomingState }
+  }
+
+  // Se havia state gravado, compara estritamente
+  if (stored && incomingState) {
+    return {
+      valid: stored === incomingState,
+      expected: stored,
+      received: incomingState,
+    }
+  }
+
+  // Se não havia state gravado (ex: aba aberta diretamente ou sessionStorage limpo),
+  // se incomingState existir com prefixo ig_ mas sem stored, marcamos inválido
+  return {
+    valid: Boolean(stored && incomingState && stored === incomingState),
+    expected: stored,
+    received: incomingState,
+  }
 }
 
 export function exchangeInstagramCode(
