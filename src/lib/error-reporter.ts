@@ -64,6 +64,19 @@ export function setupGlobalErrorHandlers(): void {
   globalHandlersSetup = true
 
   window.addEventListener('error', (event) => {
+    const errorMsg = event.message || ''
+    // Ignora erros de mutação DOM interceptados/suprimidos pelo crash guard para não poluir logs
+    if (
+      errorMsg.includes('insertBefore') ||
+      errorMsg.includes('removeChild') ||
+      errorMsg.includes('The node to be removed is not a child of this node') ||
+      errorMsg.includes(
+        'The node before which the new node is to be inserted is not a child of this node',
+      )
+    ) {
+      return
+    }
+
     reportError({
       type: 'frontend_error',
       message: event.message || 'Uncaught error',
