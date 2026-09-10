@@ -90,11 +90,72 @@ export default function Dashboard() {
 
   // Renders a stat card value: placeholder before first load, the number once
   // loaded, or a loading indicator while the sequential fetch is in flight.
+  // Wrapped consistently in a span so React reconciler never collides between
+  // raw text nodes and elements.
   const renderValue = (value: number | null) => {
     if (loading) return <span className="text-muted-foreground">Carregando…</span>
     if (!loaded) return <span className="text-muted-foreground">{PLACEHOLDER}</span>
-    return value
+    return <span>{value ?? 0}</span>
   }
+
+  const getButtonText = () => {
+    if (loading) return 'Carregando...'
+    if (loaded) return 'Atualizar Dashboard'
+    return 'Carregar Dashboard'
+  }
+
+  const renderWhatsAppBadge = () => {
+    if (!loaded) {
+      return <span className="text-xs text-muted-foreground">{PLACEHOLDER}</span>
+    }
+    const status = currentUser?.meta_token_status
+    if (status === 'active') {
+      return <Badge className="bg-green-500 hover:bg-green-600 text-xs">Ativo</Badge>
+    }
+    if (status === 'error') {
+      return (
+        <Badge variant="destructive" className="text-xs">
+          Falha
+        </Badge>
+      )
+    }
+    return (
+      <Badge variant="secondary" className="text-xs">
+        Não testado
+      </Badge>
+    )
+  }
+
+  const renderCapiBadge = () => {
+    if (!loaded) {
+      return <span className="text-xs text-muted-foreground">{PLACEHOLDER}</span>
+    }
+    const status = currentUser?.meta_capi_status
+    const isConnected =
+      status === 'connected' || status === 'active' || status === 'ok' || status === 'valid'
+    if (isConnected) {
+      return <Badge className="bg-green-500 hover:bg-green-600 text-xs">Conectado</Badge>
+    }
+    if (status === 'error') {
+      return (
+        <Badge variant="destructive" className="text-xs">
+          Falha
+        </Badge>
+      )
+    }
+    return (
+      <Badge variant="secondary" className="text-xs">
+        Não testado
+      </Badge>
+    )
+  }
+
+  const getPixelLabel = () => {
+    if (!loaded) return PLACEHOLDER
+    return currentUser?.meta_dataset_id || currentUser?.meta_pixel_id || '—'
+  }
+
+  const userName = currentUser?.name || user?.name || 'Administrador'
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-8">
@@ -102,12 +163,14 @@ export default function Dashboard() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
           <p className="text-muted-foreground">
-            Bem-vindo de volta, {currentUser?.name || user?.name || 'Administrador'}.
+            <span>Bem-vindo de volta, </span>
+            <span className="font-medium">{userName}</span>
+            <span>.</span>
           </p>
         </div>
         <Button onClick={loadDashboard} disabled={loading}>
           <BarChart3 className={cn('mr-2 h-4 w-4', loading && 'animate-pulse')} />
-          {loading ? 'Carregando...' : loaded ? 'Atualizar Dashboard' : 'Carregar Dashboard'}
+          <span>{getButtonText()}</span>
         </Button>
       </div>
 
@@ -140,48 +203,15 @@ export default function Dashboard() {
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">WhatsApp API</span>
-              {loaded ? (
-                currentUser?.meta_token_status === 'active' ? (
-                  <Badge className="bg-green-500 hover:bg-green-600 text-xs">Ativo</Badge>
-                ) : currentUser?.meta_token_status === 'error' ? (
-                  <Badge variant="destructive" className="text-xs">
-                    Falha
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-xs">
-                    Não testado
-                  </Badge>
-                )
-              ) : (
-                <span className="text-xs text-muted-foreground">{PLACEHOLDER}</span>
-              )}
+              <div>{renderWhatsAppBadge()}</div>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">CAPI</span>
-              {loaded ? (
-                currentUser?.meta_capi_status === 'connected' ||
-                currentUser?.meta_capi_status === 'active' ||
-                currentUser?.meta_capi_status === 'ok' ||
-                currentUser?.meta_capi_status === 'valid' ? (
-                  <Badge className="bg-green-500 hover:bg-green-600 text-xs">Conectado</Badge>
-                ) : currentUser?.meta_capi_status === 'error' ? (
-                  <Badge variant="destructive" className="text-xs">
-                    Falha
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-xs">
-                    Não testado
-                  </Badge>
-                )
-              ) : (
-                <span className="text-xs text-muted-foreground">{PLACEHOLDER}</span>
-              )}
+              <div>{renderCapiBadge()}</div>
             </div>
             <p className="text-xs text-muted-foreground truncate">
-              Pixel:{' '}
-              {loaded
-                ? currentUser?.meta_dataset_id || currentUser?.meta_pixel_id || '—'
-                : PLACEHOLDER}
+              <span>Pixel: </span>
+              <span>{getPixelLabel()}</span>
             </p>
           </CardContent>
         </Card>
