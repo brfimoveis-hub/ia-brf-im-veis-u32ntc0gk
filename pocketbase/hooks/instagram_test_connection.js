@@ -5,36 +5,192 @@ routerAdd(
     const userId = e.auth ? e.auth.id : ''
     if (!userId) return e.unauthorizedError('auth required')
 
-    const user = $app.findRecordById('users', userId)
-    const businessId = user.getString('meta_instagram_business_id')
-    const pageToken = user.getString('meta_instagram_page_token')
-
-    if (!businessId && !pageToken) {
-      return e.badRequestError('Instagram Business ID e Page Token não configurados')
-    }
-    if (businessId && !pageToken) {
-      return e.badRequestError('Instagram Business ID configurado, aguardando Page Token')
-    }
-    if (!businessId && pageToken) {
-      return e.badRequestError('Page Token informado, aguardando Instagram Business ID')
+    let user = null
+    try {
+      user = $app.findRecordById('users', userId)
+    } catch (_) {
+      return e.badRequestError('Usuário não encontrado')
     }
 
-    const res = $http.send({
-      url: 'https://graph.facebook.com/v22.0/' + businessId + '?fields=id,name,username',
-      method: 'GET',
-      headers: { Authorization: 'Bearer ' + pageToken },
-      timeout: 15,
-    })
+    const igBizId = (user.getString('meta_instagram_business_id') || '').trim()
+    let igToken = (
+      user.getString('meta_instagram_page_token') ||
+      user.getString('meta_page_access_token') ||
+      ''
+    ).trim()
+    const sysUserToken = (user.getString('meta_whatsapp_access_token') || '').trim()
+    const capiToken = (user.getString('meta_capi_token') || '').trim()
 
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      return e.json(200, { status: 'connected', data: res.json })
-    } else {
-      var errMsg = 'Falha ao validar conexao Instagram'
+    if (!igBizId) {
+      return e.json(200, {
+        success: false,
+        status: 'not_configured',
+        message: 'Instagram Business ID não configurado no CRM.',
+        instructions: 'Informe o Instagram Business ID nas configurações ou conecte via OAuth.',
+      })
+    }
+
+    // 1. Se já possuímos um token de página salvo, testa diretamente
+    if (igToken) {
       try {
-        errMsg = (res.json && res.json.error && res.json.error.message) || errMsg
-      } catch (_) {}
-      return e.badRequestError(errMsg)
+        const igRes = $http.send({
+          url:
+            'https://graph.facebook.com/v22.0/' +
+            igBizId +
+            '?fields=id,name,username,profile_picture_url',
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + igToken },
+          timeout: 15,
+        })
+
+        if (igRes.statusCode >= 200 && igRes.statusCode < 300) {
+          const d = igRes.json || {}
+          const igName = d.username || d.name || ''
+          return e.json(200, {
+            success: true,
+            status: 'connected',
+            message: 'Conectado ✅' + (igName ? ' — @' + igName : '') + ' (ID: ' + igBizId + ')',
+            data: d,
+            token_saved: false,
+          })
+        }
+      } catch (netErr) {
+        console.log('[INSTAGRAM_TEST] Erro ao testar token atual: ' + String(netErr))
+      }
     }
+
+    // 2. Auto-descoberta via System User Token (ou CAPI Token)
+    const tokensToTry = []
+    if (sysUserToken) tokensToTry.push({ token: sysUserToken, type: 'system_user' })
+    if (capiToken && capiToken !== sysUserToken) {
+      tokensToTry.push({ token: capiToken, type: 'capi' })
+    }
+
+    let discoveredPageToken = ''
+    let matchedPageId = ''
+    let matchedPageName = ''
+    let igAccountData = null
+    let allPermissions = []
+
+    for (let t = 0; t < tokensToTry.length; t++) {
+      const candidate = tokensToTry[t].token
+      try {
+        // Obter permissões concedidas neste token
+        try {
+          const permRes = $http.send({
+            url:
+              'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
+              encodeURIComponent(candidate),
+            method: 'GET',
+            timeout: 10,
+          })
+          if (permRes.statusCode === 200 && permRes.json && Array.isArray(permRes.json.data)) {
+            allPermissions = permRes.json.data
+              .filter((p) => p.status === 'granted')
+              .map((p) => p.permission)
+          }
+        } catch (_) {}
+
+        // Tentar teste direto com candidate
+        const directIgRes = $http.send({
+          url:
+            'https://graph.facebook.com/v22.0/' +
+            igBizId +
+            '?fields=id,name,username,profile_picture_url&access_token=' +
+            encodeURIComponent(candidate),
+          method: 'GET',
+          timeout: 10,
+        })
+
+        if (directIgRes.statusCode >= 200 && directIgRes.statusCode < 300) {
+          discoveredPageToken = candidate
+          igAccountData = directIgRes.json || {}
+          break
+        }
+
+        // Tentar /me/accounts para buscar páginas gerenciadas e seus tokens
+        const accountsRes = $http.send({
+          url:
+            'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&access_token=' +
+            encodeURIComponent(candidate),
+          method: 'GET',
+          timeout: 10,
+        })
+
+        if (
+          accountsRes.statusCode === 200 &&
+          accountsRes.json &&
+          Array.isArray(accountsRes.json.data)
+        ) {
+          const pages = accountsRes.json.data
+          for (let p = 0; p < pages.length; p++) {
+            const pg = pages[p]
+            const pgToken = pg.access_token || ''
+            const pgIg = pg.instagram_business_account || {}
+            if (pgIg.id === igBizId || (!discoveredPageToken && pgToken)) {
+              discoveredPageToken = pgToken
+              matchedPageId = pg.id || ''
+              matchedPageName = pg.name || ''
+              if (pgIg.id) {
+                igAccountData = pgIg
+                break
+              }
+            }
+          }
+          if (discoveredPageToken && igAccountData) break
+        }
+      } catch (candErr) {
+        console.log('[INSTAGRAM_TEST] Candidato falhou: ' + String(candErr))
+      }
+    }
+
+    // 3. Se obteve um token válido com sucesso, salva no usuário e retorna status connected
+    if (discoveredPageToken) {
+      try {
+        user.set('meta_instagram_page_token', discoveredPageToken)
+        if (!user.getString('meta_page_access_token')) {
+          user.set('meta_page_access_token', discoveredPageToken)
+        }
+        $app.saveNoValidate(user)
+
+        const igName = igAccountData
+          ? igAccountData.username || igAccountData.name || ''
+          : matchedPageName
+        return e.json(200, {
+          success: true,
+          status: 'connected',
+          message: 'Conectado com sucesso ✅' + (igName ? ' — @' + igName : '') + '!',
+          token_saved: true,
+          data: igAccountData || { id: igBizId, name: igName },
+          page_id: matchedPageId,
+          page_name: matchedPageName,
+        })
+      } catch (saveErr) {
+        console.log('[INSTAGRAM_TEST] Erro ao salvar token: ' + String(saveErr))
+      }
+    }
+
+    // 4. Se não conseguiu obter automaticamente, analisa o motivo e retorna orientações claras
+    const requiredScopes = ['pages_show_list', 'pages_read_engagement', 'instagram_basic']
+    const missingPerms = requiredScopes.filter((s) => allPermissions.indexOf(s) === -1)
+
+    const instructionMsg =
+      missingPerms.length > 0
+        ? 'Faltam permissões na Meta (' +
+          missingPerms.join(', ') +
+          '). No Meta Business Suite, atribua a Página ao usuário do sistema ou clique em "Conectar Instagram (OAuth)" abaixo para autorizar com 1 clique.'
+        : 'O Instagram ID ' +
+          igBizId +
+          ' não possui Page Token ativo vinculado. Conecte pelo botão "Conectar Instagram (OAuth)" ou cole o Page Access Token manualmente.'
+
+    return e.json(200, {
+      success: false,
+      status: 'configured_waiting_token',
+      message: instructionMsg,
+      missing_perms: missingPerms,
+      granted_perms: allPermissions,
+      instructions: instructionMsg,
+    })
   },
   $apis.requireAuth(),
 )

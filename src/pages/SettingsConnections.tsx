@@ -38,7 +38,7 @@ export default function SettingsConnections() {
         hasIg && !hasToken
           ? 'ID configurado (' +
               user.meta_instagram_business_id +
-              '). Aguardando Page Token para ativar conexão.'
+              '). Clique em "Verificar Agora" para obter o token da página ou conecte via OAuth.'
           : '',
       )
       setMessengerErrorMsg('')
@@ -58,7 +58,7 @@ export default function SettingsConnections() {
       hasIg && !hasToken
         ? 'ID configurado (' +
             e.record.meta_instagram_business_id +
-            '). Aguardando Page Token para ativar conexão.'
+            '). Clique em "Verificar Agora" para obter o token da página ou conecte via OAuth.'
         : '',
     )
     setMessengerErrorMsg('')

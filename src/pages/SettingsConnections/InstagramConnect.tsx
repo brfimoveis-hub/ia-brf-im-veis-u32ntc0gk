@@ -10,8 +10,19 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Instagram, CheckCircle2, AlertCircle, Info, Loader2, Save, KeyRound } from 'lucide-react'
+import {
+  Instagram,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+  Loader2,
+  Save,
+  KeyRound,
+  RefreshCw,
+  HelpCircle,
+} from 'lucide-react'
 import { MaskedInput } from './MaskedInput'
+import { testInstagramConnection } from '@/services/instagram'
 
 export function InstagramConnect() {
   const { user } = useAuth()
@@ -23,8 +34,14 @@ export function InstagramConnect() {
     meta_page_access_token: user?.meta_page_access_token || '',
   })
   const [saving, setSaving] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [inlineError, setInlineError] = useState('')
+  const [diagnosticResult, setDiagnosticResult] = useState<{
+    message?: string
+    missing_perms?: string[]
+    instructions?: string
+  } | null>(null)
 
   const hasIgId = !!(form.meta_instagram_business_id || user?.meta_instagram_business_id)
   const hasPageToken = !!(
@@ -128,6 +145,46 @@ export function InstagramConnect() {
     }
   }
 
+  const handleVerifyNow = async () => {
+    setVerifying(true)
+    setInlineError('')
+    setDiagnosticResult(null)
+    try {
+      const res = await testInstagramConnection()
+      if (res?.status === 'connected') {
+        setIgConnected(true)
+        setMsgConnected(true)
+        toast({
+          title: 'Instagram Conectado!',
+          description: res.message || 'Conexão validada com sucesso.',
+        })
+      } else {
+        const msg = res?.message || 'Aguardando Page Token para ativar a conexão.'
+        setInlineError(msg)
+        setDiagnosticResult({
+          message: msg,
+          missing_perms: res?.missing_perms || [],
+          instructions: res?.instructions || '',
+        })
+        toast({
+          variant: 'destructive',
+          title: 'Atenção na Conexão do Instagram',
+          description: msg,
+        })
+      }
+    } catch (err: any) {
+      const errMsg = err?.message || 'Falha ao verificar conexão com o Instagram.'
+      setInlineError(errMsg)
+      toast({
+        variant: 'destructive',
+        title: 'Erro na verificação',
+        description: errMsg,
+      })
+    } finally {
+      setVerifying(false)
+    }
+  }
+
   const handleConnect = () => {
     if (!hasAppConfig) {
       toast({
@@ -179,6 +236,20 @@ export function InstagramConnect() {
           <Button onClick={handleConnect} className="gap-2" variant="default">
             <Instagram className="h-4 w-4" />
             Conectar Instagram (OAuth)
+          </Button>
+
+          <Button
+            onClick={handleVerifyNow}
+            disabled={verifying}
+            className="gap-2"
+            variant="outline"
+          >
+            {verifying ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Verificar Agora
           </Button>
 
           <div className="flex items-center gap-3 flex-wrap">
@@ -298,12 +369,50 @@ export function InstagramConnect() {
             </div>
           )}
 
-          {inlineError && !Object.values(fieldErrors).some(Boolean) && (
-            <div className="flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3">
-              <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-              <p className="text-sm text-red-600">{inlineError}</p>
+          {diagnosticResult?.missing_perms && diagnosticResult.missing_perms.length > 0 && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4 space-y-2">
+              <div className="flex items-start gap-2">
+                <HelpCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">
+                    Permissões ausentes na Meta: {diagnosticResult.missing_perms.join(', ')}
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Como resolver no Meta Business Suite:
+                  </p>
+                  <ol className="text-xs text-amber-700 list-decimal list-inside space-y-1 mt-1">
+                    <li>
+                      Acesse o <strong>Meta Business Suite</strong> &gt;{' '}
+                      <strong>Configurações do negócio</strong>.
+                    </li>
+                    <li>
+                      Vá em <strong>Usuários do Sistema</strong> &gt; selecione o usuário{' '}
+                      <strong>BIA CRM</strong>.
+                    </li>
+                    <li>
+                      Em <strong>Ativos atribuídos</strong>, clique em{' '}
+                      <strong>Adicionar Ativos</strong> &gt; <strong>Páginas</strong> &gt; selecione
+                      sua Página do Facebook conectada ao Instagram e marque{' '}
+                      <strong>Controle Total / Gerenciamento</strong>.
+                    </li>
+                    <li>
+                      Clique no botão <strong>Conectar Instagram (OAuth)</strong> acima para
+                      autorizar com 1 clique.
+                    </li>
+                  </ol>
+                </div>
+              </div>
             </div>
           )}
+
+          {inlineError &&
+            !Object.values(fieldErrors).some(Boolean) &&
+            !diagnosticResult?.missing_perms?.length && (
+              <div className="flex items-start gap-2 rounded-md border border-red-500/50 bg-red-500/10 p-3">
+                <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                <p className="text-sm text-red-600">{inlineError}</p>
+              </div>
+            )}
 
           <div className="flex items-center gap-3">
             <Button onClick={handleSave} disabled={saving} className="gap-2">

@@ -200,8 +200,15 @@ routerAdd(
     }
 
     if (shouldCheck('instagram')) {
-      const igBizId = userRecord.getString('meta_instagram_business_id')
-      const igToken = userRecord.getString('meta_instagram_page_token')
+      const igBizId = (userRecord.getString('meta_instagram_business_id') || '').trim()
+      let igToken = (
+        userRecord.getString('meta_instagram_page_token') ||
+        userRecord.getString('meta_page_access_token') ||
+        ''
+      ).trim()
+      const sysUserToken = (userRecord.getString('meta_whatsapp_access_token') || '').trim()
+      const capiToken = (userRecord.getString('meta_capi_token') || '').trim()
+
       if (!igBizId && !igToken) {
         results.push({
           name: 'Instagram Business',
@@ -210,58 +217,131 @@ routerAdd(
           timestamp: ts,
           message: 'Instagram Business ID e Page Token não configurados',
         })
-      } else if (igBizId && !igToken) {
-        results.push({
-          name: 'Instagram Business',
-          key: 'instagram',
-          status: 'not_configured',
-          timestamp: ts,
-          message: 'Instagram Business ID configurado (' + igBizId + '), aguardando Page Token',
-        })
-      } else if (!igBizId && igToken) {
-        results.push({
-          name: 'Instagram Business',
-          key: 'instagram',
-          status: 'not_configured',
-          timestamp: ts,
-          message: 'Page Token informado, aguardando Instagram Business ID',
-        })
       } else {
-        try {
-          const igRes = $http.send({
-            url: 'https://graph.facebook.com/v22.0/' + igBizId + '?fields=id,name,username',
-            method: 'GET',
-            headers: { Authorization: 'Bearer ' + igToken },
-            timeout: 15,
-          })
-          if (igRes.statusCode >= 200 && igRes.statusCode < 300) {
-            var igName = ''
+        // Tentativa de validar token atual se existir
+        let connected = false
+        let verifiedName = ''
+
+        if (igToken) {
+          try {
+            const igRes = $http.send({
+              url: 'https://graph.facebook.com/v22.0/' + igBizId + '?fields=id,name,username',
+              method: 'GET',
+              headers: { Authorization: 'Bearer ' + igToken },
+              timeout: 15,
+            })
+            if (igRes.statusCode >= 200 && igRes.statusCode < 300) {
+              connected = true
+              verifiedName = (igRes.json && (igRes.json.name || igRes.json.username)) || ''
+            }
+          } catch (_) {}
+        }
+
+        // Se ainda não conectado, tenta auto-obtenção via tokens Meta já salvos
+        if (!connected) {
+          const candidates = []
+          if (sysUserToken) candidates.push(sysUserToken)
+          if (capiToken && capiToken !== sysUserToken) candidates.push(capiToken)
+
+          for (let c = 0; c < candidates.length; c++) {
+            const cand = candidates[c]
             try {
-              igName = (igRes.json && (igRes.json.name || igRes.json.username)) || ''
+              // Teste direto com cand
+              const dRes = $http.send({
+                url:
+                  'https://graph.facebook.com/v22.0/' +
+                  igBizId +
+                  '?fields=id,name,username&access_token=' +
+                  encodeURIComponent(cand),
+                method: 'GET',
+                timeout: 10,
+              })
+              if (dRes.statusCode >= 200 && dRes.statusCode < 300) {
+                connected = true
+                verifiedName = (dRes.json && (dRes.json.name || dRes.json.username)) || ''
+                userRecord.set('meta_instagram_page_token', cand)
+                if (!userRecord.getString('meta_page_access_token')) {
+                  userRecord.set('meta_page_access_token', cand)
+                }
+                try {
+                  $app.saveNoValidate(userRecord)
+                } catch (_) {}
+                break
+              }
+
+              // Teste via me/accounts
+              const accRes = $http.send({
+                url:
+                  'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=' +
+                  encodeURIComponent(cand),
+                method: 'GET',
+                timeout: 10,
+              })
+              if (accRes.statusCode === 200 && accRes.json && Array.isArray(accRes.json.data)) {
+                const pages = accRes.json.data
+                for (let p = 0; p < pages.length; p++) {
+                  const pg = pages[p]
+                  const pgToken = pg.access_token || ''
+                  const pgIg = pg.instagram_business_account || {}
+                  if (pgIg.id === igBizId || (!connected && pgToken)) {
+                    connected = true
+                    verifiedName = pgIg.name || pgIg.username || pg.name || ''
+                    userRecord.set('meta_instagram_page_token', pgToken)
+                    if (!userRecord.getString('meta_page_access_token')) {
+                      userRecord.set('meta_page_access_token', pgToken)
+                    }
+                    try {
+                      $app.saveNoValidate(userRecord)
+                    } catch (_) {}
+                    break
+                  }
+                }
+                if (connected) break
+              }
             } catch (_) {}
-            results.push({
-              name: 'Instagram Business',
-              key: 'instagram',
-              status: 'connected',
-              timestamp: ts,
-              message: 'Conectado ✅' + (igName ? ' — @' + igName : ''),
-            })
-          } else {
-            results.push({
-              name: 'Instagram Business',
-              key: 'instagram',
-              status: 'error',
-              timestamp: ts,
-              message: 'HTTP ' + igRes.statusCode,
-            })
           }
-        } catch (e4) {
+        }
+
+        if (connected) {
           results.push({
             name: 'Instagram Business',
             key: 'instagram',
-            status: 'error',
+            status: 'connected',
             timestamp: ts,
-            message: 'Erro de rede: ' + (e4.message || 'unknown'),
+            message: 'Conectado ✅' + (verifiedName ? ' — @' + verifiedName : ''),
+          })
+        } else {
+          // Coletar permissões atuais para apontar diagnóstico cirúrgico
+          let missingPerms = ['pages_show_list', 'pages_read_engagement', 'instagram_basic']
+          try {
+            const pRes = $http.send({
+              url:
+                'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
+                encodeURIComponent(sysUserToken || capiToken),
+              method: 'GET',
+              timeout: 10,
+            })
+            if (pRes.statusCode === 200 && pRes.json && Array.isArray(pRes.json.data)) {
+              const granted = pRes.json.data
+                .filter((p) => p.status === 'granted')
+                .map((p) => p.permission)
+              missingPerms = missingPerms.filter((s) => granted.indexOf(s) === -1)
+            }
+          } catch (_) {}
+
+          const detailMsg =
+            missingPerms.length > 0
+              ? 'Faltam permissões na Meta (' +
+                missingPerms.join(', ') +
+                '). Conecte via OAuth ou adicione as permissões ao usuário do sistema no Meta Business Suite.'
+              : 'Instagram ID ' + igBizId + ' aguardando autorização de Página ou token manual.'
+
+          results.push({
+            name: 'Instagram Business',
+            key: 'instagram',
+            status: 'configured_waiting_token',
+            timestamp: ts,
+            message: detailMsg,
           })
         }
       }

@@ -7,12 +7,18 @@ export interface InstagramOAuthResult {
 }
 
 export interface InstagramTestResult {
+  success?: boolean
   status: string
+  message?: string
+  token_saved?: boolean
   data?: {
     id: string
     name?: string
     username?: string
   }
+  missing_perms?: string[]
+  granted_perms?: string[]
+  instructions?: string
 }
 
 const INSTAGRAM_OAUTH_SCOPES = [
