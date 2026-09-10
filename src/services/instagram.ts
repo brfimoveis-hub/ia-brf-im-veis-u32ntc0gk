@@ -22,12 +22,42 @@ export interface InstagramTestResult {
 }
 
 const INSTAGRAM_OAUTH_SCOPES = [
-  'pages_show_list',
   'instagram_basic',
-  'instagram_manage_insights',
+  'instagram_manage_messages',
+  'pages_manage_metadata',
   'pages_read_engagement',
+  'pages_show_list',
   'pages_messaging',
 ].join(',')
+
+export const INSTAGRAM_CALLBACK_PATH = '/settings/connections/instagram/callback'
+
+export const PROD_ORIGIN = 'https://brfiacrminteligente.goskip.app'
+export const PREVIEW_ORIGIN = 'https://ia-uazapi-6d79e--preview.goskip.app'
+export const PROD_REDIRECT_URI = `${PROD_ORIGIN}${INSTAGRAM_CALLBACK_PATH}`
+export const PREVIEW_REDIRECT_URI = `${PREVIEW_ORIGIN}${INSTAGRAM_CALLBACK_PATH}`
+
+/**
+ * Obtém a redirect URI do OAuth do Instagram.
+ * Deriva da window.location.origin atual. Se estiver num dos domínios goskip.app
+ * conhecidos (produção ou preview), usa o origin correspondente; caso contrário,
+ * usa window.location.origin (ou fallback para produção).
+ */
+export function getInstagramRedirectUri(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const origin = window.location.origin
+    if (
+      origin === PROD_ORIGIN ||
+      origin === PREVIEW_ORIGIN ||
+      origin.includes('goskip.app') ||
+      origin.includes('localhost')
+    ) {
+      return `${origin}${INSTAGRAM_CALLBACK_PATH}`
+    }
+    return `${origin}${INSTAGRAM_CALLBACK_PATH}`
+  }
+  return PROD_REDIRECT_URI
+}
 
 export function getInstagramOAuthUrl(appId: string, redirectUri: string): string {
   const params = new URLSearchParams({

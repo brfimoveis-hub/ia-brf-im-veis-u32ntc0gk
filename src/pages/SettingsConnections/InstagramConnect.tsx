@@ -20,9 +20,18 @@ import {
   KeyRound,
   RefreshCw,
   HelpCircle,
+  Copy,
+  ExternalLink,
+  ShieldCheck,
 } from 'lucide-react'
 import { MaskedInput } from './MaskedInput'
-import { testInstagramConnection } from '@/services/instagram'
+import {
+  testInstagramConnection,
+  getInstagramRedirectUri,
+  getInstagramOAuthUrl,
+  PROD_REDIRECT_URI,
+  PREVIEW_REDIRECT_URI,
+} from '@/services/instagram'
 
 export function InstagramConnect() {
   const { user } = useAuth()
@@ -69,7 +78,26 @@ export function InstagramConnect() {
   })
 
   const hasAppConfig = !!user?.meta_app_id && !!user?.meta_app_secret
-  const redirectUri = `${window.location.origin}/settings/connections/instagram/callback`
+  const [copiedRedirect, setCopiedRedirect] = useState(false)
+  const redirectUri = getInstagramRedirectUri()
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedRedirect(true)
+      toast({
+        title: 'Copiado para a área de transferência',
+        description: text,
+      })
+      setTimeout(() => setCopiedRedirect(false), 2500)
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao copiar',
+        description: 'Selecione e copie o texto manualmente.',
+      })
+    }
+  }
 
   const set = (key: string, val: string) => {
     setForm((prev) => ({ ...prev, [key]: val }))
@@ -196,9 +224,7 @@ export function InstagramConnect() {
       return
     }
 
-    const scope =
-      'instagram_basic,instagram_manage_messages,pages_manage_metadata,pages_read_engagement,pages_show_list,pages_messaging'
-    const oauthUrl = `https://www.facebook.com/v22.0/dialog/oauth?client_id=${user!.meta_app_id}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code`
+    const oauthUrl = getInstagramOAuthUrl(user!.meta_app_id, redirectUri)
 
     window.open(oauthUrl, '_blank')
     toast({
@@ -287,6 +313,137 @@ export function InstagramConnect() {
                 'Messenger Aguardando'
               )}
             </Badge>
+          </div>
+        </div>
+
+        {/* Card de Ajuda: Configuração de Domínios e Redirect URI no App Meta */}
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
+              <h4 className="text-sm font-semibold text-foreground">
+                Configuração obrigatória no Meta Developers (OAuth Instagram)
+              </h4>
+            </div>
+            <a
+              href="https://developers.facebook.com/apps/2442476629610638/settings/basic/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium shrink-0"
+            >
+              Abrir App Meta
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Se ao clicar em &quot;Conectar Instagram (OAuth)&quot; você receber a mensagem de que{' '}
+            <em>&quot;O domínio dessa URL não está incluído nos domínios do app&quot;</em>, siga
+            este passo a passo rápido no portal de desenvolvedores da Meta:
+          </p>
+
+          <div className="space-y-1.5 pt-1">
+            <Label className="text-xs font-semibold text-foreground">
+              URI de Redirecionamento OAuth do seu CRM:
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                readOnly
+                value={redirectUri}
+                className="font-mono text-xs bg-background select-all"
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                onClick={() => copyToClipboard(redirectUri)}
+              >
+                {copiedRedirect ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                    <span>Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5" />
+                    <span>Copiar</span>
+                  </>
+                )}
+              </Button>
+            </div>
+            {redirectUri !== PROD_REDIRECT_URI && (
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
+                <span>URI de produção alternativa:</span>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(PROD_REDIRECT_URI)}
+                  className="font-mono text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  {PROD_REDIRECT_URI}
+                  <Copy className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-md bg-background/80 border p-3 space-y-2 text-xs">
+            <p className="font-medium text-foreground">Passo a passo no Meta Developers:</p>
+            <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground leading-relaxed">
+              <li>
+                Acesse as{' '}
+                <a
+                  href="https://developers.facebook.com/apps/2442476629610638/settings/basic/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline font-medium"
+                >
+                  Configurações Básicas do App 2442476629610638 (BRF Imóveis 2)
+                </a>{' '}
+                → no campo <strong>&quot;Domínios do app&quot;</strong>, adicione{' '}
+                <code className="px-1 py-0.5 rounded bg-muted text-foreground font-mono font-semibold">
+                  brfiacrminteligente.goskip.app
+                </code>{' '}
+                (e caso use o ambiente preview, adicione também{' '}
+                <code className="px-1 py-0.5 rounded bg-muted text-foreground font-mono font-semibold">
+                  ia-uazapi-6d79e--preview.goskip.app
+                </code>
+                ) → clique em <strong>Salvar alterações</strong> no rodapé.
+              </li>
+              <li>
+                No menu lateral esquerdo, vá em <strong>Produtos</strong> →{' '}
+                <strong>Logins do Facebook</strong> (ou <strong>Facebook Login</strong>) →{' '}
+                <strong>Configurações</strong> (ou <strong>Settings</strong>) → localize o campo{' '}
+                <strong>&quot;URIs de redirecionamento OAuth válidos&quot;</strong> (Valid OAuth
+                Redirect URIs). Cole a URI exata acima:
+                <div className="mt-1 flex items-center gap-2">
+                  <code className="px-2 py-1 rounded bg-muted text-foreground font-mono text-xs select-all">
+                    {redirectUri}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => copyToClipboard(redirectUri)}
+                  >
+                    <Copy className="h-3 w-3 mr-1" /> Copiar
+                  </Button>
+                </div>
+                {redirectUri !== PROD_REDIRECT_URI && (
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    Dica: adicione também a URI de produção (<code>{PROD_REDIRECT_URI}</code>) para
+                    ambos os ambientes funcionarem.
+                  </div>
+                )}
+                Em seguida clique em <strong>Salvar alterações</strong>.
+              </li>
+              <li>
+                Volte a esta página do CRM e clique novamente em{' '}
+                <strong>&quot;Conectar Instagram (OAuth)&quot;</strong> para concluir a autorização.
+              </li>
+            </ol>
           </div>
         </div>
 

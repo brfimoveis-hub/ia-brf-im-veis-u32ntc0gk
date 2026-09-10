@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
+import { getInstagramRedirectUri } from '@/services/instagram'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, CheckCircle2, XCircle, Instagram } from 'lucide-react'
@@ -27,7 +28,7 @@ export default function InstagramCallback() {
       return
     }
 
-    const redirectUri = `${window.location.origin}/settings/connections/instagram/callback`
+    const redirectUri = getInstagramRedirectUri()
 
     pb.send('/backend/v1/instagram/oauth/exchange', {
       method: 'POST',
