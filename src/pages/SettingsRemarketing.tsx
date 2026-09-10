@@ -19,12 +19,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Send, ArrowRight, AlertCircle, Loader2, StopCircle, RefreshCw } from 'lucide-react'
+import {
+  Send,
+  ArrowRight,
+  AlertCircle,
+  Loader2,
+  StopCircle,
+  RefreshCw,
+  MessageSquare,
+  Database,
+} from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RemarketingStatusBanner } from '@/components/remarketing/RemarketingStatusBanner'
 import { RemarketingCustomerTable } from '@/components/remarketing/RemarketingCustomerTable'
 import { SyncProgressTracker } from '@/components/remarketing/SyncProgressTracker'
 import { RemarketingLogsCard } from '@/components/remarketing/RemarketingLogsCard'
 import { WhatsAppIdentityCard } from '@/components/remarketing/WhatsAppIdentityCard'
+import { WhatsAppCampaignComposer } from '@/components/remarketing/WhatsAppCampaignComposer'
+import { WhatsAppCampaignHistory } from '@/components/remarketing/WhatsAppCampaignHistory'
 
 export default function SettingsRemarketing() {
   const { user } = useAuth()
@@ -79,6 +91,10 @@ export default function SettingsRemarketing() {
   const hasCredentials =
     !!(currentUser?.meta_pixel_id?.trim() || currentUser?.meta_dataset_id?.trim()) &&
     !!currentUser?.meta_capi_token?.trim()
+
+  const hasWhatsAppCredentials =
+    !!currentUser?.meta_whatsapp_phone_number_id?.trim() &&
+    !!currentUser?.meta_whatsapp_access_token?.trim()
 
   const toggleId = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -164,9 +180,12 @@ export default function SettingsRemarketing() {
   return (
     <div className="container mx-auto py-8 max-w-6xl space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Remarketing (Meta)</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">
+          Remarketing & Campanhas
+        </h1>
         <p className="text-muted-foreground mt-2 text-lg max-w-2xl">
-          Selecione segmentos de clientes e envie para o Meta via Conversions API (CAPI).
+          Dispare campanhas de WhatsApp personalizadas pelo número da Bia e sincronize audiências
+          com a Meta via Conversions API (CAPI).
         </p>
       </div>
 
@@ -191,15 +210,21 @@ export default function SettingsRemarketing() {
         displayNumber={currentUser?.meta_whatsapp_status || ''}
       />
 
-      {!hasCredentials && (
+      {(!hasCredentials || !hasWhatsAppCredentials) && (
         <Card className="border-amber-200 bg-amber-50/50">
           <CardContent className="flex items-center justify-between p-4">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-amber-600" />
               <div>
-                <p className="font-medium text-foreground">Credenciais Meta não configuradas</p>
+                <p className="font-medium text-foreground">
+                  {!hasWhatsAppCredentials && !hasCredentials
+                    ? 'Credenciais Meta WhatsApp e CAPI incompletas'
+                    : !hasWhatsAppCredentials
+                      ? 'WhatsApp Cloud API não conectado'
+                      : 'Credenciais Meta CAPI não configuradas'}
+                </p>
                 <p className="text-sm text-muted-foreground">
-                  Configure o Pixel ID e Token CAPI nas Conexões.
+                  Verifique suas credenciais em Conexões para garantir disparos sem interrupções.
                 </p>
               </div>
             </div>
@@ -212,56 +237,124 @@ export default function SettingsRemarketing() {
         </Card>
       )}
 
-      <RemarketingCustomerTable
-        selectedIds={selectedIds}
-        onToggleId={toggleId}
-        onSelectPage={selectPage}
-        onSelectAllFiltered={selectAllFiltered}
-        onClearSelection={clearSelection}
-      />
+      {/* Tabs principais da tela de Remarketing */}
+      <Tabs defaultValue="campaigns" className="space-y-6">
+        <TabsList className="grid grid-cols-2 sm:w-[420px]">
+          <TabsTrigger value="campaigns" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Campanhas WhatsApp
+          </TabsTrigger>
+          <TabsTrigger value="capi-sync" className="flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            Sincronização CAPI
+          </TabsTrigger>
+        </TabsList>
 
-      <SyncProgressTracker
-        isSyncing={sync.isSyncing}
-        progress={sync.progress}
-        syncedCount={sync.syncedCount}
-        failedCount={sync.failedCount}
-        totalSelected={sync.totalSelected}
-        status={sync.status}
-      />
+        {/* ABA 1: Campanhas WhatsApp + CAPI conjugado */}
+        <TabsContent value="campaigns" className="space-y-6">
+          <WhatsAppCampaignComposer
+            selectedCount={selectedIds.size}
+            selectedCustomerIds={Array.from(selectedIds)}
+            hasWhatsAppCredentials={hasWhatsAppCredentials}
+            hasCapiCredentials={hasCredentials}
+            onSuccess={() => setRefreshKey((k) => k + 1)}
+          />
 
-      <div className="flex justify-end gap-2">
-        {sync.isSyncing && (
-          <Button variant="destructive" onClick={sync.stop}>
-            <StopCircle className="h-4 w-4 mr-2" /> Parar
-          </Button>
-        )}
-        <Button
-          size="lg"
-          onClick={() => setConfirmOpen(true)}
-          disabled={selectedIds.size === 0 || !hasCredentials || sync.isSyncing || fetching}
-          className="gap-2"
-        >
-          {fetching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-          Enviar para Meta ({selectedIds.size})
-        </Button>
-      </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">
+                  1. Selecione os Contatos / Segmentos da Campanha
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Filtre por status, perfil ou busca e selecione os contatos que receberão a
+                  mensagem.
+                </p>
+              </div>
+            </div>
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar envio para Meta</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você está prestes a enviar {selectedIds.size} contato(s) para o Meta via Conversions
-              API. Os dados (email e telefone) serão enviados com hash SHA-256 conforme as melhores
-              práticas do Meta.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmSend}>Confirmar envio</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            <RemarketingCustomerTable
+              selectedIds={selectedIds}
+              onToggleId={toggleId}
+              onSelectPage={selectPage}
+              onSelectAllFiltered={selectAllFiltered}
+              onClearSelection={clearSelection}
+            />
+          </div>
+
+          <WhatsAppCampaignHistory />
+        </TabsContent>
+
+        {/* ABA 2: Sincronização direta CAPI pura */}
+        <TabsContent value="capi-sync" className="space-y-6">
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">
+                Envio Direto de Audiência para o Pixel / Conversions API
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Envia hashes SHA-256 dos dados para o Meta criar públicos semelhantes e remarketing
+                em anúncios patrocinados.
+              </p>
+            </div>
+
+            <RemarketingCustomerTable
+              selectedIds={selectedIds}
+              onToggleId={toggleId}
+              onSelectPage={selectPage}
+              onSelectAllFiltered={selectAllFiltered}
+              onClearSelection={clearSelection}
+            />
+          </div>
+
+          <SyncProgressTracker
+            isSyncing={sync.isSyncing}
+            progress={sync.progress}
+            syncedCount={sync.syncedCount}
+            failedCount={sync.failedCount}
+            totalSelected={sync.totalSelected}
+            status={sync.status}
+          />
+
+          <div className="flex justify-end gap-2">
+            {sync.isSyncing && (
+              <Button variant="destructive" onClick={sync.stop}>
+                <StopCircle className="h-4 w-4 mr-2" /> Parar
+              </Button>
+            )}
+            <Button
+              size="lg"
+              onClick={() => setConfirmOpen(true)}
+              disabled={selectedIds.size === 0 || !hasCredentials || sync.isSyncing || fetching}
+              className="gap-2"
+            >
+              {fetching ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+              Enviar para Meta CAPI ({selectedIds.size})
+            </Button>
+          </div>
+
+          <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirmar envio para Meta CAPI</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Você está prestes a enviar {selectedIds.size} contato(s) para o Meta via
+                  Conversions API. Os dados (email e telefone) serão enviados com hash SHA-256
+                  conforme as melhores práticas do Meta.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmSend}>Confirmar envio</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </TabsContent>
+      </Tabs>
 
       <RemarketingLogsCard />
     </div>

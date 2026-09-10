@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T11:16:05.271Z",
+  "generatedAt": "2026-09-10T11:34:47.511Z",
   "collections": [
     {
       "name": "users",
@@ -1018,6 +1018,214 @@
         "CREATE INDEX idx_properties_city ON properties (city)",
         "CREATE INDEX idx_properties_neighborhood ON properties (neighborhood)",
         "CREATE INDEX idx_properties_price ON properties (price)"
+      ]
+    },
+    {
+      "name": "remarketing_campaigns",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != '' && user_id = @request.auth.id",
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "segment",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "message_text",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "template_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "template_language",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["draft", "sending", "completed", "failed", "stopped"]
+        },
+        {
+          "name": "total_recipients",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sent_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "delivered_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "failed_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "requires_template_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sync_meta_capi",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "capi_synced_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_rem_camp_user ON remarketing_campaigns (user_id, created DESC)"]
+    },
+    {
+      "name": "remarketing_recipients",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && campaign_id.user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && campaign_id.user_id = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && campaign_id.user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && campaign_id.user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "campaign_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "remarketing_campaigns"
+        },
+        {
+          "name": "customer_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "customers"
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "customer_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resolved_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["queued", "sent", "delivered", "failed", "requires_template"]
+        },
+        {
+          "name": "whatsapp_message_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "error_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "in_24h_window",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sent_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_rem_rec_campaign ON remarketing_recipients (campaign_id, created DESC)",
+        "CREATE INDEX idx_rem_rec_phone ON remarketing_recipients (phone)"
       ]
     }
   ]
