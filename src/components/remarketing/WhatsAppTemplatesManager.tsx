@@ -56,7 +56,7 @@ import {
 
 interface WhatsAppTemplatesManagerProps {
   hasWhatsAppCredentials?: boolean
-  onTemplateSelectedForCampaign?: (templateName: string) => void
+  onTemplateSelectedForCampaign?: (templateName: string, templateLang?: string) => void
 }
 
 export function WhatsAppTemplatesManager({
@@ -601,17 +601,26 @@ export function WhatsAppTemplatesManager({
 
                       {/* Rodapé do item */}
                       <div className="flex items-center justify-between pt-1 border-t text-[11px] text-muted-foreground">
-                        <span>
+                        <span className="font-mono">
                           {tpl.meta_template_id ? `ID Meta: ${tpl.meta_template_id}` : 'Local'}
                         </span>
 
                         <div className="flex items-center gap-2">
-                          {tpl.status === 'APPROVED' && onTemplateSelectedForCampaign && (
+                          {onTemplateSelectedForCampaign && (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => onTemplateSelectedForCampaign(tpl.name)}
-                              className="h-6 px-2 text-xs text-green-700 hover:text-green-800 hover:bg-green-50"
+                              onClick={() => onTemplateSelectedForCampaign(tpl.name, tpl.language)}
+                              className={`h-6 px-2 text-xs ${
+                                tpl.status === 'APPROVED'
+                                  ? 'text-green-700 hover:text-green-800 hover:bg-green-50 dark:text-green-400'
+                                  : 'text-amber-700 hover:text-amber-800 hover:bg-amber-50 dark:text-amber-400'
+                              }`}
+                              title={
+                                tpl.status === 'APPROVED'
+                                  ? 'Usar este modelo aprovado na campanha'
+                                  : 'Selecionar este modelo na campanha (aguarda aprovação da Meta)'
+                              }
                             >
                               <Copy className="h-3 w-3 mr-1" /> Usar na Campanha
                             </Button>
@@ -621,6 +630,7 @@ export function WhatsAppTemplatesManager({
                             size="sm"
                             onClick={() => setDeleteTarget(tpl)}
                             className="h-6 px-2 text-xs text-destructive hover:bg-destructive/10"
+                            title="Remover modelo"
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -50,9 +50,31 @@ export default function SettingsRemarketing() {
   const [loadingUser, setLoadingUser] = useState(true)
   const [errorUser, setErrorUser] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [activeTab, setActiveTab] = useState('campaigns')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') || 'campaigns'
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [selectedTemplateForCampaign, setSelectedTemplateForCampaign] = useState('')
   const sync = useRemarketingSync()
+
+  // Sincroniza tab na URL para links diretos e persistência (ex: /settings/remarketing?tab=templates)
+  const handleTabChange = useCallback(
+    (newTab: string) => {
+      setActiveTab(newTab)
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          if (newTab === 'campaigns') {
+            next.delete('tab')
+          } else {
+            next.set('tab', newTab)
+          }
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
 
   useEffect(() => {
     if (!user?.id) {
@@ -242,21 +264,44 @@ export default function SettingsRemarketing() {
       )}
 
       {/* Tabs principais da tela de Remarketing */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-3 sm:w-[580px]">
-          <TabsTrigger value="campaigns" className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
-            Campanhas WhatsApp
-          </TabsTrigger>
-          <TabsTrigger value="templates" className="flex items-center gap-2">
-            <FileCheck2 className="h-4 w-4" />
-            Modelos (Templates)
-          </TabsTrigger>
-          <TabsTrigger value="capi-sync" className="flex items-center gap-2">
-            <Database className="h-4 w-4" />
-            Sincronização CAPI
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+          <TabsList className="grid grid-cols-3 w-full sm:w-[600px] h-11 p-1 bg-muted/80">
+            <TabsTrigger
+              value="campaigns"
+              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <MessageSquare className="h-4 w-4 text-green-600" />
+              <span>Campanhas WhatsApp</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="templates"
+              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <FileCheck2 className="h-4 w-4 text-primary" />
+              <span>Modelos (Templates)</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="capi-sync"
+              className="flex items-center justify-center gap-2 font-medium text-xs sm:text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <Database className="h-4 w-4 text-blue-600" />
+              <span>Sincronização CAPI</span>
+            </TabsTrigger>
+          </TabsList>
+
+          {activeTab !== 'templates' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleTabChange('templates')}
+              className="text-xs gap-1.5 self-start sm:self-auto h-9"
+            >
+              <FileCheck2 className="h-3.5 w-3.5 text-primary" />
+              Ver Modelos Meta
+            </Button>
+          )}
+        </div>
 
         {/* ABA 1: Campanhas WhatsApp + CAPI conjugado */}
         <TabsContent value="campaigns" className="space-y-6">
@@ -298,12 +343,12 @@ export default function SettingsRemarketing() {
         <TabsContent value="templates" className="space-y-6">
           <WhatsAppTemplatesManager
             hasWhatsAppCredentials={hasWhatsAppCredentials}
-            onTemplateSelectedForCampaign={(templateName) => {
+            onTemplateSelectedForCampaign={(templateName, templateLang) => {
               setSelectedTemplateForCampaign(templateName)
-              setActiveTab('campaigns')
+              handleTabChange('campaigns')
               toast({
                 title: 'Modelo selecionado',
-                description: `O modelo "${templateName}" foi selecionado na aba Campanhas.`,
+                description: `O modelo "${templateName}" (${templateLang || 'pt_BR'}) foi selecionado na aba Campanhas.`,
               })
             }}
           />

@@ -71,7 +71,7 @@ export function WhatsAppCampaignComposer({
   )
   const [templateName, setTemplateName] = useState(initialTemplateName)
   const [templateLang, setTemplateLang] = useState('pt_BR')
-  const [approvedTemplates, setApprovedTemplates] = useState<WhatsAppTemplate[]>([])
+  const [allTemplates, setAllTemplates] = useState<WhatsAppTemplate[]>([])
   const [selectedTemplateOption, setSelectedTemplateOption] = useState<string>('none')
   const [syncWithCapi, setSyncWithCapi] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -88,10 +88,16 @@ export function WhatsAppCampaignComposer({
   useEffect(() => {
     getLocalWhatsAppTemplates()
       .then((tpls) => {
-        const approved = tpls.filter((t) => (t.status || '').toUpperCase() === 'APPROVED')
-        setApprovedTemplates(approved)
-        if (initialTemplateName && approved.some((t) => t.name === initialTemplateName)) {
-          setSelectedTemplateOption(initialTemplateName)
+        setAllTemplates(tpls)
+        if (initialTemplateName) {
+          const found = tpls.find((t) => t.name === initialTemplateName)
+          if (found) {
+            setSelectedTemplateOption(found.name)
+            if (found.language) setTemplateLang(found.language)
+            if (found.body_text) setMessage(found.body_text)
+          } else {
+            setSelectedTemplateOption(initialTemplateName)
+          }
         }
       })
       .catch(() => {})
@@ -105,11 +111,10 @@ export function WhatsAppCampaignComposer({
       // Deixa o usuário digitar manualmente no campo abaixo
     } else {
       setTemplateName(val)
-      const found = approvedTemplates.find((t) => t.name === val)
+      const found = allTemplates.find((t) => t.name === val)
       if (found) {
         if (found.language) setTemplateLang(found.language)
         if (found.body_text) {
-          // Atualiza o texto da mensagem no composer se estiver vazio ou padrão
           setMessage(found.body_text)
         }
       }
@@ -285,13 +290,31 @@ export function WhatsAppCampaignComposer({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs text-foreground font-medium flex items-center gap-1.5">
-                  <span>Selecionar Modelo Aprovado pela Meta</span>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] text-green-700 bg-green-50 border-green-200"
-                  >
-                    {approvedTemplates.length} aprovado(s)
-                  </Badge>
+                  <span>Selecionar Modelo da Meta</span>
+                  <div className="flex items-center gap-1">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] text-green-700 bg-green-50 border-green-200"
+                    >
+                      {
+                        allTemplates.filter((t) => (t.status || '').toUpperCase() === 'APPROVED')
+                          .length
+                      }{' '}
+                      aprovado(s)
+                    </Badge>
+                    {allTemplates.some((t) => (t.status || '').toUpperCase() === 'PENDING') && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] text-amber-700 bg-amber-50 border-amber-200"
+                      >
+                        {
+                          allTemplates.filter((t) => (t.status || '').toUpperCase() === 'PENDING')
+                            .length
+                        }{' '}
+                        em análise
+                      </Badge>
+                    )}
+                  </div>
                 </Label>
                 <span className="text-[11px] text-muted-foreground">Gerencie na aba "Modelos"</span>
               </div>
@@ -302,17 +325,28 @@ export function WhatsAppCampaignComposer({
                 disabled={isSending}
               >
                 <SelectTrigger className="text-xs h-9 bg-background">
-                  <SelectValue placeholder="Selecione um modelo aprovado..." />
+                  <SelectValue placeholder="Selecione um modelo..." />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">
                     Nenhum modelo (Apenas contatos dentro de 24h)
                   </SelectItem>
-                  {approvedTemplates.map((t) => (
-                    <SelectItem key={t.id} value={t.name}>
-                      ✅ {t.name} ({t.category} - {t.language})
-                    </SelectItem>
-                  ))}
+                  {allTemplates.map((t) => {
+                    const statusUpper = (t.status || '').toUpperCase()
+                    const icon =
+                      statusUpper === 'APPROVED' ? '✅' : statusUpper === 'PENDING' ? '⏳' : '⚠️'
+                    const labelStatus =
+                      statusUpper === 'APPROVED'
+                        ? 'Aprovado'
+                        : statusUpper === 'PENDING'
+                          ? 'Em análise'
+                          : t.status
+                    return (
+                      <SelectItem key={t.id} value={t.name}>
+                        {icon} {t.name} ({labelStatus} — {t.language})
+                      </SelectItem>
+                    )
+                  })}
                   <SelectItem value="custom">Outro modelo (digitar nome manualmente)</SelectItem>
                 </SelectContent>
               </Select>
