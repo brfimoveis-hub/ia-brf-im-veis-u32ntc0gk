@@ -14,8 +14,9 @@ export function RemarketingStatusBanner({
   capiStatus,
   appId,
 }: RemarketingStatusBannerProps) {
-  const tokenValid = hasAccessToken && tokenStatus === 'valid'
-  const capiConnected = capiStatus === 'connected'
+  const capiConnected = capiStatus === 'connected' || capiStatus === 'active' || capiStatus === 'ok'
+  const tokenValid =
+    hasAccessToken && (tokenStatus === 'valid' || tokenStatus === 'active' || capiConnected)
   const isFullyConnected = tokenValid && capiConnected
   const isPartial = (tokenValid || capiConnected) && !isFullyConnected
   const isPending = hasAccessToken && tokenStatus !== 'valid' && !capiConnected

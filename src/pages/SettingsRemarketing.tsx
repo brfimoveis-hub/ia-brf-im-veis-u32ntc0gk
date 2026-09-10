@@ -171,8 +171,17 @@ export default function SettingsRemarketing() {
       </div>
 
       <RemarketingStatusBanner
-        hasAccessToken={!!currentUser?.meta_whatsapp_access_token?.trim()}
-        tokenStatus={currentUser?.meta_token_status || ''}
+        hasAccessToken={
+          !!(
+            currentUser?.meta_capi_token?.trim() || currentUser?.meta_whatsapp_access_token?.trim()
+          )
+        }
+        tokenStatus={
+          currentUser?.meta_capi_status === 'connected' ||
+          currentUser?.meta_capi_status === 'active'
+            ? 'valid'
+            : currentUser?.meta_token_status || ''
+        }
         capiStatus={currentUser?.meta_capi_status || ''}
         appId={currentUser?.meta_app_id || ''}
       />

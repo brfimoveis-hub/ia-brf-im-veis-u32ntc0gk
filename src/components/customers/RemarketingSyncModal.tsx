@@ -234,7 +234,8 @@ export function RemarketingSyncModal({
     setTotalBatches(Math.ceil(listToProcess.length / Math.max(1, batchSize)))
     setCurrentBatchIndex(0)
 
-    const needsValidation = user?.meta_token_status !== 'valid'
+    const needsValidation =
+      user?.meta_capi_status !== 'connected' && user?.meta_token_status !== 'valid'
     if (needsValidation) {
       try {
         await pb.send('/backend/v1/meta-test-connection', {
