@@ -34,9 +34,20 @@ import {
   CheckCircle2,
   Send,
   HelpCircle,
+  Layers,
+  Clock,
+  Play,
+  Pause,
+  StopCircle,
 } from 'lucide-react'
-import { sendWhatsAppCampaign, SendWhatsAppCampaignResponse } from '@/services/whatsapp_campaigns'
+import {
+  sendWhatsAppCampaign,
+  SendWhatsAppCampaignResponse,
+  executeNextBatch,
+  updateCampaignStatus,
+} from '@/services/whatsapp_campaigns'
 import { useToast } from '@/hooks/use-toast'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 interface WhatsAppCampaignComposerProps {
   selectedCount: number
@@ -74,9 +85,29 @@ export function WhatsAppCampaignComposer({
   const [allTemplates, setAllTemplates] = useState<WhatsAppTemplate[]>([])
   const [selectedTemplateOption, setSelectedTemplateOption] = useState<string>('none')
   const [syncWithCapi, setSyncWithCapi] = useState(true)
+
+  // Configurações de lote e cadência
+  const [batchSize, setBatchSize] = useState<number>(50)
+  const [batchIntervalMinutes, setBatchIntervalMinutes] = useState<number>(5)
+
+  // Estado de execução da campanha ativa
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [lastResult, setLastResult] = useState<SendWhatsAppCampaignResponse | null>(null)
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
+  const [activeCampaignStatus, setActiveCampaignStatus] = useState<
+    'draft' | 'sending' | 'paused' | 'completed' | 'failed' | 'stopped' | null
+  >(null)
+  const [campaignProgress, setCampaignProgress] = useState<{
+    totalRecipients: number
+    sentCount: number
+    requiresTemplateCount: number
+    failedCount: number
+    currentBatch: number
+    totalBatches: number
+    nextBatchAt?: string
+    isFinished: boolean
+  } | null>(null)
+  const [lastErrorMessage, setLastErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (initialTemplateName) {
@@ -108,7 +139,7 @@ export function WhatsAppCampaignComposer({
     if (val === 'none') {
       setTemplateName('')
     } else if (val === 'custom') {
-      // Deixa o usuário digitar manualmente no campo abaixo
+      // Manual
     } else {
       setTemplateName(val)
       const found = allTemplates.find((t) => t.name === val)
@@ -146,7 +177,10 @@ export function WhatsAppCampaignComposer({
     }
 
     setIsSending(true)
-    setLastResult(null)
+    setLastErrorMessage(null)
+
+    const sanitizedBatchSize = Math.max(1, Math.min(200, Number(batchSize) || 50))
+    const sanitizedInterval = Math.max(0, Math.min(120, Number(batchIntervalMinutes) || 5))
 
     try {
       const res = await sendWhatsAppCampaign({
@@ -158,24 +192,168 @@ export function WhatsAppCampaignComposer({
         template_language: templateLang.trim() || 'pt_BR',
         customer_ids: selectedCustomerIds,
         sync_meta_capi: syncWithCapi && hasCapiCredentials,
+        batch_size: sanitizedBatchSize,
+        batch_interval_minutes: sanitizedInterval,
       })
 
-      setLastResult(res)
-      toast({
-        title: 'Campanha processada!',
-        description: `${res.sent} mensagens enviadas, ${res.requires_template} contatos fora da janela (requerem template), ${res.failed} falhas.`,
+      setActiveCampaignId(res.campaign_id)
+      const camp = res.campaign
+      const batch = res.batch
+
+      const total = camp?.total_recipients ?? selectedCustomerIds.length
+      const sent = camp?.sent_count ?? batch?.sent ?? res.sent ?? 0
+      const reqTpl =
+        camp?.requires_template_count ?? batch?.requires_template ?? res.requires_template ?? 0
+      const failed = camp?.failed_count ?? batch?.failed ?? res.failed ?? 0
+      const currBatch = camp?.current_batch ?? batch?.batch_number ?? 1
+      const totalB =
+        camp?.total_batches ?? batch?.total_batches ?? Math.ceil(total / sanitizedBatchSize)
+      const nextBatch = camp?.next_batch_at ?? batch?.next_batch_at
+      const finished =
+        (batch?.is_finished ?? sent + reqTpl + failed >= total) || camp?.status === 'completed'
+
+      setActiveCampaignStatus(finished ? 'completed' : 'sending')
+      setCampaignProgress({
+        totalRecipients: total,
+        sentCount: sent,
+        requiresTemplateCount: reqTpl,
+        failedCount: failed,
+        currentBatch: currBatch,
+        totalBatches: totalB,
+        nextBatchAt: nextBatch,
+        isFinished: finished,
       })
+
+      if (finished) {
+        toast({
+          title: 'Campanha concluída!',
+          description: `${sent} enviadas com sucesso, ${reqTpl} fora da janela de 24h, ${failed} falhas.`,
+        })
+      } else {
+        toast({
+          title: `Lote 1 de ${totalB} enviado com sucesso!`,
+          description: `${sent} enviadas agora. O próximo lote de ${sanitizedBatchSize} será disparado automaticamente em ${sanitizedInterval} min ou você pode clicar em "Enviar Próximo Lote Agora".`,
+        })
+      }
+
       if (onSuccess) onSuccess(res)
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const readableError = getErrorMessage(err)
+      setLastErrorMessage(readableError)
       toast({
         variant: 'destructive',
         title: 'Erro ao enviar campanha',
-        description: err.message || 'Falha na comunicação com o servidor.',
+        description: readableError || 'Falha na comunicação com o servidor.',
       })
     } finally {
       setIsSending(false)
     }
   }
+
+  const handleTriggerNextBatchManually = async () => {
+    if (!activeCampaignId) return
+    setIsSending(true)
+    setLastErrorMessage(null)
+    try {
+      const res = await executeNextBatch(activeCampaignId)
+      const b = res.batch_result
+      if (b) {
+        const isFin = b.is_finished || b.remaining === 0
+        setActiveCampaignStatus(isFin ? 'completed' : 'sending')
+        setCampaignProgress((prev) => {
+          if (!prev) return null
+          return {
+            ...prev,
+            sentCount: b.total_sent ?? prev.sentCount + b.sent,
+            failedCount: b.total_failed ?? prev.failedCount + b.failed,
+            requiresTemplateCount:
+              b.total_requires_template ?? prev.requiresTemplateCount + b.requires_template,
+            currentBatch: b.current_batch ?? b.batch_number ?? prev.currentBatch,
+            nextBatchAt: b.next_batch_at,
+            isFinished: isFin,
+          }
+        })
+        toast({
+          title: isFin ? 'Campanha finalizada!' : `Lote ${b.current_batch} processado!`,
+          description: `${b.sent} enviadas neste lote. ${b.remaining} contatos restantes.`,
+        })
+      }
+    } catch (err: unknown) {
+      const readableError = getErrorMessage(err)
+      setLastErrorMessage(readableError)
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao processar lote',
+        description: readableError || 'Não foi possível avançar para o próximo lote.',
+      })
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const handlePauseResumeCampaign = async (newStatus: 'paused' | 'sending') => {
+    if (!activeCampaignId) return
+    setIsSending(true)
+    try {
+      await updateCampaignStatus(activeCampaignId, newStatus)
+      setActiveCampaignStatus(newStatus)
+      toast({
+        title: newStatus === 'paused' ? 'Campanha pausada' : 'Campanha retomada',
+        description:
+          newStatus === 'paused'
+            ? 'Os envios automáticos foram pausados. Você pode retomar quando desejar.'
+            : 'Envios retomados. O próximo lote será agendado em instantes.',
+      })
+    } catch (err: unknown) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao alterar status',
+        description: getErrorMessage(err),
+      })
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const handleStopCampaign = async () => {
+    if (!activeCampaignId) return
+    setIsSending(true)
+    try {
+      await updateCampaignStatus(activeCampaignId, 'stopped')
+      setActiveCampaignStatus('stopped')
+      setCampaignProgress((prev) => (prev ? { ...prev, isFinished: true } : null))
+      toast({
+        title: 'Campanha interrompida',
+        description: 'Os contatos pendentes foram cancelados.',
+      })
+    } catch (err: unknown) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao parar campanha',
+        description: getErrorMessage(err),
+      })
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const totalCalculatedBatches = Math.max(
+    1,
+    Math.ceil(selectedCount / Math.max(1, Number(batchSize) || 50)),
+  )
+
+  const progressPercent = campaignProgress
+    ? Math.min(
+        100,
+        Math.round(
+          ((campaignProgress.sentCount +
+            campaignProgress.failedCount +
+            campaignProgress.requiresTemplateCount) /
+            Math.max(1, campaignProgress.totalRecipients)) *
+            100,
+        ),
+      )
+    : 0
 
   return (
     <Card className="border-primary/20 shadow-sm">
@@ -187,8 +365,8 @@ export function WhatsAppCampaignComposer({
               Disparar Campanha de Remarketing WhatsApp
             </CardTitle>
             <CardDescription>
-              Escreva a mensagem personalizada com variáveis para enviar aos números selecionados
-              via Bia (WhatsApp Cloud API da BRF Imóveis).
+              Envio sequenciado em lotes controlados com proteção anti-bloqueio Meta e feedback em
+              tempo real.
             </CardDescription>
           </div>
           <Badge
@@ -221,6 +399,80 @@ export function WhatsAppCampaignComposer({
               onChange={(e) => setSegmentName(e.target.value)}
               disabled={isSending}
             />
+          </div>
+        </div>
+
+        {/* CONTROLE DE LOTE E RITMO */}
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="font-semibold text-sm flex items-center gap-2 text-foreground">
+              <Layers className="h-4 w-4 text-primary" />
+              <span>Controle de Ritmo e Tamanho de Lote</span>
+              <Badge variant="outline" className="text-[11px] font-normal">
+                Sequenciado em lotes
+              </Badge>
+            </Label>
+            <span className="text-xs text-muted-foreground">
+              Prevenção de sobrecarga na Cloud API
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="batch-size" className="text-xs font-medium">
+                  Tamanho do Lote (por disparo)
+                </Label>
+                <span className="text-[11px] text-muted-foreground font-mono">
+                  Padrão: 50 contatos
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="batch-size"
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={batchSize}
+                  onChange={(e) => setBatchSize(Number(e.target.value))}
+                  disabled={isSending}
+                  className="h-9 font-medium"
+                />
+                <span className="text-xs text-muted-foreground shrink-0">contatos</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Total estimado: <strong>{totalCalculatedBatches} lote(s)</strong> para os{' '}
+                {selectedCount} contatos.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="batch-interval" className="text-xs font-medium">
+                  Intervalo entre Lotes (minutos)
+                </Label>
+                <span className="text-[11px] text-muted-foreground font-mono">
+                  Recomendado: 5 a 10 min
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="batch-interval"
+                  type="number"
+                  min={0}
+                  max={120}
+                  value={batchIntervalMinutes}
+                  onChange={(e) => setBatchIntervalMinutes(Number(e.target.value))}
+                  disabled={isSending}
+                  className="h-9 font-medium"
+                />
+                <span className="text-xs text-muted-foreground shrink-0">minutos</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Disparo suave que evita restrições de rajada na Meta.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -277,11 +529,11 @@ export function WhatsAppCampaignComposer({
                 Regra da Janela de 24h da Meta (WhatsApp Business)
               </p>
               <p className="text-amber-800 dark:text-amber-300/90 text-xs">
-                Mensagens de texto livre só são entregues pela Meta para contatos que interagiram
-                nas últimas 24h. Para contatos fora da janela, a Meta exige o uso de um{' '}
-                <strong>modelo pré-aprovado (template)</strong>. Se você não informar um template
-                abaixo, contatos fora da janela serão marcados com segurança como{' '}
-                <em>"requer template"</em> sem interromper os demais envios do lote.
+                Contatos fora da janela de 24h recebem com o modelo pré-aprovado pela Meta (exemplo:{' '}
+                <code className="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded font-mono text-[11px]">
+                  villa_dos_acores
+                </code>
+                ). Falhas por contato não travam os demais clientes do lote.
               </p>
             </div>
           </div>
@@ -316,7 +568,7 @@ export function WhatsAppCampaignComposer({
                     )}
                   </div>
                 </Label>
-                <span className="text-[11px] text-muted-foreground">Gerencie na aba "Modelos"</span>
+                <span className="text-[11px] text-muted-foreground">Aba "Modelos"</span>
               </div>
 
               <Select
@@ -347,7 +599,7 @@ export function WhatsAppCampaignComposer({
                       </SelectItem>
                     )
                   })}
-                  <SelectItem value="custom">Outro modelo (digitar nome manualmente)</SelectItem>
+                  <SelectItem value="custom">Outro modelo (digitar manualmente)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -414,12 +666,22 @@ export function WhatsAppCampaignComposer({
               </Badge>
             </label>
             <p className="text-xs text-muted-foreground">
-              Envia hash SHA-256 de telefone/email para a Conversions API (evento Lead), garantindo
-              que a Meta entenda que você está fazendo remarketing para clientes capturados
-              anteriormente.
+              Envia hash SHA-256 de telefone/email para a Conversions API (evento Lead) a cada lote
+              processado com sucesso.
             </p>
           </div>
         </div>
+
+        {/* Alerta de erro legível se houver */}
+        {lastErrorMessage && (
+          <div className="p-3.5 bg-red-50 border border-red-200 rounded-lg text-red-900 text-xs sm:text-sm space-y-1">
+            <div className="font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+              <span>Falha no envio da campanha</span>
+            </div>
+            <p className="text-red-800 text-xs pl-5 leading-relaxed">{lastErrorMessage}</p>
+          </div>
+        )}
 
         {/* Alerta de credenciais se faltar */}
         {!hasWhatsAppCredentials && (
@@ -432,55 +694,175 @@ export function WhatsAppCampaignComposer({
           </div>
         )}
 
-        {/* Barra de progresso se enviando */}
-        {isSending && (
-          <div className="space-y-2 p-4 bg-muted/50 rounded-lg border animate-pulse">
-            <div className="flex justify-between text-xs font-medium">
-              <span className="flex items-center gap-1.5">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                Processando disparos via WhatsApp Cloud API e CAPI...
-              </span>
-              <span>Em andamento</span>
-            </div>
-            <Progress value={65} className="h-2" />
-          </div>
-        )}
+        {/* PAINEL DE CONTROLE DE CAMPANHA ATIVA / ACOMPANHAMENTO DE PROGRESSO */}
+        {campaignProgress && (
+          <div className="p-4 bg-muted/40 border rounded-lg space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-primary" />
+                  Progresso da Campanha Sequenciada
+                  <Badge
+                    variant={
+                      activeCampaignStatus === 'completed'
+                        ? 'default'
+                        : activeCampaignStatus === 'paused'
+                          ? 'secondary'
+                          : activeCampaignStatus === 'stopped'
+                            ? 'destructive'
+                            : 'outline'
+                    }
+                    className="text-[11px]"
+                  >
+                    {activeCampaignStatus === 'completed'
+                      ? 'Concluída'
+                      : activeCampaignStatus === 'paused'
+                        ? 'Pausada'
+                        : activeCampaignStatus === 'stopped'
+                          ? 'Interrompida'
+                          : 'Em Andamento'}
+                  </Badge>
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Lote {campaignProgress.currentBatch} de {campaignProgress.totalBatches} • Enviados{' '}
+                  {campaignProgress.sentCount} de {campaignProgress.totalRecipients} contatos (
+                  {progressPercent}%)
+                </p>
+              </div>
 
-        {/* Resumo do último resultado */}
-        {lastResult && (
-          <div className="p-4 bg-background border rounded-lg space-y-3">
-            <h4 className="text-sm font-semibold flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              Resultado da Campanha
-            </h4>
+              {/* Botões de Ação para Pausar / Retomar / Parar / Avançar */}
+              <div className="flex flex-wrap items-center gap-2">
+                {activeCampaignStatus === 'sending' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1 border-amber-300 hover:bg-amber-50"
+                    onClick={() => handlePauseResumeCampaign('paused')}
+                    disabled={isSending}
+                  >
+                    <Pause className="h-3.5 w-3.5 text-amber-600" /> Pausar
+                  </Button>
+                )}
+
+                {activeCampaignStatus === 'paused' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1 border-green-300 hover:bg-green-50"
+                    onClick={() => handlePauseResumeCampaign('sending')}
+                    disabled={isSending}
+                  >
+                    <Play className="h-3.5 w-3.5 text-green-600" /> Retomar
+                  </Button>
+                )}
+
+                {!campaignProgress.isFinished && activeCampaignStatus !== 'stopped' && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1"
+                      onClick={handleTriggerNextBatchManually}
+                      disabled={isSending}
+                    >
+                      {isSending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Play className="h-3.5 w-3.5 text-primary" />
+                      )}
+                      Enviar Próximo Lote Agora
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1 text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={handleStopCampaign}
+                      disabled={isSending}
+                    >
+                      <StopCircle className="h-3.5 w-3.5" /> Parar
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Progresso geral de entrega</span>
+                <span>{progressPercent}%</span>
+              </div>
+              <Progress value={progressPercent} className="h-2.5" />
+            </div>
+
+            {/* Cartões de Contadores */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-              <div className="p-2 bg-green-50 rounded border border-green-200">
-                <div className="text-lg font-bold text-green-700">{lastResult.sent}</div>
-                <div className="text-green-600 font-medium">Enviados</div>
-              </div>
-              <div className="p-2 bg-amber-50 rounded border border-amber-200">
-                <div className="text-lg font-bold text-amber-700">
-                  {lastResult.requires_template}
+              <div className="p-2.5 bg-green-50 dark:bg-green-950/20 rounded-md border border-green-200 dark:border-green-900/40">
+                <div className="text-xl font-bold text-green-700 dark:text-green-400">
+                  {campaignProgress.sentCount}
                 </div>
-                <div className="text-amber-600 font-medium">Requer Template</div>
+                <div className="text-green-600 dark:text-green-300 text-[11px] font-medium">
+                  Enviados com Sucesso
+                </div>
               </div>
-              <div className="p-2 bg-red-50 rounded border border-red-200">
-                <div className="text-lg font-bold text-red-700">{lastResult.failed}</div>
-                <div className="text-red-600 font-medium">Falhas</div>
+
+              <div className="p-2.5 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-900/40">
+                <div className="text-xl font-bold text-amber-700 dark:text-amber-400">
+                  {campaignProgress.requiresTemplateCount}
+                </div>
+                <div className="text-amber-600 dark:text-amber-300 text-[11px] font-medium">
+                  Requerem Template (24h)
+                </div>
               </div>
-              <div className="p-2 bg-blue-50 rounded border border-blue-200">
-                <div className="text-lg font-bold text-blue-700">{lastResult.capi_synced}</div>
-                <div className="text-blue-600 font-medium">Sinc. Meta CAPI</div>
+
+              <div className="p-2.5 bg-red-50 dark:bg-red-950/20 rounded-md border border-red-200 dark:border-red-900/40">
+                <div className="text-xl font-bold text-red-700 dark:text-red-400">
+                  {campaignProgress.failedCount}
+                </div>
+                <div className="text-red-600 dark:text-red-300 text-[11px] font-medium">
+                  Falhas no Envio
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-blue-50 dark:bg-blue-950/20 rounded-md border border-blue-200 dark:border-blue-900/40">
+                <div className="text-xl font-bold text-blue-700 dark:text-blue-400">
+                  {Math.max(
+                    0,
+                    campaignProgress.totalRecipients -
+                      campaignProgress.sentCount -
+                      campaignProgress.failedCount -
+                      campaignProgress.requiresTemplateCount,
+                  )}
+                </div>
+                <div className="text-blue-600 dark:text-blue-300 text-[11px] font-medium">
+                  Aguardando Próximo Lote
+                </div>
               </div>
             </div>
+
+            {campaignProgress.nextBatchAt && !campaignProgress.isFinished && (
+              <div className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
+                <Clock className="h-3.5 w-3.5 text-primary" />
+                <span>
+                  Próximo lote programado para:{' '}
+                  <strong>
+                    {new Date(campaignProgress.nextBatchAt).toLocaleTimeString('pt-BR')}
+                  </strong>{' '}
+                  (automático via agendador ou clique para disparar agora)
+                </span>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Botão de Disparo */}
+        {/* Botão de Disparo Inicial */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <HelpCircle className="h-3.5 w-3.5" />
-            <span>Processamento com intervalo anti-rate limit e logs individuais</span>
+            <span>
+              Disparo sequenciado em lotes de {batchSize} a cada {batchIntervalMinutes} min com
+              pausa/retomada.
+            </span>
           </div>
 
           <Button
@@ -497,12 +879,13 @@ export function WhatsAppCampaignComposer({
             {isSending ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Disparando Campanha...
+                Processando Lote...
               </>
             ) : (
               <>
                 <Send className="h-5 w-5" />
-                Enviar Campanha WhatsApp ({selectedCount})
+                Iniciar Campanha ({selectedCount} contatos em {totalCalculatedBatches} lote
+                {totalCalculatedBatches > 1 ? 's' : ''})
               </>
             )}
           </Button>
@@ -516,20 +899,25 @@ export function WhatsAppCampaignComposer({
             <AlertDialogTitle>Confirmar Envio da Campanha de Remarketing</AlertDialogTitle>
             <AlertDialogDescription className="space-y-2 pt-2">
               <p>
-                Você está prestes a enviar mensagens para{' '}
-                <strong>{selectedCount} contato(s)</strong> através do WhatsApp da Bia (+55 48
-                9209-8050).
+                Você está prestes a iniciar o envio para <strong>{selectedCount} contato(s)</strong>{' '}
+                através do WhatsApp da Bia (+55 48 9209-8050).
+              </p>
+              <p className="text-xs bg-muted p-2 rounded">
+                ⚙️ O envio será realizado em <strong>{totalCalculatedBatches} lote(s)</strong> de
+                até <strong>{batchSize} contatos</strong> com intervalo de{' '}
+                <strong>{batchIntervalMinutes} minutos</strong> entre eles para proteção da sua
+                linha e da conta na Meta.
               </p>
               {syncWithCapi && hasCapiCredentials && (
                 <p className="text-xs text-blue-600 dark:text-blue-400">
                   ✓ Os dados também serão sincronizados via Meta CAPI (evento Lead) para alimentar
-                  as audiências de remarketing da Meta simultaneamente.
+                  as audiências de remarketing simultaneamente.
                 </p>
               )}
               {!templateName && (
                 <p className="text-xs text-amber-600 dark:text-amber-400">
-                  ⚠️ Contatos fora da janela de 24h serão identificados e marcados como "requer
-                  template", sem gerar cobrança indevida ou bloqueio da conta Meta.
+                  ⚠️ Contatos fora da janela de 24h serão identificados e marcados com segurança
+                  como "requer template", sem gerar cobrança indevida ou bloqueio da conta Meta.
                 </p>
               )}
             </AlertDialogDescription>
@@ -540,7 +928,7 @@ export function WhatsAppCampaignComposer({
               className="bg-green-600 hover:bg-green-700 text-white"
               onClick={handleStartCampaign}
             >
-              Confirmar e Disparar
+              Confirmar e Iniciar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

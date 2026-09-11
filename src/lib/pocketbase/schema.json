@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T21:00:06.298Z",
+  "generatedAt": "2026-09-11T14:20:27.977Z",
   "collections": [
     {
       "name": "users",
@@ -1073,7 +1073,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["draft", "sending", "completed", "failed", "stopped"]
+          "selectValues": ["draft", "sending", "paused", "completed", "failed", "stopped"]
         },
         {
           "name": "total_recipients",
@@ -1130,6 +1130,42 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "batch_size",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "batch_interval_minutes",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "current_batch",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_batches",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "next_batch_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_error",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_rem_camp_user ON remarketing_campaigns (user_id, created DESC)"]
