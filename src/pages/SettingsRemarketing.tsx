@@ -6,6 +6,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { useAutoRetry } from '@/hooks/use-auto-retry'
 import { useRemarketingSync } from '@/hooks/use-remarketing-sync'
 import { useToast } from '@/hooks/use-toast'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -158,12 +159,12 @@ export default function SettingsRemarketing() {
       }
       setFetching(false)
       await sync.sync(customers, 100)
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFetching(false)
       toast({
         variant: 'destructive',
         title: 'Erro ao carregar dados',
-        description: err.message || 'Falha ao buscar clientes selecionados.',
+        description: getErrorMessage(err) || 'Falha ao buscar clientes selecionados.',
       })
     }
   }

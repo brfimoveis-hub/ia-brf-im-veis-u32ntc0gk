@@ -10,6 +10,7 @@ import {
 } from '@/services/ad_playbooks'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useToast } from '@/hooks/use-toast'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -99,9 +100,9 @@ export function AdPlaybooksManager() {
       setError(null)
       const data = await getAdPlaybooks()
       setPlaybooks(data)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[AdPlaybooksManager] Erro ao carregar playbooks:', err)
-      setError(err?.message || 'Falha ao buscar playbooks')
+      setError(getErrorMessage(err) || 'Falha ao buscar playbooks')
     } finally {
       setLoading(false)
     }
@@ -194,11 +195,11 @@ export function AdPlaybooksManager() {
       }
       setModalOpen(false)
       loadPlaybooks()
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar playbook',
-        description: err?.message || 'Falha na comunicação com o banco.',
+        description: getErrorMessage(err) || 'Falha na comunicação com o banco.',
       })
     } finally {
       setSaving(false)
@@ -216,11 +217,11 @@ export function AdPlaybooksManager() {
         title: newActive ? 'Playbook ativado' : 'Playbook desativado',
         description: `O playbook "${pbItem.name}" agora está ${newActive ? 'ativo' : 'pausado'}.`,
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         variant: 'destructive',
         title: 'Erro ao alterar status',
-        description: err?.message || 'Falha ao atualizar o playbook.',
+        description: getErrorMessage(err) || 'Falha ao atualizar o playbook.',
       })
       loadPlaybooks()
     }
@@ -238,11 +239,11 @@ export function AdPlaybooksManager() {
       })
       setDeleteTarget(null)
       loadPlaybooks()
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         variant: 'destructive',
         title: 'Erro ao excluir',
-        description: err?.message || 'Não foi possível remover o playbook.',
+        description: getErrorMessage(err) || 'Não foi possível remover o playbook.',
       })
     } finally {
       setDeleting(false)

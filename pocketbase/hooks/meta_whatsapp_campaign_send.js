@@ -445,7 +445,7 @@ routerAdd(
 
     const remainingCount = $app.countRecords(
       'remarketing_recipients',
-      "campaign_id = '" + campaign.id + "' && status = 'queued'",
+      $dbx.hashExp({ campaign_id: campaign.id, status: 'queued' }),
     )
 
     if (remainingCount === 0) {
@@ -878,7 +878,7 @@ routerAdd(
 
     const remainingCount = $app.countRecords(
       'remarketing_recipients',
-      "campaign_id = '" + campaign.id + "' && status = 'queued'",
+      $dbx.hashExp({ campaign_id: campaign.id, status: 'queued' }),
     )
 
     const intervalMin = campaign.getInt('batch_interval_minutes') || 5
@@ -1293,7 +1293,7 @@ cronAdd('process_remarketing_batches_cron', '* * * * *', () => {
 
       const remainingCount = $app.countRecords(
         'remarketing_recipients',
-        "campaign_id = '" + campaign.id + "' && status = 'queued'",
+        $dbx.hashExp({ campaign_id: campaign.id, status: 'queued' }),
       )
 
       const intervalMin = campaign.getInt('batch_interval_minutes') || 5

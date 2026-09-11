@@ -46,6 +46,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 import {
   WhatsAppTemplate,
   submitTemplateToMeta,
@@ -92,7 +93,7 @@ export function WhatsAppTemplatesManager({
       setLoading(true)
       const data = await getLocalWhatsAppTemplates(user?.id)
       setTemplates(data)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erro ao carregar templates locais:', err)
     } finally {
       setLoading(false)
@@ -113,12 +114,12 @@ export function WhatsAppTemplatesManager({
           description: `${res.templates?.length || 0} modelos verificados ao vivo na Meta Cloud API.`,
         })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (!silent) {
         toast({
           variant: 'destructive',
           title: 'Erro ao sincronizar com a Meta',
-          description: err.message || 'Falha ao consultar a Graph API.',
+          description: getErrorMessage(err) || 'Falha ao consultar a Graph API.',
         })
       }
     } finally {
@@ -209,11 +210,12 @@ export function WhatsAppTemplatesManager({
 
       // Recarrega e sincroniza a lista
       await handleSync(true)
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         variant: 'destructive',
         title: 'Erro na aprovação da Meta',
-        description: err.message || 'Falha ao submeter template para a WhatsApp Cloud API.',
+        description:
+          getErrorMessage(err) || 'Falha ao submeter template para a WhatsApp Cloud API.',
       })
     } finally {
       setIsSubmitting(false)
@@ -232,11 +234,11 @@ export function WhatsAppTemplatesManager({
       })
       setTemplates((prev) => prev.filter((t) => t.id !== deleteTarget.id))
       setDeleteTarget(null)
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         variant: 'destructive',
         title: 'Erro ao excluir modelo',
-        description: err.message || 'Falha ao remover o template.',
+        description: getErrorMessage(err) || 'Falha ao remover o template.',
       })
     } finally {
       setIsDeleting(false)

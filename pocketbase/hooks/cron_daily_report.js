@@ -5,10 +5,14 @@ cronAdd('daily_performance_report', '0 21 * * *', () => {
   const now = new Date()
   const todayStr = now.toISOString().split('T')[0]
 
-  const totalLeads = $app.countRecords('customers', `created >= '${todayStr} 00:00:00'`)
+  const totalLeads = $app.countRecords(
+    'customers',
+    $dbx.exp('created >= {:date}', { date: `${todayStr} 00:00:00` }),
+  )
   const qualifiedLeads = $app.countRecords(
     'customers',
-    `created >= '${todayStr} 00:00:00' && status = 'Qualificado'`,
+    $dbx.exp('created >= {:date}', { date: `${todayStr} 00:00:00` }),
+    $dbx.hashExp({ status: 'Qualificado' }),
   )
   try {
     $http.send({
