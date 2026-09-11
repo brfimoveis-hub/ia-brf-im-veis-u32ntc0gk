@@ -318,7 +318,8 @@ routerAdd(
           })
         } else {
           // Coletar permissões atuais para apontar diagnóstico cirúrgico.
-          // Suporta a nova família instagram_business_* bem como legada.
+          // Suporta a família do app dedicado (instagram_basic, instagram_manage_messages)
+          // bem como a nova família instagram_business_* sem falso erro de escopo.
           let missingPerms = []
           try {
             const pRes = $http.send({
@@ -333,15 +334,15 @@ routerAdd(
                 .filter((p) => p.status === 'granted')
                 .map((p) => p.permission)
               const hasBasic =
-                granted.indexOf('instagram_business_basic') !== -1 ||
-                granted.indexOf('instagram_basic') !== -1
+                granted.indexOf('instagram_basic') !== -1 ||
+                granted.indexOf('instagram_business_basic') !== -1
               const hasMsg =
-                granted.indexOf('instagram_business_manage_messages') !== -1 ||
-                granted.indexOf('instagram_manage_messages') !== -1
-              if (!hasBasic) missingPerms.push('instagram_business_basic')
-              if (!hasMsg) missingPerms.push('instagram_business_manage_messages')
+                granted.indexOf('instagram_manage_messages') !== -1 ||
+                granted.indexOf('instagram_business_manage_messages') !== -1
+              if (!hasBasic) missingPerms.push('instagram_basic')
+              if (!hasMsg) missingPerms.push('instagram_manage_messages')
             } else {
-              missingPerms = ['instagram_business_basic', 'instagram_business_manage_messages']
+              missingPerms = ['instagram_basic', 'instagram_manage_messages']
             }
           } catch (_) {}
 
@@ -349,7 +350,7 @@ routerAdd(
             missingPerms.length > 0
               ? 'Faltam permissões na Meta (' +
                 missingPerms.join(', ') +
-                '). Conecte via OAuth para autorizar os escopos do Instagram Business.'
+                '). Conecte via OAuth para autorizar os escopos do Instagram.'
               : 'Instagram ID ' + igBizId + ' aguardando autorização ou token manual.'
 
           results.push({

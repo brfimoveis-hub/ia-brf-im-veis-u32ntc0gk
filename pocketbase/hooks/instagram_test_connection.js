@@ -176,24 +176,24 @@ routerAdd(
     }
 
     // 4. Se não conseguiu obter automaticamente, analisa o motivo e retorna orientações claras.
-    // Suporta tanto a família nova (instagram_business_basic / instagram_business_manage_messages)
-    // quanto a legada (instagram_basic).
+    // Suporta tanto a família do app dedicado (instagram_basic, instagram_manage_messages, pages_show_list, etc.)
+    // quanto a família nova (instagram_business_basic, instagram_business_manage_messages) sem falsos positivos.
     const hasBasic =
-      allPermissions.indexOf('instagram_business_basic') !== -1 ||
-      allPermissions.indexOf('instagram_basic') !== -1
+      allPermissions.indexOf('instagram_basic') !== -1 ||
+      allPermissions.indexOf('instagram_business_basic') !== -1
     const hasMessages =
-      allPermissions.indexOf('instagram_business_manage_messages') !== -1 ||
-      allPermissions.indexOf('instagram_manage_messages') !== -1
+      allPermissions.indexOf('instagram_manage_messages') !== -1 ||
+      allPermissions.indexOf('instagram_business_manage_messages') !== -1
 
     const missingPerms = []
-    if (!hasBasic) missingPerms.push('instagram_business_basic')
-    if (!hasMessages) missingPerms.push('instagram_business_manage_messages')
+    if (!hasBasic) missingPerms.push('instagram_basic')
+    if (!hasMessages) missingPerms.push('instagram_manage_messages')
 
     const instructionMsg =
       missingPerms.length > 0
         ? 'Faltam permissões do Instagram na Meta (' +
           missingPerms.join(', ') +
-          '). Clique em "Conectar Instagram (OAuth)" abaixo para autorizar a conexão com a nova família de escopos do Instagram Business.'
+          '). Clique em "Conectar Instagram (OAuth)" abaixo para autorizar a conexão.'
         : 'O Instagram ID ' +
           igBizId +
           ' não possui Page Token ativo vinculado. Conecte pelo botão "Conectar Instagram (OAuth)" ou cole o Page Access Token manualmente.'

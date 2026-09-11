@@ -656,20 +656,33 @@ export function InstagramConnect() {
               </li>
             </ol>
 
-            <div className="pt-2 border-t mt-2">
-              <p className="font-medium text-foreground mb-1">
-                Escopos solicitados no OAuth (família Instagram Business):
-              </p>
-              <div className="flex flex-wrap gap-1">
+            <div className="pt-2 border-t mt-2 space-y-1.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="font-medium text-foreground">
+                  Escopos solicitados no OAuth (App Meta Dedicado - Bloco de Mensagens):
+                </p>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] bg-green-500/10 text-green-700 border-green-500/30"
+                >
+                  Compatível com Meta Developers 2025/2026
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
                 {INSTAGRAM_OAUTH_SCOPES_LIST.map((sc) => (
                   <code
                     key={sc}
-                    className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-mono text-primary font-medium"
+                    className="px-2 py-0.5 rounded bg-muted text-[11px] font-mono text-primary font-semibold border"
                   >
                     {sc}
                   </code>
                 ))}
               </div>
+              <p className="text-[11px] text-muted-foreground leading-normal">
+                Configurado exatamente para o caso de uso{' '}
+                <em>&quot;Gerenciar mensagens e conteúdo no Instagram&quot;</em> do seu App Meta
+                dedicado (sem requisições excedentes para evitar erro de <em>Invalid Scopes</em>).
+              </p>
             </div>
           </div>
         </div>
