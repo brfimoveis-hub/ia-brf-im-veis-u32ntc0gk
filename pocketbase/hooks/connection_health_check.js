@@ -311,8 +311,9 @@ routerAdd(
             message: 'Conectado ✅' + (verifiedName ? ' — @' + verifiedName : ''),
           })
         } else {
-          // Coletar permissões atuais para apontar diagnóstico cirúrgico
-          let missingPerms = ['pages_show_list', 'pages_read_engagement', 'instagram_basic']
+          // Coletar permissões atuais para apontar diagnóstico cirúrgico.
+          // Suporta a nova família instagram_business_* bem como legada.
+          let missingPerms = []
           try {
             const pRes = $http.send({
               url:
@@ -325,7 +326,16 @@ routerAdd(
               const granted = pRes.json.data
                 .filter((p) => p.status === 'granted')
                 .map((p) => p.permission)
-              missingPerms = missingPerms.filter((s) => granted.indexOf(s) === -1)
+              const hasBasic =
+                granted.indexOf('instagram_business_basic') !== -1 ||
+                granted.indexOf('instagram_basic') !== -1
+              const hasMsg =
+                granted.indexOf('instagram_business_manage_messages') !== -1 ||
+                granted.indexOf('instagram_manage_messages') !== -1
+              if (!hasBasic) missingPerms.push('instagram_business_basic')
+              if (!hasMsg) missingPerms.push('instagram_business_manage_messages')
+            } else {
+              missingPerms = ['instagram_business_basic', 'instagram_business_manage_messages']
             }
           } catch (_) {}
 
@@ -333,8 +343,8 @@ routerAdd(
             missingPerms.length > 0
               ? 'Faltam permissões na Meta (' +
                 missingPerms.join(', ') +
-                '). Conecte via OAuth ou adicione as permissões ao usuário do sistema no Meta Business Suite.'
-              : 'Instagram ID ' + igBizId + ' aguardando autorização de Página ou token manual.'
+                '). Conecte via OAuth para autorizar os escopos do Instagram Business.'
+              : 'Instagram ID ' + igBizId + ' aguardando autorização ou token manual.'
 
           results.push({
             name: 'Instagram Business',

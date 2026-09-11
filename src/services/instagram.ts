@@ -21,14 +21,27 @@ export interface InstagramTestResult {
   instructions?: string
 }
 
-const INSTAGRAM_OAUTH_SCOPES = [
-  'instagram_basic',
-  'instagram_manage_messages',
-  'pages_manage_metadata',
-  'pages_read_engagement',
-  'pages_show_list',
-  'pages_messaging',
-].join(',')
+/**
+ * Nova família de escopos Instagram Business (use_case_enum=INSTAGRAM_BUSINESS):
+ * - instagram_business_basic: leitura de perfil e mídia da conta profissional
+ * - instagram_business_manage_messages: leitura e envio de DMs no Instagram
+ * - instagram_business_manage_comments: moderação e resposta a comentários
+ *
+ * OBSERVAÇÃO SOBRE ESCOPOS DE PÁGINA (pages_*):
+ * O caso de uso INSTAGRAM_BUSINESS da Meta recusa os escopos legados `instagram_manage_messages`
+ * e `instagram_basic` ("Invalid Scopes: instagram_manage_messages").
+ * Para evitar conflito entre famílias no diálogo OAuth do app com use_case INSTAGRAM_BUSINESS,
+ * solicitamos o trio canônico instagram_business_*. Caso o caso de uso requeira também sincronizar
+ * páginas do Facebook diretamente no mesmo fluxo, escopos como pages_show_list / pages_messaging
+ * podem ser reintroduzidos após aprovação no App Review correspondente.
+ */
+export const INSTAGRAM_OAUTH_SCOPES_LIST = [
+  'instagram_business_basic',
+  'instagram_business_manage_comments',
+  'instagram_business_manage_messages',
+]
+
+const INSTAGRAM_OAUTH_SCOPES = INSTAGRAM_OAUTH_SCOPES_LIST.join(',')
 
 export const INSTAGRAM_CALLBACK_PATH = '/settings/connections/instagram/callback'
 

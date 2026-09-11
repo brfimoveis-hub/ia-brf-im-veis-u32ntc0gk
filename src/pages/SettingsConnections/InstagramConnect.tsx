@@ -29,6 +29,7 @@ import {
   testInstagramConnection,
   getInstagramRedirectUri,
   getInstagramOAuthUrl,
+  INSTAGRAM_OAUTH_SCOPES_LIST,
   PROD_REDIRECT_URI,
   PREVIEW_REDIRECT_URI,
 } from '@/services/instagram'
@@ -444,6 +445,22 @@ export function InstagramConnect() {
                 <strong>&quot;Conectar Instagram (OAuth)&quot;</strong> para concluir a autorização.
               </li>
             </ol>
+
+            <div className="pt-2 border-t mt-2">
+              <p className="font-medium text-foreground mb-1">
+                Escopos solicitados no OAuth (família Instagram Business):
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {INSTAGRAM_OAUTH_SCOPES_LIST.map((sc) => (
+                  <code
+                    key={sc}
+                    className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-mono text-primary font-medium"
+                  >
+                    {sc}
+                  </code>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 

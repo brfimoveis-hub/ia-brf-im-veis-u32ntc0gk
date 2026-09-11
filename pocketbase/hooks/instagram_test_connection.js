@@ -170,15 +170,25 @@ routerAdd(
       }
     }
 
-    // 4. Se não conseguiu obter automaticamente, analisa o motivo e retorna orientações claras
-    const requiredScopes = ['pages_show_list', 'pages_read_engagement', 'instagram_basic']
-    const missingPerms = requiredScopes.filter((s) => allPermissions.indexOf(s) === -1)
+    // 4. Se não conseguiu obter automaticamente, analisa o motivo e retorna orientações claras.
+    // Suporta tanto a família nova (instagram_business_basic / instagram_business_manage_messages)
+    // quanto a legada (instagram_basic).
+    const hasBasic =
+      allPermissions.indexOf('instagram_business_basic') !== -1 ||
+      allPermissions.indexOf('instagram_basic') !== -1
+    const hasMessages =
+      allPermissions.indexOf('instagram_business_manage_messages') !== -1 ||
+      allPermissions.indexOf('instagram_manage_messages') !== -1
+
+    const missingPerms = []
+    if (!hasBasic) missingPerms.push('instagram_business_basic')
+    if (!hasMessages) missingPerms.push('instagram_business_manage_messages')
 
     const instructionMsg =
       missingPerms.length > 0
-        ? 'Faltam permissões na Meta (' +
+        ? 'Faltam permissões do Instagram na Meta (' +
           missingPerms.join(', ') +
-          '). No Meta Business Suite, atribua a Página ao usuário do sistema ou clique em "Conectar Instagram (OAuth)" abaixo para autorizar com 1 clique.'
+          '). Clique em "Conectar Instagram (OAuth)" abaixo para autorizar a conexão com a nova família de escopos do Instagram Business.'
         : 'O Instagram ID ' +
           igBizId +
           ' não possui Page Token ativo vinculado. Conecte pelo botão "Conectar Instagram (OAuth)" ou cole o Page Access Token manualmente.'
