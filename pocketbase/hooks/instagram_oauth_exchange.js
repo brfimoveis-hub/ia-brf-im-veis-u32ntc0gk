@@ -10,11 +10,22 @@ routerAdd(
     if (!code) return e.badRequestError('Authorization code is required')
 
     const user = $app.findRecordById('users', userId)
-    const appId = user.getString('meta_app_id') || ''
-    const appSecret = user.getString('meta_app_secret') || ''
+    // Prioriza o App Meta dedicado ao Instagram; se não estiver preenchido, usa o App Meta principal
+    const appId = (
+      user.getString('meta_instagram_app_id') ||
+      user.getString('meta_app_id') ||
+      ''
+    ).trim()
+    const appSecret = (
+      user.getString('meta_instagram_app_secret') ||
+      user.getString('meta_app_secret') ||
+      ''
+    ).trim()
 
     if (!appId || !appSecret) {
-      return e.badRequestError('Meta App ID e App Secret devem ser configurados primeiro')
+      return e.badRequestError(
+        'Meta App ID e App Secret do Instagram devem ser configurados primeiro',
+      )
     }
 
     const redirectUri = body.redirect_uri || ''

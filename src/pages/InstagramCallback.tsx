@@ -59,7 +59,9 @@ export default function InstagramCallback() {
   const [copiedRedirect, setCopiedRedirect] = useState(false)
 
   const currentRedirectUri = useMemo(() => getInstagramRedirectUri(), [])
-  const hasAppConfig = Boolean(user?.meta_app_id)
+  const activeAppId = (user?.meta_instagram_app_id || user?.meta_app_id || '').trim()
+  const isDedicatedApp = Boolean(user?.meta_instagram_app_id && user.meta_instagram_app_id.trim())
+  const hasAppConfig = Boolean(activeAppId)
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -80,11 +82,11 @@ export default function InstagramCallback() {
   }
 
   const handleRetryOAuth = () => {
-    if (!user?.meta_app_id) {
+    if (!activeAppId) {
       navigate('/settings/connections')
       return
     }
-    const newOAuthUrl = getInstagramOAuthUrl(user.meta_app_id, currentRedirectUri)
+    const newOAuthUrl = getInstagramOAuthUrl(activeAppId, currentRedirectUri)
     window.location.href = newOAuthUrl
   }
 
@@ -304,7 +306,7 @@ export default function InstagramCallback() {
           showRetryOAuth: hasAppConfig,
         })
       })
-  }, [searchParams, currentRedirectUri, hasAppConfig, user?.meta_app_id])
+  }, [searchParams, currentRedirectUri, hasAppConfig, activeAppId])
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-muted/20">
@@ -415,10 +417,19 @@ export default function InstagramCallback() {
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 font-semibold text-amber-800">
                       <ShieldAlert className="h-4 w-4 text-amber-600 shrink-0" />
-                      <span>Verificação no Meta Developers (App 2442476629610638)</span>
+                      <span>
+                        Verificação no Meta Developers{' '}
+                        {activeAppId
+                          ? `(App ${activeAppId}${isDedicatedApp ? ' - Dedicado' : ''})`
+                          : ''}
+                      </span>
                     </div>
                     <a
-                      href="https://developers.facebook.com/apps/2442476629610638/roles/"
+                      href={
+                        activeAppId
+                          ? `https://developers.facebook.com/apps/${encodeURIComponent(activeAppId)}/roles/`
+                          : 'https://developers.facebook.com/apps/'
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium shrink-0"
@@ -431,9 +442,8 @@ export default function InstagramCallback() {
                     Se o seu app ainda não foi colocado em modo{' '}
                     <strong>&quot;Ao vivo&quot; (Publicado)</strong>, apenas contas cadastradas como{' '}
                     <strong>Administrador</strong> ou <strong>Testador</strong> conseguem autorizar
-                    o OAuth. Certifique-se de que o e-mail{' '}
-                    <strong className="font-mono text-foreground">brfimoveis@gmail.com</strong> está
-                    adicionado em <strong>Funções do aplicativo</strong>.
+                    o OAuth. Certifique-se de que a conta conectada está adicionada em{' '}
+                    <strong>Funções do aplicativo</strong> no portal de desenvolvedores.
                   </p>
                 </div>
               )}
@@ -446,7 +456,11 @@ export default function InstagramCallback() {
                       URI de Redirecionamento OAuth Exata:
                     </label>
                     <a
-                      href="https://developers.facebook.com/apps/2442476629610638/fb-login/settings/"
+                      href={
+                        activeAppId
+                          ? `https://developers.facebook.com/apps/${encodeURIComponent(activeAppId)}/fb-login/settings/`
+                          : 'https://developers.facebook.com/apps/'
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium"

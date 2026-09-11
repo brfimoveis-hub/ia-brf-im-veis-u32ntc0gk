@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-11T15:58:00.754Z",
+  "generatedAt": "2026-09-11T16:57:36.657Z",
   "collections": [
     {
       "name": "users",
@@ -202,6 +202,18 @@
         },
         {
           "name": "meta_page_access_token",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_instagram_app_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_instagram_app_secret",
           "type": "text",
           "required": false,
           "system": false

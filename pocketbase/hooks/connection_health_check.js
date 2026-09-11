@@ -206,6 +206,11 @@ routerAdd(
         userRecord.getString('meta_page_access_token') ||
         ''
       ).trim()
+      const igAppId = (
+        userRecord.getString('meta_instagram_app_id') ||
+        userRecord.getString('meta_app_id') ||
+        ''
+      ).trim()
       const sysUserToken = (userRecord.getString('meta_whatsapp_access_token') || '').trim()
       const capiToken = (userRecord.getString('meta_capi_token') || '').trim()
 
@@ -309,6 +314,7 @@ routerAdd(
             status: 'connected',
             timestamp: ts,
             message: 'Conectado ✅' + (verifiedName ? ' — @' + verifiedName : ''),
+            app_id: igAppId,
           })
         } else {
           // Coletar permissões atuais para apontar diagnóstico cirúrgico.
@@ -352,6 +358,7 @@ routerAdd(
             status: 'configured_waiting_token',
             timestamp: ts,
             message: detailMsg,
+            app_id: igAppId,
           })
         }
       }

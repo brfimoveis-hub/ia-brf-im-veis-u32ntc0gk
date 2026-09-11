@@ -42,10 +42,14 @@ export function InstagramConnect() {
     meta_instagram_business_id: user?.meta_instagram_business_id || '',
     meta_instagram_page_token: user?.meta_instagram_page_token || '',
     meta_page_access_token: user?.meta_page_access_token || '',
+    meta_instagram_app_id: user?.meta_instagram_app_id || '',
+    meta_instagram_app_secret: user?.meta_instagram_app_secret || '',
   })
   const [saving, setSaving] = useState(false)
+  const [savingAppConfig, setSavingAppConfig] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+  const [appFieldErrors, setAppFieldErrors] = useState<FieldErrors>({})
   const [inlineError, setInlineError] = useState('')
   const [diagnosticResult, setDiagnosticResult] = useState<{
     message?: string
@@ -75,10 +79,26 @@ export function InstagramConnect() {
       meta_instagram_business_id: e.record.meta_instagram_business_id || '',
       meta_instagram_page_token: e.record.meta_instagram_page_token || '',
       meta_page_access_token: e.record.meta_page_access_token || '',
+      meta_instagram_app_id: e.record.meta_instagram_app_id || '',
+      meta_instagram_app_secret: e.record.meta_instagram_app_secret || '',
     })
   })
 
-  const hasAppConfig = !!user?.meta_app_id && !!user?.meta_app_secret
+  // App ID e Secret prioritários para Instagram
+  const dedicatedAppId = (form.meta_instagram_app_id || user?.meta_instagram_app_id || '').trim()
+  const dedicatedAppSecret = (
+    form.meta_instagram_app_secret ||
+    user?.meta_instagram_app_secret ||
+    ''
+  ).trim()
+  const fallbackAppId = (user?.meta_app_id || '').trim()
+  const fallbackAppSecret = (user?.meta_app_secret || '').trim()
+
+  const activeAppId = dedicatedAppId || fallbackAppId
+  const activeAppSecret = dedicatedAppSecret || fallbackAppSecret
+  const isDedicatedInUse = !!dedicatedAppId
+  const hasAppConfig = !!activeAppId && !!activeAppSecret
+
   const [copiedRedirect, setCopiedRedirect] = useState(false)
   const redirectUri = getInstagramRedirectUri()
 
@@ -103,7 +123,59 @@ export function InstagramConnect() {
   const set = (key: string, val: string) => {
     setForm((prev) => ({ ...prev, [key]: val }))
     setFieldErrors((prev) => ({ ...prev, [key]: '' }))
+    setAppFieldErrors((prev) => ({ ...prev, [key]: '' }))
     setInlineError('')
+  }
+
+  const handleSaveAppConfig = async () => {
+    if (!user) return
+    const errors: FieldErrors = {}
+    const igAppId = form.meta_instagram_app_id.trim()
+    const igAppSecret = form.meta_instagram_app_secret.trim()
+
+    if (igAppId && !/^\d+$/.test(igAppId)) {
+      errors.meta_instagram_app_id = 'O App ID deve conter apenas números.'
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setAppFieldErrors(errors)
+      toast({
+        variant: 'destructive',
+        title: 'App ID inválido',
+        description: errors.meta_instagram_app_id,
+      })
+      return
+    }
+
+    setSavingAppConfig(true)
+    setAppFieldErrors({})
+    try {
+      const updated = await pb.collection('users').update(user.id, {
+        meta_instagram_app_id: igAppId,
+        meta_instagram_app_secret: igAppSecret,
+      })
+      try {
+        pb.authStore.save(pb.authStore.token || '', updated)
+      } catch {
+        // realtime will sync
+      }
+      toast({
+        title: 'App Meta do Instagram salvo',
+        description: igAppId
+          ? `App Meta dedicado (${igAppId}) configurado com sucesso para o Instagram.`
+          : 'Configuração atualizada com sucesso.',
+      })
+    } catch (err: any) {
+      const extracted = extractFieldErrors(err)
+      setAppFieldErrors(extracted)
+      const msg =
+        err?.message ||
+        Object.values(extracted).find(Boolean) ||
+        'Erro ao salvar configuração do App Meta do Instagram.'
+      toast({ variant: 'destructive', title: 'Erro ao salvar App Meta', description: msg })
+    } finally {
+      setSavingAppConfig(false)
+    }
   }
 
   const validate = (): { valid: boolean; errors: FieldErrors } => {
@@ -220,17 +292,17 @@ export function InstagramConnect() {
         variant: 'destructive',
         title: 'Configuração incompleta',
         description:
-          'Preencha o Meta App ID e App Secret na aba "Meta API Configuration" primeiro.',
+          'Preencha o App ID e Segredo do App Meta dedicado ao Instagram abaixo (ou na aba CAPI).',
       })
       return
     }
 
-    const oauthUrl = getInstagramOAuthUrl(user!.meta_app_id, redirectUri)
+    const oauthUrl = getInstagramOAuthUrl(activeAppId, redirectUri)
 
     window.open(oauthUrl, '_blank')
     toast({
       title: 'Abrindo login do Facebook',
-      description: 'Uma nova aba foi aberta para você autorizar a conexão.',
+      description: `Iniciando autorização via App Meta ${activeAppId} (${isDedicatedInUse ? 'Dedicado' : 'Principal'}).`,
     })
   }
 
@@ -243,18 +315,62 @@ export function InstagramConnect() {
         </div>
         <CardDescription>
           Conecte sua conta do Instagram Business e Messenger para receber mensagens diretamente no
-          CRM. Você pode usar o OAuth (botão abaixo) ou preencher manualmente os campos.
+          CRM. Você pode usar o OAuth com App Meta dedicado ou preencher manualmente os campos.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5 pt-6">
+        {/* Indicador do App Meta em uso pelo Instagram */}
+        <div className="rounded-lg border bg-muted/30 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="space-y-0.5">
+            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <ShieldCheck className="h-4 w-4 text-primary" />
+              App Meta ativo para o Instagram:
+            </span>
+            <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+              {activeAppId ? (
+                <>
+                  <code className="font-mono font-semibold text-foreground bg-background px-1.5 py-0.5 rounded border">
+                    {activeAppId}
+                  </code>
+                  <Badge
+                    variant={isDedicatedInUse ? 'default' : 'secondary'}
+                    className={
+                      isDedicatedInUse
+                        ? 'bg-purple-500/15 text-purple-700 border-purple-500/30 font-medium'
+                        : 'bg-blue-500/15 text-blue-700 border-blue-500/30 font-medium'
+                    }
+                  >
+                    {isDedicatedInUse ? 'App Dedicado ao Instagram' : 'App Principal (Fallback)'}
+                  </Badge>
+                </>
+              ) : (
+                <span className="text-amber-600 font-medium">
+                  Nenhum App Meta configurado ainda
+                </span>
+              )}
+            </div>
+          </div>
+          {activeAppId && (
+            <a
+              href={`https://developers.facebook.com/apps/${encodeURIComponent(activeAppId)}/dashboard/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium shrink-0"
+            >
+              Abrir App na Meta ({activeAppId})
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+
         {!hasAppConfig && (
           <Alert className="border-yellow-500/50 bg-yellow-500/10">
             <AlertCircle className="h-4 w-4 text-yellow-600" />
             <AlertTitle className="text-yellow-700">Configuração necessária (OAuth)</AlertTitle>
             <AlertDescription className="text-yellow-600">
-              Para usar o fluxo OAuth, preencha o <strong>Meta App ID</strong> e{' '}
-              <strong>App Secret</strong> na aba &quot;Meta API Configuration&quot; acima. Caso
-              contrário, preencha manualmente os campos abaixo.
+              Para usar o fluxo OAuth, configure o <strong>App Meta dedicado ao Instagram</strong>{' '}
+              no bloco abaixo. A Meta não permite mensagens do Instagram em apps do tipo
+              Marketing/Anúncios.
             </AlertDescription>
           </Alert>
         )}
@@ -317,30 +433,125 @@ export function InstagramConnect() {
           </div>
         </div>
 
+        {/* Bloco: App Meta dedicado ao Instagram (Recomendado pela Meta) */}
+        <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-4 sm:p-5 space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start gap-2.5">
+              <KeyRound className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 flex-wrap">
+                  App Meta dedicado ao Instagram (recomendado)
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-purple-500/10 text-purple-700 border-purple-500/30 font-normal"
+                  >
+                    Isolação total de Anúncios / CAPI
+                  </Badge>
+                </h4>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  A Meta não permite casos de uso de mensagens do Instagram em apps de Anúncios.
+                  Crie um app novo em{' '}
+                  <strong>
+                    developers.facebook.com → Criar app → caso de uso &apos;Gerenciar mensagens e
+                    conteúdo no Instagram&apos;
+                  </strong>
+                  , copie o App ID e o Segredo aqui.
+                </p>
+              </div>
+            </div>
+            <a
+              href="https://developers.facebook.com/apps/create/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-purple-700 hover:underline font-medium shrink-0"
+            >
+              Criar App Novo
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="meta_instagram_app_id" className="text-xs font-semibold">
+                App ID do Instagram
+              </Label>
+              <Input
+                id="meta_instagram_app_id"
+                value={form.meta_instagram_app_id}
+                onChange={(e) => set('meta_instagram_app_id', e.target.value.replace(/\D/g, ''))}
+                placeholder="Ex: 987654321098765"
+                inputMode="numeric"
+                className={`font-mono text-xs ${
+                  appFieldErrors.meta_instagram_app_id ? 'border-red-500' : ''
+                }`}
+              />
+              {appFieldErrors.meta_instagram_app_id ? (
+                <p className="text-[11px] text-red-500">{appFieldErrors.meta_instagram_app_id}</p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  ID do app Meta dedicado ao Instagram.
+                </p>
+              )}
+            </div>
+
+            <MaskedInput
+              id="meta_instagram_app_secret"
+              label="Segredo do App do Instagram"
+              value={form.meta_instagram_app_secret}
+              onChange={(v) => set('meta_instagram_app_secret', v)}
+              placeholder="Ex: a1b2c3d4..."
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
+            <Button
+              type="button"
+              onClick={handleSaveAppConfig}
+              disabled={savingAppConfig}
+              size="sm"
+              className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {savingAppConfig ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+              Salvar App Meta do Instagram
+            </Button>
+            <span className="text-[11px] text-muted-foreground">
+              Se deixado em branco, o CRM usará automaticamente o App ID principal (
+              {fallbackAppId || 'não configurado'}).
+            </span>
+          </div>
+        </div>
+
         {/* Card de Ajuda: Configuração de Domínios e Redirect URI no App Meta */}
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
               <h4 className="text-sm font-semibold text-foreground">
-                Configuração obrigatória no Meta Developers (OAuth Instagram)
+                Configuração no Meta Developers (
+                {activeAppId ? `App ${activeAppId}` : 'App do Instagram'})
               </h4>
             </div>
-            <a
-              href="https://developers.facebook.com/apps/2442476629610638/settings/basic/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium shrink-0"
-            >
-              Abrir App Meta
-              <ExternalLink className="h-3 w-3" />
-            </a>
+            {activeAppId && (
+              <a
+                href={`https://developers.facebook.com/apps/${encodeURIComponent(activeAppId)}/settings/basic/`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium shrink-0"
+              >
+                Abrir Configurações do App
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
           </div>
 
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Se ao clicar em &quot;Conectar Instagram (OAuth)&quot; você receber a mensagem de que{' '}
-            <em>&quot;O domínio dessa URL não está incluído nos domínios do app&quot;</em>, siga
-            este passo a passo rápido no portal de desenvolvedores da Meta:
+            No aplicativo Meta que você usar para o Instagram (seja o novo dedicado ou o existente),
+            certifique-se de registrar a URL de redirecionamento do CRM para evitar o erro{' '}
+            <em>&quot;O domínio dessa URL não está incluído nos domínios do app&quot;</em>:
           </p>
 
           <div className="space-y-1.5 pt-1">
@@ -393,29 +604,34 @@ export function InstagramConnect() {
             <p className="font-medium text-foreground">Passo a passo no Meta Developers:</p>
             <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground leading-relaxed">
               <li>
-                Acesse as{' '}
+                Acesse o app no{' '}
                 <a
-                  href="https://developers.facebook.com/apps/2442476629610638/settings/basic/"
+                  href={
+                    activeAppId
+                      ? `https://developers.facebook.com/apps/${encodeURIComponent(activeAppId)}/settings/basic/`
+                      : 'https://developers.facebook.com/apps/'
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline font-medium"
                 >
-                  Configurações Básicas do App 2442476629610638 (BRF Imóveis 2)
+                  developers.facebook.com {activeAppId ? `(App ${activeAppId})` : ''}
                 </a>{' '}
-                → no campo <strong>&quot;Domínios do app&quot;</strong>, adicione{' '}
+                → em <strong>Configurações Básicas</strong> → no campo{' '}
+                <strong>&quot;Domínios do app&quot;</strong>, adicione{' '}
                 <code className="px-1 py-0.5 rounded bg-muted text-foreground font-mono font-semibold">
                   brfiacrminteligente.goskip.app
                 </code>{' '}
-                (e caso use o ambiente preview, adicione também{' '}
+                (e se usar o ambiente de testes/preview, adicione também{' '}
                 <code className="px-1 py-0.5 rounded bg-muted text-foreground font-mono font-semibold">
                   ia-uazapi-6d79e--preview.goskip.app
                 </code>
                 ) → clique em <strong>Salvar alterações</strong> no rodapé.
               </li>
               <li>
-                No menu lateral esquerdo, vá em <strong>Produtos</strong> →{' '}
-                <strong>Logins do Facebook</strong> (ou <strong>Facebook Login</strong>) →{' '}
-                <strong>Configurações</strong> (ou <strong>Settings</strong>) → localize o campo{' '}
+                No menu lateral esquerdo, vá em <strong>Casos de uso</strong> (ou{' '}
+                <strong>Produtos</strong> → <strong>Logins do Facebook</strong>) →{' '}
+                <strong>Configurações</strong> → localize o campo{' '}
                 <strong>&quot;URIs de redirecionamento OAuth válidos&quot;</strong> (Valid OAuth
                 Redirect URIs). Cole a URI exata acima:
                 <div className="mt-1 flex items-center gap-2">
@@ -432,16 +648,10 @@ export function InstagramConnect() {
                     <Copy className="h-3 w-3 mr-1" /> Copiar
                   </Button>
                 </div>
-                {redirectUri !== PROD_REDIRECT_URI && (
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    Dica: adicione também a URI de produção (<code>{PROD_REDIRECT_URI}</code>) para
-                    ambos os ambientes funcionarem.
-                  </div>
-                )}
                 Em seguida clique em <strong>Salvar alterações</strong>.
               </li>
               <li>
-                Volte a esta página do CRM e clique novamente em{' '}
+                Volte a esta página do CRM e clique em{' '}
                 <strong>&quot;Conectar Instagram (OAuth)&quot;</strong> para concluir a autorização.
               </li>
             </ol>

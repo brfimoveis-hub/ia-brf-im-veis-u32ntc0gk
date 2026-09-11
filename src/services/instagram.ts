@@ -19,6 +19,20 @@ export interface InstagramTestResult {
   missing_perms?: string[]
   granted_perms?: string[]
   instructions?: string
+  app_id?: string
+}
+
+/**
+ * Retorna o App ID prioritário para o Instagram (dedicado ou principal de fallback).
+ */
+export function getInstagramActiveAppId(
+  user?: {
+    meta_instagram_app_id?: string | null
+    meta_app_id?: string | null
+  } | null,
+): string {
+  if (!user) return ''
+  return (user.meta_instagram_app_id || user.meta_app_id || '').trim()
 }
 
 /**

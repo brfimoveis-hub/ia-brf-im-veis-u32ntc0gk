@@ -18,6 +18,11 @@ routerAdd(
       user.getString('meta_page_access_token') ||
       ''
     ).trim()
+    const igAppId = (
+      user.getString('meta_instagram_app_id') ||
+      user.getString('meta_app_id') ||
+      ''
+    ).trim()
     const sysUserToken = (user.getString('meta_whatsapp_access_token') || '').trim()
     const capiToken = (user.getString('meta_capi_token') || '').trim()
 
@@ -200,6 +205,7 @@ routerAdd(
       missing_perms: missingPerms,
       granted_perms: allPermissions,
       instructions: instructionMsg,
+      app_id: igAppId,
     })
   },
   $apis.requireAuth(),
