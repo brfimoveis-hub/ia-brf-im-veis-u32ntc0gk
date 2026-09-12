@@ -60,6 +60,172 @@ routerAdd(
     var testedTokens = []
     var savedTokenGraphError = null
 
+    // =========================================================================
+    // PASSO 0: ANATOMIA DO TOKEN SALVO
+    // Inspeciona quem o token salvo diz ser e quais Páginas/contas IG ele enxerga
+    // =========================================================================
+    var tokenIdentity = null
+    var accessiblePages = []
+
+    if (igToken) {
+      var tokenSuffix = maskToken(igToken)
+
+      // 0.a) GET /me para inspecionar identidade do token
+      try {
+        var meRes = $http.send({
+          url: 'https://graph.facebook.com/v22.0/me?fields=id,name,type',
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + igToken },
+          timeout: 12,
+        })
+
+        if (meRes.statusCode >= 200 && meRes.statusCode < 300 && meRes.json) {
+          tokenIdentity = {
+            id: meRes.json.id || '',
+            name: meRes.json.name || '',
+            type: meRes.json.type || 'user_or_page',
+            http_status: meRes.statusCode,
+          }
+          console.log(
+            '[INSTAGRAM_TEST] passo 0 /me (token ' +
+              tokenSuffix +
+              '): id=' +
+              tokenIdentity.id +
+              ' name="' +
+              tokenIdentity.name +
+              '" type=' +
+              tokenIdentity.type,
+          )
+        } else {
+          // Fallback: se fields=id,name,type falhar (ex: 'type' inválido para certos nós), tenta me?fields=id,name
+          var meFallback = $http.send({
+            url: 'https://graph.facebook.com/v22.0/me?fields=id,name',
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + igToken },
+            timeout: 10,
+          })
+          if (meFallback.statusCode >= 200 && meFallback.statusCode < 300 && meFallback.json) {
+            tokenIdentity = {
+              id: meFallback.json.id || '',
+              name: meFallback.json.name || '',
+              type: 'unknown',
+              http_status: meFallback.statusCode,
+            }
+            console.log(
+              '[INSTAGRAM_TEST] passo 0 /me (fallback fields id,name, token ' +
+                tokenSuffix +
+                '): id=' +
+                tokenIdentity.id +
+                ' name="' +
+                tokenIdentity.name +
+                '"',
+            )
+          } else {
+            var meErr = extractGraphError(meRes.json, meRes.statusCode)
+            tokenIdentity = {
+              error: meErr,
+              http_status: meRes.statusCode,
+            }
+            console.log(
+              '[INSTAGRAM_TEST] passo 0 /me falhou (token ' +
+                tokenSuffix +
+                '): HTTP ' +
+                meErr.http_status +
+                ' code=' +
+                (meErr.code !== null ? meErr.code : 'n/a') +
+                ' msg=' +
+                meErr.message,
+            )
+          }
+        }
+      } catch (meNetErr) {
+        var meNetMsg = String(meNetErr && meNetErr.message ? meNetErr.message : meNetErr)
+        tokenIdentity = {
+          error: {
+            http_status: 0,
+            message: 'Erro de rede ao inspecionar /me: ' + meNetMsg,
+          },
+        }
+        console.log(
+          '[INSTAGRAM_TEST] passo 0 /me erro de rede (token ' + tokenSuffix + '): ' + meNetMsg,
+        )
+      }
+
+      // 0.b) GET /me/accounts para listar as Páginas do Facebook acessíveis e contas IG vinculadas
+      try {
+        var accRes = $http.send({
+          url: 'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,instagram_business_account{id,username,name}&limit=50',
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + igToken },
+          timeout: 12,
+        })
+
+        if (
+          accRes.statusCode >= 200 &&
+          accRes.statusCode < 300 &&
+          accRes.json &&
+          Array.isArray(accRes.json.data)
+        ) {
+          var rawPages = accRes.json.data
+          console.log(
+            '[INSTAGRAM_TEST] passo 0 /me/accounts: ' +
+              rawPages.length +
+              ' páginas acessíveis com token ' +
+              tokenSuffix,
+          )
+
+          for (var pi = 0; pi < rawPages.length; pi++) {
+            var rPg = rawPages[pi]
+            var rIg = rPg.instagram_business_account || null
+            var parsedPage = {
+              page_id: rPg.id || '',
+              page_name: rPg.name || '',
+              has_instagram: !!rIg,
+              ig_account_id: (rIg && rIg.id) || null,
+              ig_username: (rIg && (rIg.username || rIg.name)) || null,
+              matches_target_id: !!(rIg && rIg.id === igBizId),
+            }
+            accessiblePages.push(parsedPage)
+            console.log(
+              '[INSTAGRAM_TEST] passo 0 página [' +
+                pi +
+                ']: page_id=' +
+                parsedPage.page_id +
+                ' page_name="' +
+                parsedPage.page_name +
+                '" ig_account_id=' +
+                (parsedPage.ig_account_id || 'NENHUMA') +
+                ' ig_username=' +
+                (parsedPage.ig_username ? '@' + parsedPage.ig_username : 'NENHUM') +
+                (parsedPage.matches_target_id ? ' [MATCH ALVO!]' : ''),
+            )
+          }
+        } else {
+          var accErr = extractGraphError(accRes.json, accRes.statusCode)
+          console.log(
+            '[INSTAGRAM_TEST] passo 0 /me/accounts falhou (token ' +
+              tokenSuffix +
+              '): HTTP ' +
+              accErr.http_status +
+              ' code=' +
+              (accErr.code !== null ? accErr.code : 'n/a') +
+              ' subcode=' +
+              (accErr.subcode !== null ? accErr.subcode : 'n/a') +
+              ' msg=' +
+              accErr.message,
+          )
+        }
+      } catch (accNetErr) {
+        var accNetMsg = String(accNetErr && accNetErr.message ? accNetErr.message : accNetErr)
+        console.log(
+          '[INSTAGRAM_TEST] passo 0 /me/accounts erro de rede (token ' +
+            tokenSuffix +
+            '): ' +
+            accNetMsg,
+        )
+      }
+    }
+
     // 1. Se já possuímos um token de página salvo, testa diretamente
     if (igToken) {
       try {
@@ -82,6 +248,8 @@ routerAdd(
             message: 'Conectado ✅' + (igName ? ' — @' + igName : '') + ' (ID: ' + igBizId + ')',
             data: d,
             token_saved: false,
+            token_identity: tokenIdentity,
+            accessible_pages: accessiblePages,
             tested_tokens: [
               {
                 type: 'saved_page_token',
@@ -320,6 +488,8 @@ routerAdd(
           data: igAccountData || { id: igBizId, name: igName },
           page_id: matchedPageId,
           page_name: matchedPageName,
+          token_identity: tokenIdentity,
+          accessible_pages: accessiblePages,
           tested_tokens: testedTokens,
         })
       } catch (saveErr) {
@@ -354,6 +524,8 @@ routerAdd(
         message: tokenRejectionMsg,
         instructions: tokenRejectionMsg,
         graph_error: savedTokenGraphError,
+        token_identity: tokenIdentity,
+        accessible_pages: accessiblePages,
         tested_tokens: testedTokens,
         app_id: igAppId,
       })
@@ -391,6 +563,8 @@ routerAdd(
       missing_perms: missingPerms,
       granted_perms: allPermissions,
       instructions: instructionMsg,
+      token_identity: tokenIdentity,
+      accessible_pages: accessiblePages,
       tested_tokens: testedTokens,
       app_id: igAppId,
     })

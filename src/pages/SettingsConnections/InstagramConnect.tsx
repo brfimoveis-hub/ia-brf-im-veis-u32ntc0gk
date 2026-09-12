@@ -23,6 +23,9 @@ import {
   Copy,
   ExternalLink,
   ShieldCheck,
+  User,
+  Layers,
+  Link2,
 } from 'lucide-react'
 import { MaskedInput } from './MaskedInput'
 import {
@@ -32,6 +35,10 @@ import {
   INSTAGRAM_OAUTH_SCOPES_LIST,
   PROD_REDIRECT_URI,
   PREVIEW_REDIRECT_URI,
+  type InstagramGraphError,
+  type InstagramTestedToken,
+  type InstagramTokenIdentity,
+  type InstagramAccessiblePage,
 } from '@/services/instagram'
 
 export function InstagramConnect() {
@@ -55,8 +62,10 @@ export function InstagramConnect() {
     message?: string
     missing_perms?: string[]
     instructions?: string
-    graph_error?: any
-    tested_tokens?: any[]
+    graph_error?: InstagramGraphError
+    token_identity?: InstagramTokenIdentity | null
+    accessible_pages?: InstagramAccessiblePage[]
+    tested_tokens?: InstagramTestedToken[]
   } | null>(null)
 
   const hasIgId = !!(form.meta_instagram_business_id || user?.meta_instagram_business_id)
@@ -254,6 +263,16 @@ export function InstagramConnect() {
     setDiagnosticResult(null)
     try {
       const res = await testInstagramConnection()
+      setDiagnosticResult({
+        message: res?.message || '',
+        missing_perms: res?.missing_perms || [],
+        instructions: res?.instructions || '',
+        graph_error: res?.graph_error,
+        token_identity: res?.token_identity,
+        accessible_pages: res?.accessible_pages,
+        tested_tokens: res?.tested_tokens,
+      })
+
       if (res?.status === 'connected') {
         setIgConnected(true)
         setMsgConnected(true)
@@ -264,13 +283,6 @@ export function InstagramConnect() {
       } else {
         const msg = res?.message || 'Aguardando Page Token para ativar a conexão.'
         setInlineError(msg)
-        setDiagnosticResult({
-          message: msg,
-          missing_perms: res?.missing_perms || [],
-          instructions: res?.instructions || '',
-          graph_error: res?.graph_error,
-          tested_tokens: res?.tested_tokens,
-        })
         toast({
           variant: 'destructive',
           title: res?.graph_error ? 'Erro de Token Instagram' : 'Atenção na Conexão do Instagram',
@@ -769,6 +781,132 @@ export function InstagramConnect() {
               </div>
             </div>
           )}
+
+          {/* RESUMO ESTRUTURADO DO DIAGNÓSTICO DO TOKEN (QUEM O TOKEN É E QUAIS PÁGINAS ALCANÇA) */}
+          {diagnosticResult &&
+            (diagnosticResult.token_identity ||
+              diagnosticResult.accessible_pages !== undefined) && (
+              <div className="rounded-md border border-blue-500/40 bg-blue-500/5 p-4 space-y-3 text-xs">
+                <div className="flex items-center justify-between gap-2 border-b border-blue-500/20 pb-2">
+                  <div className="flex items-center gap-2 font-semibold text-foreground">
+                    <Layers className="h-4 w-4 text-blue-600" />
+                    <span>Análise de Conexão do Token Salvo (Diagnóstico Profundo)</span>
+                  </div>
+                  {diagnosticResult.tested_tokens && diagnosticResult.tested_tokens.length > 0 && (
+                    <Badge variant="outline" className="font-mono text-[11px]">
+                      Token {diagnosticResult.tested_tokens[0].token_suffix || '***'}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Identidade do token */}
+                {diagnosticResult.token_identity ? (
+                  <div className="flex items-start gap-2 bg-background/80 p-2.5 rounded border">
+                    <User className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <p className="text-foreground font-medium">
+                        O token conectado identifica-se como:
+                      </p>
+                      {diagnosticResult.token_identity.error ? (
+                        <p className="text-destructive font-mono text-[11px]">
+                          Não foi possível inspecionar /me (
+                          {diagnosticResult.token_identity.error.message})
+                        </p>
+                      ) : (
+                        <div className="flex items-center gap-2 flex-wrap text-muted-foreground">
+                          <span className="font-semibold text-foreground">
+                            {diagnosticResult.token_identity.name || 'Sem nome'}
+                          </span>
+                          <code className="font-mono text-[11px] bg-muted px-1.5 py-0.5 rounded">
+                            ID: {diagnosticResult.token_identity.id}
+                          </code>
+                          <Badge variant="secondary" className="text-[10px]">
+                            Tipo: {diagnosticResult.token_identity.type || 'n/a'}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Páginas do Facebook acessíveis */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-foreground flex items-center gap-1.5">
+                      <Link2 className="h-3.5 w-3.5 text-blue-600" />
+                      Páginas do Facebook acessíveis:{' '}
+                      {diagnosticResult.accessible_pages?.length ?? 0}
+                    </span>
+                  </div>
+
+                  {diagnosticResult.accessible_pages &&
+                  diagnosticResult.accessible_pages.length > 0 ? (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {diagnosticResult.accessible_pages.map((pg) => (
+                        <div
+                          key={pg.page_id}
+                          className={`p-2 rounded border flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 ${
+                            pg.matches_target_id
+                              ? 'bg-green-500/10 border-green-500/30'
+                              : 'bg-background'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-foreground">
+                              Página &quot;{pg.page_name}&quot;
+                            </span>
+                            <code className="font-mono text-[10px] text-muted-foreground bg-muted px-1 py-0.5 rounded">
+                              ID: {pg.page_id}
+                            </code>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                            {pg.has_instagram && pg.ig_account_id ? (
+                              <Badge
+                                variant={pg.matches_target_id ? 'default' : 'secondary'}
+                                className={
+                                  pg.matches_target_id
+                                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                                    : 'bg-purple-500/15 text-purple-700 border-purple-500/30'
+                                }
+                              >
+                                IG vinculada: @{pg.ig_username || 'desconhecido'} (ID:{' '}
+                                {pg.ig_account_id})
+                              </Badge>
+                            ) : (
+                              <span className="text-amber-600 font-medium">
+                                IG vinculada: NENHUMA
+                              </span>
+                            )}
+                            {pg.matches_target_id && (
+                              <Badge
+                                variant="outline"
+                                className="text-green-700 border-green-600/30 text-[10px]"
+                              >
+                                Conta do CRM
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-800 space-y-1">
+                      <p className="font-semibold flex items-center gap-1.5">
+                        <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />O token NÃO
+                        enxerga nenhuma Página do Facebook — provável causa do erro 100/33.
+                      </p>
+                      <p className="text-[11px] text-amber-700 leading-relaxed">
+                        Para que a API da Meta permita ler a conta do Instagram Business, o usuário
+                        que autorizou o token precisa ser Administrador ou Editor da Página do
+                        Facebook no Meta Business Suite, ou a Página precisa ter sido selecionada
+                        durante o fluxo OAuth.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
           {diagnosticResult?.graph_error && (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 space-y-2 text-xs">

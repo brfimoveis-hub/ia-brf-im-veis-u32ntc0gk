@@ -27,6 +27,23 @@ export interface InstagramTestedToken {
   message?: string
 }
 
+export interface InstagramTokenIdentity {
+  id?: string
+  name?: string
+  type?: string
+  http_status?: number
+  error?: InstagramGraphError
+}
+
+export interface InstagramAccessiblePage {
+  page_id: string
+  page_name: string
+  has_instagram: boolean
+  ig_account_id?: string | null
+  ig_username?: string | null
+  matches_target_id?: boolean
+}
+
 export interface InstagramTestResult {
   success?: boolean
   status: string
@@ -37,11 +54,15 @@ export interface InstagramTestResult {
     name?: string
     username?: string
   }
+  page_id?: string
+  page_name?: string
   missing_perms?: string[]
   granted_perms?: string[]
   instructions?: string
   app_id?: string
   graph_error?: InstagramGraphError
+  token_identity?: InstagramTokenIdentity | null
+  accessible_pages?: InstagramAccessiblePage[]
   tested_tokens?: InstagramTestedToken[]
 }
 

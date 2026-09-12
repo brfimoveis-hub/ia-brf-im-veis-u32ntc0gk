@@ -249,8 +249,96 @@ routerAdd(
         let verifiedName = ''
         let savedGraphErr = null
         const testedTokens = []
+        let tokenIdentity = null
+        const accessiblePages = []
 
         if (igToken) {
+          const tokenSuffix = maskTok(igToken)
+
+          // Passo 0: Anatomia do token (/me e /me/accounts)
+          try {
+            const meRes = $http.send({
+              url: 'https://graph.facebook.com/v22.0/me?fields=id,name,type',
+              method: 'GET',
+              headers: { Authorization: 'Bearer ' + igToken },
+              timeout: 10,
+            })
+            if (meRes.statusCode >= 200 && meRes.statusCode < 300 && meRes.json) {
+              tokenIdentity = {
+                id: meRes.json.id || '',
+                name: meRes.json.name || '',
+                type: meRes.json.type || 'user_or_page',
+                http_status: meRes.statusCode,
+              }
+              console.log(
+                '[INSTAGRAM_HEALTH] passo 0 /me (token ' +
+                  tokenSuffix +
+                  '): id=' +
+                  tokenIdentity.id +
+                  ' name="' +
+                  tokenIdentity.name +
+                  '"',
+              )
+            } else {
+              const meFallback = $http.send({
+                url: 'https://graph.facebook.com/v22.0/me?fields=id,name',
+                method: 'GET',
+                headers: { Authorization: 'Bearer ' + igToken },
+                timeout: 10,
+              })
+              if (meFallback.statusCode >= 200 && meFallback.statusCode < 300 && meFallback.json) {
+                tokenIdentity = {
+                  id: meFallback.json.id || '',
+                  name: meFallback.json.name || '',
+                  type: 'unknown',
+                  http_status: meFallback.statusCode,
+                }
+              } else {
+                tokenIdentity = {
+                  error: extractErr(meRes.json, meRes.statusCode),
+                  http_status: meRes.statusCode,
+                }
+              }
+            }
+          } catch (meErr) {
+            tokenIdentity = {
+              error: { http_status: 0, message: String(meErr) },
+            }
+          }
+
+          try {
+            const accRes = $http.send({
+              url: 'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,instagram_business_account{id,username,name}&limit=50',
+              method: 'GET',
+              headers: { Authorization: 'Bearer ' + igToken },
+              timeout: 10,
+            })
+            if (
+              accRes.statusCode >= 200 &&
+              accRes.statusCode < 300 &&
+              accRes.json &&
+              Array.isArray(accRes.json.data)
+            ) {
+              for (let pi = 0; pi < accRes.json.data.length; pi++) {
+                const rPg = accRes.json.data[pi]
+                const rIg = rPg.instagram_business_account || null
+                accessiblePages.push({
+                  page_id: rPg.id || '',
+                  page_name: rPg.name || '',
+                  has_instagram: !!rIg,
+                  ig_account_id: (rIg && rIg.id) || null,
+                  ig_username: (rIg && (rIg.username || rIg.name)) || null,
+                  matches_target_id: !!(rIg && rIg.id === igBizId),
+                })
+              }
+              console.log(
+                '[INSTAGRAM_HEALTH] passo 0 /me/accounts: ' +
+                  accessiblePages.length +
+                  ' páginas encontradas',
+              )
+            }
+          } catch (_) {}
+
           try {
             const igRes = $http.send({
               url: 'https://graph.facebook.com/v22.0/' + igBizId + '?fields=id,name,username',
@@ -437,6 +525,8 @@ routerAdd(
             timestamp: ts,
             message: 'Conectado ✅' + (verifiedName ? ' — @' + verifiedName : ''),
             app_id: igAppId,
+            token_identity: tokenIdentity,
+            accessible_pages: accessiblePages,
             tested_tokens: testedTokens,
           })
         } else {
@@ -464,6 +554,8 @@ routerAdd(
               message: detailMsg,
               app_id: igAppId,
               graph_error: savedGraphErr,
+              token_identity: tokenIdentity,
+              accessible_pages: accessiblePages,
               tested_tokens: testedTokens,
             })
           } else {
@@ -507,6 +599,8 @@ routerAdd(
               message: detailMsg,
               app_id: igAppId,
               missing_perms: missingPerms,
+              token_identity: tokenIdentity,
+              accessible_pages: accessiblePages,
               tested_tokens: testedTokens,
             })
           }
