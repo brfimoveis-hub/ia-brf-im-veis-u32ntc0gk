@@ -214,6 +214,27 @@ routerAdd(
       const sysUserToken = (userRecord.getString('meta_whatsapp_access_token') || '').trim()
       const capiToken = (userRecord.getString('meta_capi_token') || '').trim()
 
+      function maskTok(tok) {
+        if (!tok || typeof tok !== 'string') return ''
+        var tr = tok.trim()
+        if (tr.length <= 4) return '***'
+        return '...' + tr.slice(-4)
+      }
+
+      function extractErr(resJson, status) {
+        var errObj = (resJson && resJson.error) || {}
+        return {
+          http_status: status || 0,
+          message: errObj.message || (resJson && resJson.error_message) || 'HTTP ' + status,
+          code: typeof errObj.code === 'number' ? errObj.code : errObj.code || null,
+          subcode:
+            typeof errObj.error_subcode === 'number'
+              ? errObj.error_subcode
+              : errObj.error_subcode || null,
+          user_msg: errObj.error_user_msg || errObj.error_user_title || null,
+        }
+      }
+
       if (!igBizId && !igToken) {
         results.push({
           name: 'Instagram Business',
@@ -226,6 +247,8 @@ routerAdd(
         // Tentativa de validar token atual se existir
         let connected = false
         let verifiedName = ''
+        let savedGraphErr = null
+        const testedTokens = []
 
         if (igToken) {
           try {
@@ -238,18 +261,63 @@ routerAdd(
             if (igRes.statusCode >= 200 && igRes.statusCode < 300) {
               connected = true
               verifiedName = (igRes.json && (igRes.json.name || igRes.json.username)) || ''
+              testedTokens.push({
+                type: 'saved_page_token',
+                token_suffix: maskTok(igToken),
+                status: 'ok',
+                http_status: igRes.statusCode,
+              })
+            } else {
+              savedGraphErr = extractErr(igRes.json, igRes.statusCode)
+              console.log(
+                '[INSTAGRAM_HEALTH] token salvo falhou: HTTP ' +
+                  savedGraphErr.http_status +
+                  ' code=' +
+                  (savedGraphErr.code !== null ? savedGraphErr.code : 'n/a') +
+                  ' subcode=' +
+                  (savedGraphErr.subcode !== null ? savedGraphErr.subcode : 'n/a') +
+                  ' msg=' +
+                  savedGraphErr.message,
+              )
+              testedTokens.push({
+                type: 'saved_page_token',
+                token_suffix: maskTok(igToken),
+                status: 'failed',
+                http_status: savedGraphErr.http_status,
+                graph_error: savedGraphErr,
+              })
             }
-          } catch (_) {}
+          } catch (netErr) {
+            const msg = String(netErr && netErr.message ? netErr.message : netErr)
+            savedGraphErr = {
+              http_status: 0,
+              message: 'Erro de rede: ' + msg,
+              code: null,
+              subcode: null,
+              user_msg: null,
+            }
+            console.log('[INSTAGRAM_HEALTH] token salvo erro de rede: ' + msg)
+            testedTokens.push({
+              type: 'saved_page_token',
+              token_suffix: maskTok(igToken),
+              status: 'network_error',
+              graph_error: savedGraphErr,
+            })
+          }
         }
 
         // Se ainda não conectado, tenta auto-obtenção via tokens Meta já salvos
         if (!connected) {
           const candidates = []
-          if (sysUserToken) candidates.push(sysUserToken)
-          if (capiToken && capiToken !== sysUserToken) candidates.push(capiToken)
+          if (sysUserToken) candidates.push({ token: sysUserToken, type: 'system_user' })
+          if (capiToken && capiToken !== sysUserToken)
+            candidates.push({ token: capiToken, type: 'capi' })
 
           for (let c = 0; c < candidates.length; c++) {
-            const cand = candidates[c]
+            const candItem = candidates[c]
+            const cand = candItem.token
+            const candType = candItem.type
+            const candSuffix = maskTok(cand)
             try {
               // Teste direto com cand
               const dRes = $http.send({
@@ -271,8 +339,28 @@ routerAdd(
                 try {
                   $app.saveNoValidate(userRecord)
                 } catch (_) {}
+                testedTokens.push({
+                  type: candType,
+                  token_suffix: candSuffix,
+                  status: 'ok',
+                  http_status: dRes.statusCode,
+                })
                 break
               }
+
+              const dErr = extractErr(dRes.json, dRes.statusCode)
+              console.log(
+                '[INSTAGRAM_HEALTH] auto-descoberta direct (' +
+                  candType +
+                  ') falhou: HTTP ' +
+                  dErr.http_status +
+                  ' code=' +
+                  (dErr.code !== null ? dErr.code : 'n/a') +
+                  ' subcode=' +
+                  (dErr.subcode !== null ? dErr.subcode : 'n/a') +
+                  ' msg=' +
+                  dErr.message,
+              )
 
               // Teste via me/accounts
               const accRes = $http.send({
@@ -301,9 +389,43 @@ routerAdd(
                     break
                   }
                 }
+                testedTokens.push({
+                  type: candType,
+                  token_suffix: candSuffix,
+                  status: connected ? 'ok' : 'no_matching_page',
+                  http_status: accRes.statusCode,
+                })
                 if (connected) break
+              } else {
+                const accErr = extractErr(accRes.json, accRes.statusCode)
+                console.log(
+                  '[INSTAGRAM_HEALTH] auto-descoberta me/accounts (' +
+                    candType +
+                    ') falhou: HTTP ' +
+                    accErr.http_status +
+                    ' code=' +
+                    (accErr.code !== null ? accErr.code : 'n/a') +
+                    ' subcode=' +
+                    (accErr.subcode !== null ? accErr.subcode : 'n/a') +
+                    ' msg=' +
+                    accErr.message,
+                )
+                testedTokens.push({
+                  type: candType,
+                  token_suffix: candSuffix,
+                  status: 'failed',
+                  direct_error: dErr,
+                  accounts_error: accErr,
+                })
               }
-            } catch (_) {}
+            } catch (cErr) {
+              console.log('[INSTAGRAM_HEALTH] candidato erro: ' + String(cErr))
+              testedTokens.push({
+                type: candType,
+                token_suffix: candSuffix,
+                status: 'network_error',
+              })
+            }
           }
         }
 
@@ -315,52 +437,79 @@ routerAdd(
             timestamp: ts,
             message: 'Conectado ✅' + (verifiedName ? ' — @' + verifiedName : ''),
             app_id: igAppId,
+            tested_tokens: testedTokens,
           })
         } else {
-          // Coletar permissões atuais para apontar diagnóstico cirúrgico.
-          // Suporta a família do app dedicado (instagram_basic, instagram_manage_messages)
-          // bem como a nova família instagram_business_* sem falso erro de escopo.
-          let missingPerms = []
-          try {
-            const pRes = $http.send({
-              url:
-                'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
-                encodeURIComponent(sysUserToken || capiToken),
-              method: 'GET',
-              timeout: 10,
+          // Se o token salvo falhou, reporte o erro real do token ao invés de permissões irrelevantes
+          if (savedGraphErr) {
+            const errCode = savedGraphErr.code
+            const errSubcode = savedGraphErr.subcode
+            const errMsg = savedGraphErr.message || 'Token rejeitado pela Meta Graph API'
+            const errCodeStr =
+              errCode !== null
+                ? ' (code ' + errCode + (errSubcode !== null ? ', subcode ' + errSubcode : '') + ')'
+                : ''
+
+            const detailMsg =
+              'O token salvo foi rejeitado pela Meta: ' +
+              errMsg +
+              errCodeStr +
+              ' — reconecte via OAuth'
+
+            results.push({
+              name: 'Instagram Business',
+              key: 'instagram',
+              status: 'configured_waiting_token',
+              timestamp: ts,
+              message: detailMsg,
+              app_id: igAppId,
+              graph_error: savedGraphErr,
+              tested_tokens: testedTokens,
             })
-            if (pRes.statusCode === 200 && pRes.json && Array.isArray(pRes.json.data)) {
-              const granted = pRes.json.data
-                .filter((p) => p.status === 'granted')
-                .map((p) => p.permission)
-              const hasBasic =
-                granted.indexOf('instagram_basic') !== -1 ||
-                granted.indexOf('instagram_business_basic') !== -1
-              const hasMsg =
-                granted.indexOf('instagram_manage_messages') !== -1 ||
-                granted.indexOf('instagram_business_manage_messages') !== -1
-              if (!hasBasic) missingPerms.push('instagram_basic')
-              if (!hasMsg) missingPerms.push('instagram_manage_messages')
-            } else {
-              missingPerms = ['instagram_basic', 'instagram_manage_messages']
-            }
-          } catch (_) {}
+          } else {
+            // Coletar permissões atuais apenas se não havia token salvo
+            let missingPerms = []
+            try {
+              const pRes = $http.send({
+                url:
+                  'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
+                  encodeURIComponent(sysUserToken || capiToken),
+                method: 'GET',
+                timeout: 10,
+              })
+              if (pRes.statusCode === 200 && pRes.json && Array.isArray(pRes.json.data)) {
+                const granted = pRes.json.data
+                  .filter((p) => p.status === 'granted')
+                  .map((p) => p.permission)
+                const hasBasic =
+                  granted.indexOf('instagram_basic') !== -1 ||
+                  granted.indexOf('instagram_business_basic') !== -1
+                const hasMsg =
+                  granted.indexOf('instagram_manage_messages') !== -1 ||
+                  granted.indexOf('instagram_business_manage_messages') !== -1
+                if (!hasBasic) missingPerms.push('instagram_basic')
+                if (!hasMsg) missingPerms.push('instagram_manage_messages')
+              }
+            } catch (_) {}
 
-          const detailMsg =
-            missingPerms.length > 0
-              ? 'Faltam permissões na Meta (' +
-                missingPerms.join(', ') +
-                '). Conecte via OAuth para autorizar os escopos do Instagram.'
-              : 'Instagram ID ' + igBizId + ' aguardando autorização ou token manual.'
+            const detailMsg =
+              missingPerms.length > 0
+                ? 'Faltam permissões na Meta (' +
+                  missingPerms.join(', ') +
+                  '). Conecte via OAuth para autorizar os escopos do Instagram.'
+                : 'Instagram ID ' + igBizId + ' aguardando autorização ou token manual.'
 
-          results.push({
-            name: 'Instagram Business',
-            key: 'instagram',
-            status: 'configured_waiting_token',
-            timestamp: ts,
-            message: detailMsg,
-            app_id: igAppId,
-          })
+            results.push({
+              name: 'Instagram Business',
+              key: 'instagram',
+              status: 'configured_waiting_token',
+              timestamp: ts,
+              message: detailMsg,
+              app_id: igAppId,
+              missing_perms: missingPerms,
+              tested_tokens: testedTokens,
+            })
+          }
         }
       }
     }

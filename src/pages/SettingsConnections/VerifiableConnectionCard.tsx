@@ -58,12 +58,12 @@ export function VerifiableConnectionCard({
           const detailMsg = igRes?.message || 'Aguardando Page Token para ativar a conexão.'
           setLocalError(detailMsg)
           onStatusChange?.(igRes?.status || 'configured_waiting_token', detailMsg)
-          if (igRes?.missing_perms && igRes.missing_perms.length > 0) {
+          if (igRes?.missing_perms && igRes.missing_perms.length > 0 && !igRes?.graph_error) {
             setShowMetaHelp(true)
           }
           toast({
             variant: 'destructive',
-            title: 'Verificação Instagram',
+            title: igRes?.graph_error ? 'Erro de Token Instagram' : 'Verificação Instagram',
             description: detailMsg,
           })
         }

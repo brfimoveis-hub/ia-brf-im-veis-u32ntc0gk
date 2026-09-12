@@ -55,6 +55,8 @@ export function InstagramConnect() {
     message?: string
     missing_perms?: string[]
     instructions?: string
+    graph_error?: any
+    tested_tokens?: any[]
   } | null>(null)
 
   const hasIgId = !!(form.meta_instagram_business_id || user?.meta_instagram_business_id)
@@ -266,10 +268,12 @@ export function InstagramConnect() {
           message: msg,
           missing_perms: res?.missing_perms || [],
           instructions: res?.instructions || '',
+          graph_error: res?.graph_error,
+          tested_tokens: res?.tested_tokens,
         })
         toast({
           variant: 'destructive',
-          title: 'Atenção na Conexão do Instagram',
+          title: res?.graph_error ? 'Erro de Token Instagram' : 'Atenção na Conexão do Instagram',
           description: msg,
         })
       }
@@ -766,41 +770,84 @@ export function InstagramConnect() {
             </div>
           )}
 
-          {diagnosticResult?.missing_perms && diagnosticResult.missing_perms.length > 0 && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4 space-y-2">
+          {diagnosticResult?.graph_error && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 space-y-2 text-xs">
               <div className="flex items-start gap-2">
-                <HelpCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-amber-800">
-                    Permissões ausentes na Meta: {diagnosticResult.missing_perms.join(', ')}
-                  </p>
-                  <p className="text-xs text-amber-700 mt-1">
-                    Como resolver no Meta Business Suite:
-                  </p>
-                  <ol className="text-xs text-amber-700 list-decimal list-inside space-y-1 mt-1">
-                    <li>
-                      Acesse o <strong>Meta Business Suite</strong> &gt;{' '}
-                      <strong>Configurações do negócio</strong>.
-                    </li>
-                    <li>
-                      Vá em <strong>Usuários do Sistema</strong> &gt; selecione o usuário{' '}
-                      <strong>BIA CRM</strong>.
-                    </li>
-                    <li>
-                      Em <strong>Ativos atribuídos</strong>, clique em{' '}
-                      <strong>Adicionar Ativos</strong> &gt; <strong>Páginas</strong> &gt; selecione
-                      sua Página do Facebook conectada ao Instagram e marque{' '}
-                      <strong>Controle Total / Gerenciamento</strong>.
-                    </li>
-                    <li>
-                      Clique no botão <strong>Conectar Instagram (OAuth)</strong> acima para
-                      autorizar com 1 clique.
-                    </li>
-                  </ol>
+                <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-destructive">Diagnóstico Meta Graph API:</p>
+                  <p className="text-foreground">{diagnosticResult.graph_error.message}</p>
+                  <div className="flex items-center gap-2 flex-wrap font-mono text-[11px] text-muted-foreground pt-1">
+                    {diagnosticResult.graph_error.http_status && (
+                      <span className="bg-background px-1.5 py-0.5 rounded border">
+                        HTTP {diagnosticResult.graph_error.http_status}
+                      </span>
+                    )}
+                    {diagnosticResult.graph_error.code !== null &&
+                      diagnosticResult.graph_error.code !== undefined && (
+                        <span className="bg-background px-1.5 py-0.5 rounded border">
+                          Code {diagnosticResult.graph_error.code}
+                        </span>
+                      )}
+                    {diagnosticResult.graph_error.subcode !== null &&
+                      diagnosticResult.graph_error.subcode !== undefined && (
+                        <span className="bg-background px-1.5 py-0.5 rounded border">
+                          Subcode {diagnosticResult.graph_error.subcode}
+                        </span>
+                      )}
+                    {diagnosticResult.graph_error.type && (
+                      <span className="bg-background px-1.5 py-0.5 rounded border">
+                        Type: {diagnosticResult.graph_error.type}
+                      </span>
+                    )}
+                  </div>
+                  {diagnosticResult.graph_error.user_msg && (
+                    <p className="text-muted-foreground italic pt-1">
+                      Mensagem da Meta: {diagnosticResult.graph_error.user_msg}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
           )}
+
+          {diagnosticResult?.missing_perms &&
+            diagnosticResult.missing_perms.length > 0 &&
+            !diagnosticResult?.graph_error && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4 space-y-2">
+                <div className="flex items-start gap-2">
+                  <HelpCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">
+                      Permissões ausentes na Meta: {diagnosticResult.missing_perms.join(', ')}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      Como resolver no Meta Business Suite:
+                    </p>
+                    <ol className="text-xs text-amber-700 list-decimal list-inside space-y-1 mt-1">
+                      <li>
+                        Acesse o <strong>Meta Business Suite</strong> &gt;{' '}
+                        <strong>Configurações do negócio</strong>.
+                      </li>
+                      <li>
+                        Vá em <strong>Usuários do Sistema</strong> &gt; selecione o usuário{' '}
+                        <strong>BIA CRM</strong>.
+                      </li>
+                      <li>
+                        Em <strong>Ativos atribuídos</strong>, clique em{' '}
+                        <strong>Adicionar Ativos</strong> &gt; <strong>Páginas</strong> &gt;
+                        selecione sua Página do Facebook conectada ao Instagram e marque{' '}
+                        <strong>Controle Total / Gerenciamento</strong>.
+                      </li>
+                      <li>
+                        Clique no botão <strong>Conectar Instagram (OAuth)</strong> acima para
+                        autorizar com 1 clique.
+                      </li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            )}
 
           {inlineError &&
             !Object.values(fieldErrors).some(Boolean) &&

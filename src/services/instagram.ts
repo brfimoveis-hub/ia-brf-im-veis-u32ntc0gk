@@ -6,6 +6,27 @@ export interface InstagramOAuthResult {
   page_id: string
 }
 
+export interface InstagramGraphError {
+  http_status?: number
+  message: string
+  code?: number | null
+  subcode?: number | null
+  user_msg?: string | null
+  type?: string | null
+}
+
+export interface InstagramTestedToken {
+  type: string
+  token_suffix?: string
+  status: string
+  http_status?: number
+  graph_error?: InstagramGraphError
+  direct_error?: InstagramGraphError
+  accounts_error?: InstagramGraphError
+  accounts_count?: number
+  message?: string
+}
+
 export interface InstagramTestResult {
   success?: boolean
   status: string
@@ -20,6 +41,8 @@ export interface InstagramTestResult {
   granted_perms?: string[]
   instructions?: string
   app_id?: string
+  graph_error?: InstagramGraphError
+  tested_tokens?: InstagramTestedToken[]
 }
 
 /**
