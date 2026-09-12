@@ -44,11 +44,23 @@ export interface InstagramAccessiblePage {
   matches_target_id?: boolean
 }
 
+export interface InstagramPageLinkedAccount {
+  linked: boolean
+  id?: string | null
+  username?: string | null
+  name?: string | null
+  page_id?: string
+  page_name?: string
+}
+
 export interface InstagramTestResult {
   success?: boolean
   status: string
   message?: string
   token_saved?: boolean
+  auto_corrected?: boolean
+  old_instagram_business_id?: string
+  instagram_business_id?: string
   data?: {
     id: string
     name?: string
@@ -62,6 +74,7 @@ export interface InstagramTestResult {
   app_id?: string
   graph_error?: InstagramGraphError
   token_identity?: InstagramTokenIdentity | null
+  page_linked_instagram?: InstagramPageLinkedAccount | null
   accessible_pages?: InstagramAccessiblePage[]
   tested_tokens?: InstagramTestedToken[]
 }

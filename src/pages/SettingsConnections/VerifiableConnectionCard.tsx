@@ -20,6 +20,7 @@ import {
   testInstagramConnection,
   type InstagramTokenIdentity,
   type InstagramAccessiblePage,
+  type InstagramPageLinkedAccount,
 } from '@/services/instagram'
 import { useToast } from '@/hooks/use-toast'
 
@@ -54,6 +55,9 @@ export function VerifiableConnectionCard({
   const [showMetaHelp, setShowMetaHelp] = useState(false)
   const [localTokenIdentity, setLocalTokenIdentity] = useState<InstagramTokenIdentity | null>(null)
   const [localAccessiblePages, setLocalAccessiblePages] = useState<InstagramAccessiblePage[]>([])
+  const [localPageLinkedIg, setLocalPageLinkedIg] = useState<InstagramPageLinkedAccount | null>(
+    null,
+  )
 
   const handleVerify = async () => {
     setChecking(true)
@@ -70,6 +74,9 @@ export function VerifiableConnectionCard({
 
         if (igRes?.token_identity) {
           setLocalTokenIdentity(igRes.token_identity)
+        }
+        if (igRes?.page_linked_instagram !== undefined) {
+          setLocalPageLinkedIg(igRes.page_linked_instagram)
         }
         if (Array.isArray(igRes?.accessible_pages)) {
           setLocalAccessiblePages(igRes.accessible_pages)
@@ -181,6 +188,33 @@ export function VerifiableConnectionCard({
                     Identidade: {localTokenIdentity.name || localTokenIdentity.id}
                   </span>
                   <span className="text-[10px]">({localTokenIdentity.type || 'token'})</span>
+                </div>
+              )}
+
+              {localPageLinkedIg !== null && (
+                <div
+                  className={`p-2 rounded border text-[11px] leading-tight space-y-1 ${
+                    localPageLinkedIg.linked
+                      ? 'bg-purple-500/10 border-purple-500/30 text-purple-900'
+                      : 'bg-amber-500/10 border-amber-500/30 text-amber-900'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 flex-wrap font-medium">
+                    <span>Instagram na Página:</span>
+                    {localPageLinkedIg.linked ? (
+                      <span className="text-purple-700 font-semibold">
+                        @{localPageLinkedIg.username || localPageLinkedIg.id}
+                      </span>
+                    ) : (
+                      <span className="text-destructive font-semibold">Nenhum</span>
+                    )}
+                  </div>
+                  {!localPageLinkedIg.linked && (
+                    <p className="text-[10px] text-amber-800">
+                      Vincule no app Instagram (@mauro.brfimoveis) → Configurações → Empresa →
+                      Conectar Página &apos;{localPageLinkedIg.page_name || 'BRF Imóveis'}&apos;.
+                    </p>
+                  )}
                 </div>
               )}
 

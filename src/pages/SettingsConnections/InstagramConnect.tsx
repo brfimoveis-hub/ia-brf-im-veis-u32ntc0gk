@@ -39,6 +39,7 @@ import {
   type InstagramTestedToken,
   type InstagramTokenIdentity,
   type InstagramAccessiblePage,
+  type InstagramPageLinkedAccount,
 } from '@/services/instagram'
 
 export function InstagramConnect() {
@@ -62,8 +63,12 @@ export function InstagramConnect() {
     message?: string
     missing_perms?: string[]
     instructions?: string
+    auto_corrected?: boolean
+    old_instagram_business_id?: string
+    instagram_business_id?: string
     graph_error?: InstagramGraphError
     token_identity?: InstagramTokenIdentity | null
+    page_linked_instagram?: InstagramPageLinkedAccount | null
     accessible_pages?: InstagramAccessiblePage[]
     tested_tokens?: InstagramTestedToken[]
   } | null>(null)
@@ -267,18 +272,40 @@ export function InstagramConnect() {
         message: res?.message || '',
         missing_perms: res?.missing_perms || [],
         instructions: res?.instructions || '',
+        auto_corrected: res?.auto_corrected,
+        old_instagram_business_id: res?.old_instagram_business_id,
+        instagram_business_id: res?.instagram_business_id,
         graph_error: res?.graph_error,
         token_identity: res?.token_identity,
+        page_linked_instagram: res?.page_linked_instagram,
         accessible_pages: res?.accessible_pages,
         tested_tokens: res?.tested_tokens,
       })
+
+      if (res?.auto_corrected && res?.instagram_business_id) {
+        setForm((prev) => ({
+          ...prev,
+          meta_instagram_business_id: res.instagram_business_id || prev.meta_instagram_business_id,
+        }))
+      }
 
       if (res?.status === 'connected') {
         setIgConnected(true)
         setMsgConnected(true)
         toast({
-          title: 'Instagram Conectado!',
+          title: res?.auto_corrected
+            ? 'Instagram Atualizado e Conectado! 🎉'
+            : 'Instagram Conectado!',
           description: res.message || 'Conexão validada com sucesso.',
+        })
+      } else if (res?.status === 'page_has_no_instagram') {
+        const msg = res?.message || 'A Página não possui conta do Instagram vinculada.'
+        setInlineError(msg)
+        toast({
+          variant: 'destructive',
+          title: 'Vínculo do Instagram Necessário',
+          description:
+            'A Página do Facebook está ativa, mas nenhuma conta do Instagram está vinculada a ela.',
         })
       } else {
         const msg = res?.message || 'Aguardando Page Token para ativar a conexão.'
@@ -821,13 +848,100 @@ export function InstagramConnect() {
                             ID: {diagnosticResult.token_identity.id}
                           </code>
                           <Badge variant="secondary" className="text-[10px]">
-                            Tipo: {diagnosticResult.token_identity.type || 'n/a'}
+                            Tipo: {diagnosticResult.token_identity.type || 'page'}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] bg-blue-500/10 text-blue-700 border-blue-500/30"
+                          >
+                            Page Token Confirmado
                           </Badge>
                         </div>
                       )}
                     </div>
                   </div>
                 ) : null}
+
+                {/* Passo 0.5: Instagram vinculado diretamente à Página */}
+                {diagnosticResult.page_linked_instagram !== undefined &&
+                  diagnosticResult.page_linked_instagram !== null && (
+                    <div
+                      className={`p-3 rounded border text-xs space-y-1.5 ${
+                        diagnosticResult.page_linked_instagram.linked
+                          ? 'bg-purple-500/10 border-purple-500/30 text-purple-900'
+                          : 'bg-amber-500/10 border-amber-500/30 text-amber-900'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 font-semibold">
+                          <Instagram className="h-4 w-4 text-purple-600 shrink-0" />
+                          <span>
+                            Passo 0.5 — Instagram vinculado à Página &quot;
+                            {diagnosticResult.page_linked_instagram.page_name || 'BRF Imóveis'}
+                            &quot;:
+                          </span>
+                        </div>
+                        {diagnosticResult.page_linked_instagram.linked ? (
+                          <Badge className="bg-purple-600 text-white font-medium text-[11px]">
+                            @{diagnosticResult.page_linked_instagram.username || 'vinculado'}
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive" className="font-medium text-[11px]">
+                            Nenhum Instagram Vinculado
+                          </Badge>
+                        )}
+                      </div>
+
+                      {diagnosticResult.page_linked_instagram.linked ? (
+                        <div className="space-y-1 text-muted-foreground">
+                          <p className="text-foreground">
+                            Instagram Business Account:{' '}
+                            <strong>
+                              @{diagnosticResult.page_linked_instagram.username || 'desconhecido'}
+                            </strong>{' '}
+                            <code className="font-mono text-[11px] bg-background px-1 py-0.5 rounded border text-foreground">
+                              ID: {diagnosticResult.page_linked_instagram.id}
+                            </code>
+                          </p>
+                          {diagnosticResult.auto_corrected && (
+                            <div className="p-2 rounded bg-green-500/15 border border-green-500/30 text-green-800 text-[11px] flex items-center gap-1.5 font-medium">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-700 shrink-0" />
+                              <span>
+                                ID de Instagram corrigido automaticamente no CRM:{' '}
+                                {diagnosticResult.old_instagram_business_id} →{' '}
+                                {diagnosticResult.instagram_business_id}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-1 text-amber-800 text-[11px] leading-relaxed">
+                          <p className="font-semibold text-amber-900 flex items-center gap-1">
+                            <AlertCircle className="h-3.5 w-3.5 text-amber-700 shrink-0" />A Página
+                            &quot;
+                            {diagnosticResult.page_linked_instagram.page_name || 'BRF Imóveis'}
+                            &quot; NÃO tem nenhuma conta do Instagram vinculada na Meta.
+                          </p>
+                          <p>
+                            <strong>Como vincular no seu celular:</strong> No aplicativo do
+                            Instagram (logado na conta <strong>@mauro.brfimoveis</strong>) → Acesse
+                            o Perfil → Configurações e privacidade →{' '}
+                            <strong>Empresa / Ferramentas profissionais</strong> →{' '}
+                            <strong>Conectar uma Página do Facebook</strong> → Selecione a Página{' '}
+                            <strong>
+                              {diagnosticResult.page_linked_instagram.page_name || 'BRF Imóveis'}
+                            </strong>
+                            .
+                          </p>
+                          <p className="text-muted-foreground italic">
+                            Após confirmar o vínculo no Instagram, aguarde ~5 minutos para
+                            propagação na Graph API da Meta e clique no botão{' '}
+                            <strong>Verificar Agora</strong>.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                 {/* Páginas do Facebook acessíveis */}
                 <div className="space-y-2">

@@ -66,6 +66,11 @@ routerAdd(
     // =========================================================================
     var tokenIdentity = null
     var accessiblePages = []
+    var isPageToken = false
+    var pageLinkedInstagram = null // { id, username, name, linked: boolean }
+    var igAutoCorrected = false
+    var oldIgBizId = igBizId
+    var currentIgBizId = igBizId
 
     if (igToken) {
       var tokenSuffix = maskToken(igToken)
@@ -183,7 +188,7 @@ routerAdd(
               has_instagram: !!rIg,
               ig_account_id: (rIg && rIg.id) || null,
               ig_username: (rIg && (rIg.username || rIg.name)) || null,
-              matches_target_id: !!(rIg && rIg.id === igBizId),
+              matches_target_id: !!(rIg && rIg.id === currentIgBizId),
             }
             accessiblePages.push(parsedPage)
             console.log(
@@ -202,18 +207,29 @@ routerAdd(
           }
         } else {
           var accErr = extractGraphError(accRes.json, accRes.statusCode)
-          console.log(
-            '[INSTAGRAM_TEST] passo 0 /me/accounts falhou (token ' +
-              tokenSuffix +
-              '): HTTP ' +
-              accErr.http_status +
-              ' code=' +
-              (accErr.code !== null ? accErr.code : 'n/a') +
-              ' subcode=' +
-              (accErr.subcode !== null ? accErr.subcode : 'n/a') +
-              ' msg=' +
-              accErr.message,
-          )
+          // Se for erro de campo inexistente (accounts), confirma que o token é de PÁGINA (não usuário)
+          if (
+            accErr.message &&
+            accErr.message.indexOf('Tried accessing nonexisting field (accounts)') !== -1
+          ) {
+            isPageToken = true
+            console.log(
+              '[INSTAGRAM_TEST] passo 0 /me/accounts: token é um Page Token (não possui borda /accounts, comportamento esperado)',
+            )
+          } else {
+            console.log(
+              '[INSTAGRAM_TEST] passo 0 /me/accounts falhou (token ' +
+                tokenSuffix +
+                '): HTTP ' +
+                accErr.http_status +
+                ' code=' +
+                (accErr.code !== null ? accErr.code : 'n/a') +
+                ' subcode=' +
+                (accErr.subcode !== null ? accErr.subcode : 'n/a') +
+                ' msg=' +
+                accErr.message,
+            )
+          }
         }
       } catch (accNetErr) {
         var accNetMsg = String(accNetErr && accNetErr.message ? accNetErr.message : accNetErr)
@@ -224,15 +240,167 @@ routerAdd(
             accNetMsg,
         )
       }
+
+      // =========================================================================
+      // PASSO 0.5: CONSULTA À PRÓPRIA PÁGINA
+      // Se /me retornou uma identidade válida e/ou identificamos como Page Token,
+      // perguntamos à Página qual Instagram Business Account está vinculada a ela
+      // =========================================================================
+      var pageIdCandidate = (tokenIdentity && tokenIdentity.id) || ''
+      if (pageIdCandidate && !tokenIdentity.error) {
+        try {
+          var pageIgRes = $http.send({
+            url:
+              'https://graph.facebook.com/v22.0/' +
+              encodeURIComponent(pageIdCandidate) +
+              '?fields=instagram_business_account{id,username,name}',
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + igToken },
+            timeout: 12,
+          })
+
+          if (pageIgRes.statusCode >= 200 && pageIgRes.statusCode < 300 && pageIgRes.json) {
+            var igBizObj = pageIgRes.json.instagram_business_account || null
+            if (igBizObj && igBizObj.id) {
+              var foundIgId = String(igBizObj.id).trim()
+              var foundIgUsername = (igBizObj.username || igBizObj.name || '').trim()
+              pageLinkedInstagram = {
+                linked: true,
+                id: foundIgId,
+                username: foundIgUsername,
+                name: igBizObj.name || foundIgUsername,
+                page_id: pageIdCandidate,
+                page_name: tokenIdentity.name || '',
+              }
+              console.log(
+                '[INSTAGRAM_TEST] passo 0.5 página ' +
+                  pageIdCandidate +
+                  ': instagram_business_account=' +
+                  foundIgId +
+                  ' username=@' +
+                  (foundIgUsername || 'n/a'),
+              )
+
+              // Adiciona ou enriquece accessiblePages com a própria página
+              accessiblePages.push({
+                page_id: pageIdCandidate,
+                page_name: tokenIdentity.name || 'Página do Token',
+                has_instagram: true,
+                ig_account_id: foundIgId,
+                ig_username: foundIgUsername,
+                matches_target_id: foundIgId === currentIgBizId,
+              })
+
+              // Se o ID encontrado for DIFERENTE do gravado no CRM, corrige automaticamente
+              if (foundIgId !== currentIgBizId) {
+                console.log(
+                  '[INSTAGRAM_TEST] IG ID corrigido automaticamente: ' +
+                    currentIgBizId +
+                    ' -> ' +
+                    foundIgId +
+                    ' (@' +
+                    foundIgUsername +
+                    ')',
+                )
+                try {
+                  user.set('meta_instagram_business_id', foundIgId)
+                  if (foundIgUsername) {
+                    user.set('instagram_username', foundIgUsername)
+                  }
+                  $app.saveNoValidate(user)
+                  igAutoCorrected = true
+                  currentIgBizId = foundIgId
+                } catch (saveErr) {
+                  console.log(
+                    '[INSTAGRAM_TEST] Erro ao salvar correção automática do IG ID: ' +
+                      String(saveErr),
+                  )
+                }
+              }
+            } else {
+              pageLinkedInstagram = {
+                linked: false,
+                id: null,
+                username: null,
+                page_id: pageIdCandidate,
+                page_name: tokenIdentity.name || '',
+              }
+              console.log(
+                '[INSTAGRAM_TEST] passo 0.5 página ' +
+                  pageIdCandidate +
+                  ': instagram_business_account=NENHUM username=NENHUM',
+              )
+              accessiblePages.push({
+                page_id: pageIdCandidate,
+                page_name: tokenIdentity.name || 'Página do Token',
+                has_instagram: false,
+                ig_account_id: null,
+                ig_username: null,
+                matches_target_id: false,
+              })
+            }
+          } else {
+            var pageErr = extractGraphError(pageIgRes.json, pageIgRes.statusCode)
+            console.log(
+              '[INSTAGRAM_TEST] passo 0.5 consulta página ' +
+                pageIdCandidate +
+                ' falhou: HTTP ' +
+                pageErr.http_status +
+                ' code=' +
+                (pageErr.code !== null ? pageErr.code : 'n/a') +
+                ' msg=' +
+                pageErr.message,
+            )
+          }
+        } catch (pageNetErr) {
+          console.log(
+            '[INSTAGRAM_TEST] passo 0.5 erro de rede na consulta à página ' +
+              pageIdCandidate +
+              ': ' +
+              String(pageNetErr),
+          )
+        }
+      }
     }
 
-    // 1. Se já possuímos um token de página salvo, testa diretamente
-    if (igToken) {
+    // Se no passo 0.5 confirmamos que a Página NÃO tem nenhuma conta do Instagram vinculada:
+    if (pageLinkedInstagram && pageLinkedInstagram.linked === false) {
+      var noIgMsg =
+        "A Página '" +
+        (tokenIdentity.name || 'BRF Imóveis') +
+        "' NÃO tem nenhuma conta do Instagram vinculada. Vínculo necessário: no app do Instagram (@mauro.brfimoveis) → Configurações → Empresa/Ferramentas profissionais → 'Conectar uma Página do Facebook' → escolher a Página " +
+        (tokenIdentity.name || 'BRF Imóveis') +
+        '. Aguarde ~5 minutos e clique Verificar Agora.'
+
+      console.log('[INSTAGRAM_TEST] Página sem Instagram vinculado. Retornando diagnóstico claro.')
+
+      return e.json(200, {
+        success: false,
+        status: 'page_has_no_instagram',
+        message: noIgMsg,
+        instructions: noIgMsg,
+        token_identity: tokenIdentity,
+        page_linked_instagram: pageLinkedInstagram,
+        accessible_pages: accessiblePages,
+        tested_tokens: [
+          {
+            type: 'saved_page_token',
+            token_suffix: maskToken(igToken),
+            status: 'page_has_no_instagram',
+          },
+        ],
+        app_id: igAppId,
+      })
+    }
+
+    // 1. Testa diretamente com o ID de Instagram (usa currentIgBizId que pode ter sido corrigido no passo 0.5)
+    var targetIgId = currentIgBizId || igBizId
+    if (igToken && targetIgId) {
       try {
         const igRes = $http.send({
           url:
             'https://graph.facebook.com/v22.0/' +
-            igBizId +
+            targetIgId +
             '?fields=id,name,username,profile_picture_url',
           method: 'GET',
           headers: { Authorization: 'Bearer ' + igToken },
@@ -245,10 +413,20 @@ routerAdd(
           return e.json(200, {
             success: true,
             status: 'connected',
-            message: 'Conectado ✅' + (igName ? ' — @' + igName : '') + ' (ID: ' + igBizId + ')',
+            message:
+              'Conectado ✅' +
+              (igName ? ' — @' + igName : '') +
+              ' (ID: ' +
+              targetIgId +
+              ')' +
+              (igAutoCorrected ? ' [ID corrigido automaticamente da Página]' : ''),
             data: d,
-            token_saved: false,
+            token_saved: igAutoCorrected,
+            auto_corrected: igAutoCorrected,
+            old_instagram_business_id: igAutoCorrected ? oldIgBizId : undefined,
+            instagram_business_id: targetIgId,
             token_identity: tokenIdentity,
+            page_linked_instagram: pageLinkedInstagram,
             accessible_pages: accessiblePages,
             tested_tokens: [
               {
@@ -485,10 +663,11 @@ routerAdd(
           status: 'connected',
           message: 'Conectado com sucesso ✅' + (igName ? ' — @' + igName : '') + '!',
           token_saved: true,
-          data: igAccountData || { id: igBizId, name: igName },
+          data: igAccountData || { id: targetIgId, name: igName },
           page_id: matchedPageId,
           page_name: matchedPageName,
           token_identity: tokenIdentity,
+          page_linked_instagram: pageLinkedInstagram,
           accessible_pages: accessiblePages,
           tested_tokens: testedTokens,
         })
@@ -525,6 +704,7 @@ routerAdd(
         instructions: tokenRejectionMsg,
         graph_error: savedTokenGraphError,
         token_identity: tokenIdentity,
+        page_linked_instagram: pageLinkedInstagram,
         accessible_pages: accessiblePages,
         tested_tokens: testedTokens,
         app_id: igAppId,
@@ -564,6 +744,7 @@ routerAdd(
       granted_perms: allPermissions,
       instructions: instructionMsg,
       token_identity: tokenIdentity,
+      page_linked_instagram: pageLinkedInstagram,
       accessible_pages: accessiblePages,
       tested_tokens: testedTokens,
       app_id: igAppId,

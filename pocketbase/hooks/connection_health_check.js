@@ -339,63 +339,153 @@ routerAdd(
             }
           } catch (_) {}
 
-          try {
-            const igRes = $http.send({
-              url: 'https://graph.facebook.com/v22.0/' + igBizId + '?fields=id,name,username',
-              method: 'GET',
-              headers: { Authorization: 'Bearer ' + igToken },
-              timeout: 15,
-            })
-            if (igRes.statusCode >= 200 && igRes.statusCode < 300) {
-              connected = true
-              verifiedName = (igRes.json && (igRes.json.name || igRes.json.username)) || ''
-              testedTokens.push({
-                type: 'saved_page_token',
-                token_suffix: maskTok(igToken),
-                status: 'ok',
-                http_status: igRes.statusCode,
+          // Passo 0.5: se /me retornou uma página, consulta a própria página por instagram_business_account
+          let currentIgTarget = igBizId
+          let pageLinkedIg = null
+          const pageCandidateId = (tokenIdentity && tokenIdentity.id) || ''
+          if (pageCandidateId && !tokenIdentity.error) {
+            try {
+              const pIgRes = $http.send({
+                url:
+                  'https://graph.facebook.com/v22.0/' +
+                  encodeURIComponent(pageCandidateId) +
+                  '?fields=instagram_business_account{id,username,name}',
+                method: 'GET',
+                headers: { Authorization: 'Bearer ' + igToken },
+                timeout: 10,
               })
-            } else {
-              savedGraphErr = extractErr(igRes.json, igRes.statusCode)
-              console.log(
-                '[INSTAGRAM_HEALTH] token salvo falhou: HTTP ' +
-                  savedGraphErr.http_status +
-                  ' code=' +
-                  (savedGraphErr.code !== null ? savedGraphErr.code : 'n/a') +
-                  ' subcode=' +
-                  (savedGraphErr.subcode !== null ? savedGraphErr.subcode : 'n/a') +
-                  ' msg=' +
-                  savedGraphErr.message,
-              )
+              if (pIgRes.statusCode >= 200 && pIgRes.statusCode < 300 && pIgRes.json) {
+                const igObj = pIgRes.json.instagram_business_account || null
+                if (igObj && igObj.id) {
+                  pageLinkedIg = {
+                    linked: true,
+                    id: String(igObj.id).trim(),
+                    username: (igObj.username || igObj.name || '').trim(),
+                  }
+                  accessiblePages.push({
+                    page_id: pageCandidateId,
+                    page_name: tokenIdentity.name || 'Página do Token',
+                    has_instagram: true,
+                    ig_account_id: pageLinkedIg.id,
+                    ig_username: pageLinkedIg.username,
+                    matches_target_id: pageLinkedIg.id === currentIgTarget,
+                  })
+                  if (pageLinkedIg.id !== currentIgTarget) {
+                    console.log(
+                      '[INSTAGRAM_HEALTH] IG ID corrigido automaticamente: ' +
+                        currentIgTarget +
+                        ' -> ' +
+                        pageLinkedIg.id,
+                    )
+                    userRecord.set('meta_instagram_business_id', pageLinkedIg.id)
+                    if (pageLinkedIg.username) {
+                      userRecord.set('instagram_username', pageLinkedIg.username)
+                    }
+                    try {
+                      $app.saveNoValidate(userRecord)
+                      currentIgTarget = pageLinkedIg.id
+                    } catch (_) {}
+                  }
+                } else {
+                  pageLinkedIg = { linked: false, id: null, username: null }
+                  accessiblePages.push({
+                    page_id: pageCandidateId,
+                    page_name: tokenIdentity.name || 'Página do Token',
+                    has_instagram: false,
+                    ig_account_id: null,
+                    ig_username: null,
+                    matches_target_id: false,
+                  })
+                }
+              }
+            } catch (_) {}
+          }
+
+          if (pageLinkedIg && pageLinkedIg.linked === false) {
+            const noIgMessage =
+              "A Página '" +
+              (tokenIdentity.name || 'BRF Imóveis') +
+              "' NÃO tem nenhuma conta do Instagram vinculada. Vínculo necessário: no app do Instagram (@mauro.brfimoveis) → Configurações → Empresa/Ferramentas profissionais → 'Conectar uma Página do Facebook' → escolher a Página " +
+              (tokenIdentity.name || 'BRF Imóveis') +
+              '. Aguarde ~5 minutos e clique Verificar Agora.'
+            results.push({
+              name: 'Instagram Business',
+              key: 'instagram',
+              status: 'page_has_no_instagram',
+              timestamp: ts,
+              message: noIgMessage,
+              app_id: igAppId,
+              token_identity: tokenIdentity,
+              accessible_pages: accessiblePages,
+              tested_tokens: [
+                {
+                  type: 'saved_page_token',
+                  token_suffix: maskTok(igToken),
+                  status: 'page_has_no_instagram',
+                },
+              ],
+            })
+          } else {
+            try {
+              const igRes = $http.send({
+                url:
+                  'https://graph.facebook.com/v22.0/' +
+                  currentIgTarget +
+                  '?fields=id,name,username',
+                method: 'GET',
+                headers: { Authorization: 'Bearer ' + igToken },
+                timeout: 15,
+              })
+              if (igRes.statusCode >= 200 && igRes.statusCode < 300) {
+                connected = true
+                verifiedName = (igRes.json && (igRes.json.name || igRes.json.username)) || ''
+                testedTokens.push({
+                  type: 'saved_page_token',
+                  token_suffix: maskTok(igToken),
+                  status: 'ok',
+                  http_status: igRes.statusCode,
+                })
+              } else {
+                savedGraphErr = extractErr(igRes.json, igRes.statusCode)
+                console.log(
+                  '[INSTAGRAM_HEALTH] token salvo falhou: HTTP ' +
+                    savedGraphErr.http_status +
+                    ' code=' +
+                    (savedGraphErr.code !== null ? savedGraphErr.code : 'n/a') +
+                    ' subcode=' +
+                    (savedGraphErr.subcode !== null ? savedGraphErr.subcode : 'n/a') +
+                    ' msg=' +
+                    savedGraphErr.message,
+                )
+                testedTokens.push({
+                  type: 'saved_page_token',
+                  token_suffix: maskTok(igToken),
+                  status: 'failed',
+                  http_status: savedGraphErr.http_status,
+                  graph_error: savedGraphErr,
+                })
+              }
+            } catch (netErr) {
+              const msg = String(netErr && netErr.message ? netErr.message : netErr)
+              savedGraphErr = {
+                http_status: 0,
+                message: 'Erro de rede: ' + msg,
+                code: null,
+                subcode: null,
+                user_msg: null,
+              }
+              console.log('[INSTAGRAM_HEALTH] token salvo erro de rede: ' + msg)
               testedTokens.push({
                 type: 'saved_page_token',
                 token_suffix: maskTok(igToken),
-                status: 'failed',
-                http_status: savedGraphErr.http_status,
+                status: 'network_error',
                 graph_error: savedGraphErr,
               })
             }
-          } catch (netErr) {
-            const msg = String(netErr && netErr.message ? netErr.message : netErr)
-            savedGraphErr = {
-              http_status: 0,
-              message: 'Erro de rede: ' + msg,
-              code: null,
-              subcode: null,
-              user_msg: null,
-            }
-            console.log('[INSTAGRAM_HEALTH] token salvo erro de rede: ' + msg)
-            testedTokens.push({
-              type: 'saved_page_token',
-              token_suffix: maskTok(igToken),
-              status: 'network_error',
-              graph_error: savedGraphErr,
-            })
           }
-        }
-
-        // Se ainda não conectado, tenta auto-obtenção via tokens Meta já salvos
-        if (!connected) {
+        } // fecha o else do pageLinkedIg.linked === false
+        // Se ainda não conectado, tenta auto-obtenção via tokens Meta já salvos (a menos que já confirmamos que a página não tem IG)
+        if (!connected && !(pageLinkedIg && pageLinkedIg.linked === false)) {
           const candidates = []
           if (sysUserToken) candidates.push({ token: sysUserToken, type: 'system_user' })
           if (capiToken && capiToken !== sysUserToken)
@@ -529,7 +619,7 @@ routerAdd(
             accessible_pages: accessiblePages,
             tested_tokens: testedTokens,
           })
-        } else {
+        } else if (!(pageLinkedIg && pageLinkedIg.linked === false)) {
           // Se o token salvo falhou, reporte o erro real do token ao invés de permissões irrelevantes
           if (savedGraphErr) {
             const errCode = savedGraphErr.code
