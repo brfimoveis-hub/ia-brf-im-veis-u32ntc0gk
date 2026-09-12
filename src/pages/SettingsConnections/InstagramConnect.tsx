@@ -40,7 +40,9 @@ import {
   type InstagramTokenIdentity,
   type InstagramAccessiblePage,
   type InstagramPageLinkedAccount,
+  type InstagramPortfolioPage,
 } from '@/services/instagram'
+import { InstagramPortfolioScan } from './InstagramPortfolioScan'
 
 export function InstagramConnect() {
   const { user } = useAuth()
@@ -60,8 +62,8 @@ export function InstagramConnect() {
   const [appFieldErrors, setAppFieldErrors] = useState<FieldErrors>({})
   const [inlineError, setInlineError] = useState('')
   const [diagnosticResult, setDiagnosticResult] = useState<{
-    message?: string
-    missing_perms?: string[]
+    message: string
+    missing_perms: string[]
     instructions?: string
     auto_corrected?: boolean
     old_instagram_business_id?: string
@@ -70,9 +72,10 @@ export function InstagramConnect() {
     token_identity?: InstagramTokenIdentity | null
     page_linked_instagram?: InstagramPageLinkedAccount | null
     accessible_pages?: InstagramAccessiblePage[]
+    portfolio_scan?: InstagramPortfolioPage[]
+    portfolio_scan_error?: string | null
     tested_tokens?: InstagramTestedToken[]
   } | null>(null)
-
   const hasIgId = !!(form.meta_instagram_business_id || user?.meta_instagram_business_id)
   const hasPageToken = !!(
     form.meta_page_access_token ||
@@ -279,6 +282,8 @@ export function InstagramConnect() {
         token_identity: res?.token_identity,
         page_linked_instagram: res?.page_linked_instagram,
         accessible_pages: res?.accessible_pages,
+        portfolio_scan: res?.portfolio_scan,
+        portfolio_scan_error: res?.portfolio_scan_error,
         tested_tokens: res?.tested_tokens,
       })
 
@@ -1019,6 +1024,16 @@ export function InstagramConnect() {
                     </div>
                   )}
                 </div>
+
+                {/* Seção da Varredura do Portfólio dentro do Diagnóstico Profundo */}
+                {(diagnosticResult.portfolio_scan !== undefined ||
+                  diagnosticResult.portfolio_scan_error !== undefined) && (
+                  <InstagramPortfolioScan
+                    scan={diagnosticResult.portfolio_scan || []}
+                    error={diagnosticResult.portfolio_scan_error}
+                    targetUsername={user?.instagram_username || 'mauro.brfimoveis'}
+                  />
+                )}
               </div>
             )}
 

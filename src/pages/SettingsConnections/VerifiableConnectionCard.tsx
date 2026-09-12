@@ -21,7 +21,9 @@ import {
   type InstagramTokenIdentity,
   type InstagramAccessiblePage,
   type InstagramPageLinkedAccount,
+  type InstagramPortfolioPage,
 } from '@/services/instagram'
+import { InstagramPortfolioScan } from './InstagramPortfolioScan'
 import { useToast } from '@/hooks/use-toast'
 
 interface VerifiableConnectionCardProps {
@@ -58,6 +60,10 @@ export function VerifiableConnectionCard({
   const [localPageLinkedIg, setLocalPageLinkedIg] = useState<InstagramPageLinkedAccount | null>(
     null,
   )
+  const [localPortfolioScan, setLocalPortfolioScan] = useState<InstagramPortfolioPage[] | null>(
+    null,
+  )
+  const [localPortfolioScanError, setLocalPortfolioScanError] = useState<string | null>(null)
 
   const handleVerify = async () => {
     setChecking(true)
@@ -65,6 +71,8 @@ export function VerifiableConnectionCard({
     setShowMetaHelp(false)
     setLocalTokenIdentity(null)
     setLocalAccessiblePages([])
+    setLocalPortfolioScan(null)
+    setLocalPortfolioScanError(null)
     try {
       if (connectionKey === 'instagram') {
         // Para Instagram, executa fluxo dedicado com auto-descoberta server-side
@@ -80,6 +88,12 @@ export function VerifiableConnectionCard({
         }
         if (Array.isArray(igRes?.accessible_pages)) {
           setLocalAccessiblePages(igRes.accessible_pages)
+        }
+        if (igRes?.portfolio_scan !== undefined) {
+          setLocalPortfolioScan(igRes.portfolio_scan)
+        }
+        if (igRes?.portfolio_scan_error !== undefined) {
+          setLocalPortfolioScanError(igRes.portfolio_scan_error)
         }
 
         if (igRes?.status === 'connected') {
@@ -250,6 +264,16 @@ export function VerifiableConnectionCard({
                 )}
               </div>
             </div>
+          )}
+
+        {/* SEÇÃO DA VARREDURA DO PORTFÓLIO */}
+        {connectionKey === 'instagram' &&
+          (localPortfolioScan !== null || localPortfolioScanError !== null) && (
+            <InstagramPortfolioScan
+              scan={localPortfolioScan || []}
+              error={localPortfolioScanError}
+              targetUsername="mauro.brfimoveis"
+            />
           )}
 
         {showMetaHelp && connectionKey === 'instagram' && (

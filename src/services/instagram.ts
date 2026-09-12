@@ -53,6 +53,14 @@ export interface InstagramPageLinkedAccount {
   page_name?: string
 }
 
+export interface InstagramPortfolioPage {
+  page_id: string
+  page_name: string
+  ig_account_id?: string | null
+  ig_username?: string | null
+  has_ig: boolean
+}
+
 export interface InstagramTestResult {
   success?: boolean
   status: string
@@ -76,6 +84,8 @@ export interface InstagramTestResult {
   token_identity?: InstagramTokenIdentity | null
   page_linked_instagram?: InstagramPageLinkedAccount | null
   accessible_pages?: InstagramAccessiblePage[]
+  portfolio_scan?: InstagramPortfolioPage[]
+  portfolio_scan_error?: string | null
   tested_tokens?: InstagramTestedToken[]
 }
 

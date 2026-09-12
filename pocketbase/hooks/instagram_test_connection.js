@@ -60,6 +60,157 @@ routerAdd(
     var testedTokens = []
     var savedTokenGraphError = null
 
+    // Lista de tokens do portfólio (System User e CAPI) para auto-descoberta e varredura
+    const tokensToTry = []
+    if (sysUserToken) tokensToTry.push({ token: sysUserToken, type: 'system_user' })
+    if (capiToken && capiToken !== sysUserToken) {
+      tokensToTry.push({ token: capiToken, type: 'capi' })
+    }
+
+    const crmIgUsername = (user.getString('instagram_username') || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^@/, '')
+
+    // =========================================================================
+    // PASSO 3 HELPER: VARREDURA DO PORTFÓLIO
+    // Consulta /me/accounts com os tokens do portfólio (system_user, capi)
+    // para listar TODAS as páginas da empresa e identificar onde o IG está vinculado
+    // =========================================================================
+    function runPortfolioScan() {
+      var scanResult = []
+      var lastScanError = null
+
+      if (tokensToTry.length === 0) {
+        return {
+          portfolio_scan: [],
+          portfolio_scan_error:
+            'Nenhum token de sistema ou CAPI disponível para varredura do portfólio.',
+        }
+      }
+
+      for (var s = 0; s < tokensToTry.length; s++) {
+        var scanCand = tokensToTry[s]
+        var scanToken = scanCand.token
+        var scanType = scanCand.type
+        var scanSuffix = maskToken(scanToken)
+
+        try {
+          var scanUrl =
+            'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,instagram_business_account{id,username,name}&limit=100&access_token=' +
+            encodeURIComponent(scanToken)
+
+          var scanRes = $http.send({
+            url: scanUrl,
+            method: 'GET',
+            timeout: 15,
+          })
+
+          if (
+            scanRes.statusCode >= 200 &&
+            scanRes.statusCode < 300 &&
+            scanRes.json &&
+            Array.isArray(scanRes.json.data)
+          ) {
+            var pagesData = scanRes.json.data
+            console.log(
+              '[INSTAGRAM_TEST] passo 3 varredura do portfólio (' +
+                scanType +
+                ' ' +
+                scanSuffix +
+                '): ' +
+                pagesData.length +
+                ' páginas encontradas',
+            )
+
+            for (var pi = 0; pi < pagesData.length; pi++) {
+              var pItem = pagesData[pi]
+              var igAcc = pItem.instagram_business_account || null
+              var pId = String(pItem.id || '').trim()
+              var pName = String(pItem.name || '').trim()
+              var igId = igAcc && igAcc.id ? String(igAcc.id).trim() : null
+              var igUser =
+                igAcc && (igAcc.username || igAcc.name)
+                  ? String(igAcc.username || igAcc.name).trim()
+                  : null
+              var hasIg = !!igAcc
+
+              var isTargetUser = false
+              if (igUser && crmIgUsername) {
+                var cleanFound = igUser.toLowerCase().replace(/^@/, '')
+                if (
+                  cleanFound === crmIgUsername ||
+                  cleanFound.indexOf(crmIgUsername) !== -1 ||
+                  crmIgUsername.indexOf(cleanFound) !== -1
+                ) {
+                  isTargetUser = true
+                }
+              }
+
+              console.log(
+                '[INSTAGRAM_TEST] passo 3 varredura página [' +
+                  pi +
+                  ']: page_id=' +
+                  pId +
+                  ' page_name="' +
+                  pName +
+                  '" ig_account_id=' +
+                  (igId || 'nenhuma') +
+                  ' ig_username=' +
+                  (igUser ? '@' + igUser : 'nenhuma') +
+                  (isTargetUser ? ' [MATCH USUÁRIO ALVO @' + crmIgUsername + '!]' : ''),
+              )
+
+              scanResult.push({
+                page_id: pId,
+                page_name: pName,
+                ig_account_id: igId,
+                ig_username: igUser,
+                has_ig: hasIg,
+              })
+            }
+
+            // Sucesso na consulta das páginas, retorna o scan
+            return {
+              portfolio_scan: scanResult,
+              portfolio_scan_error: null,
+            }
+          } else {
+            var sErr = extractGraphError(scanRes.json, scanRes.statusCode)
+            lastScanError = sErr.message || 'HTTP ' + scanRes.statusCode
+            console.log(
+              '[INSTAGRAM_TEST] passo 3 varredura (' +
+                scanType +
+                ' ' +
+                scanSuffix +
+                ') falhou: HTTP ' +
+                sErr.http_status +
+                ' code=' +
+                (sErr.code !== null ? sErr.code : 'n/a') +
+                ' msg=' +
+                sErr.message,
+            )
+          }
+        } catch (scanNetErr) {
+          var netMsg = String(scanNetErr && scanNetErr.message ? scanNetErr.message : scanNetErr)
+          lastScanError = netMsg
+          console.log(
+            '[INSTAGRAM_TEST] passo 3 varredura erro de rede (' +
+              scanType +
+              ' ' +
+              scanSuffix +
+              '): ' +
+              netMsg,
+          )
+        }
+      }
+
+      return {
+        portfolio_scan: scanResult,
+        portfolio_scan_error: lastScanError || 'Falha ao consultar páginas do portfólio na Meta.',
+      }
+    }
+
     // =========================================================================
     // PASSO 0: ANATOMIA DO TOKEN SALVO
     // Inspeciona quem o token salvo diz ser e quais Páginas/contas IG ele enxerga
@@ -372,7 +523,11 @@ routerAdd(
         (tokenIdentity.name || 'BRF Imóveis') +
         '. Aguarde ~5 minutos e clique Verificar Agora.'
 
-      console.log('[INSTAGRAM_TEST] Página sem Instagram vinculado. Retornando diagnóstico claro.')
+      console.log(
+        '[INSTAGRAM_TEST] Página sem Instagram vinculado. Executando varredura e retornando diagnóstico claro.',
+      )
+
+      var scanEarly = runPortfolioScan()
 
       return e.json(200, {
         success: false,
@@ -382,6 +537,8 @@ routerAdd(
         token_identity: tokenIdentity,
         page_linked_instagram: pageLinkedInstagram,
         accessible_pages: accessiblePages,
+        portfolio_scan: scanEarly.portfolio_scan,
+        portfolio_scan_error: scanEarly.portfolio_scan_error,
         tested_tokens: [
           {
             type: 'saved_page_token',
@@ -410,6 +567,7 @@ routerAdd(
         if (igRes.statusCode >= 200 && igRes.statusCode < 300) {
           const d = igRes.json || {}
           const igName = d.username || d.name || ''
+          const scanPass1 = runPortfolioScan()
           return e.json(200, {
             success: true,
             status: 'connected',
@@ -428,6 +586,8 @@ routerAdd(
             token_identity: tokenIdentity,
             page_linked_instagram: pageLinkedInstagram,
             accessible_pages: accessiblePages,
+            portfolio_scan: scanPass1.portfolio_scan,
+            portfolio_scan_error: scanPass1.portfolio_scan_error,
             tested_tokens: [
               {
                 type: 'saved_page_token',
@@ -479,11 +639,7 @@ routerAdd(
     }
 
     // 2. Auto-descoberta via System User Token (ou CAPI Token)
-    const tokensToTry = []
-    if (sysUserToken) tokensToTry.push({ token: sysUserToken, type: 'system_user' })
-    if (capiToken && capiToken !== sysUserToken) {
-      tokensToTry.push({ token: capiToken, type: 'capi' })
-    }
+    // (tokensToTry já inicializado no topo da rota)
 
     let discoveredPageToken = ''
     let matchedPageId = ''
@@ -658,6 +814,7 @@ routerAdd(
         const igName = igAccountData
           ? igAccountData.username || igAccountData.name || ''
           : matchedPageName
+        const scanDiscovered = runPortfolioScan()
         return e.json(200, {
           success: true,
           status: 'connected',
@@ -669,6 +826,8 @@ routerAdd(
           token_identity: tokenIdentity,
           page_linked_instagram: pageLinkedInstagram,
           accessible_pages: accessiblePages,
+          portfolio_scan: scanDiscovered.portfolio_scan,
+          portfolio_scan_error: scanDiscovered.portfolio_scan_error,
           tested_tokens: testedTokens,
         })
       } catch (saveErr) {
@@ -697,6 +856,8 @@ routerAdd(
         errCodeStr +
         ' — reconecte via OAuth ou cole um novo Page Access Token.'
 
+      const scanRejection = runPortfolioScan()
+
       return e.json(200, {
         success: false,
         status: 'configured_waiting_token',
@@ -706,6 +867,8 @@ routerAdd(
         token_identity: tokenIdentity,
         page_linked_instagram: pageLinkedInstagram,
         accessible_pages: accessiblePages,
+        portfolio_scan: scanRejection.portfolio_scan,
+        portfolio_scan_error: scanRejection.portfolio_scan_error,
         tested_tokens: testedTokens,
         app_id: igAppId,
       })
@@ -736,6 +899,8 @@ routerAdd(
         ' não possui Page Token ativo vinculado. Conecte pelo botão "Conectar Instagram (OAuth)" ou cole o Page Access Token manualmente.'
     }
 
+    const scanFallback = runPortfolioScan()
+
     return e.json(200, {
       success: false,
       status: 'configured_waiting_token',
@@ -746,6 +911,8 @@ routerAdd(
       token_identity: tokenIdentity,
       page_linked_instagram: pageLinkedInstagram,
       accessible_pages: accessiblePages,
+      portfolio_scan: scanFallback.portfolio_scan,
+      portfolio_scan_error: scanFallback.portfolio_scan_error,
       tested_tokens: testedTokens,
       app_id: igAppId,
     })
