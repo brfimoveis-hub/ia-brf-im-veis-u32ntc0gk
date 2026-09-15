@@ -159,22 +159,106 @@ routerAdd(
       igBusinessId = user.getString('meta_instagram_business_id') || ''
     }
 
-    const tokenToSave = pageToken || longLivedToken
-    user.set('meta_instagram_page_token', tokenToSave)
+    // Salva SEMPRE o user token retornado pelo OAuth
+    user.set('meta_instagram_user_token', longLivedToken)
+
+    // Percorre todas as páginas para identificar qual possui instagram_business_account
+    let targetPageToken = ''
+    let targetPageId = ''
+    let foundUsername = ''
+
+    if (
+      pagesRes.statusCode === 200 &&
+      pagesRes.json &&
+      pagesRes.json.data &&
+      pagesRes.json.data.length > 0
+    ) {
+      const allPages = pagesRes.json.data
+      console.log(
+        '[INSTAGRAM_OAUTH] /me/accounts retornou ' +
+          allPages.length +
+          ' páginas para o usuário OAuth.',
+      )
+
+      for (let i = 0; i < allPages.length; i++) {
+        const p = allPages[i]
+        const pTok = p.access_token || ''
+        const pId = p.id || ''
+        const pName = p.name || ''
+
+        try {
+          const chkRes = $http.send({
+            url:
+              'https://graph.facebook.com/v22.0/' +
+              encodeURIComponent(pId) +
+              '?fields=instagram_business_account{id,username,name}&access_token=' +
+              encodeURIComponent(pTok || longLivedToken),
+            method: 'GET',
+            timeout: 10,
+          })
+
+          if (
+            chkRes.statusCode === 200 &&
+            chkRes.json &&
+            chkRes.json.instagram_business_account &&
+            chkRes.json.instagram_business_account.id
+          ) {
+            const igObj = chkRes.json.instagram_business_account
+            igBusinessId = igObj.id
+            targetPageToken = pTok
+            targetPageId = pId
+            foundUsername = igObj.username || igObj.name || ''
+            console.log(
+              '[INSTAGRAM_OAUTH] Encontrado Instagram vinculado na página ' +
+                pName +
+                ' (' +
+                pId +
+                '): IG ID=' +
+                igBusinessId +
+                ' @' +
+                foundUsername,
+            )
+            break
+          }
+        } catch (chkErr) {
+          console.log(
+            '[INSTAGRAM_OAUTH] Erro ao checar IG na página ' + pId + ': ' + String(chkErr),
+          )
+        }
+      }
+
+      // Se nenhuma página tinha instagram_business_account explicitamente vinculado no Graph,
+      // usa os dados da primeira página como fallback para tokens de página
+      if (!targetPageToken && allPages.length > 0) {
+        targetPageToken = allPages[0].access_token || ''
+        targetPageId = allPages[0].id || ''
+      }
+    }
+
+    if (targetPageToken) {
+      user.set('meta_instagram_page_token', targetPageToken)
+      user.set('meta_page_access_token', targetPageToken)
+    } else {
+      user.set('meta_instagram_page_token', longLivedToken)
+      if (!user.getString('meta_page_access_token')) {
+        user.set('meta_page_access_token', longLivedToken)
+      }
+    }
+
     if (igBusinessId) {
       user.set('meta_instagram_business_id', igBusinessId)
     }
-    if (pageToken) {
-      user.set('meta_page_access_token', pageToken)
-    } else if (!user.getString('meta_page_access_token')) {
-      user.set('meta_page_access_token', tokenToSave)
+    if (foundUsername) {
+      user.set('instagram_username', foundUsername)
     }
+
     $app.save(user)
 
     return e.json(200, {
       success: true,
       instagram_business_id: igBusinessId,
-      page_id: pageId,
+      page_id: targetPageId || pageId,
+      instagram_username: foundUsername,
     })
   },
   $apis.requireAuth(),

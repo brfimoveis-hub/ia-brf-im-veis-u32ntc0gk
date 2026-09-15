@@ -68,6 +68,8 @@ export function InstagramConnect() {
     auto_corrected?: boolean
     old_instagram_business_id?: string
     instagram_business_id?: string
+    token_source?: string
+    has_oauth_token?: boolean
     graph_error?: InstagramGraphError
     token_identity?: InstagramTokenIdentity | null
     page_linked_instagram?: InstagramPageLinkedAccount | null
@@ -81,7 +83,8 @@ export function InstagramConnect() {
     form.meta_page_access_token ||
     form.meta_instagram_page_token ||
     user?.meta_page_access_token ||
-    user?.meta_instagram_page_token
+    user?.meta_instagram_page_token ||
+    (user as any)?.meta_instagram_user_token
   )
   const [igConnected, setIgConnected] = useState(hasIgId && hasPageToken)
   const [msgConnected, setMsgConnected] = useState(hasPageToken)
@@ -90,7 +93,9 @@ export function InstagramConnect() {
     if (!user?.id || e.record.id !== user.id) return
     const recordIgId = !!e.record.meta_instagram_business_id
     const recordPageToken = !!(
-      e.record.meta_page_access_token || e.record.meta_instagram_page_token
+      e.record.meta_page_access_token ||
+      e.record.meta_instagram_page_token ||
+      e.record.meta_instagram_user_token
     )
     setIgConnected(recordIgId && recordPageToken)
     setMsgConnected(recordPageToken)
@@ -278,6 +283,8 @@ export function InstagramConnect() {
         auto_corrected: res?.auto_corrected,
         old_instagram_business_id: res?.old_instagram_business_id,
         instagram_business_id: res?.instagram_business_id,
+        token_source: res?.token_source,
+        has_oauth_token: res?.has_oauth_token,
         graph_error: res?.graph_error,
         token_identity: res?.token_identity,
         page_linked_instagram: res?.page_linked_instagram,
@@ -821,12 +828,42 @@ export function InstagramConnect() {
                     <Layers className="h-4 w-4 text-blue-600" />
                     <span>Análise de Conexão do Token Salvo (Diagnóstico Profundo)</span>
                   </div>
-                  {diagnosticResult.tested_tokens && diagnosticResult.tested_tokens.length > 0 && (
-                    <Badge variant="outline" className="font-mono text-[11px]">
-                      Token {diagnosticResult.tested_tokens[0].token_suffix || '***'}
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {diagnosticResult.token_source && (
+                      <Badge
+                        variant="secondary"
+                        className={
+                          diagnosticResult.token_source.indexOf('oauth_user') !== -1
+                            ? 'bg-purple-500/15 text-purple-700 border-purple-500/30 text-[11px]'
+                            : 'bg-muted text-muted-foreground text-[11px]'
+                        }
+                      >
+                        Origem: {diagnosticResult.token_source}
+                      </Badge>
+                    )}
+                    {diagnosticResult.tested_tokens &&
+                      diagnosticResult.tested_tokens.length > 0 && (
+                        <Badge variant="outline" className="font-mono text-[11px]">
+                          Token {diagnosticResult.tested_tokens[0].token_suffix || '***'}
+                        </Badge>
+                      )}
+                  </div>
                 </div>
+
+                {/* Alerta caso o token OAuth do usuário não esteja salvo */}
+                {diagnosticResult.has_oauth_token === false && (
+                  <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">Token OAuth de usuário não encontrado</p>
+                      <p className="text-[11px] text-amber-800">
+                        O teste está usando credenciais legadas ou manuais. Para permitir que o CRM
+                        enxergue todas as suas páginas e contas vinculadas na Meta com permissão
+                        total, clique no botão <strong>Conectar Instagram (OAuth)</strong> acima.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Identidade do token */}
                 {diagnosticResult.token_identity ? (

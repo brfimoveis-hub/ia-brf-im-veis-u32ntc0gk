@@ -69,6 +69,8 @@ export interface InstagramTestResult {
   auto_corrected?: boolean
   old_instagram_business_id?: string
   instagram_business_id?: string
+  token_source?: string
+  has_oauth_token?: boolean
   data?: {
     id: string
     name?: string
