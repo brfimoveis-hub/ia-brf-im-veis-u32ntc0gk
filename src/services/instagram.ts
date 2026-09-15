@@ -105,28 +105,24 @@ export function getInstagramActiveAppId(
 /**
  * Escopos solicitados no OAuth do Instagram:
  *
- * CONTEXTO DO APP META DEDICADO ("BRF Imóveis 3"):
- * O usuário criou um app Meta dedicado com o caso de uso "Gerenciar mensagens e conteúdo no Instagram".
- * Na tela "Configuração da API com login do Facebook", a Meta lista exatamente estas permissões:
- * Bloco de mensagens:
- *   - instagram_basic
- *   - instagram_manage_messages
- *   - pages_read_engagement
- *   - pages_show_list
- *   - business_management
+ * CONTEXTO DO APP META:
+ * O app da Meta está em modo de desenvolvimento (ou sem App Review avançado aprovado).
+ * O escopo "instagram_manage_messages" exige App Review avançado e gera erro "Invalid Scopes"
+ * no diálogo de autorização da Meta para contas em desenvolvimento.
  *
- * Este app dedicado usa a família clássica/legada de escopos (instagram_basic, instagram_manage_messages)
- * combinada com as permissões de páginas e negócios necessárias, e NÃO a família nova `instagram_business_*`
- * (pedir `instagram_business_*` gera erro de "Invalid Scopes" no diálogo OAuth).
- *
- * A lista abaixo é solicitada tanto para o App ID dedicado (meta_instagram_app_id) quanto no fallback
- * do App ID principal (meta_app_id).
+ * Para o objetivo do CRM — permitir que o token identifique as Páginas do Facebook administradas
+ * e descubra a conta vinculada do Instagram Business (@mauro.brfimoveis) com autocorreção
+ * do instagram_business_id —, o conjunto mínimo e seguro de escopos que funciona perfeitamente
+ * em modo de desenvolvimento é:
+ *   - pages_show_list: permite listar as páginas do Facebook do usuário (/me/accounts)
+ *   - pages_read_engagement: permite ler metadados da página vinculada
+ *   - instagram_basic: permite obter metadados básicos da conta profissional do Instagram
+ *   - business_management: permite leitura dos ativos no Business Manager
  */
 export const INSTAGRAM_OAUTH_SCOPES_LIST = [
-  'instagram_basic',
-  'instagram_manage_messages',
   'pages_show_list',
   'pages_read_engagement',
+  'instagram_basic',
   'business_management',
 ]
 

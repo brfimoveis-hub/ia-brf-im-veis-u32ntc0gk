@@ -666,11 +666,7 @@ routerAdd(
                 const hasBasic =
                   granted.indexOf('instagram_basic') !== -1 ||
                   granted.indexOf('instagram_business_basic') !== -1
-                const hasMsg =
-                  granted.indexOf('instagram_manage_messages') !== -1 ||
-                  granted.indexOf('instagram_business_manage_messages') !== -1
                 if (!hasBasic) missingPerms.push('instagram_basic')
-                if (!hasMsg) missingPerms.push('instagram_manage_messages')
               }
             } catch (_) {}
 

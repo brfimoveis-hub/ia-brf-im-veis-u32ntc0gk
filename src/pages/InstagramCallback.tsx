@@ -319,7 +319,7 @@ export default function InstagramCallback() {
           </div>
           <CardTitle className="text-xl">Instagram Business OAuth</CardTitle>
           <CardDescription>
-            Conexão automática entre o CRM Bia e o Instagram Business / Messenger
+            Conexão automática entre o CRM Bia e o Instagram Business / Páginas do Facebook
           </CardDescription>
         </CardHeader>
 
@@ -355,9 +355,9 @@ export default function InstagramCallback() {
               <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-3 text-xs text-green-800 text-left space-y-1">
                 <p className="font-semibold">O que você pode fazer agora:</p>
                 <ul className="list-disc list-inside space-y-0.5 text-green-700">
-                  <li>Receber e responder DMs do Instagram direto pelo CRM</li>
-                  <li>Sincronizar conversas do Messenger com a assistente Bia</li>
-                  <li>Acompanhar métricas de engajamento em tempo real</li>
+                  <li>Identificar e sincronizar sua conta do Instagram Business com a Página</li>
+                  <li>Detectar automaticamente o Instagram Business ID no CRM</li>
+                  <li>Manter a conexão saudável e monitorada nas configurações</li>
                 </ul>
               </div>
 

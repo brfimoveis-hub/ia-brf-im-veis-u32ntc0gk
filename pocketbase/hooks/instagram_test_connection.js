@@ -878,13 +878,9 @@ routerAdd(
     const hasBasic =
       allPermissions.indexOf('instagram_basic') !== -1 ||
       allPermissions.indexOf('instagram_business_basic') !== -1
-    const hasMessages =
-      allPermissions.indexOf('instagram_manage_messages') !== -1 ||
-      allPermissions.indexOf('instagram_business_manage_messages') !== -1
 
     const missingPerms = []
     if (!hasBasic) missingPerms.push('instagram_basic')
-    if (!hasMessages) missingPerms.push('instagram_manage_messages')
 
     let instructionMsg = ''
     if (allPermissions.length > 0 && missingPerms.length > 0) {

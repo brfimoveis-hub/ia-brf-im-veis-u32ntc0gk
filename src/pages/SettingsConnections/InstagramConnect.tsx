@@ -416,9 +416,8 @@ export function InstagramConnect() {
             <AlertCircle className="h-4 w-4 text-yellow-600" />
             <AlertTitle className="text-yellow-700">Configuração necessária (OAuth)</AlertTitle>
             <AlertDescription className="text-yellow-600">
-              Para usar o fluxo OAuth, configure o <strong>App Meta dedicado ao Instagram</strong>{' '}
-              no bloco abaixo. A Meta não permite mensagens do Instagram em apps do tipo
-              Marketing/Anúncios.
+              Para usar o fluxo OAuth, informe o <strong>App ID e Segredo do App Meta</strong>{' '}
+              (dedicado ao Instagram no bloco abaixo ou no painel da Meta).
             </AlertDescription>
           </Alert>
         )}
@@ -497,13 +496,9 @@ export function InstagramConnect() {
                   </Badge>
                 </h4>
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  A Meta não permite casos de uso de mensagens do Instagram em apps de Anúncios.
-                  Crie um app novo em{' '}
-                  <strong>
-                    developers.facebook.com → Criar app → caso de uso &apos;Gerenciar mensagens e
-                    conteúdo no Instagram&apos;
-                  </strong>
-                  , copie o App ID e o Segredo aqui.
+                  Para melhor organização e isolamento, você pode criar um app dedicado em{' '}
+                  <strong>developers.facebook.com → Criar app</strong>, copiar o App ID e o Segredo
+                  aqui.
                 </p>
               </div>
             </div>
@@ -707,13 +702,13 @@ export function InstagramConnect() {
             <div className="pt-2 border-t mt-2 space-y-1.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <p className="font-medium text-foreground">
-                  Escopos solicitados no OAuth (App Meta Dedicado - Bloco de Mensagens):
+                  Escopos solicitados no OAuth (Compatível com Modo de Desenvolvimento):
                 </p>
                 <Badge
                   variant="outline"
                   className="text-[10px] bg-green-500/10 text-green-700 border-green-500/30"
                 >
-                  Compatível com Meta Developers 2025/2026
+                  Compatível com Modo Desenvolvimento Meta
                 </Badge>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -727,9 +722,11 @@ export function InstagramConnect() {
                 ))}
               </div>
               <p className="text-[11px] text-muted-foreground leading-normal">
-                Configurado exatamente para o caso de uso{' '}
-                <em>&quot;Gerenciar mensagens e conteúdo no Instagram&quot;</em> do seu App Meta
-                dedicado (sem requisições excedentes para evitar erro de <em>Invalid Scopes</em>).
+                Configurado com escopos compatíveis com apps em desenvolvimento para leitura e
+                vinculação de Páginas e Instagram Business (sem escopos que exijam App Review
+                avançado como{' '}
+                <code className="text-[10px] bg-muted px-1 rounded">instagram_manage_messages</code>
+                , prevenindo o erro de <em>Invalid Scopes</em>).
               </p>
             </div>
           </div>
