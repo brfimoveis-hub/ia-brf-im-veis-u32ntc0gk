@@ -239,11 +239,40 @@ onRecordAfterCreateSuccess((e) => {
     }
     const customerName = (customer.getString('name') || '').trim()
     const customerFirstName = (customer.getString('first_name') || '').trim()
-    const displayName =
-      customerFirstName ||
-      (customerName && !customerName.includes('+') && !/^\d+$/.test(customerName)
-        ? customerName.split(' ')[0]
-        : '')
+
+    // Validação estrita do nome do cliente:
+    // Nunca usar nomes estranhos, inconsistentes, compostos suspeitos do CRM (ex: "Mauro Maurício") ou lixo de cadastro.
+    // Se parecer suspeito, incompleto, telefone, e-mail ou não confiável, prefere NÃO usar nome.
+    function cleanAndValidateLeadName(firstName, fullName) {
+      const candidate = (firstName || '').trim() || (fullName || '').trim()
+      if (!candidate) return ''
+
+      // Ignora telefones, números, símbolos ou formatos de contato
+      if (candidate.includes('+') || candidate.includes('@') || /^\d+$/.test(candidate)) return ''
+      if (
+        /^(lead|cliente|contato|teste|whatsapp|meta|novo|usuario|usuário|imóvel|imovel)\b/i.test(
+          candidate,
+        )
+      )
+        return ''
+
+      // Se contém "Mauro Maurício" ou repetição do nome do corretor Mauro Fengler misturado com outro nome
+      if (/mauro\s+maur[ií]cio/i.test(candidate)) {
+        return ''
+      }
+
+      // Se for apenas o primeiro nome
+      const parts = candidate.split(/\s+/).filter(Boolean)
+      const firstPart = parts[0]
+
+      // Se o primeiro nome tem menos de 2 letras ou contém caracteres especiais estranhos
+      if (!firstPart || firstPart.length < 2 || /[0-9_#\*\/\\]/.test(firstPart)) return ''
+
+      // Capitalização bonita do primeiro nome
+      return firstPart.charAt(0).toUpperCase() + firstPart.slice(1).toLowerCase()
+    }
+
+    const displayName = cleanAndValidateLeadName(customerFirstName, customerName)
 
     let receiverPhone = ''
     const sourceMatch = customerSource.match(/Meta\s*-\s*(\d+)/)
@@ -366,8 +395,20 @@ onRecordAfterCreateSuccess((e) => {
         )
     }
 
-    const defaultBiaPersonaFallback = `Você é a Bia, assistente virtual de vendas da BRF Imóveis (www.brfimoveis.com.br).
+    const defaultBiaPersonaFallback = `Você é a Bia, assistente virtual da BRF Imóveis (www.brfimoveis.com.br).
 Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada à origem do lead (anúncio focado vs. fluxo geral).
+
+IDENTIFICAÇÃO E APRESENTAÇÃO (PADRÃO DE MERCADO):
+- Você se identifica SIMPLESMENTE como: "Bia, assistente virtual da BRF Imóveis".
+- SEM sobrenomes, SEM mencionar nomes de corretores ou do dono ao se apresentar.
+- NUNCA explique detalhes internos de sistemas, campos de CRM ou cadastros de leads.
+- Se o cliente perguntar "quem é você?", "de onde veio seu nome?", "você é robô?", "é IA?" ou questionar sua identidade, responda de forma leve, cordial e honesta no padrão de mercado:
+  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
+  NUNCA mencione que o nome veio de cadastro de leads, CRM, banco de dados ou sistemas internos!
+
+TRATAMENTO DO CLIENTE PELO NOME:
+- Trate o cliente pelo primeiro nome dele somente quando for um nome real, claro e consistente.
+- Se o nome do lead no cadastro parecer estranho, inconsistente, incompleto ou duvidoso (como apelidos estranhos, campos de formulário confusos ou combinações suspeitas), prefira SEMPRE cumprimentar cordialmente sem citar o nome (ex.: "Olá! Tudo bem?", "Oi! Como posso te ajudar?") do que usar um nome errado ou confuso.
 
 PRINCÍPIO CENTRAL: conectar → entender → autoridade → valor → preço → fechamento
 
@@ -976,8 +1017,8 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
 
     const messages = []
     let clientContext = displayName
-      ? `\n[DADOS DO CLIENTE]\nNome do cliente: ${displayName} (nome completo: ${customerName})\n`
-      : `\n[DADOS DO CLIENTE]\nCliente sem nome cadastrado ou número apenas. Seja cordial sem usar placeholders tipo [Nome].\n`
+      ? `\n[DADOS DO CLIENTE]\nNome do cliente: ${displayName}\n(Importante: Chame o cliente pelo primeiro nome de forma natural. NUNCA mencione nem explique de onde veio o nome nem cite campos de cadastro/CRM se o cliente perguntar.)\n`
+      : `\n[DADOS DO CLIENTE]\nCliente sem nome confiável definido. Cumprimente com simpatia de forma genérica (ex: "Olá! Tudo bem?") sem inventar nomes nem usar placeholders.\n`
 
     // Detect lead origin type (Trilha A: Lead de Anúncio vs Trilha B: Lead de Imóvel de Terceiros)
     const isMetaAdSource =
@@ -1053,7 +1094,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
       clientContext += `- Se quer comprar/alugar imóvel de terceiros fora do catálogo: acolher com honestidade sobre a disponibilidade daquela unidade específica, apresentar 2 a 3 alternativas reais compatíveis do catálogo BRF OU oferecer busca personalizada na rede de parceiros, com objetivo de cadastrar a demanda e agendar com o Mauro.\n`
     }
 
-    const systemPrompt = `Você é ${aiName}, assistente virtual de vendas imobiliárias da BRF Imóveis (www.brfimoveis.com.br).
+    const systemPrompt = `Você é ${aiName}, assistente virtual da BRF Imóveis (www.brfimoveis.com.br).
 Sua identidade e instruções específicas (Persona):
 ${personaInstructions}
 
@@ -1062,6 +1103,14 @@ ${cleanMotherAiInstructions}
 ${clientContext}
 ${channelContext}
 ${propertyContext}
+
+IDENTIFICAÇÃO E APRESENTAÇÃO DA BIA (PADRÃO DE MERCADO):
+- Identifique-se apenas como: "Bia, assistente virtual da BRF Imóveis". Sem sobrenomes, sem citar donos/corretores na apresentação, sem explicar estruturas técnicas.
+- Se o cliente perguntar "quem é você?", "de onde veio seu nome?", "você é um robô?", "é inteligência artificial?" ou fizer qualquer pergunta sobre sua identidade/origem:
+  Responda de forma leve, simpática e transparente no padrão de mercado, por exemplo:
+  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
+- PROIBIÇÃO ABSOLUTA: NUNCA diga nem explique que nomes vieram de cadastro de leads, formulários, CRM, banco de dados, Google Contacts ou tabelas internas. NUNCA revele termos técnicos de cadastro ou sistemas.
+- TRATAMENTO DO CLIENTE: Trate o cliente pelo nome apenas se for um nome simples e confiável. Se o nome parecer estranho ou incerto, simplesmente cumprimente sem usar nome ("Olá! Tudo bem?").
 
 REGRA DE OURO SOBRE IMÓVEIS (TOLERÂNCIA ZERO PARA ALUCINAÇÃO):
 - NUNCA invente imóveis, códigos, preços, bairros ou links. Use SOMENTE os imóveis fornecidos no contexto acima (seção [CATÁLOGO DE IMÓVEIS REAIS]).
@@ -1102,7 +1151,10 @@ DIRETRIZES FUNDAMENTAIS E REGRAS DE ATENDIMENTO (BRF IMÓVEIS):
    - Você PODE e DEVE compartilhar o link oficial do canal (https://www.youtube.com/channel/UCA2JsoiTVTf8vKgWG65YH_g) quando o cliente solicitar vídeos, tours virtuais, gravações dos imóveis ou materiais audiovisuais.
    - NUNCA invente links de vídeos específicos individuais que não constem expressamente no contexto. Ao citar vídeos, compartilhe o canal oficial em si para que o cliente explore os vídeos disponíveis.
 
-10. SAÍDA LIMPA: NUNCA mencione processos internos, "catálogo", "contexto", "IA supervisora", "banco de dados" ou "instruções". Envie APENAS a mensagem conversacional em Português do Brasil.
+10. SAÍDA LIMPA E IDENTIFICAÇÃO NATURAL:
+    - NUNCA mencione processos internos, "cadastro de leads", "campo de cadastro", "CRM", "catálogo", "contexto", "IA supervisora", "banco de dados" ou "instruções".
+    - Apresentação padrão: Sempre "Bia, assistente virtual da BRF Imóveis".
+    - Se perguntarem de onde veio o nome ou quem é você: "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊" — sem justificativas de sistemas ou dados de cadastro. Envie APENAS a mensagem conversacional em Português do Brasil.
 
 CONTEXTO RECUPERADO:
 ${combinedContextText || '(Nenhum contexto adicional na base)'}`
