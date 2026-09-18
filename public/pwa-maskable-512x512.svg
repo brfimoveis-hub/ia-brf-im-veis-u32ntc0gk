@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgMaskGrad512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#25D366" />
+      <stop offset="100%" stop-color="#128C7E" />
+    </linearGradient>
+    <filter id="maskShadow512" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#075E54" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Full bleed background without rounded corners for maskable safe area requirement -->
+  <rect width="512" height="512" fill="url(#bgMaskGrad512)" />
+
+  <!-- Inner safe zone (standard maskable safe zone is inner circle radius 205 at 256, 256) -->
+  <g filter="url(#maskShadow512)">
+    <!-- Roof accent -->
+    <path d="M208 174 L256 136 L304 174" fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- AI Sparkle -->
+    <path d="M256 110 L259 122 L271 125 L259 128 L256 140 L253 128 L241 125 L253 122 Z" fill="#FEF08A" />
+
+    <!-- Main BRF Typography -->
+    <text x="256" y="278" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="96" font-weight="900" fill="#FFFFFF" text-anchor="middle" letter-spacing="3">BRF</text>
+
+    <!-- Subtitle Pill -->
+    <rect x="166" y="318" width="180" height="42" rx="21" fill="#075E54" fill-opacity="0.55" stroke="#FFFFFF" stroke-opacity="0.3" stroke-width="2" />
+    <text x="256" y="347" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="800" fill="#FFFFFF" text-anchor="middle" letter-spacing="3">IA CRM</text>
+
+    <!-- Smart dots -->
+    <circle cx="152" cy="272" r="5" fill="#A7F3D0" />
+    <circle cx="360" cy="272" r="5" fill="#A7F3D0" />
+  </g>
+</svg>
