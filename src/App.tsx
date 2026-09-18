@@ -19,6 +19,7 @@ import Dashboard from './pages/Dashboard'
 import Customers from './pages/Customers'
 import Atendimentos from './pages/Atendimentos'
 import Estatisticas from './pages/Estatisticas'
+import Anuncios from './pages/Anuncios'
 
 import Cadences from './pages/Cadences'
 import EmailMarketing from './pages/EmailMarketing'
@@ -104,6 +105,8 @@ const RouteTracker = () => {
 
         if (lowerPath === '/estatisticas' || lowerPath.startsWith('/estatisticas/')) {
           component = 'Estatisticas'
+        } else if (lowerPath === '/anuncios' || lowerPath.startsWith('/anuncios/')) {
+          component = 'Anuncios'
         } else if (lowerPath === '/atendimentos' || lowerPath.startsWith('/atendimentos/')) {
           component = 'Atendimentos'
         } else if (
@@ -260,6 +263,14 @@ const router = createBrowserRouter([
                 element: (
                   <ErrorBoundary>
                     <Estatisticas />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'anuncios',
+                element: (
+                  <ErrorBoundary>
+                    <Anuncios />
                   </ErrorBoundary>
                 ),
               },

@@ -128,7 +128,18 @@ export const INSTAGRAM_OAUTH_SCOPES_LIST = [
   'business_management',
 ]
 
+/**
+ * Escopos completos para incluir o gerenciamento de Anúncios (Meta Ads)
+ * Adiciona ads_management e ads_read sem interferir no fluxo padrão do Instagram.
+ */
+export const META_ADS_OAUTH_SCOPES_LIST = [
+  ...INSTAGRAM_OAUTH_SCOPES_LIST,
+  'ads_management',
+  'ads_read',
+]
+
 export const INSTAGRAM_OAUTH_SCOPES = INSTAGRAM_OAUTH_SCOPES_LIST.join(',')
+export const META_ADS_OAUTH_SCOPES = META_ADS_OAUTH_SCOPES_LIST.join(',')
 
 export const INSTAGRAM_CALLBACK_PATH = '/settings/connections/instagram/callback'
 
@@ -169,6 +180,7 @@ export function getInstagramOAuthUrl(
   appId: string,
   redirectUri: string,
   customState?: string,
+  includeAdsScope = false,
 ): string {
   let state = customState
   if (!state) {
@@ -191,10 +203,12 @@ export function getInstagramOAuthUrl(
     }
   }
 
+  const scopeToUse = includeAdsScope ? META_ADS_OAUTH_SCOPES : INSTAGRAM_OAUTH_SCOPES
+
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
-    scope: INSTAGRAM_OAUTH_SCOPES,
+    scope: scopeToUse,
     response_type: 'code',
     state,
   })
