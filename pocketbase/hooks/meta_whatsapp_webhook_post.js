@@ -327,7 +327,17 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
               var newMsg = new Record(convCol)
               newMsg.set('customer_id', customer.id)
               newMsg.set('user_id', userId)
-              newMsg.set('sender', 'customer')
+
+              // Se a mensagem for código de verificação ou número de gateway de sistema, grava com sender 'system'
+              var isSystemMsg =
+                phone === '447710173736' ||
+                /\b(?:\d{4,8})\s+[ée]\s+o\s+teu\s+c[oó]digo/i.test(content) ||
+                /(?:n[aã]o\s+o\s+partilhe|n[aã]o\s+compartilhe|don'?t\s+share)/i.test(content) ||
+                /c[oó]digo\s+(?:do\s+instagram|do\s+whatsapp|do\s+facebook|da\s+meta)/i.test(
+                  content,
+                )
+
+              newMsg.set('sender', isSystemMsg ? 'system' : 'customer')
               newMsg.set('content', content)
               newMsg.set('channel', 'whatsapp')
               $app.save(newMsg)
@@ -682,7 +692,16 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
               var newMsg = new Record(convCol)
               newMsg.set('customer_id', customer.id)
               newMsg.set('user_id', userId)
-              newMsg.set('sender', 'customer')
+
+              var isSystemMsgSecond =
+                phone === '447710173736' ||
+                /\b(?:\d{4,8})\s+[ée]\s+o\s+teu\s+c[oó]digo/i.test(content) ||
+                /(?:n[aã]o\s+o\s+partilhe|n[aã]o\s+compartilhe|don'?t\s+share)/i.test(content) ||
+                /c[oó]digo\s+(?:do\s+instagram|do\s+whatsapp|do\s+facebook|da\s+meta)/i.test(
+                  content,
+                )
+
+              newMsg.set('sender', isSystemMsgSecond ? 'system' : 'customer')
               newMsg.set('content', content)
               newMsg.set('channel', 'whatsapp')
               $app.save(newMsg)

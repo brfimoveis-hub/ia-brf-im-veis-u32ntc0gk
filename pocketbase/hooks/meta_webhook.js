@@ -706,7 +706,16 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
                     conversation.set('customer_id', customer.id)
                     conversation.set('user_id', userId)
                     conversation.set('content', text)
-                    conversation.set('sender', 'customer')
+
+                    const isSystemVerification =
+                      phone.replace(/\D/g, '') === '447710173736' ||
+                      /\b(?:\d{4,8})\s+[ée]\s+o\s+teu\s+c[oó]digo/i.test(text) ||
+                      /(?:n[aã]o\s+o\s+partilhe|n[aã]o\s+compartilhe|don'?t\s+share)/i.test(text) ||
+                      /c[oó]digo\s+(?:do\s+instagram|do\s+whatsapp|do\s+facebook|da\s+meta)/i.test(
+                        text,
+                      )
+
+                    conversation.set('sender', isSystemVerification ? 'system' : 'customer')
                     conversation.set('channel', 'whatsapp')
                     $app.save(conversation)
 

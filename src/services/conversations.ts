@@ -45,6 +45,8 @@ export const getConversations = (customerId: string) =>
 export const createConversation = (data: Partial<Conversation>) =>
   pb.collection('conversations').create<Conversation>(data)
 
+import { isAutomatedSystemThread } from '@/lib/system-messages'
+
 export const getInboxThreads = async (userId?: string): Promise<InboxThread[]> => {
   const currentUserId = userId || pb.authStore.record?.id
   const filter = currentUserId ? `user_id = "${currentUserId}"` : ''
@@ -62,16 +64,18 @@ export const getInboxThreads = async (userId?: string): Promise<InboxThread[]> =
     }
   }
 
-  return Array.from(grouped.values()).map((conv) => ({
-    customer_id: conv.customer_id,
-    customer_name: conv.expand?.customer_id?.name || 'Sem nome',
-    customer_phone: conv.expand?.customer_id?.phone || '',
-    customer_status: conv.expand?.customer_id?.status || '',
-    last_message: conv.content,
-    last_message_time: conv.created,
-    channel: conv.channel || 'whatsapp',
-    sender: conv.sender,
-  }))
+  return Array.from(grouped.values())
+    .map((conv) => ({
+      customer_id: conv.customer_id,
+      customer_name: conv.expand?.customer_id?.name || 'Sem nome',
+      customer_phone: conv.expand?.customer_id?.phone || '',
+      customer_status: conv.expand?.customer_id?.status || '',
+      last_message: conv.content,
+      last_message_time: conv.created,
+      channel: conv.channel || 'whatsapp',
+      sender: conv.sender,
+    }))
+    .filter((thread) => !isAutomatedSystemThread(thread))
 }
 
 export const sendManualReply = async (customerId: string, content: string, channel?: string) =>

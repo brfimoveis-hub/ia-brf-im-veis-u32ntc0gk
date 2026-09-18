@@ -81,6 +81,40 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
+    // Detecção e bloqueio de automação/mensagens de sistema (código de verificação, SMS Meta/Instagram, etc.)
+    const incomingText = (e.record.getString('content') || '').trim()
+    const checkCustPhone = customerInitialCheck.getString('phone') || ''
+    const checkCustName = customerInitialCheck.getString('name') || ''
+    const isVerificationCodeMsg =
+      /\b(?:\d{4,8})\s+[ée]\s+o\s+teu\s+c[oó]digo/i.test(incomingText) ||
+      /\b(?:\d{4,8})\s+[ée]\s+o\s+seu\s+c[oó]digo/i.test(incomingText) ||
+      /\b(?:\d{4,8})\s+is\s+your\s+(?:Instagram|Facebook|WhatsApp|Meta|security|verification)\s+code/i.test(
+        incomingText,
+      ) ||
+      /(?:n[aã]o\s+o\s+partilhe|n[aã]o\s+compartilhe|do\s*not\s+share|don'?t\s+share|never\s+share)/i.test(
+        incomingText,
+      ) ||
+      /c[oó]digo\s+(?:do\s+instagram|do\s+whatsapp|do\s+facebook|da\s+meta|de\s+confirma[cç][aã]o|de\s+verifica[cç][aã]o|de\s+seguran[cç]a)/i.test(
+        incomingText,
+      ) ||
+      /^\s*\d{4,8}\s*[-:]?\s*(?:c[oó]digo|code|é o|is your)\b/i.test(incomingText) ||
+      incomingText === '[unsupported Recebida]' ||
+      incomingText.includes(
+        'este número é exclusivo para comunicados e novidades, sem atendimento humano',
+      )
+
+    const isSystemSenderNumber =
+      checkCustPhone.replace(/\D/g, '') === '447710173736' ||
+      checkCustPhone === '+44 7710 173736' ||
+      /^facebook\s+business$/i.test(checkCustName)
+
+    if (isVerificationCodeMsg || isSystemSenderNumber) {
+      console.log(
+        `[AI_REPLY] Mensagem de verificação/sistema detectada para customer=${customerId}. Resposta automática cancelada.`,
+      )
+      return e.next()
+    }
+
     // Lock acquisition with 120s TTL
     try {
       $app.runInTransaction((txApp) => {

@@ -6,6 +6,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { type Conversation, getConversations } from '@/services/conversations'
 import { type Customer, getCustomer } from '@/services/customers'
 import { cn, formatPhone } from '@/lib/utils'
+import { isAutomatedSystemThread, isSystemVerificationMessage } from '@/lib/system-messages'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -168,16 +169,34 @@ export default function Atendimentos() {
         for (const conv of records.items) {
           if (!conv.customer_id) continue
           if (!grouped.has(conv.customer_id)) {
+            const cust = conv.expand?.customer_id
+            const custName = cust?.name || 'Cliente sem nome'
+            const custPhone = cust?.phone || ''
+            const lastContent = conv.content || ''
+
+            // Filtro defensivo de mensagens de sistema / automação / verificação
+            if (
+              isAutomatedSystemThread({
+                sender: conv.sender,
+                customer_name: custName,
+                customer_phone: custPhone,
+                last_message: lastContent,
+                notes: (cust as { notes?: string })?.notes,
+                source: cust?.source,
+              })
+            ) {
+              continue
+            }
+
             const createdTime = new Date(conv.created).getTime()
             const isActive = now - createdTime <= dayMs
 
-            const cust = conv.expand?.customer_id
             grouped.set(conv.customer_id, {
               customer_id: conv.customer_id,
-              customer_name: cust?.name || 'Cliente sem nome',
-              customer_phone: cust?.phone || '',
+              customer_name: custName,
+              customer_phone: custPhone,
               customer_status: cust?.status || '',
-              last_message: conv.content || '',
+              last_message: lastContent,
               last_message_time: conv.created,
               channel: conv.channel || 'whatsapp',
               sender: conv.sender,
@@ -238,6 +257,8 @@ export default function Atendimentos() {
     ]).then(([cust, msgs]) => {
       if (!isMounted) return
       setSelectedCustomer(cust)
+      // Se for uma conversa de sistema acidentalmente acessada, ou com mensagens de sistema,
+      // podemos manter o histórico ou exibir, mas caso o customer seja de sistema nós tratamos com cuidado
       setMessages(msgs)
       setLoadingMessages(false)
     })
@@ -281,6 +302,22 @@ export default function Atendimentos() {
       setSelectedCustomer(e.record as unknown as Customer)
     }
   })
+
+  // Se o cliente atualmente selecionado for uma conversa que foi filtrada/ocultada da lista de threads,
+  // ajusta a seleção para o primeiro atendimento real disponível (em desktop)
+  useEffect(() => {
+    if (threads.length > 0 && selectedCustomerId) {
+      const existsInThreads = threads.some((t) => t.customer_id === selectedCustomerId)
+      if (!existsInThreads && window.innerWidth >= 768) {
+        setSelectedCustomerId(threads[0].customer_id)
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('cliente', threads[0].customer_id)
+          return next
+        })
+      }
+    }
+  }, [threads, selectedCustomerId, setSearchParams])
 
   // Filtros de busca e canal
   const filteredThreads = useMemo(() => {
