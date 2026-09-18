@@ -17,6 +17,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 import Dashboard from './pages/Dashboard'
 import Customers from './pages/Customers'
+import Atendimentos from './pages/Atendimentos'
 
 import Cadences from './pages/Cadences'
 import EmailMarketing from './pages/EmailMarketing'
@@ -100,7 +101,9 @@ const RouteTracker = () => {
         let component = 'Unknown'
         const lowerPath = path.toLowerCase()
 
-        if (
+        if (lowerPath === '/atendimentos' || lowerPath.startsWith('/atendimentos/')) {
+          component = 'Atendimentos'
+        } else if (
           lowerPath === '/settings/connections' ||
           lowerPath.startsWith('/settings/connections/')
         ) {
@@ -238,6 +241,14 @@ const router = createBrowserRouter([
                 element: (
                   <ErrorBoundary>
                     <Dashboard />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'atendimentos',
+                element: (
+                  <ErrorBoundary>
+                    <Atendimentos />
                   </ErrorBoundary>
                 ),
               },

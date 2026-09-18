@@ -83,11 +83,20 @@ export default function SettingsConnections() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Integrações</h1>
-        <p className="text-muted-foreground">
-          Configure suas integrações com Meta API e portais de imóveis no BRF IA CRM.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Integrações</h1>
+          <p className="text-muted-foreground">
+            Configure suas integrações com Meta API e portais de imóveis no BRF IA CRM.
+          </p>
+        </div>
+        <a
+          href="/atendimentos"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm self-start sm:self-auto"
+        >
+          <MessageSquare className="h-4 w-4" />
+          Ver Atendimentos da Bia
+        </a>
       </div>
 
       <ErrorBoundary logType="connections_summary_error">
