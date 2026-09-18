@@ -15,6 +15,7 @@ import {
   Sparkles,
   Target,
   Mail,
+  BarChart3,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -42,6 +43,7 @@ export default function Layout() {
   const navItems = [
     { name: 'Cérebro do Sistema', path: '/dashboard', icon: Bot },
     { name: 'Atendimentos (IA)', path: '/atendimentos', icon: MessageSquare },
+    { name: 'Estatísticas', path: '/estatisticas', icon: BarChart3 },
     { name: 'Clientes', path: '/customers', icon: Users },
     { name: 'Cadências', path: '/cadences', icon: Settings },
     { name: 'Email Marketing', path: '/email-marketing', icon: Mail },

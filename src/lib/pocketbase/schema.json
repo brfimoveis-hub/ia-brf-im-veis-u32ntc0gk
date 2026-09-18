@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-18T22:49:07.957Z",
+  "generatedAt": "2026-09-18T23:18:31.950Z",
   "collections": [
     {
       "name": "users",
@@ -1458,6 +1458,71 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "wa_stats_settings",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "usd_to_brl_rate",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "marketing_rate_usd",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "service_rate_usd",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "monthly_leads_goal",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "monthly_investment_budget_brl",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_wa_stats_settings_user ON wa_stats_settings (user_id)"]
     }
   ]
 }
