@@ -231,8 +231,16 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
 
               var initialSource = referralLabel
               if (!initialSource) {
-                initialSource = 'Meta - WhatsApp Cloud API'
-                if (displayPhone) initialSource += ' (' + displayPhone + ')'
+                // Verificar se a mensagem contém identificação de landing page ou lançamento
+                var landingMatch =
+                  content.match(/landing page ([a-z0-9\-]+)/i) ||
+                  content.match(/origem:\s*([a-z0-9\-_]+)/i)
+                if (landingMatch && landingMatch[1]) {
+                  initialSource = 'Landing Page — ' + landingMatch[1]
+                } else {
+                  initialSource = 'Meta - WhatsApp Cloud API'
+                  if (displayPhone) initialSource += ' (' + displayPhone + ')'
+                }
               }
               customer.set('source', initialSource)
 
@@ -262,6 +270,18 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
               if (referralLabel) {
                 custToUpdate.set('source', referralLabel)
                 updatedCustomer = true
+              } else {
+                var landingMatchExisting =
+                  content.match(/landing page ([a-z0-9\-]+)/i) ||
+                  content.match(/origem:\s*([a-z0-9\-_]+)/i)
+                if (landingMatchExisting && landingMatchExisting[1]) {
+                  var newLandingSource = 'Landing Page — ' + landingMatchExisting[1]
+                  var prevSource = custToUpdate.getString('source') || ''
+                  if (!prevSource || prevSource.indexOf('Landing Page') === -1) {
+                    custToUpdate.set('source', newLandingSource)
+                    updatedCustomer = true
+                  }
+                }
               }
 
               // 2b. Acrescentar nas notes do customer sem sobrescrever o que já existe

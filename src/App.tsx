@@ -20,6 +20,8 @@ import Customers from './pages/Customers'
 import Atendimentos from './pages/Atendimentos'
 import Estatisticas from './pages/Estatisticas'
 import Anuncios from './pages/Anuncios'
+import Launches from './pages/Launches'
+import LaunchLanding from './pages/LaunchLanding'
 
 import Cadences from './pages/Cadences'
 import EmailMarketing from './pages/EmailMarketing'
@@ -103,7 +105,11 @@ const RouteTracker = () => {
         let component = 'Unknown'
         const lowerPath = path.toLowerCase()
 
-        if (lowerPath === '/estatisticas' || lowerPath.startsWith('/estatisticas/')) {
+        if (lowerPath.startsWith('/l/')) {
+          component = 'LaunchLanding'
+        } else if (lowerPath === '/launches' || lowerPath.startsWith('/launches/')) {
+          component = 'Launches'
+        } else if (lowerPath === '/estatisticas' || lowerPath.startsWith('/estatisticas/')) {
           component = 'Estatisticas'
         } else if (lowerPath === '/anuncios' || lowerPath.startsWith('/anuncios/')) {
           component = 'Anuncios'
@@ -236,6 +242,14 @@ const router = createBrowserRouter([
         element: <PrivacyPolicy />,
       },
       {
+        path: 'l/:slug',
+        element: (
+          <ErrorBoundary>
+            <LaunchLanding />
+          </ErrorBoundary>
+        ),
+      },
+      {
         element: <ProtectedRoute />,
         children: [
           {
@@ -271,6 +285,14 @@ const router = createBrowserRouter([
                 element: (
                   <ErrorBoundary>
                     <Anuncios />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'launches',
+                element: (
+                  <ErrorBoundary>
+                    <Launches />
                   </ErrorBoundary>
                 ),
               },

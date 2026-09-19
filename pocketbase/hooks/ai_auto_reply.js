@@ -232,6 +232,58 @@ onRecordAfterCreateSuccess((e) => {
       customerNotes.toLowerCase().includes('origem: anúncio') ||
       customerNotes.toLowerCase().includes('origem: anuncio')
 
+    // Procura por Dossiê de Lançamento publicado compatível (launches com status='publicado')
+    let matchedLaunch = null
+    try {
+      const publishedLaunches = $app.findRecordsByFilter(
+        'launches',
+        "status = 'publicado'",
+        '-created',
+        50,
+        0,
+      )
+      const referralSearchText =
+        `${customerSource} ${customerNotes} ${conversationChannel || ''}`.toLowerCase()
+
+      for (const lItem of publishedLaunches) {
+        const lName = (lItem.getString('name') || '').toLowerCase()
+        const lSlug = (lItem.getString('slug') || '').toLowerCase()
+        const lEnterprise = (lItem.getString('enterprise_name') || '').toLowerCase()
+
+        let keywords = lItem.get('keywords')
+        if (typeof keywords === 'string') {
+          try {
+            keywords = JSON.parse(keywords)
+          } catch (_) {
+            keywords = [keywords]
+          }
+        }
+
+        const matchTerms = [
+          lName,
+          lSlug,
+          lEnterprise,
+          ...(Array.isArray(keywords) ? keywords : []),
+        ].filter(Boolean)
+
+        const hasMatch = matchTerms.some((term) => {
+          if (!term || typeof term !== 'string') return false
+          const t = term.trim().toLowerCase()
+          return t.length > 2 && referralSearchText.includes(t)
+        })
+
+        if (hasMatch) {
+          matchedLaunch = lItem
+          console.log(
+            `[AI_REPLY] Matched published launch dossier: "${lItem.getString('name')}" (slug=${lSlug}, id=${lItem.id}) for customer=${customerId}`,
+          )
+          break
+        }
+      }
+    } catch (launchErr) {
+      console.warn(`[AI_REPLY] Error checking published launches (non-fatal): ${String(launchErr)}`)
+    }
+
     // Procura por Playbook de Anúncio ativo compatível (ad_playbooks)
     let matchedPlaybook = null
     try {
@@ -1081,7 +1133,68 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
       /quero vender|tenho um (?:imóvel|apartamento|apto|casa|terreno|imovel)|tenho uma (?:casa|cobertura|sala)|por quanto vendo|colocar (?:à|a) venda|colocar para vender|quero alugar meu|quero anunciar|anunciar meu|administrar meu|captar|avaliação do meu|quanto vale meu/i
     const isOwnerCaptureLead = ownerIntentRegex.test(combinedCustText)
 
-    if (matchedPlaybook && !isOwnerCaptureLead) {
+    if (matchedLaunch && !isOwnerCaptureLead) {
+      const lName = matchedLaunch.getString('name') || 'Lançamento'
+      const lEnterprise = matchedLaunch.getString('enterprise_name') || lName
+      const lHeadline = matchedLaunch.getString('headline') || ''
+      const lDesc = matchedLaunch.getString('description') || ''
+      const lLocation = matchedLaunch.getString('location') || ''
+      const lPayment = matchedLaunch.getString('payment_terms') || ''
+      const lCadence = matchedLaunch.getString('specific_cadence') || ''
+      const lArguments = matchedLaunch.getString('sales_arguments') || ''
+      const lSlug = matchedLaunch.getString('slug') || ''
+      const lCtaMsg = matchedLaunch.getString('cta_default_message') || ''
+
+      let lUnits = matchedLaunch.get('units') || []
+      if (typeof lUnits === 'string') {
+        try {
+          lUnits = JSON.parse(lUnits)
+        } catch (_) {
+          lUnits = []
+        }
+      }
+      let unitsSummary = ''
+      if (Array.isArray(lUnits) && lUnits.length > 0) {
+        unitsSummary = lUnits
+          .map((u, i) => {
+            const typ = u.typology || u.tipo || 'Unidade'
+            const area = u.area || ''
+            const pr = u.price || u.valor || ''
+            const avail = u.available !== false ? 'Disponível' : 'Reservada'
+            return `  ${i + 1}. ${typ} - ${area} | Valor: ${pr} (${avail})`
+          })
+          .join('\n')
+      }
+
+      let lDiffs = matchedLaunch.get('differentials') || []
+      if (typeof lDiffs === 'string') {
+        try {
+          lDiffs = JSON.parse(lDiffs)
+        } catch (_) {
+          lDiffs = []
+        }
+      }
+      let diffsSummary = Array.isArray(lDiffs) ? lDiffs.join('; ') : ''
+
+      clientContext += `\n[ROTEAMENTO: TRILHA LANÇAMENTO ESPECÍFICO — DOSSIÊ PUBLICADO "${lName}"] (MÁXIMA PRIORIDADE):
+Você está atendendo um lead com interesse específico no lançamento: ${lEnterprise} (${lLocation}).
+DOSSIÊ OFICIAL DO LANÇAMENTO:
+Headline: ${lHeadline}
+Descrição: ${lDesc}
+${unitsSummary ? `Tabela de Unidades:\n${unitsSummary}\n` : ''}
+${lPayment ? `Condições de Pagamento: ${lPayment}\n` : ''}
+${diffsSummary ? `Diferenciais do Empreendimento: ${diffsSummary}\n` : ''}
+${lArguments ? `Argumentos Comerciais: ${lArguments}\n` : ''}
+
+CADÊNCIA ESPECÍFICA DESTE LANÇAMENTO (SIGA COM PRIORIDADE MÁXIMA):
+${lCadence}
+
+DIRETRIZ DE FOCO NO LANÇAMENTO:
+- Conduza o atendimento com base no dossiê acima.
+- Destaque as unidades, valores e diferenciais específicos do ${lName}.
+- Landing page oficial do lançamento: https://crm.brfimoveis.com.br/l/${lSlug} (você pode enviar para o cliente ver fotos e detalhes).
+- Se o cliente avançar para reserva, visita ao decorado ou proposta, direcione com segurança para o Mauro no WhatsApp wa.me/5548992098050 e marque [HANDOVER: Mauro].\n`
+    } else if (matchedPlaybook && !isOwnerCaptureLead) {
       const pbName = matchedPlaybook.getString('name') || 'Anúncio'
       const pbEmpreendimento =
         matchedPlaybook.getString('empreendimento') || 'Empreendimento Anunciado'

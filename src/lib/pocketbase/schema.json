@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-18T23:26:38.358Z",
+  "generatedAt": "2026-09-18T23:53:26.126Z",
   "collections": [
     {
       "name": "users",
@@ -1523,6 +1523,156 @@
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_wa_stats_settings_user ON wa_stats_settings (user_id)"]
+    },
+    {
+      "name": "launches",
+      "type": "base",
+      "apiRules": {
+        "list": "status = 'publicado' || @request.auth.id != ''",
+        "view": "status = 'publicado' || @request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "enterprise_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["rascunho", "em_revisao", "publicado", "arquivado"]
+        },
+        {
+          "name": "headline",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "units",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payment_terms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "differentials",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sales_arguments",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "specific_cadence",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "keywords",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "location",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "landing_theme",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cta_whatsapp_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cta_default_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "raw_material",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "images",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "attachments",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
     }
   ]
 }

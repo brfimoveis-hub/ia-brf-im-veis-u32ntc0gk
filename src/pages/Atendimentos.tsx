@@ -102,6 +102,7 @@ interface ThreadItem {
   customer_name: string
   customer_phone: string
   customer_status?: string
+  customer_source?: string
   last_message: string
   last_message_time: string
   channel: string
@@ -196,6 +197,7 @@ export default function Atendimentos() {
               customer_name: custName,
               customer_phone: custPhone,
               customer_status: cust?.status || '',
+              customer_source: cust?.source || '',
               last_message: lastContent,
               last_message_time: conv.created,
               channel: conv.channel || 'whatsapp',
@@ -625,7 +627,7 @@ export default function Atendimentos() {
                   </Avatar>
 
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h2 className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
                         {selectedCustomer?.name || currentThread?.customer_name || 'Carregando...'}
                       </h2>
@@ -634,6 +636,37 @@ export default function Atendimentos() {
                           {selectedCustomer.status}
                         </Badge>
                       )}
+                      {/* Selo de Lançamento Ativo se lead tiver origem de lançamento */}
+                      {(() => {
+                        const rawSource = (
+                          selectedCustomer?.source ||
+                          currentThread?.customer_source ||
+                          ''
+                        ).toLowerCase()
+                        const notes = (selectedCustomer?.notes || '').toLowerCase()
+                        const fullText = `${rawSource} ${notes}`
+                        if (
+                          fullText.includes('villa-dos-acores') ||
+                          fullText.includes('villa dos açores') ||
+                          fullText.includes('villa açores') ||
+                          fullText.includes('villa dos acores')
+                        ) {
+                          return (
+                            <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] gap-1 shadow-xs">
+                              🏠 Villa dos Açores
+                            </Badge>
+                          )
+                        }
+                        const lpMatch = rawSource.match(/landing page [—-]?\s*([a-z0-9-]+)/i)
+                        if (lpMatch && lpMatch[1]) {
+                          return (
+                            <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] gap-1 shadow-xs">
+                              🏠 Lançamento: {lpMatch[1]}
+                            </Badge>
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">

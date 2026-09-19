@@ -17,6 +17,7 @@ import {
   Mail,
   BarChart3,
   Megaphone,
+  Building2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -44,6 +45,7 @@ export default function Layout() {
   const navItems = [
     { name: 'Cérebro do Sistema', path: '/dashboard', icon: Bot },
     { name: 'Atendimentos (IA)', path: '/atendimentos', icon: MessageSquare },
+    { name: 'Lançamentos', path: '/launches', icon: Building2 },
     { name: 'Estatísticas', path: '/estatisticas', icon: BarChart3 },
     { name: 'Anúncios', path: '/anuncios', icon: Megaphone },
     { name: 'Clientes', path: '/customers', icon: Users },
