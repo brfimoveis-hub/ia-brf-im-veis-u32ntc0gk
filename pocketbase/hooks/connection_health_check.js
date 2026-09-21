@@ -251,6 +251,7 @@ routerAdd(
         const testedTokens = []
         let tokenIdentity = null
         const accessiblePages = []
+        let pageLinkedIg = null
 
         if (igToken) {
           const tokenSuffix = maskTok(igToken)
@@ -341,7 +342,6 @@ routerAdd(
 
           // Passo 0.5: se /me retornou uma página, consulta a própria página por instagram_business_account
           let currentIgTarget = igBizId
-          let pageLinkedIg = null
           const pageCandidateId = (tokenIdentity && tokenIdentity.id) || ''
           if (pageCandidateId && !tokenIdentity.error) {
             try {
