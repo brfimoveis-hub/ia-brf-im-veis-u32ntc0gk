@@ -99,6 +99,201 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
     return e.string(404, 'Not Found')
   }
 
+  // Helper para normalizar e resolver a origem do lead a partir de qualquer entrada (referral Meta, texto com tag, etc.)
+  function resolveLeadOrigin(contentStr, referralObj, displayPhoneStr) {
+    var detected = {
+      label: '',
+      notesEntry: '',
+      originType: 'direto',
+      rawText: contentStr || '',
+      launchSlug: '',
+    }
+
+    var nowIso = new Date().toISOString()
+    var nowBrStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+
+    // 1. Referral nativo do Meta Click-to-WhatsApp
+    if (referralObj) {
+      var cName = (referralObj.campaign_name || referralObj.campaign || '').trim()
+      var aName = (
+        referralObj.ad_name ||
+        referralObj.headline ||
+        referralObj.source_id ||
+        ''
+      ).trim()
+      var mRaw = (referralObj.media || referralObj.media_type || '').toLowerCase()
+      if (!mRaw && referralObj.source_type && referralObj.source_type.toLowerCase() !== 'ad') {
+        mRaw = referralObj.source_type.toLowerCase()
+      }
+      var mLabel = ''
+      if (mRaw.indexOf('insta') !== -1) {
+        mLabel = 'Instagram'
+      } else if (mRaw.indexOf('face') !== -1) {
+        mLabel = 'Facebook'
+      } else if (mRaw) {
+        mLabel = mRaw.charAt(0).toUpperCase() + mRaw.slice(1)
+      }
+
+      var parts = ['Anúncio Meta']
+      if (mLabel) parts[0] = 'Anúncio Meta (' + mLabel + ')'
+      if (cName) parts.push(cName)
+      if (aName && aName !== cName) parts.push(aName)
+
+      detected.label = parts.join(' — ')
+      detected.originType = 'meta_ad'
+      detected.notesEntry =
+        '[Origem: Anúncio Meta — ' +
+        (cName || 'Campanha') +
+        ' — ' +
+        (aName || 'Anúncio') +
+        ', ' +
+        nowBrStr +
+        ']'
+      if (referralObj.headline && referralObj.headline !== aName) {
+        detected.notesEntry += ' (Headline: ' + referralObj.headline + ')'
+      }
+      if (referralObj.source_id) {
+        detected.notesEntry += ' (Ad ID: ' + referralObj.source_id + ')'
+      }
+      return detected
+    }
+
+    // 2. Extração via mensagem pré-formatada (links rastreados, landing pages, QR codes, CTAs)
+    var textLower = (contentStr || '').toLowerCase()
+
+    // 2a. Padrão Landing Page pública: "landing page [slug]" ou "origem: landing page [slug]"
+    var lpMatch =
+      contentStr.match(/landing page\s+([a-z0-9\-_]+)/i) ||
+      contentStr.match(/landing\s+page\s*[:-]\s*([a-z0-9\-_]+)/i)
+    if (lpMatch && lpMatch[1]) {
+      var slug = lpMatch[1].trim()
+      detected.label = 'Landing Page — ' + slug
+      detected.originType = 'landing_page'
+      detected.launchSlug = slug
+      detected.notesEntry = '[Origem: Landing Page ' + slug + ', ' + nowBrStr + ']'
+      return detected
+    }
+
+    // 2b. Padrão explícito de parâmetro rastreado: "origem=[valor]", "origem: [valor]", "orig=[valor]"
+    var originParamMatch = contentStr.match(
+      /(?:origem|origin|src|utm_source)\s*[=:]\s*([a-z0-9\-_]+)/i,
+    )
+    if (originParamMatch && originParamMatch[1]) {
+      var rawVal = originParamMatch[1].trim()
+      var formattedLabel = rawVal
+
+      if (rawVal.indexOf('google') !== -1) {
+        formattedLabel = 'Google Ads — ' + rawVal
+        detected.originType = 'google_ads'
+      } else if (rawVal.indexOf('insta') !== -1) {
+        formattedLabel = 'Instagram Orgânico — ' + rawVal
+        detected.originType = 'instagram'
+      } else if (rawVal.indexOf('meta') !== -1 || rawVal.indexOf('face') !== -1) {
+        formattedLabel = 'Anúncio Meta — ' + rawVal
+        detected.originType = 'meta_ad'
+      } else if (rawVal.indexOf('remarketing') !== -1 || rawVal.indexOf('remkt') !== -1) {
+        formattedLabel = 'Remarketing — ' + rawVal
+        detected.originType = 'remarketing'
+      } else if (rawVal.indexOf('site') !== -1 || rawVal.indexOf('portal') !== -1) {
+        formattedLabel = 'Portal / Site — ' + rawVal
+        detected.originType = 'portal'
+      } else {
+        formattedLabel = 'Link Rastreado — ' + rawVal
+        detected.originType = 'tracked_link'
+      }
+
+      detected.label = formattedLabel
+      detected.notesEntry = '[Origem: ' + formattedLabel + ', ' + nowBrStr + ']'
+      return detected
+    }
+
+    // 2c. Detecção de menção nominal aos Lançamentos (ex: Villa dos Açores, etc.)
+    if (
+      textLower.indexOf('villa dos açores') !== -1 ||
+      textLower.indexOf('villa dos acores') !== -1 ||
+      textLower.indexOf('villa acores') !== -1
+    ) {
+      detected.label = 'Lançamento — villa-dos-acores'
+      detected.originType = 'launch_direct'
+      detected.launchSlug = 'villa-dos-acores'
+      detected.notesEntry = '[Origem: Interesse em Villa dos Açores, ' + nowBrStr + ']'
+      return detected
+    }
+
+    // 2d. Fallback obrigatório: nunca nulo/vazio. Se não tem rastreio nem anúncio, é WhatsApp Direto
+    var directLabel = 'WhatsApp direto'
+    if (displayPhoneStr) {
+      directLabel += ' (' + displayPhoneStr + ')'
+    }
+    detected.label = directLabel
+    detected.originType = 'direto'
+    detected.notesEntry = '[Origem: ' + directLabel + ', ' + nowBrStr + ']'
+    return detected
+  }
+
+  // Helper para atualizar histórico de origens mantendo deduplicação e acumulando lista cronológica
+  function recordOriginOnCustomer(custRec, originInfo) {
+    var nowIso = new Date().toISOString()
+    var currentSource = custRec.getString('source') || ''
+    var isDirect = originInfo.originType === 'direto'
+
+    // Regra: se o lead já tem uma origem rica (ex: Anúncio Meta ou Landing) e esta mensagem é "direto" sem anúncio,
+    // mantemos a origem principal anterior, mas registramos na last_origin e no origin_history.
+    var isNewHigherPriority =
+      !currentSource ||
+      currentSource.indexOf('WhatsApp direto') !== -1 ||
+      currentSource.indexOf('Meta - WhatsApp') !== -1 ||
+      originInfo.originType === 'meta_ad' ||
+      originInfo.originType === 'landing_page' ||
+      originInfo.originType === 'tracked_link' ||
+      originInfo.originType === 'google_ads'
+
+    if (isNewHigherPriority && originInfo.label) {
+      custRec.set('source', originInfo.label)
+    }
+
+    custRec.set('last_origin', originInfo.label)
+    custRec.set('last_origin_at', nowIso)
+
+    // Atualiza notes se houver entrada nova e não repetida
+    if (originInfo.notesEntry) {
+      var curNotes = (custRec.getString('notes') || '').trim()
+      if (!curNotes) {
+        custRec.set('notes', originInfo.notesEntry)
+      } else if (curNotes.indexOf(originInfo.notesEntry) === -1) {
+        custRec.set('notes', curNotes + '\n' + originInfo.notesEntry)
+      }
+    }
+
+    // Atualiza origin_history (Array de objetos)
+    var hist = []
+    try {
+      var rawHist = custRec.get('origin_history')
+      if (Array.isArray(rawHist)) {
+        hist = rawHist.slice(0, 30) // mantém até 30 registros
+      }
+    } catch (_) {}
+
+    // Evita duplicar se a mesma origem foi registrada nos últimos 5 minutos
+    var isDuplicateHist = false
+    if (hist.length > 0) {
+      var lastH = hist[hist.length - 1]
+      if (lastH && lastH.source === originInfo.label) {
+        isDuplicateHist = true
+      }
+    }
+
+    if (!isDuplicateHist) {
+      hist.push({
+        source: originInfo.label,
+        type: originInfo.originType,
+        date: nowIso,
+        launch_slug: originInfo.launchSlug || undefined,
+      })
+      custRec.set('origin_history', hist)
+    }
+  }
+
   try {
     for (var entry of body.entry || []) {
       for (var change of entry.changes || []) {
@@ -143,66 +338,24 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
 
           // Extrai referral do objeto da mensagem ou do change.value (quando click-to-WhatsApp)
           var referral = msg.referral || value.referral || null
-          var referralLabel = ''
-          var referralNotesEntry = ''
+
+          // Resolve origem de forma unificada (Meta Referral, Landing Page, link rastreado ou direto)
+          var originInfo = resolveLeadOrigin(content, referral, displayPhone)
 
           if (referral) {
-            var campaignName = (referral.campaign_name || referral.campaign || '').trim()
-            var adName = (referral.ad_name || referral.headline || referral.source_id || '').trim()
-            var mediaRaw = (referral.media || referral.media_type || '').toLowerCase()
-            if (!mediaRaw && referral.source_type && referral.source_type.toLowerCase() !== 'ad') {
-              mediaRaw = referral.source_type.toLowerCase()
-            }
-            var mediaLabel = ''
-            if (mediaRaw.indexOf('insta') !== -1) {
-              mediaLabel = 'Instagram'
-            } else if (mediaRaw.indexOf('face') !== -1) {
-              mediaLabel = 'Facebook'
-            } else if (mediaRaw) {
-              mediaLabel = mediaRaw.charAt(0).toUpperCase() + mediaRaw.slice(1)
-            }
-
-            var labelParts = ['Anúncio Meta']
-            if (mediaLabel) {
-              labelParts[0] = 'Anúncio Meta (' + mediaLabel + ')'
-            }
-            if (campaignName) labelParts.push(campaignName)
-            if (adName && adName !== campaignName) labelParts.push(adName)
-            referralLabel = labelParts.join(' — ')
-
-            var nowStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-            var notesCampaign = campaignName || 'Campanha Meta'
-            var notesAd = adName || referral.source_id || 'Anúncio'
-            referralNotesEntry =
-              '[Origem: Anúncio Meta — ' + notesCampaign + ' — ' + notesAd + ', ' + nowStr + ']'
-            if (referral.headline && referral.headline !== adName) {
-              referralNotesEntry += ' (Headline: ' + referral.headline + ')'
-            }
-            if (referral.source_id) {
-              referralNotesEntry += ' (Ad ID: ' + referral.source_id + ')'
-            }
-
             // Registrar em system_logs (type "ad_referral")
             try {
               var logsCol = $app.findCollectionByNameOrId('system_logs')
               var adLog = new Record(logsCol)
               adLog.set('user_id', userId || '')
               adLog.set('type', 'ad_referral')
-              adLog.set('message', 'Referral de anúncio Meta capturado: ' + referralLabel)
-              adLog.set(
-                'details',
-                'Campanha: ' +
-                  (campaignName || 'N/A') +
-                  ' | Anúncio: ' +
-                  (adName || 'N/A') +
-                  ' | Phone: ' +
-                  phone,
-              )
+              adLog.set('message', 'Referral de anúncio Meta capturado: ' + originInfo.label)
+              adLog.set('details', 'Origem resolvida: ' + originInfo.label + ' | Phone: ' + phone)
               adLog.set('payload', {
                 phone: phone,
                 contact_name: contactName,
                 referral: referral,
-                label: referralLabel,
+                label: originInfo.label,
               })
               $app.saveNoValidate(adLog)
             } catch (logErr) {
@@ -210,6 +363,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
             }
           }
 
+          // Localiza cliente existente por telefone para deduplicação
           var customer = null
           try {
             customer = $app.findFirstRecordByFilter(
@@ -220,6 +374,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
           } catch (_) {}
 
           var isNewCustomer = false
+
           if (!customer) {
             try {
               var customersCol = $app.findCollectionByNameOrId('customers')
@@ -229,24 +384,8 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
               customer.set('phone', phone)
               customer.set('status', 'Novo')
 
-              var initialSource = referralLabel
-              if (!initialSource) {
-                // Verificar se a mensagem contém identificação de landing page ou lançamento
-                var landingMatch =
-                  content.match(/landing page ([a-z0-9\-]+)/i) ||
-                  content.match(/origem:\s*([a-z0-9\-_]+)/i)
-                if (landingMatch && landingMatch[1]) {
-                  initialSource = 'Landing Page — ' + landingMatch[1]
-                } else {
-                  initialSource = 'Meta - WhatsApp Cloud API'
-                  if (displayPhone) initialSource += ' (' + displayPhone + ')'
-                }
-              }
-              customer.set('source', initialSource)
+              recordOriginOnCustomer(customer, originInfo)
 
-              if (referralNotesEntry) {
-                customer.set('notes', referralNotesEntry)
-              }
               $app.save(customer)
               isNewCustomer = true
             } catch (err) {
@@ -256,52 +395,25 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
               continue
             }
           } else {
+            // Cliente já existe: atualiza user_id se vazio e atualiza histórico de origens
             try {
               var custToUpdate = $app.findRecordById('customers', customer.id)
-              var updatedCustomer = false
-
               if (!custToUpdate.getString('user_id')) {
                 custToUpdate.set('user_id', userId)
-                updatedCustomer = true
               }
 
-              // Se houver referral de anúncio Meta:
-              // 2a. Salvar no source do customer (mantendo anterior se referral for vazio)
-              if (referralLabel) {
-                custToUpdate.set('source', referralLabel)
-                updatedCustomer = true
-              } else {
-                var landingMatchExisting =
-                  content.match(/landing page ([a-z0-9\-]+)/i) ||
-                  content.match(/origem:\s*([a-z0-9\-_]+)/i)
-                if (landingMatchExisting && landingMatchExisting[1]) {
-                  var newLandingSource = 'Landing Page — ' + landingMatchExisting[1]
-                  var prevSource = custToUpdate.getString('source') || ''
-                  if (!prevSource || prevSource.indexOf('Landing Page') === -1) {
-                    custToUpdate.set('source', newLandingSource)
-                    updatedCustomer = true
-                  }
-                }
-              }
+              recordOriginOnCustomer(custToUpdate, originInfo)
 
-              // 2b. Acrescentar nas notes do customer sem sobrescrever o que já existe
-              if (referralNotesEntry) {
-                var currentNotes = (custToUpdate.getString('notes') || '').trim()
-                if (!currentNotes) {
-                  custToUpdate.set('notes', referralNotesEntry)
-                  updatedCustomer = true
-                } else if (currentNotes.indexOf(referralNotesEntry) === -1) {
-                  custToUpdate.set('notes', currentNotes + '\n' + referralNotesEntry)
-                  updatedCustomer = true
-                }
-              }
-
-              if (updatedCustomer) {
-                $app.save(custToUpdate)
-              }
-            } catch (_) {}
+              $app.save(custToUpdate)
+              customer = custToUpdate
+            } catch (upErr) {
+              $app
+                .logger()
+                .error('Failed to update customer origin history', 'error', String(upErr))
+            }
           }
 
+          // Garantir que NENHUM lead se perca na tabela 'leads': cria registro se for novo contato
           if (isNewCustomer) {
             try {
               var leadsCol = $app.findCollectionByNameOrId('leads')
@@ -309,10 +421,11 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
               lead.set('assigned_to', userId)
               lead.set('name', contactName)
               lead.set('phone', phone)
-              lead.set('source', 'WhatsApp Cloud API')
+              lead.set('source', originInfo.label || 'WhatsApp Cloud API')
               lead.set('status', 'Novo')
               var leadNotes = 'Capturado via Meta WhatsApp Cloud API'
-              if (displayPhone) leadNotes += ' - ' + displayPhone
+              if (displayPhone) leadNotes += ' (' + displayPhone + ')'
+              leadNotes += '\nOrigem: ' + (originInfo.label || 'WhatsApp direto')
               leadNotes += '\nMensagem: ' + content
               lead.set('notes', leadNotes)
               $app.save(lead)
@@ -323,6 +436,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
             }
           }
 
+          // Gravação da mensagem na conversa
           var isDuplicate = false
           try {
             var recentMsgs = $app.findRecordsByFilter(
@@ -484,6 +598,197 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
     return e.string(404, 'Not Found')
   }
 
+  // Helper para normalizar e resolver a origem do lead a partir de qualquer entrada (referral Meta, texto com tag, etc.)
+  function resolveLeadOrigin(contentStr, referralObj, displayPhoneStr) {
+    var detected = {
+      label: '',
+      notesEntry: '',
+      originType: 'direto',
+      rawText: contentStr || '',
+      launchSlug: '',
+    }
+
+    var nowIso = new Date().toISOString()
+    var nowBrStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+
+    // 1. Referral nativo do Meta Click-to-WhatsApp
+    if (referralObj) {
+      var cName = (referralObj.campaign_name || referralObj.campaign || '').trim()
+      var aName = (
+        referralObj.ad_name ||
+        referralObj.headline ||
+        referralObj.source_id ||
+        ''
+      ).trim()
+      var mRaw = (referralObj.media || referralObj.media_type || '').toLowerCase()
+      if (!mRaw && referralObj.source_type && referralObj.source_type.toLowerCase() !== 'ad') {
+        mRaw = referralObj.source_type.toLowerCase()
+      }
+      var mLabel = ''
+      if (mRaw.indexOf('insta') !== -1) {
+        mLabel = 'Instagram'
+      } else if (mRaw.indexOf('face') !== -1) {
+        mLabel = 'Facebook'
+      } else if (mRaw) {
+        mLabel = mRaw.charAt(0).toUpperCase() + mRaw.slice(1)
+      }
+
+      var parts = ['Anúncio Meta']
+      if (mLabel) parts[0] = 'Anúncio Meta (' + mLabel + ')'
+      if (cName) parts.push(cName)
+      if (aName && aName !== cName) parts.push(aName)
+
+      detected.label = parts.join(' — ')
+      detected.originType = 'meta_ad'
+      detected.notesEntry =
+        '[Origem: Anúncio Meta — ' +
+        (cName || 'Campanha') +
+        ' — ' +
+        (aName || 'Anúncio') +
+        ', ' +
+        nowBrStr +
+        ']'
+      if (referralObj.headline && referralObj.headline !== aName) {
+        detected.notesEntry += ' (Headline: ' + referralObj.headline + ')'
+      }
+      if (referralObj.source_id) {
+        detected.notesEntry += ' (Ad ID: ' + referralObj.source_id + ')'
+      }
+      return detected
+    }
+
+    // 2. Extração via mensagem pré-formatada (links rastreados, landing pages, QR codes, CTAs)
+    var textLower = (contentStr || '').toLowerCase()
+
+    // 2a. Padrão Landing Page pública: "landing page [slug]" ou "origem: landing page [slug]"
+    var lpMatch =
+      contentStr.match(/landing page\s+([a-z0-9\-_]+)/i) ||
+      contentStr.match(/landing\s+page\s*[:-]\s*([a-z0-9\-_]+)/i)
+    if (lpMatch && lpMatch[1]) {
+      var slug = lpMatch[1].trim()
+      detected.label = 'Landing Page — ' + slug
+      detected.originType = 'landing_page'
+      detected.launchSlug = slug
+      detected.notesEntry = '[Origem: Landing Page ' + slug + ', ' + nowBrStr + ']'
+      return detected
+    }
+
+    // 2b. Padrão explícito de parâmetro rastreado: "origem=[valor]", "origem: [valor]", "orig=[valor]"
+    var originParamMatch = contentStr.match(
+      /(?:origem|origin|src|utm_source)\s*[=:]\s*([a-z0-9\-_]+)/i,
+    )
+    if (originParamMatch && originParamMatch[1]) {
+      var rawVal = originParamMatch[1].trim()
+      var formattedLabel = rawVal
+
+      if (rawVal.indexOf('google') !== -1) {
+        formattedLabel = 'Google Ads — ' + rawVal
+        detected.originType = 'google_ads'
+      } else if (rawVal.indexOf('insta') !== -1) {
+        formattedLabel = 'Instagram Orgânico — ' + rawVal
+        detected.originType = 'instagram'
+      } else if (rawVal.indexOf('meta') !== -1 || rawVal.indexOf('face') !== -1) {
+        formattedLabel = 'Anúncio Meta — ' + rawVal
+        detected.originType = 'meta_ad'
+      } else if (rawVal.indexOf('remarketing') !== -1 || rawVal.indexOf('remkt') !== -1) {
+        formattedLabel = 'Remarketing — ' + rawVal
+        detected.originType = 'remarketing'
+      } else if (rawVal.indexOf('site') !== -1 || rawVal.indexOf('portal') !== -1) {
+        formattedLabel = 'Portal / Site — ' + rawVal
+        detected.originType = 'portal'
+      } else {
+        formattedLabel = 'Link Rastreado — ' + rawVal
+        detected.originType = 'tracked_link'
+      }
+
+      detected.label = formattedLabel
+      detected.notesEntry = '[Origem: ' + formattedLabel + ', ' + nowBrStr + ']'
+      return detected
+    }
+
+    // 2c. Detecção de menção nominal aos Lançamentos (ex: Villa dos Açores, etc.)
+    if (
+      textLower.indexOf('villa dos açores') !== -1 ||
+      textLower.indexOf('villa dos acores') !== -1 ||
+      textLower.indexOf('villa acores') !== -1
+    ) {
+      detected.label = 'Lançamento — villa-dos-acores'
+      detected.originType = 'launch_direct'
+      detected.launchSlug = 'villa-dos-acores'
+      detected.notesEntry = '[Origem: Interesse em Villa dos Açores, ' + nowBrStr + ']'
+      return detected
+    }
+
+    // 2d. Fallback obrigatório: nunca nulo/vazio. Se não tem rastreio nem anúncio, é WhatsApp Direto
+    var directLabel = 'WhatsApp direto'
+    if (displayPhoneStr) {
+      directLabel += ' (' + displayPhoneStr + ')'
+    }
+    detected.label = directLabel
+    detected.originType = 'direto'
+    detected.notesEntry = '[Origem: ' + directLabel + ', ' + nowBrStr + ']'
+    return detected
+  }
+
+  // Helper para atualizar histórico de origens mantendo deduplicação e acumulando lista cronológica
+  function recordOriginOnCustomer(custRec, originInfo) {
+    var nowIso = new Date().toISOString()
+    var currentSource = custRec.getString('source') || ''
+
+    var isNewHigherPriority =
+      !currentSource ||
+      currentSource.indexOf('WhatsApp direto') !== -1 ||
+      currentSource.indexOf('Meta - WhatsApp') !== -1 ||
+      originInfo.originType === 'meta_ad' ||
+      originInfo.originType === 'landing_page' ||
+      originInfo.originType === 'tracked_link' ||
+      originInfo.originType === 'google_ads'
+
+    if (isNewHigherPriority && originInfo.label) {
+      custRec.set('source', originInfo.label)
+    }
+
+    custRec.set('last_origin', originInfo.label)
+    custRec.set('last_origin_at', nowIso)
+
+    // Atualiza notes se houver entrada nova e não repetida
+    if (originInfo.notesEntry) {
+      var curNotes = (custRec.getString('notes') || '').trim()
+      if (!curNotes) {
+        custRec.set('notes', originInfo.notesEntry)
+      } else if (curNotes.indexOf(originInfo.notesEntry) === -1) {
+        custRec.set('notes', curNotes + '\n' + originInfo.notesEntry)
+      }
+    }
+
+    // Atualiza origin_history (Array de objetos)
+    var hist = []
+    try {
+      var rawHist = custRec.get('origin_history')
+      if (Array.isArray(rawHist)) {
+        hist = rawHist.slice(0, 30)
+      }
+    } catch (_) {}
+
+    var isDuplicateHist = false
+    if (hist.length > 0) {
+      var lastH = hist[hist.length - 1]
+      if (lastH && lastH.source === originInfo.label) {
+        isDuplicateHist = true
+      }
+    }
+
+    if (!isDuplicateHist) {
+      hist.push({
+        source: originInfo.label,
+        type: originInfo.originType,
+        date: nowIso,
+        launch_slug: originInfo.launchSlug || undefined,
+      })
+      custRec.set('origin_history', hist)
+    }
+  }
+
   try {
     for (var entry of body.entry || []) {
       for (var change of entry.changes || []) {
@@ -526,68 +831,22 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
             (contactInfo && contactInfo.wa_id) ||
             phone
 
-          // Extrai referral do objeto da mensagem ou do change.value (quando click-to-WhatsApp)
           var referral = msg.referral || value.referral || null
-          var referralLabel = ''
-          var referralNotesEntry = ''
+          var originInfo = resolveLeadOrigin(content, referral, displayPhone)
 
           if (referral) {
-            var campaignName = (referral.campaign_name || referral.campaign || '').trim()
-            var adName = (referral.ad_name || referral.headline || referral.source_id || '').trim()
-            var mediaRaw = (referral.media || referral.media_type || '').toLowerCase()
-            if (!mediaRaw && referral.source_type && referral.source_type.toLowerCase() !== 'ad') {
-              mediaRaw = referral.source_type.toLowerCase()
-            }
-            var mediaLabel = ''
-            if (mediaRaw.indexOf('insta') !== -1) {
-              mediaLabel = 'Instagram'
-            } else if (mediaRaw.indexOf('face') !== -1) {
-              mediaLabel = 'Facebook'
-            } else if (mediaRaw) {
-              mediaLabel = mediaRaw.charAt(0).toUpperCase() + mediaRaw.slice(1)
-            }
-
-            var labelParts = ['Anúncio Meta']
-            if (mediaLabel) {
-              labelParts[0] = 'Anúncio Meta (' + mediaLabel + ')'
-            }
-            if (campaignName) labelParts.push(campaignName)
-            if (adName && adName !== campaignName) labelParts.push(adName)
-            referralLabel = labelParts.join(' — ')
-
-            var nowStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-            var notesCampaign = campaignName || 'Campanha Meta'
-            var notesAd = adName || referral.source_id || 'Anúncio'
-            referralNotesEntry =
-              '[Origem: Anúncio Meta — ' + notesCampaign + ' — ' + notesAd + ', ' + nowStr + ']'
-            if (referral.headline && referral.headline !== adName) {
-              referralNotesEntry += ' (Headline: ' + referral.headline + ')'
-            }
-            if (referral.source_id) {
-              referralNotesEntry += ' (Ad ID: ' + referral.source_id + ')'
-            }
-
-            // Registrar em system_logs (type "ad_referral")
             try {
               var logsCol = $app.findCollectionByNameOrId('system_logs')
               var adLog = new Record(logsCol)
               adLog.set('user_id', userId || '')
               adLog.set('type', 'ad_referral')
-              adLog.set('message', 'Referral de anúncio Meta capturado: ' + referralLabel)
-              adLog.set(
-                'details',
-                'Campanha: ' +
-                  (campaignName || 'N/A') +
-                  ' | Anúncio: ' +
-                  (adName || 'N/A') +
-                  ' | Phone: ' +
-                  phone,
-              )
+              adLog.set('message', 'Referral de anúncio Meta capturado: ' + originInfo.label)
+              adLog.set('details', 'Origem resolvida: ' + originInfo.label + ' | Phone: ' + phone)
               adLog.set('payload', {
                 phone: phone,
                 contact_name: contactName,
                 referral: referral,
-                label: referralLabel,
+                label: originInfo.label,
               })
               $app.saveNoValidate(adLog)
             } catch (logErr) {
@@ -614,16 +873,8 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
               customer.set('phone', phone)
               customer.set('status', 'Novo')
 
-              var initialSource = referralLabel
-              if (!initialSource) {
-                initialSource = 'Meta - WhatsApp Cloud API'
-                if (displayPhone) initialSource += ' (' + displayPhone + ')'
-              }
-              customer.set('source', initialSource)
+              recordOriginOnCustomer(customer, originInfo)
 
-              if (referralNotesEntry) {
-                customer.set('notes', referralNotesEntry)
-              }
               $app.save(customer)
               isNewCustomer = true
             } catch (err) {
@@ -635,36 +886,19 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
           } else {
             try {
               var custToUpdate = $app.findRecordById('customers', customer.id)
-              var updatedCustomer = false
-
               if (!custToUpdate.getString('user_id')) {
                 custToUpdate.set('user_id', userId)
-                updatedCustomer = true
               }
 
-              // Se houver referral de anúncio Meta:
-              // 2a. Salvar no source do customer (mantendo anterior se referral for vazio)
-              if (referralLabel) {
-                custToUpdate.set('source', referralLabel)
-                updatedCustomer = true
-              }
+              recordOriginOnCustomer(custToUpdate, originInfo)
 
-              // 2b. Acrescentar nas notes do customer sem sobrescrever o que já existe
-              if (referralNotesEntry) {
-                var currentNotes = (custToUpdate.getString('notes') || '').trim()
-                if (!currentNotes) {
-                  custToUpdate.set('notes', referralNotesEntry)
-                  updatedCustomer = true
-                } else if (currentNotes.indexOf(referralNotesEntry) === -1) {
-                  custToUpdate.set('notes', currentNotes + '\n' + referralNotesEntry)
-                  updatedCustomer = true
-                }
-              }
-
-              if (updatedCustomer) {
-                $app.save(custToUpdate)
-              }
-            } catch (_) {}
+              $app.save(custToUpdate)
+              customer = custToUpdate
+            } catch (upErr) {
+              $app
+                .logger()
+                .error('Failed to update customer origin history', 'error', String(upErr))
+            }
           }
 
           if (isNewCustomer) {
@@ -674,10 +908,11 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
               lead.set('assigned_to', userId)
               lead.set('name', contactName)
               lead.set('phone', phone)
-              lead.set('source', 'WhatsApp Cloud API')
+              lead.set('source', originInfo.label || 'WhatsApp Cloud API')
               lead.set('status', 'Novo')
               var leadNotes = 'Capturado via Meta WhatsApp Cloud API'
-              if (displayPhone) leadNotes += ' - ' + displayPhone
+              if (displayPhone) leadNotes += ' (' + displayPhone + ')'
+              leadNotes += '\nOrigem: ' + (originInfo.label || 'WhatsApp direto')
               leadNotes += '\nMensagem: ' + content
               lead.set('notes', leadNotes)
               $app.save(lead)

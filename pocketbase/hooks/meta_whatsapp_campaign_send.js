@@ -311,7 +311,28 @@ routerAdd(
 
             if (customer) {
               try {
-                customer.set('last_sent_at', new Date().toISOString().slice(0, 10))
+                const nowIso = new Date().toISOString()
+                customer.set('last_sent_at', nowIso.slice(0, 10))
+                const remktOriginLabel = 'Remarketing — ' + campaignName
+                customer.set('last_origin', remktOriginLabel)
+                customer.set('last_origin_at', nowIso)
+
+                // Adiciona ao origin_history
+                let hist = []
+                try {
+                  const rawHist = customer.get('origin_history')
+                  if (Array.isArray(rawHist)) {
+                    hist = rawHist.slice(0, 30)
+                  }
+                } catch (_) {}
+                hist.push({
+                  source: remktOriginLabel,
+                  type: 'remarketing',
+                  date: nowIso,
+                  campaign_id: campaign.id,
+                })
+                customer.set('origin_history', hist)
+
                 $app.saveNoValidate(customer)
               } catch (_) {}
             }
@@ -798,7 +819,27 @@ routerAdd(
 
             if (customer) {
               try {
-                customer.set('last_sent_at', new Date().toISOString().slice(0, 10))
+                const nowIso = new Date().toISOString()
+                customer.set('last_sent_at', nowIso.slice(0, 10))
+                const remktOriginLabel = 'Remarketing — ' + campaignName
+                customer.set('last_origin', remktOriginLabel)
+                customer.set('last_origin_at', nowIso)
+
+                let hist = []
+                try {
+                  const rawHist = customer.get('origin_history')
+                  if (Array.isArray(rawHist)) {
+                    hist = rawHist.slice(0, 30)
+                  }
+                } catch (_) {}
+                hist.push({
+                  source: remktOriginLabel,
+                  type: 'remarketing',
+                  date: nowIso,
+                  campaign_id: campaign.id,
+                })
+                customer.set('origin_history', hist)
+
                 $app.saveNoValidate(customer)
               } catch (_) {}
             }

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-18T23:53:26.126Z",
+  "generatedAt": "2026-09-21T13:24:42.150Z",
   "collections": [
     {
       "name": "users",
@@ -403,6 +403,24 @@
         {
           "name": "tags",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origin_history",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_origin",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_origin_at",
+          "type": "date",
           "required": false,
           "system": false
         }
