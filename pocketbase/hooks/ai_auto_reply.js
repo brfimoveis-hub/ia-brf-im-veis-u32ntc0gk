@@ -225,8 +225,12 @@ onRecordAfterCreateSuccess((e) => {
     }
     const customerPhone = customer.getString('phone') || ''
     const customerSource = customer.getString('source') || ''
+    const customerLastOrigin = (customer.getString('last_origin') || '').trim()
     const customerNotes = (customer.getString('notes') || '').trim()
+    const effectiveOrigin = customerLastOrigin || customerSource || ''
     const isAdReferral =
+      effectiveOrigin.toLowerCase().includes('anúncio') ||
+      effectiveOrigin.toLowerCase().includes('anuncio') ||
       customerSource.toLowerCase().includes('anúncio') ||
       customerSource.toLowerCase().includes('anuncio') ||
       customerNotes.toLowerCase().includes('origem: anúncio') ||
@@ -243,7 +247,7 @@ onRecordAfterCreateSuccess((e) => {
         0,
       )
       const referralSearchText =
-        `${customerSource} ${customerNotes} ${conversationChannel || ''}`.toLowerCase()
+        `${effectiveOrigin} ${customerSource} ${customerNotes} ${conversationChannel || ''}`.toLowerCase()
 
       for (const lItem of publishedLaunches) {
         const lName = (lItem.getString('name') || '').toLowerCase()
@@ -294,7 +298,8 @@ onRecordAfterCreateSuccess((e) => {
         50,
         0,
       )
-      const referralSearchText = `${customerSource} ${customerNotes}`.toLowerCase()
+      const referralSearchText =
+        `${effectiveOrigin} ${customerSource} ${customerNotes}`.toLowerCase()
 
       for (const pbItem of activePlaybooks) {
         let keywords = pbItem.get('match_keywords')
@@ -1109,16 +1114,18 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
     // Detect lead origin type (Trilha A: Lead de Anúncio vs Trilha B: Lead de Imóvel de Terceiros)
     const isMetaAdSource =
       isAdReferral ||
-      /meta|facebook|fb|instagram|ig|an[uú]ncio|ads|click[- ]to[- ]whatsapp|campanha/i.test(
-        customerSource || '',
+      /meta|facebook|fb|instagram|ig|an[uú]ncio|ads|click[- ]to[- ]whatsapp|campanha|google ads|gads/i.test(
+        effectiveOrigin || customerSource || '',
       )
 
-    if (customerSource) {
+    if (effectiveOrigin || customerSource) {
+      const displayOrigin = effectiveOrigin || customerSource
       if (isMetaAdSource) {
-        clientContext += `Origem / Canal: anúncio Meta — ${customerSource}\n`
+        clientContext += `Origem / Canal de Entrada: "${displayOrigin}"\n`
       } else {
-        clientContext += `Origem / Canal: ${customerSource} (Origem orgânica / terceiros / indicação)\n`
+        clientContext += `Origem / Canal de Entrada: "${displayOrigin}" (Origem orgânica / terceiros / indicação)\n`
       }
+      clientContext += `- DIRETRIZ DE CONEXÃO POR ORIGEM: Quando for a mensagem inicial ou fizer sentido contextual, cite com simpatia e naturalidade a origem pela qual o cliente chegou (exemplo: "vi que você veio pelo anúncio do Villa dos Açores", "vi que você acessou a página do nosso lançamento", "vi que você veio pelo Instagram da BRF"). Não soe robótico ou invasivo — use como gancho acolhedor de boas-vindas.\n`
     } else {
       clientContext += `Origem / Canal: Origem não especificada (Tratar pela Trilha B ou conforme demanda)\n`
     }

@@ -61,7 +61,12 @@ import {
   Layers,
   ArrowRight,
   Flame,
+  Link as LinkIcon,
+  BarChart3,
 } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { LeadOriginLinksManager } from '@/components/LeadOriginLinksManager'
+import { LeadOriginsDashboard } from '@/components/LeadOriginsDashboard'
 
 export default function Anuncios() {
   const { user } = useAuth()
@@ -256,15 +261,15 @@ export default function Anuncios() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">
-              Anúncios Meta (Meta Ads)
+              Anúncios & Links de Origem
             </h1>
             <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">
-              Click-to-WhatsApp
+              Meta Ads + Links Rastreados
             </Badge>
           </div>
           <p className="text-sm text-slate-500 mt-1">
-            Criação e acompanhamento de anúncios diretos para o WhatsApp da BRF Imóveis com
-            atendimento da Bia.
+            Gerenciador de campanhas Meta Click-to-WhatsApp, links de WhatsApp rastreados e métricas
+            de conversão.
           </p>
         </div>
 
@@ -505,304 +510,339 @@ export default function Anuncios() {
         </div>
       </div>
 
-      {/* Dica visível da Regra de Ouro (72h grátis com a Bia) */}
-      <Alert className="border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-blue-50/70 text-indigo-950">
-        <Flame className="h-5 w-5 text-indigo-600 shrink-0" />
-        <div className="ml-2">
-          <AlertTitle className="text-sm font-semibold text-indigo-900 flex items-center gap-2">
-            Lead de Anúncio = Conversa Grátis com a Bia por 72 horas!
-            <Badge className="bg-indigo-600 text-white text-[10px]">Estratégia Ouro</Badge>
-          </AlertTitle>
-          <AlertDescription className="text-xs text-indigo-900/90 mt-1 leading-relaxed">
-            Pela política oficial da Meta, qualquer contato que clica no seu anúncio do
-            Facebook/Instagram e envia mensagem para o WhatsApp entra em uma{' '}
-            <strong>janela de 72 horas 100% gratuita</strong>. Todas as mensagens enviadas pela Bia
-            e pelos corretores para esse lead não são cobradas, gerando máxima economia!
-          </AlertDescription>
-        </div>
-      </Alert>
+      <Tabs defaultValue="links" className="w-full space-y-6">
+        <TabsList className="grid grid-cols-3 max-w-lg">
+          <TabsTrigger value="links" className="gap-2 text-xs">
+            <LinkIcon className="h-3.5 w-3.5" />
+            Links de Origem (1 Clique)
+          </TabsTrigger>
+          <TabsTrigger value="meta-campaigns" className="gap-2 text-xs">
+            <Megaphone className="h-3.5 w-3.5" />
+            Campanhas Meta Ads
+          </TabsTrigger>
+          <TabsTrigger value="origins-stats" className="gap-2 text-xs">
+            <BarChart3 className="h-3.5 w-3.5" />
+            Dashboard de Origens
+          </TabsTrigger>
+        </TabsList>
 
-      {/* ESTADO A: SEM PERMISSÃO DE ANÚNCIOS OU TOKEN EXPIRADO */}
-      {needsPermission && (
-        <Card className="border-amber-300 bg-amber-50/40 shadow-sm">
-          <CardHeader className="pb-3">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-full bg-amber-500/10 text-amber-700 shrink-0 mt-0.5">
-                <Lock className="h-6 w-6" />
-              </div>
-              <div>
-                <CardTitle className="text-lg text-amber-950">
-                  Autorização de Anúncios Necessária (1 Clique)
-                </CardTitle>
-                <CardDescription className="text-xs text-amber-800/90 mt-0.5">
-                  Sua conta Meta já está conectada para o Instagram e WhatsApp, mas a Meta exige uma
-                  permissão extra específica para criação e leitura de anúncios (Meta Ads).
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-0">
-            <div className="rounded-lg bg-background border border-amber-200/80 p-4 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-                <Info className="h-4 w-4 text-amber-600" />
-                <span>Por que os anúncios precisam dessa autorização extra?</span>
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Por motivos de segurança e privacidade bancária, o Facebook separa os acessos de
-                publicação de posts dos acessos ao Gerenciador de Anúncios (orçamento e campanhas).
-                A sua conta de anúncios cadastrada{' '}
-                <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px] text-foreground">
-                  ID: 1487400719850387
-                </code>{' '}
-                está ativa e com pontuação 100, aguardando apenas o consentimento do proprietário.
-              </p>
+        {/* ABA 1: LINKS DE ORIGEM (1 CLIQUE) */}
+        <TabsContent value="links" className="space-y-6">
+          <LeadOriginLinksManager />
+        </TabsContent>
 
-              <div className="pt-2 flex flex-col sm:flex-row gap-3">
-                <Button
-                  onClick={handleConnectOAuthWithAds}
-                  className="gap-2 bg-amber-600 hover:bg-amber-700 text-white font-medium"
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  Autorizar Gerenciador de Anúncios na Meta
-                </Button>
-                <Button
-                  variant="outline"
-                  size="default"
-                  onClick={() => loadOverview(true)}
-                  className="gap-2"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Verificar Novamente
-                </Button>
-              </div>
+        {/* ABA 2: CAMPANHAS META ADS */}
+        <TabsContent value="meta-campaigns" className="space-y-6">
+          {/* Dica visível da Regra de Ouro (72h grátis com a Bia) */}
+          <Alert className="border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-blue-50/70 text-indigo-950">
+            <Flame className="h-5 w-5 text-indigo-600 shrink-0" />
+            <div className="ml-2">
+              <AlertTitle className="text-sm font-semibold text-indigo-900 flex items-center gap-2">
+                Lead de Anúncio = Conversa Grátis com a Bia por 72 horas!
+                <Badge className="bg-indigo-600 text-white text-[10px]">Estratégia Ouro</Badge>
+              </AlertTitle>
+              <AlertDescription className="text-xs text-indigo-900/90 mt-1 leading-relaxed">
+                Pela política oficial da Meta, qualquer contato que clica no seu anúncio do
+                Facebook/Instagram e envia mensagem para o WhatsApp entra em uma{' '}
+                <strong>janela de 72 horas 100% gratuita</strong>. Todas as mensagens enviadas pela
+                Bia e pelos corretores para esse lead não são cobradas, gerando máxima economia!
+              </AlertDescription>
             </div>
+          </Alert>
 
-            <p className="text-[11px] text-slate-500 italic">
-              Nota: Essa autorização não altera em nada o funcionamento da Bia, nem as conexões já
-              ativas do seu WhatsApp ou Instagram.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+          {/* ESTADO A: SEM PERMISSÃO DE ANÚNCIOS OU TOKEN EXPIRADO */}
+          {needsPermission && (
+            <Card className="border-amber-300 bg-amber-50/40 shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-full bg-amber-500/10 text-amber-700 shrink-0 mt-0.5">
+                    <Lock className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg text-amber-950">
+                      Autorização de Anúncios Necessária (1 Clique)
+                    </CardTitle>
+                    <CardDescription className="text-xs text-amber-800/90 mt-0.5">
+                      Sua conta Meta já está conectada para o Instagram e WhatsApp, mas a Meta exige
+                      uma permissão extra específica para criação e leitura de anúncios (Meta Ads).
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                <div className="rounded-lg bg-background border border-amber-200/80 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
+                    <Info className="h-4 w-4 text-amber-600" />
+                    <span>Por que os anúncios precisam dessa autorização extra?</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Por motivos de segurança e privacidade bancária, o Facebook separa os acessos de
+                    publicação de posts dos acessos ao Gerenciador de Anúncios (orçamento e
+                    campanhas). A sua conta de anúncios cadastrada{' '}
+                    <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px] text-foreground">
+                      ID: 1487400719850387
+                    </code>{' '}
+                    está ativa e com pontuação 100, aguardando apenas o consentimento do
+                    proprietário.
+                  </p>
 
-      {/* ESTADO B: DASHBOARD COM PERMISSÃO (OU VISÃO RESUMO) */}
-      {/* Cards de Métricas (30 dias) */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="p-4 pb-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Investimento Total (30d)</span>
-              <DollarSign className="h-4 w-4 text-emerald-600" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-bold text-slate-900">
-              R$ {summary ? summary.total_spend_brl.toFixed(2) : '0,00'}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">Conta: act_1487400719850387</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="p-4 pb-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Resultados / Conversas</span>
-              <Users className="h-4 w-4 text-purple-600" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-bold text-slate-900">
-              {summary ? summary.total_results : 0}
-            </div>
-            <p className="text-[11px] text-emerald-600 font-medium mt-1">
-              Contatos no WhatsApp via anúncio
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="p-4 pb-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Custo por Resultado (CPA)</span>
-              <Target className="h-4 w-4 text-blue-600" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-bold text-slate-900">
-              R$ {summary ? summary.cpa_brl.toFixed(2) : '0,00'}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">Por lead qualificado iniciado</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="p-4 pb-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Cliques & Alcance</span>
-              <MousePointerClick className="h-4 w-4 text-amber-600" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="text-2xl font-bold text-slate-900">
-              {summary ? summary.total_clicks.toLocaleString('pt-BR') : 0}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Alcance: {summary ? summary.total_reach.toLocaleString('pt-BR') : 0} pessoas
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabela de Campanhas Meta Ads */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                <Layers className="h-4 w-4 text-indigo-600" />
-                Campanhas Ativas & Histórico no Meta Ads
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Métricas sincronizadas diretamente da Marketing API da Meta nos últimos 30 dias.
-              </CardDescription>
-            </div>
-            {adAccount && (
-              <Badge variant="outline" className="text-xs bg-slate-100 text-slate-700 w-fit">
-                Pontuação da Conta: {adAccount.score}/100
-              </Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome da Campanha</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Orçamento Diário</TableHead>
-                  <TableHead>Investimento (30d)</TableHead>
-                  <TableHead>Resultados (Leads)</TableHead>
-                  <TableHead>Custo por Lead</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {campaigns.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="text-center py-8 text-sm text-muted-foreground"
+                  <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                    <Button
+                      onClick={handleConnectOAuthWithAds}
+                      className="gap-2 bg-amber-600 hover:bg-amber-700 text-white font-medium"
                     >
-                      {loading ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-                          <span>Carregando campanhas do Meta Ads...</span>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <p>Nenhuma campanha encontrada nos últimos 30 dias na conta.</p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setIsCreateOpen(true)}
-                            className="gap-2 text-xs"
-                          >
-                            <PlusCircle className="h-3.5 w-3.5" />
-                            Criar Primeiro Anúncio Click-to-WhatsApp
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  campaigns.map((camp) => (
-                    <TableRow key={camp.id}>
-                      <TableCell className="font-medium text-xs">
-                        <div className="space-y-0.5">
-                          <span className="font-semibold text-slate-900">{camp.name}</span>
-                          <div className="text-[10px] text-muted-foreground font-mono">
-                            ID: {camp.id} • {camp.objective}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            camp.status === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : camp.status === 'PAUSED'
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : 'bg-slate-100 text-slate-600'
-                          }
-                        >
-                          {camp.status === 'ACTIVE'
-                            ? 'Ativa'
-                            : camp.status === 'PAUSED'
-                              ? 'Pausada'
-                              : camp.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {camp.daily_budget_brl > 0
-                          ? `R$ ${camp.daily_budget_brl.toFixed(2)}/dia`
-                          : '—'}
-                      </TableCell>
-                      <TableCell className="text-xs font-semibold">
-                        R$ {camp.spend_brl.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <span className="font-bold text-slate-900">{camp.results}</span>
-                        <span className="text-[10px] text-muted-foreground ml-1">
-                          ({camp.clicks} cliques)
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-xs font-semibold text-slate-900">
-                        {camp.results > 0 ? `R$ ${camp.cost_per_result_brl.toFixed(2)}` : '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                      <ShieldCheck className="h-4 w-4" />
+                      Autorizar Gerenciador de Anúncios na Meta
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="default"
+                      onClick={() => loadOverview(true)}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Verificar Novamente
+                    </Button>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-500 italic">
+                  Nota: Essa autorização não altera em nada o funcionamento da Bia, nem as conexões
+                  já ativas do seu WhatsApp ou Instagram.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ESTADO B: DASHBOARD COM PERMISSÃO (OU VISÃO RESUMO) */}
+          {/* Cards de Métricas (30 dias) */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">
+                    Investimento Total (30d)
+                  </span>
+                  <DollarSign className="h-4 w-4 text-emerald-600" />
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="text-2xl font-bold text-slate-900">
+                  R$ {summary ? summary.total_spend_brl.toFixed(2) : '0,00'}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">Conta: act_1487400719850387</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">Resultados / Conversas</span>
+                  <Users className="h-4 w-4 text-purple-600" />
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="text-2xl font-bold text-slate-900">
+                  {summary ? summary.total_results : 0}
+                </div>
+                <p className="text-[11px] text-emerald-600 font-medium mt-1">
+                  Contatos no WhatsApp via anúncio
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">
+                    Custo por Resultado (CPA)
+                  </span>
+                  <Target className="h-4 w-4 text-blue-600" />
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="text-2xl font-bold text-slate-900">
+                  R$ {summary ? summary.cpa_brl.toFixed(2) : '0,00'}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">Por lead qualificado iniciado</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">Cliques & Alcance</span>
+                  <MousePointerClick className="h-4 w-4 text-amber-600" />
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="text-2xl font-bold text-slate-900">
+                  {summary ? summary.total_clicks.toLocaleString('pt-BR') : 0}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Alcance: {summary ? summary.total_reach.toLocaleString('pt-BR') : 0} pessoas
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Tabela de Campanhas Meta Ads */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-indigo-600" />
+                    Campanhas Ativas & Histórico no Meta Ads
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Métricas sincronizadas diretamente da Marketing API da Meta nos últimos 30 dias.
+                  </CardDescription>
+                </div>
+                {adAccount && (
+                  <Badge variant="outline" className="text-xs bg-slate-100 text-slate-700 w-fit">
+                    Pontuação da Conta: {adAccount.score}/100
+                  </Badge>
                 )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome da Campanha</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Orçamento Diário</TableHead>
+                      <TableHead>Investimento (30d)</TableHead>
+                      <TableHead>Resultados (Leads)</TableHead>
+                      <TableHead>Custo por Lead</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {campaigns.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="text-center py-8 text-sm text-muted-foreground"
+                        >
+                          {loading ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                              <span>Carregando campanhas do Meta Ads...</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <p>Nenhuma campanha encontrada nos últimos 30 dias na conta.</p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setIsCreateOpen(true)}
+                                className="gap-2 text-xs"
+                              >
+                                <PlusCircle className="h-3.5 w-3.5" />
+                                Criar Primeiro Anúncio Click-to-WhatsApp
+                              </Button>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      campaigns.map((camp) => (
+                        <TableRow key={camp.id}>
+                          <TableCell className="font-medium text-xs">
+                            <div className="space-y-0.5">
+                              <span className="font-semibold text-slate-900">{camp.name}</span>
+                              <div className="text-[10px] text-muted-foreground font-mono">
+                                ID: {camp.id} • {camp.objective}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                camp.status === 'ACTIVE'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : camp.status === 'PAUSED'
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                    : 'bg-slate-100 text-slate-600'
+                              }
+                            >
+                              {camp.status === 'ACTIVE'
+                                ? 'Ativa'
+                                : camp.status === 'PAUSED'
+                                  ? 'Pausada'
+                                  : camp.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {camp.daily_budget_brl > 0
+                              ? `R$ ${camp.daily_budget_brl.toFixed(2)}/dia`
+                              : '—'}
+                          </TableCell>
+                          <TableCell className="text-xs font-semibold">
+                            R$ {camp.spend_brl.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <span className="font-bold text-slate-900">{camp.results}</span>
+                            <span className="text-[10px] text-muted-foreground ml-1">
+                              ({camp.clicks} cliques)
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs font-semibold text-slate-900">
+                            {camp.results > 0 ? `R$ ${camp.cost_per_result_brl.toFixed(2)}` : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Informações Técnicas da Conta e Ativos Vinculados */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-4 space-y-1.5">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Conta de Anúncios Meta
-          </div>
-          <div className="text-sm font-bold text-slate-900">
-            {adAccount?.name || 'BRF Imóveis - Anúncios'}
-          </div>
-          <div className="text-xs text-muted-foreground font-mono">
-            ID: 1487400719850387 (Moeda: BRL)
-          </div>
-        </Card>
+          {/* Informações Técnicas da Conta e Ativos Vinculados */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="p-4 space-y-1.5">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Conta de Anúncios Meta
+              </div>
+              <div className="text-sm font-bold text-slate-900">
+                {adAccount?.name || 'BRF Imóveis - Anúncios'}
+              </div>
+              <div className="text-xs text-muted-foreground font-mono">
+                ID: 1487400719850387 (Moeda: BRL)
+              </div>
+            </Card>
 
-        <Card className="p-4 space-y-1.5">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Página do Facebook Oficial
-          </div>
-          <div className="text-sm font-bold text-slate-900">BRF Imóveis</div>
-          <div className="text-xs text-muted-foreground font-mono">
-            ID: 1343797128806374 (Vinculada ao Instagram @mauro.brfimoveis)
-          </div>
-        </Card>
+            <Card className="p-4 space-y-1.5">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Página do Facebook Oficial
+              </div>
+              <div className="text-sm font-bold text-slate-900">BRF Imóveis</div>
+              <div className="text-xs text-muted-foreground font-mono">
+                ID: 1343797128806374 (Vinculada ao Instagram @mauro.brfimoveis)
+              </div>
+            </Card>
 
-        <Card className="p-4 space-y-1.5">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Destino Click-to-WhatsApp
+            <Card className="p-4 space-y-1.5">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Destino Click-to-WhatsApp
+              </div>
+              <div className="text-sm font-bold text-emerald-700">+55 48 9209-8050</div>
+              <div className="text-xs text-muted-foreground">
+                WhatsApp Business verificado com atendimento da Bia
+              </div>
+            </Card>
           </div>
-          <div className="text-sm font-bold text-emerald-700">+55 48 9209-8050</div>
-          <div className="text-xs text-muted-foreground">
-            WhatsApp Business verificado com atendimento da Bia
-          </div>
-        </Card>
-      </div>
+        </TabsContent>
+
+        {/* ABA 3: DASHBOARD E MÉTRICAS DE ORIGENS */}
+        <TabsContent value="origins-stats" className="space-y-6">
+          <LeadOriginsDashboard />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

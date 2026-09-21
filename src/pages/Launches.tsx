@@ -202,6 +202,11 @@ export function Launches() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" className="h-9 gap-1.5 text-xs" asChild>
+            <a href="/anuncios">
+              <ExternalLink className="h-3.5 w-3.5" /> Links de Origem
+            </a>
+          </Button>
           <Button
             onClick={() => setCreateModalOpen(true)}
             className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs shadow-xs"
