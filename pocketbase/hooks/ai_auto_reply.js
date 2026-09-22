@@ -399,11 +399,29 @@ onRecordAfterCreateSuccess((e) => {
     const daysMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
     const currentDay = daysMap[dayOfWeek]
 
-    let hoursStr = brTime.getUTCHours().toString()
+    const brHour = brTime.getUTCHours()
+    let hoursStr = brHour.toString()
     if (hoursStr.length < 2) hoursStr = '0' + hoursStr
     let minutesStr = brTime.getUTCMinutes().toString()
     if (minutesStr.length < 2) minutesStr = '0' + minutesStr
     const currentTimeStr = `${hoursStr}:${minutesStr}`
+
+    // Regra de saudação temporal (America/Sao_Paulo):
+    // Bom dia até ~12h (0h..11h59), Boa tarde das 12h às 17h59, Boa noite a partir das 18h
+    function getTemporalGreetingWord(hour) {
+      const h = typeof hour === 'number' ? hour : brHour
+      if (h < 12) return 'Bom dia'
+      if (h < 18) return 'Boa tarde'
+      return 'Boa noite'
+    }
+
+    function buildTemporalGreeting(name, hour) {
+      const salutation = getTemporalGreetingWord(hour)
+      if (name && name.trim()) {
+        return `${salutation}, ${name.trim()}!`
+      }
+      return `${salutation}!`
+    }
 
     if (!deliveryEnabled) {
       console.log(`[AI_REPLY] Message deferred: delivery disabled for user ${userId}`)
@@ -652,6 +670,38 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
       )
       historyRecords.reverse()
     } catch (_) {}
+
+    // Avaliação de início de diálogo ou pausa longa (para aplicar saudação temporal):
+    // 1) Se não houver mensagens anteriores da IA para este cliente: é abertura/primeiro atendimento
+    // 2) Se a última mensagem da IA ocorreu há mais de 6 horas ou em dia diferente: retomada após pausa longa
+    let isOpeningOrLongPause = true
+    let hoursSinceLastAiMsg = null
+    try {
+      const prevAiMsgs = $app.findRecordsByFilter(
+        'conversations',
+        `customer_id = '${customerId}' && sender = 'ai'`,
+        '-created',
+        1,
+        0,
+      )
+      if (prevAiMsgs.length > 0) {
+        const lastCreatedStr = prevAiMsgs[0].getString('created')
+        const lastCreatedDate = new Date(lastCreatedStr)
+        const diffMs = now.getTime() - lastCreatedDate.getTime()
+        hoursSinceLastAiMsg = diffMs / (3600 * 1000)
+
+        const lastBrDate = new Date(lastCreatedDate.getTime() - 3 * 3600 * 1000)
+        const isDifferentDay =
+          lastBrDate.getUTCDate() !== brTime.getUTCDate() ||
+          lastBrDate.getUTCMonth() !== brTime.getUTCMonth() ||
+          lastBrDate.getUTCFullYear() !== brTime.getUTCFullYear()
+
+        // Saudação temporal apenas se for nova conversa do dia ou após pausa longa (>= 6 horas)
+        isOpeningOrLongPause = isDifferentDay || hoursSinceLastAiMsg >= 6
+      }
+    } catch (_) {
+      isOpeningOrLongPause = true
+    }
 
     let channelContext = ''
     if (receiverPhone.includes('991828050')) {
@@ -1251,6 +1301,17 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
       clientContext += `- Se quer comprar/alugar imóvel de terceiros fora do catálogo: acolher com honestidade sobre a disponibilidade daquela unidade específica, apresentar 2 a 3 alternativas reais compatíveis do catálogo BRF OU oferecer busca personalizada na rede de parceiros, com objetivo de cadastrar a demanda e agendar com o Mauro.\n`
     }
 
+    const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour)
+    const timeGreetingRule = isOpeningOrLongPause
+      ? `REGRA OBRIGATÓRIA DE SAUDAÇÃO TEMPORAL (ABERTURA / NOVO DIA / RETOMADA APÓS INTERVALO):
+- Horário local oficial de envio (America/Sao_Paulo): ${currentTimeStr} (${getTemporalGreetingWord(brHour)}).
+- Você DEVE iniciar esta mensagem com a saudação temporal adequada: "${temporalGreetingSuggestion}".
+- Se o nome do lead for confiável e conhecido, use "${temporalGreetingSuggestion} Tudo bem?".
+- Se o nome do cliente ainda NÃO foi informado, use "${getTemporalGreetingWord(brHour)}! Tudo bem?" sem inventar nomes, e pergunte o nome dele naturalmente e com simpatia cedo na conversa (APENAS UMA pergunta por vez, sem acumular perguntas).`
+      : `REGRA DE DIÁLOGO EM ANDAMENTO:
+- Esta mensagem faz parte de um diálogo já em andamento recente no mesmo dia.
+- NÃO repita saudações formais ("Bom dia", "Boa tarde", "Boa noite") em toda resposta subsequente. Vá direto ao ponto de forma calorosa, consultiva e fluida.`
+
     const systemPrompt = `Você é ${aiName}, assistente virtual da BRF Imóveis (www.brfimoveis.com.br).
 Sua identidade e instruções específicas (Persona):
 ${personaInstructions}
@@ -1261,13 +1322,15 @@ ${clientContext}
 ${channelContext}
 ${propertyContext}
 
+${timeGreetingRule}
+
 IDENTIFICAÇÃO E APRESENTAÇÃO DA BIA (PADRÃO DE MERCADO):
 - Identifique-se apenas como: "Bia, assistente virtual da BRF Imóveis". Sem sobrenomes, sem citar donos/corretores na apresentação, sem explicar estruturas técnicas.
 - Se o cliente perguntar "quem é você?", "de onde veio seu nome?", "você é um robô?", "é inteligência artificial?" ou fizer qualquer pergunta sobre sua identidade/origem:
   Responda de forma leve, simpática e transparente no padrão de mercado, por exemplo:
   "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
 - PROIBIÇÃO ABSOLUTA: NUNCA diga nem explique que nomes vieram de cadastro de leads, formulários, CRM, banco de dados, Google Contacts ou tabelas internas. NUNCA revele termos técnicos de cadastro ou sistemas.
-- TRATAMENTO DO CLIENTE: Trate o cliente pelo nome apenas se for um nome simples e confiável. Se o nome parecer estranho ou incerto, simplesmente cumprimente sem usar nome ("Olá! Tudo bem?").
+- TRATAMENTO DO CLIENTE: Trate o cliente pelo nome apenas se for um nome simples e confiável. Se o nome parecer estranho ou incerto, simplesmente cumprimente sem usar nome ("${getTemporalGreetingWord(brHour)}! Tudo bem?").
 
 REGRA DE OURO SOBRE IMÓVEIS (TOLERÂNCIA ZERO PARA ALUCINAÇÃO):
 - NUNCA invente imóveis, códigos, preços, bairros ou links. Use SOMENTE os imóveis fornecidos no contexto acima (seção [CATÁLOGO DE IMÓVEIS REAIS]).
@@ -1376,8 +1439,8 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
     }
 
     if (!responseText) {
-      responseText =
-        'Olá! Que bom ter você aqui na BRF Imóveis. Vi seu interesse e quero te ajudar a encontrar o imóvel ideal. Podemos falar sobre o que você procura?'
+      const safeGreeting = buildTemporalGreeting(displayName, brHour)
+      responseText = `${safeGreeting} Que bom ter você aqui na BRF Imóveis. Vi seu interesse e quero te ajudar a encontrar o imóvel ideal. Podemos falar sobre o que você procura?`
       console.log(`[AI_REPLY] Using safe fallback response (len=${responseText.length})`)
     }
 
@@ -1974,7 +2037,7 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
         const pSuites = topProp.getInt('suites')
         const loc = [pNeigh, pCity].filter(Boolean).join(', ')
 
-        let greeting = displayName ? `Oi, ${displayName}! ` : `Olá! `
+        let greeting = buildTemporalGreeting(displayName, brHour) + ' '
         let consultMsg = `${greeting}Temos uma excelente oportunidade que se encaixa muito bem no que você procura: o *${pTitle}*`
         if (loc) consultMsg += ` em ${loc}`
         if (pBeds > 0) {
@@ -1984,7 +2047,7 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
         return consultMsg
       }
 
-      const greeting = displayName ? `Oi, ${displayName}! ` : `Olá! `
+      const greeting = buildTemporalGreeting(displayName, brHour) + ' '
       return `${greeting}Temos excelentes opções na região que atendem ao seu perfil. Você pretende fazer a compra à vista ou vai financiar? Posso te apresentar as melhores unidades.`
     }
 
@@ -2489,8 +2552,8 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
             const pSuites = topProp.getInt('suites')
             const loc = [pNeigh, pCity].filter(Boolean).join(', ')
 
-            emergencyReply = custDisplayName ? `Oi, ${custDisplayName}! ` : `Olá! `
-            emergencyReply += `Temos uma excelente opção na região que se encaixa muito bem: o *${pTitle}*`
+            const emGreeting = buildTemporalGreeting(custDisplayName, brHour)
+            emergencyReply = `${emGreeting} Temos uma excelente opção na região que se encaixa muito bem: o *${pTitle}*`
             if (loc) emergencyReply += ` em ${loc}`
             if (pBeds > 0) {
               emergencyReply += `, com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}${pSuites > 0 ? ` (${pSuites} suíte${pSuites > 1 ? 's' : ''})` : ''}`
@@ -2501,9 +2564,22 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
           console.warn(`[AI_REPLY] Emergency catalog lookup error: ${String(catDbErr)}`)
         }
 
-        // If catalog lookup also failed, use minimal safety message
+        // If catalog lookup also failed, use minimal safety message with temporal greeting
         if (!emergencyReply) {
-          emergencyReply = `Olá! Você pode conferir nosso catálogo completo de imóveis diretamente no site: https://www.brfimoveis.com.br/imoveis/venda. Se preferir um atendimento exclusivo com o corretor Mauro, ele atende no link: https://wa.me/5548992098050`
+          let custDisplayName = ''
+          try {
+            const custRec = $app.findRecordById('customers', customerId)
+            const cName = (
+              custRec.getString('first_name') ||
+              custRec.getString('name') ||
+              ''
+            ).trim()
+            if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
+              custDisplayName = cName.split(' ')[0]
+            }
+          } catch (_) {}
+          const emGreeting = buildTemporalGreeting(custDisplayName, brHour)
+          emergencyReply = `${emGreeting} Você pode conferir nosso catálogo completo de imóveis diretamente no site: https://www.brfimoveis.com.br/imoveis/venda. Se preferir um atendimento exclusivo com o corretor Mauro, ele atende no link: https://wa.me/5548992098050`
         }
 
         // Save conversation record
