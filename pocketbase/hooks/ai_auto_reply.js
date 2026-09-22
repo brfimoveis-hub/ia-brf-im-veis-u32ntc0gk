@@ -575,11 +575,15 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
     }
 
     const strictGuidelines = `
-### REGRAS OBRIGATÓRIAS (SIGA ESTRITAMENTE):
-1. FOCO EXCLUSIVO EM VENDA/PERMUTA: Nós NUNCA trabalhamos com aluguel ou locação. Toda e qualquer referência a aluguel deve ser cortada. Se o cliente falar sobre aluguel, encerre o assunto informando que trabalhamos apenas com Venda e Permuta.
-2. IDENTIFICAÇÃO OBRIGATÓRIA (PASSO 1): Se o cliente acabou de chegar e o imóvel de interesse não está claro, sua PRIMEIRA ação e prioridade absoluta deve ser descobrir qual é o imóvel. Diga: "Vi que você se interessou por um imóvel nosso! Me diz qual deles chamou sua atenção?"
-3. VALIDAÇÃO NO CRM: Se ele falar de urgência, preço ou bairro, conduza a conversa para obter esses dados claramente.
-4. HANDOFF PARA HUMANO: Se o cliente pedir um "corretor", "humano", ou perguntar algo que você não sabe, responda: "Entendi sua dúvida. Vou te transferir agora para o Mauro, nosso especialista: https://wa.me/5548992098050" e não adicione mais nada.`
+### REGRAS OBRIGATÓRIAS DE DIÁLOGO E VENDA CONSULTIVA (SIGA ESTRITAMENTE):
+1. DIÁLOGO HUMANO, AMISTOSO E UMA PERGUNTA POR VEZ:
+   - Mantenha mensagens curtas (2 a 4 linhas no WhatsApp), empáticas e calorosas.
+   - NUNCA envie blocos acumulados com 3 ou mais perguntas. Faça APENAS UMA pergunta simples e objetiva por vez para manter a conversa fluida e sugar o máximo de informações do cliente no ritmo dele.
+2. ETAPAS DE QUALIFICAÇÃO ANTES DE PREÇO/TABELA:
+   - Etapa 1 (Acolhimento): Descubra (a) como chegou até a gente; (b) o que busca: compra, venda, permuta ou aluguel; (c) tipo de imóvel e região/bairro; (d) faixa de valor e motivação (moradia vs investimento).
+   - Etapa 2 (Qualificação Financeira OBRIGATÓRIA antes de preços e tabelas): Verifique se pretende comprar à vista ou financiado. Se for financiar: pergunte se já tem crédito aprovado, em qual banco, valor aproximado e se usará FGTS.
+   - Etapa 3 (Apresentação Consultiva): Descreva o lançamento/imóvel com suas próprias palavras no fluxo de conversa (nome do empreendimento, localização, tipologia, diferenciais), gere desejo e pergunte: "Quer que eu te mande as fotos e a tabela de valores?". NUNCA abra com código interno frio (ex: LM 310) nem despeje preços/links antes do interesse explícito.
+3. HANDOFF PARA HUMANO: Se o cliente pedir um "corretor", "humano", ou perguntar algo que você não sabe, responda cordialmente encaminhando para o Mauro: "Vou te transferir agora para o Mauro, nosso especialista: https://wa.me/5548992098050" e inclua [HANDOVER: Mauro].`
 
     activeCadenceText += `\n\n${strictGuidelines}`
 
@@ -1239,8 +1243,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
     } else if (isMetaAdSource) {
       clientContext += `\n[ROTEAMENTO: TRILHA A — LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
       clientContext += `- Este lead veio de anúncio Meta: "${customerSource}".\n`
-      clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA: Ao iniciar a conversa ou recepcionar o lead, mencione cordialmente o empreendimento ou anúncio de origem (exemplo: "Vi que você veio pelo anúncio do lançamento...", "Que ótimo que você se interessou pelo nosso lançamento...").\n`
-      clientContext += `- Apresente de imediato as informações do empreendimento anunciado e pergunte se gostaria de mais detalhes, fotos ou plantas.\n`
+      clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA: Ao iniciar a conversa ou recepcionar o lead, mencione cordialmente o empreendimento ou anúncio de origem de forma calorosa e concisa (exemplo: "Que ótimo que você viu o nosso lançamento!"). Faça apenas UMA pergunta por vez para mapear o perfil e qualificação financeira antes de enviar preços ou links.\n`
     } else {
       clientContext += `\n[ROTEAMENTO: TRILHA B — LEAD DE IMÓVEL DE TERCEIROS / DEMANDA GERAL]:\n`
       clientContext += `- Postura consultiva de captação e intermediação especialista da BRF Imóveis.\n`
@@ -1271,26 +1274,35 @@ REGRA DE OURO SOBRE IMÓVEIS (TOLERÂNCIA ZERO PARA ALUCINAÇÃO):
 - NUNCA monte links com URLs imaginárias (como /101/, /102/ ou links quebrados). Use EXATAMENTE os links oficiais fornecidos no catálogo.
 - Se não houver imóvel perfeitamente compatível com o pedido do cliente (ex: pediu estúdio ou bairro específico onde não temos ativo no momento), SEJA HONESTO E TRANSPARENTE: diga claramente que no momento não temos esse formato específico/nessa região exata, E IMEDIATAMENTE apresente 1 a 3 das melhores opções ativas mais próximas do catálogo real fornecido no contexto com link oficial, ou direcione para o catálogo geral no site https://www.brfimoveis.com.br/imoveis/venda e para o Mauro (wa.me/5548992098050). NUNCA faça mais perguntas de qualificação em loop quando o cliente já pediu opções!
 
-DIRETRIZES FUNDAMENTAIS E REGRAS DE ATENDIMENTO (BRF IMÓVEIS):
-1. RESPOSTA DIRETA AO QUE FOI PEDIDO PRIMEIRO:
-   - Se o cliente perguntou "quais imóveis até 500k?", "manda opções", "manda os links", "o que você tem?", ou pediu regiões específicas: RESPONDA IMEDIATAMENTE apresentando 2 a 3 imóveis reais da seção [CATÁLOGO DE IMÓVEIS REAIS].
-   - É TOTALMENTE PROIBIDO responder com perguntas de qualificação como "o que é mais importante além do valor?" ou enrolar quando o cliente pediu opções ou informações sobre imóveis.
-   - SEMPRE forneça os dados reais dos imóveis do catálogo: Código, Bairro/Cidade, Valor, Quartos e o LINK OFICIAL DO SITE que está listado.
+PROTOCOLO COMERCIAL CONSULTIVO E DIRETRIZES DE ATENDIMENTO (BRF IMÓVEIS):
+1. DIÁLOGO HUMANO E ACOLHEDOR (UMA PERGUNTA POR VEZ):
+   - Mantenha mensagens curtas (2 a 4 linhas no WhatsApp), tom caloroso, empático e de consultoria de alto nível.
+   - REGRA DE OURO DO MAURO: NUNCA envie questionários acumulados ou blocos com várias perguntas de uma vez (ex: "como chegou, o que busca, qual bairro, qual valor e quando quer mudar?"). Faça APENAS UMA pergunta simples e objetiva por vez para "sugar o máximo de informações do cliente" de forma agradável e natural.
+   - Sequência consultiva de qualificação:
+     (a) Conexão e acolhimento: como conheceu a BRF Imóveis ou o empreendimento.
+     (b) Finalidade: compra, venda de imóvel próprio, permuta ou aluguel.
+     (c) Perfil e localização: tipo de imóvel, dormitórios desejados e bairros/regiões de preferência.
+     (d) Faixa de valor e motivação: faixa de investimento prevista e objetivo principal (moradia da família, investimento para valorização ou renda com locação/Airbnb).
 
-2. SEMPRE INCLUIR O LINK DO SITE DO IMÓVEL:
-   - Toda vez que citar qualquer imóvel, inclua obrigatoriamente a URL oficial que consta no catálogo fornecido (ex: https://www.brfimoveis.com.br/343/imoveis/venda-apartamento-2-quartos-capoeiras-florianopolis-sc).
-   - O cliente não quer apenas descrições vagas; ele quer abrir o link do imóvel no site.
+2. QUALIFICAÇÃO FINANCEIRA OBRIGATÓRIA ANTES DE ENVIAR PREÇO OU TABELA:
+   - ANTES de apresentar preços, tabelas de unidades ou fichas de valores, verifique a estrutura de pagamento do cliente:
+     * A compra será à vista ou financiada?
+     * Se financiada: já possui carta de crédito ou financiamento pré-aprovado? Em qual banco? Qual o valor aproximado pré-aprovado?
+     * Pretende utilizar FGTS ou incluir algum bem/imóvel como parte da entrada?
+   - Essa qualificação protege o posicionamento do imóvel e permite oferecer exatamente o que cabe na aprovação bancária do cliente.
 
-3. LIMITE DE QUALIFICAÇÃO (MÁXIMO 2 PERGUNTAS NA CONVERSA INTEIRA):
-   - Se o cliente já informou 1 ou 2 critérios (ex: dormitórios, valor ou região), NÃO faça mais perguntas de qualificação em sequência. APRESENTE OS IMÓVEIS.
-   - NUNCA repita uma pergunta já feita no histórico da conversa. Verifique o que já foi perguntado antes de enviar.
+3. APRESENTAÇÃO CONSULTIVA DE IMÓVEIS (DESCREVER ANTES DE MANDAR LINK/PREÇO):
+   - Ao casar uma opção com o perfil do cliente, DESCREVA o empreendimento com suas próprias palavras no texto da conversa: nome do empreendimento, bairro/cidade, tipologia, estilo de vida e diferenciais marcantes (ex: acabamento, área de lazer, sacada com churrasqueira, proximidade do mar ou centro).
+   - NUNCA abra uma apresentação com código interno frio (ex: "Código: LM 310") nem despeje fichas técnicas brutas com dump de links e valores na primeira menção.
+   - Crie desejo e desperte curiosidade primeiro, e pergunte em tom consultivo: "Quer que eu te mande as fotos e a tabela de valores dessa opção?".
+   - Envie o link oficial do site, tabela detalhada ou faixa de preço SOMENTE APÓS o cliente manifestar interesse explícito ou confirmar que quer ver os detalhes.
+   - Se o cliente já qualificado pedir expressamente o link, fotos ou preços diretos, atenda com elegância fornecendo o link oficial do imóvel do catálogo da BRF Imóveis.
 
 4. NÃO EMPURRAR PROPOSTA OU FECHAMENTO PRECOCE:
-   - Só fale sobre proposta formal, documentação ou contrato quando o cliente demonstrar interesse explícito em uma unidade específica (ex: "gostei do AP343", "como faço pra comprar?").
-   - Quando apresentar opções pela primeira vez, convide suavemente o cliente a ver as fotos pelo link ou tirar dúvidas sobre as opções.
+   - Só trate de proposta formal, minuta contratual ou documentação bancária quando o cliente demonstrar intenção firme em unidade específica.
 
 5. PROIBIÇÃO DE MENSAGENS ENLATADAS / CANNED RESPONSES:
-   - NUNCA use a frase "Com certeza, vou te passar os valores agora mesmo. Apenas para eu te enviar a unidade com o melhor custo-benefício para o seu perfil, o que é mais importante para você além do valor?". Se o cliente perguntou preço ou opções, envie os imóveis e os valores reais imediatamente!
+   - NUNCA use clichês robóticos nem frases pré-fabricadas como "vou te passar os valores agora mesmo... o que é mais importante para você além do valor?". Conduza a conversa de forma inteligente, espontânea e focada.
 
 6. ALUGUEL/LOCAÇÃO E CAPTAÇÃO DE TERCEIROS:
    - Se o cliente for um PROPRIETÁRIO querendo vender ou alugar o imóvel dele (Trilha B): parabenize a decisão, reforce a autoridade da BRF Imóveis, colete as informações do imóvel (tipo, bairro, metragem, dormitórios, valor pretendido) e conduza para agendar avaliação/reunião com o Mauro (wa.me/5548992098050). NUNCA diga secamente que "não trabalhamos com aluguel" quando o cliente for um proprietário oferecendo imóvel para a carteira da BRF!
@@ -1491,32 +1503,24 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       )
     if (claimsCatalogUnavailable && Array.isArray(matchedProps) && matchedProps.length > 0) {
       console.warn(
-        '[AI_REPLY] Model falsely claimed properties are not in catalog even though matchedProps found matching units! Triggering catalog presentation fallback.',
+        '[AI_REPLY] Model falsely claimed properties are not in catalog even though matchedProps found matching units! Triggering consultative presentation fallback.',
       )
-      // Pass candidates directly
-      const count = Math.min(matchedProps.length, 6)
-      const selected = matchedProps.slice(0, count)
-      let correctedCatalogMsg =
-        'Temos sim essas excelentes opções disponíveis no nosso catálogo oficial da BRF Imóveis! Confira os detalhes:\n\n'
-      selected.forEach((p, idx) => {
-        const code = p.getString('code')
-        const title = p.getString('title')
-        const price = p.getString('price_formatted')
-        const neigh = p.getString('neighborhood')
-        const city = p.getString('city')
-        const beds = p.getInt('bedrooms')
-        const suites = p.getInt('suites')
-        const url = p.getString('url')
-        correctedCatalogMsg += `${idx + 1}. *${title}* (${code})\n`
-        if (neigh || city)
-          correctedCatalogMsg += `📍 Localização: ${[neigh, city].filter(Boolean).join(', ')}\n`
-        if (price) correctedCatalogMsg += `💰 Valor: ${price}\n`
-        if (beds > 0)
-          correctedCatalogMsg += `🛏️ Dormitórios: ${beds}${suites > 0 ? ` (${suites} suíte${suites > 1 ? 's' : ''})` : ''}\n`
-        if (url) correctedCatalogMsg += `🔗 Link oficial: ${url}\n`
-        correctedCatalogMsg += '\n'
-      })
-      correctedCatalogMsg += 'Qual dessas opções você quer que eu te envie mais fotos e plantas?'
+      const primaryProp = matchedProps[0]
+      const pTitle = (primaryProp.getString('title') || '').trim()
+      const pNeigh = (primaryProp.getString('neighborhood') || '').trim()
+      const pCity = (primaryProp.getString('city') || '').trim()
+      const pDesc = (primaryProp.getString('description') || '').trim()
+      const locStr = [pNeigh, pCity].filter(Boolean).join(', ')
+
+      let correctedCatalogMsg = `Temos sim essa excelente opção no nosso portfólio oficial! `
+      correctedCatalogMsg += `O *${pTitle}* fica em ótima localização${locStr ? ` em ${locStr}` : ''}`
+      if (pDesc) {
+        const shortDesc = pDesc.split('.')[0].replace(/\n/g, ' ')
+        if (shortDesc.length > 10 && shortDesc.length < 160) {
+          correctedCatalogMsg += `, com ${shortDesc.toLowerCase()}`
+        }
+      }
+      correctedCatalogMsg += `.\n\nQuer que eu te passe mais detalhes do projeto e a tabela de valores dele?`
       responseText = correctedCatalogMsg.trim()
     }
 
@@ -1781,6 +1785,10 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
     }
 
     // Extract business tags from response
+    let detectedPriceRange = ''
+    let detectedNeighborhood = ''
+    let detectedUrgency = 0
+
     const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
     if (statusMatch && statusMatch[1]) {
       detectedStatus = statusMatch[1].trim()
@@ -1803,6 +1811,27 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
     if (profileMatch && profileMatch[1]) {
       detectedProfile = profileMatch[1].trim()
       responseText = responseText.replace(/\[PROFILE:\s*.*?\]/gi, '').trim()
+    }
+
+    const priceRangeMatch = responseText.match(/\[PRICE_RANGE:\s*(.*?)\]/i)
+    if (priceRangeMatch && priceRangeMatch[1]) {
+      detectedPriceRange = priceRangeMatch[1].trim()
+      responseText = responseText.replace(/\[PRICE_RANGE:\s*.*?\]/gi, '').trim()
+    }
+
+    const neighborhoodMatch = responseText.match(/\[NEIGHBORHOOD:\s*(.*?)\]/i)
+    if (neighborhoodMatch && neighborhoodMatch[1]) {
+      detectedNeighborhood = neighborhoodMatch[1].trim()
+      responseText = responseText.replace(/\[NEIGHBORHOOD:\s*.*?\]/gi, '').trim()
+    }
+
+    const urgencyMatch = responseText.match(/\[URGENCY:\s*(\d+)\]/i)
+    if (urgencyMatch && urgencyMatch[1]) {
+      const uNum = parseInt(urgencyMatch[1], 10)
+      if (!isNaN(uNum) && uNum >= 1 && uNum <= 5) {
+        detectedUrgency = uNum
+      }
+      responseText = responseText.replace(/\[URGENCY:\s*.*?\]/gi, '').trim()
     }
 
     let detectedPermuta = false
@@ -1862,7 +1891,7 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
 
     const cannedDetected = isCannedValuesSentence(responseText)
 
-    // Fallback function to generate 2-3 real catalog properties from properties collection
+    // Fallback function to generate consultative real estate presentation from properties collection
     function generateCatalogFallbackMessage(propsCandidateList) {
       let activeProps = []
 
@@ -1889,7 +1918,6 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       // 2. If candidates list is empty or had no active items, query the catalog directly
       if (activeProps.length === 0) {
         try {
-          // If criteria were extracted, try to filter by price / bedrooms
           let filterParts = ['is_active = true']
           if (typeof extractedMaxPrice === 'number' && extractedMaxPrice > 0) {
             filterParts.push(`price <= ${extractedMaxPrice}`)
@@ -1911,7 +1939,6 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
             )
           }
 
-          // Relax location if empty
           if (
             activeProps.length === 0 &&
             typeof matchedLocFilter === 'string' &&
@@ -1930,7 +1957,6 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
             )
           }
 
-          // Global fallback: any active properties
           if (activeProps.length === 0) {
             activeProps = $app.findRecordsByFilter('properties', 'is_active = true', 'price', 3, 0)
           }
@@ -1940,73 +1966,31 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       }
 
       if (activeProps && activeProps.length > 0) {
-        const topProps = activeProps.slice(0, 3)
-        let generatedCatalogReply = ''
-        if (displayName) {
-          generatedCatalogReply += `Oi, ${displayName}! `
-        } else {
-          generatedCatalogReply += `Olá! `
+        const topProp = activeProps[0]
+        const pTitle = (topProp.getString('title') || '').trim()
+        const pCity = (topProp.getString('city') || '').trim()
+        const pNeigh = (topProp.getString('neighborhood') || '').trim()
+        const pBeds = topProp.getInt('bedrooms')
+        const pSuites = topProp.getInt('suites')
+        const loc = [pNeigh, pCity].filter(Boolean).join(', ')
+
+        let greeting = displayName ? `Oi, ${displayName}! ` : `Olá! `
+        let consultMsg = `${greeting}Temos uma excelente oportunidade que se encaixa muito bem no que você procura: o *${pTitle}*`
+        if (loc) consultMsg += ` em ${loc}`
+        if (pBeds > 0) {
+          consultMsg += `, com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}${pSuites > 0 ? ` (${pSuites} suíte${pSuites > 1 ? 's' : ''})` : ''}`
         }
-
-        const maxP = typeof extractedMaxPrice === 'number' ? extractedMaxPrice : 0
-        const beds = typeof extractedBedrooms === 'number' ? extractedBedrooms : 0
-
-        if (maxP > 0 || beds > 0) {
-          generatedCatalogReply += `Separei aqui opções reais do nosso catálogo que se encaixam no que você procura`
-          if (beds > 0) generatedCatalogReply += ` (${beds} dormitórios`
-          if (maxP > 0) generatedCatalogReply += `, até R$ ${(maxP / 1000).toFixed(0)}k)`
-          else if (beds > 0) generatedCatalogReply += `)`
-          generatedCatalogReply += `:\n\n`
-        } else {
-          generatedCatalogReply += `Aqui estão excelentes opções do nosso catálogo oficial:\n\n`
-        }
-
-        topProps.forEach((p) => {
-          const pCode = (p.getString('code') || '').trim()
-          const pTitle = (p.getString('title') || '').trim()
-          let pUrl = (p.getString('url') || '').trim()
-          const pCity = (p.getString('city') || '').trim()
-          const pNeigh = (p.getString('neighborhood') || '').trim()
-          let pPrice = (p.getString('price_formatted') || '').trim()
-          const pBeds = p.getInt('bedrooms')
-          const pSuites = p.getInt('suites')
-
-          if (!pPrice) {
-            const rawPrice = p.getFloat('price')
-            if (rawPrice > 0) {
-              pPrice = `R$ ${rawPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-            } else {
-              pPrice = 'Consulte valores'
-            }
-          }
-
-          if (!pUrl) {
-            pUrl = 'https://www.brfimoveis.com.br/imoveis/venda'
-          }
-
-          generatedCatalogReply += `📍 *${pCode}* - ${pTitle}\n`
-          generatedCatalogReply += `• Localização: ${pNeigh ? pNeigh + ', ' : ''}${pCity}\n`
-          generatedCatalogReply += `• Valor: ${pPrice}\n`
-          if (pBeds > 0) {
-            generatedCatalogReply += `• Dormitórios: ${pBeds}${pSuites > 0 ? ` (${pSuites} suítes)` : ''}\n`
-          }
-          generatedCatalogReply += `• Link com fotos e detalhes: ${pUrl}\n\n`
-        })
-
-        generatedCatalogReply += `Dá uma olhada nos links! Qual dessas opções você achou mais interessante? Se quiser, posso agendar para você conhecer pessoalmente.`
-        return generatedCatalogReply
+        consultMsg += `.\n\nVocê pretende adquirir à vista ou vai utilizar financiamento bancário? Quer que eu te mande as fotos e a tabela de valores?`
+        return consultMsg
       }
 
-      return `Olá! Você pode conferir nosso catálogo completo de imóveis diretamente no site: https://www.brfimoveis.com.br/imoveis/venda. Se preferir um atendimento exclusivo com o corretor Mauro, ele atende no link: https://wa.me/5548992098050`
+      const greeting = displayName ? `Oi, ${displayName}! ` : `Olá! `
+      return `${greeting}Temos excelentes opções na região que atendem ao seu perfil. Você pretende fazer a compra à vista ou vai financiar? Posso te apresentar as melhores unidades.`
     }
 
-    // Check if after sanitation the response became empty or lacks real properties when requested
+    // Check if after sanitation the response became empty or had hallucinated properties
     const needsCatalogFallback =
-      !responseText.trim() ||
-      (validationResult.hadHallucinatedProperty &&
-        (!responseText.includes('http') || responseText.length < 30)) ||
-      (isRequestingOptions &&
-        (!responseText.includes('http') || !responseText.includes('brfimoveis.com.br')))
+      !responseText.trim() || (validationResult.hadHallucinatedProperty && responseText.length < 30)
 
     // If response was repetitive, canned, or stripped of hallucinated properties, replace with real catalog options!
     if (cannedDetected || isTooSimilar || needsCatalogFallback) {
@@ -2173,6 +2157,21 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
           custToUpdate.set('lead_profile', detectedProfile)
           crmUpdated = true
         }
+      }
+
+      if (detectedPriceRange) {
+        custToUpdate.set('price_range', detectedPriceRange)
+        crmUpdated = true
+      }
+
+      if (detectedNeighborhood) {
+        custToUpdate.set('neighborhood', detectedNeighborhood)
+        crmUpdated = true
+      }
+
+      if (detectedUrgency > 0) {
+        custToUpdate.set('urgency', detectedUrgency)
+        crmUpdated = true
       }
 
       if (detectedHandover) {
@@ -2482,37 +2481,21 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
               }
             } catch (_) {}
 
+            const topProp = fallbackProps[0]
+            const pTitle = (topProp.getString('title') || '').trim()
+            const pCity = (topProp.getString('city') || '').trim()
+            const pNeigh = (topProp.getString('neighborhood') || '').trim()
+            const pBeds = topProp.getInt('bedrooms')
+            const pSuites = topProp.getInt('suites')
+            const loc = [pNeigh, pCity].filter(Boolean).join(', ')
+
             emergencyReply = custDisplayName ? `Oi, ${custDisplayName}! ` : `Olá! `
-            emergencyReply += `Separei aqui excelentes opções reais do nosso catálogo oficial da BRF Imóveis:\n\n`
-
-            fallbackProps.forEach((p) => {
-              const pCode = (p.getString('code') || '').trim()
-              const pTitle = (p.getString('title') || '').trim()
-              let pUrl =
-                (p.getString('url') || '').trim() || 'https://www.brfimoveis.com.br/imoveis/venda'
-              const pCity = (p.getString('city') || '').trim()
-              const pNeigh = (p.getString('neighborhood') || '').trim()
-              let pPrice = (p.getString('price_formatted') || '').trim()
-              const pBeds = p.getInt('bedrooms')
-              const pSuites = p.getInt('suites')
-
-              if (!pPrice) {
-                const rawPrice = p.getFloat('price')
-                pPrice =
-                  rawPrice > 0
-                    ? `R$ ${rawPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                    : 'Consulte valores'
-              }
-
-              emergencyReply += `📍 *${pCode}* - ${pTitle}\n`
-              emergencyReply += `• Localização: ${pNeigh ? pNeigh + ', ' : ''}${pCity}\n`
-              emergencyReply += `• Valor: ${pPrice}\n`
-              if (pBeds > 0) {
-                emergencyReply += `• Dormitórios: ${pBeds}${pSuites > 0 ? ` (${pSuites} suítes)` : ''}\n`
-              }
-              emergencyReply += `• Link com fotos e detalhes: ${pUrl}\n\n`
-            })
-            emergencyReply += `Dá uma olhada nos links! Qual dessas opções você achou mais interessante? Se quiser, posso agendar para você conhecer pessoalmente.`
+            emergencyReply += `Temos uma excelente opção na região que se encaixa muito bem: o *${pTitle}*`
+            if (loc) emergencyReply += ` em ${loc}`
+            if (pBeds > 0) {
+              emergencyReply += `, com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}${pSuites > 0 ? ` (${pSuites} suíte${pSuites > 1 ? 's' : ''})` : ''}`
+            }
+            emergencyReply += `.\n\nVocê pretende adquirir à vista ou vai utilizar financiamento bancário? Quer que eu te mande as fotos e a tabela de valores?`
           }
         } catch (catDbErr) {
           console.warn(`[AI_REPLY] Emergency catalog lookup error: ${String(catDbErr)}`)
