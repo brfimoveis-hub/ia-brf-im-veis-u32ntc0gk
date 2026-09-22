@@ -12,7 +12,7 @@ routerAdd(
       return e.badRequestError('Usuário não encontrado')
     }
 
-    const igBizId = (user.getString('meta_instagram_business_id') || '').trim()
+    let igBizId = (user.getString('meta_instagram_business_id') || '').trim()
     const oauthUserToken = (user.getString('meta_instagram_user_token') || '').trim()
     const pageTokenCandidate = (
       user.getString('meta_instagram_page_token') ||
@@ -29,20 +29,16 @@ routerAdd(
         ? 'page_token (salvo em meta_instagram_page_token/meta_page_access_token)'
         : 'nenhum'
 
-    const igAppId = (
-      user.getString('meta_instagram_app_id') ||
-      user.getString('meta_app_id') ||
-      ''
-    ).trim()
+    const igAppId = (user.getString('meta_instagram_app_id') || '1121822660295492').trim()
     const sysUserToken = (user.getString('meta_whatsapp_access_token') || '').trim()
     const capiToken = (user.getString('meta_capi_token') || '').trim()
 
-    if (!igBizId) {
+    if (!igBizId && !igToken) {
       return e.json(200, {
         success: false,
         status: 'not_configured',
-        message: 'Instagram Business ID não configurado no CRM.',
-        instructions: 'Informe o Instagram Business ID nas configurações ou conecte via OAuth.',
+        message: 'Instagram não configurado no CRM (nenhum token ou ID encontrado).',
+        instructions: 'Conecte via OAuth ou informe o Page Access Token nas configurações.',
       })
     }
 
@@ -72,19 +68,12 @@ routerAdd(
     var savedTokenGraphError = null
 
     // Lista de tokens para varredura do portfólio e auto-descoberta:
-    // Prioridade 1: OAuth User Token novo (enxerga as páginas do usuário)
-    // Prioridade 2: System User Token
-    // Prioridade 3: CAPI Token
-    // Prioridade 4: Page Token
+    // Prioridade 1: OAuth User Token novo (do novo app da Meta)
+    // Prioridade 2: Page Token
+    // NOTA: NÃO incluímos tokens de CAPI/WhatsApp na varredura se pertencerem a apps deletados
     const tokensToTry = []
     if (oauthUserToken) {
       tokensToTry.push({ token: oauthUserToken, type: 'oauth_user' })
-    }
-    if (sysUserToken && sysUserToken !== oauthUserToken) {
-      tokensToTry.push({ token: sysUserToken, type: 'system_user' })
-    }
-    if (capiToken && capiToken !== sysUserToken && capiToken !== oauthUserToken) {
-      tokensToTry.push({ token: capiToken, type: 'capi' })
     }
     if (
       pageTokenCandidate &&
@@ -93,6 +82,15 @@ routerAdd(
       pageTokenCandidate !== capiToken
     ) {
       tokensToTry.push({ token: pageTokenCandidate, type: 'page_token' })
+    }
+    // Inclui system user / CAPI apenas se não houver OAuth token do app novo
+    if (!oauthUserToken) {
+      if (sysUserToken) {
+        tokensToTry.push({ token: sysUserToken, type: 'system_user' })
+      }
+      if (capiToken && capiToken !== sysUserToken) {
+        tokensToTry.push({ token: capiToken, type: 'capi' })
+      }
     }
 
     const crmIgUsername = (user.getString('instagram_username') || '')
@@ -1021,6 +1019,32 @@ routerAdd(
 
     // 4. Se não conseguiu obter automaticamente, analisa o motivo e retorna orientações claras.
     // REGRA DE OURO:
+    // Se o token salvo foi aceito mas não possui páginas acessíveis:
+    if (accessiblePages.length === 0 && !savedTokenGraphError) {
+      const scanNoPages = runPortfolioScan()
+      const noPagesMsg =
+        'O token OAuth do novo app (' +
+        igAppId +
+        ') está válido e ativo, porém a Meta retornou 0 Páginas em /me/accounts. É necessário reconectar via OAuth autorizando o acesso às Páginas do Facebook (pages_show_list, pages_read_engagement) e marcando a página da imobiliária.'
+
+      return e.json(200, {
+        success: false,
+        status: 'configured_waiting_token',
+        message: noPagesMsg,
+        instructions: noPagesMsg,
+        token_source: tokenSource,
+        has_oauth_token: !!oauthUserToken,
+        graph_error: null,
+        token_identity: tokenIdentity,
+        page_linked_instagram: pageLinkedInstagram,
+        accessible_pages: accessiblePages,
+        portfolio_scan: scanNoPages.portfolio_scan,
+        portfolio_scan_error: scanNoPages.portfolio_scan_error,
+        tested_tokens: testedTokens,
+        app_id: igAppId,
+      })
+    }
+
     // Se o token salvo existiu mas foi rejeitado pela Graph API, a mensagem principal DEVE ser sobre
     // o token (ex.: código 190 expirado/inválido, código 10 sem permissão, etc.), e NÃO a mensagem enganosa
     // "Faltam permissões do Instagram na Meta", porque as permissões avaliadas abaixo vieram dos tokens

@@ -200,17 +200,16 @@ routerAdd(
     }
 
     if (shouldCheck('instagram')) {
-      const igBizId = (userRecord.getString('meta_instagram_business_id') || '').trim()
-      let igToken = (
+      let igBizId = (userRecord.getString('meta_instagram_business_id') || '').trim()
+      const oauthUserToken = (userRecord.getString('meta_instagram_user_token') || '').trim()
+      const pageTokenCandidate = (
         userRecord.getString('meta_instagram_page_token') ||
         userRecord.getString('meta_page_access_token') ||
         ''
       ).trim()
-      const igAppId = (
-        userRecord.getString('meta_instagram_app_id') ||
-        userRecord.getString('meta_app_id') ||
-        ''
-      ).trim()
+      // Prioridade de token: novo token de usuário OAuth se disponível, senão token de página
+      let igToken = oauthUserToken || pageTokenCandidate
+      const igAppId = (userRecord.getString('meta_instagram_app_id') || '1121822660295492').trim()
       const sysUserToken = (userRecord.getString('meta_whatsapp_access_token') || '').trim()
       const capiToken = (userRecord.getString('meta_capi_token') || '').trim()
 
@@ -419,13 +418,13 @@ routerAdd(
               accessible_pages: accessiblePages,
               tested_tokens: [
                 {
-                  type: 'saved_page_token',
+                  type: oauthUserToken ? 'oauth_user_token' : 'saved_page_token',
                   token_suffix: maskTok(igToken),
                   status: 'page_has_no_instagram',
                 },
               ],
             })
-          } else {
+          } else if (currentIgTarget) {
             try {
               const igRes = $http.send({
                 url:
@@ -440,7 +439,7 @@ routerAdd(
                 connected = true
                 verifiedName = (igRes.json && (igRes.json.name || igRes.json.username)) || ''
                 testedTokens.push({
-                  type: 'saved_page_token',
+                  type: oauthUserToken ? 'oauth_user_token' : 'saved_page_token',
                   token_suffix: maskTok(igToken),
                   status: 'ok',
                   http_status: igRes.statusCode,
@@ -458,7 +457,7 @@ routerAdd(
                     savedGraphErr.message,
                 )
                 testedTokens.push({
-                  type: 'saved_page_token',
+                  type: oauthUserToken ? 'oauth_user_token' : 'saved_page_token',
                   token_suffix: maskTok(igToken),
                   status: 'failed',
                   http_status: savedGraphErr.http_status,
@@ -476,7 +475,7 @@ routerAdd(
               }
               console.log('[INSTAGRAM_HEALTH] token salvo erro de rede: ' + msg)
               testedTokens.push({
-                type: 'saved_page_token',
+                type: oauthUserToken ? 'oauth_user_token' : 'saved_page_token',
                 token_suffix: maskTok(igToken),
                 status: 'network_error',
                 graph_error: savedGraphErr,
@@ -620,8 +619,26 @@ routerAdd(
             tested_tokens: testedTokens,
           })
         } else if (!(pageLinkedIg && pageLinkedIg.linked === false)) {
-          // Se o token salvo falhou, reporte o erro real do token ao invés de permissões irrelevantes
-          if (savedGraphErr) {
+          // Se o token foi conectado mas ainda não identificou uma conta ou se falhou, gera diagnóstico amigável
+          if (accessiblePages.length === 0) {
+            const detailMsg =
+              'O novo token OAuth foi aceito pela Meta (App ' +
+              igAppId +
+              '), mas ainda não possui visibilidade de Páginas do Facebook (0 páginas retornadas em /me/accounts). Reconecte via OAuth com as permissões "pages_show_list" e "pages_read_engagement" selecionando a Página BRF Imóveis.'
+
+            results.push({
+              name: 'Instagram Business',
+              key: 'instagram',
+              status: 'configured_waiting_token',
+              timestamp: ts,
+              message: detailMsg,
+              app_id: igAppId,
+              graph_error: savedGraphErr,
+              token_identity: tokenIdentity,
+              accessible_pages: accessiblePages,
+              tested_tokens: testedTokens,
+            })
+          } else if (savedGraphErr) {
             const errCode = savedGraphErr.code
             const errSubcode = savedGraphErr.subcode
             const errMsg = savedGraphErr.message || 'Token rejeitado pela Meta Graph API'
@@ -655,7 +672,7 @@ routerAdd(
               const pRes = $http.send({
                 url:
                   'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
-                  encodeURIComponent(sysUserToken || capiToken),
+                  encodeURIComponent(oauthUserToken || sysUserToken || capiToken),
                 method: 'GET',
                 timeout: 10,
               })
@@ -675,7 +692,7 @@ routerAdd(
                 ? 'Faltam permissões na Meta (' +
                   missingPerms.join(', ') +
                   '). Conecte via OAuth para autorizar os escopos do Instagram.'
-                : 'Instagram ID ' + igBizId + ' aguardando autorização ou token manual.'
+                : 'Instagram aguardando autorização via OAuth ou vínculo de Página.'
 
             results.push({
               name: 'Instagram Business',
