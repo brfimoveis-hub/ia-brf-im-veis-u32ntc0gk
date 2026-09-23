@@ -17,9 +17,13 @@ import {
   AlertCircle,
   Download,
   Bot,
+  Loader2,
+  FileDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { toast } from '@/hooks/use-toast'
+import { downloadDossieDocx } from '@/services/dossie-docx'
 
 const ATTACHMENT_BASE_URL =
   'https://dagtlwojkqyivnjgveda.supabase.co/storage/v1/object/public/message-attachments/a4df5bdc-f53f-4f95-b504-409dabc64445/'
@@ -160,18 +164,72 @@ const GALLERY_PRINTS: PrintItem[] = [
 
 export default function DossieJuridico() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [isExportingDocx, setIsExportingDocx] = useState(false)
+  const [exportProgressText, setExportProgressText] = useState('')
 
   const handlePrint = () => {
     window.print()
   }
 
+  const handleDownloadDocx = async () => {
+    if (isExportingDocx) return
+    setIsExportingDocx(true)
+    setExportProgressText('Iniciando exportação...')
+    toast({
+      title: 'Gerando Word (.docx)...',
+      description: 'Baixando as 18 provas e formatando o documento jurídico editável.',
+    })
+
+    try {
+      await downloadDossieDocx(GALLERY_PRINTS, (current, total, message) => {
+        setExportProgressText(`${current}/${total}`)
+      })
+
+      toast({
+        title: 'Word (.docx) baixado com sucesso!',
+        description:
+          'O arquivo "Dossie-Juridico-BRF-Imoveis-Protocolo-1589293502887786.docx" foi gerado com formatação completa.',
+      })
+    } catch (err) {
+      console.error('[DossieJuridico] Erro ao exportar docx:', err)
+      toast({
+        title: 'Erro ao gerar Word',
+        description: 'Não foi possível gerar o arquivo .docx. Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsExportingDocx(false)
+      setExportProgressText('')
+    }
+  }
+
   return (
     <div className="dossie-print-wrapper min-h-screen bg-slate-100 text-slate-900 py-8 px-4 sm:px-6 lg:px-8 font-sans">
-      {/* Botão de Ação Flutuante (Oculto na Impressão) */}
-      <div className="print-hide fixed bottom-6 right-6 z-50 flex items-center gap-3 shadow-2xl bg-white/95 backdrop-blur border border-slate-300 p-2.5 rounded-xl">
+      {/* Botões de Ação Flutuantes (Ocultos na Impressão) */}
+      <div className="print-hide fixed bottom-6 right-6 z-50 flex items-center gap-2.5 shadow-2xl bg-white/95 backdrop-blur border border-slate-300 p-2 rounded-xl">
+        <Button
+          onClick={handleDownloadDocx}
+          disabled={isExportingDocx}
+          className="bg-blue-700 hover:bg-blue-800 text-white font-semibold flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-md transition-all disabled:opacity-75"
+          title="Baixar dossiê completo em formato Microsoft Word editável (.docx)"
+        >
+          {isExportingDocx ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-blue-200" />
+              <span>Gerando Word {exportProgressText ? `(${exportProgressText})` : '...'}</span>
+            </>
+          ) : (
+            <>
+              <FileDown className="w-4 h-4 text-blue-200" />
+              <span>Baixar Word (.docx)</span>
+            </>
+          )}
+        </Button>
+
         <Button
           onClick={handlePrint}
-          className="bg-slate-900 hover:bg-slate-800 text-white font-semibold flex items-center gap-2 px-5 py-2.5 rounded-lg shadow-md"
+          variant="outline"
+          className="bg-slate-900 hover:bg-slate-800 text-white border-slate-800 font-semibold flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-md transition-all"
         >
           <Printer className="w-4 h-4 text-emerald-400" />
           <span>Imprimir / Salvar PDF</span>
