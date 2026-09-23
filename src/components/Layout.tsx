@@ -18,6 +18,7 @@ import {
   BarChart3,
   Megaphone,
   Building2,
+  Scale,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -52,6 +53,7 @@ export default function Layout() {
     { name: 'Cadências', path: '/cadences', icon: Settings },
     { name: 'Email Marketing', path: '/email-marketing', icon: Mail },
     { name: 'Remarketing', path: '/settings/remarketing', icon: Target },
+    { name: 'Dossiê Jurídico', path: '/dossie', icon: Scale },
     { name: 'Conexões', path: '/settings/connections', icon: Activity },
     { name: 'Configurações de IA', path: '/settings/ai', icon: Sparkles },
   ]

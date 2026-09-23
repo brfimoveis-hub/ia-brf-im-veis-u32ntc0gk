@@ -54,6 +54,76 @@
     --chart-5: 33 100% 50%;
   }
 
+  /* Impressão Limpa para Documento A4 / Dossiê Jurídico */
+  @media print {
+    @page {
+      size: A4 portrait;
+      margin: 12mm 15mm 15mm 15mm;
+    }
+
+    body {
+      background-color: #ffffff !important;
+      color: #0f172a !important;
+      font-size: 11pt !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    /* Oculta barras de navegação, cabeçalhos, rodapés de app e botões interativos */
+    nav,
+    aside,
+    header.sticky,
+    .md\:fixed,
+    .print-hide,
+    button:not(.print-show),
+    [aria-label='Abrir menu'],
+    [data-radix-portal] {
+      display: none !important;
+    }
+
+    /* Remove espaçamentos de layout da aplicação */
+    .md\:pl-64 {
+      padding-left: 0 !important;
+    }
+
+    main {
+      padding: 0 !important;
+      margin: 0 !important;
+      overflow: visible !important;
+    }
+
+    .dossie-print-wrapper {
+      background: #ffffff !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      min-height: auto !important;
+    }
+
+    .dossie-document {
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      max-width: 100% !important;
+      width: 100% !important;
+    }
+
+    /* Quebras de página controladas */
+    .print\:break-inside-avoid,
+    .dossie-print-card,
+    tr {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+
+    /* Imagens com tamanho controlado para não transbordar folha */
+    img {
+      max-width: 100% !important;
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+  }
+
   .dark {
     --background: 222.2 47.4% 11.2%;
     --foreground: 210 40% 98%;

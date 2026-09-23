@@ -22,6 +22,7 @@ import Estatisticas from './pages/Estatisticas'
 import Anuncios from './pages/Anuncios'
 import Launches from './pages/Launches'
 import LaunchLanding from './pages/LaunchLanding'
+import DossieJuridico from './pages/DossieJuridico'
 
 import Cadences from './pages/Cadences'
 import EmailMarketing from './pages/EmailMarketing'
@@ -113,6 +114,8 @@ const RouteTracker = () => {
           component = 'Estatisticas'
         } else if (lowerPath === '/anuncios' || lowerPath.startsWith('/anuncios/')) {
           component = 'Anuncios'
+        } else if (lowerPath === '/dossie' || lowerPath.startsWith('/dossie/')) {
+          component = 'DossieJuridico'
         } else if (lowerPath === '/atendimentos' || lowerPath.startsWith('/atendimentos/')) {
           component = 'Atendimentos'
         } else if (
@@ -285,6 +288,14 @@ const router = createBrowserRouter([
                 element: (
                   <ErrorBoundary>
                     <Anuncios />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'dossie',
+                element: (
+                  <ErrorBoundary>
+                    <DossieJuridico />
                   </ErrorBoundary>
                 ),
               },
