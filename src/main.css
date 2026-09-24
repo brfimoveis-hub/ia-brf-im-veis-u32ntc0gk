@@ -92,25 +92,8 @@
       overflow: visible !important;
     }
 
-    .dossie-print-wrapper {
-      background: #ffffff !important;
-      padding: 0 !important;
-      margin: 0 !important;
-      min-height: auto !important;
-    }
-
-    .dossie-document {
-      border: none !important;
-      box-shadow: none !important;
-      padding: 0 !important;
-      margin: 0 !important;
-      max-width: 100% !important;
-      width: 100% !important;
-    }
-
     /* Quebras de página controladas */
     .print\:break-inside-avoid,
-    .dossie-print-card,
     tr {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
