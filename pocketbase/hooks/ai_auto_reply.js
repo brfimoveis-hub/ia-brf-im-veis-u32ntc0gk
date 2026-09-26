@@ -1137,18 +1137,29 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
     }
 
     let filesContextText = ''
-    // 1. Arquivos da coleção dedicada ai_knowledge_files (com texto extraído de PDF/DOCX/TXT/MD/XLSX)
+    // 1. Arquivos da coleção dedicada ai_knowledge_files (com texto extraído de PDF/DOCX/TXT/MD/XLSX) agrupados por Empreendimento
     try {
       const activeKnowledgeRecords = $app.findRecordsByFilter(
         'ai_knowledge_files',
         `user_id = '${userId}' && is_active != false`,
         '-created',
-        50,
+        100,
         0,
       )
       if (activeKnowledgeRecords.length > 0) {
-        filesContextText += '\n[DOCUMENTOS E BASE DE CONHECIMENTO DA IMOBILIÁRIA (BRF IMÓVEIS)]\n'
+        // Mapear termos da conversa atual e histórico do lead para scoring de relevância
+        const leadTextForRelevance =
+          `${customerMessage} ${customerSource} ${customerNotes} ${effectiveOrigin}`.toLowerCase()
+
+        // Agrupar documentos por empreendimento
+        const groupedFiles = {}
         for (const kf of activeKnowledgeRecords) {
+          const enterpriseName =
+            (kf.getString('enterprise') || '').trim() || 'Geral / Institucional'
+          if (!groupedFiles[enterpriseName]) {
+            groupedFiles[enterpriseName] = []
+          }
+
           const docTitle = kf.getString('name') || kf.getString('file')
           let extracted = (kf.getString('extracted_text') || '').trim()
 
@@ -1184,12 +1195,58 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
           }
 
           if (extracted) {
-            // Limita o tamanho de cada arquivo no contexto para segurança de tokens (~10.000 caracteres por arquivo)
-            const safeText =
-              extracted.length > 12000
-                ? extracted.substring(0, 12000) + '\n... [conteúdo longo truncado]'
-                : extracted
-            filesContextText += `\n--- DOCUMENTO: ${docTitle} ---\n${safeText}\n`
+            // Truncamento inteligente e pontuação de relevância:
+            // Documentos do empreendimento mencionado pelo lead recebem até 25.000 caracteres;
+            // Outros documentos recebem até 12.000 caracteres ou resumo dos primeiros parágrafos.
+            const isRelevantEnterprise =
+              enterpriseName !== 'Geral / Institucional' &&
+              leadTextForRelevance.includes(enterpriseName.toLowerCase())
+
+            const maxChars = isRelevantEnterprise ? 25000 : 12000
+            let safeText = extracted
+            if (extracted.length > maxChars) {
+              // Trunca no final de sentença ou parágrafo mais próximo para manter integridade
+              const cutPoint = extracted.lastIndexOf('\n\n', maxChars)
+              const safeCut = cutPoint > maxChars * 0.7 ? cutPoint : maxChars
+              safeText =
+                extracted.substring(0, safeCut) +
+                '\n... [conteúdo adicional truncado para brevidade]'
+            }
+
+            groupedFiles[enterpriseName].push({
+              title: docTitle,
+              content: safeText,
+              isRelevant: isRelevantEnterprise,
+            })
+          }
+        }
+
+        const enterpriseKeys = Object.keys(groupedFiles)
+        if (enterpriseKeys.length > 0) {
+          // Ordena colocando os empreendimentos mais relevantes para o lead primeiro
+          enterpriseKeys.sort((a, b) => {
+            const aRelevant = groupedFiles[a].some((d) => d.isRelevant)
+            const bRelevant = groupedFiles[b].some((d) => d.isRelevant)
+            if (aRelevant && !bRelevant) return -1
+            if (!aRelevant && bRelevant) return 1
+            if (a === 'Geral / Institucional') return 1
+            if (b === 'Geral / Institucional') return -1
+            return a.localeCompare(b)
+          })
+
+          filesContextText +=
+            '\n[DOCUMENTOS E BASE DE CONHECIMENTO ORGANIZADOS POR EMPREENDIMENTO]\n'
+          filesContextText +=
+            'INSTRUÇÃO DE EMPREENDIMENTO: Identifique sobre qual empreendimento o lead está falando ou perguntando. Priorize e utilize com destaque as informações específicas do empreendimento correspondente abaixo.\n\n'
+
+          for (const entKey of enterpriseKeys) {
+            filesContextText += `=====================================================\n`
+            filesContextText += `EMPREENDIMENTO: ${entKey.toUpperCase()}\n`
+            filesContextText += `=====================================================\n`
+            for (const doc of groupedFiles[entKey]) {
+              filesContextText += `\n--- DOCUMENTO (${entKey}): ${doc.title} ---\n${doc.content}\n`
+            }
+            filesContextText += '\n'
           }
         }
       }
@@ -1414,6 +1471,11 @@ REGRA DE OURO SOBRE IMÓVEIS (TOLERÂNCIA ZERO PARA ALUCINAÇÃO):
 - NUNCA invente imóveis, códigos, preços, bairros ou links. Use SOMENTE os imóveis fornecidos no contexto acima (seção [CATÁLOGO DE IMÓVEIS REAIS]).
 - NUNCA monte links com URLs imaginárias (como /101/, /102/ ou links quebrados). Use EXATAMENTE os links oficiais fornecidos no catálogo.
 - Se não houver imóvel perfeitamente compatível com o pedido do cliente (ex: pediu estúdio ou bairro específico onde não temos ativo no momento), SEJA HONESTO E TRANSPARENTE: diga claramente que no momento não temos esse formato específico/nessa região exata, E IMEDIATAMENTE apresente 1 a 3 das melhores opções ativas mais próximas do catálogo real fornecido no contexto com link oficial, ou direcione para o catálogo geral no site https://www.brfimoveis.com.br/imoveis/venda e para o Mauro (wa.me/5548992098050). NUNCA faça mais perguntas de qualificação em loop quando o cliente já pediu opções!
+
+DIRETRIZ DE BASE DE CONHECIMENTO E EMPREENDIMENTOS:
+- A base de conhecimento documental está organizada por EMPREENDIMENTO.
+- Sempre identifique de qual empreendimento o lead está falando, perguntando ou interessado (ex: pelo anúncio, mensagens ou perguntas dele).
+- Priorize rigorosamente os documentos, diferenciais, valores e regras específicas do empreendimento em foco.
 
 PROTOCOLO COMERCIAL CONSULTIVO E DIRETRIZES DE ATENDIMENTO (BRF IMÓVEIS):
 1. DIÁLOGO HUMANO E ACOLHEDOR (UMA PERGUNTA POR VEZ):

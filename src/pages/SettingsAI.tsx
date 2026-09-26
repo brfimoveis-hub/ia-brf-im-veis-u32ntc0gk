@@ -37,14 +37,36 @@ import {
   Info,
   Database,
   ExternalLink,
+  Search,
+  Tag,
+  Edit2,
+  Layers,
 } from 'lucide-react'
 import {
   AiKnowledgeFile,
   getAiKnowledgeFiles,
   uploadAiKnowledgeFile,
   deleteAiKnowledgeFile,
+  updateAiKnowledgeFile,
   getAiKnowledgeFileUrl,
+  MAX_AI_KNOWLEDGE_FILE_SIZE,
+  MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL,
 } from '@/services/ai_knowledge_files'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface ProjectData {
   name: string
@@ -158,6 +180,15 @@ export default function SettingsAI() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [selectedFileForPreview, setSelectedFileForPreview] = useState<AiKnowledgeFile | null>(null)
 
+  // Empreendimento: Upload & Edição & Filtro
+  const [uploadEnterprise, setUploadEnterprise] = useState('')
+  const [filterEnterprise, setFilterEnterprise] = useState<string>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [editingFile, setEditingFile] = useState<AiKnowledgeFile | null>(null)
+  const [editFileName, setEditFileName] = useState('')
+  const [editFileEnterprise, setEditFileEnterprise] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadUserData = useCallback(async () => {
@@ -234,9 +265,17 @@ export default function SettingsAI() {
 
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i]
+      if (file.size > MAX_AI_KNOWLEDGE_FILE_SIZE) {
+        toast.error(
+          `O arquivo "${file.name}" ultrapassa o limite de ${MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL}.`,
+        )
+        failCount++
+        continue
+      }
+
       setUploadProgressText(`Processando ${i + 1} de ${fileList.length}: ${file.name}`)
       try {
-        await uploadAiKnowledgeFile(file, user.id)
+        await uploadAiKnowledgeFile(file, user.id, undefined, uploadEnterprise)
         successCount++
       } catch (uploadErr: any) {
         console.error(`Falha no upload do arquivo ${file.name}:`, uploadErr)
@@ -268,6 +307,70 @@ export default function SettingsAI() {
       toast.error(`Falha no envio de ${failCount} arquivo(s). Verifique o formato ou tamanho.`)
     }
   }
+
+  const handleOpenEdit = (fileItem: AiKnowledgeFile) => {
+    setEditingFile(fileItem)
+    setEditFileName(fileItem.name || '')
+    setEditFileEnterprise(fileItem.enterprise || '')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingFile) return
+    setSavingEdit(true)
+    try {
+      const updated = await updateAiKnowledgeFile(editingFile.id, {
+        name: editFileName.trim() || editingFile.name,
+        enterprise: editFileEnterprise.trim(),
+      })
+      toast.success('Arquivo atualizado com sucesso!')
+      setKnowledgeFiles((prev) => prev.map((f) => (f.id === updated.id ? updated : f)))
+      if (selectedFileForPreview?.id === updated.id) {
+        setSelectedFileForPreview(updated)
+      }
+      setEditingFile(null)
+    } catch (err: any) {
+      toast.error('Erro ao atualizar arquivo', { description: err.message })
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  // Lista única de empreendimentos para sugestão e filtro
+  const uniqueEnterprises = Array.from(
+    new Set(knowledgeFiles.map((f) => (f.enterprise || '').trim()).filter((ent) => Boolean(ent))),
+  ).sort()
+
+  // Filtragem dos arquivos
+  const filteredFiles = knowledgeFiles.filter((item) => {
+    // Filtro por empreendimento
+    if (filterEnterprise === 'none') {
+      if (item.enterprise && item.enterprise.trim()) return false
+    } else if (filterEnterprise !== 'all') {
+      if ((item.enterprise || '').trim() !== filterEnterprise) return false
+    }
+
+    // Filtro por texto / busca
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      const matchName = item.name.toLowerCase().includes(q)
+      const matchEnt = (item.enterprise || '').toLowerCase().includes(q)
+      const matchText = (item.extracted_text || '').toLowerCase().includes(q)
+      if (!matchName && !matchEnt && !matchText) return false
+    }
+
+    return true
+  })
+
+  // Agrupamento para exibição organizada
+  const groupedDisplayFiles = filteredFiles.reduce<Record<string, AiKnowledgeFile[]>>(
+    (acc, file) => {
+      const key = (file.enterprise || '').trim() || 'Geral / Sem Empreendimento'
+      if (!acc[key]) acc[key] = []
+      acc[key].push(file)
+      return acc
+    },
+    {},
+  )
 
   const handleDeleteFile = async (fileItem: AiKnowledgeFile) => {
     const confirmDelete = window.confirm(
@@ -381,7 +484,23 @@ export default function SettingsAI() {
                 cada atendimento a leads.
               </CardDescription>
             </div>
-            <div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="w-full sm:w-56">
+                <Input
+                  placeholder="Empreendimento ao subir (opcional)"
+                  value={uploadEnterprise}
+                  onChange={(e) => setUploadEnterprise(e.target.value)}
+                  className="h-9 text-xs bg-background"
+                  list="knownEnterprisesUploadList"
+                />
+                <datalist id="knownEnterprisesUploadList">
+                  {projectData.name && <option value={projectData.name} />}
+                  {uniqueEnterprises.map((ent) => (
+                    <option key={ent} value={ent} />
+                  ))}
+                </datalist>
+              </div>
+
               <input
                 type="file"
                 multiple
@@ -395,7 +514,7 @@ export default function SettingsAI() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
-                className="shadow-sm"
+                className="shadow-sm whitespace-nowrap"
               >
                 {isUploading ? (
                   <>
@@ -405,7 +524,7 @@ export default function SettingsAI() {
                 ) : (
                   <>
                     <Upload className="w-4 h-4 mr-2" />
-                    Enviar Arquivos para a Bia
+                    Enviar Arquivos
                   </>
                 )}
               </Button>
@@ -431,14 +550,47 @@ export default function SettingsAI() {
             <div className="flex items-center gap-1.5">
               <Info className="w-4 h-4 text-primary shrink-0" />
               <span>
-                Formatos aceitos: <strong>PDF, DOCX, TXT, MD, CSV, XLSX e Imagens</strong> (Até 30
-                MB por arquivo).
+                Formatos aceitos: <strong>PDF, DOCX, TXT, MD, CSV, XLSX e Imagens</strong> (Até{' '}
+                <strong>{MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL}</strong> por arquivo).
               </span>
             </div>
             <span>
               Total armazenado: <strong>{knowledgeFiles.length} arquivo(s)</strong>
             </span>
           </div>
+
+          {/* FILTRO E BUSCA DE ARQUIVOS POR EMPREENDIMENTO */}
+          {knowledgeFiles.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar arquivo por nome ou conteúdo..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-9 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-muted-foreground shrink-0 hidden sm:block" />
+                <Select value={filterEnterprise} onValueChange={setFilterEnterprise}>
+                  <SelectTrigger className="h-9 text-xs w-full sm:w-[220px]">
+                    <SelectValue placeholder="Filtrar por Empreendimento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Empreendimentos</SelectItem>
+                    <SelectItem value="none">Geral / Sem Empreendimento</SelectItem>
+                    {uniqueEnterprises.map((ent) => (
+                      <SelectItem key={ent} value={ent}>
+                        {ent}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
 
           {/* LISTA DE ARQUIVOS */}
           {loadingFiles ? (
@@ -455,8 +607,8 @@ export default function SettingsAI() {
               <p className="font-medium text-base mb-1">Nenhum arquivo enviado ainda</p>
               <p className="text-sm text-muted-foreground max-w-md mb-4">
                 Mauro, você pode subir arquivos aqui (ex: tabelas de vendas, manuais de corretores,
-                dossiês de empreendimentos). A Bia lerá todo o texto e responderá leads baseada
-                neles!
+                dossiês de empreendimentos). A Bia lerá todo o texto, organizará por empreendimento
+                e responderá os leads com prioridade máxima nas informações certas!
               </p>
               <Button
                 variant="outline"
@@ -468,98 +620,229 @@ export default function SettingsAI() {
                 Selecionar arquivos do computador
               </Button>
             </div>
+          ) : filteredFiles.length === 0 ? (
+            <div className="text-center py-8 border rounded-lg bg-muted/10">
+              <p className="text-sm font-medium">
+                Nenhum arquivo encontrado com os filtros atuais.
+              </p>
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('')
+                  setFilterEnterprise('all')
+                }}
+                className="text-xs mt-1"
+              >
+                Limpar filtros
+              </Button>
+            </div>
           ) : (
-            <div className="border rounded-lg overflow-hidden divide-y">
-              {knowledgeFiles.map((fileItem) => {
-                const fileUrl = getAiKnowledgeFileUrl(fileItem)
-                const isSelected = selectedFileForPreview?.id === fileItem.id
-                const hasExtractedText = Boolean(
-                  fileItem.extracted_text && fileItem.extracted_text.trim(),
-                )
-
-                return (
-                  <div
-                    key={fileItem.id}
-                    className="p-3.5 hover:bg-muted/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm"
-                  >
-                    <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                      {getFileIcon(fileItem.name, fileItem.mime_type)}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p
-                            className="font-medium text-foreground truncate max-w-[280px] sm:max-w-[420px]"
-                            title={fileItem.name}
-                          >
-                            {fileItem.name}
-                          </p>
-                          {hasExtractedText ? (
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] h-5 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200"
-                            >
-                              <Sparkles className="w-2.5 h-2.5 mr-1" />
-                              Texto Indexado
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                              Arquivo Bruto
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                          <span>{formatBytes(fileItem.file_size)}</span>
-                          <span>•</span>
-                          <span>Enviado em {formatDate(fileItem.created)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
-                      {hasExtractedText && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs gap-1"
-                          onClick={() => setSelectedFileForPreview(isSelected ? null : fileItem)}
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          {isSelected ? 'Ocultar Texto' : 'Ver Texto Extraído'}
-                        </Button>
-                      )}
-
-                      <a
-                        href={fileUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        download
-                        className="inline-flex"
-                      >
-                        <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                          <Download className="w-3.5 h-3.5" />
-                          Baixar
-                        </Button>
-                      </a>
-
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={deletingId === fileItem.id}
-                        onClick={() => handleDeleteFile(fileItem)}
-                        className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                        title="Excluir arquivo da base"
-                      >
-                        {deletingId === fileItem.id ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-3.5 h-3.5" />
-                        )}
-                      </Button>
-                    </div>
+            <div className="space-y-4">
+              {Object.entries(groupedDisplayFiles).map(([groupName, filesInGroup]) => (
+                <div key={groupName} className="border rounded-lg overflow-hidden bg-card">
+                  <div className="bg-muted/50 px-3.5 py-2 border-b flex items-center justify-between">
+                    <span className="font-semibold text-xs flex items-center gap-1.5 text-foreground">
+                      <Tag className="w-3.5 h-3.5 text-primary" />
+                      {groupName}
+                    </span>
+                    <Badge variant="outline" className="text-[10px] h-5">
+                      {filesInGroup.length} {filesInGroup.length === 1 ? 'arquivo' : 'arquivos'}
+                    </Badge>
                   </div>
-                )
-              })}
+
+                  <div className="divide-y">
+                    {filesInGroup.map((fileItem) => {
+                      const fileUrl = getAiKnowledgeFileUrl(fileItem)
+                      const isSelected = selectedFileForPreview?.id === fileItem.id
+                      const hasExtractedText = Boolean(
+                        fileItem.extracted_text && fileItem.extracted_text.trim(),
+                      )
+
+                      return (
+                        <div
+                          key={fileItem.id}
+                          className="p-3 hover:bg-muted/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm"
+                        >
+                          <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                            {getFileIcon(fileItem.name, fileItem.mime_type)}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p
+                                  className="font-medium text-foreground truncate max-w-[260px] sm:max-w-[360px]"
+                                  title={fileItem.name}
+                                >
+                                  {fileItem.name}
+                                </p>
+                                {fileItem.enterprise && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-primary/20"
+                                  >
+                                    <Tag className="w-2.5 h-2.5 mr-1" />
+                                    {fileItem.enterprise}
+                                  </Badge>
+                                )}
+                                {hasExtractedText ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] h-5 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  >
+                                    <Sparkles className="w-2.5 h-2.5 mr-1" />
+                                    Texto Indexado
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                                    Arquivo Bruto
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                                <span>{formatBytes(fileItem.file_size)}</span>
+                                <span>•</span>
+                                <span>Enviado em {formatDate(fileItem.created)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-xs gap-1"
+                              onClick={() => handleOpenEdit(fileItem)}
+                              title="Editar nome ou empreendimento"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              Editar
+                            </Button>
+
+                            {hasExtractedText && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-xs gap-1"
+                                onClick={() =>
+                                  setSelectedFileForPreview(isSelected ? null : fileItem)
+                                }
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                {isSelected ? 'Ocultar Texto' : 'Ver Texto'}
+                              </Button>
+                            )}
+
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              download
+                              className="inline-flex"
+                            >
+                              <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+                                <Download className="w-3.5 h-3.5" />
+                                Baixar
+                              </Button>
+                            </a>
+
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={deletingId === fileItem.id}
+                              onClick={() => handleDeleteFile(fileItem)}
+                              className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                              title="Excluir arquivo da base"
+                            >
+                              {deletingId === fileItem.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
+
+          {/* MODAL DE EDIÇÃO DO ARQUIVO (NOME / EMPREENDIMENTO) */}
+          <Dialog open={!!editingFile} onOpenChange={(open) => !open && setEditingFile(null)}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-base">
+                  <Edit2 className="w-4 h-4 text-primary" />
+                  Editar Informações do Documento
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Ajuste o título de exibição e o empreendimento ao qual este documento pertence
+                  para orientar as respostas da Bia.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3 py-2">
+                <div className="space-y-1">
+                  <Label htmlFor="editDocName" className="text-xs">
+                    Nome do Documento
+                  </Label>
+                  <Input
+                    id="editDocName"
+                    value={editFileName}
+                    onChange={(e) => setEditFileName(e.target.value)}
+                    placeholder="Ex: Tabela de Preços Torre A"
+                    className="h-9 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="editDocEnterprise" className="text-xs">
+                    Empreendimento (Tag de Agrupamento)
+                  </Label>
+                  <Input
+                    id="editDocEnterprise"
+                    value={editFileEnterprise}
+                    onChange={(e) => setEditFileEnterprise(e.target.value)}
+                    placeholder="Ex: Villa dos Açores"
+                    className="h-9 text-xs"
+                    list="knownEnterprisesEditList"
+                  />
+                  <datalist id="knownEnterprisesEditList">
+                    {projectData.name && <option value={projectData.name} />}
+                    {uniqueEnterprises.map((ent) => (
+                      <option key={ent} value={ent} />
+                    ))}
+                  </datalist>
+                  <p className="text-[11px] text-muted-foreground">
+                    Quando um lead perguntar por este empreendimento, a Bia priorizará este
+                    documento.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingFile(null)}
+                  disabled={savingEdit}
+                >
+                  Cancelar
+                </Button>
+                <Button size="sm" onClick={handleSaveEdit} disabled={savingEdit}>
+                  {savingEdit ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    'Salvar Alterações'
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* VISUALIZADOR DE TEXTO EXTRAÍDO */}
           {selectedFileForPreview && (
