@@ -1136,7 +1136,37 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
         '\n[CATÁLOGO DE IMÓVEIS]\nSite oficial: https://www.brfimoveis.com.br\nPara opções personalizadas e links diretos, consulte com Mauro: wa.me/5548992098050\n'
     }
 
-    let filesContextText = ''
+    // 0. Obter índices de mercado vigentes (INCC / IGP-M) para cálculo de reajuste
+    let indicesContextText = ''
+    try {
+      const latestIndices = $app.findRecordsByFilter('market_indices', '', '-created', 10, 0)
+      if (latestIndices && latestIndices.length > 0) {
+        const inccRec = latestIndices.find((r) =>
+          (r.getString('name') || '').toUpperCase().includes('INCC'),
+        )
+        const igpmRec = latestIndices.find((r) =>
+          (r.getString('name') || '').toUpperCase().includes('IGP-M'),
+        )
+
+        indicesContextText +=
+          '\n[ÍNDICES ECONÔMICOS DE MERCADO VIGENTES - ATUALIZAÇÃO AUTOMÁTICA]\n'
+        if (inccRec) {
+          indicesContextText += `- INCC-M: ${inccRec.get('value')}% no mês de referência ${inccRec.getString('reference_month')} (Fonte: ${inccRec.getString('source') || 'BCB/FGV'})\n`
+        }
+        if (igpmRec) {
+          indicesContextText += `- IGP-M: ${igpmRec.get('value')}% no mês de referência ${igpmRec.getString('reference_month')} (Fonte: ${igpmRec.getString('source') || 'BCB/FGV'})\n`
+        }
+        indicesContextText += `INSTRUÇÃO DE ATUALIZAÇÃO E REAJUSTE DE PREÇOS:\n`
+        indicesContextText += `1. Ao citar valores de tabelas de pagamento, verifique sempre o mês de referência da tabela no cabeçalho do documento.\n`
+        indicesContextText += `2. Se a tabela for de meses anteriores ao mês vigente (ex: tabela de maio/26 ou junho/26), informe ao cliente com clareza e transparência que os valores e parcelas estão sujeitos ao reajuste contratual do INCC e/ou IGP-M acumulado desde a emissão da tabela.\n`
+        indicesContextText += `3. Cite os índices vigentes acima como referência oficial e recomende sempre a confirmação do espelho de vendas e saldo atualizado diretamente com o Mauro (wa.me/5548992098050).\n`
+        indicesContextText += `4. Se houver mais de uma tabela do mesmo empreendimento, use EXCLUSIVAMENTE a tabela com a data mais recente.\n\n`
+      }
+    } catch (indErr) {
+      console.warn(`[AI_REPLY] Error loading market_indices (non-fatal): ${String(indErr)}`)
+    }
+
+    let filesContextText = indicesContextText
     // 1. Arquivos da coleção dedicada ai_knowledge_files (com texto extraído de PDF/DOCX/TXT/MD/XLSX) agrupados por Empreendimento
     try {
       const activeKnowledgeRecords = $app.findRecordsByFilter(
@@ -1151,16 +1181,47 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
         const leadTextForRelevance =
           `${customerMessage} ${customerSource} ${customerNotes} ${effectiveOrigin}`.toLowerCase()
 
+        // Filtrar para usar SEMPRE a tabela mais recente por empreendimento (ignorando tabelas antigas)
+        const enterpriseLatestTable = {}
+        for (const kf of activeKnowledgeRecords) {
+          const entName = (kf.getString('enterprise') || '').trim() || 'Geral / Institucional'
+          const docTitle = (kf.getString('name') || kf.getString('file') || '').toLowerCase()
+          const isTable =
+            docTitle.includes('tabela') || docTitle.includes('cotas') || docTitle.includes('custo')
+          if (isTable) {
+            // Como ordenação é -created, o primeiro encontrado é o mais recente
+            if (!enterpriseLatestTable[entName]) {
+              enterpriseLatestTable[entName] = kf.id
+            }
+          }
+        }
+
         // Agrupar documentos por empreendimento
         const groupedFiles = {}
         for (const kf of activeKnowledgeRecords) {
           const enterpriseName =
             (kf.getString('enterprise') || '').trim() || 'Geral / Institucional'
+
+          const docTitle = kf.getString('name') || kf.getString('file')
+          const lowerTitle = docTitle.toLowerCase()
+          const isTable =
+            lowerTitle.includes('tabela') ||
+            lowerTitle.includes('cotas') ||
+            lowerTitle.includes('custo')
+
+          // Se for tabela antiga descartada em prol de uma mais recente do mesmo empreendimento, ignorar
+          if (
+            isTable &&
+            enterpriseLatestTable[enterpriseName] &&
+            enterpriseLatestTable[enterpriseName] !== kf.id
+          ) {
+            continue
+          }
+
           if (!groupedFiles[enterpriseName]) {
             groupedFiles[enterpriseName] = []
           }
 
-          const docTitle = kf.getString('name') || kf.getString('file')
           let extracted = (kf.getString('extracted_text') || '').trim()
 
           // Se ainda não tiver texto extraído mas houver o arquivo, tenta extrair em runtime
