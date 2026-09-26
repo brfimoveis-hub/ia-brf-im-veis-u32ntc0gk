@@ -1137,21 +1137,99 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
     }
 
     let filesContextText = ''
+    // 1. Arquivos da coleção dedicada ai_knowledge_files (com texto extraído de PDF/DOCX/TXT/MD/XLSX)
+    try {
+      const activeKnowledgeRecords = $app.findRecordsByFilter(
+        'ai_knowledge_files',
+        `user_id = '${userId}' && is_active != false`,
+        '-created',
+        50,
+        0,
+      )
+      if (activeKnowledgeRecords.length > 0) {
+        filesContextText += '\n[DOCUMENTOS E BASE DE CONHECIMENTO DA IMOBILIÁRIA (BRF IMÓVEIS)]\n'
+        for (const kf of activeKnowledgeRecords) {
+          const docTitle = kf.getString('name') || kf.getString('file')
+          let extracted = (kf.getString('extracted_text') || '').trim()
+
+          // Se ainda não tiver texto extraído mas houver o arquivo, tenta extrair em runtime
+          if (!extracted) {
+            const rawFileName = kf.getString('file')
+            const lowerF = (docTitle || rawFileName).toLowerCase()
+            if (lowerF.endsWith('.pdf') || lowerF.endsWith('.docx') || lowerF.endsWith('.xlsx')) {
+              try {
+                const docRes = $documents.toMarkdown({ record: kf, field: 'file' })
+                if (docRes && docRes.markdown) {
+                  extracted = docRes.markdown
+                  kf.set('extracted_text', extracted)
+                  $app.saveNoValidate(kf)
+                }
+              } catch (_) {}
+            } else if (
+              lowerF.endsWith('.txt') ||
+              lowerF.endsWith('.md') ||
+              lowerF.endsWith('.csv')
+            ) {
+              try {
+                const pbUrl = $os.getenv('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
+                const fileUrl = `${pbUrl}/api/files/${kf.collectionId}/${kf.id}/${rawFileName}`
+                const fileRes = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
+                if (fileRes && fileRes.statusCode === 200 && fileRes.body) {
+                  extracted = String.fromCharCode.apply(null, fileRes.body)
+                  kf.set('extracted_text', extracted)
+                  $app.saveNoValidate(kf)
+                }
+              } catch (_) {}
+            }
+          }
+
+          if (extracted) {
+            // Limita o tamanho de cada arquivo no contexto para segurança de tokens (~10.000 caracteres por arquivo)
+            const safeText =
+              extracted.length > 12000
+                ? extracted.substring(0, 12000) + '\n... [conteúdo longo truncado]'
+                : extracted
+            filesContextText += `\n--- DOCUMENTO: ${docTitle} ---\n${safeText}\n`
+          }
+        }
+      }
+    } catch (kfErr) {
+      console.warn(`[AI_REPLY] Error loading ai_knowledge_files (non-fatal): ${String(kfErr)}`)
+    }
+
+    // 2. Compatibilidade legada com ai_knowledge_files armazenados diretamente no registro do usuário
     if (userRecord) {
       try {
         const files = userRecord.get('ai_knowledge_files') || []
         if (Array.isArray(files) && files.length > 0) {
           const pbUrl = $os.getenv('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
           files.forEach((f) => {
-            if (typeof f === 'string' && (f.endsWith('.txt') || f.endsWith('.csv'))) {
-              const fileUrl = `${pbUrl}/api/files/${userRecord.collectionId}/${userRecord.id}/${f}`
-              try {
-                const fRes = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
-                if (fRes && fRes.statusCode === 200 && fRes.body) {
-                  const str = String.fromCharCode.apply(null, fRes.body)
-                  filesContextText += `\n--- Arquivo: ${f} ---\n${str}\n`
-                }
-              } catch (_) {}
+            if (typeof f === 'string') {
+              const lower = f.toLowerCase()
+              if (lower.endsWith('.txt') || lower.endsWith('.csv') || lower.endsWith('.md')) {
+                const fileUrl = `${pbUrl}/api/files/${userRecord.collectionId}/${userRecord.id}/${f}`
+                try {
+                  const fRes = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
+                  if (fRes && fRes.statusCode === 200 && fRes.body) {
+                    const str = String.fromCharCode.apply(null, fRes.body)
+                    filesContextText += `\n--- Arquivo Legado: ${f} ---\n${str}\n`
+                  }
+                } catch (_) {}
+              } else if (
+                lower.endsWith('.pdf') ||
+                lower.endsWith('.docx') ||
+                lower.endsWith('.xlsx')
+              ) {
+                try {
+                  const docRes = $documents.toMarkdown({
+                    record: userRecord,
+                    field: 'ai_knowledge_files',
+                  })
+                  if (docRes && docRes.markdown) {
+                    filesContextText += `\n--- Arquivo Legado: ${f} ---\n${docRes.markdown}\n`
+                  }
+                } catch (_) {}
+              }
             }
           })
         }
