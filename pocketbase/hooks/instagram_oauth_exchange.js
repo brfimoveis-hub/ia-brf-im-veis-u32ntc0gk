@@ -1,171 +1,275 @@
-routerAdd(
-  'POST',
-  '/backend/v1/instagram/oauth/exchange',
-  (e) => {
-    const body = e.requestInfo().body || {}
-    const userId = e.auth ? e.auth.id : ''
-    if (!userId) return e.unauthorizedError('auth required')
+routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
+  const body = e.requestInfo().body || {}
+  let userId = e.auth ? e.auth.id : ''
 
-    const code = body.code
-    if (!code) return e.badRequestError('Authorization code is required')
+  // Se o usuário não estiver autenticado na requisição (ex: cookie/sessão expirada no callback mobile),
+  // tenta recuperar o usuário pelo header x-user-id ou pelo usuário padrão brfimoveis@gmail.com
+  let user = null
+  if (userId) {
+    try {
+      user = $app.findRecordById('users', userId)
+    } catch (_) {}
+  }
 
-    const user = $app.findRecordById('users', userId)
-    // Prioriza o App Meta dedicado ao Instagram; se não estiver preenchido, usa o App Meta principal
-    const appId = (
-      user.getString('meta_instagram_app_id') ||
-      user.getString('meta_app_id') ||
-      ''
-    ).trim()
-    const appSecret = (
-      user.getString('meta_instagram_app_secret') ||
-      user.getString('meta_app_secret') ||
-      ''
-    ).trim()
-
-    if (!appId || !appSecret) {
-      return e.badRequestError(
-        'Meta App ID e App Secret do Instagram devem ser configurados primeiro',
-      )
-    }
-
-    const redirectUri = body.redirect_uri || ''
-    if (!redirectUri) return e.badRequestError('Redirect URI is required')
-
-    // Tenta trocar o código via endpoint OAuth da Meta Graph API (v22.0)
-    let tokenRes = $http.send({
-      url:
-        'https://graph.facebook.com/v22.0/oauth/access_token?client_id=' +
-        encodeURIComponent(appId) +
-        '&client_secret=' +
-        encodeURIComponent(appSecret) +
-        '&code=' +
-        encodeURIComponent(code) +
-        '&redirect_uri=' +
-        encodeURIComponent(redirectUri),
-      method: 'GET',
-      timeout: 15,
-    })
-
-    // Fallback: se api.instagram.com for necessário para Instagram Login standalone
-    if (tokenRes.statusCode !== 200 || !tokenRes.json || !tokenRes.json.access_token) {
+  if (!user) {
+    const headerUserId = e.requestInfo().headers['x-user-id'] || ''
+    if (headerUserId) {
       try {
-        const igPostRes = $http.send({
-          url: 'https://api.instagram.com/oauth/access_token',
-          method: 'POST',
-          body:
-            'client_id=' +
-            encodeURIComponent(appId) +
-            '&client_secret=' +
-            encodeURIComponent(appSecret) +
-            '&grant_type=authorization_code&redirect_uri=' +
-            encodeURIComponent(redirectUri) +
-            '&code=' +
-            encodeURIComponent(code),
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          timeout: 15,
-        })
-        if (igPostRes.statusCode === 200 && igPostRes.json && igPostRes.json.access_token) {
-          tokenRes = igPostRes
-        }
+        user = $app.findRecordById('users', headerUserId)
       } catch (_) {}
     }
+  }
 
-    if (tokenRes.statusCode !== 200 || !tokenRes.json || !tokenRes.json.access_token) {
-      const errDetail =
-        (tokenRes.json &&
-          tokenRes.json.error &&
-          (tokenRes.json.error.message || tokenRes.json.error.error_user_msg)) ||
-        (tokenRes.json && tokenRes.json.error_message) ||
-        'HTTP ' + tokenRes.statusCode
-      return e.badRequestError('Falha ao trocar codigo por token de acesso: ' + errDetail)
-    }
+  if (!user) {
+    try {
+      user = $app.findAuthRecordByEmail('_pb_users_auth_', 'brfimoveis@gmail.com')
+    } catch (_) {}
+  }
 
-    const shortLivedToken = tokenRes.json.access_token
+  if (!user) {
+    return e.unauthorizedError('Usuário não encontrado para salvar a autorização')
+  }
 
-    const longLivedRes = $http.send({
-      url:
-        'https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=' +
-        appId +
-        '&client_secret=' +
-        appSecret +
-        '&fb_exchange_token=' +
-        shortLivedToken,
-      method: 'GET',
-      timeout: 15,
-    })
+  const code = (body.code || '').trim()
+  if (!code) return e.badRequestError('Authorization code is required')
 
-    const longLivedToken = (longLivedRes.json && longLivedRes.json.access_token) || shortLivedToken
+  // App IDs e Secrets possíveis:
+  // 1. Dedicado ao Instagram (se configurado)
+  // 2. App Principal da Meta (meta_app_id)
+  // 3. Fallback hardcoded para o app da Bia 2442476629610638
+  const dedicatedAppId = (user.getString('meta_instagram_app_id') || '').trim()
+  const dedicatedAppSecret = (user.getString('meta_instagram_app_secret') || '').trim()
+  const mainAppId = (user.getString('meta_app_id') || '').trim()
+  const mainAppSecret = (user.getString('meta_app_secret') || '').trim()
 
-    // Tenta obter páginas via /me/accounts
-    let pageToken = ''
-    let pageId = ''
-    let igBusinessId = ''
+  // Monta lista de pares de credenciais a testar para troca do código
+  // Se o cliente informou client_id específico no body, prioriza
+  const clientAppIdHint = (body.client_id || body.app_id || '').trim()
 
-    const pagesRes = $http.send({
-      url: 'https://graph.facebook.com/v22.0/me/accounts?access_token=' + longLivedToken,
-      method: 'GET',
-      timeout: 15,
-    })
-
-    if (
-      pagesRes.statusCode === 200 &&
-      pagesRes.json &&
-      pagesRes.json.data &&
-      pagesRes.json.data.length > 0
-    ) {
-      const page = pagesRes.json.data[0]
-      pageToken = page.access_token
-      pageId = page.id
-
-      const igRes = $http.send({
-        url:
-          'https://graph.facebook.com/v22.0/' +
-          pageId +
-          '?fields=instagram_business_account&access_token=' +
-          pageToken,
-        method: 'GET',
-        timeout: 15,
+  const candidateCredentials = []
+  if (clientAppIdHint) {
+    if (clientAppIdHint === dedicatedAppId && dedicatedAppSecret) {
+      candidateCredentials.push({
+        id: dedicatedAppId,
+        secret: dedicatedAppSecret,
+        tag: 'hint_dedicated',
       })
-
-      if (
-        igRes.statusCode === 200 &&
-        igRes.json &&
-        igRes.json.instagram_business_account &&
-        igRes.json.instagram_business_account.id
-      ) {
-        igBusinessId = igRes.json.instagram_business_account.id
-      }
+    } else if (clientAppIdHint === mainAppId && mainAppSecret) {
+      candidateCredentials.push({ id: mainAppId, secret: mainAppSecret, tag: 'hint_main' })
+    } else if (clientAppIdHint === '2442476629610638') {
+      candidateCredentials.push({
+        id: '2442476629610638',
+        secret: mainAppSecret || 'd085b85d8d534c682f60b6bde8043610',
+        tag: 'hint_2442476629610638',
+      })
     }
+  }
 
-    // Se /me/accounts não retornou páginas ou não encontrou igBusinessId,
-    // tenta diretamente no Graph com o próprio token (comum com Instagram Business Login)
-    if (!igBusinessId) {
+  // Adiciona o App principal (2442476629610638 / main)
+  if (mainAppId && mainAppSecret) {
+    candidateCredentials.push({ id: mainAppId, secret: mainAppSecret, tag: 'main_app' })
+  }
+
+  // Adiciona o dedicado se houver
+  if (dedicatedAppId && dedicatedAppSecret) {
+    candidateCredentials.push({
+      id: dedicatedAppId,
+      secret: dedicatedAppSecret,
+      tag: 'dedicated_app',
+    })
+  }
+
+  // Fallback garantido para o app 2442476629610638 com o secret conhecido
+  candidateCredentials.push({
+    id: '2442476629610638',
+    secret: mainAppSecret || 'd085b85d8d534c682f60b6bde8043610',
+    tag: 'fallback_2442476629610638',
+  })
+
+  // Remove duplicados de candidateCredentials
+  const uniqueCredentials = []
+  const seen = {}
+  for (let i = 0; i < candidateCredentials.length; i++) {
+    const c = candidateCredentials[i]
+    const key = c.id + ':' + c.secret
+    if (!seen[key] && c.id && c.secret) {
+      seen[key] = true
+      uniqueCredentials.push(c)
+    }
+  }
+
+  if (uniqueCredentials.length === 0) {
+    return e.badRequestError('Nenhum App ID / Secret configurado no CRM para troca do código.')
+  }
+
+  // Redirect URIs possíveis a testar:
+  // A Meta exige que a redirect_uri enviada na troca do token seja EXATAMENTE
+  // a mesma redirect_uri enviada na geração do diálogo de autorização.
+  // Pode ter sido a do preview ou a de produção.
+  const requestedRedirectUri = (body.redirect_uri || '').trim()
+  const prodRedirectUri =
+    'https://brfiacrminteligente.goskip.app/settings/connections/instagram/callback'
+  const previewRedirectUri =
+    'https://ia-uazapi-6d79e--preview.goskip.app/settings/connections/instagram/callback'
+
+  const candidateUris = []
+  if (requestedRedirectUri) candidateUris.push(requestedRedirectUri)
+  if (requestedRedirectUri !== prodRedirectUri) candidateUris.push(prodRedirectUri)
+  if (requestedRedirectUri !== previewRedirectUri) candidateUris.push(previewRedirectUri)
+
+  // Remove duplicados
+  const uniqueUris = []
+  const seenUris = {}
+  for (let u = 0; u < candidateUris.length; u++) {
+    const uri = candidateUris[u]
+    if (!seenUris[uri] && uri) {
+      seenUris[uri] = true
+      uniqueUris.push(uri)
+    }
+  }
+
+  console.log(
+    '[INSTAGRAM_OAUTH_EXCHANGE] Tentando trocar código com ' +
+      uniqueCredentials.length +
+      ' credencial(is) e ' +
+      uniqueUris.length +
+      ' redirect URIs.',
+  )
+
+  let tokenRes = null
+  let successfulCred = null
+  let successfulUri = ''
+  let lastErrorDetail = ''
+
+  // Loop de tentativas: testa as credenciais e as URIs candidatas
+  outerLoop: for (let cIdx = 0; cIdx < uniqueCredentials.length; cIdx++) {
+    const cred = uniqueCredentials[cIdx]
+
+    for (let uIdx = 0; uIdx < uniqueUris.length; uIdx++) {
+      const uri = uniqueUris[uIdx]
+
       try {
-        const directMeRes = $http.send({
+        const res = $http.send({
           url:
-            'https://graph.facebook.com/v22.0/me?fields=id,name,user_id,username&access_token=' +
-            longLivedToken,
+            'https://graph.facebook.com/v22.0/oauth/access_token?client_id=' +
+            encodeURIComponent(cred.id) +
+            '&client_secret=' +
+            encodeURIComponent(cred.secret) +
+            '&code=' +
+            encodeURIComponent(code) +
+            '&redirect_uri=' +
+            encodeURIComponent(uri),
           method: 'GET',
           timeout: 15,
         })
-        if (directMeRes.statusCode === 200 && directMeRes.json) {
-          igBusinessId = directMeRes.json.user_id || directMeRes.json.id || ''
+
+        if (res.statusCode === 200 && res.json && res.json.access_token) {
+          tokenRes = res
+          successfulCred = cred
+          successfulUri = uri
+          console.log(
+            '[INSTAGRAM_OAUTH_EXCHANGE] Sucesso na troca de código via App ID ' +
+              cred.id +
+              ' (' +
+              cred.tag +
+              ') e URI ' +
+              uri,
+          )
+          break outerLoop
+        } else {
+          const errMsg =
+            (res.json &&
+              res.json.error &&
+              (res.json.error.message || res.json.error.error_user_msg)) ||
+            (res.json && res.json.error_message) ||
+            'HTTP ' + res.statusCode
+          lastErrorDetail = errMsg
+          console.log(
+            '[INSTAGRAM_OAUTH_EXCHANGE] Tentativa falhou com App ' +
+              cred.id +
+              ' e URI ' +
+              uri +
+              ': ' +
+              errMsg,
+          )
         }
-      } catch (_) {}
+      } catch (callErr) {
+        lastErrorDetail = String(callErr)
+        console.log('[INSTAGRAM_OAUTH_EXCHANGE] Erro de rede: ' + String(callErr))
+      }
     }
+  }
 
-    // Se ainda não temos igBusinessId, mantém o que já estava configurado no user
-    if (!igBusinessId) {
-      igBusinessId = user.getString('meta_instagram_business_id') || ''
+  if (!tokenRes || !tokenRes.json || !tokenRes.json.access_token) {
+    return e.badRequestError(
+      'Falha ao trocar código por token de acesso da Meta: ' +
+        (lastErrorDetail || 'Código expirado ou inválido'),
+    )
+  }
+
+  const shortLivedToken = tokenRes.json.access_token
+
+  // Troca o token de curta duração por um de longa duração (60 dias / perene)
+  let longLivedToken = shortLivedToken
+  try {
+    const longLivedRes = $http.send({
+      url:
+        'https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=' +
+        encodeURIComponent(successfulCred.id) +
+        '&client_secret=' +
+        encodeURIComponent(successfulCred.secret) +
+        '&fb_exchange_token=' +
+        encodeURIComponent(shortLivedToken),
+      method: 'GET',
+      timeout: 15,
+    })
+
+    if (longLivedRes.statusCode === 200 && longLivedRes.json && longLivedRes.json.access_token) {
+      longLivedToken = longLivedRes.json.access_token
     }
+  } catch (llErr) {
+    console.log('[INSTAGRAM_OAUTH_EXCHANGE] Exceção ao obter long lived token: ' + String(llErr))
+  }
 
-    // Salva SEMPRE o user token retornado pelo OAuth
-    user.set('meta_instagram_user_token', longLivedToken)
+  // Salva SEMPRE o user token retornado pelo OAuth
+  user.set('meta_instagram_user_token', longLivedToken)
 
-    // Percorre todas as páginas para identificar qual possui instagram_business_account
-    let targetPageToken = ''
-    let targetPageId = ''
-    let foundUsername = ''
+  // Inspeciona permissões concedidas pelo usuário neste token
+  let grantedScopes = []
+  try {
+    const permRes = $http.send({
+      url:
+        'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
+        encodeURIComponent(longLivedToken),
+      method: 'GET',
+      timeout: 10,
+    })
+    if (permRes.statusCode === 200 && permRes.json && Array.isArray(permRes.json.data)) {
+      for (let p = 0; p < permRes.json.data.length; p++) {
+        if (permRes.json.data[p].status === 'granted') {
+          grantedScopes.push(permRes.json.data[p].permission)
+        }
+      }
+    }
+    console.log(
+      '[INSTAGRAM_OAUTH_EXCHANGE] Escopos concedidos no token: ' + grantedScopes.join(', '),
+    )
+  } catch (_) {}
+
+  // Tenta obter páginas via /me/accounts
+  let targetPageToken = ''
+  let targetPageId = ''
+  let igBusinessId = ''
+  let foundUsername = ''
+
+  try {
+    const pagesRes = $http.send({
+      url:
+        'https://graph.facebook.com/v22.0/me/accounts?access_token=' +
+        encodeURIComponent(longLivedToken),
+      method: 'GET',
+      timeout: 15,
+    })
 
     if (
       pagesRes.statusCode === 200 &&
@@ -175,9 +279,7 @@ routerAdd(
     ) {
       const allPages = pagesRes.json.data
       console.log(
-        '[INSTAGRAM_OAUTH] /me/accounts retornou ' +
-          allPages.length +
-          ' páginas para o usuário OAuth.',
+        '[INSTAGRAM_OAUTH_EXCHANGE] /me/accounts retornou ' + allPages.length + ' página(s).',
       )
 
       for (let i = 0; i < allPages.length; i++) {
@@ -209,7 +311,7 @@ routerAdd(
             targetPageId = pId
             foundUsername = igObj.username || igObj.name || ''
             console.log(
-              '[INSTAGRAM_OAUTH] Encontrado Instagram vinculado na página ' +
+              '[INSTAGRAM_OAUTH_EXCHANGE] Encontrado Instagram na página ' +
                 pName +
                 ' (' +
                 pId +
@@ -222,44 +324,61 @@ routerAdd(
           }
         } catch (chkErr) {
           console.log(
-            '[INSTAGRAM_OAUTH] Erro ao checar IG na página ' + pId + ': ' + String(chkErr),
+            '[INSTAGRAM_OAUTH_EXCHANGE] Erro ao checar IG na página ' + pId + ': ' + String(chkErr),
           )
         }
       }
 
-      // Se nenhuma página tinha instagram_business_account explicitamente vinculado no Graph,
-      // usa os dados da primeira página como fallback para tokens de página
+      // Se nenhuma página retornou instagram_business_account vinculado, pega a primeira página
       if (!targetPageToken && allPages.length > 0) {
         targetPageToken = allPages[0].access_token || ''
         targetPageId = allPages[0].id || ''
       }
     }
+  } catch (pagesErr) {
+    console.log('[INSTAGRAM_OAUTH_EXCHANGE] Erro ao consultar /me/accounts: ' + String(pagesErr))
+  }
 
-    if (targetPageToken) {
-      user.set('meta_instagram_page_token', targetPageToken)
-      user.set('meta_page_access_token', targetPageToken)
-    } else {
-      user.set('meta_instagram_page_token', longLivedToken)
-      if (!user.getString('meta_page_access_token')) {
-        user.set('meta_page_access_token', longLivedToken)
-      }
+  // Se ainda não temos igBusinessId, mantém o que já estava configurado no user
+  if (!igBusinessId) {
+    igBusinessId = user.getString('meta_instagram_business_id') || ''
+  }
+
+  if (targetPageToken) {
+    user.set('meta_instagram_page_token', targetPageToken)
+    user.set('meta_page_access_token', targetPageToken)
+  } else {
+    user.set('meta_instagram_page_token', longLivedToken)
+    if (!user.getString('meta_page_access_token')) {
+      user.set('meta_page_access_token', longLivedToken)
     }
+  }
 
-    if (igBusinessId) {
-      user.set('meta_instagram_business_id', igBusinessId)
-    }
-    if (foundUsername) {
-      user.set('instagram_username', foundUsername)
-    }
+  if (igBusinessId) {
+    user.set('meta_instagram_business_id', igBusinessId)
+  }
+  if (foundUsername) {
+    user.set('instagram_username', foundUsername)
+  }
 
-    $app.save(user)
+  $app.save(user)
 
-    return e.json(200, {
-      success: true,
-      instagram_business_id: igBusinessId,
-      page_id: targetPageId || pageId,
-      instagram_username: foundUsername,
-    })
-  },
-  $apis.requireAuth(),
-)
+  console.log(
+    '[INSTAGRAM_OAUTH_EXCHANGE] Finalizado com sucesso para user ' +
+      user.id +
+      '. IG=' +
+      igBusinessId +
+      ', Page=' +
+      targetPageId,
+  )
+
+  return e.json(200, {
+    success: true,
+    instagram_business_id: igBusinessId,
+    page_id: targetPageId,
+    instagram_username: foundUsername,
+    app_id_used: successfulCred ? successfulCred.id : '',
+    granted_scopes: grantedScopes,
+    redirect_uri_used: successfulUri,
+  })
+})

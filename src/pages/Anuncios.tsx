@@ -7,7 +7,12 @@ import {
   type MetaAdCampaign,
   type WhatsAppApprovedTemplate,
 } from '@/services/meta_ads'
-import { getInstagramOAuthUrl, getInstagramRedirectUri } from '@/services/instagram'
+import {
+  getInstagramOAuthUrl,
+  getInstagramRedirectUri,
+  PROD_ORIGIN,
+  isPreviewEnvironment,
+} from '@/services/instagram'
 import { useAuth } from '@/hooks/use-auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -253,6 +258,7 @@ export default function Anuncios() {
   const campaigns = data?.campaigns || []
   const adAccount = data?.ad_account
   const needsPermission = data?.needs_ads_permission
+  const isPreview = useMemo(() => isPreviewEnvironment(), [])
 
   return (
     <div className="space-y-6 pb-12">
@@ -585,6 +591,27 @@ export default function Anuncios() {
                     está ativa e com pontuação 100, aguardando apenas o consentimento do
                     proprietário.
                   </p>
+
+                  {isPreview && (
+                    <div className="p-3 rounded bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs space-y-1">
+                      <p className="font-semibold">
+                        💡 Dica para autorização via celular / Preview:
+                      </p>
+                      <p className="leading-relaxed">
+                        Como você está no domínio de preview, recomendamos autorizar diretamente
+                        pelo endereço de produção{' '}
+                        <a
+                          href={`${PROD_ORIGIN}/anuncios`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold underline text-amber-950 hover:text-primary"
+                        >
+                          brfiacrminteligente.goskip.app/anuncios
+                        </a>{' '}
+                        para garantir que a Meta aceite o retorno sem perda de sessão.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="pt-2 flex flex-col sm:flex-row gap-3">
                     <Button

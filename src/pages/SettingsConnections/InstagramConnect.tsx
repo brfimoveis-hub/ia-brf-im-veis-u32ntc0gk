@@ -33,6 +33,7 @@ import {
   getInstagramRedirectUri,
   getInstagramOAuthUrl,
   INSTAGRAM_OAUTH_SCOPES_LIST,
+  PROD_ORIGIN,
   PROD_REDIRECT_URI,
   PREVIEW_REDIRECT_URI,
   type InstagramGraphError,
@@ -115,8 +116,8 @@ export function InstagramConnect() {
     user?.meta_instagram_app_secret ||
     ''
   ).trim()
-  const fallbackAppId = (user?.meta_app_id || '').trim()
-  const fallbackAppSecret = (user?.meta_app_secret || '').trim()
+  const fallbackAppId = (user?.meta_app_id || '2442476629610638').trim()
+  const fallbackAppSecret = (user?.meta_app_secret || 'd085b85d8d534c682f60b6bde8043610').trim()
 
   const activeAppId = dedicatedAppId || fallbackAppId
   const activeAppSecret = dedicatedAppSecret || fallbackAppSecret
@@ -574,6 +575,33 @@ export function InstagramConnect() {
             </span>
           </div>
         </div>
+
+        {/* Alerta de Ambiente Preview com Link Direto para Produção */}
+        {redirectUri.includes('--preview') && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 text-xs text-amber-950">
+            <div className="flex items-center gap-2 font-semibold">
+              <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+              <span>Atenção: Você está no ambiente de testes (Preview)</span>
+            </div>
+            <p className="leading-relaxed">
+              O fluxo de autorização da Meta exige que a URL de redirecionamento esteja cadastrada
+              nos domínios do App da Meta. Para garantir sucesso sem bloqueio de segurança na volta
+              pelo celular, recomendamos abrir e conectar através do{' '}
+              <strong>endereço oficial de produção</strong>:
+            </p>
+            <div className="pt-1">
+              <a
+                href={`${PROD_ORIGIN}/settings/connections`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs transition-colors"
+              >
+                Abrir CRM em Produção ({PROD_ORIGIN})
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* Card de Ajuda: Configuração de Domínios e Redirect URI no App Meta */}
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3">

@@ -3,9 +3,11 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   getInstagramRedirectUri,
   getInstagramOAuthUrl,
-  validateAndConsumeInstagramOAuthState,
+  validateOAuthStateWithBackend,
   exchangeInstagramCode,
   PROD_REDIRECT_URI,
+  PROD_ORIGIN,
+  isPreviewEnvironment,
 } from '@/services/instagram'
 import { useAuth } from '@/hooks/use-auth'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -59,9 +61,14 @@ export default function InstagramCallback() {
   const [copiedRedirect, setCopiedRedirect] = useState(false)
 
   const currentRedirectUri = useMemo(() => getInstagramRedirectUri(), [])
-  const activeAppId = (user?.meta_instagram_app_id || user?.meta_app_id || '').trim()
+  const activeAppId = (
+    user?.meta_instagram_app_id ||
+    user?.meta_app_id ||
+    '2442476629610638'
+  ).trim()
   const isDedicatedApp = Boolean(user?.meta_instagram_app_id && user.meta_instagram_app_id.trim())
   const hasAppConfig = Boolean(activeAppId)
+  const isPreview = useMemo(() => isPreviewEnvironment(), [])
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -91,180 +98,195 @@ export default function InstagramCallback() {
   }
 
   useEffect(() => {
-    // 1. Extração de todos os parâmetros possíveis retornados pela Meta ou rota
-    const code = searchParams.get('code')
-    const state = searchParams.get('state')
-    const error = searchParams.get('error')
-    const errorReason = searchParams.get('error_reason')
-    const errorDescription = searchParams.get('error_description')
-    const errorCode = searchParams.get('error_code')
-    const errorUri = searchParams.get('error_uri')
+    let isCancelled = false
 
-    // Caso a página tenha sido aberta sem nenhuma query string
-    const hasAnyParam = Array.from(searchParams.keys()).length > 0
-    if (!hasAnyParam) {
-      setStatus('error')
-      setErrorDetails({
-        kind: 'no_query',
-        title: 'Callback acessado diretamente',
-        friendlyDescription:
-          'Esta página é o ponto de retorno da autenticação do Instagram e foi aberta sem parâmetros de autorização. Para conectar sua conta, inicie o processo pelas Configurações do CRM.',
-        actionHint:
-          'Acesse as Configurações de Conexões e clique no botão "Conectar Instagram (OAuth)".',
-        showRetryOAuth: hasAppConfig,
-      })
-      return
-    }
+    const processOAuthCallback = async () => {
+      // 1. Extração de todos os parâmetros possíveis retornados pela Meta ou rota
+      const code = searchParams.get('code')
+      const state = searchParams.get('state')
+      const error = searchParams.get('error')
+      const errorReason = searchParams.get('error_reason')
+      const errorDescription = searchParams.get('error_description')
+      const errorCode = searchParams.get('error_code')
+      const errorUri = searchParams.get('error_uri')
 
-    // 2. Tratamento de Erro explicitamente devolvido pela Meta
-    if (error || errorReason || errorDescription) {
-      setStatus('error')
-      const lowerErr = (error || '').toLowerCase()
-      const lowerReason = (errorReason || '').toLowerCase()
-      const lowerDesc = (errorDescription || '').toLowerCase()
-
-      // Caso A: Usuário cancelou ou negou autorização
-      if (
-        lowerErr === 'access_denied' ||
-        lowerReason === 'user_denied' ||
-        lowerDesc.includes('denied') ||
-        lowerDesc.includes('cancel')
-      ) {
+      // Caso a página tenha sido aberta sem nenhuma query string
+      const hasAnyParam = Array.from(searchParams.keys()).length > 0
+      if (!hasAnyParam) {
+        if (isCancelled) return
+        setStatus('error')
         setErrorDetails({
-          kind: 'user_denied',
-          title: 'Autorização cancelada',
+          kind: 'no_query',
+          title: 'Callback acessado diretamente',
           friendlyDescription:
-            'Você ou o Facebook cancelou a solicitação de autorização. Para utilizar o Instagram Business no CRM, é necessário conceder as permissões solicitadas.',
+            'Esta página é o ponto de retorno da autenticação do Instagram e foi aberta sem parâmetros de autorização. Para conectar sua conta, inicie o processo pelas Configurações do CRM.',
           actionHint:
-            'Clique no botão abaixo para tentar novamente e, na janela do Facebook, clique em "Continuar como..." e depois em "Permitir" em todas as etapas.',
-          rawError: error || undefined,
-          rawReason: errorReason || undefined,
-          rawDescription: errorDescription || undefined,
-          rawCode: errorCode || undefined,
-          errorUri: errorUri || undefined,
+            'Acesse as Configurações de Conexões e clique no botão "Conectar Instagram (OAuth)".',
           showRetryOAuth: hasAppConfig,
         })
         return
       }
 
-      // Caso B: Redirect URI mismatch
-      if (
-        lowerErr.includes('redirect_uri') ||
-        lowerReason.includes('redirect_uri') ||
-        lowerDesc.includes('redirect_uri') ||
-        lowerDesc.includes('redirect uri') ||
-        lowerDesc.includes('url não está incluído') ||
-        lowerDesc.includes('domínio dessa url')
-      ) {
+      // 2. Tratamento de Erro explicitamente devolvido pela Meta
+      if (error || errorReason || errorDescription) {
+        if (isCancelled) return
+        setStatus('error')
+        const lowerErr = (error || '').toLowerCase()
+        const lowerReason = (errorReason || '').toLowerCase()
+        const lowerDesc = (errorDescription || '').toLowerCase()
+
+        // Caso A: Usuário cancelou ou negou autorização
+        if (
+          lowerErr === 'access_denied' ||
+          lowerReason === 'user_denied' ||
+          lowerDesc.includes('denied') ||
+          lowerDesc.includes('cancel')
+        ) {
+          setErrorDetails({
+            kind: 'user_denied',
+            title: 'Autorização cancelada',
+            friendlyDescription:
+              'Você ou o Facebook cancelou a solicitação de autorização. Para utilizar o Instagram Business no CRM, é necessário conceder as permissões solicitadas.',
+            actionHint:
+              'Clique no botão abaixo para tentar novamente e, na janela do Facebook, clique em "Continuar como..." e depois em "Permitir" em todas as etapas.',
+            rawError: error || undefined,
+            rawReason: errorReason || undefined,
+            rawDescription: errorDescription || undefined,
+            rawCode: errorCode || undefined,
+            errorUri: errorUri || undefined,
+            showRetryOAuth: hasAppConfig,
+          })
+          return
+        }
+
+        // Caso B: Redirect URI mismatch
+        if (
+          lowerErr.includes('redirect_uri') ||
+          lowerReason.includes('redirect_uri') ||
+          lowerDesc.includes('redirect_uri') ||
+          lowerDesc.includes('redirect uri') ||
+          lowerDesc.includes('url não está incluído') ||
+          lowerDesc.includes('domínio dessa url')
+        ) {
+          setErrorDetails({
+            kind: 'redirect_mismatch',
+            title: 'URI de redirecionamento não registrada na Meta',
+            friendlyDescription:
+              'A URL de retorno usada pelo CRM não está registrada na lista de URIs de Redirecionamento OAuth Válidos nas configurações do seu aplicativo do Facebook Developers.',
+            actionHint:
+              'Copie a URI exata abaixo e adicione em: developers.facebook.com > Seu App (' +
+              activeAppId +
+              ') > Produtos > Logins do Facebook > Configurações > "URIs de redirecionamento OAuth válidos".',
+            rawError: error || undefined,
+            rawReason: errorReason || undefined,
+            rawDescription: errorDescription || undefined,
+            rawCode: errorCode || undefined,
+            errorUri: errorUri || undefined,
+            showRedirectCopy: true,
+            showMetaDeveloperLink: true,
+            showRetryOAuth: hasAppConfig,
+          })
+          return
+        }
+
+        // Caso C: App em modo desenvolvimento / usuário sem permissão no app
+        if (
+          lowerDesc.includes('development mode') ||
+          lowerDesc.includes('modo de desenvolvimento') ||
+          lowerDesc.includes('developer') ||
+          lowerDesc.includes('tester') ||
+          lowerDesc.includes('função') ||
+          lowerDesc.includes('role') ||
+          lowerDesc.includes('not public') ||
+          lowerDesc.includes('não está publicado')
+        ) {
+          setErrorDetails({
+            kind: 'dev_mode_role',
+            title: 'App Meta em Modo Desenvolvimento',
+            friendlyDescription:
+              'O aplicativo da Meta está em modo de desenvolvimento (não publicado) e a conta que tentou autorizar precisa estar registrada com uma função dentro do App.',
+            actionHint:
+              'Acesse developers.facebook.com > App ' +
+              activeAppId +
+              ' > Funções do app (App Roles) > Adicione o e-mail brfimoveis@gmail.com como Administrador ou Testador e aceite o convite no Facebook.',
+            rawError: error || undefined,
+            rawReason: errorReason || undefined,
+            rawDescription: errorDescription || undefined,
+            rawCode: errorCode || undefined,
+            errorUri: errorUri || undefined,
+            showMetaDeveloperLink: true,
+            showRetryOAuth: hasAppConfig,
+          })
+          return
+        }
+
+        // Caso genérico de erro da Meta
         setErrorDetails({
-          kind: 'redirect_mismatch',
-          title: 'URI de redirecionamento não registrada na Meta',
+          kind: 'generic',
+          title: 'A Meta recusou a autorização',
           friendlyDescription:
-            'A URL de retorno usada pelo CRM não está registrada na lista de URIs de Redirecionamento OAuth Válidos nas configurações do seu aplicativo do Facebook Developers.',
+            errorDescription ||
+            errorReason ||
+            error ||
+            'O Facebook retornou um erro ao processar sua solicitação.',
           actionHint:
-            'Copie a URI exata abaixo e adicione em: developers.facebook.com > Seu App (2442476629610638) > Produtos > Logins do Facebook > Configurações > "URIs de redirecionamento OAuth válidos".',
+            'Verifique as permissões do aplicativo no painel de desenvolvedores ou tente novamente.',
           rawError: error || undefined,
           rawReason: errorReason || undefined,
           rawDescription: errorDescription || undefined,
           rawCode: errorCode || undefined,
           errorUri: errorUri || undefined,
+          showMetaDeveloperLink: true,
+          showRetryOAuth: hasAppConfig,
+        })
+        return
+      }
+
+      // 3. Validação do state CSRF com persistência no servidor (tolerante a mobile/webview)
+      const stateValidation = await validateOAuthStateWithBackend(state)
+      if (state && !stateValidation.valid) {
+        if (isCancelled) return
+        setStatus('error')
+        setErrorDetails({
+          kind: 'invalid_state',
+          title: 'Parâmetro de segurança (estado) inválido ou expirado',
+          friendlyDescription:
+            'A sessão de autorização expirou ou foi aberta em outro navegador/dispositivo. Isso acontece quando a página fica aberta por muito tempo ou quando o navegador limpa o armazenamento temporário.',
+          actionHint:
+            'Clique no botão abaixo para gerar uma nova solicitação de autorização segura.',
+          rawError: 'invalid_state',
+          rawReason: `Recebido: ${state || 'nenhum'} | Esperado: ${stateValidation.expected || 'nenhum'} | Motivo: ${stateValidation.reason || 'desconhecido'}`,
+          showRetryOAuth: hasAppConfig,
+        })
+        return
+      }
+
+      // 4. Sem código de autorização
+      if (!code) {
+        if (isCancelled) return
+        setStatus('error')
+        setErrorDetails({
+          kind: 'generic',
+          title: 'Código de autorização não encontrado',
+          friendlyDescription:
+            'O Facebook concluiu o redirecionamento mas não forneceu o código necessário para concluir a conexão.',
+          actionHint:
+            'Se o app estiver em modo de desenvolvimento, certifique-se de que a conta brfimoveis@gmail.com está como Administradora/Testadora no developers.facebook.com e tente conectar novamente.',
+          showMetaDeveloperLink: true,
           showRedirectCopy: true,
-          showMetaDeveloperLink: true,
           showRetryOAuth: hasAppConfig,
         })
         return
       }
 
-      // Caso C: App em modo desenvolvimento / usuário sem permissão no app
-      if (
-        lowerDesc.includes('development mode') ||
-        lowerDesc.includes('modo de desenvolvimento') ||
-        lowerDesc.includes('developer') ||
-        lowerDesc.includes('tester') ||
-        lowerDesc.includes('função') ||
-        lowerDesc.includes('role') ||
-        lowerDesc.includes('not public') ||
-        lowerDesc.includes('não está publicado')
-      ) {
-        setErrorDetails({
-          kind: 'dev_mode_role',
-          title: 'App Meta em Modo Desenvolvimento',
-          friendlyDescription:
-            'O aplicativo da Meta está em modo de desenvolvimento (não publicado) e a conta que tentou autorizar precisa estar registrada com uma função dentro do App.',
-          actionHint:
-            'Acesse developers.facebook.com > App 2442476629610638 > Funções do app (App Roles) > Adicione o e-mail brfimoveis@gmail.com como Administrador ou Testador e aceite o convite no Facebook.',
-          rawError: error || undefined,
-          rawReason: errorReason || undefined,
-          rawDescription: errorDescription || undefined,
-          rawCode: errorCode || undefined,
-          errorUri: errorUri || undefined,
-          showMetaDeveloperLink: true,
-          showRetryOAuth: hasAppConfig,
-        })
-        return
-      }
+      // 5. Sucesso inicial: Código presente, prosseguir com a troca por token no backend
+      if (isCancelled) return
+      setStatus('loading')
 
-      // Caso genérico de erro da Meta
-      setErrorDetails({
-        kind: 'generic',
-        title: 'A Meta recusou a autorização',
-        friendlyDescription:
-          errorDescription ||
-          errorReason ||
-          error ||
-          'O Facebook retornou um erro ao processar sua solicitação.',
-        actionHint:
-          'Verifique as permissões do aplicativo no painel de desenvolvedores ou tente novamente.',
-        rawError: error || undefined,
-        rawReason: errorReason || undefined,
-        rawDescription: errorDescription || undefined,
-        rawCode: errorCode || undefined,
-        errorUri: errorUri || undefined,
-        showMetaDeveloperLink: true,
-        showRetryOAuth: hasAppConfig,
-      })
-      return
-    }
+      try {
+        const res = await exchangeInstagramCode(code, currentRedirectUri, activeAppId)
+        if (isCancelled) return
 
-    // 3. Validação do state CSRF
-    const stateValidation = validateAndConsumeInstagramOAuthState(state)
-    // Se recebemos um state e ele não bate com o gravado (e não é o legado 'instagram_oauth')
-    if (state && !stateValidation.valid) {
-      setStatus('error')
-      setErrorDetails({
-        kind: 'invalid_state',
-        title: 'Parâmetro de segurança (state) inválido ou expirado',
-        friendlyDescription:
-          'A sessão de autorização expirou ou foi aberta em outro navegador/dispositivo. Isso acontece quando a página fica aberta por muito tempo ou quando o navegador limpa o armazenamento temporário.',
-        actionHint: 'Clique no botão abaixo para gerar uma nova solicitação de autorização segura.',
-        rawError: 'invalid_state',
-        rawReason: `Recebido: ${state || 'nenhum'} | Esperado: ${stateValidation.expected || 'nenhum'}`,
-        showRetryOAuth: hasAppConfig,
-      })
-      return
-    }
-
-    // 4. Sem código de autorização
-    if (!code) {
-      setStatus('error')
-      setErrorDetails({
-        kind: 'generic',
-        title: 'Código de autorização não encontrado',
-        friendlyDescription:
-          'O Facebook concluiu o redirecionamento mas não forneceu o código necessário para concluir a conexão.',
-        actionHint:
-          'Se o app estiver em modo de desenvolvimento, certifique-se de que a conta brfimoveis@gmail.com está como Administradora/Testadora no developers.facebook.com e tente conectar novamente.',
-        showMetaDeveloperLink: true,
-        showRedirectCopy: true,
-        showRetryOAuth: hasAppConfig,
-      })
-      return
-    }
-
-    // 5. Sucesso inicial: Código presente, prosseguir com a troca por token no backend
-    setStatus('loading')
-    exchangeInstagramCode(code, currentRedirectUri)
-      .then((res) => {
         if (res && res.success) {
           setStatus('success')
         } else {
@@ -280,8 +302,8 @@ export default function InstagramCallback() {
             showRetryOAuth: hasAppConfig,
           })
         }
-      })
-      .catch((err: any) => {
+      } catch (err: any) {
+        if (isCancelled) return
         setStatus('error')
         const message =
           err?.response?.message ||
@@ -305,7 +327,14 @@ export default function InstagramCallback() {
           showMetaDeveloperLink: true,
           showRetryOAuth: hasAppConfig,
         })
-      })
+      }
+    }
+
+    processOAuthCallback()
+
+    return () => {
+      isCancelled = true
+    }
   }, [searchParams, currentRedirectUri, hasAppConfig, activeAppId])
 
   return (
@@ -369,6 +398,32 @@ export default function InstagramCallback() {
                 <ArrowLeft className="h-4 w-4" />
                 Voltar para Configurações de Conexões
               </Button>
+            </div>
+          )}
+
+          {/* AVISO INFORMATIVO DE AMBIENTE PREVIEW */}
+          {isPreview && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold text-amber-950">
+                  Você está visualizando a tela no ambiente de Preview
+                </p>
+                <p className="text-[11px] leading-relaxed text-amber-900">
+                  Para garantir compatibilidade com as políticas de redirecionamento da Meta,
+                  certifique-se de que a URI do preview está cadastrada na Meta ou utilize
+                  diretamente o domínio de produção oficial{' '}
+                  <a
+                    href={PROD_ORIGIN}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold underline text-amber-950 hover:text-primary"
+                  >
+                    brfiacrminteligente.goskip.app
+                  </a>
+                  .
+                </p>
+              </div>
             </div>
           )}
 
