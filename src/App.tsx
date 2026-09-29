@@ -22,6 +22,7 @@ import Estatisticas from './pages/Estatisticas'
 import Anuncios from './pages/Anuncios'
 import Launches from './pages/Launches'
 import LaunchLanding from './pages/LaunchLanding'
+import FaxinaAtivosMeta from './pages/FaxinaAtivosMeta'
 
 import Cadences from './pages/Cadences'
 import EmailMarketing from './pages/EmailMarketing'
@@ -127,6 +128,8 @@ const RouteTracker = () => {
           component = 'SettingsRemarketing'
         } else if (lowerPath === '/settings/ai' || lowerPath.startsWith('/settings/ai/')) {
           component = 'SettingsAI'
+        } else if (lowerPath === '/faxina-meta' || lowerPath.startsWith('/faxina-meta/')) {
+          component = 'FaxinaAtivosMeta'
         } else if (lowerPath.startsWith('/dashboard')) {
           component = 'Dashboard'
         } else if (lowerPath.startsWith('/customers')) {
@@ -285,6 +288,14 @@ const router = createBrowserRouter([
                 element: (
                   <ErrorBoundary>
                     <Anuncios />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'faxina-meta',
+                element: (
+                  <ErrorBoundary>
+                    <FaxinaAtivosMeta />
                   </ErrorBoundary>
                 ),
               },

@@ -12,7 +12,17 @@ import { StatusTrafficLight } from './SettingsConnections/StatusTrafficLight'
 import { ConnectionHealthDashboard } from './SettingsConnections/ConnectionHealthDashboard'
 import { InstagramConnect } from './SettingsConnections/InstagramConnect'
 import { VerifiableConnectionCard } from './SettingsConnections/VerifiableConnectionCard'
-import { MessageCircle, TrendingUp, Instagram, MessageSquare } from 'lucide-react'
+import {
+  MessageCircle,
+  TrendingUp,
+  Instagram,
+  MessageSquare,
+  Trash2,
+  ArrowUpRight,
+} from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export default function SettingsConnections() {
@@ -152,6 +162,7 @@ export default function SettingsConnections() {
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="meta">Meta API Configuration</TabsTrigger>
           <TabsTrigger value="capi">Conversions API (CAPI)</TabsTrigger>
+          <TabsTrigger value="faxina">Faxina de Ativos Meta</TabsTrigger>
           <TabsTrigger value="logs">Integration Logs</TabsTrigger>
           <TabsTrigger value="chaves">ChavesNaMao</TabsTrigger>
         </TabsList>
@@ -169,6 +180,36 @@ export default function SettingsConnections() {
           <ErrorBoundary logType="capi_panel_error">
             <CapiPanel />
           </ErrorBoundary>
+        </TabsContent>
+
+        <TabsContent value="faxina" className="mt-4">
+          <Card className="border-red-500/30 bg-red-500/5">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-lg bg-red-600 text-white">
+                    <Trash2 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <span>Painel &quot;Faxina de Ativos Meta&quot;</span>
+                      <Badge className="bg-red-600 text-white text-[10px]">Aprovada</Badge>
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Checklist interativo com regras de proteção rígidas (Página oficial
+                      1219427617930954 e WhatsApp oficial intocáveis).
+                    </p>
+                  </div>
+                </div>
+                <Button asChild className="bg-red-600 hover:bg-red-700 text-white gap-2 shrink-0">
+                  <Link to="/faxina-meta">
+                    <span>Abrir Painel Completo da Faxina</span>
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="logs" className="mt-4">

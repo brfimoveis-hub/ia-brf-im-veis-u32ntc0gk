@@ -10,6 +10,8 @@ import {
   BarChart3,
   RefreshCw,
   ArrowUpRight,
+  Trash2,
+  ShieldCheck,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -326,6 +328,48 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Banner / Card Especial: Faxina de Ativos Meta Aprovada */}
+      <Card className="border-red-500/30 bg-gradient-to-r from-red-500/10 via-amber-500/5 to-transparent hover:border-red-500/50 transition-colors shadow-xs">
+        <CardHeader className="p-4 sm:p-5 pb-2 sm:pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 rounded-lg bg-red-600 text-white shadow-xs">
+                <Trash2 className="h-5 w-5" />
+              </span>
+              <div>
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2 flex-wrap">
+                  <span>Faxina de Ativos Meta (Aprovada)</span>
+                  <Badge className="bg-red-600 text-white text-[10px] font-semibold">
+                    LIMPEZA GERAL
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30 font-medium"
+                  >
+                    <ShieldCheck className="h-3 w-3 mr-1" />
+                    WABA &amp; Página Oficial 1219427617930954 Protegidos
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm mt-0.5">
+                  Checklist interativo para desvincular contas antigas (como @brf_imoveis_), páginas
+                  duplicadas e ativos órfãos do Business Manager.
+                </CardDescription>
+              </div>
+            </div>
+            <Button
+              asChild
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white shrink-0 gap-1.5 shadow-xs"
+            >
+              <Link to="/faxina-meta">
+                <span>Abrir Faxina de Ativos</span>
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* Advanced features (realtime, performance dashboard, integrity
           diagnostics) are intentionally NOT rendered here to keep the
