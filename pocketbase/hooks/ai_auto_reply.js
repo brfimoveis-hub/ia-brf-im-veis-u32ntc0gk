@@ -1835,6 +1835,10 @@ PROTOCOLO COMERCIAL CONSULTIVO E DIRETRIZES DE ATENDIMENTO (BRF IMÓVEIS):
     - Apresentação padrão: Sempre "Bia, assistente virtual da BRF Imóveis".
     - Se perguntarem de onde veio o nome ou quem é você: "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊" — sem justificativas de sistemas ou dados de cadastro. Envie APENAS a mensagem conversacional em Português do Brasil.
 
+11. TRANSCRIÇÕES DE ÁUDIO DO CLIENTE:
+    - Mensagens recebidas iniciadas por "[Áudio transcrevido]:" ou "[Áudio Recebido]" são áudios gravados e falados pelo cliente no WhatsApp transcritos para você.
+    - Entenda a mensagem exatamente como fala natural do cliente e responda normalmente de forma calorosa, consultiva e direta. NUNCA cite o prefixo "[Áudio transcrevido]:" na sua resposta.
+
 CONTEXTO RECUPERADO:
 ${combinedContextText || '(Nenhum contexto adicional na base)'}`
 
@@ -2755,6 +2759,16 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     if (responseText.includes('[VIDEO]')) {
       sendVideo = true
       responseText = responseText.replace(/\[VIDEO\]/gi, '').trim()
+    }
+
+    // Se o cliente enviou áudio/voz no WhatsApp, responder obrigatoriamente com áudio (voz)
+    const isCustomerVoice =
+      customerMessage.startsWith('[Áudio transcrevido]') ||
+      customerMessage.startsWith('[Áudio Recebido]') ||
+      incomingText.startsWith('[Áudio transcrevido]') ||
+      incomingText.startsWith('[Áudio Recebido]')
+    if (isCustomerVoice && !sendAudio) {
+      sendAudio = true
     }
 
     // Save reply to conversations table

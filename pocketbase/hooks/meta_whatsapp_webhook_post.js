@@ -311,8 +311,224 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
           var content = ''
           if (msg.type === 'text' && msg.text && msg.text.body) {
             content = msg.text.body
-          } else if (msg.type === 'audio') {
+          } else if (msg.type === 'audio' || msg.type === 'voice') {
             content = '[Áudio Recebido]'
+            try {
+              var mediaId = (msg.audio && msg.audio.id) || (msg.voice && msg.voice.id) || ''
+              var waUserToken =
+                (user && user.getString('meta_whatsapp_access_token')) ||
+                (user && user.getString('meta_page_access_token')) ||
+                ''
+              if (!waUserToken) {
+                try {
+                  var tokenUsers = $app.findRecordsByFilter(
+                    'users',
+                    "meta_whatsapp_access_token != ''",
+                    '-created',
+                    1,
+                    0,
+                  )
+                  if (tokenUsers.length > 0) {
+                    waUserToken = tokenUsers[0].getString('meta_whatsapp_access_token')
+                  }
+                } catch (_) {}
+              }
+
+              var openAiKey = $os.getenv('OPENAI_API_KEY') || ''
+              if (
+                !openAiKey &&
+                typeof $secrets !== 'undefined' &&
+                $secrets.has &&
+                $secrets.has('OPENAI_API_KEY')
+              ) {
+                openAiKey = $secrets.get('OPENAI_API_KEY') || ''
+              }
+
+              if (mediaId && waUserToken && openAiKey) {
+                // 1. Obter URL do arquivo de mídia na Graph API v21.0
+                var mediaMetaRes = $http.send({
+                  url: 'https://graph.facebook.com/v21.0/' + mediaId,
+                  method: 'GET',
+                  headers: {
+                    Authorization: 'Bearer ' + waUserToken,
+                  },
+                  timeout: 15,
+                })
+
+                var mediaDownloadUrl =
+                  mediaMetaRes && mediaMetaRes.json && mediaMetaRes.json.url
+                    ? mediaMetaRes.json.url
+                    : ''
+
+                if (mediaDownloadUrl) {
+                  // 2. Download do binário de áudio com Bearer token do WhatsApp
+                  var mediaBinaryRes = $http.send({
+                    url: mediaDownloadUrl,
+                    method: 'GET',
+                    headers: {
+                      Authorization: 'Bearer ' + waUserToken,
+                    },
+                    timeout: 25,
+                  })
+
+                  if (
+                    mediaBinaryRes &&
+                    mediaBinaryRes.statusCode === 200 &&
+                    mediaBinaryRes.body &&
+                    mediaBinaryRes.body.length > 0
+                  ) {
+                    // 3. Montar multipart/form-data para OpenAI Whisper
+                    var whisperBoundary = '----BoundaryWhisper' + $security.randomString(16)
+                    var partModel =
+                      '--' +
+                      whisperBoundary +
+                      '\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n'
+                    var partLang =
+                      '--' +
+                      whisperBoundary +
+                      '\r\nContent-Disposition: form-data; name="language"\r\n\r\npt\r\n'
+                    var partFormat =
+                      '--' +
+                      whisperBoundary +
+                      '\r\nContent-Disposition: form-data; name="response_format"\r\n\r\ntext\r\n'
+                    var fileHeader =
+                      '--' +
+                      whisperBoundary +
+                      '\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n'
+                    var whisperFooter = '\r\n--' + whisperBoundary + '--\r\n'
+
+                    var partModelBytes = new Uint8Array(partModel.length)
+                    for (var mi = 0; mi < partModel.length; mi++)
+                      partModelBytes[mi] = partModel.charCodeAt(mi)
+                    var partLangBytes = new Uint8Array(partLang.length)
+                    for (var li = 0; li < partLang.length; li++)
+                      partLangBytes[li] = partLang.charCodeAt(li)
+                    var partFormatBytes = new Uint8Array(partFormat.length)
+                    for (var fi = 0; fi < partFormat.length; fi++)
+                      partFormatBytes[fi] = partFormat.charCodeAt(fi)
+                    var fileHeaderBytes = new Uint8Array(fileHeader.length)
+                    for (var hi = 0; hi < fileHeader.length; hi++)
+                      fileHeaderBytes[hi] = fileHeader.charCodeAt(hi)
+                    var footerBytes = new Uint8Array(whisperFooter.length)
+                    for (var foi = 0; foi < whisperFooter.length; foi++)
+                      footerBytes[foi] = whisperFooter.charCodeAt(foi)
+
+                    var totalLen =
+                      partModelBytes.length +
+                      partLangBytes.length +
+                      partFormatBytes.length +
+                      fileHeaderBytes.length +
+                      mediaBinaryRes.body.length +
+                      footerBytes.length
+
+                    var whisperPayloadBytes = new Uint8Array(totalLen)
+                    var curOffset = 0
+                    whisperPayloadBytes.set(partModelBytes, curOffset)
+                    curOffset += partModelBytes.length
+                    whisperPayloadBytes.set(partLangBytes, curOffset)
+                    curOffset += partLangBytes.length
+                    whisperPayloadBytes.set(partFormatBytes, curOffset)
+                    curOffset += partFormatBytes.length
+                    whisperPayloadBytes.set(fileHeaderBytes, curOffset)
+                    curOffset += fileHeaderBytes.length
+                    whisperPayloadBytes.set(mediaBinaryRes.body, curOffset)
+                    curOffset += mediaBinaryRes.body.length
+                    whisperPayloadBytes.set(footerBytes, curOffset)
+
+                    var whisperRes = $http.send({
+                      url: 'https://api.openai.com/v1/audio/transcriptions',
+                      method: 'POST',
+                      headers: {
+                        Authorization: 'Bearer ' + openAiKey,
+                        'Content-Type': 'multipart/form-data; boundary=' + whisperBoundary,
+                      },
+                      body: whisperPayloadBytes.buffer,
+                      timeout: 30,
+                    })
+
+                    var transcriptionText = ''
+                    if (whisperRes && whisperRes.statusCode === 200) {
+                      if (whisperRes.json && whisperRes.json.text) {
+                        transcriptionText = String(whisperRes.json.text).trim()
+                      } else if (whisperRes.body) {
+                        if (typeof whisperRes.body === 'string') {
+                          transcriptionText = whisperRes.body.trim()
+                        } else {
+                          try {
+                            transcriptionText = String.fromCharCode
+                              .apply(null, whisperRes.body)
+                              .trim()
+                          } catch (_) {}
+                        }
+                      }
+                    }
+
+                    if (transcriptionText) {
+                      content = '[Áudio transcrevido]: ' + transcriptionText
+                      try {
+                        var logColOk = $app.findCollectionByNameOrId('system_logs')
+                        var okLog = new Record(logColOk)
+                        okLog.set('user_id', userId || '')
+                        okLog.set('type', 'audio_transcribed')
+                        okLog.set('message', 'Áudio de WhatsApp transcrito com sucesso via Whisper')
+                        okLog.set(
+                          'details',
+                          'Media ID: ' +
+                            mediaId +
+                            ' | Texto: ' +
+                            transcriptionText.substring(0, 150),
+                        )
+                        okLog.set('payload', {
+                          phone: phone,
+                          media_id: mediaId,
+                          transcription: transcriptionText,
+                        })
+                        $app.saveNoValidate(okLog)
+                      } catch (_) {}
+                    } else {
+                      throw new Error(
+                        'Whisper returned status ' +
+                          (whisperRes ? whisperRes.statusCode : 'none') +
+                          ' ' +
+                          JSON.stringify(
+                            (whisperRes && (whisperRes.json || whisperRes.body)) || '',
+                          ),
+                      )
+                    }
+                  } else {
+                    throw new Error('Falha ao baixar binário do áudio da Meta')
+                  }
+                } else {
+                  throw new Error('URL de download da mídia não encontrada na resposta da Meta')
+                }
+              } else {
+                throw new Error(
+                  'Credenciais ausentes para transcrição (mediaId=' +
+                    !!mediaId +
+                    ', waUserToken=' +
+                    !!waUserToken +
+                    ', openAiKey=' +
+                    !!openAiKey +
+                    ')',
+                )
+              }
+            } catch (audioTransErr) {
+              content = '[Áudio Recebido]'
+              try {
+                var logColFail = $app.findCollectionByNameOrId('system_logs')
+                var failLog = new Record(logColFail)
+                failLog.set('user_id', userId || '')
+                failLog.set('type', 'audio_transcription_failed')
+                failLog.set('message', 'Falha ao transcrever áudio recebido no WhatsApp')
+                failLog.set('details', String(audioTransErr.message || audioTransErr))
+                failLog.set('payload', {
+                  phone: phone,
+                  media_id: (msg.audio && msg.audio.id) || (msg.voice && msg.voice.id) || '',
+                  error: String(audioTransErr),
+                })
+                $app.saveNoValidate(failLog)
+              } catch (_) {}
+            }
           } else if (msg.type === 'image' && msg.image && msg.image.caption) {
             content = msg.image.caption
           } else if (msg.type === 'button' && msg.button && msg.button.text) {
@@ -806,8 +1022,234 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
           var content = ''
           if (msg.type === 'text' && msg.text && msg.text.body) {
             content = msg.text.body
-          } else if (msg.type === 'audio') {
+          } else if (msg.type === 'audio' || msg.type === 'voice') {
             content = '[Áudio Recebido]'
+            try {
+              var mediaIdSecond = (msg.audio && msg.audio.id) || (msg.voice && msg.voice.id) || ''
+              var waUserTokenSecond =
+                (user && user.getString('meta_whatsapp_access_token')) ||
+                (user && user.getString('meta_page_access_token')) ||
+                ''
+              if (!waUserTokenSecond) {
+                try {
+                  var tokenUsersSecond = $app.findRecordsByFilter(
+                    'users',
+                    "meta_whatsapp_access_token != ''",
+                    '-created',
+                    1,
+                    0,
+                  )
+                  if (tokenUsersSecond.length > 0) {
+                    waUserTokenSecond = tokenUsersSecond[0].getString('meta_whatsapp_access_token')
+                  }
+                } catch (_) {}
+              }
+
+              var openAiKeySecond = $os.getenv('OPENAI_API_KEY') || ''
+              if (
+                !openAiKeySecond &&
+                typeof $secrets !== 'undefined' &&
+                $secrets.has &&
+                $secrets.has('OPENAI_API_KEY')
+              ) {
+                openAiKeySecond = $secrets.get('OPENAI_API_KEY') || ''
+              }
+
+              if (mediaIdSecond && waUserTokenSecond && openAiKeySecond) {
+                var mediaMetaResSecond = $http.send({
+                  url: 'https://graph.facebook.com/v21.0/' + mediaIdSecond,
+                  method: 'GET',
+                  headers: {
+                    Authorization: 'Bearer ' + waUserTokenSecond,
+                  },
+                  timeout: 15,
+                })
+
+                var mediaDownloadUrlSecond =
+                  mediaMetaResSecond && mediaMetaResSecond.json && mediaMetaResSecond.json.url
+                    ? mediaMetaResSecond.json.url
+                    : ''
+
+                if (mediaDownloadUrlSecond) {
+                  var mediaBinaryResSecond = $http.send({
+                    url: mediaDownloadUrlSecond,
+                    method: 'GET',
+                    headers: {
+                      Authorization: 'Bearer ' + waUserTokenSecond,
+                    },
+                    timeout: 25,
+                  })
+
+                  if (
+                    mediaBinaryResSecond &&
+                    mediaBinaryResSecond.statusCode === 200 &&
+                    mediaBinaryResSecond.body &&
+                    mediaBinaryResSecond.body.length > 0
+                  ) {
+                    var whisperBoundarySecond = '----BoundaryWhisper' + $security.randomString(16)
+                    var partModelSecond =
+                      '--' +
+                      whisperBoundarySecond +
+                      '\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n'
+                    var partLangSecond =
+                      '--' +
+                      whisperBoundarySecond +
+                      '\r\nContent-Disposition: form-data; name="language"\r\n\r\npt\r\n'
+                    var partFormatSecond =
+                      '--' +
+                      whisperBoundarySecond +
+                      '\r\nContent-Disposition: form-data; name="response_format"\r\n\r\ntext\r\n'
+                    var fileHeaderSecond =
+                      '--' +
+                      whisperBoundarySecond +
+                      '\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n'
+                    var whisperFooterSecond = '\r\n--' + whisperBoundarySecond + '--\r\n'
+
+                    var partModelBytesSecond = new Uint8Array(partModelSecond.length)
+                    for (var mi2 = 0; mi2 < partModelSecond.length; mi2++) {
+                      partModelBytesSecond[mi2] = partModelSecond.charCodeAt(mi2)
+                    }
+                    var partLangBytesSecond = new Uint8Array(partLangSecond.length)
+                    for (var li2 = 0; li2 < partLangSecond.length; li2++) {
+                      partLangBytesSecond[li2] = partLangSecond.charCodeAt(li2)
+                    }
+                    var partFormatBytesSecond = new Uint8Array(partFormatSecond.length)
+                    for (var fi2 = 0; fi2 < partFormatSecond.length; fi2++) {
+                      partFormatBytesSecond[fi2] = partFormatSecond.charCodeAt(fi2)
+                    }
+                    var fileHeaderBytesSecond = new Uint8Array(fileHeaderSecond.length)
+                    for (var hi2 = 0; hi2 < fileHeaderSecond.length; hi2++) {
+                      fileHeaderBytesSecond[hi2] = fileHeaderSecond.charCodeAt(hi2)
+                    }
+                    var footerBytesSecond = new Uint8Array(whisperFooterSecond.length)
+                    for (var foi2 = 0; foi2 < whisperFooterSecond.length; foi2++) {
+                      footerBytesSecond[foi2] = whisperFooterSecond.charCodeAt(foi2)
+                    }
+
+                    var totalLenSecond =
+                      partModelBytesSecond.length +
+                      partLangBytesSecond.length +
+                      partFormatBytesSecond.length +
+                      fileHeaderBytesSecond.length +
+                      mediaBinaryResSecond.body.length +
+                      footerBytesSecond.length
+
+                    var whisperPayloadBytesSecond = new Uint8Array(totalLenSecond)
+                    var curOffsetSecond = 0
+                    whisperPayloadBytesSecond.set(partModelBytesSecond, curOffsetSecond)
+                    curOffsetSecond += partModelBytesSecond.length
+                    whisperPayloadBytesSecond.set(partLangBytesSecond, curOffsetSecond)
+                    curOffsetSecond += partLangBytesSecond.length
+                    whisperPayloadBytesSecond.set(partFormatBytesSecond, curOffsetSecond)
+                    curOffsetSecond += partFormatBytesSecond.length
+                    whisperPayloadBytesSecond.set(fileHeaderBytesSecond, curOffsetSecond)
+                    curOffsetSecond += fileHeaderBytesSecond.length
+                    whisperPayloadBytesSecond.set(mediaBinaryResSecond.body, curOffsetSecond)
+                    curOffsetSecond += mediaBinaryResSecond.body.length
+                    whisperPayloadBytesSecond.set(footerBytesSecond, curOffsetSecond)
+
+                    var whisperResSecond = $http.send({
+                      url: 'https://api.openai.com/v1/audio/transcriptions',
+                      method: 'POST',
+                      headers: {
+                        Authorization: 'Bearer ' + openAiKeySecond,
+                        'Content-Type': 'multipart/form-data; boundary=' + whisperBoundarySecond,
+                      },
+                      body: whisperPayloadBytesSecond.buffer,
+                      timeout: 30,
+                    })
+
+                    var transcriptionTextSecond = ''
+                    if (whisperResSecond && whisperResSecond.statusCode === 200) {
+                      if (whisperResSecond.json && whisperResSecond.json.text) {
+                        transcriptionTextSecond = String(whisperResSecond.json.text).trim()
+                      } else if (whisperResSecond.body) {
+                        if (typeof whisperResSecond.body === 'string') {
+                          transcriptionTextSecond = whisperResSecond.body.trim()
+                        } else {
+                          try {
+                            transcriptionTextSecond = String.fromCharCode
+                              .apply(null, whisperResSecond.body)
+                              .trim()
+                          } catch (_) {}
+                        }
+                      }
+                    }
+
+                    if (transcriptionTextSecond) {
+                      content = '[Áudio transcrevido]: ' + transcriptionTextSecond
+                      try {
+                        var logColOkSecond = $app.findCollectionByNameOrId('system_logs')
+                        var okLogSecond = new Record(logColOkSecond)
+                        okLogSecond.set('user_id', userId || '')
+                        okLogSecond.set('type', 'audio_transcribed')
+                        okLogSecond.set(
+                          'message',
+                          'Áudio de WhatsApp transcrito com sucesso via Whisper',
+                        )
+                        okLogSecond.set(
+                          'details',
+                          'Media ID: ' +
+                            mediaIdSecond +
+                            ' | Texto: ' +
+                            transcriptionTextSecond.substring(0, 150),
+                        )
+                        okLogSecond.set('payload', {
+                          phone: phone,
+                          media_id: mediaIdSecond,
+                          transcription: transcriptionTextSecond,
+                        })
+                        $app.saveNoValidate(okLogSecond)
+                      } catch (_) {}
+                    } else {
+                      throw new Error(
+                        'Whisper returned status ' +
+                          (whisperResSecond ? whisperResSecond.statusCode : 'none') +
+                          ' ' +
+                          JSON.stringify(
+                            (whisperResSecond &&
+                              (whisperResSecond.json || whisperResSecond.body)) ||
+                              '',
+                          ),
+                      )
+                    }
+                  } else {
+                    throw new Error('Falha ao baixar binário do áudio da Meta')
+                  }
+                } else {
+                  throw new Error('URL de download da mídia não encontrada na resposta da Meta')
+                }
+              } else {
+                throw new Error(
+                  'Credenciais ausentes para transcrição (mediaId=' +
+                    !!mediaIdSecond +
+                    ', waUserToken=' +
+                    !!waUserTokenSecond +
+                    ', openAiKey=' +
+                    !!openAiKeySecond +
+                    ')',
+                )
+              }
+            } catch (audioTransErrSecond) {
+              content = '[Áudio Recebido]'
+              try {
+                var logColFailSecond = $app.findCollectionByNameOrId('system_logs')
+                var failLogSecond = new Record(logColFailSecond)
+                failLogSecond.set('user_id', userId || '')
+                failLogSecond.set('type', 'audio_transcription_failed')
+                failLogSecond.set('message', 'Falha ao transcrever áudio recebido no WhatsApp')
+                failLogSecond.set(
+                  'details',
+                  String(audioTransErrSecond.message || audioTransErrSecond),
+                )
+                failLogSecond.set('payload', {
+                  phone: phone,
+                  media_id: (msg.audio && msg.audio.id) || (msg.voice && msg.voice.id) || '',
+                  error: String(audioTransErrSecond),
+                })
+                $app.saveNoValidate(failLogSecond)
+              } catch (_) {}
+            }
           } else if (msg.type === 'image' && msg.image && msg.image.caption) {
             content = msg.image.caption
           } else if (msg.type === 'button' && msg.button && msg.button.text) {
