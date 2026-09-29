@@ -660,16 +660,263 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
     }
 
     let historyRecords = []
+    let fullCustomerHistory = []
     try {
-      historyRecords = $app.findRecordsByFilter(
+      // Carrega até 40 mensagens do histórico para extrair dados consolidados e evitar loops
+      fullCustomerHistory = $app.findRecordsByFilter(
         'conversations',
         `customer_id = '${customerId}'`,
         '-created',
-        10,
+        40,
         0,
       )
-      historyRecords.reverse()
+      fullCustomerHistory.reverse()
+      // Mantém as últimas 12 no contexto direto de chat
+      historyRecords = fullCustomerHistory.slice(-12)
     } catch (_) {}
+
+    // ======================================================================
+    // EXTRAÇÃO E CONSOLIDAÇÃO DE DADOS JÁ RESPONDIDOS PELO LEAD (ANTI-LOOP)
+    // ======================================================================
+    const collectedLeadData = {
+      name: '',
+      purpose: '', // compra / venda / locação / permuta
+      payment: '', // à vista / financiamento / FGTS
+      typology: '', // casa / apto / studio / dormitórios / suítes
+      location: '', // bairro / cidade
+      priceRange: '', // faixa de preço
+      specificPropertyInterests: [], // links ou referências de imóveis específicos do anúncio/portal
+    }
+
+    // Inicializa com dados já existentes no registro do customer
+    const existingCustName = customer.getString('name') || customer.getString('first_name') || ''
+    if (existingCustName && !existingCustName.includes('+') && !/^\d+$/.test(existingCustName)) {
+      const cleaned = cleanAndValidateLeadName('', existingCustName)
+      if (cleaned) collectedLeadData.name = cleaned
+    }
+    if (customer.getString('price_range')) {
+      collectedLeadData.priceRange = customer.getString('price_range')
+    }
+    if (customer.getString('neighborhood')) {
+      collectedLeadData.location = customer.getString('neighborhood')
+    }
+
+    // Varrer mensagens do cliente no histórico completo para extrair dados fornecidos
+    try {
+      const allCustMsgs = (fullCustomerHistory.length > 0 ? fullCustomerHistory : historyRecords)
+        .filter((m) => {
+          const s = m.getString('sender')
+          return s === 'customer' || s === 'user' || s === 'lead'
+        })
+        .map((m) => (m.getString('content') || '').trim())
+
+      // Inclui também a mensagem atual
+      if (customerMessage && !allCustMsgs.includes(customerMessage.trim())) {
+        allCustMsgs.push(customerMessage.trim())
+      }
+
+      for (const text of allCustMsgs) {
+        const lower = text.toLowerCase()
+
+        // 1. Nome do lead (ex: "me chamo Marcia mendes", "sou a Marcia", "meu nome é Marcia", ou resposta curta "Marcia")
+        const nameMatch = text.match(
+          /(?:me\s+chamo|meu\s+nome\s+[ée]|sou\s+(?:o|a)?)\s+([A-Za-zÀ-ÿ]{2,25}(?:\s+[A-Za-zÀ-ÿ]{2,25})*)/i,
+        )
+        if (nameMatch && nameMatch[1]) {
+          const cand = nameMatch[1].trim()
+          const valid = cleanAndValidateLeadName('', cand)
+          if (valid) collectedLeadData.name = valid
+        } else if (!collectedLeadData.name && /^[A-Za-zÀ-ÿ]{2,18}$/.test(text.trim())) {
+          // Se for resposta de uma palavra que seja um nome válido
+          const word = text.trim()
+          if (
+            !/^(sim|nao|não|quero|ok|ola|olá|bom|boa|casa|apto|vista|compra|venda)$/i.test(word)
+          ) {
+            const valid = cleanAndValidateLeadName('', word)
+            if (valid) collectedLeadData.name = valid
+          }
+        }
+
+        // 2. Finalidade (compra, venda, permuta, locação/aluguel)
+        if (
+          lower.includes('compra') ||
+          lower.includes('comprar') ||
+          lower.includes('adquirir') ||
+          lower.includes('investir')
+        ) {
+          collectedLeadData.purpose = 'Compra'
+        } else if (
+          lower.includes('venda') ||
+          lower.includes('vender') ||
+          lower.includes('anunciar')
+        ) {
+          collectedLeadData.purpose = 'Venda de imóvel próprio'
+        } else if (lower.includes('permuta') || lower.includes('troca')) {
+          collectedLeadData.purpose = 'Permuta / Troca'
+        } else if (
+          lower.includes('aluguel') ||
+          lower.includes('locação') ||
+          lower.includes('locacao')
+        ) {
+          collectedLeadData.purpose = 'Locação / Aluguel'
+        }
+
+        // 3. Pagamento (à vista, financiamento, carta de crédito, FGTS)
+        if (
+          /\b(a\s+vista|[aà]\s*vista|recursos\s+pr[oó]prios|dinheiro)\b/i.test(lower) ||
+          lower.includes('pagar a vista') ||
+          lower.includes('pagar à vista') ||
+          lower.includes('vou pagar a vista') ||
+          lower.includes('vou pagar à vista')
+        ) {
+          collectedLeadData.payment = 'À vista (recursos próprios)'
+        } else if (
+          /\b(financiad[ao]|financiamento|financiar|carta\s+de\s+cr[eé]dito|fgts|banco|caixa|itau|bradesco|santander)\b/i.test(
+            lower,
+          )
+        ) {
+          collectedLeadData.payment = 'Financiamento bancário'
+          if (lower.includes('fgts')) {
+            collectedLeadData.payment += ' (com uso de FGTS)'
+          }
+        }
+
+        // 4. Tipologia e dormitórios (casa, apartamento, cobertura, suítes, dorms)
+        let typologyParts = []
+        if (lower.includes('casa')) typologyParts.push('Casa')
+        if (lower.includes('apartamento') || lower.includes('apto'))
+          typologyParts.push('Apartamento')
+        if (lower.includes('sobrado')) typologyParts.push('Sobrado')
+        if (lower.includes('cobertura')) typologyParts.push('Cobertura')
+        if (lower.includes('studio') || lower.includes('kitnet')) typologyParts.push('Studio')
+
+        const suiteMatch =
+          text.match(/(\d+)\s*su[ií]tes?/i) ||
+          (/tr[eê]s\s+su[ií]tes?/i.test(lower) ? [null, '3'] : null) ||
+          (/duas\s+su[ií]tes?/i.test(lower) ? [null, '2'] : null)
+        if (suiteMatch) {
+          typologyParts.push(`${suiteMatch[1]} suíte(s)`)
+        }
+
+        const dormMatch =
+          text.match(/(\d+)\s*(?:dormit[oó]rios?|quartos?|dorms?)/i) ||
+          (/tr[eê]s\s+(?:dorm|quarto)/i.test(lower) ? [null, '3'] : null) ||
+          (/dois\s+(?:dorm|quarto)/i.test(lower) ? [null, '2'] : null)
+        if (dormMatch && !suiteMatch) {
+          typologyParts.push(`${dormMatch[1]} dormitório(s)`)
+        }
+
+        if (typologyParts.length > 0) {
+          const currentTypo = typologyParts.join(', ')
+          // Prefere descrições mais completas (ex: "Casa, 3 suíte(s)")
+          if (
+            !collectedLeadData.typology ||
+            currentTypo.length >= collectedLeadData.typology.length
+          ) {
+            collectedLeadData.typology = currentTypo
+          }
+        }
+
+        // 5. Localização / Bairro
+        if (lower.includes('ingleses'))
+          collectedLeadData.location = 'Ingleses do Rio Vermelho, Florianópolis'
+        else if (lower.includes('canasvieiras'))
+          collectedLeadData.location = 'Canasvieiras, Florianópolis'
+        else if (lower.includes('jurerê') || lower.includes('jurere'))
+          collectedLeadData.location = 'Jurerê, Florianópolis'
+        else if (lower.includes('trindade')) collectedLeadData.location = 'Trindade, Florianópolis'
+        else if (lower.includes('campeche')) collectedLeadData.location = 'Campeche, Florianópolis'
+        else if (lower.includes('capoeiras'))
+          collectedLeadData.location = 'Capoeiras, Florianópolis'
+        else if (lower.includes('estreito')) collectedLeadData.location = 'Estreito, Florianópolis'
+        else if (lower.includes('coqueiros'))
+          collectedLeadData.location = 'Coqueiros, Florianópolis'
+        else if (lower.includes('são josé') || lower.includes('sao jose'))
+          collectedLeadData.location = 'São José'
+        else if (lower.includes('palhoça') || lower.includes('palhoca'))
+          collectedLeadData.location = 'Palhoça'
+        else if (lower.includes('biguaçu') || lower.includes('biguacu'))
+          collectedLeadData.location = 'Biguaçu'
+
+        // 6. Faixa de preço (se mencionada)
+        const prMatch = text.match(
+          /(?:at[eé]|faixa|or[cç]amento|valor|pre[cç]o)\s*(?:de|r\$)?\s*(\d+[\.,]?\d*)\s*(k|mil|milh[oõ]es|milhao|milhão)?/i,
+        )
+        if (prMatch) {
+          collectedLeadData.priceRange = prMatch[0].trim()
+        }
+
+        // 7. Links ou referências de portal / anúncio (Chaves na Mão, VivaReal, Zap, brfimoveis, etc.)
+        const portalUrlMatch = text.match(/https?:\/\/[^\s\)\>\"\'\`]+/gi)
+        if (portalUrlMatch) {
+          for (const u of portalUrlMatch) {
+            if (!collectedLeadData.specificPropertyInterests.includes(u)) {
+              collectedLeadData.specificPropertyInterests.push(u)
+            }
+          }
+        }
+      }
+    } catch (parseHistErr) {
+      console.warn(
+        `[AI_REPLY] Error compiling customer history data (non-fatal): ${String(parseHistErr)}`,
+      )
+    }
+
+    // Se o nome foi descoberto pelo histórico, atualizar displayName
+    if (collectedLeadData.name && !displayName) {
+      // Usar o nome extraído
+      try {
+        const fName = collectedLeadData.name.split(' ')[0]
+        if (fName && fName.length > 1) {
+          // Atualiza registro do customer caso ainda não tenha nome definido
+          if (
+            !customer.getString('name') ||
+            customer.getString('name').includes('❤️') ||
+            customer.getString('name').startsWith('+')
+          ) {
+            customer.set('name', collectedLeadData.name)
+            customer.set('first_name', fName)
+            $app.saveNoValidate(customer)
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Detecção de interesse explícito no imóvel do anúncio/portal ("gostei dessa", "tenho interesse neste imóvel", link enviado)
+    const lowerCustMsg = customerMessage.toLowerCase()
+    const isExplicitSpecificPropertyInterest =
+      lowerCustMsg.includes('gostei dessa') ||
+      lowerCustMsg.includes('gostei desse') ||
+      lowerCustMsg.includes('gostei deste') ||
+      lowerCustMsg.includes('tenho interesse neste imóvel') ||
+      lowerCustMsg.includes('tenho interesse nesse imóvel') ||
+      lowerCustMsg.includes('tenho interesse neste imovel') ||
+      lowerCustMsg.includes('tenho interesse nesse imovel') ||
+      lowerCustMsg.includes('chaves na mão') ||
+      lowerCustMsg.includes('chavesnamao') ||
+      lowerCustMsg.includes('vivareal') ||
+      lowerCustMsg.includes('zapimoveis') ||
+      lowerCustMsg.includes('zap imóveis') ||
+      (lowerCustMsg.includes('esse imóvel') && lowerCustMsg.includes('fotos')) ||
+      (lowerCustMsg.includes('este imóvel') && lowerCustMsg.includes('fotos'))
+
+    let collectedDataSummary = `### RESUMO DE DADOS JÁ COLETADOS DESTE CLIENTE (NÃO REPETIR ESTAS PERGUNTAS):
+- Nome do cliente: ${collectedLeadData.name || displayName || 'Já conhecido / apresentado no chat'}
+- Finalidade: ${collectedLeadData.purpose || 'Não informada ainda'}
+- Forma de pagamento: ${collectedLeadData.payment || 'Não informada ainda'}
+- Tipologia / dormitórios: ${collectedLeadData.typology || 'Não informada ainda'}
+- Região / Bairro: ${collectedLeadData.location || 'Não informada ainda'}
+- Faixa de valor / investimento: ${collectedLeadData.priceRange || 'Não informada ainda'}
+${collectedLeadData.specificPropertyInterests.length > 0 ? `- Imóvel específico de interesse do anúncio/portal: ${collectedLeadData.specificPropertyInterests.join(', ')}` : ''}
+
+DIRETRIZES CRÍTICAS ANTI-REPETIÇÃO E FLUXO CONTÍNUO:
+1. NUNCA repita uma pergunta cuja resposta já consta na lista acima!
+   - Se o lead já disse que vai pagar à vista ou financiado: NUNCA pergunte sobre financiamento/à vista novamente!
+   - Se o lead já se apresentou ou o nome já é conhecido: NUNCA pergunte "como posso te chamar?" nem repita apresentações formais!
+   - Se o lead já informou a tipologia ("casa com 3 suítes", etc.): NUNCA pergunte novamente tipologia ou quantidade de quartos!
+   - Avance SEMPRE para o próximo dado faltante da qualificação ou para a apresentação do imóvel.
+2. INTERESSE EM IMÓVEL ESPECÍFICO (ANÚNCIO / LINK DE PORTAL):
+   ${isExplicitSpecificPropertyInterest ? `* ATENÇÃO MÁXIMA: O lead acabou de demonstrar interesse direto no imóvel específico do anúncio/portal ("${customerMessage.substring(0, 80)}")! NÃO continue com questionário nem perguntas burocráticas! Apresente imediatamente esse imóvel ou opções compatíveis do catálogo BRF (nome, diferenciais, localização, valor e link oficial), parabenize a escolha e pergunte se quer ver as fotos e agendar visita.` : '* Se o lead demonstrar interesse num imóvel específico (link/mensagem de portal/anúncio), apresente esse imóvel (nome, preço, localização, link oficial) em vez de continuar o questionário.'}`
 
     // Avaliação de início de diálogo ou pausa longa (para aplicar saudação temporal):
     // 1) Se não houver mensagens anteriores da IA para este cliente: é abertura/primeiro atendimento
@@ -1518,6 +1765,8 @@ ${clientContext}
 ${channelContext}
 ${propertyContext}
 
+${collectedDataSummary}
+
 ${timeGreetingRule}
 
 IDENTIFICAÇÃO E APRESENTAÇÃO DA BIA (PADRÃO DE MERCADO):
@@ -1788,17 +2037,86 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       responseText = correctedCatalogMsg.trim()
     }
 
-    // Optional Mother AI supervisor validation
+    // Função para detectar se um texto é parecer/relatório de avaliação interna em vez de mensagem ao cliente
+    function isInternalEvaluationText(txt) {
+      if (!txt || typeof txt !== 'string') return false
+      const lower = txt.toLowerCase()
+
+      // Marcadores explícitos de avaliação/parecer de conformidade
+      if (
+        lower.includes('avaliação de conformidade') ||
+        lower.includes('avaliacao de conformidade') ||
+        lower.includes('motivos da não aprovação') ||
+        lower.includes('motivos da nao aprovacao') ||
+        lower.includes('motivos de não aprovação') ||
+        lower.includes('motivos de reprovação') ||
+        lower.includes('motivo da reprovação') ||
+        lower.includes('não approvado') ||
+        lower.includes('nao approvado') ||
+        lower.includes('não aprovado') ||
+        lower.includes('nao aprovado') ||
+        lower.includes('não aprovada') ||
+        lower.includes('nao aprovada') ||
+        lower.includes('reprovado') ||
+        lower.includes('reprovada')
+      ) {
+        // Se contiver marcadores em formato de relatório ou análise técnica
+        if (
+          lower.includes('conformidade') ||
+          lower.includes('motivos') ||
+          lower.includes('saudação temporal ausente') ||
+          lower.includes('identificação padrão') ||
+          lower.includes('regra de não inventar') ||
+          lower.includes('não contém a identificação') ||
+          lower.includes('violando a regra') ||
+          lower.includes('infringindo a regra') ||
+          lower.includes('não obedece') ||
+          lower.includes('critérios') ||
+          lower.includes('parecer') ||
+          /^\s*(\*\*|\*|#+|\s)*(não aprovad[ao]|reprovad[ao])/i.test(txt)
+        ) {
+          return true
+        }
+      }
+
+      // Marcadores com padrão estruturado de avaliação (ex: "1. Saudação...", "2. Identificação...")
+      if (
+        /(\bavalia[cç][aã]o\b|\bparecer\b|\bconformidade\b)/i.test(txt) &&
+        /(\bn[aã]o\s+aprovad[ao]\b|\breprovad[ao]\b)/i.test(txt)
+      ) {
+        return true
+      }
+
+      // Se começar diretamente com "Não aprovada – a mensagem..." ou similar
+      if (/^\s*(\*\*|\*)?n[aã]o\s+aprovad[ao]\s*[-–—:]/i.test(txt)) {
+        return true
+      }
+
+      return false
+    }
+
+    // Optional Mother AI supervisor validation & Regeneration Flow
     if (motherAiInstructions && responseText.length > 0) {
       try {
+        const evalPrompt = `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie com rigor se a resposta da Bia obedece às diretrizes:
+"${motherAiInstructions}".
+Critérios obrigatórios:
+1. Identificação correta e sem inventar dados ("Bia, assistente virtual da BRF Imóveis").
+2. Saudação temporal apropriada quando requerida e apenas UMA pergunta por vez.
+3. Não inventar imóveis, preços ou links fictícios.
+4. Nunca reintroduzir perguntas enlatadas ou questionários longos.
+
+FORMATO ESTRITO DA RESPOSTA:
+- Se a mensagem estiver em conformidade e aprovada, responda EXATAMENTE e APENAS a palavra: APROVADO
+- Se a mensagem NÃO estiver aprovada, responda no formato:
+REPROVADO
+Motivos: <descreva sucintamente em 1 a 2 linhas o que corrigir>`
+
         const validationRes = $ai.chat({
           model: 'fast',
           messages: [
-            {
-              role: 'system',
-              content: `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie se a resposta obedece: "${motherAiInstructions}". REGRA VITAL: NUNCA invente imóveis ou links. Use APENAS imóveis reais fornecidos no contexto. NUNCA reintroduza a pergunta enlatada "o que é mais importante além do valor". Se estiver aprovada, responda APENAS a palavra APROVADO sem nada mais. Se precisar de ajuste, forneça APENAS o texto da mensagem final pronto para o cliente no WhatsApp, SEM nenhum comentário, cabeçalho, introdução, explicação ou rótulo como "Reescrita" ou "APROVADO" ou travessões "---".`,
-            },
-            { role: 'user', content: responseText },
+            { role: 'system', content: evalPrompt },
+            { role: 'user', content: `Mensagem candidata da Bia:\n"""\n${responseText}\n"""` },
           ],
         })
 
@@ -1809,25 +2127,75 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
           validationRes.choices[0].message
         ) {
           let motherFeedback = (validationRes.choices[0].message.content || '').trim()
-          if (
-            motherFeedback &&
-            motherFeedback !== 'APROVADO' &&
-            !motherFeedback.match(/^(\*\*|\*)?APROVADO(\*\*|\*)?$/i)
-          ) {
-            // Sanitize Mother AI response immediately
-            motherFeedback = sanitizeAiResponse(motherFeedback)
-            if (motherFeedback) {
-              // Ensure Mother AI did not reintroduce the canned values sentence
-              if (!isCannedValuesSentence(motherFeedback)) {
-                responseText = motherFeedback
-                console.log(
-                  `[AI_REPLY] Mother AI refined the response (len=${responseText.length})`,
-                )
-              } else {
-                console.warn(
-                  '[AI_REPLY] Mother AI attempted to reintroduce canned phrase, discarded.',
-                )
+          console.log(
+            `[AI_REPLY] Mother AI check raw feedback: "${motherFeedback.substring(0, 100)}..."`,
+          )
+
+          const isApproved =
+            motherFeedback === 'APROVADO' ||
+            /^(\*\*|\*)?APROVADO(\*\*|\*)?$/i.test(motherFeedback) ||
+            motherFeedback.toLowerCase().startsWith('aprovado')
+
+          if (!isApproved) {
+            console.warn(`[AI_REPLY] Mother AI REJECTED message. Reason: ${motherFeedback}`)
+            // NUNCA enviar o texto de avaliação/reprovação!
+            // REGENERAR a mensagem da Bia com base nos motivos apontados
+            let regenInstructions = motherFeedback
+              .replace(/^(\*\*|\*)?REPROVADO(\*\*|\*)?\s*/i, '')
+              .trim()
+            if (!regenInstructions) {
+              regenInstructions =
+                'Ajuste a saudação temporal, use a identificação "Bia, assistente virtual da BRF Imóveis" e faça apenas uma pergunta por vez sem inventar imóveis.'
+            }
+
+            try {
+              const regenMessages = [...messages]
+              regenMessages.push({
+                role: 'assistant',
+                content: responseText,
+              })
+              regenMessages.push({
+                role: 'user',
+                content: `[SUPERVISÃO INTERNA - CORREÇÃO OBRIGATÓRIA]: A mensagem anterior precisa de correção pelos seguintes motivos: ${regenInstructions}.
+Gere agora a resposta FINAL definitiva da Bia para o WhatsApp do cliente corrigindo esses pontos.
+IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, consultivo, 2 a 4 linhas, apenas uma pergunta por vez). NUNCA inclua pareceres, notas, cabeçalhos ou comentários de avaliação.`,
+              })
+
+              const regenRes = $ai.chat({
+                model: 'fast',
+                messages: regenMessages,
+              })
+
+              if (
+                regenRes &&
+                regenRes.choices &&
+                regenRes.choices[0] &&
+                regenRes.choices[0].message
+              ) {
+                let regeneratedText = (regenRes.choices[0].message.content || '').trim()
+                regeneratedText = sanitizeAiResponse(regeneratedText)
+
+                if (
+                  regeneratedText &&
+                  !isInternalEvaluationText(regeneratedText) &&
+                  !isCannedValuesSentence(regeneratedText)
+                ) {
+                  console.log(
+                    `[AI_REPLY] Successfully regenerated corrected message (len=${regeneratedText.length})`,
+                  )
+                  responseText = regeneratedText
+                } else {
+                  console.warn(
+                    `[AI_REPLY] Regenerated text was invalid or contained evaluation markers. Falling back to catalog.`,
+                  )
+                  const catFb = generateCatalogFallbackMessage(matchedProps)
+                  if (catFb) responseText = catFb
+                }
               }
+            } catch (regenErr) {
+              console.error(
+                `[AI_REPLY] Failed to regenerate message after rejection: ${String(regenErr)}`,
+              )
             }
           }
         }
@@ -2244,11 +2612,19 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
         if (pBeds > 0) {
           consultMsg += `, com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}${pSuites > 0 ? ` (${pSuites} suíte${pSuites > 1 ? 's' : ''})` : ''}`
         }
-        consultMsg += `.\n\nVocê pretende adquirir à vista ou vai utilizar financiamento bancário? Quer que eu te mande as fotos e a tabela de valores?`
+        // Se a forma de pagamento já for conhecida (ex: à vista), não perguntar de novo!
+        if (collectedLeadData && collectedLeadData.payment) {
+          consultMsg += `.\n\nQuer que eu te envie as fotos e a tabela de valores dessa opção?`
+        } else {
+          consultMsg += `.\n\nVocê pretende adquirir à vista ou vai utilizar financiamento bancário? Quer que eu te mande as fotos e a tabela de valores?`
+        }
         return consultMsg
       }
 
       const greeting = buildTemporalGreeting(displayName, brHour) + ' '
+      if (collectedLeadData && collectedLeadData.payment) {
+        return `${greeting}Temos excelentes opções na região que atendem ao seu perfil. Gostaria de receber fotos e detalhes das unidades disponíveis?`
+      }
       return `${greeting}Temos excelentes opções na região que atendem ao seu perfil. Você pretende fazer a compra à vista ou vai financiar? Posso te apresentar as melhores unidades.`
     }
 
@@ -2284,6 +2660,48 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       }
     }
 
+    // FINAL DEFENSIVE BARRIER — PREVENT INTERNAL EVALUATION / SUPERVISOR LEAKS
+    // Checagem rigorosa antes de salvar e enviar: se contiver marcadores de avaliação interna,
+    // descarta, gera log em system_logs (ai_self_check_blocked) e substitui por mensagem segura da Bia.
+    if (isInternalEvaluationText(responseText)) {
+      console.error(
+        `[AI_REPLY] [DEFENSIVE BARRIER] Blocked internal evaluation text from leaking to customer ${customerId}! Preview: "${responseText.substring(0, 140)}"`,
+      )
+
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const blockLog = new Record(logsCol)
+        blockLog.set('user_id', userId || '')
+        blockLog.set('type', 'ai_self_check_blocked')
+        blockLog.set(
+          'message',
+          'Barreira defensiva abortou vazamento de avaliação de conformidade interna da IA para o cliente',
+        )
+        blockLog.set(
+          'details',
+          JSON.stringify({
+            customer_id: customerId,
+            blocked_text_full: responseText,
+            blocked_preview: responseText.substring(0, 300),
+          }),
+        )
+        blockLog.set(
+          'payload',
+          JSON.stringify({
+            customer_id: customerId,
+            preview: responseText.substring(0, 150),
+          }),
+        )
+        $app.saveNoValidate(blockLog)
+      } catch (logBlockErr) {
+        console.warn(`[AI_REPLY] Error recording ai_self_check_blocked log: ${String(logBlockErr)}`)
+      }
+
+      // Substituição por fallback seguro: saudação temporal + identificação padrão "Bia, assistente virtual da BRF Imóveis" + pedido de perdão curto e continuidade
+      const safeSalutation = buildTemporalGreeting(displayName, brHour)
+      responseText = `${safeSalutation} Bia, assistente virtual da BRF Imóveis aqui. Peço desculpas pela mensagem anterior! Estou aqui para te ajudar a encontrar o imóvel ideal. Podemos continuar nossa conversa?`
+    }
+
     // FINAL UNCONDITIONAL SANITIZATION & CANNED INTERCEPTION
     // Guarantee that no supervisor metadata, headers, or canned sentences can slip through to WhatsApp
     responseText = sanitizeAiResponse(responseText)
@@ -2291,6 +2709,12 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       console.warn('[AI_REPLY] Final check detected canned sentence, forcing catalog fallback')
       responseText = generateCatalogFallbackMessage(matchedProps)
       responseText = sanitizeAiResponse(responseText)
+    }
+
+    // Secondary defensive re-check on sanitized text
+    if (isInternalEvaluationText(responseText)) {
+      const safeSalutation = buildTemporalGreeting(displayName, brHour)
+      responseText = `${safeSalutation} Bia, assistente virtual da BRF Imóveis. Como posso te ajudar na sua busca hoje?`
     }
 
     // Duplicate message final guard
