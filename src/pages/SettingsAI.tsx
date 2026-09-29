@@ -1,428 +1,4 @@
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-=======
 import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-import pb from '@/lib/pocketbase/client'
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-import { useState, useEffect, useCallback, useRef } from 'react'
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======import { useState, useEffect, useCallback, useRef } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useAutoRetry } from '@/hooks/use-auto-retry'
@@ -460,11 +36,18 @@ import {
   Sparkles,
   Info,
   Database,
-  ExternalLink,
   Search,
   Tag,
   Edit2,
   Layers,
+  BookOpen,
+  Plus,
+  Check,
+  Power,
+  ShieldCheck,
+  Calendar,
+  User,
+  ArrowUpDown,
 } from 'lucide-react'
 import {
   AiKnowledgeFile,
@@ -476,6 +59,14 @@ import {
   MAX_AI_KNOWLEDGE_FILE_SIZE,
   MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL,
 } from '@/services/ai_knowledge_files'
+import {
+  BiaLearning,
+  BiaLearningCategory,
+  getBiaLearnings,
+  createBiaLearning,
+  toggleBiaLearningActive,
+  markBiaLearningReviewed,
+} from '@/services/bia_learnings'
 import {
   Dialog,
   DialogContent,
@@ -583,6 +174,29 @@ function getFileIcon(name: string, mime?: string) {
   return <FileGeneric className="w-5 h-5 text-slate-500 shrink-0" />
 }
 
+const CATEGORY_LABELS: Record<BiaLearningCategory, { label: string; color: string }> = {
+  catalogo: {
+    label: 'Catálogo de Imóveis',
+    color: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+  },
+  comportamento: {
+    label: 'Comportamento & Tom',
+    color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+  },
+  qualificacao: {
+    label: 'Qualificação de Leads',
+    color: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  },
+  apresentacao: {
+    label: 'Apresentação Comercial',
+    color: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+  },
+  geral: {
+    label: 'Geral',
+    color: 'bg-slate-500/10 text-slate-600 border-slate-500/20',
+  },
+}
+
 export default function SettingsAI() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -612,6 +226,17 @@ export default function SettingsAI() {
   const [editFileName, setEditFileName] = useState('')
   const [editFileEnterprise, setEditFileEnterprise] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
+
+  // Caderno de Aprendizados da Bia (bia_learnings)
+  const [learnings, setLearnings] = useState<BiaLearning[]>([])
+  const [loadingLearnings, setLoadingLearnings] = useState(false)
+  const [learningActionId, setLearningActionId] = useState<string | null>(null)
+  const [openNewLearningDialog, setOpenNewLearningDialog] = useState(false)
+  const [newLearningTitle, setNewLearningTitle] = useState('')
+  const [newLearningRuleText, setNewLearningRuleText] = useState('')
+  const [newLearningCategory, setNewLearningCategory] = useState<BiaLearningCategory>('geral')
+  const [newLearningPriority, setNewLearningPriority] = useState<number>(80)
+  const [creatingLearning, setCreatingLearning] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -645,10 +270,23 @@ export default function SettingsAI() {
     }
   }, [user?.id])
 
+  const loadLearnings = useCallback(async () => {
+    setLoadingLearnings(true)
+    try {
+      const data = await getBiaLearnings(user?.id)
+      setLearnings(data)
+    } catch (err: any) {
+      console.warn('Erro ao carregar aprendizados da Bia:', err)
+    } finally {
+      setLoadingLearnings(false)
+    }
+  }, [user?.id])
+
   useEffect(() => {
     loadUserData()
     loadKnowledgeFiles()
-  }, [loadUserData, loadKnowledgeFiles, refreshKey])
+    loadLearnings()
+  }, [loadUserData, loadKnowledgeFiles, loadLearnings, refreshKey])
 
   const { isRetrying } = useAutoRetry(error, () => loadUserData(), 800, loading)
 
@@ -673,6 +311,69 @@ export default function SettingsAI() {
       toast.error('Erro ao salvar as configurações', { description: error.message })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleToggleLearning = async (item: BiaLearning) => {
+    const nextState = !item.is_active
+    setLearningActionId(item.id)
+    try {
+      const updated = await toggleBiaLearningActive(item.id, nextState)
+      setLearnings((prev) => prev.map((l) => (l.id === item.id ? updated : l)))
+      toast.success(
+        nextState
+          ? `Regra "${item.title}" ativada! A Bia passará a segui-la imediatamente.`
+          : `Regra "${item.title}" desativada mantida no histórico.`,
+      )
+    } catch (err: any) {
+      toast.error('Erro ao alterar status da regra', { description: err.message })
+    } finally {
+      setLearningActionId(null)
+    }
+  }
+
+  const handleReviewLearning = async (item: BiaLearning) => {
+    setLearningActionId(item.id)
+    try {
+      const updated = await markBiaLearningReviewed(item.id, 'Mauro')
+      setLearnings((prev) => prev.map((l) => (l.id === item.id ? updated : l)))
+      toast.success(`Regra "${item.title}" revisada e confirmada por Mauro!`)
+    } catch (err: any) {
+      toast.error('Erro ao carimbar revisão', { description: err.message })
+    } finally {
+      setLearningActionId(null)
+    }
+  }
+
+  const handleCreateLearning = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newLearningTitle.trim() || !newLearningRuleText.trim()) {
+      toast.error('Preencha o título e a orientação completa da regra.')
+      return
+    }
+
+    setCreatingLearning(true)
+    try {
+      const created = await createBiaLearning({
+        title: newLearningTitle.trim(),
+        rule_text: newLearningRuleText.trim(),
+        category: newLearningCategory,
+        priority: Number(newLearningPriority) || 80,
+        author: 'Mauro',
+        is_active: true,
+        user_id: user?.id,
+      })
+      setLearnings((prev) => [created, ...prev])
+      toast.success('Nova regra gravada com sucesso no Caderno de Aprendizados da Bia!')
+      setNewLearningTitle('')
+      setNewLearningRuleText('')
+      setNewLearningCategory('geral')
+      setNewLearningPriority(80)
+      setOpenNewLearningDialog(false)
+    } catch (err: any) {
+      toast.error('Erro ao registrar regra no caderno', { description: err.message })
+    } finally {
+      setCreatingLearning(false)
     }
   }
 
@@ -766,14 +467,12 @@ export default function SettingsAI() {
 
   // Filtragem dos arquivos
   const filteredFiles = knowledgeFiles.filter((item) => {
-    // Filtro por empreendimento
     if (filterEnterprise === 'none') {
       if (item.enterprise && item.enterprise.trim()) return false
     } else if (filterEnterprise !== 'all') {
       if ((item.enterprise || '').trim() !== filterEnterprise) return false
     }
 
-    // Filtro por texto / busca
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
       const matchName = item.name.toLowerCase().includes(q)
@@ -817,9 +516,11 @@ export default function SettingsAI() {
     }
   }
 
+  const activeLearningsCount = learnings.filter((l) => l.is_active).length
+
   if (loading || (error && isRetrying)) {
     return (
-      <div className="flex-1 space-y-6 p-8 pt-6 max-w-5xl mx-auto w-full">
+      <div className="flex-1 space-y-6 p-4 sm:p-8 pt-6 max-w-5xl mx-auto w-full">
         <Skeleton className="h-8 w-64" />
         <Card>
           <CardHeader>
@@ -835,30 +536,19 @@ export default function SettingsAI() {
             <Skeleton className="h-24 w-full" />
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-48" />
-            <Skeleton className="h-4 w-80 max-w-full" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-32 w-full" />
-            <Skeleton className="h-32 w-full" />
-          </CardContent>
-        </Card>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="flex-1 space-y-6 p-8 pt-6 max-w-5xl mx-auto w-full">
+      <div className="flex-1 space-y-6 p-4 sm:p-8 pt-6 max-w-5xl mx-auto w-full">
         <div className="flex items-center justify-between space-y-2">
-          <h2 className="text-3xl font-bold tracking-tight">Cérebro da IA (BIA)</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Cérebro da IA (BIA)</h2>
         </div>
         <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed rounded-lg">
           <AlertCircle className="h-10 w-10 text-destructive mb-3" />
-          <p className="text-lg font-medium mb-1">Alguns dados não podem ser carregados.</p>
+          <p className="text-lg font-medium mb-1">Alguns dados não puderam ser carregados.</p>
           <p className="text-sm text-muted-foreground mb-4">Tente novamente.</p>
           <Button onClick={handleRetry} variant="outline">
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -870,22 +560,23 @@ export default function SettingsAI() {
   }
 
   return (
-    <div className="flex-1 space-y-6 p-8 pt-6 max-w-5xl mx-auto w-full">
+    <div className="flex-1 space-y-6 p-3 sm:p-8 pt-4 sm:pt-6 max-w-5xl mx-auto w-full">
+      {/* HEADER DA PÁGINA */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Bot className="w-8 h-8 text-primary" />
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Bot className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
             Cérebro da IA (BIA)
           </h2>
-          <p className="text-muted-foreground text-sm">
-            Gerencie o treinamento, base de conhecimento documental e instruções da assistente
-            virtual da BRF Imóveis.
+          <p className="text-muted-foreground text-xs sm:text-sm mt-0.5">
+            Gerencie o treinamento, orientações do curador, base documental e instruções da
+            assistente da BRF Imóveis.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <Badge
             variant="outline"
-            className="px-3 py-1 gap-1.5 border-emerald-500/40 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30"
+            className="px-3 py-1 gap-1.5 border-emerald-500/40 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 text-xs"
           >
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
             Bia Conectada e Ativa (WhatsApp + Meta)
@@ -893,16 +584,296 @@ export default function SettingsAI() {
         </div>
       </div>
 
-      {/* SEÇÃO 1: BASE DE CONHECIMENTO DA BIA (UPLOAD / DOWNLOAD / EXCLUSÃO DE ARQUIVOS) */}
+      {/* SEÇÃO NOVA: CADERNO DE APRENDIZADOS DA BIA */}
+      <Card className="border-amber-500/30 shadow-sm overflow-hidden bg-gradient-to-b from-amber-50/20 to-background dark:from-amber-950/10">
+        <CardHeader className="bg-amber-50/50 dark:bg-amber-950/20 pb-4 border-b border-amber-500/20">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-amber-900 dark:text-amber-200">
+                  <BookOpen className="w-5 h-5 text-amber-600 shrink-0" />
+                  Caderno de Aprendizados da Bia
+                </CardTitle>
+                <Badge
+                  variant="outline"
+                  className="bg-amber-100 text-amber-800 dark:bg-amber-950 border-amber-300 text-[11px]"
+                >
+                  {activeLearningsCount} regras ativas injetadas no prompt
+                </Badge>
+              </div>
+              <CardDescription className="mt-1 text-xs sm:text-sm text-amber-800/80 dark:text-amber-300/80">
+                Orientações permanentes do curador (Mauro). As regras ativas são injetadas
+                automaticamente no cérebro da Bia a cada atendimento (&quot;REGRAS PERMANENTES DO
+                CURADOR — SIGA SEMPRE&quot;).
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 shadow-sm w-full sm:w-auto"
+              onClick={() => setOpenNewLearningDialog(true)}
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Nova Orientação
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-4 p-3 sm:p-6">
+          <div className="flex items-start gap-2 p-2.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200">
+            <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              <strong>Como funciona:</strong> Ao ensinar a Bia uma nova regra (ex: priorizar busca
+              no catálogo antes de responder que não achou, nunca repetir perguntas já feitas), o
+              sistema adiciona essa instrução com autoridade máxima sobre qualquer outra diretriz.
+              Desativar não apaga o histórico.
+            </p>
+          </div>
+
+          {loadingLearnings ? (
+            <div className="space-y-2 py-4">
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          ) : learnings.length === 0 ? (
+            <div className="text-center py-8 border-2 border-dashed rounded-lg bg-muted/10 p-4">
+              <BookOpen className="w-8 h-8 text-amber-500/60 mx-auto mb-2" />
+              <p className="font-medium text-sm">Nenhuma regra cadastrada ainda no caderno.</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                Clique no botão acima para adicionar a primeira orientação permanente para a Bia.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y rounded-lg border bg-card overflow-hidden">
+              {learnings.map((item) => {
+                const catMeta = CATEGORY_LABELS[item.category] || CATEGORY_LABELS.geral
+                const isWorking = learningActionId === item.id
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-3.5 sm:p-4 transition-colors flex flex-col sm:flex-row sm:items-start justify-between gap-3 ${
+                      item.is_active ? 'hover:bg-muted/30' : 'bg-muted/20 opacity-70'
+                    }`}
+                  >
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm text-foreground">{item.title}</span>
+                        <Badge variant="outline" className={`text-[10px] h-5 ${catMeta.color}`}>
+                          {catMeta.label}
+                        </Badge>
+                        <Badge
+                          variant={item.is_active ? 'default' : 'secondary'}
+                          className={`text-[10px] h-5 ${
+                            item.is_active
+                              ? 'bg-emerald-600 hover:bg-emerald-600'
+                              : 'bg-muted-foreground/30'
+                          }`}
+                        >
+                          {item.is_active ? 'Ativa no Cérebro' : 'Inativa'}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-5 font-mono text-muted-foreground"
+                        >
+                          Prioridade: {item.priority}
+                        </Badge>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line bg-muted/30 p-2.5 rounded border border-border/50">
+                        {item.rule_text}
+                      </p>
+
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground pt-0.5">
+                        <span className="flex items-center gap-1">
+                          <User className="w-3 h-3 text-primary" />
+                          Curador: <strong>{item.author || 'Mauro'}</strong>
+                        </span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          Última revisão:{' '}
+                          {item.last_reviewed_at ? formatDate(item.last_reviewed_at) : 'Pendente'}
+                          {item.reviewed_by ? ` (por ${item.reviewed_by})` : ''}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Ações (Mobile-friendly: botões touch confortáveis) */}
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center pt-2 sm:pt-0">
+                      <Button
+                        type="button"
+                        variant={item.is_active ? 'outline' : 'default'}
+                        size="sm"
+                        disabled={isWorking}
+                        onClick={() => handleToggleLearning(item)}
+                        className="h-8 text-xs gap-1.5"
+                        title={item.is_active ? 'Desativar orientação' : 'Ativar orientação'}
+                      >
+                        {isWorking ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Power className="w-3.5 h-3.5" />
+                        )}
+                        {item.is_active ? 'Desativar' : 'Ativar'}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={isWorking}
+                        onClick={() => handleReviewLearning(item)}
+                        className="h-8 text-xs gap-1.5 bg-muted hover:bg-muted/80 text-foreground"
+                        title="Carimbar revisão por Mauro"
+                      >
+                        {isWorking ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        )}
+                        Revisado
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* MODAL: CRIAR NOVA ORIENTAÇÃO DO CADERNO */}
+      <Dialog open={openNewLearningDialog} onOpenChange={setOpenNewLearningDialog}>
+        <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <BookOpen className="w-5 h-5 text-amber-600" />
+              Nova Orientação do Curador (Mauro)
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Adicione uma instrução definitiva para o cérebro da Bia. Regras ativas têm prioridade
+              máxima sobre qualquer outro prompt.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateLearning} className="space-y-3.5 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="newRuleTitle" className="text-xs font-semibold">
+                Título Resumido da Regra
+              </Label>
+              <Input
+                id="newRuleTitle"
+                value={newLearningTitle}
+                onChange={(e) => setNewLearningTitle(e.target.value)}
+                placeholder="Ex: Busca Proativa no Catálogo de Imóveis"
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="newRuleCategory" className="text-xs font-semibold">
+                  Categoria
+                </Label>
+                <Select
+                  value={newLearningCategory}
+                  onValueChange={(val) => setNewLearningCategory(val as BiaLearningCategory)}
+                >
+                  <SelectTrigger id="newRuleCategory" className="h-9 text-xs">
+                    <SelectValue placeholder="Selecione a categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="catalogo">Catálogo de Imóveis</SelectItem>
+                    <SelectItem value="comportamento">Comportamento & Tom</SelectItem>
+                    <SelectItem value="qualificacao">Qualificação de Leads</SelectItem>
+                    <SelectItem value="apresentacao">Apresentação Comercial</SelectItem>
+                    <SelectItem value="geral">Geral</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label
+                  htmlFor="newRulePriority"
+                  className="text-xs font-semibold flex items-center justify-between"
+                >
+                  <span>Prioridade (0 a 100)</span>
+                  <span className="text-[11px] font-mono text-muted-foreground">
+                    {newLearningPriority}
+                  </span>
+                </Label>
+                <Input
+                  id="newRulePriority"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={newLearningPriority}
+                  onChange={(e) => setNewLearningPriority(Number(e.target.value))}
+                  className="h-9 text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="newRuleText" className="text-xs font-semibold">
+                Instrução Completa da Regra (O que a Bia deve SEMPRE fazer ou evitar)
+              </Label>
+              <Textarea
+                id="newRuleText"
+                value={newLearningRuleText}
+                onChange={(e) => setNewLearningRuleText(e.target.value)}
+                placeholder="Descreva exatamente como a Bia deve agir. Ex: Ao apresentar qualquer imóvel, descreva as qualidades do local com suas palavras antes de enviar o link oficial..."
+                className="min-h-[120px] text-xs leading-relaxed"
+                required
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Autor registrado automaticamente como <strong>Mauro</strong> com data e hora atuais.
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setOpenNewLearningDialog(false)}
+                disabled={creatingLearning}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={creatingLearning}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {creatingLearning ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    Gravando no Cérebro...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                    Gravar Orientação
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* SEÇÃO 1: BASE DE CONHECIMENTO DA BIA (DOCUMENTOS & TREINAMENTO) */}
       <Card className="border-primary/20 shadow-sm overflow-hidden">
         <CardHeader className="bg-primary/5 pb-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <Database className="w-5 h-5 text-primary" />
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                <Database className="w-5 h-5 text-primary shrink-0" />
                 Base de Conhecimento da Bia (Documentos & Treinamento)
               </CardTitle>
-              <CardDescription className="mt-1">
+              <CardDescription className="mt-1 text-xs sm:text-sm">
                 Envie documentos da empresa, tabelas de preços, fichas técnicas de empreendimentos,
                 e-books e manuais. A Bia extrai o conteúdo automaticamente e usa como contexto em
                 cada atendimento a leads.
@@ -955,7 +926,7 @@ export default function SettingsAI() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4 pt-5">
+        <CardContent className="space-y-4 pt-5 p-3 sm:p-6">
           {isUploading && (
             <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 flex items-center gap-3 animate-pulse text-sm">
               <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
@@ -1298,16 +1269,16 @@ export default function SettingsAI() {
       {/* SEÇÃO 2: DADOS DO EMPREENDIMENTO (LANÇAMENTO ATUAL) */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="w-5 h-5" />
+          <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <Building2 className="w-5 h-5 text-primary shrink-0" />
             Dados do Empreendimento (Lançamento Atual)
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Configure os detalhes do empreendimento que a Bia usará para personalizar a abordagem de
             vendas seguindo a Metodologia dos 10 Passos.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 p-3 sm:p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="projectName">Nome do Empreendimento</Label>
@@ -1356,76 +1327,19 @@ export default function SettingsAI() {
         </CardContent>
       </Card>
 
-          <div className="space-y-2">
-            <Label htmlFor="aiName">Nome do Agente</Label>
-            <Input
-              id="aiName"
-              value={aiName}
-              onChange={(e) => setAiName(e.target.value)}
-              placeholder="Ex: Bia"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="biaInstructions">
-                Prompt de Sistema da Bia (Roteamento Trilha A/B + 10 Cadências + Playbooks)
-              </Label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs h-7 text-primary hover:text-primary/80"
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-- Quando o cliente solicitar expressamente um corretor humano, visita presencial com o corretor responsável, agendamento de avaliação presencial ou negociação comercial direta: faça o direcionamento cordial para o Mauro Fengler via WhatsApp oficial: https://wa.me/5548992098050 e inclua a tag [HANDOVER: Mauro].`)
-                  toast.info('Prompt padrão da Bia restaurado com Roteamento Trilha A e B!')
-                }}
-              >
-                Restaurar Padrão com Roteamento
-              </Button>
-            </div>
-            <Textarea
-              id="biaInstructions"
-              value={biaInstructions}
-              onChange={(e) => setBiaInstructions(e.target.value)}
-              placeholder="Descreva a metodologia de atendimento: Roteamento Trilha A/B, 10 Cadências de Eduardo Tevah, integração com Playbooks de Anúncios..."
-              className="min-h-[260px] font-mono text-xs leading-relaxed"
-              maxLength={200000}
-            />
-            <div className="text-xs text-muted-foreground text-right">
-              {biaInstructions.length} / 200000 caracteres
-            </div>
-          </div>
-=======
       {/* SEÇÃO 3: IDENTIDADE E COMPORTAMENTO DA BIA */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="w-5 h-5" />
+          <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <Bot className="w-5 h-5 text-primary shrink-0" />
             Identidade e Comportamento
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Configure o nome e as instruções que guiam o comportamento do agente. (Até 200.000
             caracteres)
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-6 p-3 sm:p-6">
           <div className="space-y-2">
             <Label htmlFor="aiName">Nome do Agente</Label>
             <Input
@@ -1437,7 +1351,7 @@ REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <Label htmlFor="biaInstructions">
                 Prompt de Sistema da Bia (Roteamento Trilha A/B + 10 Cadências + Playbooks)
               </Label>
@@ -1463,467 +1377,7 @@ REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
   "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
 - PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
 - TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-- Quando o cliente solicitar expressamente um corretor humano, visita presencial com o corretor responsável, agendamento de avaliação presencial ou negociação comercial direta: faça o direcionamento cordial para o Mauro Fengler via WhatsApp oficial: https://wa.me/5548992098050 e inclua a tag [HANDOVER: Mauro].`)
-                  toast.info('Prompt padrão da Bia restaurado com Roteamento Trilha A e B!')
-                }}
-              >
-                Restaurar Padrão com Roteamento
-              </Button>
-            </div>
-            <Textarea
-              id="biaInstructions"
-              value={biaInstructions}
-              onChange={(e) => setBiaInstructions(e.target.value)}
-              placeholder="Descreva a metodologia de atendimento: Roteamento Trilha A/B, 10 Cadências de Eduardo Tevah, integração com Playbooks de Anúncios..."
-              className="min-h-[260px] font-mono text-xs leading-relaxed"
-              maxLength={200000}
-            />
-            <div className="text-xs text-muted-foreground text-right">
-              {biaInstructions.length} / 200000 caracteres
-            </div>
-          </div>
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs h-7 text-primary hover:text-primary/80"
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-=======
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs h-7 text-primary hover:text-primary/80"
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======
-          <div className="space-y-2">
-            <Label htmlFor="aiName">Nome do Agente</Label>
-            <Input
-              id="aiName"
-              value={aiName}
-              onChange={(e) => setAiName(e.target.value)}
-              placeholder="Ex: Bia"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="biaInstructions">
-                Prompt de Sistema da Bia (Roteamento Trilha A/B + 10 Cadências + Playbooks)
-              </Label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs h-7 text-primary hover:text-primary/80"
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs h-7 text-primary hover:text-primary/80"
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-=======
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-=======
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs h-7 text-primary hover:text-primary/80"
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-=======
-                onClick={() => {
-                  setBiaInstructions(`Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada e ROTEAMENTO POR ORIGEM DO LEAD (lead de anúncio focado vs. lead de imóvel de terceiros/geral).
-
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Saudação temporal: apenas no primeiro contato ou após 24h de silêncio; em conversas em andamento, vá direto ao ponto sem saudações redundantes.
-- Proibição de repetição: se o cliente já informou nome, tipologia ou forma de pagamento, nunca repita essas perguntas.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-======================================================================
-REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
-======================================================================
-- Identificação Padrão: Sempre que se apresentar, identifique-se simplesmente como:
-  "Bia, assistente virtual da BRF Imóveis"
-  Sem sobrenomes, sem citar donos ou corretores na apresentação e sem termos técnicos.
-- Quando o cliente perguntar "quem é você?", "de onde veio esse nome?", "você é um robô?", "é IA?" ou questionar sua identidade:
-  Responda de forma leve, simpática, prestativa e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-- PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
-- TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
+- Quando o cliente solicitar expressamente um corretor humano, visita presencial com o corretor responsável, agendamento de avaliação presencial ou negociação comercial direta: faça o direcionamento cordial para o Mauro Fengler via WhatsApp oficial: https://wa.me/5548992098050 e inclua a tag [HANDOVER: Mauro].
 
 PRINCÍPIO CENTRAL: conectar → entender → autoridade → valor → preço → fechamento
 
@@ -2045,11 +1499,11 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex justify-between items-center bg-muted/20 px-6 py-4">
+        <CardFooter className="flex flex-col sm:flex-row sm:justify-between items-stretch sm:items-center gap-3 bg-muted/20 px-4 sm:px-6 py-4">
           <p className="text-xs text-muted-foreground">
             Todas as alterações são aplicadas imediatamente nas próximas conversas da Bia.
           </p>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
             {saving ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
