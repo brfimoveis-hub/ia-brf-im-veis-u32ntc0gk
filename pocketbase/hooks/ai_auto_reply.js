@@ -56,6 +56,28 @@ onRecordAfterCreateSuccess((e) => {
   const incomingMsgId = e.record.id
   let userId = e.record.getString('user_id')
 
+  // Horário oficial de Brasília (UTC-3) disponível em todos os escopos (incluindo o catch de erro)
+  const now = new Date()
+  const brTime = new Date(now.getTime() - 3 * 3600 * 1000)
+  const brHour = brTime.getUTCHours()
+
+  // Regra de saudação temporal (America/Sao_Paulo):
+  // Bom dia até ~12h (0h..11h59), Boa tarde das 12h às 17h59, Boa noite a partir das 18h
+  function getTemporalGreetingWord(hour) {
+    const h = typeof hour === 'number' ? hour : brHour
+    if (h < 12) return 'Bom dia'
+    if (h < 18) return 'Boa tarde'
+    return 'Boa noite'
+  }
+
+  function buildTemporalGreeting(name, hour) {
+    const salutation = getTemporalGreetingWord(hour)
+    if (name && name.trim()) {
+      return `${salutation}, ${name.trim()}!`
+    }
+    return `${salutation}!`
+  }
+
   console.log(
     `[AI_REPLY] Triggered for customer=${customerId} sender=${sender} channel=${conversationChannel} msgId=${incomingMsgId}`,
   )
@@ -216,7 +238,6 @@ onRecordAfterCreateSuccess((e) => {
       } catch (_) {}
     }
 
-    const now = new Date()
     const customer = $app.findRecordById('customers', customerId)
     let rawCustomerTags = customer.get('tags')
     let tags = []
@@ -363,7 +384,7 @@ onRecordAfterCreateSuccess((e) => {
       return firstPart.charAt(0).toUpperCase() + firstPart.slice(1).toLowerCase()
     }
 
-    const displayName = cleanAndValidateLeadName(customerFirstName, customerName)
+    let displayName = cleanAndValidateLeadName(customerFirstName, customerName)
 
     let receiverPhone = ''
     const sourceMatch = customerSource.match(/Meta\s*-\s*(\d+)/)
@@ -394,34 +415,15 @@ onRecordAfterCreateSuccess((e) => {
       } catch (_) {}
     }
 
-    const brTime = new Date(now.getTime() - 3 * 3600 * 1000)
     const dayOfWeek = brTime.getUTCDay()
     const daysMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
     const currentDay = daysMap[dayOfWeek]
 
-    const brHour = brTime.getUTCHours()
     let hoursStr = brHour.toString()
     if (hoursStr.length < 2) hoursStr = '0' + hoursStr
     let minutesStr = brTime.getUTCMinutes().toString()
     if (minutesStr.length < 2) minutesStr = '0' + minutesStr
     const currentTimeStr = `${hoursStr}:${minutesStr}`
-
-    // Regra de saudação temporal (America/Sao_Paulo):
-    // Bom dia até ~12h (0h..11h59), Boa tarde das 12h às 17h59, Boa noite a partir das 18h
-    function getTemporalGreetingWord(hour) {
-      const h = typeof hour === 'number' ? hour : brHour
-      if (h < 12) return 'Bom dia'
-      if (h < 18) return 'Boa tarde'
-      return 'Boa noite'
-    }
-
-    function buildTemporalGreeting(name, hour) {
-      const salutation = getTemporalGreetingWord(hour)
-      if (name && name.trim()) {
-        return `${salutation}, ${name.trim()}!`
-      }
-      return `${salutation}!`
-    }
 
     if (!deliveryEnabled) {
       console.log(`[AI_REPLY] Message deferred: delivery disabled for user ${userId}`)
