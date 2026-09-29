@@ -464,7 +464,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
                     }
 
                     if (transcriptionText) {
-                      content = '[Áudio transcrevido]: ' + transcriptionText
+                      content = '[Áudio do cliente]: "' + transcriptionText + '"'
                       try {
                         var logColOk = $app.findCollectionByNameOrId('system_logs')
                         var okLog = new Record(logColOk)
@@ -513,7 +513,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
                 )
               }
             } catch (audioTransErr) {
-              content = '[Áudio Recebido]'
+              content = '[Áudio Recebido - não foi possível transcrever]'
               try {
                 var logColFail = $app.findCollectionByNameOrId('system_logs')
                 var failLog = new Record(logColFail)
@@ -1177,7 +1177,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
                     }
 
                     if (transcriptionTextSecond) {
-                      content = '[Áudio transcrevido]: ' + transcriptionTextSecond
+                      content = '[Áudio do cliente]: "' + transcriptionTextSecond + '"'
                       try {
                         var logColOkSecond = $app.findCollectionByNameOrId('system_logs')
                         var okLogSecond = new Record(logColOkSecond)
@@ -1231,7 +1231,7 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
                 )
               }
             } catch (audioTransErrSecond) {
-              content = '[Áudio Recebido]'
+              content = '[Áudio Recebido - não foi possível transcrever]'
               try {
                 var logColFailSecond = $app.findCollectionByNameOrId('system_logs')
                 var failLogSecond = new Record(logColFailSecond)

@@ -507,6 +507,11 @@ onRecordAfterCreateSuccess((e) => {
     const defaultBiaPersonaFallback = `Você é a Bia, assistente virtual da BRF Imóveis (www.brfimoveis.com.br).
 Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada à origem do lead (anúncio focado vs. fluxo geral).
 
+REGRA PERMANENTE OBRIGATÓRIA — SAUDAÇÃO EM TODA RESPOSTA:
+- EM TODA RESPOSTA, sem exceção, você DEVE começar com a saudação temporal correta segundo o horário de Brasília + o primeiro nome do cliente (ex: "Bom dia, João!", "Boa tarde, Maria!", "Boa noite, Carlos!").
+- Se o nome do cliente não for conhecido ou for duvidoso, use apenas a saudação temporal correta (ex: "Bom dia!", "Boa tarde!", "Boa noite!") — NUNCA invente nomes.
+- Essa regra vale para TODAS as mensagens da conversa, mesmo no meio do diálogo.
+
 IDENTIFICAÇÃO E APRESENTAÇÃO (PADRÃO DE MERCADO):
 - Você se identifica SIMPLESMENTE como: "Bia, assistente virtual da BRF Imóveis".
 - SEM sobrenomes, SEM mencionar nomes de corretores ou do dono ao se apresentar.
@@ -516,8 +521,7 @@ IDENTIFICAÇÃO E APRESENTAÇÃO (PADRÃO DE MERCADO):
   NUNCA mencione que o nome veio de cadastro de leads, CRM, banco de dados ou sistemas internos!
 
 TRATAMENTO DO CLIENTE PELO NOME:
-- Trate o cliente pelo primeiro nome dele somente quando for um nome real, claro e consistente.
-- Se o nome do lead no cadastro parecer estranho, inconsistente, incompleto ou duvidoso (como apelidos estranhos, campos de formulário confusos ou combinações suspeitas), prefira SEMPRE cumprimentar cordialmente sem citar o nome (ex.: "Olá! Tudo bem?", "Oi! Como posso te ajudar?") do que usar um nome errado ou confuso.
+- Trate o cliente pelo primeiro nome dele validado. Se não houver nome válido, saudar apenas com a saudação temporal ("Bom dia!", "Boa tarde!", "Boa noite!") sem inventar.
 
 PRINCÍPIO CENTRAL: conectar → entender → autoridade → valor → preço → fechamento
 
@@ -918,10 +922,7 @@ DIRETRIZES CRÍTICAS ANTI-REPETIÇÃO E FLUXO CONTÍNUO:
 2. INTERESSE EM IMÓVEL ESPECÍFICO (ANÚNCIO / LINK DE PORTAL):
    ${isExplicitSpecificPropertyInterest ? `* ATENÇÃO MÁXIMA: O lead acabou de demonstrar interesse direto no imóvel específico do anúncio/portal ("${customerMessage.substring(0, 80)}")! NÃO continue com questionário nem perguntas burocráticas! Apresente imediatamente esse imóvel ou opções compatíveis do catálogo BRF (nome, diferenciais, localização, valor e link oficial), parabenize a escolha e pergunte se quer ver as fotos e agendar visita.` : '* Se o lead demonstrar interesse num imóvel específico (link/mensagem de portal/anúncio), apresente esse imóvel (nome, preço, localização, link oficial) em vez de continuar o questionário.'}`
 
-    // Avaliação de início de diálogo ou pausa longa (para aplicar saudação temporal):
-    // 1) Se não houver mensagens anteriores da IA para este cliente: é abertura/primeiro atendimento
-    // 2) Se a última mensagem da IA ocorreu há mais de 6 horas ou em dia diferente: retomada após pausa longa
-    let isOpeningOrLongPause = true
+    // Regra permanente de saudação temporal (Mauro): em TODA resposta a Bia saúda com bom dia/boa tarde/boa noite + nome
     let hoursSinceLastAiMsg = null
     try {
       const prevAiMsgs = $app.findRecordsByFilter(
@@ -936,19 +937,8 @@ DIRETRIZES CRÍTICAS ANTI-REPETIÇÃO E FLUXO CONTÍNUO:
         const lastCreatedDate = new Date(lastCreatedStr)
         const diffMs = now.getTime() - lastCreatedDate.getTime()
         hoursSinceLastAiMsg = diffMs / (3600 * 1000)
-
-        const lastBrDate = new Date(lastCreatedDate.getTime() - 3 * 3600 * 1000)
-        const isDifferentDay =
-          lastBrDate.getUTCDate() !== brTime.getUTCDate() ||
-          lastBrDate.getUTCMonth() !== brTime.getUTCMonth() ||
-          lastBrDate.getUTCFullYear() !== brTime.getUTCFullYear()
-
-        // Saudação temporal apenas se for nova conversa do dia ou após pausa longa (>= 6 horas)
-        isOpeningOrLongPause = isDifferentDay || hoursSinceLastAiMsg >= 6
       }
-    } catch (_) {
-      isOpeningOrLongPause = true
-    }
+    } catch (_) {}
 
     let channelContext = ''
     if (receiverPhone.includes('991828050')) {
@@ -1745,15 +1735,12 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
     }
 
     const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour)
-    const timeGreetingRule = isOpeningOrLongPause
-      ? `REGRA OBRIGATÓRIA DE SAUDAÇÃO TEMPORAL (ABERTURA / NOVO DIA / RETOMADA APÓS INTERVALO):
+    const timeGreetingRule = `REGRA OBRIGATÓRIA DE SAUDAÇÃO TEMPORAL (EM TODA RESPOSTA — REGRA PERMANENTE DO MAURO):
 - Horário local oficial de envio (America/Sao_Paulo): ${currentTimeStr} (${getTemporalGreetingWord(brHour)}).
-- Você DEVE iniciar esta mensagem com a saudação temporal adequada: "${temporalGreetingSuggestion}".
-- Se o nome do lead for confiável e conhecido, use "${temporalGreetingSuggestion} Tudo bem?".
-- Se o nome do cliente ainda NÃO foi informado, use "${getTemporalGreetingWord(brHour)}! Tudo bem?" sem inventar nomes, e pergunte o nome dele naturalmente e com simpatia cedo na conversa (APENAS UMA pergunta por vez, sem acumular perguntas).`
-      : `REGRA DE DIÁLOGO EM ANDAMENTO:
-- Esta mensagem faz parte de um diálogo já em andamento recente no mesmo dia.
-- NÃO repita saudações formais ("Bom dia", "Boa tarde", "Boa noite") em toda resposta subsequente. Vá direto ao ponto de forma calorosa, consultiva e fluida.`
+- TODA e qualquer resposta da Bia DEVE iniciar obrigatoriamente com a saudação temporal correta + primeiro nome do cliente: "${temporalGreetingSuggestion}".
+- Se o nome do lead for confiável e conhecido (ex: "${displayName || 'João'}"), comece OBRIGATORIAMENTE com "${temporalGreetingSuggestion}".
+- Se o nome do cliente ainda NÃO for conhecido, use exatamente "${getTemporalGreetingWord(brHour)}!" sem inventar nomes, e pergunte o nome dele naturalmente e com simpatia se for o primeiro contato.
+- Esta regra aplica-se a TODAS as mensagens da conversa, sem exceção (tanto no início quanto no meio do diálogo).`
 
     const systemPrompt = `Você é ${aiName}, assistente virtual da BRF Imóveis (www.brfimoveis.com.br).
 Sua identidade e instruções específicas (Persona):
@@ -1836,8 +1823,9 @@ PROTOCOLO COMERCIAL CONSULTIVO E DIRETRIZES DE ATENDIMENTO (BRF IMÓVEIS):
     - Se perguntarem de onde veio o nome ou quem é você: "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊" — sem justificativas de sistemas ou dados de cadastro. Envie APENAS a mensagem conversacional em Português do Brasil.
 
 11. TRANSCRIÇÕES DE ÁUDIO DO CLIENTE:
-    - Mensagens recebidas iniciadas por "[Áudio transcrevido]:" ou "[Áudio Recebido]" são áudios gravados e falados pelo cliente no WhatsApp transcritos para você.
-    - Entenda a mensagem exatamente como fala natural do cliente e responda normalmente de forma calorosa, consultiva e direta. NUNCA cite o prefixo "[Áudio transcrevido]:" na sua resposta.
+    - Mensagens recebidas iniciadas por "[Áudio do cliente]:", "[Áudio transcrevido]:" ou "[Áudio Recebido]" são áudios gravados e falados pelo cliente no WhatsApp transcritos para você.
+    - Entenda a mensagem exatamente como fala natural do cliente e responda normalmente de forma calorosa, consultiva e direta. NUNCA cite o prefixo "[Áudio do cliente]:" nem "[Áudio transcrevido]:" na sua resposta.
+    - Se a mensagem recebida for "[Áudio Recebido - não foi possível transcrever]", responda cordialmente informando que não foi possível ouvir o áudio por instabilidade de rede e peça com gentileza para o cliente digitar por escrito ou mandar novamente.
 
 CONTEXTO RECUPERADO:
 ${combinedContextText || '(Nenhum contexto adicional na base)'}`
@@ -2761,12 +2749,50 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       responseText = responseText.replace(/\[VIDEO\]/gi, '').trim()
     }
 
-    // Se o cliente enviou áudio/voz no WhatsApp, responder obrigatoriamente com áudio (voz)
+    // Garantir prefixo de saudação temporal + nome do cliente em TODA resposta (regra permanente)
+    function ensureGreetingAtBeginning(txt, name, hour) {
+      if (!txt) return buildTemporalGreeting(name, hour)
+      var trimmed = txt.trim()
+      var targetGreeting = buildTemporalGreeting(name, hour)
+      var salutationWord = getTemporalGreetingWord(hour)
+
+      // Regex para identificar se já começa com saudação temporal (com ou sem nome/pontuação)
+      var greetingStartRegex = new RegExp(
+        '^(?:\\*\\*)?(?:' + salutationWord + '|Olá|Ola|Oi)\\b[^\\n.!?]*[.!?,]?\\s*',
+        'i',
+      )
+
+      if (greetingStartRegex.test(trimmed)) {
+        // Já tem alguma saudação no início: substituir pela saudação padrão temporal + nome
+        var rest = trimmed.replace(greetingStartRegex, '').trim()
+        return rest ? targetGreeting + ' ' + rest : targetGreeting
+      }
+
+      // Não tem saudação: prefixar
+      return targetGreeting + ' ' + trimmed
+    }
+
+    // Se o cliente enviou áudio/voz de qualquer formato no WhatsApp, responder com áudio (voz)
     const isCustomerVoice =
+      customerMessage.startsWith('[Áudio do cliente]') ||
       customerMessage.startsWith('[Áudio transcrevido]') ||
-      customerMessage.startsWith('[Áudio Recebido]') ||
+      customerMessage.startsWith('[Áudio Recebido') ||
+      incomingText.startsWith('[Áudio do cliente]') ||
       incomingText.startsWith('[Áudio transcrevido]') ||
-      incomingText.startsWith('[Áudio Recebido]')
+      incomingText.startsWith('[Áudio Recebido')
+
+    // Se a transcrição do áudio falhou, responder com pedido educado para escrever
+    if (
+      customerMessage.includes('[Áudio Recebido - não foi possível transcrever]') ||
+      incomingText.includes('[Áudio Recebido - não foi possível transcrever]')
+    ) {
+      const audioFallbackGreeting = buildTemporalGreeting(displayName, brHour)
+      responseText = `${audioFallbackGreeting} Não consegui ouvir o seu áudio com clareza por aqui. Você poderia escrever por mensagem de texto ou mandar novamente? Assim consigo te atender perfeitamente!`
+    } else {
+      // Assegurar a saudação em toda resposta
+      responseText = ensureGreetingAtBeginning(responseText, displayName, brHour)
+    }
+
     if (isCustomerVoice && !sendAudio) {
       sendAudio = true
     }
