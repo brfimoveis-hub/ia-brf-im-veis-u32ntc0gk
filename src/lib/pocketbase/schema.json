@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-29T01:14:36.252Z",
+  "generatedAt": "2026-09-29T01:35:25.540Z",
   "collections": [
     {
       "name": "users",
@@ -1929,6 +1929,137 @@
       "indexes": [
         "CREATE UNIQUE INDEX idx_oauth_states_state ON oauth_states (state)",
         "CREATE INDEX idx_oauth_states_created ON oauth_states (created)"
+      ]
+    },
+    {
+      "name": "mauro_messages",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "",
+        "update": "@request.auth.id != \"\"",
+        "delete": "@request.auth.id != \"\""
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "customer_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "customers"
+        },
+        {
+          "name": "contact_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contact_phone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "channel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "incoming_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bia_response",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pendente", "lido", "resolvido"]
+        },
+        {
+          "name": "urgency",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resolved_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resolved_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "forwarded_to_phone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "forwarded_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "metadata",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_mauro_messages_status ON mauro_messages (status)",
+        "CREATE INDEX idx_mauro_messages_created ON mauro_messages (created)",
+        "CREATE INDEX idx_mauro_messages_category ON mauro_messages (category)"
       ]
     }
   ]
