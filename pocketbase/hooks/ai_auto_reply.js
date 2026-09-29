@@ -504,20 +504,20 @@ onRecordAfterCreateSuccess((e) => {
         )
     }
 
-    const defaultBiaPersonaFallback = `Você é a Bia, assistente virtual da BRF Imóveis (www.brfimoveis.com.br).
+    const defaultBiaPersonaFallback = `Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
 Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada à origem do lead (anúncio focado vs. fluxo geral).
 
-REGRA PERMANENTE OBRIGATÓRIA — SAUDAÇÃO EM TODA RESPOSTA:
-- EM TODA RESPOSTA, sem exceção, você DEVE começar com a saudação temporal correta segundo o horário de Brasília + o primeiro nome do cliente (ex: "Bom dia, João!", "Boa tarde, Maria!", "Boa noite, Carlos!").
-- Se o nome do cliente não for conhecido ou for duvidoso, use apenas a saudação temporal correta (ex: "Bom dia!", "Boa tarde!", "Boa noite!") — NUNCA invente nomes.
-- Essa regra vale para TODAS as mensagens da conversa, mesmo no meio do diálogo.
+REGRA DE SAUDAÇÃO TEMPORAL E CONTINUIDADE:
+- Saudação temporal (Bom dia / Boa tarde / Boa noite) APENAS na 1ª mensagem da Bia na conversa ou quando houver mais de 24 horas de silêncio (hoursSinceLastAiMsg >= 24).
+- No meio do diálogo contínuo NÃO saudar repetidamente, ir direto ao ponto de forma consultiva e empática.
+- Se o cliente não tem nome no cadastro, saudar só com o horário (nunca inventar nome).
 
 IDENTIFICAÇÃO E APRESENTAÇÃO (PADRÃO DE MERCADO):
-- Você se identifica SIMPLESMENTE como: "Bia, assistente virtual da BRF Imóveis".
+- Você se identifica SIMPLESMENTE como: "Bia, da BRF Imóveis".
 - SEM sobrenomes, SEM mencionar nomes de corretores ou do dono ao se apresentar.
 - NUNCA explique detalhes internos de sistemas, campos de CRM ou cadastros de leads.
 - Se o cliente perguntar "quem é você?", "de onde veio seu nome?", "você é robô?", "é IA?" ou questionar sua identidade, responda de forma leve, cordial e honesta no padrão de mercado:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
+  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
   NUNCA mencione que o nome veio de cadastro de leads, CRM, banco de dados ou sistemas internos!
 
 TRATAMENTO DO CLIENTE PELO NOME:
@@ -729,7 +729,23 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
         if (nameMatch && nameMatch[1]) {
           const cand = nameMatch[1].trim()
           const valid = cleanAndValidateLeadName('', cand)
-          if (valid) collectedLeadData.name = valid
+          if (valid) {
+            collectedLeadData.name = valid
+            try {
+              const fName = valid.split(' ')[0]
+              if (
+                fName &&
+                fName.length > 1 &&
+                (!customer.getString('name') ||
+                  customer.getString('name').includes('❤️') ||
+                  customer.getString('name').startsWith('+'))
+              ) {
+                customer.set('name', valid)
+                customer.set('first_name', fName)
+                $app.saveNoValidate(customer)
+              }
+            } catch (_) {}
+          }
         } else if (!collectedLeadData.name && /^[A-Za-zÀ-ÿ]{2,18}$/.test(text.trim())) {
           // Se for resposta de uma palavra que seja um nome válido
           const word = text.trim()
@@ -737,7 +753,23 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
             !/^(sim|nao|não|quero|ok|ola|olá|bom|boa|casa|apto|vista|compra|venda)$/i.test(word)
           ) {
             const valid = cleanAndValidateLeadName('', word)
-            if (valid) collectedLeadData.name = valid
+            if (valid) {
+              collectedLeadData.name = valid
+              try {
+                const fName = valid.split(' ')[0]
+                if (
+                  fName &&
+                  fName.length > 1 &&
+                  (!customer.getString('name') ||
+                    customer.getString('name').includes('❤️') ||
+                    customer.getString('name').startsWith('+'))
+                ) {
+                  customer.set('name', valid)
+                  customer.set('first_name', fName)
+                  $app.saveNoValidate(customer)
+                }
+              } catch (_) {}
+            }
           }
         }
 
@@ -866,17 +898,19 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
       )
     }
 
-    // Se o nome foi descoberto pelo histórico, atualizar displayName
-    if (collectedLeadData.name && !displayName) {
-      // Usar o nome extraído
+    // Se o nome foi descoberto pelo histórico, atualizar displayName e persistir imediatamente no customer
+    if (collectedLeadData.name) {
       try {
         const fName = collectedLeadData.name.split(' ')[0]
         if (fName && fName.length > 1) {
-          // Atualiza registro do customer caso ainda não tenha nome definido
+          const currentName = customer.getString('name') || ''
+          const currentFirstName = customer.getString('first_name') || ''
           if (
-            !customer.getString('name') ||
-            customer.getString('name').includes('❤️') ||
-            customer.getString('name').startsWith('+')
+            !currentName ||
+            currentName.includes('❤️') ||
+            currentName.startsWith('+') ||
+            !currentFirstName ||
+            currentFirstName.includes('❤️')
           ) {
             customer.set('name', collectedLeadData.name)
             customer.set('first_name', fName)
@@ -884,6 +918,9 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
           }
         }
       } catch (_) {}
+      if (!displayName) {
+        displayName = collectedLeadData.name.split(' ')[0]
+      }
     }
 
     // Detecção de interesse explícito no imóvel do anúncio/portal ("gostei dessa", "tenho interesse neste imóvel", link enviado)
@@ -904,8 +941,9 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
       (lowerCustMsg.includes('esse imóvel') && lowerCustMsg.includes('fotos')) ||
       (lowerCustMsg.includes('este imóvel') && lowerCustMsg.includes('fotos'))
 
+    const isNameAlreadyKnown = !!(collectedLeadData.name || displayName)
     let collectedDataSummary = `### RESUMO DE DADOS JÁ COLETADOS DESTE CLIENTE (NÃO REPETIR ESTAS PERGUNTAS):
-- Nome do cliente: ${collectedLeadData.name || displayName || 'Já conhecido / apresentado no chat'}
+- Nome do cliente: ${collectedLeadData.name || displayName || 'Não informado ainda'}
 - Finalidade: ${collectedLeadData.purpose || 'Não informada ainda'}
 - Forma de pagamento: ${collectedLeadData.payment || 'Não informada ainda'}
 - Tipologia / dormitórios: ${collectedLeadData.typology || 'Não informada ainda'}
@@ -914,7 +952,11 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
 ${collectedLeadData.specificPropertyInterests.length > 0 ? `- Imóvel específico de interesse do anúncio/portal: ${collectedLeadData.specificPropertyInterests.join(', ')}` : ''}
 
 DIRETRIZES CRÍTICAS ANTI-REPETIÇÃO E FLUXO CONTÍNUO:
-1. NUNCA repita uma pergunta cuja resposta já consta na lista acima!
+${
+  isNameAlreadyKnown
+    ? `* REGRA CRÍTICA DO NOME DO LEAD: O nome do cliente já é conhecido e confirmado ("${collectedLeadData.name || displayName}"). É ESTRITAMENTE PROIBIDO perguntar "qual o seu nome?", "como posso te chamar?" ou pedir identificação novamente.\n`
+    : ''
+}1. NUNCA repita uma pergunta cuja resposta já consta na lista acima!
    - Se o lead já disse que vai pagar à vista ou financiado: NUNCA pergunte sobre financiamento/à vista novamente!
    - Se o lead já se apresentou ou o nome já é conhecido: NUNCA pergunte "como posso te chamar?" nem repita apresentações formais!
    - Se o lead já informou a tipologia ("casa com 3 suítes", etc.): NUNCA pergunte novamente tipologia ou quantidade de quartos!
@@ -1734,15 +1776,19 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
       clientContext += `- Se quer comprar/alugar imóvel de terceiros fora do catálogo: acolher com honestidade sobre a disponibilidade daquela unidade específica, apresentar 2 a 3 alternativas reais compatíveis do catálogo BRF OU oferecer busca personalizada na rede de parceiros, com objetivo de cadastrar a demanda e agendar com o Mauro.\n`
     }
 
+    const isFirstAiMessageOrAfter24h = hoursSinceLastAiMsg === null || hoursSinceLastAiMsg >= 24
     const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour)
-    const timeGreetingRule = `REGRA OBRIGATÓRIA DE SAUDAÇÃO TEMPORAL (EM TODA RESPOSTA — REGRA PERMANENTE DO MAURO):
+    const timeGreetingRule = isFirstAiMessageOrAfter24h
+      ? `REGRA DE SAUDAÇÃO TEMPORAL (PRIMEIRO CONTATO OU APÓS 24H DE SILÊNCIO):
 - Horário local oficial de envio (America/Sao_Paulo): ${currentTimeStr} (${getTemporalGreetingWord(brHour)}).
-- TODA e qualquer resposta da Bia DEVE iniciar obrigatoriamente com a saudação temporal correta + primeiro nome do cliente: "${temporalGreetingSuggestion}".
-- Se o nome do lead for confiável e conhecido (ex: "${displayName || 'João'}"), comece OBRIGATORIAMENTE com "${temporalGreetingSuggestion}".
-- Se o nome do cliente ainda NÃO for conhecido, use exatamente "${getTemporalGreetingWord(brHour)}!" sem inventar nomes, e pergunte o nome dele naturalmente e com simpatia se for o primeiro contato.
-- Esta regra aplica-se a TODAS as mensagens da conversa, sem exceção (tanto no início quanto no meio do diálogo).`
+- Como este é o primeiro contato da Bia ou se passaram mais de 24h desde a última mensagem, inicie com a saudação temporal: "${temporalGreetingSuggestion}".
+- Se o lead não tiver nome confiável no cadastro, use apenas "${getTemporalGreetingWord(brHour)}!" sem inventar nome.
+- Nunca repita perguntas já respondidas.`
+      : `REGRA DE CONTINUIDADE DO DIÁLOGO (CONVERSA EM ANDAMENTO):
+- O diálogo com o cliente já está em andamento (última interação há menos de 24h).
+- NÃO use saudações formais nem temporais ("Bom dia/Boa tarde/Boa noite/Olá/Oi"). Vá direto ao ponto, respondendo ou avançando com foco na demanda do cliente de forma consultiva e acolhedora.`
 
-    const systemPrompt = `Você é ${aiName}, assistente virtual da BRF Imóveis (www.brfimoveis.com.br).
+    const systemPrompt = `Você é ${aiName}, da BRF Imóveis (www.brfimoveis.com.br).
 Sua identidade e instruções específicas (Persona):
 ${personaInstructions}
 
@@ -1757,10 +1803,10 @@ ${collectedDataSummary}
 ${timeGreetingRule}
 
 IDENTIFICAÇÃO E APRESENTAÇÃO DA BIA (PADRÃO DE MERCADO):
-- Identifique-se apenas como: "Bia, assistente virtual da BRF Imóveis". Sem sobrenomes, sem citar donos/corretores na apresentação, sem explicar estruturas técnicas.
+- Identifique-se apenas como: "Bia, da BRF Imóveis". Sem sobrenomes, sem citar donos/corretores na apresentação, sem explicar estruturas técnicas.
 - Se o cliente perguntar "quem é você?", "de onde veio seu nome?", "você é um robô?", "é inteligência artificial?" ou fizer qualquer pergunta sobre sua identidade/origem:
   Responda de forma leve, simpática e transparente no padrão de mercado, por exemplo:
-  "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
+  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
 - PROIBIÇÃO ABSOLUTA: NUNCA diga nem explique que nomes vieram de cadastro de leads, formulários, CRM, banco de dados, Google Contacts ou tabelas internas. NUNCA revele termos técnicos de cadastro ou sistemas.
 - TRATAMENTO DO CLIENTE: Trate o cliente pelo nome apenas se for um nome simples e confiável. Se o nome parecer estranho ou incerto, simplesmente cumprimente sem usar nome ("${getTemporalGreetingWord(brHour)}! Tudo bem?").
 
@@ -1819,8 +1865,8 @@ PROTOCOLO COMERCIAL CONSULTIVO E DIRETRIZES DE ATENDIMENTO (BRF IMÓVEIS):
 
 10. SAÍDA LIMPA E IDENTIFICAÇÃO NATURAL:
     - NUNCA mencione processos internos, "cadastro de leads", "campo de cadastro", "CRM", "catálogo", "contexto", "IA supervisora", "banco de dados" ou "instruções".
-    - Apresentação padrão: Sempre "Bia, assistente virtual da BRF Imóveis".
-    - Se perguntarem de onde veio o nome ou quem é você: "Sou a Bia, assistente virtual da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊" — sem justificativas de sistemas ou dados de cadastro. Envie APENAS a mensagem conversacional em Português do Brasil.
+    - Apresentação padrão: Sempre "Bia, da BRF Imóveis".
+    - Se perguntarem de onde veio o nome ou quem é você: "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊" — sem justificativas de sistemas ou dados de cadastro. Envie APENAS a mensagem conversacional em Português do Brasil.
 
 11. TRANSCRIÇÕES DE ÁUDIO DO CLIENTE:
     - Mensagens recebidas iniciadas por "[Áudio do cliente]:", "[Áudio transcrevido]:" ou "[Áudio Recebido]" são áudios gravados e falados pelo cliente no WhatsApp transcritos para você.
@@ -2090,13 +2136,13 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
     // Optional Mother AI supervisor validation & Regeneration Flow
     if (motherAiInstructions && responseText.length > 0) {
       try {
-        const evalPrompt = `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie com rigor se a resposta da Bia obedece às diretrizes:
+        const evalPrompt = `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie a resposta da Bia:
 "${motherAiInstructions}".
-Critérios obrigatórios:
-1. Identificação correta e sem inventar dados ("Bia, assistente virtual da BRF Imóveis").
-2. Saudação temporal apropriada quando requerida e apenas UMA pergunta por vez.
-3. Não inventar imóveis, preços ou links fictícios.
-4. Nunca reintroduzir perguntas enlatadas ou questionários longos.
+Critérios essenciais:
+1. Identificação correta e sem inventar dados ("Bia, da BRF Imóveis" se for se apresentar).
+2. Diálogo em andamento: NÃO reprove ausência de saudação quando o diálogo já está em andamento (diálogo em andamento NÃO deve ter saudações redundantes).
+3. Aprovar respostas diretas, consultivas e de continuidade.
+4. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados ou invenção de dados.
 
 FORMATO ESTRITO DA RESPOSTA:
 - Se a mensagem estiver em conformidade e aprovada, responda EXATAMENTE e APENAS a palavra: APROVADO
@@ -2137,7 +2183,7 @@ Motivos: <descreva sucintamente em 1 a 2 linhas o que corrigir>`
               .trim()
             if (!regenInstructions) {
               regenInstructions =
-                'Ajuste a saudação temporal, use a identificação "Bia, assistente virtual da BRF Imóveis" e faça apenas uma pergunta por vez sem inventar imóveis.'
+                'Use a identificação "Bia, da BRF Imóveis" (se for se apresentar), mantenha continuidade sem saudações repetidas e faça apenas uma pergunta por vez sem inventar imóveis.'
             }
 
             try {
@@ -2689,9 +2735,13 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         console.warn(`[AI_REPLY] Error recording ai_self_check_blocked log: ${String(logBlockErr)}`)
       }
 
-      // Substituição por fallback seguro: saudação temporal + identificação padrão "Bia, assistente virtual da BRF Imóveis" + pedido de perdão curto e continuidade
-      const safeSalutation = buildTemporalGreeting(displayName, brHour)
-      responseText = `${safeSalutation} Bia, assistente virtual da BRF Imóveis aqui. Peço desculpas pela mensagem anterior! Estou aqui para te ajudar a encontrar o imóvel ideal. Podemos continuar nossa conversa?`
+      // Substituição por fallback seguro: saudação temporal + identificação padrão "Bia, da BRF Imóveis" + pedido de perdão curto e continuidade
+      if (isFirstAiMessageOrAfter24h) {
+        const safeSalutation = buildTemporalGreeting(displayName, brHour)
+        responseText = `${safeSalutation} Bia, da BRF Imóveis aqui. Peço desculpas pela mensagem anterior! Estou aqui para te ajudar a encontrar o imóvel ideal. Podemos continuar nossa conversa?`
+      } else {
+        responseText = `Peço desculpas pela mensagem anterior! Estou aqui para te ajudar a encontrar o imóvel ideal na BRF Imóveis. Podemos continuar nossa conversa?`
+      }
     }
 
     // FINAL UNCONDITIONAL SANITIZATION & CANNED INTERCEPTION
@@ -2705,8 +2755,12 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
 
     // Secondary defensive re-check on sanitized text
     if (isInternalEvaluationText(responseText)) {
-      const safeSalutation = buildTemporalGreeting(displayName, brHour)
-      responseText = `${safeSalutation} Bia, assistente virtual da BRF Imóveis. Como posso te ajudar na sua busca hoje?`
+      if (isFirstAiMessageOrAfter24h) {
+        const safeSalutation = buildTemporalGreeting(displayName, brHour)
+        responseText = `${safeSalutation} Bia, da BRF Imóveis. Como posso te ajudar na sua busca hoje?`
+      } else {
+        responseText = `Como posso te ajudar na sua busca hoje na BRF Imóveis?`
+      }
     }
 
     // Duplicate message final guard
@@ -2749,7 +2803,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       responseText = responseText.replace(/\[VIDEO\]/gi, '').trim()
     }
 
-    // Garantir prefixo de saudação temporal + nome do cliente em TODA resposta (regra permanente)
+    // Garantir saudação condicional: apenas na 1ª mensagem da IA ou quando hoursSinceLastAiMsg >= 24
     function ensureGreetingAtBeginning(txt, name, hour) {
       if (!txt) return buildTemporalGreeting(name, hour)
       var trimmed = txt.trim()
@@ -2772,6 +2826,14 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       return targetGreeting + ' ' + trimmed
     }
 
+    function removeLeadingGreeting(txt) {
+      if (!txt) return ''
+      var trimmed = txt.trim()
+      var greetingRegex =
+        /^(?:\*\*)?(?:Bom dia|Boa tarde|Boa noite|Olá|Ola|Oi)\b[^\\n.!?]*[.!?,]?\s*/i
+      return trimmed.replace(greetingRegex, '').trim()
+    }
+
     // Se o cliente enviou áudio/voz de qualquer formato no WhatsApp, responder com áudio (voz)
     const isCustomerVoice =
       customerMessage.startsWith('[Áudio do cliente]') ||
@@ -2786,11 +2848,19 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       customerMessage.includes('[Áudio Recebido - não foi possível transcrever]') ||
       incomingText.includes('[Áudio Recebido - não foi possível transcrever]')
     ) {
-      const audioFallbackGreeting = buildTemporalGreeting(displayName, brHour)
-      responseText = `${audioFallbackGreeting} Não consegui ouvir o seu áudio com clareza por aqui. Você poderia escrever por mensagem de texto ou mandar novamente? Assim consigo te atender perfeitamente!`
-    } else {
-      // Assegurar a saudação em toda resposta
+      const audioFallbackGreeting = isFirstAiMessageOrAfter24h
+        ? buildTemporalGreeting(displayName, brHour) + ' '
+        : ''
+      responseText = `${audioFallbackGreeting}Não consegui ouvir o seu áudio com clareza por aqui. Você poderia escrever por mensagem de texto ou mandar novamente? Assim consigo te atender perfeitamente!`
+    } else if (isFirstAiMessageOrAfter24h) {
+      // 1ª mensagem ou após 24h: assegurar saudação no início
       responseText = ensureGreetingAtBeginning(responseText, displayName, brHour)
+    } else {
+      // Meio do diálogo contínuo (<24h): remover saudações redundantes do início
+      const cleanedGreeting = removeLeadingGreeting(responseText)
+      if (cleanedGreeting) {
+        responseText = cleanedGreeting
+      }
     }
 
     if (isCustomerVoice && !sendAudio) {

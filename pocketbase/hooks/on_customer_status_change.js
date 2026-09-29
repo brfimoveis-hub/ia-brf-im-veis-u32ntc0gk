@@ -127,28 +127,100 @@ onRecordAfterUpdateSuccess((e) => {
     historyRecords.reverse()
   } catch (_) {}
 
+  // Carregar dados estruturados, notas e preferências já coletadas do customer
+  const customerNotes = e.record.getString('notes') || ''
+  const customerPriceRange = e.record.getString('price_range') || ''
+  const customerNeighborhood = e.record.getString('neighborhood') || ''
+  const customerProfile = e.record.getString('lead_profile') || ''
+
+  // Mapear imóveis específicos citados nas notas ou no histórico do cliente
+  let relevantPropertyInfo = ''
+  try {
+    let combinedSearch = `${customerNotes} ${customerNeighborhood} ${customerPriceRange}`
+    if (historyRecords && historyRecords.length > 0) {
+      combinedSearch += ' ' + historyRecords.map((m) => m.getString('content') || '').join(' ')
+    }
+
+    const propCodeMatch = combinedSearch.match(
+      /(?:^|\s|\b)(cs[-\s]?284|cs284|ap[-\s]?\d+|lm[-\s]?\d+|cs[-\s]?\d+|\b\d{3}\b)/i,
+    )
+    let propRecs = []
+    if (propCodeMatch) {
+      const codeClean = propCodeMatch[1].toUpperCase().replace(/\s+/g, '')
+      const numOnly = codeClean.replace(/\D/g, '')
+      propRecs = $app.findRecordsByFilter(
+        'properties',
+        `is_active = true && (code ~ '${codeClean}' || url ~ '/${numOnly}/' || code ~ '${numOnly}')`,
+        '-created',
+        1,
+        0,
+      )
+    }
+
+    if (propRecs.length === 0 && customerNeighborhood) {
+      propRecs = $app.findRecordsByFilter(
+        'properties',
+        `is_active = true && (neighborhood ~ '${customerNeighborhood.replace(/'/g, "''")}' || title ~ '${customerNeighborhood.replace(/'/g, "''")}')`,
+        '-created',
+        1,
+        0,
+      )
+    }
+
+    if (propRecs.length > 0) {
+      const pr = propRecs[0]
+      const pTitle = pr.getString('title') || ''
+      const pPrice =
+        pr.getString('price_formatted') ||
+        (pr.getInt('price') ? `R$ ${pr.getInt('price').toLocaleString('pt-BR')}` : '')
+      const pNeigh = pr.getString('neighborhood') || ''
+      const pCity = pr.getString('city') || ''
+      const pUrl = pr.getString('url') || ''
+      const pSuites = pr.getInt('suites')
+      const pBeds = pr.getInt('bedrooms')
+      const pDesc = (pr.getString('description') || '').split('.')[0]
+
+      relevantPropertyInfo = `\nIMÓVEL DE INTERESSE MAPEADO NO CATÁLOGO:
+- Título: ${pTitle}
+- Valor: ${pPrice}
+- Localização: ${[pNeigh, pCity].filter(Boolean).join(', ')}
+- Tipologia: ${pSuites ? `${pSuites} suíte(s)` : `${pBeds} quartos`}
+- Destaques: ${pDesc}
+- Link Oficial: ${pUrl}`
+    }
+  } catch (errProp) {
+    $app.logger().error('Error fetching relevant property for status change', errProp)
+  }
+
   const messages = []
   const clientIdentification = displayName
     ? `Nome do lead: ${displayName} (nome completo: ${customerName})`
     : `O cliente ainda não informou o nome (número/sem nome). Trate-o cordialmente de forma genérica sem placeholders como [Nome].`
 
-  const systemPrompt = `Você é ${aiName}.
+  const customerSummary = `DADOS E PREFERÊNCIAS JÁ CONHECIDAS DO CLIENTE:
+- ${clientIdentification}
+- Notas salvas: ${customerNotes || 'Nenhuma nota registrada'}
+- Faixa de valor: ${customerPriceRange || 'Não definida'}
+- Região/Bairro de interesse: ${customerNeighborhood || 'Não definido'}
+- Perfil: ${customerProfile || 'Geral'}
+${relevantPropertyInfo}`
+
+  const systemPrompt = `Você é ${aiName}, da BRF Imóveis.
 Sua identidade e instruções principais:
 ${aiInstructions}
 
-DADOS DO CLIENTE / LEAD:
-${clientIdentification}
+${customerSummary}
 
 EVENTO ATUAL:
 O cliente acabou de ser movido pelo agente para a fase de funil: "${newStatus}". (Fase anterior: "${oldStatus}").
 
-SUA TAREFA:
-Analise o histórico da conversa e as instruções. Se houver uma mensagem ideal ou um follow-up que deve ser enviado AGORA nesta nova fase, escreva essa mensagem.
-${displayName ? `Use o primeiro nome do cliente ("${displayName}") se for saudar.` : 'NÃO invente um nome e NUNCA deixe marcadores como "[Nome]" ou "{nome}".'}
-Seja direta, empática e humana.
-NUNCA mencione que você viu uma mudança de status no sistema. A mensagem deve parecer natural.
-NUNCA comece com confirmações tipo "Entendido" ou "Vou enviar". Apenas escreva a mensagem para o cliente.
-Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase ou se não for o momento adequado, responda EXATAMENTE com "SKIP_MESSAGE".`
+DIRETRIZES MANDATÓRIAS DE RETOMADA E CONTINUIDADE:
+1. NUNCA recomece questionários ou qualificação já respondida! Se o cliente já informou nome, tipologia, preferência (ex: casa com 3 suítes nos Ingleses) ou forma de pagamento (ex: à vista), é ESTRITAMENTE PROIBIDO perguntar isso novamente.
+2. RETOMADA DO IMÓVEL DE INTERESSE: Retome o imóvel de interesse do cliente, destacando diferenciais reais, valor, link oficial e convite consultivo para agendar visita presencial ou conferir as fotos.
+3. Não use saudações redundantes ("Bom dia/Boa tarde/Boa noite") se o diálogo já estava em andamento. Seja direta, acolhedora e consultiva.
+4. NUNCA mencione que você viu uma mudança de status/fase no sistema. A mensagem deve parecer 100% natural.
+5. NUNCA comece com confirmações tipo "Entendido" ou "Vou enviar". Apenas escreva a mensagem final para o cliente no WhatsApp.
+6. Se as suas instruções não prevêem o envio de nenhuma mensagem para esta fase ou se não for o momento adequado, responda EXATAMENTE com "SKIP_MESSAGE".`
 
   messages.push({ role: 'system', content: systemPrompt })
 
