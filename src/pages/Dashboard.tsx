@@ -1,50 +1,48 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, MessageSquare, Bot, Activity, BarChart3 } from 'lucide-react'
+import {
+  Users,
+  MessageSquare,
+  Bot,
+  Activity,
+  BarChart3,
+  RefreshCw,
+  ArrowUpRight,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
-// Sequential delay between dashboard fetches (ms). On low-resource / safe-mode
-// machines firing several HTTP requests back-to-back congests the network
-// pipeline and freezes the browser; a short pause between each keeps the main
-// thread responsive.
-const FETCH_DELAY_MS = 500
+// Sequential delay between dashboard fetches (ms).
+const FETCH_DELAY_MS = 300
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-// Text shown in a stat card before the user has clicked "Carregar Dashboard".
-const PLACEHOLDER = 'Clique em Carregar'
+const PLACEHOLDER = 'Carregar dados'
 
 export default function Dashboard() {
   const { user } = useAuth()
 
-  // Numbers are null until explicitly loaded via the button. On mount NOTHING
-  // is fetched — no useEffect, no realtime, no polling, no idle callback —
-  // the cards render a static placeholder instead.
   const [customerCount, setCustomerCount] = useState<number | null>(null)
   const [cadenceCount, setCadenceCount] = useState<number | null>(null)
   const [iaInteractions, setIaInteractions] = useState<number | null>(null)
-  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [currentUser, setCurrentUser] = useState<any>(user || null)
 
-  // Has the user ever clicked the load button? Controls whether cards show
-  // the placeholder ("Clique em Carregar") or their loaded number / state.
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  // Fired ONLY by an explicit click on "Carregar Dashboard". Sequential, one
-  // request at a time, with a pause between each. Never runs on mount.
   const loadDashboard = useCallback(async () => {
     if (loading) return
     setLoading(true)
     try {
-      // 1) User / integration data (single request).
-      if (user?.id) {
+      // 1) User / integration data
+      const targetUserId = user?.id || pb.authStore.record?.id
+      if (targetUserId) {
         try {
-          const usr = await pb.collection('users').getOne(user.id)
+          const usr = await pb.collection('users').getOne(targetUserId)
           setCurrentUser(usr)
         } catch (err) {
           console.error('dashboard user fetch failed', err)
@@ -52,7 +50,7 @@ export default function Dashboard() {
       }
       await wait(FETCH_DELAY_MS)
 
-      // 2) Customers count.
+      // 2) Customers count
       try {
         const res = await pb.collection('customers').getList(1, 1, { fields: 'id' })
         setCustomerCount(res.totalItems)
@@ -62,7 +60,7 @@ export default function Dashboard() {
       }
       await wait(FETCH_DELAY_MS)
 
-      // 3) Cadences count.
+      // 3) Cadences count
       try {
         const res = await pb
           .collection('cadences')
@@ -74,7 +72,7 @@ export default function Dashboard() {
       }
       await wait(FETCH_DELAY_MS)
 
-      // 4) Leads / IA interactions count.
+      // 4) Leads / IA interactions count
       try {
         const res = await pb.collection('leads').getList(1, 1, { fields: 'id' })
         setIaInteractions(res.totalItems)
@@ -88,20 +86,33 @@ export default function Dashboard() {
     }
   }, [loading, user?.id])
 
-  // Renders a stat card value: placeholder before first load, the number once
-  // loaded, or a loading indicator while the sequential fetch is in flight.
-  // Wrapped consistently in a span so React reconciler never collides between
-  // raw text nodes and elements.
+  // Carga automática inicial suave para o usuário ver números reais no celular e desktop
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadDashboard()
+    }, 150)
+    return () => clearTimeout(timer)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const renderValue = (value: number | null) => {
-    if (loading) return <span className="text-muted-foreground">Carregando…</span>
-    if (!loaded) return <span className="text-muted-foreground">{PLACEHOLDER}</span>
+    if (loading && !loaded) {
+      return (
+        <span className="text-sm font-normal text-muted-foreground inline-flex items-center gap-1.5">
+          <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+          <span>Carregando...</span>
+        </span>
+      )
+    }
+    if (!loaded && value === null) {
+      return <span className="text-sm font-normal text-muted-foreground">{PLACEHOLDER}</span>
+    }
     return <span>{value ?? 0}</span>
   }
 
   const getButtonText = () => {
-    if (loading) return 'Carregando...'
+    if (loading) return 'Atualizando...'
     if (loaded) return 'Atualizar Dashboard'
-    return 'Carregar Dashboard'
+    return 'Carregar Dados'
   }
 
   const renderWhatsAppBadge = () => {
@@ -158,93 +169,160 @@ export default function Dashboard() {
   const userName = currentUser?.name || user?.name || 'Administrador'
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="space-y-5 max-w-6xl mx-auto pb-8">
+      {/* Banner / Header com botão de ação bem visível no mobile */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-xl border shadow-xs">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            Cérebro do Sistema
+          </h2>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
             <span>Bem-vindo de volta, </span>
-            <span className="font-medium">{userName}</span>
-            <span>.</span>
+            <span className="font-semibold text-slate-900 dark:text-slate-200">{userName}</span>
+            <span> • Gestão imobiliária inteligente</span>
           </p>
         </div>
-        <Button onClick={loadDashboard} disabled={loading}>
-          <BarChart3 className={cn('mr-2 h-4 w-4', loading && 'animate-pulse')} />
+        <Button
+          onClick={loadDashboard}
+          disabled={loading}
+          className="w-full sm:w-auto shrink-0 shadow-sm"
+          size="sm"
+        >
+          <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />
           <span>{getButtonText()}</span>
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Clientes Ativos</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+      {/* Grid de Cards principais */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Clientes */}
+        <Card
+          onClick={() => {
+            if (!loaded && !loading) loadDashboard()
+          }}
+          className={cn(
+            'transition-all cursor-pointer hover:border-primary/50',
+            !loaded && 'bg-slate-50/70 dark:bg-slate-900/40',
+          )}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 p-3 sm:p-6">
+            <CardTitle className="text-xs sm:text-sm font-medium">Clientes Ativos</CardTitle>
+            <Users className="h-4 w-4 text-primary shrink-0" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{renderValue(customerCount)}</div>
-            <p className="text-xs text-muted-foreground">Na base de dados</p>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{renderValue(customerCount)}</div>
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">Na base de dados</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Cadências</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+
+        {/* Cadências */}
+        <Card
+          onClick={() => {
+            if (!loaded && !loading) loadDashboard()
+          }}
+          className={cn(
+            'transition-all cursor-pointer hover:border-primary/50',
+            !loaded && 'bg-slate-50/70 dark:bg-slate-900/40',
+          )}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 p-3 sm:p-6">
+            <CardTitle className="text-xs sm:text-sm font-medium">Cadências</CardTitle>
+            <MessageSquare className="h-4 w-4 text-primary shrink-0" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{renderValue(cadenceCount)}</div>
-            <p className="text-xs text-muted-foreground">Ativas</p>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{renderValue(cadenceCount)}</div>
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">Ativas no funil</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Integrações</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+
+        {/* IA Interações / Leads */}
+        <Card
+          onClick={() => {
+            if (!loaded && !loading) loadDashboard()
+          }}
+          className={cn(
+            'transition-all cursor-pointer hover:border-primary/50',
+            !loaded && 'bg-slate-50/70 dark:bg-slate-900/40',
+          )}
+        >
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 p-3 sm:p-6">
+            <CardTitle className="text-xs sm:text-sm font-medium">Atendimentos IA</CardTitle>
+            <Bot className="h-4 w-4 text-emerald-600 shrink-0" />
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">WhatsApp API</span>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
+            <div className="text-xl sm:text-2xl font-bold">{renderValue(iaInteractions)}</div>
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">Leads capturados</p>
+          </CardContent>
+        </Card>
+
+        {/* Status Integrações */}
+        <Card className="col-span-2 sm:col-span-1">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 p-3 sm:p-6">
+            <CardTitle className="text-xs sm:text-sm font-medium">Integrações</CardTitle>
+            <Activity className="h-4 w-4 text-primary shrink-0" />
+          </CardHeader>
+          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0 space-y-2 sm:space-y-2.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">WhatsApp API</span>
               <div>{renderWhatsAppBadge()}</div>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">CAPI</span>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Meta CAPI</span>
               <div>{renderCapiBadge()}</div>
             </div>
-            <p className="text-xs text-muted-foreground truncate">
+            <p className="text-[11px] text-muted-foreground truncate pt-0.5">
               <span>Pixel: </span>
-              <span>{getPixelLabel()}</span>
+              <span className="font-mono">{getPixelLabel()}</span>
             </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">IA Interações</CardTitle>
-            <Bot className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{renderValue(iaInteractions)}</div>
-            <p className="text-xs text-muted-foreground">Leads Totais</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="col-span-2">
-          <CardHeader>
-            <CardTitle>Configurações Rápidas</CardTitle>
-            <CardDescription>Acesso rápido aos módulos principais da plataforma.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/20">
-              <div className="space-y-1">
-                <h4 className="font-medium text-sm">Integração Meta CAPI</h4>
-                <p className="text-xs text-muted-foreground max-w-sm">
-                  Gerencie sua conexão com a API de Conversões da Meta (CAPI) para otimizar eventos.
-                </p>
-              </div>
-              <Button asChild variant="outline" size="sm">
-                <Link to="/settings/connections">Configurar Meta CAPI</Link>
-              </Button>
+      {/* Acesso rápido às áreas mais usadas no celular */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        {/* Card de Atendimento Bia */}
+        <Card className="hover:border-primary/60 transition-colors shadow-xs">
+          <CardHeader className="p-4 sm:p-5 pb-2 sm:pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Bot className="h-5 w-5 text-emerald-600" />
+                Central de Atendimentos (Bia)
+              </CardTitle>
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </div>
+            <CardDescription className="text-xs sm:text-sm">
+              Acompanhe as conversas em tempo real estilo WhatsApp e o que a Bia está respondendo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-5 pt-0">
+            <Button
+              asChild
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              size="sm"
+            >
+              <Link to="/atendimentos">Abrir Painel de Atendimentos</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Card Conexões */}
+        <Card className="hover:border-primary/60 transition-colors shadow-xs">
+          <CardHeader className="p-4 sm:p-5 pb-2 sm:pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Activity className="h-5 w-5 text-primary" />
+                Conexões & Meta CAPI
+              </CardTitle>
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <CardDescription className="text-xs sm:text-sm">
+              Gerencie a conexão com a API oficial do WhatsApp, Instagram e CAPI da Meta.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-5 pt-0">
+            <Button asChild variant="outline" className="w-full" size="sm">
+              <Link to="/settings/connections">Gerenciar Conexões</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>

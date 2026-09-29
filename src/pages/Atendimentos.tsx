@@ -27,7 +27,14 @@ import {
   ChevronRight,
   Send,
   SlidersHorizontal,
+  Mic,
+  Smile,
+  Paperclip,
 } from 'lucide-react'
+import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
+import { sendManualReply } from '@/services/conversations'
+import { sendWhatsAppMessages } from '@/services/meta_whatsapp'
+import { toast } from '@/hooks/use-toast'
 
 // Ícones específicos por canal
 function ChannelBadge({ channel }: { channel?: string }) {
@@ -86,15 +93,75 @@ function formatRelativeTime(dateString: string) {
   return date.toLocaleDateString([], { day: '2-digit', month: '2-digit' })
 }
 
-function formatFullDateTime(dateString: string) {
+function formatMessageTime(dateString: string) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatDayDivider(dateString: string) {
   if (!dateString) return ''
   const date = new Date(dateString)
   if (Number.isNaN(date.getTime())) return ''
 
-  const isToday = new Date().toDateString() === date.toDateString()
-  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  if (isToday) return time
-  return `${date.toLocaleDateString([], { day: '2-digit', month: '2-digit' })} às ${time}`
+  const today = new Date()
+  const yesterday = new Date()
+  yesterday.setDate(today.getDate() - 1)
+
+  if (date.toDateString() === today.toDateString()) {
+    return 'HOJE'
+  }
+  if (date.toDateString() === yesterday.toDateString()) {
+    return 'ONTEM'
+  }
+
+  const daysDiff = Math.round((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+  if (daysDiff < 7) {
+    const days = [
+      'DOMINGO',
+      'SEGUNDA-FEIRA',
+      'TERÇA-FEIRA',
+      'QUARTA-FEIRA',
+      'QUINTA-FEIRA',
+      'SEXTA-FEIRA',
+      'SÁBADO',
+    ]
+    return days[date.getDay()]
+  }
+
+  return date
+    .toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+    })
+    .toUpperCase()
+}
+
+function isAudioMessage(content: string) {
+  if (!content) return false
+  const trimmed = content.trim()
+  return (
+    trimmed.startsWith('[Áudio do cliente]') ||
+    trimmed.startsWith('[Audio do cliente]') ||
+    trimmed.startsWith('[Áudio Recebido') ||
+    trimmed.startsWith('[Audio Recebido') ||
+    trimmed.startsWith('[Áudio de resposta gerado]') ||
+    trimmed.startsWith('[Áudio enviado') ||
+    trimmed.startsWith('[Áudio da Bia]') ||
+    /\[(?:áudio|audio)[^\]]*\]/i.test(trimmed)
+  )
+}
+
+function extractAudioText(content: string) {
+  if (!content) return ''
+  // Se estiver no formato [Áudio do cliente]: "texto..."
+  const match = content.match(/\[(?:áudio|audio)[^\]]*\]:?\s*"?([^"]*)"?/i)
+  if (match && match[1]) {
+    return match[1].trim()
+  }
+  return content.replace(/\[(?:áudio|audio)[^\]]*\]/i, '').trim()
 }
 
 interface ThreadItem {
@@ -125,6 +192,8 @@ export default function Atendimentos() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [messages, setMessages] = useState<Conversation[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [replyText, setReplyText] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [channelFilter, setChannelFilter] = useState<
@@ -362,6 +431,78 @@ export default function Atendimentos() {
         return 'Sistema'
       default:
         return sender
+    }
+  }
+
+  // Agrupamento de mensagens por dia para divisores "HOJE", "ONTEM", "DATA"
+  const groupedMessages = useMemo(() => {
+    const groups: { dateKey: string; dividerLabel: string; items: Conversation[] }[] = []
+    let currentKey = ''
+
+    for (const msg of messages) {
+      const d = msg.created ? new Date(msg.created) : new Date()
+      const key = !Number.isNaN(d.getTime()) ? d.toDateString() : 'unknown'
+      if (key !== currentKey) {
+        currentKey = key
+        groups.push({
+          dateKey: key,
+          dividerLabel: formatDayDivider(msg.created),
+          items: [msg],
+        })
+      } else {
+        groups[groups.length - 1].items.push(msg)
+      }
+    }
+    return groups
+  }, [messages])
+
+  // Envio de mensagem manual pelo corretor/gestor pelo rodapé estilo WhatsApp
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!replyText.trim() || !selectedCustomerId || sendingReply) return
+
+    const textToSend = replyText.trim()
+    const targetPhone = selectedCustomer?.phone || currentThread?.customer_phone || ''
+    const targetName = selectedCustomer?.name || currentThread?.customer_name || 'Cliente'
+    const currentChannel = currentThread?.channel || 'whatsapp'
+
+    setSendingReply(true)
+    try {
+      // 1. Salva no banco local
+      const saved = await sendManualReply(selectedCustomerId, textToSend, currentChannel)
+      setMessages((prev) => [...prev, saved])
+      setReplyText('')
+
+      // 2. Se for WhatsApp e o cliente tiver telefone, despacha via API oficial
+      if (currentChannel === 'whatsapp' && targetPhone) {
+        try {
+          await sendWhatsAppMessages([{ phone: targetPhone, name: targetName }], textToSend)
+          toast({
+            title: 'Mensagem enviada',
+            description: 'Mensagem entregue com sucesso via WhatsApp.',
+          })
+        } catch (apiErr: any) {
+          console.warn('Falha no envio direto pela Meta API (gravado no CRM):', apiErr)
+          toast({
+            title: 'Gravada no CRM',
+            description: 'Mensagem salva no histórico do atendimento.',
+          })
+        }
+      } else {
+        toast({
+          title: 'Mensagem registrada',
+          description: 'Resposta do corretor gravada com sucesso.',
+        })
+      }
+    } catch (err: any) {
+      console.error('Erro ao enviar mensagem manual:', err)
+      toast({
+        title: 'Erro ao enviar',
+        description: err?.message || 'Não foi possível registrar a mensagem.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSendingReply(false)
     }
   }
 
@@ -696,134 +837,207 @@ export default function Atendimentos() {
                 </div>
               </div>
 
-              {/* Área de Mensagens estilo Chat */}
-              <ScrollArea className="flex-1 p-4 relative bg-[#eae6df] dark:bg-[#0b141a]">
-                <div
-                  className="absolute inset-0 opacity-[0.05] dark:opacity-[0.03] pointer-events-none"
-                  style={{
-                    backgroundImage:
-                      'url("https://img.usecurling.com/p/800/600?q=texture&color=gray&dpr=1")',
-                    backgroundSize: 'cover',
-                  }}
-                />
-
-                <div className="space-y-3 pb-4 relative z-10 max-w-3xl mx-auto flex flex-col">
+              {/* Área de Mensagens estilo Chat WhatsApp */}
+              <div
+                className="flex-1 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a]"
+                style={{
+                  backgroundImage: 'radial-gradient(#d1c7b7 0.75px, transparent 0.75px)',
+                  backgroundSize: '16px 16px',
+                }}
+              >
+                <div className="space-y-3 pb-2 relative z-10 max-w-3xl mx-auto flex flex-col">
                   {loadingMessages ? (
                     <div className="py-20 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
-                      <RefreshCw className="h-6 w-6 animate-spin text-primary opacity-60" />
+                      <RefreshCw className="h-6 w-6 animate-spin text-emerald-600 opacity-60" />
                       <span>Carregando histórico do atendimento...</span>
                     </div>
                   ) : messages.length === 0 ? (
                     <div className="py-20 text-center text-muted-foreground space-y-2">
-                      <Bot className="h-12 w-12 mx-auto opacity-20" />
-                      <p className="font-medium">Nenhuma mensagem registrada nesta conversa.</p>
-                      <p className="text-xs">
+                      <Bot className="h-12 w-12 mx-auto text-emerald-600/40" />
+                      <p className="font-medium text-slate-700 dark:text-slate-300">
+                        Nenhuma mensagem registrada nesta conversa.
+                      </p>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                         Assim que o cliente ou a Bia responder, as mensagens aparecerão aqui
-                        instantaneamente.
+                        instantaneamente em tempo real.
                       </p>
                     </div>
                   ) : (
-                    messages.map((msg) => {
-                      const isSystem = msg.sender === 'system'
-                      if (isSystem) {
-                        return (
-                          <div key={msg.id} className="flex justify-center my-3">
-                            <div className="bg-slate-200/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 text-[11px] font-medium px-4 py-1.5 rounded-full flex items-center gap-1.5 max-w-[85%] text-center shadow-xs border border-slate-300/40 dark:border-slate-700/50">
-                              <Sparkles className="h-3 w-3 shrink-0 text-amber-500" />
-                              <span className="leading-relaxed">{msg.content}</span>
-                            </div>
-                          </div>
-                        )
-                      }
-
-                      const isCustomer = msg.sender === 'customer'
-                      const isAi = msg.sender === 'ai'
-                      const isAgent = msg.sender === 'agent'
-
-                      return (
-                        <div
-                          key={msg.id}
-                          className={cn(
-                            'flex w-full',
-                            isCustomer ? 'justify-start' : 'justify-end',
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              'max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-2.5 shadow-sm relative space-y-1',
-                              isCustomer
-                                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-tl-xs border border-slate-200/60 dark:border-slate-700/60'
-                                : isAi
-                                  ? 'bg-[#d9fdd3] dark:bg-[#005c4b] text-slate-900 dark:text-slate-100 rounded-tr-xs border border-emerald-200/50 dark:border-emerald-800/50'
-                                  : 'bg-amber-50 dark:bg-amber-950/60 text-slate-900 dark:text-slate-100 rounded-tr-xs border border-amber-200 dark:border-amber-800',
-                            )}
-                          >
-                            {/* Header da bolha: Remetente */}
-                            <div className="flex items-center gap-1.5 text-[11px]">
-                              {isAi && (
-                                <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">
-                                  <Sparkles className="h-3 w-3" />
-                                  <span>{user?.ai_name || 'Bia (IA)'}</span>
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[9px] px-1 py-0 h-4 bg-emerald-100/60 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-none font-normal"
-                                  >
-                                    Automático
-                                  </Badge>
-                                </div>
-                              )}
-
-                              {isAgent && (
-                                <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-400">
-                                  <User className="h-3 w-3" />
-                                  <span>Corretor Humano</span>
-                                </div>
-                              )}
-
-                              {isCustomer && (
-                                <div className="flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-400">
-                                  <span>
-                                    {selectedCustomer?.name ||
-                                      currentThread?.customer_name ||
-                                      'Cliente'}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Conteúdo da mensagem */}
-                            <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap break-words">
-                              {msg.content}
-                            </p>
-
-                            {/* Rodapé da bolha: Horário e status */}
-                            <div className="flex items-center justify-end gap-1 text-[10px] text-slate-500 dark:text-slate-400 pt-0.5">
-                              <Clock className="h-2.5 w-2.5 opacity-60" />
-                              <span>{formatFullDateTime(msg.created)}</span>
-                              {!isCustomer && (
-                                <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400 ml-0.5" />
-                              )}
-                            </div>
-                          </div>
+                    groupedMessages.map((group) => (
+                      <div key={group.dateKey} className="space-y-2.5">
+                        {/* Divisor de Data estilo WhatsApp ("HOJE", "ONTEM", "DATA") */}
+                        <div className="flex justify-center my-2 sticky top-1 z-10">
+                          <span className="bg-white/90 dark:bg-[#182229]/95 text-[#54656f] dark:text-[#8696a0] text-[11px] font-semibold uppercase px-3 py-1 rounded-lg shadow-xs border border-black/5 dark:border-white/5 backdrop-blur-xs">
+                            {group.dividerLabel}
+                          </span>
                         </div>
-                      )
-                    })
+
+                        {group.items.map((msg) => {
+                          const isSystem = msg.sender === 'system'
+                          if (isSystem) {
+                            return (
+                              <div key={msg.id} className="flex justify-center my-2">
+                                <div className="bg-[#ffeecd] dark:bg-[#1f2c34] text-[#54656f] dark:text-[#aebac1] text-[11px] font-medium px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 max-w-[90%] text-center shadow-xs border border-[#ffdf9e]/60 dark:border-transparent">
+                                  <Sparkles className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                                  <span className="leading-relaxed">{msg.content}</span>
+                                </div>
+                              </div>
+                            )
+                          }
+
+                          const isCustomer = msg.sender === 'customer'
+                          const isAi = msg.sender === 'ai'
+                          const isAgent = msg.sender === 'agent'
+                          const isAudio = isAudioMessage(msg.content)
+                          const audioTranscription = isAudio ? extractAudioText(msg.content) : ''
+
+                          return (
+                            <div
+                              key={msg.id}
+                              className={cn(
+                                'flex w-full group',
+                                isCustomer ? 'justify-start' : 'justify-end',
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  'max-w-[88%] sm:max-w-[75%] rounded-2xl px-3.5 py-2 shadow-xs relative text-slate-900 dark:text-slate-100',
+                                  // Bolha estilo WhatsApp com "tail" sutil
+                                  isCustomer
+                                    ? 'bg-white dark:bg-[#202c33] rounded-tl-xs border border-black/5 dark:border-white/5'
+                                    : isAi
+                                      ? 'bg-[#d9fdd3] dark:bg-[#005c4b] rounded-tr-xs border border-emerald-600/10 dark:border-transparent'
+                                      : 'bg-[#e2f7cb] dark:bg-[#025144] rounded-tr-xs border border-emerald-600/15 dark:border-transparent',
+                                )}
+                              >
+                                {/* Header da bolha: Remetente */}
+                                <div className="flex items-center gap-1.5 text-[11px] mb-1">
+                                  {isAi && (
+                                    <div className="flex items-center gap-1.5 font-bold text-[#008069] dark:text-[#25d366]">
+                                      <Sparkles className="h-3 w-3" />
+                                      <span>{user?.ai_name || 'Bia (IA)'}</span>
+                                      <span className="text-[9px] font-normal px-1 py-0 rounded bg-emerald-700/10 dark:bg-emerald-300/20 text-emerald-800 dark:text-emerald-200">
+                                        Automático
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {isAgent && (
+                                    <div className="flex items-center gap-1.5 font-bold text-[#006653] dark:text-[#53bdeb]">
+                                      <User className="h-3 w-3" />
+                                      <span>Corretor Humano</span>
+                                    </div>
+                                  )}
+
+                                  {isCustomer && (
+                                    <div className="flex items-center gap-1 font-semibold text-[#54656f] dark:text-[#aebac1]">
+                                      <span>
+                                        {selectedCustomer?.name ||
+                                          currentThread?.customer_name ||
+                                          'Cliente'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Renderização especial de Áudio com WhatsAppAudioPlayer */}
+                                {isAudio ? (
+                                  <div className="space-y-1.5 my-1">
+                                    <WhatsAppAudioPlayer
+                                      sender={isCustomer ? 'customer' : isAi ? 'ai' : 'agent'}
+                                      text={audioTranscription || msg.content}
+                                    />
+                                    {audioTranscription && (
+                                      <div className="text-[12px] italic text-[#54656f] dark:text-[#8696a0] bg-black/5 dark:bg-black/20 rounded p-1.5 leading-snug">
+                                        <span className="font-medium not-italic text-[10px] uppercase tracking-wider block text-muted-foreground mb-0.5">
+                                          Transcrição
+                                        </span>
+                                        "{audioTranscription}"
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  /* Conteúdo de Texto Padrão */
+                                  <p className="text-[13.5px] sm:text-[14px] leading-relaxed whitespace-pre-wrap break-words">
+                                    {msg.content}
+                                  </p>
+                                )}
+
+                                {/* Rodapé da bolha: Horário e duplo check estilo WhatsApp */}
+                                <div className="flex items-center justify-end gap-1 text-[10.5px] text-[#667781] dark:text-[#8696a0] pt-1">
+                                  <span>{formatMessageTime(msg.created)}</span>
+                                  {!isCustomer && (
+                                    <span
+                                      className="inline-flex text-[#53bdeb] ml-0.5 font-bold text-xs"
+                                      title="Entregue via WhatsApp"
+                                    >
+                                      ✓✓
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))
                   )}
                   <div ref={messagesEndRef} />
                 </div>
-              </ScrollArea>
+              </div>
 
-              {/* Barra inferior informativa (modo acompanhamento) */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t flex items-center justify-between text-xs text-muted-foreground shrink-0">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-                  <span>
-                    Acompanhamento em tempo real — A Bia responde automaticamente via WhatsApp /
-                    Meta API.
-                  </span>
-                </div>
-                <div className="hidden sm:block text-[11px] text-slate-500">
-                  {messages.length} {messages.length === 1 ? 'mensagem' : 'mensagens'}
+              {/* Barra de envio estilo WhatsApp no rodapé (mobile e desktop) */}
+              <div className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0">
+                <form
+                  onSubmit={handleSendMessage}
+                  className="flex items-center gap-1.5 sm:gap-2 max-w-4xl mx-auto"
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 text-[#54656f] dark:text-[#aebac1] hover:bg-slate-200/60 dark:hover:bg-slate-700/50 shrink-0"
+                    title="Em breve: anexos"
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </Button>
+
+                  <div className="flex-1 relative">
+                    <Input
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Mensagem para o cliente (responda como corretor)..."
+                      disabled={sendingReply}
+                      className="bg-white dark:bg-[#2a3942] border-none shadow-xs rounded-2xl h-10 text-sm px-4 focus-visible:ring-1 focus-visible:ring-emerald-600"
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={!replyText.trim() || sendingReply}
+                    className="h-10 w-10 rounded-full bg-[#00a884] hover:bg-[#008f6f] text-white shrink-0 shadow-sm disabled:opacity-40"
+                    title="Enviar mensagem"
+                  >
+                    {sendingReply ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4 ml-0.5" />
+                    )}
+                  </Button>
+                </form>
+
+                {/* Sub-barra informativa sutil */}
+                <div className="flex items-center justify-between text-[11px] text-[#667781] dark:text-[#8696a0] px-2 pt-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>
+                      A Bia está ativa respondendo automaticamente. Você pode intervir a qualquer
+                      momento.
+                    </span>
+                  </div>
+                  <div className="hidden sm:block">
+                    {messages.length} {messages.length === 1 ? 'mensagem' : 'mensagens'}
+                  </div>
                 </div>
               </div>
             </>

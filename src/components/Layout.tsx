@@ -31,10 +31,16 @@ export default function Layout() {
   const { user, signOut } = useAuth()
   const location = useLocation()
   const [currentUser, setCurrentUser] = useState<any>(user)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   useEffect(() => {
     setCurrentUser(user)
   }, [user])
+
+  // Fecha o menu móvel ao navegar
+  useEffect(() => {
+    setSheetOpen(false)
+  }, [location.pathname])
 
   useRealtime('users', (e) => {
     if (e.action === 'update' && e.record.id === user?.id) {
@@ -69,15 +75,16 @@ export default function Layout() {
               <Link
                 key={item.name}
                 to={item.path}
+                onClick={() => setSheetOpen(false)}
                 className={cn(
                   'flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-slate-800 text-white'
+                    ? 'bg-slate-800 text-white font-semibold shadow-xs'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white',
                 )}
               >
                 <item.icon className="mr-3 h-5 w-5 flex-shrink-0" />
-                {item.name}
+                <span>{item.name}</span>
               </Link>
             )
           })}
@@ -148,13 +155,16 @@ export default function Layout() {
           <div className="font-semibold text-lg">BRF IA CRM</div>
           <div className="flex items-center gap-1">
             <BugScanner />
-            <Sheet>
+            <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Abrir menu">
+                <Button variant="ghost" size="icon" aria-label="Abrir menu" className="h-9 w-9">
                   <Menu className="h-6 w-6" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-64 bg-slate-900 border-none">
+              <SheetContent
+                side="left"
+                className="p-0 w-72 max-w-[80vw] bg-slate-900 border-none shadow-2xl"
+              >
                 <SidebarContent />
               </SheetContent>
             </Sheet>
