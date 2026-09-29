@@ -76,6 +76,7 @@ export default function FaxinaAtivosMeta() {
   const [searchTerm, setSearchTerm] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [errorMessageNote, setErrorMessageNote] = useState('')
 
   const fetchAssets = useCallback(
     async (isManualRefresh = false) => {
@@ -315,6 +316,220 @@ export default function FaxinaAtivosMeta() {
           </Button>
         </div>
       </div>
+
+      {/* Roteiro Oficial do Vínculo Instagram ↔ Página */}
+      <Card className="border-indigo-500/40 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent shadow-sm">
+        <CardHeader className="p-5 sm:p-6 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 rounded-lg bg-indigo-600 text-white shadow-xs">
+                <Sparkles className="h-5 w-5" />
+              </span>
+              <div>
+                <CardTitle className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
+                  Roteiro do vínculo Instagram ↔ Página
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                  Orientações fornecidas pela IA da Meta para desbloquear a conexão entre o
+                  Instagram e a Página da BRF Imóveis.
+                </CardDescription>
+              </div>
+            </div>
+            <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs w-fit">
+              Oficial Meta
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="p-5 sm:p-6 pt-0 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Caminho 1 */}
+            <div className="rounded-xl border border-blue-500/30 bg-white/90 dark:bg-slate-900/90 p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-2 border-b pb-3">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-blue-700 dark:text-blue-400 font-semibold text-xs tracking-wide uppercase">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      <span>Definitivo</span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mt-0.5">
+                      Caminho 1: Solicitar análise do seu perfil (Definitivo)
+                    </h3>
+                  </div>
+                </div>
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300 italic bg-blue-50 dark:bg-blue-950/40 p-2.5 rounded-md border border-blue-200 dark:border-blue-900/60">
+                  &ldquo;Siga estes passos para contestar a restrição que está bloqueando o
+                  vínculo&rdquo;
+                </p>
+                <ol className="text-xs text-slate-700 dark:text-slate-300 space-y-2.5 pt-1">
+                  <li className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/70 dark:text-blue-300 font-bold text-[11px] mt-0.5">
+                      1
+                    </span>
+                    <span className="leading-relaxed">
+                      Acesse a página de Status da Conta em{' '}
+                      <a
+                        href="https://facebook.com/account/status"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-blue-600 dark:text-blue-400 underline underline-offset-2 hover:text-blue-800 dark:hover:text-blue-300 inline-flex items-center gap-1"
+                      >
+                        facebook.com/account/status
+                        <ExternalLink className="h-3 w-3 inline" />
+                      </a>
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/70 dark:text-blue-300 font-bold text-[11px] mt-0.5">
+                      2
+                    </span>
+                    <span className="leading-relaxed">
+                      Localize a restrição aplicada em 11/07/2026 e clique em Detalhes da restrição
+                      ou Solicitar análise
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/70 dark:text-blue-300 font-bold text-[11px] mt-0.5">
+                      3
+                    </span>
+                    <span className="leading-relaxed">
+                      Siga as instruções na tela para enviar sua contestação
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/70 dark:text-blue-300 font-bold text-[11px] mt-0.5">
+                      4
+                    </span>
+                    <span className="leading-relaxed">
+                      Aguarde a notificação do Facebook via e-mail ou notificações internas sobre o
+                      resultado
+                    </span>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="pt-4 mt-4 border-t">
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-xs gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                >
+                  <a
+                    href="https://facebook.com/account/status"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span>Abrir Status da Conta (Facebook)</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </Button>
+              </div>
+            </div>
+
+            {/* Caminho 2 */}
+            <div className="rounded-xl border border-purple-500/30 bg-white/90 dark:bg-slate-900/90 p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-2 border-b pb-3">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-purple-700 dark:text-purple-400 font-semibold text-xs tracking-wide uppercase">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>Imediato</span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mt-0.5">
+                      Caminho 2: Vínculo via Administrador Secundário (Imediato)
+                    </h3>
+                  </div>
+                </div>
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300 italic bg-purple-50 dark:bg-purple-950/40 p-2.5 rounded-md border border-purple-200 dark:border-purple-900/60">
+                  &ldquo;Para que a Bernadete conclua a conexão agora, ela deve seguir este fluxo
+                  exatamente&rdquo;
+                </p>
+                <ol className="text-xs text-slate-700 dark:text-slate-300 space-y-2.5 pt-1">
+                  <li className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/70 dark:text-purple-300 font-bold text-[11px] mt-0.5">
+                      1
+                    </span>
+                    <span className="leading-relaxed">
+                      Acesse o Meta Business Suite com o perfil da Bernadete
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/70 dark:text-purple-300 font-bold text-[11px] mt-0.5">
+                      2
+                    </span>
+                    <span className="leading-relaxed">
+                      No menu lateral, clique em Configurações (ícone de engrenagem)
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/70 dark:text-purple-300 font-bold text-[11px] mt-0.5">
+                      3
+                    </span>
+                    <span className="leading-relaxed">
+                      Vá em Ativos do negócio e selecione a Página BRF Imóveis
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/70 dark:text-purple-300 font-bold text-[11px] mt-0.5">
+                      4
+                    </span>
+                    <span className="leading-relaxed">
+                      Procure a seção de Contas conectadas e clique em Adicionar Instagram ou
+                      Confirmar conexão
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/70 dark:text-purple-300 font-bold text-[11px] mt-0.5">
+                      5
+                    </span>
+                    <span className="leading-relaxed">
+                      Insira as credenciais de login do perfil @mauro.brfimoveis para validar a
+                      posse da conta
+                    </span>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="pt-4 mt-4 border-t">
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-xs gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/40"
+                >
+                  <a
+                    href="https://business.facebook.com/settings/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span>Abrir Meta Business Suite</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Alerta discreto ao final do card com campo opcional */}
+          <div className="rounded-lg border border-amber-500/30 bg-amber-50/70 dark:bg-amber-950/30 p-3.5 sm:p-4 space-y-2.5">
+            <div className="flex items-start gap-2.5">
+              <Info className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed font-medium">
+                Se a Bernadete encontrar qualquer erro durante esse processo, anote exatamente qual
+                mensagem apareceu para ajustar a orientação.
+              </p>
+            </div>
+            <div className="pl-6.5 pt-0.5">
+              <Input
+                placeholder="Anotar mensagem de erro aqui (opcional)..."
+                value={errorMessageNote}
+                onChange={(e) => setErrorMessageNote(e.target.value)}
+                className="text-xs bg-white/90 dark:bg-slate-900/90 border-amber-200 dark:border-amber-800/60 placeholder:text-muted-foreground focus-visible:ring-amber-500"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Regras Críticas de Proteção (INVIOLÁVEIS) */}
       <Card className="border-emerald-500/30 bg-emerald-500/5 shadow-xs">
