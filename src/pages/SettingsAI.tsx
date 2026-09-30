@@ -215,6 +215,7 @@ export default function SettingsAI() {
   const [biaInstructions, setBiaInstructions] = useState('')
   const [aiInstructions, setAiInstructions] = useState('')
   const [projectData, setProjectData] = useState<ProjectData>({ ...DEFAULT_PROJECT })
+  const [postsMinInterval, setPostsMinInterval] = useState<number>(60)
 
   // Knowledge Files & Storage State
   const [knowledgeFiles, setKnowledgeFiles] = useState<AiKnowledgeFile[]>([])
@@ -257,6 +258,7 @@ export default function SettingsAI() {
       setBiaInstructions(userData.bia_instructions || '')
       setAiInstructions(userData.ai_instructions || '')
       setProjectData(parseProjectData(userData.project_data))
+      setPostsMinInterval(userData.posts_min_interval_minutes || 60)
     } catch {
       setError(true)
     } finally {
@@ -316,6 +318,7 @@ export default function SettingsAI() {
         bia_instructions: biaInstructions,
         ai_instructions: aiInstructions,
         project_data: JSON.stringify(projectData),
+        posts_min_interval_minutes: postsMinInterval,
       })
       toast.success('Configurações da IA salvas com sucesso!')
     } catch (error: any) {
@@ -1533,6 +1536,40 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
             />
             <div className="text-xs text-muted-foreground text-right">
               {biaInstructions.length} / 200000 caracteres
+            </div>
+          </div>
+
+          {/* CONFIGURAÇÃO DE ESPAÇAMENTO MÍNIMO DE POSTS (ANTI-SATURAÇÃO) */}
+          <div className="space-y-2 p-3 bg-muted/40 rounded-lg border border-border">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <Label
+                  htmlFor="postsMinInterval"
+                  className="text-xs font-semibold flex items-center gap-1.5"
+                >
+                  <Calendar className="w-4 h-4 text-primary" />
+                  Espaçamento Mínimo entre Posts Agendados (Instagram)
+                </Label>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Proteção anti-saturação: impede que dois posts saiam em horários muito próximos.
+                </p>
+              </div>
+              <Select
+                value={String(postsMinInterval)}
+                onValueChange={(val) => setPostsMinInterval(parseInt(val, 10) || 60)}
+              >
+                <SelectTrigger
+                  id="postsMinInterval"
+                  className="h-8 text-xs bg-background w-[160px]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 minutos</SelectItem>
+                  <SelectItem value="60">1 hora (recomendado)</SelectItem>
+                  <SelectItem value="120">2 horas</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

@@ -82,6 +82,18 @@ export interface PublishNowResponse {
   }
 }
 
+export interface PostSpacingConflict {
+  hasConflict: boolean
+  conflictingPost?: ScheduledPost
+  conflictTimeFormatted?: string
+  suggestedNextDateStr?: string
+  suggestedNextTime?: string
+  suggestedNextIso?: string
+  intervalMinutes: number
+  intervalDesc: string
+  errorMessage?: string
+}
+
 /**
  * Busca a lista de posts agendados com ordenação por scheduled_at crescente ou decrescente
  */
@@ -415,4 +427,191 @@ export function getPostImageUrl(post: ScheduledPost, imageIndex = 0): string {
  */
 export function getLaunchImageUrl(launchId: string, filename: string): string {
   return `${pb.baseUrl}/api/files/launches/${launchId}/${encodeURIComponent(filename)}`
+}
+
+/**
+ * Utilitários de espaçamento mínimo entre posts agendados
+ */
+
+export function parseDateToMs(dateInput: string): number {
+  if (!dateInput) return NaN
+  const normalized = dateInput.trim().replace(' ', 'T')
+  return new Date(normalized).getTime()
+}
+
+export function formatIntervalDescription(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutos`
+  if (minutes === 60) return '1 hora'
+  const hours = minutes / 60
+  return Number.isInteger(hours) ? `${hours} horas` : `${minutes} minutos`
+}
+
+export function formatTimeFromDate(d: Date): string {
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+export function formatDateToIsoLocal(d: Date): { dateStr: string; timeStr: string } {
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return {
+    dateStr: `${yyyy}-${mm}-${dd}`,
+    timeStr: formatTimeFromDate(d),
+  }
+}
+
+/**
+ * Verifica se um horário proposto colide com outros posts já agendados
+ */
+export function checkPostSpacingConflict(
+  proposedScheduledAt: string,
+  existingPosts: ScheduledPost[],
+  intervalMinutes = 60,
+  excludePostId?: string,
+): PostSpacingConflict {
+  const intervalDesc = formatIntervalDescription(intervalMinutes)
+  const proposedMs = parseDateToMs(proposedScheduledAt)
+
+  if (isNaN(proposedMs)) {
+    return {
+      hasConflict: false,
+      intervalMinutes,
+      intervalDesc,
+    }
+  }
+
+  const intervalMs = intervalMinutes * 60 * 1000
+
+  // Filtrar apenas posts com status 'agendado' e scheduled_at preenchido, ignorando o próprio post sendo editado
+  const otherScheduled = existingPosts.filter((p) => {
+    if (p.status !== 'agendado') return false
+    if (excludePostId && p.id === excludePostId) return false
+    const ms = parseDateToMs(p.scheduled_at)
+    return !isNaN(ms)
+  })
+
+  // Ordenar por horário
+  otherScheduled.sort((a, b) => parseDateToMs(a.scheduled_at) - parseDateToMs(b.scheduled_at))
+
+  // Achar primeiro post conflitante
+  let conflicting: ScheduledPost | undefined
+  for (const post of otherScheduled) {
+    const postMs = parseDateToMs(post.scheduled_at)
+    if (Math.abs(proposedMs - postMs) < intervalMs) {
+      conflicting = post
+      break
+    }
+  }
+
+  if (!conflicting) {
+    return {
+      hasConflict: false,
+      intervalMinutes,
+      intervalDesc,
+    }
+  }
+
+  const conflictDate = new Date(parseDateToMs(conflicting.scheduled_at))
+  const conflictTimeFormatted = formatTimeFromDate(conflictDate)
+
+  // Calcular próximo horário livre após o post conflitante ou após a data proposta
+  let candidateMs = parseDateToMs(conflicting.scheduled_at) + intervalMs
+  if (candidateMs <= proposedMs) {
+    candidateMs = proposedMs + intervalMs
+  }
+
+  // Tentar encontrar um slot livre no futuro
+  let found = false
+  for (let attempt = 0; attempt < 48; attempt++) {
+    let hasOverlap = false
+    for (const p of otherScheduled) {
+      const pMs = parseDateToMs(p.scheduled_at)
+      if (Math.abs(candidateMs - pMs) < intervalMs) {
+        candidateMs = pMs + intervalMs
+        hasOverlap = true
+        break
+      }
+    }
+    if (!hasOverlap) {
+      found = true
+      break
+    }
+  }
+
+  const candidateDate = new Date(candidateMs)
+  const { dateStr: suggestedNextDateStr, timeStr: suggestedNextTime } =
+    formatDateToIsoLocal(candidateDate)
+  const suggestedNextIso = candidateDate.toISOString()
+
+  const errorMessage = `Este horário está muito perto do post das ${conflictTimeFormatted}. Posts precisam de pelo menos ${intervalDesc} de intervalo para não saturar o Instagram. Próximo horário livre: ${suggestedNextTime}.`
+
+  return {
+    hasConflict: true,
+    conflictingPost: conflicting,
+    conflictTimeFormatted,
+    suggestedNextDateStr,
+    suggestedNextTime,
+    suggestedNextIso,
+    intervalMinutes,
+    intervalDesc,
+    errorMessage,
+  }
+}
+
+/**
+ * Identifica se um post existente está muito próximo de qualquer outro post agendado
+ * (útil para badges de alerta na listagem/calendário sem quebrar posts legados)
+ */
+export function getPostsWithSpacingWarning(
+  posts: ScheduledPost[],
+  intervalMinutes = 60,
+): Set<string> {
+  const flaggedIds = new Set<string>()
+  const scheduledPosts = posts.filter(
+    (p) => p.status === 'agendado' && !isNaN(parseDateToMs(p.scheduled_at)),
+  )
+
+  const intervalMs = intervalMinutes * 60 * 1000
+
+  for (let i = 0; i < scheduledPosts.length; i++) {
+    const postA = scheduledPosts[i]
+    const timeA = parseDateToMs(postA.scheduled_at)
+    for (let j = i + 1; j < scheduledPosts.length; j++) {
+      const postB = scheduledPosts[j]
+      const timeB = parseDateToMs(postB.scheduled_at)
+      if (Math.abs(timeA - timeB) < intervalMs) {
+        flaggedIds.add(postA.id)
+        flaggedIds.add(postB.id)
+      }
+    }
+  }
+
+  return flaggedIds
+}
+
+/**
+ * Salva a preferência de espaçamento mínimo do usuário (em minutos)
+ */
+export async function saveUserMinInterval(userId: string, intervalMinutes: number): Promise<void> {
+  await pb.collection('users').update(userId, {
+    posts_min_interval_minutes: intervalMinutes,
+  })
+}
+
+/**
+ * Obtém a preferência de espaçamento do usuário com fallback para 60 minutos
+ */
+export async function getUserMinInterval(userId?: string): Promise<number> {
+  try {
+    const targetId = userId || (pb.authStore.model as any)?.id
+    if (!targetId) return 60
+    const record = await pb.collection('users').getOne(targetId)
+    const val = (record as any)?.posts_min_interval_minutes
+    return val && typeof val === 'number' && val > 0 ? val : 60
+  } catch (err) {
+    console.warn('Erro ao carregar posts_min_interval_minutes:', err)
+    return 60
+  }
 }

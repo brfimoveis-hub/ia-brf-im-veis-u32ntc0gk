@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-30T22:56:56.872Z",
+  "generatedAt": "2026-09-30T23:11:16.386Z",
   "collections": [
     {
       "name": "users",
@@ -221,6 +221,12 @@
         {
           "name": "meta_instagram_user_token",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "posts_min_interval_minutes",
+          "type": "number",
           "required": false,
           "system": false
         }

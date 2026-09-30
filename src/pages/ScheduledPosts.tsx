@@ -74,6 +74,11 @@ import {
   getPostImageUrl,
   getLaunchImageUrl,
   InstagramPublishStatusResponse,
+  checkPostSpacingConflict,
+  getPostsWithSpacingWarning,
+  getUserMinInterval,
+  saveUserMinInterval,
+  formatIntervalDescription,
 } from '@/services/scheduled_posts'
 import { getLaunches, Launch } from '@/services/launches'
 import { DRIVE_FOLDERS_DATA } from '@/data/vistage-drive-content'
@@ -88,6 +93,10 @@ export default function ScheduledPosts() {
   const [statusInfo, setStatusInfo] = useState<InstagramPublishStatusResponse | null>(null)
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar')
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date())
+
+  // Configuração de intervalo mínimo anti-saturação
+  const [minIntervalMinutes, setMinIntervalMinutes] = useState<number>(60)
+  const [isUpdatingInterval, setIsUpdatingInterval] = useState(false)
 
   // Modal de criação / edição
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -118,14 +127,16 @@ export default function ScheduledPosts() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [fetchedPosts, fetchedLaunches, fetchedStatus] = await Promise.all([
+      const [fetchedPosts, fetchedLaunches, fetchedStatus, fetchedInterval] = await Promise.all([
         getScheduledPosts(),
         getLaunches(),
         getInstagramPostStatus(),
+        getUserMinInterval(user?.id),
       ])
       setPosts(fetchedPosts)
       setLaunches(fetchedLaunches)
       setStatusInfo(fetchedStatus)
+      setMinIntervalMinutes(fetchedInterval)
     } catch (err) {
       console.error('Erro ao carregar agenda de posts:', err)
       toast({
@@ -141,6 +152,59 @@ export default function ScheduledPosts() {
   useEffect(() => {
     loadData()
   }, [])
+
+  // Atualizar preferência de espaçamento mínimo do usuário
+  const handleIntervalChange = async (valStr: string) => {
+    const minutes = parseInt(valStr, 10)
+    if (isNaN(minutes)) return
+    setMinIntervalMinutes(minutes)
+    if (!user?.id) return
+
+    try {
+      setIsUpdatingInterval(true)
+      await saveUserMinInterval(user.id, minutes)
+      toast({
+        title: 'Espaçamento mínimo atualizado! ⏱️',
+        description: `Novo intervalo configurado para ${formatIntervalDescription(minutes)}. Seus próximos posts respeitarão esta regra.`,
+      })
+    } catch (err) {
+      console.error('Erro ao salvar intervalo:', err)
+      toast({
+        title: 'Erro ao salvar configuração',
+        description: getErrorMessage(err),
+        variant: 'destructive',
+      })
+    } finally {
+      setIsUpdatingInterval(false)
+    }
+  }
+
+  // Validação em tempo real de conflito de espaçamento no modal
+  const proposedFullScheduledAt = useMemo(() => {
+    if (!scheduledDate || !scheduledTime) return ''
+    return `${scheduledDate} ${scheduledTime}:00`
+  }, [scheduledDate, scheduledTime])
+
+  const currentSpacingConflict = useMemo(() => {
+    if (postStatus !== 'agendado' || !proposedFullScheduledAt) {
+      return {
+        hasConflict: false,
+        intervalMinutes: minIntervalMinutes,
+        intervalDesc: formatIntervalDescription(minIntervalMinutes),
+      }
+    }
+    return checkPostSpacingConflict(
+      proposedFullScheduledAt,
+      posts,
+      minIntervalMinutes,
+      editingPost ? editingPost.id : undefined,
+    )
+  }, [proposedFullScheduledAt, posts, minIntervalMinutes, editingPost, postStatus])
+
+  // Identificar posts que já estão muito próximos entre si no banco para badge de aviso
+  const postsWithWarning = useMemo(() => {
+    return getPostsWithSpacingWarning(posts, minIntervalMinutes)
+  }, [posts, minIntervalMinutes])
 
   // Inicializar data padrão (amanhã 11:00) ao abrir para novo post
   const openNewPostModal = (defaultDate?: Date) => {
@@ -307,6 +371,24 @@ export default function ScheduledPosts() {
 
     const fullScheduledAt = `${scheduledDate} ${scheduledTime}:00`
 
+    // Validação de proteção anti-saturação no frontend
+    if (postStatus === 'agendado') {
+      const conflictCheck = checkPostSpacingConflict(
+        fullScheduledAt,
+        posts,
+        minIntervalMinutes,
+        editingPost ? editingPost.id : undefined,
+      )
+      if (conflictCheck.hasConflict) {
+        toast({
+          title: 'Horário conflitante (Anti-Saturação)',
+          description: conflictCheck.errorMessage,
+          variant: 'destructive',
+        })
+        return
+      }
+    }
+
     try {
       setIsSaving(true)
       if (editingPost) {
@@ -406,13 +488,28 @@ export default function ScheduledPosts() {
   // Duplicar post
   const handleDuplicate = async (post: ScheduledPost) => {
     try {
-      await duplicateScheduledPost(post)
+      const defaultDuplicateDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      // Validar se o horário padrão de amanhã tem conflito
+      const conflictCheck = checkPostSpacingConflict(
+        defaultDuplicateDate,
+        posts,
+        minIntervalMinutes,
+      )
+
+      let targetDateStr = defaultDuplicateDate
+      if (conflictCheck.hasConflict && conflictCheck.suggestedNextIso) {
+        targetDateStr = conflictCheck.suggestedNextIso
+      }
+
+      await duplicateScheduledPost(post, targetDateStr)
       toast({
         title: 'Post duplicado com sucesso! 📋',
-        description: 'Uma cópia foi programada para amanhã no mesmo horário.',
+        description: conflictCheck.hasConflict
+          ? `Uma cópia foi programada para ${conflictCheck.suggestedNextDateStr} às ${conflictCheck.suggestedNextTime} (ajustada para respeitar o intervalo mínimo).`
+          : 'Uma cópia foi programada para amanhã no mesmo horário.',
       })
       loadData()
-    } catch (err) {
+    } catch (err: any) {
       toast({
         title: 'Erro ao duplicar post',
         description: getErrorMessage(err),
@@ -578,9 +675,31 @@ export default function ScheduledPosts() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Seletor de Intervalo Mínimo Anti-Saturação */}
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+            <span className="text-slate-600 font-medium whitespace-nowrap flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-emerald-600" />
+              Espaçamento:
+            </span>
+            <Select
+              value={String(minIntervalMinutes)}
+              onValueChange={handleIntervalChange}
+              disabled={isUpdatingInterval}
+            >
+              <SelectTrigger className="h-7 text-xs bg-white border-slate-200 w-[110px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 minutos</SelectItem>
+                <SelectItem value="60">1 hora (padrão)</SelectItem>
+                <SelectItem value="120">2 horas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <Tabs value={viewMode} onValueChange={(v: any) => setViewMode(v)}>
-            <TabsList className="grid grid-cols-2 w-[200px]">
+            <TabsList className="grid grid-cols-2 w-[190px]">
               <TabsTrigger value="calendar" className="flex items-center gap-1.5 text-xs">
                 <CalendarIcon className="w-3.5 h-3.5" /> Calendário
               </TabsTrigger>
@@ -804,6 +923,14 @@ export default function ScheduledPosts() {
                               <span>
                                 {post.scheduled_at?.split(' ')[1]?.slice(0, 5) || '11:00'}
                               </span>
+                              {postsWithWarning.has(post.id) && (
+                                <span
+                                  className="text-[9px] text-amber-700 bg-amber-100 font-medium px-1 rounded flex items-center gap-0.5"
+                                  title="⚠️ Muito próximo de outro post agendado"
+                                >
+                                  ⚠️ próximo
+                                </span>
+                              )}
                               {post.status === 'publicado' ? (
                                 <span className="text-emerald-600 font-medium">Publicado</span>
                               ) : post.status === 'falhou' ? (
@@ -867,6 +994,15 @@ export default function ScheduledPosts() {
                       <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           {getStatusBadge(post.status)}
+                          {postsWithWarning.has(post.id) && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-amber-50 text-amber-800 border-amber-300 gap-1 font-medium"
+                              title="Este post está a menos que o intervalo mínimo configurado em relação a outro post agendado"
+                            >
+                              ⚠️ muito próximo de outro post
+                            </Badge>
+                          )}
                           <span className="text-xs text-slate-500 flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5" />
                             {post.scheduled_at
@@ -1236,54 +1372,99 @@ export default function ScheduledPosts() {
             </div>
 
             {/* Data e Hora de Programação */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-              <div className="space-y-1.5">
-                <Label htmlFor="post-date" className="text-xs font-semibold text-slate-700">
-                  Data de Publicação
-                </Label>
-                <Input
-                  id="post-date"
-                  type="date"
-                  value={scheduledDate}
-                  onChange={(e) => setScheduledDate(e.target.value)}
-                  className="h-9 text-xs bg-white border-slate-200"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="post-time" className="text-xs font-semibold text-slate-700">
-                  Horário Previsto
-                </Label>
-                <Input
-                  id="post-time"
-                  type="time"
-                  value={scheduledTime}
-                  onChange={(e) => setScheduledTime(e.target.value)}
-                  className="h-9 text-xs bg-white border-slate-200"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="post-status-select"
-                  className="text-xs font-semibold text-slate-700"
-                >
-                  Status
-                </Label>
-                <Select value={postStatus} onValueChange={(v: any) => setPostStatus(v)}>
-                  <SelectTrigger
-                    id="post-status-select"
+            <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="post-date" className="text-xs font-semibold text-slate-700">
+                    Data de Publicação
+                  </Label>
+                  <Input
+                    id="post-date"
+                    type="date"
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
                     className="h-9 text-xs bg-white border-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="post-time" className="text-xs font-semibold text-slate-700">
+                    Horário Previsto
+                  </Label>
+                  <Input
+                    id="post-time"
+                    type="time"
+                    value={scheduledTime}
+                    onChange={(e) => setScheduledTime(e.target.value)}
+                    className="h-9 text-xs bg-white border-slate-200"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="post-status-select"
+                    className="text-xs font-semibold text-slate-700"
                   >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="agendado">Agendado (Cron Automático)</SelectItem>
-                    <SelectItem value="rascunho">Rascunho (Não Disparar)</SelectItem>
-                    <SelectItem value="publicado">Publicado (Manual/Já Feito)</SelectItem>
-                  </SelectContent>
-                </Select>
+                    Status
+                  </Label>
+                  <Select value={postStatus} onValueChange={(v: any) => setPostStatus(v)}>
+                    <SelectTrigger
+                      id="post-status-select"
+                      className="h-9 text-xs bg-white border-slate-200"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="agendado">Agendado (Cron Automático)</SelectItem>
+                      <SelectItem value="rascunho">Rascunho (Não Disparar)</SelectItem>
+                      <SelectItem value="publicado">Publicado (Manual/Já Feito)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+
+              {/* Texto de Ajuda da Regra de Anti-Saturação */}
+              <div className="pt-2 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-500">
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  Proteção anti-saturação: posts com no mínimo{' '}
+                  {formatIntervalDescription(minIntervalMinutes)} de intervalo (alterável).
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Evita que posts saiam colados no feed do Instagram.
+                </span>
+              </div>
+
+              {/* Alerta de Conflito em tempo real com sugestão clicável do próximo horário livre */}
+              {currentSpacingConflict.hasConflict && (
+                <div className="mt-2 p-2.5 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 space-y-1.5 animate-in fade-in">
+                  <div className="flex items-start gap-1.5 font-medium">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                    <span>{currentSpacingConflict.errorMessage}</span>
+                  </div>
+                  {currentSpacingConflict.suggestedNextTime && (
+                    <div className="flex items-center gap-2 pl-5 pt-0.5">
+                      <span className="text-[11px] text-rose-700">Sugestão:</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          if (currentSpacingConflict.suggestedNextTime) {
+                            setScheduledTime(currentSpacingConflict.suggestedNextTime)
+                          }
+                          if (currentSpacingConflict.suggestedNextDateStr) {
+                            setScheduledDate(currentSpacingConflict.suggestedNextDateStr)
+                          }
+                        }}
+                        className="h-6 px-2 text-xs bg-white border-rose-300 text-rose-900 hover:bg-rose-100 hover:text-rose-950 font-semibold shadow-2xs"
+                      >
+                        Usar {currentSpacingConflict.suggestedNextTime}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
