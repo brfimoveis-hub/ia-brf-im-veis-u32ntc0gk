@@ -60,6 +60,12 @@ import {
   MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL,
 } from '@/services/ai_knowledge_files'
 import {
+  calculateBiaStorageUsage,
+  assertCanUploadFiles,
+  type StorageUsageSummary,
+} from '@/services/ai_knowledge_storage'
+import { StorageUsageBar } from '@/components/common/StorageUsageBar'
+import {
   BiaLearning,
   BiaLearningCategory,
   getBiaLearnings,
@@ -210,8 +216,9 @@ export default function SettingsAI() {
   const [aiInstructions, setAiInstructions] = useState('')
   const [projectData, setProjectData] = useState<ProjectData>({ ...DEFAULT_PROJECT })
 
-  // Knowledge Files State
+  // Knowledge Files & Storage State
   const [knowledgeFiles, setKnowledgeFiles] = useState<AiKnowledgeFile[]>([])
+  const [storageUsage, setStorageUsage] = useState<StorageUsageSummary | null>(null)
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgressText, setUploadProgressText] = useState('')
@@ -261,8 +268,12 @@ export default function SettingsAI() {
     if (!user?.id) return
     setLoadingFiles(true)
     try {
-      const files = await getAiKnowledgeFiles(user.id)
+      const [files, usage] = await Promise.all([
+        getAiKnowledgeFiles(user.id),
+        calculateBiaStorageUsage(user.id),
+      ])
       setKnowledgeFiles(files)
+      setStorageUsage(usage)
     } catch (err: any) {
       console.warn('Erro ao carregar arquivos da base de conhecimento:', err)
     } finally {
@@ -382,28 +393,42 @@ export default function SettingsAI() {
     if (!files || files.length === 0 || !user?.id) return
 
     const fileList = Array.from(files)
+
+    // Pré-validação da cota de 1 GB e tamanho de arquivos
+    try {
+      await assertCanUploadFiles(fileList, storageUsage?.totalUsedBytes, user.id)
+    } catch (quotaErr: any) {
+      toast.error(
+        quotaErr.message ||
+          'Espaço cheio: 1 GB atingido. Remova arquivos antigos para liberar espaço.',
+        {
+          duration: 6000,
+        },
+      )
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+      return
+    }
+
     setIsUploading(true)
     setUploadProgressText(`Enviando 1 de ${fileList.length}...`)
 
     let successCount = 0
     let failCount = 0
+    let runningUsedBytes = storageUsage?.totalUsedBytes || 0
 
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i]
-      if (file.size > MAX_AI_KNOWLEDGE_FILE_SIZE) {
-        toast.error(
-          `O arquivo "${file.name}" ultrapassa o limite de ${MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL}.`,
-        )
-        failCount++
-        continue
-      }
 
       setUploadProgressText(`Processando ${i + 1} de ${fileList.length}: ${file.name}`)
       try {
-        await uploadAiKnowledgeFile(file, user.id, undefined, uploadEnterprise)
+        await uploadAiKnowledgeFile(file, user.id, undefined, uploadEnterprise, runningUsedBytes)
+        runningUsedBytes += file.size
         successCount++
       } catch (uploadErr: any) {
         console.error(`Falha no upload do arquivo ${file.name}:`, uploadErr)
+        toast.error(uploadErr.message || `Falha no upload do arquivo ${file.name}`)
         failCount++
       }
     }
@@ -505,10 +530,13 @@ export default function SettingsAI() {
     try {
       await deleteAiKnowledgeFile(fileItem.id)
       toast.success(`Arquivo "${fileItem.name}" excluído da base de conhecimento.`)
-      setKnowledgeFiles((prev) => prev.filter((f) => f.id !== fileItem.id))
+      const nextFiles = knowledgeFiles.filter((f) => f.id !== fileItem.id)
+      setKnowledgeFiles(nextFiles)
       if (selectedFileForPreview?.id === fileItem.id) {
         setSelectedFileForPreview(null)
       }
+      // Recalcula armazenamento liberado
+      calculateBiaStorageUsage(user?.id, nextFiles).then(setStorageUsage)
     } catch (err: any) {
       toast.error('Erro ao excluir arquivo', { description: err.message })
     } finally {
@@ -907,14 +935,28 @@ export default function SettingsAI() {
               />
               <Button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
+                onClick={() => {
+                  if (storageUsage?.isFull) {
+                    toast.error(
+                      'Espaço cheio: 1 GB atingido. Remova arquivos antigos para liberar espaço.',
+                      { duration: 6000 },
+                    )
+                    return
+                  }
+                  fileInputRef.current?.click()
+                }}
+                disabled={isUploading || Boolean(storageUsage?.isFull)}
                 className="shadow-sm whitespace-nowrap"
               >
                 {isUploading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Enviando...
+                  </>
+                ) : storageUsage?.isFull ? (
+                  <>
+                    <AlertCircle className="w-4 h-4 mr-2 text-rose-300" />
+                    Cota Esgotada (1 GB)
                   </>
                 ) : (
                   <>
@@ -927,6 +969,9 @@ export default function SettingsAI() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-5 p-3 sm:p-6">
+          {/* INDICADOR DE USO DA COTA TOTAL DE 1 GB DA BIA */}
+          <StorageUsageBar usage={storageUsage} loading={loadingFiles} />
+
           {isUploading && (
             <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 flex items-center gap-3 animate-pulse text-sm">
               <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
@@ -946,7 +991,8 @@ export default function SettingsAI() {
               <Info className="w-4 h-4 text-primary shrink-0" />
               <span>
                 Formatos aceitos: <strong>PDF, DOCX, TXT, MD, CSV, XLSX e Imagens</strong> (Até{' '}
-                <strong>{MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL}</strong> por arquivo).
+                <strong>{MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL}</strong> por arquivo • Cota total:{' '}
+                <strong>1 GB</strong>).
               </span>
             </div>
             <span>

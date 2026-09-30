@@ -13,7 +13,10 @@ import {
   Bot,
   MapPin,
   Layers,
+  HardDrive,
 } from 'lucide-react'
+import { calculateBiaStorageUsage, type StorageUsageSummary } from '@/services/ai_knowledge_storage'
+import { StorageUsageBar } from '@/components/common/StorageUsageBar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -37,6 +40,7 @@ export function Launches() {
   const [selectedLaunch, setSelectedLaunch] = useState<Launch | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [storageUsage, setStorageUsage] = useState<StorageUsageSummary | null>(null)
 
   // Novo Lançamento Form
   const [newName, setNewName] = useState('')
@@ -46,8 +50,9 @@ export function Launches() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const list = await getLaunches()
+      const [list, usage] = await Promise.all([getLaunches(), calculateBiaStorageUsage()])
       setLaunches(list)
+      setStorageUsage(usage)
     } catch (err: any) {
       console.error('Erro ao carregar lançamentos:', err)
       toast({
@@ -216,6 +221,9 @@ export function Launches() {
         </div>
       </div>
 
+      {/* Indicador de Armazenamento Geral (1 GB compartilhado com até ~50 lançamentos) */}
+      <StorageUsageBar usage={storageUsage} loading={loading} />
+
       {/* Banner Explicativo Bia Mãe */}
       <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
@@ -233,7 +241,8 @@ export function Launches() {
               Você cola tabelas, PDFs e folhetos crus para a <strong>Bia Mãe</strong>. Ela organiza
               as unidades, valores, diferenciais e escreve a <strong>cadência em 10 passos</strong>.
               Quando você aprova e clica em <em>Publicar</em>, a Bia atendente carrega este dossiê
-              para responder leads que vierem daquele lançamento no WhatsApp!
+              para responder leads que vierem daquele lançamento no WhatsApp! O espaço de 1 GB
+              suporta todos os dossiês dos seus ~50 lançamentos.
             </p>
           </div>
         </div>

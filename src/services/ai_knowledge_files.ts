@@ -1,7 +1,17 @@
 import pb from '@/lib/pocketbase/client'
 
-export const MAX_AI_KNOWLEDGE_FILE_SIZE = 100 * 1024 * 1024 // 100 MB em bytes
-export const MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL = '100 MB'
+import {
+  BIA_TOTAL_STORAGE_LIMIT_BYTES,
+  BIA_TOTAL_STORAGE_LIMIT_LABEL,
+  MAX_SINGLE_FILE_SIZE,
+  MAX_SINGLE_FILE_SIZE_LABEL,
+  assertCanUploadFiles,
+} from './ai_knowledge_storage'
+
+export const MAX_AI_KNOWLEDGE_FILE_SIZE = MAX_SINGLE_FILE_SIZE
+export const MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL = MAX_SINGLE_FILE_SIZE_LABEL
+export const BIA_STORAGE_LIMIT_BYTES = BIA_TOTAL_STORAGE_LIMIT_BYTES
+export const BIA_STORAGE_LIMIT_LABEL = BIA_TOTAL_STORAGE_LIMIT_LABEL
 
 export interface AiKnowledgeFile {
   id: string
@@ -33,12 +43,10 @@ export async function uploadAiKnowledgeFile(
   userId: string,
   customName?: string,
   enterprise?: string,
+  currentUsedBytes?: number,
 ): Promise<AiKnowledgeFile> {
-  if (file.size > MAX_AI_KNOWLEDGE_FILE_SIZE) {
-    throw new Error(
-      `O arquivo excede o limite máximo permitido de ${MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL}.`,
-    )
-  }
+  // Valida limite individual e limite de cota total de 1 GB da Bia
+  await assertCanUploadFiles([file], currentUsedBytes, userId)
 
   const formData = new FormData()
   formData.append('user_id', userId)
@@ -65,11 +73,25 @@ export async function uploadMultipleAiKnowledgeFiles(
   files: File[],
   userId: string,
   enterprise?: string,
+  currentUsedBytes?: number,
 ): Promise<AiKnowledgeFile[]> {
+  // Valida todos os arquivos juntos antes de iniciar uploads
+  await assertCanUploadFiles(files, currentUsedBytes, userId)
+
   const results: AiKnowledgeFile[] = []
+  let cumulativeUsed = currentUsedBytes
   for (const file of files) {
-    const uploaded = await uploadAiKnowledgeFile(file, userId, undefined, enterprise)
+    const uploaded = await uploadAiKnowledgeFile(
+      file,
+      userId,
+      undefined,
+      enterprise,
+      cumulativeUsed,
+    )
     results.push(uploaded)
+    if (typeof cumulativeUsed === 'number') {
+      cumulativeUsed += file.size
+    }
   }
   return results
 }

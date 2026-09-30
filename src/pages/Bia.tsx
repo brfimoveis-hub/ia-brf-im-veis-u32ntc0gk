@@ -60,17 +60,37 @@ export default function Bia() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
     if (!user || !e.target.files || e.target.files.length === 0) return
+    const file = e.target.files[0]
+
+    // Se for arquivo de base de conhecimento, checa a cota total de 1 GB
+    if (field === 'ai_knowledge_files') {
+      try {
+        const { assertCanUploadFiles } = await import('@/services/ai_knowledge_storage')
+        await assertCanUploadFiles([file], undefined, user.id)
+      } catch (quotaErr: any) {
+        toast({
+          title: 'Espaço cheio: 1 GB atingido',
+          description:
+            quotaErr.message ||
+            'Remova arquivos antigos para liberar espaço antes de enviar novos.',
+          variant: 'destructive',
+        })
+        e.target.value = ''
+        return
+      }
+    }
+
     setLoading(true)
     try {
       const uploadData = new FormData()
-      uploadData.append(field, e.target.files[0])
+      uploadData.append(field, file)
       await pb.collection('users').update(user.id, uploadData)
       toast({ title: 'Sucesso', description: 'Arquivo enviado com sucesso.' })
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
       toast({
         title: 'Erro',
-        description: 'Não foi possível enviar o arquivo.',
+        description: err?.message || 'Não foi possível enviar o arquivo.',
         variant: 'destructive',
       })
     } finally {
