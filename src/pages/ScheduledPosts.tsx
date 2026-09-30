@@ -78,6 +78,7 @@ import {
 import { getLaunches, Launch } from '@/services/launches'
 import { DRIVE_FOLDERS_DATA } from '@/data/vistage-drive-content'
 import { formatStorageBytes } from '@/services/ai_knowledge_storage'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 export default function ScheduledPosts() {
   const { user } = useAuth()
@@ -244,7 +245,7 @@ export default function ScheduledPosts() {
       console.error('Erro Bia IA:', err)
       toast({
         title: 'Falha ao consultar a Bia',
-        description: err.message || 'Erro inesperado na geração de legenda.',
+        description: getErrorMessage(err),
         variant: 'destructive',
       })
     } finally {
@@ -274,10 +275,13 @@ export default function ScheduledPosts() {
 
   // Salvar post (Create ou Update)
   const handleSavePost = async () => {
-    if (!caption.trim() && imageFiles.length === 0 && selectedLaunchImages.length === 0) {
+    const trimmedCaption = caption.trim()
+
+    // Validação estrita de campos essenciais antes de enviar ao servidor
+    if (!trimmedCaption) {
       toast({
-        title: 'Dados incompletos',
-        description: 'Insira ao menos uma imagem ou legenda para o post.',
+        title: 'Legenda obrigatória',
+        description: 'Preencha a legenda do post para agendar.',
         variant: 'destructive',
       })
       return
@@ -292,14 +296,23 @@ export default function ScheduledPosts() {
       return
     }
 
-    const fullScheduledAt = `${scheduledDate} ${scheduledTime || '11:00'}:00`
+    if (!scheduledTime) {
+      toast({
+        title: 'Horário obrigatório',
+        description: 'Informe o horário de publicação do post.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const fullScheduledAt = `${scheduledDate} ${scheduledTime}:00`
 
     try {
       setIsSaving(true)
       if (editingPost) {
         await updateScheduledPost(editingPost.id, {
           launch: selectedLaunchId !== 'none' ? selectedLaunchId : undefined,
-          caption: caption.trim(),
+          caption: trimmedCaption,
           scheduled_at: fullScheduledAt,
           status: postStatus,
           link_cta: linkCta.trim(),
@@ -307,23 +320,23 @@ export default function ScheduledPosts() {
           image_urls: selectedLaunchImages,
         })
         toast({
-          title: 'Post atualizado! 📅',
+          title: 'Post atualizado com sucesso! 📅',
           description: `Programado para ${scheduledDate} às ${scheduledTime}.`,
         })
       } else {
         await createScheduledPost({
           launch: selectedLaunchId !== 'none' ? selectedLaunchId : undefined,
-          caption: caption.trim(),
+          caption: trimmedCaption,
           scheduled_at: fullScheduledAt,
           status: postStatus,
           link_cta: linkCta.trim(),
           image_files: imageFiles,
           image_urls: selectedLaunchImages,
-          created_by: user?.email || 'Mauro',
+          created_by: user?.email || user?.name || 'Mauro',
         })
         toast({
           title: 'Post agendado com sucesso! 🎉',
-          description: `A Bia e o sistema cuidarão do disparo para ${scheduledDate}.`,
+          description: `Programado para ${scheduledDate} às ${scheduledTime}. Acompanhe pelo calendário.`,
         })
       }
       setIsModalOpen(false)
@@ -331,8 +344,8 @@ export default function ScheduledPosts() {
     } catch (err: any) {
       console.error('Erro ao salvar post:', err)
       toast({
-        title: 'Erro ao salvar',
-        description: err.message || 'Ocorreu uma falha ao registrar o post agendado.',
+        title: 'Erro ao salvar post',
+        description: getErrorMessage(err),
         variant: 'destructive',
       })
     } finally {
@@ -364,7 +377,7 @@ export default function ScheduledPosts() {
       console.error('Erro publish now:', err)
       toast({
         title: 'Falha na publicação',
-        description: err.message || 'Erro ao conectar à Graph API da Meta.',
+        description: getErrorMessage(err),
         variant: 'destructive',
       })
     } finally {
@@ -377,14 +390,14 @@ export default function ScheduledPosts() {
     try {
       await markPostAsManuallyPublished(post.id)
       toast({
-        title: 'Post marcado como Publicado! ✅',
-        description: 'Atualizado no cronograma.',
+        title: 'Post marcado como publicado! ✅',
+        description: 'Status atualizado com sucesso no cronograma.',
       })
       loadData()
     } catch (err) {
       toast({
         title: 'Erro ao atualizar status',
-        description: 'Não foi possível marcar como publicado.',
+        description: getErrorMessage(err),
         variant: 'destructive',
       })
     }
@@ -395,14 +408,14 @@ export default function ScheduledPosts() {
     try {
       await duplicateScheduledPost(post)
       toast({
-        title: 'Post duplicado!',
-        description: 'Uma cópia foi criada para amanhã para facilitar sua programação.',
+        title: 'Post duplicado com sucesso! 📋',
+        description: 'Uma cópia foi programada para amanhã no mesmo horário.',
       })
       loadData()
     } catch (err) {
       toast({
-        title: 'Erro ao duplicar',
-        description: 'Não foi possível duplicar o post.',
+        title: 'Erro ao duplicar post',
+        description: getErrorMessage(err),
         variant: 'destructive',
       })
     }
@@ -414,14 +427,14 @@ export default function ScheduledPosts() {
     try {
       await deleteScheduledPost(id)
       toast({
-        title: 'Post excluído',
-        description: 'O agendamento foi removido.',
+        title: 'Post excluído com sucesso! 🗑️',
+        description: 'O agendamento foi removido definitivamente.',
       })
       loadData()
     } catch (err) {
       toast({
-        title: 'Erro ao excluir',
-        description: 'Não foi possível excluir o post.',
+        title: 'Erro ao excluir post',
+        description: getErrorMessage(err),
         variant: 'destructive',
       })
     }

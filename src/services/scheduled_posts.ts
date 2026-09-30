@@ -119,10 +119,76 @@ export async function getScheduledPostById(id: string): Promise<ScheduledPost | 
 /**
  * Cria um novo post respeitando a cota da Bia para upload de imagens
  */
+/**
+ * Sanitiza o ID do lançamento vinculado.
+ * PocketBase recusa strings inválidas ou "none" em campos de relação.
+ * Retorna string vazia ou undefined quando não há lançamento vinculado.
+ */
+function sanitizeLaunchId(launch?: string | null): string | null {
+  if (!launch) return null
+  const trimmed = launch.trim()
+  if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') {
+    return null
+  }
+  return trimmed
+}
+
+/**
+ * Sanitiza a data de agendamento para formato ISO padrão aceito pelo PocketBase (UTC ISO 8601).
+ * Aceita "YYYY-MM-DD HH:mm:ss", "YYYY-MM-DD HH:mm", "YYYY-MM-DDTHH:mm", timestamp, etc.
+ */
+function sanitizeScheduledDate(dateInput: string): string {
+  if (!dateInput || !dateInput.trim()) {
+    return new Date().toISOString()
+  }
+
+  const trimmed = dateInput.trim()
+
+  // Se já for ISO com Z ou offset, tenta parsear
+  const parsed = new Date(trimmed)
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString()
+  }
+
+  // Tentar normalizar formato "YYYY-MM-DD HH:mm:ss" ou "YYYY-MM-DD HH:mm"
+  const normalized = trimmed.replace(' ', 'T')
+  const dateObj = new Date(normalized)
+  if (!isNaN(dateObj.getTime())) {
+    return dateObj.toISOString()
+  }
+
+  // Fallback seguro
+  return new Date().toISOString()
+}
+
+/**
+ * Recupera o ID do usuário atualmente autenticado com fallback para record ou model
+ */
+function getCurrentAuthUserId(): string | undefined {
+  const record = (pb.authStore as any).record
+  if (record && record.id) return record.id
+  const model = pb.authStore.model
+  if (model && model.id) return model.id
+  return undefined
+}
+
+/**
+ * Recupera o identificador legível do usuário autenticado (email ou nome)
+ */
+function getCurrentAuthUserLabel(): string {
+  const record = (pb.authStore as any).record
+  if (record && (record.email || record.name)) return record.email || record.name
+  const model = pb.authStore.model
+  if (model && (model.email || (model as any).name)) return model.email || (model as any).name
+  return 'Mauro'
+}
+
 export async function createScheduledPost(
   payload: CreateScheduledPostPayload,
 ): Promise<ScheduledPost> {
-  const currentUserId = pb.authStore.model?.id
+  const currentUserId = getCurrentAuthUserId()
+  const sanitizedLaunch = sanitizeLaunchId(payload.launch)
+  const sanitizedDate = sanitizeScheduledDate(payload.scheduled_at)
 
   // 1. Validar cota de armazenamento se arquivos forem enviados
   if (payload.image_files && payload.image_files.length > 0) {
@@ -133,12 +199,12 @@ export async function createScheduledPost(
   if (payload.image_files && payload.image_files.length > 0) {
     const formData = new FormData()
     if (currentUserId) formData.append('user_id', currentUserId)
-    if (payload.launch) formData.append('launch', payload.launch)
+    if (sanitizedLaunch) formData.append('launch', sanitizedLaunch)
     formData.append('caption', payload.caption || '')
-    formData.append('scheduled_at', payload.scheduled_at)
+    formData.append('scheduled_at', sanitizedDate)
     formData.append('status', payload.status || 'agendado')
     if (payload.link_cta) formData.append('link_cta', payload.link_cta)
-    if (payload.created_by) formData.append('created_by', payload.created_by)
+    formData.append('created_by', payload.created_by || getCurrentAuthUserLabel())
     if (payload.image_urls && payload.image_urls.length > 0) {
       formData.append('image_urls', JSON.stringify(payload.image_urls))
     }
@@ -153,17 +219,20 @@ export async function createScheduledPost(
   }
 
   const recordData: Record<string, any> = {
-    user_id: currentUserId,
     caption: payload.caption || '',
-    scheduled_at: payload.scheduled_at,
+    scheduled_at: sanitizedDate,
     status: payload.status || 'agendado',
     link_cta: payload.link_cta || '',
-    created_by: payload.created_by || pb.authStore.model?.email || 'Mauro',
+    created_by: payload.created_by || getCurrentAuthUserLabel(),
     image_urls: payload.image_urls || [],
   }
 
-  if (payload.launch) {
-    recordData.launch = payload.launch
+  if (currentUserId) {
+    recordData.user_id = currentUserId
+  }
+
+  if (sanitizedLaunch) {
+    recordData.launch = sanitizedLaunch
   }
 
   return await pb.collection('scheduled_posts').create<ScheduledPost>(recordData, {
@@ -178,14 +247,21 @@ export async function updateScheduledPost(
   id: string,
   payload: UpdateScheduledPostPayload,
 ): Promise<ScheduledPost> {
-  const currentUserId = pb.authStore.model?.id
+  const currentUserId = getCurrentAuthUserId()
+  const hasLaunchField = payload.launch !== undefined
+  const sanitizedLaunch = hasLaunchField ? sanitizeLaunchId(payload.launch) : undefined
+  const sanitizedDate =
+    payload.scheduled_at !== undefined ? sanitizeScheduledDate(payload.scheduled_at) : undefined
 
   if (payload.image_files && payload.image_files.length > 0) {
     await assertCanUploadFiles(payload.image_files, undefined, currentUserId)
     const formData = new FormData()
-    if (payload.launch !== undefined) formData.append('launch', payload.launch || '')
+    if (hasLaunchField) {
+      // Se nulo ou vazio, omitir ou enviar vazio para limpar a relação no PB
+      formData.append('launch', sanitizedLaunch || '')
+    }
     if (payload.caption !== undefined) formData.append('caption', payload.caption)
-    if (payload.scheduled_at !== undefined) formData.append('scheduled_at', payload.scheduled_at)
+    if (sanitizedDate !== undefined) formData.append('scheduled_at', sanitizedDate)
     if (payload.status !== undefined) formData.append('status', payload.status)
     if (payload.link_cta !== undefined) formData.append('link_cta', payload.link_cta)
     if (payload.error_message !== undefined) formData.append('error_message', payload.error_message)
@@ -203,9 +279,9 @@ export async function updateScheduledPost(
   }
 
   const cleanData: Record<string, any> = {}
-  if (payload.launch !== undefined) cleanData.launch = payload.launch || null
+  if (hasLaunchField) cleanData.launch = sanitizedLaunch || null
   if (payload.caption !== undefined) cleanData.caption = payload.caption
-  if (payload.scheduled_at !== undefined) cleanData.scheduled_at = payload.scheduled_at
+  if (sanitizedDate !== undefined) cleanData.scheduled_at = sanitizedDate
   if (payload.status !== undefined) cleanData.status = payload.status
   if (payload.link_cta !== undefined) cleanData.link_cta = payload.link_cta
   if (payload.error_message !== undefined) cleanData.error_message = payload.error_message
@@ -237,17 +313,16 @@ export async function duplicateScheduledPost(
   post: ScheduledPost,
   newDateStr?: string,
 ): Promise<ScheduledPost> {
-  const targetDate =
-    newDateStr || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16) // amanhã mesmo horário
+  const targetDate = newDateStr || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // amanhã mesmo horário
 
   const newPayload: CreateScheduledPostPayload = {
-    launch: post.launch,
+    launch: sanitizeLaunchId(post.launch) || undefined,
     caption: post.caption,
     scheduled_at: targetDate,
     status: 'agendado',
     link_cta: post.link_cta,
     image_urls: post.image_urls || [],
-    created_by: pb.authStore.model?.email || 'Mauro',
+    created_by: getCurrentAuthUserLabel(),
   }
 
   // Se tiver imagens nativas no PB, copia a referência de URLs públicas
