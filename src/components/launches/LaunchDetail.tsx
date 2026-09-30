@@ -243,13 +243,13 @@ export function LaunchDetail({ launch: initialLaunch, onBack, onUpdated }: Launc
     if (!e.target.files || e.target.files.length === 0) return
     const incoming = Array.from(e.target.files)
 
-    // Validar cota total de 1 GB antes do envio
+    // Validar cota total de 1 GB e limite por arquivo antes do envio
     try {
       await assertCanUploadFiles(incoming, storageUsage?.totalUsedBytes)
     } catch (quotaErr: any) {
       toast({
-        title: 'Espaço cheio: 1 GB atingido',
-        description: quotaErr.message || 'Remova arquivos antigos para liberar espaço.',
+        title: 'Não foi possível enviar',
+        description: quotaErr.message || 'Verifique o limite de arquivo ou a cota de 1 GB da Bia.',
         variant: 'destructive',
       })
       e.target.value = ''
@@ -292,8 +292,8 @@ export function LaunchDetail({ launch: initialLaunch, onBack, onUpdated }: Launc
       await assertCanUploadFiles(incoming, storageUsage?.totalUsedBytes)
     } catch (quotaErr: any) {
       toast({
-        title: 'Espaço cheio: 1 GB atingido',
-        description: quotaErr.message || 'Remova arquivos antigos para liberar espaço.',
+        title: 'Não foi possível enviar material',
+        description: quotaErr.message || 'Verifique o limite de arquivo ou a cota de 1 GB da Bia.',
         variant: 'destructive',
       })
       e.target.value = ''

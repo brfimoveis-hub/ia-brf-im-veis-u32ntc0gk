@@ -59,7 +59,27 @@ export async function uploadAiKnowledgeFile(
   formData.append('mime_type', file.type || 'application/octet-stream')
   formData.append('is_active', 'true')
 
-  return await pb.collection('ai_knowledge_files').create<AiKnowledgeFile>(formData)
+  try {
+    return await pb.collection('ai_knowledge_files').create<AiKnowledgeFile>(formData)
+  } catch (error: any) {
+    // Tratamento de mensagens de erro específicas do PocketBase/servidor
+    const message = error?.message || ''
+    const status = error?.status || error?.statusCode
+    if (
+      status === 413 ||
+      message.toLowerCase().includes('too large') ||
+      message.toLowerCase().includes('payload')
+    ) {
+      const fileMb = (file.size / (1024 * 1024)).toFixed(1)
+      throw new Error(
+        `O arquivo "${file.name}" (${fileMb} MB) foi recusado pelo servidor por tamanho excessivo. O limite máximo permitido é ${MAX_SINGLE_FILE_SIZE_LABEL}.`,
+      )
+    }
+    if (error?.data?.data?.file?.message) {
+      throw new Error(`Erro no arquivo "${file.name}": ${error.data.data.file.message}`)
+    }
+    throw error
+  }
 }
 
 export async function updateAiKnowledgeFile(

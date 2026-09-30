@@ -394,15 +394,15 @@ export default function SettingsAI() {
 
     const fileList = Array.from(files)
 
-    // Pré-validação da cota de 1 GB e tamanho de arquivos
+    // Pré-validação da cota de 1 GB, formatos aceitos e limite por arquivo (até 200 MB)
     try {
       await assertCanUploadFiles(fileList, storageUsage?.totalUsedBytes, user.id)
-    } catch (quotaErr: any) {
+    } catch (validationErr: any) {
       toast.error(
-        quotaErr.message ||
-          'Espaço cheio: 1 GB atingido. Remova arquivos antigos para liberar espaço.',
+        validationErr.message ||
+          'Não foi possível enviar o arquivo. Verifique o tamanho (até 200 MB) e a cota total de 1 GB.',
         {
-          duration: 6000,
+          duration: 7000,
         },
       )
       if (fileInputRef.current) {
@@ -416,6 +416,7 @@ export default function SettingsAI() {
 
     let successCount = 0
     let failCount = 0
+    const failureReasons: string[] = []
     let runningUsedBytes = storageUsage?.totalUsedBytes || 0
 
     for (let i = 0; i < fileList.length; i++) {
@@ -428,7 +429,9 @@ export default function SettingsAI() {
         successCount++
       } catch (uploadErr: any) {
         console.error(`Falha no upload do arquivo ${file.name}:`, uploadErr)
-        toast.error(uploadErr.message || `Falha no upload do arquivo ${file.name}`)
+        const errMsg = uploadErr.message || `Falha no upload de "${file.name}"`
+        failureReasons.push(`${file.name}: ${errMsg}`)
+        toast.error(errMsg, { duration: 6000 })
         failCount++
       }
     }
@@ -454,7 +457,10 @@ export default function SettingsAI() {
     }
 
     if (failCount > 0) {
-      toast.error(`Falha no envio de ${failCount} arquivo(s). Verifique o formato ou tamanho.`)
+      toast.error(
+        `Falha no envio de ${failCount} arquivo(s): ${failureReasons.slice(0, 2).join(' • ')}`,
+        { duration: 8000 },
+      )
     }
   }
 

@@ -5,8 +5,8 @@ import { getLaunches, type Launch } from './launches'
 // Cota de armazenamento total da Base de Conhecimento da Bia: 1 GB
 export const BIA_TOTAL_STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024 // 1 GB (1.073.741.824 bytes)
 export const BIA_TOTAL_STORAGE_LIMIT_LABEL = '1 GB'
-export const MAX_SINGLE_FILE_SIZE = 100 * 1024 * 1024 // 100 MB
-export const MAX_SINGLE_FILE_SIZE_LABEL = '100 MB'
+export const MAX_SINGLE_FILE_SIZE = 200 * 1024 * 1024 // 200 MB (permite books grandes com renders de lançamentos como Vistage)
+export const MAX_SINGLE_FILE_SIZE_LABEL = '200 MB'
 
 export interface StorageUsageSummary {
   totalUsedBytes: number
@@ -97,11 +97,30 @@ export async function calculateBiaStorageUsage(
 }
 
 /**
- * Valida se um ou mais arquivos podem ser enviados sem estourar o limite de 1 GB.
- * Se estourar a cota ou se o arquivo individual for > 100 MB, lança um erro amigável em português.
+ * Extensões aceitas na Base de Conhecimento da Bia
+ */
+export const ALLOWED_FILE_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.txt',
+  '.md',
+  '.csv',
+  '.xlsx',
+  '.xls',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+]
+
+/**
+ * Valida se um ou mais arquivos podem ser enviados sem estourar o limite individual de 200 MB
+ * ou a cota global de 1 GB da Bia.
+ * Lança mensagens específicas e detalhadas informando exatamente o motivo e valores reais.
  */
 export async function assertCanUploadFiles(
-  incomingFiles: (File | { size: number; name: string })[],
+  incomingFiles: (File | { size: number; name: string; type?: string })[],
   currentUsedBytes?: number,
   userId?: string,
 ): Promise<{ newTotalUsed: number; willFit: boolean }> {
@@ -113,19 +132,37 @@ export async function assertCanUploadFiles(
 
   let incomingTotalBytes = 0
   for (const file of incomingFiles) {
-    if (file.size > MAX_SINGLE_FILE_SIZE) {
+    // 1. Verificação de tipo de arquivo
+    const lowerName = file.name.toLowerCase()
+    const isExtensionAllowed = ALLOWED_FILE_EXTENSIONS.some((ext) => lowerName.endsWith(ext))
+    if (!isExtensionAllowed) {
+      const extension = lowerName.includes('.')
+        ? lowerName.substring(lowerName.lastIndexOf('.'))
+        : 'desconhecido'
       throw new Error(
-        `O arquivo "${file.name}" ultrapassa o limite individual de ${MAX_SINGLE_FILE_SIZE_LABEL}.`,
+        `Formato não suportado: "${file.name}" (${extension}). Formatos aceitos: PDF, DOCX, TXT, MD, CSV, XLSX e Imagens (PNG/JPG).`,
       )
     }
+
+    // 2. Verificação de limite individual por arquivo (200 MB)
+    if (file.size > MAX_SINGLE_FILE_SIZE) {
+      const fileMb = (file.size / (1024 * 1024)).toFixed(1)
+      throw new Error(
+        `O arquivo "${file.name}" tem ${fileMb} MB e ultrapassa o limite individual de ${MAX_SINGLE_FILE_SIZE_LABEL}. Reduza o tamanho ou divida o documento.`,
+      )
+    }
+
     incomingTotalBytes += file.size
   }
 
+  // 3. Verificação de cota total compartilhada da Bia (1 GB)
   const newTotal = usedBytes + incomingTotalBytes
   if (newTotal > BIA_TOTAL_STORAGE_LIMIT_BYTES) {
+    const currentUsedMb = (usedBytes / (1024 * 1024)).toFixed(1)
+    const incomingMb = (incomingTotalBytes / (1024 * 1024)).toFixed(1)
     const exceededMb = Math.ceil((newTotal - BIA_TOTAL_STORAGE_LIMIT_BYTES) / (1024 * 1024))
     throw new Error(
-      `Espaço cheio: ${BIA_TOTAL_STORAGE_LIMIT_LABEL} atingido. Remova arquivos antigos para liberar espaço. (O envio ultrapassaria a cota em ${exceededMb} MB)`,
+      `Cota de armazenamento da Bia atingida: espaço usado ${currentUsedMb} MB de 1 GB. O envio de ${incomingMb} MB ultrapassa a cota em ${exceededMb} MB. Remova arquivos antigos para liberar espaço.`,
     )
   }
 

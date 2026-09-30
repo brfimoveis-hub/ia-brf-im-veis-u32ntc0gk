@@ -166,7 +166,7 @@ export function StorageUsageBar({
           </span>
           <span>•</span>
           <span>
-            Limite individual: <strong>até 100 MB</strong> por arquivo
+            Limite individual: <strong>até 200 MB</strong> por arquivo
           </span>
         </div>
       )}

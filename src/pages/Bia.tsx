@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/hooks/use-toast'
 import { Bot, Save, FileUp, Upload } from 'lucide-react'
+import { assertCanUploadFiles } from '@/services/ai_knowledge_storage'
 
 export default function Bia() {
   const { user, loading: authLoading } = useAuth()
@@ -65,14 +66,13 @@ export default function Bia() {
     // Se for arquivo de base de conhecimento, checa a cota total de 1 GB
     if (field === 'ai_knowledge_files') {
       try {
-        const { assertCanUploadFiles } = await import('@/services/ai_knowledge_storage')
         await assertCanUploadFiles([file], undefined, user.id)
-      } catch (quotaErr: any) {
+      } catch (validationErr: any) {
         toast({
-          title: 'Espaço cheio: 1 GB atingido',
+          title: 'Não foi possível enviar para a Bia',
           description:
-            quotaErr.message ||
-            'Remova arquivos antigos para liberar espaço antes de enviar novos.',
+            validationErr.message ||
+            'Verifique se o arquivo tem até 200 MB e se há espaço disponível na cota de 1 GB.',
           variant: 'destructive',
         })
         e.target.value = ''
@@ -212,7 +212,9 @@ export default function Bia() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Base de Conhecimento</CardTitle>
-            <CardDescription>Documentos de referência para a IA.</CardDescription>
+            <CardDescription>
+              Documentos de referência para a IA (até 200 MB por arquivo).
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
             <div className="w-24 h-24 rounded-lg bg-slate-100 flex items-center justify-center border border-dashed">
@@ -228,7 +230,7 @@ export default function Bia() {
               <input
                 id="ai_kb_upload"
                 type="file"
-                accept=".pdf,.doc,.docx,.txt"
+                accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp"
                 className="hidden"
                 onChange={(e) => handleFileUpload(e, 'ai_knowledge_files')}
                 disabled={loading}

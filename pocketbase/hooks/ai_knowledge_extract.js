@@ -29,11 +29,17 @@ onRecordAfterCreateSuccess((e) => {
         record: record,
         field: 'file',
       })
-      if (docResult && docResult.markdown) {
-        extractedMarkdown = docResult.markdown
+      if (docResult && docResult.markdown && docResult.markdown.trim()) {
+        extractedMarkdown = docResult.markdown.trim()
       }
     } catch (docErr) {
       console.warn('[AI_KNOWLEDGE_FILES] $documents.toMarkdown failed: ' + String(docErr))
+    }
+
+    // Se for PDF e a extração retornou vazia ou falhou (ex: PDF escaneado ou composto apenas por imagens/renders)
+    if (!extractedMarkdown && lowerName.endsWith('.pdf')) {
+      extractedMarkdown =
+        '[PDF visual, sem texto extraível] — Material/Book visual de apresentação: ' + originalName
     }
   }
 
@@ -128,9 +134,18 @@ onRecordAfterCreateSuccess((e) => {
     }
   }
 
-  // Se o arquivo tiver 0 bytes ou for vazio sem texto, desativar automaticamente
+  // Se o arquivo tiver 0 bytes estritos, desativar automaticamente como arquivo corrompido
   const fileSize = record.getInt('file_size') || 0
-  const isTrashFile = fileSize === 0 && !extractedMarkdown
+  const isTrashFile = fileSize === 0
+
+  // Resumo amigável caso seja PDF visual/apresentação
+  let fileSummary = record.getString('summary') || ''
+  if (!fileSummary && extractedMarkdown.startsWith('[PDF visual, sem texto extraível]')) {
+    fileSummary =
+      'Material visual e renders do empreendimento (' +
+      (detectedEnterprise || originalName) +
+      '). Contém imagens, plantas e material gráfico.'
+  }
 
   // 5. Salva dados extraídos e atualizados
   try {
@@ -143,9 +158,13 @@ onRecordAfterCreateSuccess((e) => {
       recToUpdate.set('enterprise', detectedEnterprise)
     }
 
+    if (fileSummary) {
+      recToUpdate.set('summary', fileSummary)
+    }
+
     if (isTrashFile) {
       recToUpdate.set('is_active', false)
-    } else if (record.get('is_active') === null || record.get('is_active') === undefined) {
+    } else {
       recToUpdate.set('is_active', true)
     }
 
@@ -239,11 +258,17 @@ onRecordAfterUpdateSuccess((e) => {
           record: record,
           field: 'file',
         })
-        if (docResult && docResult.markdown) {
-          extractedMarkdown = docResult.markdown
+        if (docResult && docResult.markdown && docResult.markdown.trim()) {
+          extractedMarkdown = docResult.markdown.trim()
         }
       } catch (docErr) {
         console.warn('[AI_KNOWLEDGE_FILES] $documents.toMarkdown failed: ' + String(docErr))
+      }
+
+      if (!extractedMarkdown && lowerName.endsWith('.pdf')) {
+        extractedMarkdown =
+          '[PDF visual, sem texto extraível] — Material/Book visual de apresentação: ' +
+          originalName
       }
     }
 
@@ -323,12 +348,21 @@ onRecordAfterUpdateSuccess((e) => {
   }
 
   const fileSize = record.getInt('file_size') || 0
-  const isTrashFile = fileSize === 0 && !extractedMarkdown
+  const isTrashFile = fileSize === 0
+
+  let fileSummary = record.getString('summary') || ''
+  if (!fileSummary && extractedMarkdown.startsWith('[PDF visual, sem texto extraível]')) {
+    fileSummary =
+      'Material visual e renders do empreendimento (' +
+      (detectedEnterprise || originalName) +
+      '). Contém imagens, plantas e material gráfico.'
+  }
 
   if (
     (extractedMarkdown && extractedMarkdown !== currentExtracted) ||
     detectedEnterprise ||
-    isTrashFile
+    isTrashFile ||
+    fileSummary
   ) {
     try {
       const recToUpdate = $app.findRecordById('ai_knowledge_files', record.id)
@@ -337,6 +371,9 @@ onRecordAfterUpdateSuccess((e) => {
       }
       if (detectedEnterprise && !record.getString('enterprise')) {
         recToUpdate.set('enterprise', detectedEnterprise)
+      }
+      if (fileSummary && !record.getString('summary')) {
+        recToUpdate.set('summary', fileSummary)
       }
       if (isTrashFile) {
         recToUpdate.set('is_active', false)
