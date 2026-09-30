@@ -23,6 +23,7 @@ import Anuncios from './pages/Anuncios'
 import Launches from './pages/Launches'
 import LaunchLanding from './pages/LaunchLanding'
 import FaxinaAtivosMeta from './pages/FaxinaAtivosMeta'
+import ScheduledPosts from './pages/ScheduledPosts'
 
 import Cadences from './pages/Cadences'
 import EmailMarketing from './pages/EmailMarketing'
@@ -113,6 +114,13 @@ const RouteTracker = () => {
           component = 'Launches'
         } else if (lowerPath === '/estatisticas' || lowerPath.startsWith('/estatisticas/')) {
           component = 'Estatisticas'
+        } else if (
+          lowerPath === '/posts' ||
+          lowerPath.startsWith('/posts/') ||
+          lowerPath === '/agenda' ||
+          lowerPath.startsWith('/agenda/')
+        ) {
+          component = 'ScheduledPosts'
         } else if (lowerPath === '/anuncios' || lowerPath.startsWith('/anuncios/')) {
           component = 'Anuncios'
         } else if (lowerPath === '/atendimentos' || lowerPath.startsWith('/atendimentos/')) {
@@ -325,6 +333,18 @@ const router = createBrowserRouter([
                     <Launches />
                   </ErrorBoundary>
                 ),
+              },
+              {
+                path: 'posts',
+                element: (
+                  <ErrorBoundary>
+                    <ScheduledPosts />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'agenda',
+                element: <Navigate to="/posts" replace />,
               },
               {
                 path: 'customers/*',

@@ -53,6 +53,7 @@ export default function Layout() {
     { name: 'Cérebro do Sistema', path: '/dashboard', icon: Bot },
     { name: 'Atendimentos (IA)', path: '/atendimentos', icon: MessageSquare },
     { name: 'Lançamentos', path: '/launches', icon: Building2 },
+    { name: 'Agenda de Posts', path: '/posts', icon: Megaphone },
     { name: 'Estatísticas', path: '/estatisticas', icon: BarChart3 },
     { name: 'Anúncios', path: '/anuncios', icon: Megaphone },
     { name: 'Clientes', path: '/customers', icon: Users },
