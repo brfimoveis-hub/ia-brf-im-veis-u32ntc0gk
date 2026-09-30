@@ -36,6 +36,7 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import InstagramCallback from './pages/InstagramCallback'
 import PrivacyPolicy from './pages/PrivacyPolicy'
+import VistageLandingPage from './pages/VistageLandingPage'
 
 const PageLoader = () => (
   <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
@@ -150,6 +151,12 @@ const RouteTracker = () => {
           component = 'ForgotPassword'
         } else if (lowerPath === '/reset-password') {
           component = 'ResetPassword'
+        } else if (
+          lowerPath === '/site' ||
+          lowerPath === '/vistage' ||
+          lowerPath === '/l/vistage-residence'
+        ) {
+          component = 'VistageLandingPage'
         } else if (lowerPath === '/privacidade') {
           component = 'PrivacyPolicy'
         } else if (lowerPath === '/') {
@@ -241,8 +248,20 @@ const router = createBrowserRouter([
         ],
       },
       {
+        path: 'site',
+        element: <VistageLandingPage />,
+      },
+      {
+        path: 'vistage',
+        element: <VistageLandingPage />,
+      },
+      {
         path: 'privacidade',
         element: <PrivacyPolicy />,
+      },
+      {
+        path: 'l/vistage-residence',
+        element: <VistageLandingPage />,
       },
       {
         path: 'l/:slug',
