@@ -918,6 +918,37 @@ cronAdd('sync_properties_hourly', '0 * * * *', () => {
         'https://www.brfimoveis.com.br/admin/imovel/mini/20240729T2128580300-373737934.jpg',
       is_active: true,
     },
+    {
+      code: 'AP-344',
+      title: 'Apartamento 3 dormitórios em Barreiros - São José/SC',
+      url: 'https://www.brfimoveis.com.br/344/imoveis/venda-apartamento-3-dormitorios-barreiros-sao-jose-sc',
+      city: 'São José',
+      neighborhood: 'Barreiros',
+      property_type: 'Apartamento',
+      transaction_type: 'Venda',
+      price: 510000.0,
+      price_formatted: 'R$ 510.000,00',
+      bedrooms: 3,
+      suites: 1,
+      bathrooms: 2,
+      parking_spaces: 1,
+      area_privativa: 82.0,
+      area_total: 104.0,
+      description:
+        'Excelente apartamento de 3 dormitórios (1 suíte) em Barreiros, São José/SC. Ótima localização próxima ao comércio local, sacada, sala espaçosa, vaga de garagem coberta. Oportunidade com excelente valor de mercado por R$ 510.000.',
+      features: [
+        'Barreiros',
+        'São José',
+        '3 dormitórios',
+        '1 suíte',
+        'Vaga de garagem',
+        'Sacada',
+        'Excelente localização',
+      ],
+      image_url:
+        'https://www.brfimoveis.com.br/admin/imovel/mini/20260309T1705450300-795523311.jpg',
+      is_active: true,
+    },
   ]
 
   let createdCount = 0

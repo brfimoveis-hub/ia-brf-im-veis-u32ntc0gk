@@ -1290,25 +1290,74 @@ ${
         }
       }
 
-      // 1b. Check if customer mentioned specific property codes (e.g. AP-320, AP343, LM 329, LM330)
+      // 1b. Check if customer mentioned specific property codes or URLs (e.g. #LM344, #AP344, LM 344, AP-344, 344, brfimoveis.com.br/344/...)
+      let detectedSpecificPropertyQuery = false
+      const extractedPropertyNumbers = new Set()
+
+      // Extração de URLs do site brfimoveis com ID numérico: brfimoveis.com.br/NNN/...
+      const urlIdMatches = combinedCustAndAdText.matchAll(/brfimoveis\.com\.br\/(\d{1,6})\b/gi)
+      for (const um of urlIdMatches) {
+        if (um[1]) {
+          extractedPropertyNumbers.add(um[1])
+          detectedSpecificPropertyQuery = true
+        }
+      }
+
+      // Extração de códigos com ou sem hashtag e prefixos (ex: #LM344, #AP-344, LM344, AP-344, CS331, TR 338, ARU-341, ou número de 3 dígitos)
       const codeMatches = combinedCustAndAdText.matchAll(
-        /(?:^|\s|\b)(ap[-\s]?\d+|lm[-\s]?\d+|tr[-\s]?\d+|aru[-\s]?\d+|cs[-\s]?\d+|\b\d{3}\b)/gi,
+        /(?:^|[\s#])([a-z]{1,4}[-\s]?\d{2,5}|\b\d{3,4}\b)/gi,
       )
       for (const cm of codeMatches) {
-        const rawCode = cm[1].toUpperCase().replace(/\s+/g, '')
-        const numOnly = rawCode.replace(/\D/g, '')
-        if (numOnly) {
-          const codeFilter = `is_active = true && (code ~ '${rawCode}' || url ~ '/${numOnly}/')`
-          const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 2, 0)
+        const matchCandidate = cm[1].trim()
+        const numOnly = matchCandidate.replace(/\D/g, '')
+        // Ignora valores financeiros como 500k, anos como 2026, ou DDDs/telefones comuns
+        if (numOnly && numOnly.length >= 2 && numOnly.length <= 5) {
+          if (
+            numOnly !== '500' &&
+            numOnly !== '100' &&
+            numOnly !== '200' &&
+            numOnly !== '2024' &&
+            numOnly !== '2025' &&
+            numOnly !== '2026'
+          ) {
+            extractedPropertyNumbers.add(numOnly)
+            detectedSpecificPropertyQuery = true
+          }
+        }
+      }
+
+      // Se houver menção explícita a termos como "imóvel", "imovel", "apartamento", "apto", "#" com número
+      if (
+        /#\s*[a-z]*\d+/i.test(combinedCustAndAdText) ||
+        /im[oó]vel\s*#?[a-z]*\d+/i.test(combinedCustAndAdText) ||
+        /c[oó]digo\s*#?[a-z]*\d+/i.test(combinedCustAndAdText) ||
+        /brfimoveis\.com\.br\/\d+/i.test(combinedCustAndAdText)
+      ) {
+        detectedSpecificPropertyQuery = true
+      }
+
+      // Buscar no catálogo de properties pelo ID numérico isolado (no code OU na url)
+      for (const propNum of extractedPropertyNumbers) {
+        try {
+          const codeFilter = `is_active = true && (code ~ '${propNum}' || url ~ '/${propNum}/')`
+          const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 3, 0)
           for (const cr of codeResults) {
             if (!matchedIds.has(cr.id)) {
               matchedIds.add(cr.id)
               matchedProps.push(cr)
             }
           }
+        } catch (lookupErr) {
+          console.warn(
+            `[AI_REPLY] Error searching property by num ${propNum}: ${String(lookupErr)}`,
+          )
         }
       }
 
+      // Se encontrou o imóvel específico citado pelo lead, marcar flag crítica de foco exclusivo
+      const hasFoundLeadSpecificProperty = detectedSpecificPropertyQuery && matchedProps.length > 0
+      const leadRequestedPropertyMissing =
+        detectedSpecificPropertyQuery && matchedProps.length === 0
       // 2. Filter by criteria (Price <= X, Bedrooms >= Y, Location)
       if (
         matchedProps.length === 0 &&
@@ -1359,8 +1408,10 @@ ${
       }
 
       // 3. Fallback: if user asked for options or no match, load top active properties
-      // Prioritize official launches (code ~ 'LM') first so Bia always highlights key projects
-      if (matchedProps.length === 0) {
+      // REGRA CRÍTICA: Se o lead perguntou sobre um imóvel específico (código, link ou número) e ele NÃO foi localizado,
+      // NUNCA preencher o catálogo com outros lançamentos ou imóveis alternativos.
+      // NUNCA empurrar alternativas na primeira mensagem quando o cliente perguntou por algo pontual!
+      if (matchedProps.length === 0 && !detectedSpecificPropertyQuery) {
         const topLaunches = $app.findRecordsByFilter(
           'properties',
           "is_active = true && code ~ 'LM'",
@@ -1390,7 +1441,6 @@ ${
           }
         }
       }
-
       if (matchedProps.length > 0) {
         propertyContext = '\n[CATÁLOGO DE IMÓVEIS REAIS - BRF IMÓVEIS (www.brfimoveis.com.br)]\n'
         propertyContext +=
@@ -1838,11 +1888,23 @@ IDENTIFICAÇÃO E APRESENTAÇÃO DA BIA (PADRÃO DE MERCADO):
 - PROIBIÇÃO ABSOLUTA: NUNCA diga nem explique que nomes vieram de cadastro de leads, formulários, CRM, banco de dados, Google Contacts ou tabelas internas. NUNCA revele termos técnicos de cadastro ou sistemas.
 - TRATAMENTO DO CLIENTE: Trate o cliente pelo nome apenas se for um nome simples e confiável. Se o nome parecer estranho ou incerto, simplesmente cumprimente sem usar nome ("${getTemporalGreetingWord(brHour)}! Tudo bem?").
 
+REGRA DE ATENDIMENTO A IMÓVEIS ESPECÍFICOS (FOCO TOTAL NO IMÓVEL DO LEAD):
+1. Se o lead perguntou sobre um imóvel específico (citou código com ou sem hashtag como #LM344, #AP344, AP-344, número isolado como 344, link brfimoveis.com.br/... ou descrição de um imóvel pontual):
+   - Você DEVE responder PRIMEIRO e EXCLUSIVAMENTE sobre esse imóvel!
+   - Confirme que é ele, apresente valores, dormitórios, características reais daquele imóvel e tire as dúvidas do cliente sobre ele.
+2. PROIBIÇÃO ABSOLUTA DE ALTERNATIVAS PRECOCES:
+   - É EXPRESSAMENTE PROIBIDO oferecer outro imóvel ou lançamento na primeira resposta quando o cliente perguntou por um imóvel específico.
+   - NUNCA troque de assunto e NUNCA empurre lançamentos da região se o lead tem interesse num imóvel específico.
+3. SE O IMÓVEL CITADO NÃO FOR ENCONTRADO NA BASE:
+   - Informe com cordialidade que você vai verificar a disponibilidade e os detalhes daquele imóvel específico com o corretor Mauro e retornar para ele.
+   - JAMAIS ofereça imóveis alternativos na mesma resposta em que o lead perguntou por um imóvel não encontrado.
+4. OFERECIMENTO DE ALTERNATIVAS SOMENTE APÓS RECUSA EXPLÍCITA:
+   - Imóveis alternativos ou lançamentos só podem ser sugeridos DEPOIS que o lead expressar explicitamente que o imóvel procurado não se encaixa (recusa de valor, perfil inadequado, desistência ou falta de interesse explícita). E mesmo nesse caso, as alternativas devem ser secundárias e respeitar as preferências dele.
+
 REGRA DE OURO SOBRE IMÓVEIS (TOLERÂNCIA ZERO PARA ALUCINAÇÃO):
 - NUNCA invente imóveis, códigos, preços, bairros ou links. Use SOMENTE os imóveis fornecidos no contexto acima (seção [CATÁLOGO DE IMÓVEIS REAIS]).
 - NUNCA monte links com URLs imaginárias (como /101/, /102/ ou links quebrados). Use EXATAMENTE os links oficiais fornecidos no catálogo.
-- Se não houver imóvel perfeitamente compatível com o pedido do cliente (ex: pediu estúdio ou bairro específico onde não temos ativo no momento), SEJA HONESTO E TRANSPARENTE: diga claramente que no momento não temos esse formato específico/nessa região exata, E IMEDIATAMENTE apresente 1 a 3 das melhores opções ativas mais próximas do catálogo real fornecido no contexto com link oficial, ou direcione para o catálogo geral no site https://www.brfimoveis.com.br/imoveis/venda e para o Mauro (wa.me/5548992098050). NUNCA faça mais perguntas de qualificação em loop quando o cliente já pediu opções!
-
+- Se a busca for genérica (cliente não citou imóvel específico, apenas características como "estúdio em Barreiros") e não houver imóvel perfeitamente compatível, SEJA HONESTO E TRANSPARENTE: diga claramente que no momento não temos esse formato específico/nessa região exata, E apresente 1 a 3 das melhores opções ativas mais próximas do catálogo real fornecido no contexto com link oficial, ou direcione para o catálogo geral no site https://www.brfimoveis.com.br/imoveis/venda e para o Mauro (wa.me/5548992098050). NUNCA faça mais perguntas de qualificação em loop quando o cliente já pediu opções!
 DIRETRIZ DE BASE DE CONHECIMENTO E EMPREENDIMENTOS:
 - A base de conhecimento documental está organizada por EMPREENDIMENTO.
 - Sempre identifique de qual empreendimento o lead está falando, perguntando ou interessado (ex: pelo anúncio, mensagens ou perguntas dele).
@@ -2086,20 +2148,20 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       )
       const primaryProp = matchedProps[0]
       const pTitle = (primaryProp.getString('title') || '').trim()
+      const pCode = (primaryProp.getString('code') || '').trim()
       const pNeigh = (primaryProp.getString('neighborhood') || '').trim()
       const pCity = (primaryProp.getString('city') || '').trim()
-      const pDesc = (primaryProp.getString('description') || '').trim()
+      const pPrice = (primaryProp.getString('price_formatted') || '').trim()
+      const pUrl = (primaryProp.getString('url') || '').trim()
       const locStr = [pNeigh, pCity].filter(Boolean).join(', ')
 
-      let correctedCatalogMsg = `Temos sim essa excelente opção no nosso portfólio oficial! `
-      correctedCatalogMsg += `O *${pTitle}* fica em ótima localização${locStr ? ` em ${locStr}` : ''}`
-      if (pDesc) {
-        const shortDesc = pDesc.split('.')[0].replace(/\n/g, ' ')
-        if (shortDesc.length > 10 && shortDesc.length < 160) {
-          correctedCatalogMsg += `, com ${shortDesc.toLowerCase()}`
-        }
-      }
-      correctedCatalogMsg += `.\n\nQuer que eu te passe mais detalhes do projeto e a tabela de valores dele?`
+      let correctedCatalogMsg = `Temos sim essa opção no nosso portfólio oficial! `
+      correctedCatalogMsg += `Sobre o imóvel ${pCode ? `*${pCode}*` : ''}${pTitle ? ` (${pTitle})` : ''}`
+      if (locStr) correctedCatalogMsg += ` em ${locStr}`
+      if (pPrice) correctedCatalogMsg += `, ele está disponível por *${pPrice}*`
+      correctedCatalogMsg += `.`
+      if (pUrl) correctedCatalogMsg += ` Você pode conferir os detalhes aqui: ${pUrl}`
+      correctedCatalogMsg += `\n\nPosso te ajudar com alguma informação específica dele ou gostaria de agendar uma visita?`
       responseText = correctedCatalogMsg.trim()
     }
 
@@ -2252,10 +2314,19 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                   responseText = regeneratedText
                 } else {
                   console.warn(
-                    `[AI_REPLY] Regenerated text was invalid or contained evaluation markers. Falling back to catalog.`,
+                    `[AI_REPLY] Regenerated text was invalid or contained evaluation markers.`,
                   )
-                  const catFb = generateCatalogFallbackMessage(matchedProps)
-                  if (catFb) responseText = catFb
+                  if (detectedSpecificPropertyQuery) {
+                    if (matchedProps && matchedProps.length > 0) {
+                      const tp = matchedProps[0]
+                      responseText = `Sobre o imóvel ${tp.getString('code')} (${tp.getString('title')}): ele está disponível por ${tp.getString('price_formatted')}. Confira os detalhes: ${tp.getString('url')}. Como posso te ajudar com ele?`
+                    } else {
+                      responseText = `Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes dele junto ao Mauro e já te retorno com as informações completas.`
+                    }
+                  } else {
+                    const catFb = generateCatalogFallbackMessage(matchedProps)
+                    if (catFb) responseText = catFb
+                  }
                 }
               }
             } catch (regenErr) {
@@ -2297,6 +2368,17 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           activeCodes.add(c)
           activeCodes.add(c.replace(/\s+/g, ''))
           activeCodes.add(c.replace(/[-_\s]+/g, ''))
+          // Extrai dígitos numéricos do código (ex: AP-344 -> 344)
+          const cNum = c.replace(/\D/g, '')
+          if (cNum) {
+            activeUrlNumbers.add(cNum)
+            activeCodes.add(cNum)
+            // Permite variações de prefixos no mesmo número (ex: LM344, AP344)
+            activeCodes.add(`LM${cNum}`)
+            activeCodes.add(`AP${cNum}`)
+            activeCodes.add(`LM-${cNum}`)
+            activeCodes.add(`AP-${cNum}`)
+          }
         }
         const u = (p.getString('url') || '').trim().toLowerCase()
         if (u) {
@@ -2304,10 +2386,14 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           const numMatch = u.match(/brfimoveis\.com\.br\/(\d+)/i)
           if (numMatch) {
             activeUrlNumbers.add(numMatch[1])
+            activeCodes.add(numMatch[1])
+            activeCodes.add(`AP${numMatch[1]}`)
+            activeCodes.add(`LM${numMatch[1]}`)
+            activeCodes.add(`AP-${numMatch[1]}`)
+            activeCodes.add(`LM-${numMatch[1]}`)
           }
         }
       })
-
       // Split text into blocks / paragraphs (separated by double newlines or list items / tables)
       // Check each block: does it cite a property code or a brfimoveis link?
       const rawBlocks = text.split(/\n\s*\n/)
@@ -2698,31 +2784,75 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     const needsCatalogFallback =
       !responseText.trim() || (validationResult.hadHallucinatedProperty && responseText.length < 30)
 
-    // If response was repetitive, canned, or stripped of hallucinated properties, replace with real catalog options!
+    // REGRA DE NEGÓCIO DE FOCO ABSOLUTO NO IMÓVEL DO LEAD:
+    // Se o lead perguntou sobre um imóvel específico (código, link ou número):
+    // 1. NUNCA substituir a resposta por alternativas/lançamentos de região via generateCatalogFallbackMessage.
+    // 2. Se a resposta ficou vazia ou foi limpa pela validação e o imóvel do lead FOI localizado, responder com foco nele.
+    // 3. Se a resposta ficou vazia e o imóvel NÃO foi localizado na base: informar cordialmente que vamos verificar e retornar, JAMAIS ofertar alternativa.
     if (cannedDetected || isTooSimilar || needsCatalogFallback) {
-      console.log(
-        `[AI_REPLY] Overriding with real catalog fallback for customer ${customerId} (canned=${cannedDetected}, similar=${isTooSimilar}, needsFallback=${needsCatalogFallback}).`,
-      )
-      try {
-        const catalogMsg = generateCatalogFallbackMessage(matchedProps)
-        if (catalogMsg && catalogMsg.trim()) {
-          responseText = catalogMsg
+      if (detectedSpecificPropertyQuery) {
+        console.log(
+          `[AI_REPLY] Specific property query detected for customer ${customerId}. Enforcing strict focus on requested property. Suppressing generic launch fallback.`,
+        )
+        const greeting = buildTemporalGreeting(displayName, brHour) + ' '
+        if (matchedProps && matchedProps.length > 0) {
+          const targetProp = matchedProps[0]
+          const pTitle = (targetProp.getString('title') || '').trim()
+          const pCode = (targetProp.getString('code') || '').trim()
+          const pPrice = (targetProp.getString('price_formatted') || '').trim()
+          const pNeigh = (targetProp.getString('neighborhood') || '').trim()
+          const pCity = (targetProp.getString('city') || '').trim()
+          const pBeds = targetProp.getInt('bedrooms')
+          const pUrl = (targetProp.getString('url') || '').trim()
+
+          let msg = `${greeting}Com certeza! Sobre o imóvel ${pCode ? `*${pCode}*` : ''}${pTitle ? ` (${pTitle})` : ''}`
+          if (pNeigh || pCity) {
+            msg += ` localizado em ${[pNeigh, pCity].filter(Boolean).join(', ')}`
+          }
+          if (pPrice) {
+            msg += `, ele está disponível pelo valor de *${pPrice}*`
+          }
+          if (pBeds > 0) {
+            msg += ` e conta com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}`
+          }
+          msg += `.\n\n`
+          if (pUrl) {
+            msg += `Você pode conferir as fotos e a ficha completa aqui: ${pUrl}\n\n`
+          }
+          msg += `Quer que eu tire alguma dúvida específica sobre ele ou prefere agendar uma visita?`
+          responseText = msg
+        } else {
+          // Imóvel citado NÃO foi encontrado na base
+          responseText = `${greeting}Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes e a disponibilidade atualizada dele junto ao Mauro e já te retorno com as informações completas. Um instante, por favor!`
         }
-      } catch (fbErr) {
-        console.error(`[AI_REPLY] generateCatalogFallbackMessage error: ${String(fbErr)}`)
+      } else {
+        console.log(
+          `[AI_REPLY] Overriding with real catalog fallback for customer ${customerId} (canned=${cannedDetected}, similar=${isTooSimilar}, needsFallback=${needsCatalogFallback}).`,
+        )
         try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const fbErrLog = new Record(logsCol)
-          fbErrLog.set('user_id', userId || '')
-          fbErrLog.set('type', 'whatsapp_ai_reply_error')
-          fbErrLog.set(
-            'message',
-            `Erro no generateCatalogFallbackMessage: ${fbErr.message || String(fbErr)}`,
-          )
-          fbErrLog.set('details', String(fbErr.stack || fbErr))
-          fbErrLog.set('payload', JSON.stringify({ customer_id: customerId, error: String(fbErr) }))
-          $app.saveNoValidate(fbErrLog)
-        } catch (_) {}
+          const catalogMsg = generateCatalogFallbackMessage(matchedProps)
+          if (catalogMsg && catalogMsg.trim()) {
+            responseText = catalogMsg
+          }
+        } catch (fbErr) {
+          console.error(`[AI_REPLY] generateCatalogFallbackMessage error: ${String(fbErr)}`)
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const fbErrLog = new Record(logsCol)
+            fbErrLog.set('user_id', userId || '')
+            fbErrLog.set('type', 'whatsapp_ai_reply_error')
+            fbErrLog.set(
+              'message',
+              `Erro no generateCatalogFallbackMessage: ${fbErr.message || String(fbErr)}`,
+            )
+            fbErrLog.set('details', String(fbErr.stack || fbErr))
+            fbErrLog.set(
+              'payload',
+              JSON.stringify({ customer_id: customerId, error: String(fbErr) }),
+            )
+            $app.saveNoValidate(fbErrLog)
+          } catch (_) {}
+        }
       }
     }
 
@@ -2776,8 +2906,21 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     // Guarantee that no supervisor metadata, headers, or canned sentences can slip through to WhatsApp
     responseText = sanitizeAiResponse(responseText)
     if (isCannedValuesSentence(responseText)) {
-      console.warn('[AI_REPLY] Final check detected canned sentence, forcing catalog fallback')
-      responseText = generateCatalogFallbackMessage(matchedProps)
+      console.warn('[AI_REPLY] Final check detected canned sentence')
+      if (detectedSpecificPropertyQuery) {
+        if (matchedProps && matchedProps.length > 0) {
+          const targetProp = matchedProps[0]
+          const pTitle = (targetProp.getString('title') || '').trim()
+          const pCode = (targetProp.getString('code') || '').trim()
+          const pPrice = (targetProp.getString('price_formatted') || '').trim()
+          const pUrl = (targetProp.getString('url') || '').trim()
+          responseText = `Sobre o imóvel ${pCode ? `*${pCode}*` : ''}${pTitle ? ` (${pTitle})` : ''}: ele está disponível por *${pPrice}*. Confira os detalhes em: ${pUrl}. Posso tirar alguma dúvida específica para você?`
+        } else {
+          responseText = `Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes dele junto ao Mauro e já te retorno com as informações completas.`
+        }
+      } else {
+        responseText = generateCatalogFallbackMessage(matchedProps)
+      }
       responseText = sanitizeAiResponse(responseText)
     }
 
