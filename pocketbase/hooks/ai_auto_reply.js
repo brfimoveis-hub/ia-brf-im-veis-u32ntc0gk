@@ -137,7 +137,7 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
-    // Lock acquisition with 120s TTL
+    // Lock acquisition with 20s TTL (reduzido de 120s para 20s para evitar descarte de mensagens em sequência)
     try {
       $app.runInTransaction((txApp) => {
         const customer = txApp.findRecordById('customers', customerId)
@@ -155,11 +155,31 @@ onRecordAfterCreateSuccess((e) => {
           if (t.startsWith(lockPrefix)) {
             const lockTimeStr = t.substring(lockPrefix.length)
             const lockTime = parseInt(lockTimeStr, 10)
-            if (!isNaN(lockTime) && now - lockTime < 120000) {
+            // Lock timeout de 20 segundos
+            if (!isNaN(lockTime) && now - lockTime < 20000) {
               activeLock = true
               break
             }
           }
+        }
+
+        // Se chegam mensagens em sequência do mesmo lead (incomingMsgId mais recente), liberamos o lock para processar a nova mensagem
+        if (activeLock) {
+          try {
+            const latestMsgsCheck = txApp.findRecordsByFilter(
+              'conversations',
+              `customer_id = '${customerId}'`,
+              '-created',
+              1,
+              0,
+            )
+            if (latestMsgsCheck.length > 0 && latestMsgsCheck[0].id === incomingMsgId) {
+              console.log(
+                `[AI_REPLY] Nova mensagem sequencial do cliente ${customerId} detectada. Liberando lock anterior imediatamente.`,
+              )
+              activeLock = false
+            }
+          } catch (_) {}
         }
 
         if (activeLock) {
@@ -175,7 +195,7 @@ onRecordAfterCreateSuccess((e) => {
     } catch (err) {
       if (err.message === 'LOCKED') {
         console.log(
-          `[AI_REPLY] Customer ${customerId} already has active ai_processing lock, skipping.`,
+          `[AI_REPLY] Customer ${customerId} already has active ai_processing lock (<20s), skipping.`,
         )
         return e.next()
       }
@@ -257,97 +277,149 @@ onRecordAfterCreateSuccess((e) => {
       customerNotes.toLowerCase().includes('origem: anúncio') ||
       customerNotes.toLowerCase().includes('origem: anuncio')
 
-    // Procura por Dossiê de Lançamento publicado compatível (launches com status='publicado')
-    let matchedLaunch = null
-    try {
-      const publishedLaunches = $app.findRecordsByFilter(
-        'launches',
-        "status = 'publicado'",
-        '-created',
-        50,
-        0,
-      )
-      const referralSearchText =
-        `${effectiveOrigin} ${customerSource} ${customerNotes} ${conversationChannel || ''}`.toLowerCase()
+    // PRE-DETECÇÃO DE IMÓVEL ESPECÍFICO NA ÚLTIMA MENSAGEM DO LEAD (MÁXIMA PRIORIDADE):
+    // Se o lead citou URL (ex: brfimoveis.com.br/343/...) ou código (#AP343, AP-343, 343) na ÚLTIMA mensagem,
+    // isso DEVE SOBREPOR IMEDIATAMENTE qualquer matchedLaunch ou matchedPlaybook do histórico/origem!
+    const incomingCustMsgText = (e.record.getString('content') || '').trim()
+    let lastMsgSpecificPropertyRequested = false
+    let lastMsgPropertyCodeOrNum = ''
 
-      for (const lItem of publishedLaunches) {
-        const lName = (lItem.getString('name') || '').toLowerCase()
-        const lSlug = (lItem.getString('slug') || '').toLowerCase()
-        const lEnterprise = (lItem.getString('enterprise_name') || '').toLowerCase()
-
-        let keywords = lItem.get('keywords')
-        if (typeof keywords === 'string') {
-          try {
-            keywords = JSON.parse(keywords)
-          } catch (_) {
-            keywords = [keywords]
+    if (incomingCustMsgText) {
+      const urlMatchInLast = incomingCustMsgText.match(/brfimoveis\.com\.br\/(\d{1,6})\b/i)
+      if (urlMatchInLast && urlMatchInLast[1]) {
+        lastMsgSpecificPropertyRequested = true
+        lastMsgPropertyCodeOrNum = urlMatchInLast[1]
+      } else {
+        const hashMatch = incomingCustMsgText.match(/#\s*([a-zA-Z]{1,4}[-\s]?\d{2,5}|\d{2,5})/i)
+        if (hashMatch && hashMatch[1]) {
+          lastMsgSpecificPropertyRequested = true
+          lastMsgPropertyCodeOrNum = hashMatch[1].replace(/\s+/g, '')
+        } else {
+          const codeMatch = incomingCustMsgText.match(/\b(AP|LM|CS|TR|ARU)[-\s]?(\d{2,5})\b/i)
+          if (codeMatch) {
+            lastMsgSpecificPropertyRequested = true
+            lastMsgPropertyCodeOrNum = `${codeMatch[1].toUpperCase()}${codeMatch[2]}`
+          } else {
+            // Número solto de 3 ou 4 dígitos acompanhado de termos como "imóvel", "apartamento", "apto", "código"
+            const numWithContext = incomingCustMsgText.match(
+              /(?:im[oó]vel|apartamento|apto|c[oó]digo|cod|ref)\s*#?\s*(\d{2,5})\b/i,
+            )
+            if (numWithContext && numWithContext[1]) {
+              lastMsgSpecificPropertyRequested = true
+              lastMsgPropertyCodeOrNum = numWithContext[1]
+            }
           }
-        }
-
-        const matchTerms = [
-          lName,
-          lSlug,
-          lEnterprise,
-          ...(Array.isArray(keywords) ? keywords : []),
-        ].filter(Boolean)
-
-        const hasMatch = matchTerms.some((term) => {
-          if (!term || typeof term !== 'string') return false
-          const t = term.trim().toLowerCase()
-          return t.length > 2 && referralSearchText.includes(t)
-        })
-
-        if (hasMatch) {
-          matchedLaunch = lItem
-          console.log(
-            `[AI_REPLY] Matched published launch dossier: "${lItem.getString('name')}" (slug=${lSlug}, id=${lItem.id}) for customer=${customerId}`,
-          )
-          break
         }
       }
-    } catch (launchErr) {
-      console.warn(`[AI_REPLY] Error checking published launches (non-fatal): ${String(launchErr)}`)
     }
 
-    // Procura por Playbook de Anúncio ativo compatível (ad_playbooks)
-    let matchedPlaybook = null
-    try {
-      const activePlaybooks = $app.findRecordsByFilter(
-        'ad_playbooks',
-        'active = true',
-        '-created',
-        50,
-        0,
-      )
-      const referralSearchText =
-        `${effectiveOrigin} ${customerSource} ${customerNotes}`.toLowerCase()
+    // Procura por Dossiê de Lançamento publicado compatível (launches com status='publicado')
+    // SÓ vincula se a última mensagem do lead NÃO for sobre um imóvel específico diferente
+    let matchedLaunch = null
+    if (!lastMsgSpecificPropertyRequested) {
+      try {
+        const publishedLaunches = $app.findRecordsByFilter(
+          'launches',
+          "status = 'publicado'",
+          '-created',
+          50,
+          0,
+        )
+        const referralSearchText =
+          `${effectiveOrigin} ${customerSource} ${customerNotes} ${conversationChannel || ''}`.toLowerCase()
 
-      for (const pbItem of activePlaybooks) {
-        let keywords = pbItem.get('match_keywords')
-        if (typeof keywords === 'string') {
-          try {
-            keywords = JSON.parse(keywords)
-          } catch (_) {
-            keywords = [keywords]
+        for (const lItem of publishedLaunches) {
+          const lName = (lItem.getString('name') || '').toLowerCase()
+          const lSlug = (lItem.getString('slug') || '').toLowerCase()
+          const lEnterprise = (lItem.getString('enterprise_name') || '').toLowerCase()
+
+          let keywords = lItem.get('keywords')
+          if (typeof keywords === 'string') {
+            try {
+              keywords = JSON.parse(keywords)
+            } catch (_) {
+              keywords = [keywords]
+            }
           }
-        }
-        if (Array.isArray(keywords)) {
-          const hasMatch = keywords.some((kw) => {
-            if (!kw || typeof kw !== 'string') return false
-            const trimmedKw = kw.trim().toLowerCase()
-            return trimmedKw.length > 0 && referralSearchText.includes(trimmedKw)
+
+          const matchTerms = [
+            lName,
+            lSlug,
+            lEnterprise,
+            ...(Array.isArray(keywords) ? keywords : []),
+          ].filter(Boolean)
+
+          const hasMatch = matchTerms.some((term) => {
+            if (!term || typeof term !== 'string') return false
+            const t = term.trim().toLowerCase()
+            return t.length > 2 && referralSearchText.includes(t)
           })
+
           if (hasMatch) {
-            matchedPlaybook = pbItem
+            matchedLaunch = lItem
             console.log(
-              `[AI_REPLY] Matched ad playbook: "${pbItem.getString('name')}" (id=${pbItem.id}) for customer=${customerId}`,
+              `[AI_REPLY] Matched published launch dossier: "${lItem.getString('name')}" (slug=${lSlug}, id=${lItem.id}) for customer=${customerId}`,
             )
             break
           }
         }
+      } catch (launchErr) {
+        console.warn(
+          `[AI_REPLY] Error checking published launches (non-fatal): ${String(launchErr)}`,
+        )
       }
-    } catch (pbErr) {
-      console.warn(`[AI_REPLY] Error checking ad_playbooks (non-fatal): ${String(pbErr)}`)
+    } else {
+      console.log(
+        `[AI_REPLY] Lead requested specific property (${lastMsgPropertyCodeOrNum}) in latest message. Suppressing historical matchedLaunch dossier to prevent cross-contamination.`,
+      )
+    }
+
+    // Procura por Playbook de Anúncio ativo compatível (ad_playbooks)
+    // SÓ vincula se a última mensagem do lead NÃO for sobre um imóvel específico diferente
+    let matchedPlaybook = null
+    if (!lastMsgSpecificPropertyRequested) {
+      try {
+        const activePlaybooks = $app.findRecordsByFilter(
+          'ad_playbooks',
+          'active = true',
+          '-created',
+          50,
+          0,
+        )
+        const referralSearchText =
+          `${effectiveOrigin} ${customerSource} ${customerNotes}`.toLowerCase()
+
+        for (const pbItem of activePlaybooks) {
+          let keywords = pbItem.get('match_keywords')
+          if (typeof keywords === 'string') {
+            try {
+              keywords = JSON.parse(keywords)
+            } catch (_) {
+              keywords = [keywords]
+            }
+          }
+          if (Array.isArray(keywords)) {
+            const hasMatch = keywords.some((kw) => {
+              if (!kw || typeof kw !== 'string') return false
+              const trimmedKw = kw.trim().toLowerCase()
+              return trimmedKw.length > 0 && referralSearchText.includes(trimmedKw)
+            })
+            if (hasMatch) {
+              matchedPlaybook = pbItem
+              console.log(
+                `[AI_REPLY] Matched ad playbook: "${pbItem.getString('name')}" (id=${pbItem.id}) for customer=${customerId}`,
+              )
+              break
+            }
+          }
+        }
+      } catch (pbErr) {
+        console.warn(`[AI_REPLY] Error checking ad_playbooks (non-fatal): ${String(pbErr)}`)
+      }
+    } else {
+      console.log(
+        `[AI_REPLY] Lead requested specific property (${lastMsgPropertyCodeOrNum}) in latest message. Suppressing historical ad_playbook to prevent cross-contamination.`,
+      )
     }
     const customerName = (customer.getString('name') || '').trim()
     const customerFirstName = (customer.getString('first_name') || '').trim()
@@ -622,14 +694,17 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
 
     const strictGuidelines = `
 ### REGRAS OBRIGATÓRIAS DE DIÁLOGO E VENDA CONSULTIVA (SIGA ESTRITAMENTE):
-1. DIÁLOGO HUMANO, AMISTOSO E UMA PERGUNTA POR VEZ:
+1. TRATE PRIMEIRO O QUE FOI PEDIDO PELO CLIENTE (REGRA FUNDAMENTAL):
+   - Se o cliente perguntou sobre condições de pagamento, responda PRIMEIRO as condições de pagamento.
+   - Se perguntou sobre uma planta ou unidade específica, responda PRIMEIRO sobre a planta/unidade.
+   - Se demonstrou urgência ("quero comprar hoje", "gostaria de realizar essa compra hoje"), CONDUZA IMEDIATAMENTE para o fechamento/reserva com o Mauro (wa.me/5548992098050)! NUNCA responda com perguntas genéricas de cadência atrasada ou recomece a qualificação!
+2. DIÁLOGO HUMANO, AMISTOSO E UMA PERGUNTA POR VEZ:
    - Mantenha mensagens curtas (2 a 4 linhas no WhatsApp), empáticas e calorosas.
    - NUNCA envie blocos acumulados com 3 ou mais perguntas. Faça APENAS UMA pergunta simples e objetiva por vez para manter a conversa fluida e sugar o máximo de informações do cliente no ritmo dele.
-2. ETAPAS DE QUALIFICAÇÃO ANTES DE PREÇO/TABELA:
-   - Etapa 1 (Acolhimento): Descubra (a) como chegou até a gente; (b) o que busca: compra, venda, permuta ou aluguel; (c) tipo de imóvel e região/bairro; (d) faixa de valor e motivação (moradia vs investimento).
-   - Etapa 2 (Qualificação Financeira OBRIGATÓRIA antes de preços e tabelas): Verifique se pretende comprar à vista ou financiado. Se for financiar: pergunte se já tem crédito aprovado, em qual banco, valor aproximado e se usará FGTS.
-   - Etapa 3 (Apresentação Consultiva): Descreva o lançamento/imóvel com suas próprias palavras no fluxo de conversa (nome do empreendimento, localização, tipologia, diferenciais), gere desejo e pergunte: "Quer que eu te mande as fotos e a tabela de valores?". NUNCA abra com código interno frio (ex: LM 310) nem despeje preços/links antes do interesse explícito.
-3. HANDOFF PARA HUMANO: Se o cliente pedir um "corretor", "humano", ou perguntar algo que você não sabe, responda cordialmente encaminhando para o Mauro: "Vou te transferir agora para o Mauro, nosso especialista: https://wa.me/5548992098050" e inclua [HANDOVER: Mauro].`
+3. RESPEITO A FATOS JÁ INFORMADOS (ANTI-LOOP):
+   - Se o lead já disse que o objetivo é INVESTIMENTO, NUNCA pergunte "vai morar ou investir?". A ficha do lead governa!
+   - Se o lead já disse que vai pagar À VISTA, NUNCA pergunte sobre financiamento bancário!
+4. HANDOFF PARA HUMANO / FECHAMENTO URGENTE: Se o cliente pedir um "corretor", "humano", quiser fechar proposta hoje, ou perguntar algo que você não sabe, responda cordialmente encaminhando para o Mauro: "Vou te transferir agora para o Mauro, nosso especialista: https://wa.me/5548992098050" e inclua [HANDOVER: Mauro].`
 
     activeCadenceText += `\n\n${strictGuidelines}`
 
@@ -823,12 +898,53 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
           }
         }
 
-        // 2. Finalidade (compra, venda, permuta, locação/aluguel)
+        // 2. Finalidade e Perfil do Lead (Compra, Investimento vs Moradia, Venda, Permuta, Aluguel)
         if (
+          lower.includes('investir') ||
+          lower.includes('investimento') ||
+          lower.includes('para investimento') ||
+          lower.includes('pra investimento') ||
+          lower.includes('rentabilidade') ||
+          lower.includes('revenda') ||
+          lower.includes('locacao por temporada') ||
+          lower.includes('locação por temporada') ||
+          lower.includes('airbnb')
+        ) {
+          collectedLeadData.purpose = 'Compra para Investimento'
+          collectedLeadData.profile = 'Investidor'
+          // Atualiza automaticamente no customer no banco se ainda não estiver gravado
+          try {
+            if (customer.getString('lead_profile') !== 'Investidor') {
+              customer.set('lead_profile', 'Investidor')
+              $app.saveNoValidate(customer)
+              console.log(
+                `[AI_REPLY] Atualizado lead_profile para "Investidor" para o cliente ${customerId} com base na mensagem do lead`,
+              )
+            }
+          } catch (_) {}
+        } else if (
+          lower.includes('morar') ||
+          lower.includes('moradia') ||
+          lower.includes('minha família') ||
+          lower.includes('minha familia') ||
+          lower.includes('para morar') ||
+          lower.includes('pra morar')
+        ) {
+          collectedLeadData.purpose = 'Compra para Moradia'
+          collectedLeadData.profile = 'Morador'
+          try {
+            if (
+              customer.getString('lead_profile') !== 'Morador' &&
+              !customer.getString('lead_profile')
+            ) {
+              customer.set('lead_profile', 'Morador')
+              $app.saveNoValidate(customer)
+            }
+          } catch (_) {}
+        } else if (
           lower.includes('compra') ||
           lower.includes('comprar') ||
-          lower.includes('adquirir') ||
-          lower.includes('investir')
+          lower.includes('adquirir')
         ) {
           collectedLeadData.purpose = 'Compra'
         } else if (
@@ -991,10 +1107,13 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
       (lowerCustMsg.includes('esse imóvel') && lowerCustMsg.includes('fotos')) ||
       (lowerCustMsg.includes('este imóvel') && lowerCustMsg.includes('fotos'))
 
+    const effectiveLeadProfile =
+      customer.getString('lead_profile') || collectedLeadData.profile || ''
     const isNameAlreadyKnown = !!(collectedLeadData.name || displayName)
     let collectedDataSummary = `### RESUMO DE DADOS JÁ COLETADOS DESTE CLIENTE (NÃO REPETIR ESTAS PERGUNTAS):
 - Nome do cliente: ${collectedLeadData.name || displayName || 'Não informado ainda'}
-- Finalidade: ${collectedLeadData.purpose || 'Não informada ainda'}
+- Perfil do Lead: ${effectiveLeadProfile || 'Não informado'}
+- Finalidade: ${collectedLeadData.purpose || (effectiveLeadProfile === 'Investidor' ? 'Investimento' : effectiveLeadProfile === 'Morador' ? 'Moradia' : 'Não informada ainda')}
 - Forma de pagamento: ${collectedLeadData.payment || 'Não informada ainda'}
 - Tipologia / dormitórios: ${collectedLeadData.typology || 'Não informada ainda'}
 - Região / Bairro: ${collectedLeadData.location || 'Não informada ainda'}
@@ -1007,10 +1126,12 @@ ${
     ? `* REGRA CRÍTICA DO NOME DO LEAD: O nome do cliente já é conhecido e confirmado ("${collectedLeadData.name || displayName}"). É ESTRITAMENTE PROIBIDO perguntar "qual o seu nome?", "como posso te chamar?" ou pedir identificação novamente.\n`
     : ''
 }1. NUNCA repita uma pergunta cuja resposta já consta na lista acima!
+   - Se o lead já disse que o objetivo é INVESTIMENTO ou o perfil é "Investidor": NUNCA pergunte "é para morar ou investir?"! Trate como Investidor e apresente a rentabilidade e valorização.
    - Se o lead já disse que vai pagar à vista ou financiado: NUNCA pergunte sobre financiamento/à vista novamente!
    - Se o lead já se apresentou ou o nome já é conhecido: NUNCA pergunte "como posso te chamar?" nem repita apresentações formais!
    - Se o lead já informou a tipologia ("casa com 3 suítes", etc.): NUNCA pergunte novamente tipologia ou quantidade de quartos!
-   - Avance SEMPRE para o próximo dado faltante da qualificação ou para a apresentação do imóvel.
+   - TODA mensagem do lead deve receber uma resposta que PRIMEIRO atende o que ele perguntou ou pediu (se pediu condição de pagamento, planta, urgência "quero comprar hoje" → conduza de imediato!).
+   - Avance SEMPRE para o próximo dado faltante da qualificação ou para a condução do fechamento.
 2. INTERESSE EM IMÓVEL ESPECÍFICO (ANÚNCIO / LINK DE PORTAL):
    ${isExplicitSpecificPropertyInterest ? `* ATENÇÃO MÁXIMA: O lead acabou de demonstrar interesse direto no imóvel específico do anúncio/portal ("${customerMessage.substring(0, 80)}")! NÃO continue com questionário nem perguntas burocráticas! Apresente imediatamente esse imóvel ou opções compatíveis do catálogo BRF (nome, diferenciais, localização, valor e link oficial), parabenize a escolha e pergunte se quer ver as fotos e agendar visita.` : '* Se o lead demonstrar interesse num imóvel específico (link/mensagem de portal/anúncio), apresente esse imóvel (nome, preço, localização, link oficial) em vez de continuar o questionário.'}`
 
@@ -1317,6 +1438,15 @@ ${
       // 1b. Check if customer mentioned specific property codes or URLs (e.g. #LM344, #AP344, LM 344, AP-344, 344, brfimoveis.com.br/344/...)
       const extractedPropertyNumbers = new Set()
 
+      // Se foi detectado na ÚLTIMA mensagem do lead (lastMsgPropertyCodeOrNum), priorizar com foco absoluto!
+      if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
+        const numOnlyLast = lastMsgPropertyCodeOrNum.replace(/\D/g, '')
+        if (numOnlyLast) {
+          extractedPropertyNumbers.add(numOnlyLast)
+        }
+        detectedSpecificPropertyQuery = true
+      }
+
       // Extração de URLs do site brfimoveis com ID numérico: brfimoveis.com.br/NNN/...
       const urlIdMatches = combinedCustAndAdText.matchAll(/brfimoveis\.com\.br\/(\d{1,6})\b/gi)
       for (const um of urlIdMatches) {
@@ -1377,10 +1507,46 @@ ${
         }
       }
 
-      // Se encontrou o imóvel específico citado pelo lead, marcar flag crítica de foco exclusivo
-      if (detectedSpecificPropertyQuery && matchedProps.length > 0) {
+      // Contingência ativa: se o lead pediu um imóvel específico (ex: 343) e ele ainda não estava no catálogo ativo,
+      // tentar buscar mesmo inativo e reativar, ou buscar com filtro flexível
+      if (detectedSpecificPropertyQuery && matchedProps.length === 0) {
+        for (const propNum of extractedPropertyNumbers) {
+          try {
+            const anyProp = $app.findFirstRecordByFilter(
+              'properties',
+              `code ~ '${propNum}' || url ~ '/${propNum}/'`,
+            )
+            if (anyProp) {
+              if (!anyProp.get('is_active')) {
+                anyProp.set('is_active', true)
+                $app.saveNoValidate(anyProp)
+                console.log(
+                  `[AI_REPLY] Imóvel ${anyProp.getString('code')} reativado automaticamente para atendimento ao lead.`,
+                )
+              }
+              if (!matchedIds.has(anyProp.id)) {
+                matchedIds.add(anyProp.id)
+                matchedProps.push(anyProp)
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Se a última mensagem do lead foi sobre um imóvel específico e encontramos ele, LIMPAR qualquer outro imóvel anterior para ISOLAMENTO TOTAL
+      if (lastMsgSpecificPropertyRequested && matchedProps.length > 0) {
+        const topRequestedProp = matchedProps[0]
+        matchedProps = [topRequestedProp]
+        matchedIds.clear()
+        matchedIds.add(topRequestedProp.id)
+        targetSpecificProp = topRequestedProp
+        console.log(
+          `[AI_REPLY] ISOLAMENTO TOTAL APLICADO: lead focou no imóvel ${topRequestedProp.getString('code')} (${topRequestedProp.getString('title')}). Todos os outros empreendimentos suprimidos.`,
+        )
+      } else if (detectedSpecificPropertyQuery && matchedProps.length > 0) {
         targetSpecificProp = matchedProps[0]
       }
+
       const hasFoundLeadSpecificProperty = detectedSpecificPropertyQuery && matchedProps.length > 0
       const leadRequestedPropertyMissing =
         detectedSpecificPropertyQuery && matchedProps.length === 0
@@ -1665,32 +1831,85 @@ ${
           }
         }
 
-        const enterpriseKeys = Object.keys(groupedFiles)
+        let enterpriseKeys = Object.keys(groupedFiles)
         if (enterpriseKeys.length > 0) {
-          // Ordena colocando os empreendimentos mais relevantes para o lead primeiro
-          enterpriseKeys.sort((a, b) => {
-            const aRelevant = groupedFiles[a].some((d) => d.isRelevant)
-            const bRelevant = groupedFiles[b].some((d) => d.isRelevant)
-            if (aRelevant && !bRelevant) return -1
-            if (!aRelevant && bRelevant) return 1
-            if (a === 'Geral / Institucional') return 1
-            if (b === 'Geral / Institucional') return -1
-            return a.localeCompare(b)
-          })
+          // =========================================================================================
+          // ISOLAMENTO DE RAG / PROMPT (ANTI-CONTAMINAÇÃO CRUZADA):
+          // Se há um imóvel ou lançamento em foco exclusivo:
+          // 1. Se o lead citou um imóvel específico (lastMsgSpecificPropertyRequested ou targetSpecificProp),
+          //    NÃO injetar documentos de outros lançamentos (Vistage, Viva Balneário, etc.)!
+          //    Injetar apenas "Geral / Institucional" ou documentos explicitamente vinculados àquele imóvel.
+          // 2. Se há um matchedLaunch ou matchedPlaybook em foco (sem conflito de imóvel específico),
+          //    injetar APENAS os documentos dele e institucionais.
+          // =========================================================================================
+          if (lastMsgSpecificPropertyRequested || targetSpecificProp) {
+            const propTitle = targetSpecificProp
+              ? (targetSpecificProp.getString('title') || '').toLowerCase()
+              : ''
+            const propCode = targetSpecificProp
+              ? (targetSpecificProp.getString('code') || '').toLowerCase()
+              : ''
 
-          filesContextText +=
-            '\n[DOCUMENTOS E BASE DE CONHECIMENTO ORGANIZADOS POR EMPREENDIMENTO]\n'
-          filesContextText +=
-            'INSTRUÇÃO DE EMPREENDIMENTO: Identifique sobre qual empreendimento o lead está falando ou perguntando. Priorize e utilize com destaque as informações específicas do empreendimento correspondente abaixo.\n\n'
+            enterpriseKeys = enterpriseKeys.filter((entKey) => {
+              if (entKey === 'Geral / Institucional') return true
+              const entLower = entKey.toLowerCase()
+              return (
+                (propTitle && propTitle.includes(entLower)) ||
+                (propCode && propCode.includes(entLower))
+              )
+            })
+            console.log(
+              `[AI_REPLY] ISOLAMENTO RAG: lead em foco no imóvel específico (${propCode || lastMsgPropertyCodeOrNum}). Chaves de documentos permitidas: ${enterpriseKeys.join(', ')}`,
+            )
+          } else if (matchedLaunch || matchedPlaybook) {
+            const launchName = (matchedLaunch ? matchedLaunch.getString('name') : '').toLowerCase()
+            const pbName = (
+              matchedPlaybook
+                ? matchedPlaybook.getString('empreendimento') || matchedPlaybook.getString('name')
+                : ''
+            ).toLowerCase()
 
-          for (const entKey of enterpriseKeys) {
-            filesContextText += `=====================================================\n`
-            filesContextText += `EMPREENDIMENTO: ${entKey.toUpperCase()}\n`
-            filesContextText += `=====================================================\n`
-            for (const doc of groupedFiles[entKey]) {
-              filesContextText += `\n--- DOCUMENTO (${entKey}): ${doc.title} ---\n${doc.content}\n`
+            enterpriseKeys = enterpriseKeys.filter((entKey) => {
+              if (entKey === 'Geral / Institucional') return true
+              const entLower = entKey.toLowerCase()
+              return (
+                (launchName && (launchName.includes(entLower) || entLower.includes(launchName))) ||
+                (pbName && (pbName.includes(entLower) || entLower.includes(pbName)))
+              )
+            })
+            console.log(
+              `[AI_REPLY] ISOLAMENTO RAG: lead em foco no lançamento/playbook (${launchName || pbName}). Chaves de documentos permitidas: ${enterpriseKeys.join(', ')}`,
+            )
+          } else {
+            // Ordena colocando os empreendimentos mais relevantes para o lead primeiro
+            enterpriseKeys.sort((a, b) => {
+              const aRelevant = groupedFiles[a].some((d) => d.isRelevant)
+              const bRelevant = groupedFiles[b].some((d) => d.isRelevant)
+              if (aRelevant && !bRelevant) return -1
+              if (!aRelevant && bRelevant) return 1
+              if (a === 'Geral / Institucional') return 1
+              if (b === 'Geral / Institucional') return -1
+              return a.localeCompare(b)
+            })
+          }
+
+          if (enterpriseKeys.length > 0) {
+            filesContextText +=
+              '\n[DOCUMENTOS E BASE DE CONHECIMENTO ORGANIZADOS POR EMPREENDIMENTO]\n'
+            filesContextText +=
+              'INSTRUÇÃO DE EMPREENDIMENTO: Identifique sobre qual empreendimento o lead está falando ou perguntando. Priorize e utilize com destaque as informações específicas do empreendimento correspondente abaixo.\n\n'
+
+            for (const entKey of enterpriseKeys) {
+              if (groupedFiles[entKey]) {
+                filesContextText += `=====================================================\n`
+                filesContextText += `EMPREENDIMENTO: ${entKey.toUpperCase()}\n`
+                filesContextText += `=====================================================\n`
+                for (const doc of groupedFiles[entKey]) {
+                  filesContextText += `\n--- DOCUMENTO (${entKey}): ${doc.title} ---\n${doc.content}\n`
+                }
+                filesContextText += '\n'
+              }
             }
-            filesContextText += '\n'
           }
         }
       }
@@ -2254,11 +2473,12 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       try {
         const evalPrompt = `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie a resposta da Bia:
 "${motherAiInstructions}".
-Critérios essenciais:
-1. Identificação correta e sem inventar dados ("Bia, da BRF Imóveis" se for se apresentar).
-2. Diálogo em andamento: NÃO reprove ausência de saudação quando o diálogo já está em andamento (diálogo em andamento NÃO deve ter saudações redundantes).
-3. Aprovar respostas diretas, consultivas e de continuidade.
-4. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados ou invenção de dados.
+Critérios essenciais e regras obrigatórias de avaliação:
+1. Saudação: Exigir saudação temporal (Bom dia/Boa tarde/Boa noite) APENAS na primeiríssima mensagem da Bia (hoursSinceLastAiMsg >= 24 ou primeira interação: ${isFirstAiMessageOrAfter24h ? 'SIM, É PRIMEIRA MENSAGEM' : 'NÃO, É DIÁLOGO EM ANDAMENTO'}). Se a conversa já está no MEIO do diálogo (interação contínua, hoursSinceLastAiMsg < 24), é PROIBIDO reprovar por falta de saudação. Diálogo contínuo DEVE ir direto ao ponto!
+2. Identificação padrão: "Bia, da BRF Imóveis" se ela for se apresentar.
+3. Se o lead perguntou sobre um imóvel específico, aprovar a resposta focada no imóvel.
+4. Se o lead disse que é para "investimento" ou "investidor", NUNCA exigir re-pergunta de "morar ou investir".
+5. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados com 3+ perguntas ou invenção de dados.
 
 FORMATO ESTRITO DA RESPOSTA:
 - Se a mensagem estiver em conformidade e aprovada, responda EXATAMENTE e APENAS a palavra: APROVADO
@@ -2285,10 +2505,34 @@ Motivos: <descreva sucintamente em 1 a 2 linhas o que corrigir>`
             `[AI_REPLY] Mother AI check raw feedback: "${motherFeedback.substring(0, 100)}..."`,
           )
 
-          const isApproved =
+          let isApproved =
             motherFeedback === 'APROVADO' ||
             /^(\*\*|\*)?APROVADO(\*\*|\*)?$/i.test(motherFeedback) ||
             motherFeedback.toLowerCase().startsWith('aprovado')
+
+          // GUARDA ANTI-REPROVAÇÃO FALSA NO MEIO DO DIÁLOGO:
+          // Se a conversa já está em andamento (!isFirstAiMessageOrAfter24h) e o motivo da reprovação foi apenas falta de saudação ou identificação inicial,
+          // IGNORAR a reprovação e manter a mensagem aprovada!
+          if (!isApproved && !isFirstAiMessageOrAfter24h) {
+            const lowerFb = motherFeedback.toLowerCase()
+            const isOnlyGreetingOrIntroComplaint =
+              (lowerFb.includes('saudação') ||
+                lowerFb.includes('saudacao') ||
+                lowerFb.includes('identificação') ||
+                lowerFb.includes('identificacao') ||
+                lowerFb.includes('bom dia') ||
+                lowerFb.includes('boa tarde')) &&
+              !lowerFb.includes('alucin') &&
+              !lowerFb.includes('fora do catálogo') &&
+              !lowerFb.includes('link inválido')
+
+            if (isOnlyGreetingOrIntroComplaint) {
+              console.log(
+                `[AI_REPLY] IA Mãe reprovou erroneamente por falta de saudação no meio do diálogo contínuo. Anulando reprovação e mantendo resposta da Bia aprovada.`,
+              )
+              isApproved = true
+            }
+          }
 
           if (!isApproved) {
             console.warn(`[AI_REPLY] Mother AI REJECTED message. Reason: ${motherFeedback}`)
