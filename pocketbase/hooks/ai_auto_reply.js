@@ -633,53 +633,73 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
 
     activeCadenceText += `\n\n${strictGuidelines}`
 
-    // Embeddings & RAG (defensive)
+    // Embeddings & RAG (defensive - busca direta no mesmo processo via $vectors.search)
     let contextChunks = []
     try {
       if (customerMessage.trim()) {
         const res = $ai.embed({ input: customerMessage })
         if (res && res.data && res.data[0] && res.data[0].embedding) {
           const queryEmbedding = res.data[0].embedding
-          const pbaseURL = $os.getenv('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
 
-          const ragRes = $http.send({
-            url: pbaseURL + '/backend/v1/rag-search',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: 'Bearer internal-rag-token-123',
-            },
-            body: JSON.stringify({ query: queryEmbedding, userId: userId }),
-            timeout: 8,
-          })
-
-          if (ragRes && ragRes.statusCode === 200 && ragRes.json) {
-            if (ragRes.json.knowledge_base) {
-              ragRes.json.knowledge_base.forEach((item) => {
-                if (item && item.content) {
-                  contextChunks.push(`### Informação (${item.title || 'Geral'}):\n${item.content}`)
+          // 1. Busca vetorial direta em 'knowledge_base'
+          try {
+            const kbFilter = userId ? `user_id = '${userId}'` : ''
+            const kbResults = $vectors.search(e, 'knowledge_base', {
+              field: 'embedding',
+              query: queryEmbedding,
+              k: 3,
+              ...(kbFilter ? { filter: kbFilter } : {}),
+            })
+            if (kbResults && kbResults.items && Array.isArray(kbResults.items)) {
+              kbResults.items.forEach((item) => {
+                const title = item.getString ? item.getString('title') : item.title || 'Geral'
+                const content = item.getString ? item.getString('content') : item.content || ''
+                if (content) {
+                  contextChunks.push(`### Informação (${title}):\n${content}`)
                 }
               })
             }
-            if (ragRes.json.cadences) {
-              ragRes.json.cadences.forEach((item) => {
-                if (item && item.content) {
-                  contextChunks.push(
-                    `### Procedimento de Venda (${item.title || 'Fluxo'}):\n${item.content}`,
-                  )
+          } catch (kbErr) {
+            console.warn(
+              `[AI_REPLY] RAG vector search non-fatal error (knowledge_base): ${String(kbErr)}`,
+            )
+          }
+
+          // 2. Busca vetorial direta em 'cadences'
+          try {
+            const cadFilter = userId ? `user_id = '${userId}'` : ''
+            const cadResults = $vectors.search(e, 'cadences', {
+              field: 'embedding',
+              query: queryEmbedding,
+              k: 2,
+              ...(cadFilter ? { filter: cadFilter } : {}),
+            })
+            if (cadResults && cadResults.items && Array.isArray(cadResults.items)) {
+              cadResults.items.forEach((item) => {
+                const title = item.getString ? item.getString('title') : item.title || 'Fluxo'
+                const content = item.getString ? item.getString('content') : item.content || ''
+                const aiInstructions = item.getString
+                  ? item.getString('ai_instructions')
+                  : item.ai_instructions || ''
+                if (content) {
+                  contextChunks.push(`### Procedimento de Venda (${title}):\n${content}`)
                 }
-                if (item && item.ai_instructions) {
+                if (aiInstructions) {
                   contextChunks.push(
-                    `Diretriz Específica para este Procedimento:\n${item.ai_instructions}`,
+                    `Diretriz Específica para este Procedimento:\n${aiInstructions}`,
                   )
                 }
               })
             }
+          } catch (cadErr) {
+            console.warn(
+              `[AI_REPLY] RAG vector search non-fatal error (cadences): ${String(cadErr)}`,
+            )
           }
         }
       }
     } catch (err) {
-      console.warn(`[AI_REPLY] Embedding/RAG search non-fatal error: ${String(err)}`)
+      console.warn(`[AI_REPLY] RAG vector search non-fatal error: ${String(err)}`)
     }
 
     let contextText = contextChunks.join('\n\n')
@@ -3423,6 +3443,10 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         )
         let emergencyReply = ''
 
+        // Garantir cálculo de horário do Brasil (UTC-3) mesmo se brHour não tiver sido computado
+        let safeHour =
+          typeof brHour === 'number' ? brHour : new Date(Date.now() - 3 * 3600 * 1000).getUTCHours()
+
         // Try to query active properties directly
         try {
           const fallbackProps = $app.findRecordsByFilter(
@@ -3454,7 +3478,10 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             const pSuites = topProp.getInt('suites')
             const loc = [pNeigh, pCity].filter(Boolean).join(', ')
 
-            const emGreeting = buildTemporalGreeting(custDisplayName, brHour)
+            const emGreeting =
+              typeof buildTemporalGreeting === 'function'
+                ? buildTemporalGreeting(custDisplayName, safeHour)
+                : 'Olá!'
             emergencyReply = `${emGreeting} Temos uma excelente opção na região que se encaixa muito bem: o *${pTitle}*`
             if (loc) emergencyReply += ` em ${loc}`
             if (pBeds > 0) {
@@ -3480,7 +3507,10 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
               custDisplayName = cName.split(' ')[0]
             }
           } catch (_) {}
-          const emGreeting = buildTemporalGreeting(custDisplayName, brHour)
+          const emGreeting =
+            typeof buildTemporalGreeting === 'function'
+              ? buildTemporalGreeting(custDisplayName, safeHour)
+              : 'Olá!'
           emergencyReply = `${emGreeting} Você pode conferir nosso catálogo completo de imóveis diretamente no site: https://www.brfimoveis.com.br/imoveis/venda. Se preferir um atendimento exclusivo com o corretor Mauro, ele atende no link: https://wa.me/5548992098050`
         }
 
