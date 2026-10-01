@@ -32,7 +32,7 @@ routerAdd(
         const log = new Record(col)
         log.set('type', 'connection_error')
         log.set('message', 'Meta CAPI: ' + message)
-        log.set('details', { error_code: errorCode, pixel_id: pixelId, ...details })
+        log.set('details', Object.assign({ error_code: errorCode, pixel_id: pixelId }, details))
         log.set('payload', body)
         $app.save(log)
       } catch (_) {}
