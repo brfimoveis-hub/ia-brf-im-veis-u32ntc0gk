@@ -51,6 +51,9 @@ onRecordAfterCreateSuccess((e) => {
   }
 
   let acquiredLock = false
+  var matchedProps = []
+  var detectedSpecificPropertyQuery = false
+  var targetSpecificProp = null
   const customerId = e.record.getString('customer_id')
   const conversationChannel = e.record.getString('channel') || 'whatsapp'
   const incomingMsgId = e.record.id
@@ -538,10 +541,10 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
-    // Variáveis com escopo hoistado para o topo da função para evitar ReferenceError em Goja
-    let matchedProps = []
-    let detectedSpecificPropertyQuery = false
-    let targetSpecificProp = null
+    // Variáveis hoistadas no topo do hook para evitar ReferenceError em Goja
+    matchedProps = []
+    detectedSpecificPropertyQuery = false
+    targetSpecificProp = null
 
     // Anti-flood com DEBOUNCE ACUMULATIVO (remover descarte silencioso <5s).
     // Caso real: se nova mensagem do lead chega logo após resposta da IA ou em sequência,
@@ -3074,7 +3077,12 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       if (candidates.length > 0) {
         activeProps = candidates.filter((p) => {
           try {
-            return p && (p.get('is_active') === true || p.getBool?.('is_active') === true)
+            return (
+              p &&
+              (p.get('is_active') === true ||
+                (typeof p.getBool === 'function' ? p.getBool('is_active') : p.get('is_active')) ===
+                  true)
+            )
           } catch (_) {
             return true
           }
@@ -3668,7 +3676,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                 bodyBytes.buffer,
               )
 
-              if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json?.id) {
+              if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json && mediaRes.json.id) {
                 callMetaWithRetry(
                   `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
                   'POST',
@@ -3809,98 +3817,119 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         )
         let emergencyReply = ''
 
-        // Garantir cálculo de horário do Brasil (UTC-3) mesmo se brHour não tiver sido computado
-        let safeHour =
-          typeof brHour === 'number' ? brHour : new Date(Date.now() - 3 * 3600 * 1000).getUTCHours()
-
-        let custDisplayName = ''
         try {
-          const custRec = $app.findRecordById('customers', customerId)
-          const cName = (custRec.getString('first_name') || custRec.getString('name') || '').trim()
-          if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
-            custDisplayName = cName.split(' ')[0]
+          // Cálculo autônomo de horário e saudação (sem depender de variáveis/funções externas)
+          var fbHour = new Date(Date.now() - 3 * 3600 * 1000).getUTCHours()
+          var fbSalutation = fbHour < 12 ? 'Bom dia' : fbHour < 18 ? 'Boa tarde' : 'Boa noite'
+
+          var custDisplayName = ''
+          try {
+            var custRec = $app.findRecordById('customers', customerId)
+            var cName = (custRec.getString('first_name') || custRec.getString('name') || '').trim()
+            if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
+              custDisplayName = cName.split(' ')[0]
+            }
+          } catch (_) {}
+
+          var emGreeting = custDisplayName
+            ? fbSalutation + ', ' + custDisplayName + '! '
+            : fbSalutation + '! '
+
+          // REGRA CRÍTICA: Manter continuidade do imóvel em foco sem nunca reiniciar a conversa nem citar outro imóvel
+          if (targetSpecificProp || (matchedProps && matchedProps.length > 0)) {
+            var propInFocus = targetSpecificProp || matchedProps[0]
+            var pCode = (propInFocus.getString('code') || '').trim()
+            var pTitle = (propInFocus.getString('title') || '').trim()
+            var pPrice = (propInFocus.getString('price_formatted') || '').trim()
+            var pUrl = (propInFocus.getString('url') || '').trim()
+            var propId = pCode ? '*' + pCode + '*' : pTitle ? '*' + pTitle + '*' : 'em foco'
+
+            emergencyReply =
+              emGreeting +
+              'Com certeza! Em relação ao imóvel ' +
+              propId +
+              (pPrice ? ' (valor de ' + pPrice + ')' : '') +
+              ', estou separando o material completo e as plantas para você.\n\nVocê prefere receber por aqui no WhatsApp ou deseja que eu já agende uma visita com o Mauro?'
+            if (pUrl && !emergencyReply.includes(pUrl)) {
+              emergencyReply += '\nFicha detalhada: ' + pUrl
+            }
+          } else if (
+            typeof detectedSpecificPropertyQuery !== 'undefined' &&
+            detectedSpecificPropertyQuery
+          ) {
+            emergencyReply =
+              emGreeting +
+              'Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes atualizados junto ao Mauro e já te envio as informações completas por aqui.'
+          } else {
+            emergencyReply =
+              emGreeting +
+              'Recebi sua mensagem! Estou organizando as informações detalhadas para você. Em instantes já te trago o retorno completo.'
           }
-        } catch (_) {}
 
-        const emGreeting =
-          typeof buildTemporalGreeting === 'function'
-            ? buildTemporalGreeting(custDisplayName, safeHour) + ' '
-            : ''
-
-        // REGRA CRÍTICA: O fallback JAMAIS deve reiniciar a conversa nem trocar de imóvel
-        // Se o lead perguntou por um imóvel específico ou há histórico, mantém o foco nesse imóvel
-        if (targetSpecificProp || (matchedProps && matchedProps.length > 0)) {
-          const propInFocus = targetSpecificProp || matchedProps[0]
-          const pCode = (propInFocus.getString('code') || '').trim()
-          const pTitle = (propInFocus.getString('title') || '').trim()
-          const pPrice = (propInFocus.getString('price_formatted') || '').trim()
-          const pUrl = (propInFocus.getString('url') || '').trim()
-          const propId = pCode ? `*${pCode}*` : pTitle ? `*${pTitle}*` : 'em foco'
-
-          emergencyReply = `${emGreeting}Com certeza! Em relação ao imóvel ${propId}${pPrice ? ` (valor de ${pPrice})` : ''}, estou separando o material completo e as plantas para você.\n\nVocê prefere receber por aqui no WhatsApp ou deseja que eu já agende uma visita com o Mauro?`
-          if (pUrl && !emergencyReply.includes(pUrl)) {
-            emergencyReply += `\nFicha detalhada: ${pUrl}`
+          // Gravação da mensagem em conversations (try/catch interno)
+          try {
+            var convCol = $app.findCollectionByNameOrId('conversations')
+            var rec = new Record(convCol)
+            rec.set('user_id', userId || '')
+            rec.set('customer_id', customerId)
+            rec.set('sender', 'ai')
+            rec.set('content', emergencyReply)
+            rec.set('channel', conversationChannel || 'whatsapp')
+            $app.save(rec)
+          } catch (convSaveErr) {
+            console.warn(
+              '[AI_REPLY] Emergency fallback conversation save error: ' + String(convSaveErr),
+            )
           }
-        } else if (detectedSpecificPropertyQuery) {
-          emergencyReply = `${emGreeting}Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes atualizados junto ao Mauro e já te envio as informações completas por aqui.`
-        } else {
-          // Sem imóvel específico e sem catálogo aleatório: resposta segura mantendo a continuidade sem reiniciar
-          emergencyReply = `${emGreeting}Recebi sua mensagem! Estou organizando as informações detalhadas para você. Em instantes já te trago o retorno completo.`
-        }
 
-        // Save conversation record
-        try {
-          const convCol = $app.findCollectionByNameOrId('conversations')
-          const rec = new Record(convCol)
-          rec.set('user_id', userId || '')
-          rec.set('customer_id', customerId)
-          rec.set('sender', 'ai')
-          rec.set('content', emergencyReply)
-          rec.set('channel', conversationChannel || 'whatsapp')
-          $app.save(rec)
-        } catch (_) {}
+          // Resolução de credenciais WhatsApp e envio via WhatsApp (try/catch interno)
+          try {
+            var emMetaToken = ''
+            var emPhoneId = ''
+            try {
+              var usersWithMeta = $app.findRecordsByFilter(
+                'users',
+                "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+                '-created',
+                1,
+                0,
+              )
+              if (usersWithMeta.length > 0) {
+                emMetaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
+                emPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
+              }
+            } catch (_) {}
 
-        // Resolve meta credentials if needed
-        let emMetaToken = ''
-        let emPhoneId = ''
-        try {
-          const usersWithMeta = $app.findRecordsByFilter(
-            'users',
-            "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
-            '-created',
-            1,
-            0,
-          )
-          if (usersWithMeta.length > 0) {
-            emMetaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
-            emPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
+            var emCustomerPhone = ''
+            try {
+              var cRec = $app.findRecordById('customers', customerId)
+              emCustomerPhone = cRec.getString('phone') || ''
+            } catch (_) {}
+
+            var emCleanPhone = emCustomerPhone.replace(/\D/g, '')
+            if (emCleanPhone.length === 10 || emCleanPhone.length === 11) {
+              emCleanPhone = '55' + emCleanPhone
+            }
+
+            if (emMetaToken && emPhoneId && emCleanPhone) {
+              callMetaWithRetry(
+                'https://graph.facebook.com/v21.0/' + emPhoneId + '/messages',
+                'POST',
+                { Authorization: 'Bearer ' + emMetaToken, 'Content-Type': 'application/json' },
+                JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  to: emCleanPhone,
+                  type: 'text',
+                  text: { body: emergencyReply },
+                }),
+              )
+              console.log('[AI_REPLY] Emergency fallback sent to ' + emCleanPhone)
+            }
+          } catch (waSendErr) {
+            console.warn('[AI_REPLY] Emergency fallback WhatsApp send error: ' + String(waSendErr))
           }
-        } catch (_) {}
-
-        let emCustomerPhone = ''
-        try {
-          const cRec = $app.findRecordById('customers', customerId)
-          emCustomerPhone = cRec.getString('phone') || ''
-        } catch (_) {}
-
-        let emCleanPhone = emCustomerPhone.replace(/\D/g, '')
-        if (emCleanPhone.length === 10 || emCleanPhone.length === 11) {
-          emCleanPhone = '55' + emCleanPhone
-        }
-
-        if (emMetaToken && emPhoneId && emCleanPhone) {
-          callMetaWithRetry(
-            `https://graph.facebook.com/v21.0/${emPhoneId}/messages`,
-            'POST',
-            { Authorization: `Bearer ${emMetaToken}`, 'Content-Type': 'application/json' },
-            JSON.stringify({
-              messaging_product: 'whatsapp',
-              to: emCleanPhone,
-              type: 'text',
-              text: { body: emergencyReply },
-            }),
-          )
-          console.log(`[AI_REPLY] Emergency fallback sent to ${emCleanPhone}`)
+        } catch (innerFbErr) {
+          console.error('[AI_REPLY] Internal emergency fallback error: ' + String(innerFbErr))
         }
       }
     } catch (emergencyErr) {
