@@ -589,7 +589,7 @@ onRecordAfterCreateSuccess((e) => {
     const biaInstructions = userRecord ? userRecord.getString('bia_instructions') : ''
     const motherAiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
 
-    // Carregar Caderno de Aprendizados da Bia (regras permanentes ativas do curador/Mauro)
+    // Carregar Caderno de Aprendizados da Bia (regras permanentes ativas do curador/Mauro - Prioridade desc: Constituição v3 = 500, foco total no imóvel = 200)
     let biaLearningsText = ''
     try {
       const activeLearnings = $app.findRecordsByFilter(
@@ -607,12 +607,22 @@ onRecordAfterCreateSuccess((e) => {
               const rTitle = (rec.getString('title') || '').trim()
               const rText = (rec.getString('rule_text') || '').trim()
               const rAuthor = (rec.getString('author') || 'Mauro').trim()
-              return `${idx + 1}. [${rTitle || 'Regra Permanente'}] (Curador: ${rAuthor}): ${rText}`
+              const rPriority = rec.getInt('priority') || 0
+              return `${idx + 1}. [${rTitle || 'Regra Permanente'}] (Prioridade ${rPriority} - Curador: ${rAuthor}): ${rText}`
             })
             .join('\n\n')
       }
     } catch (learningsErr) {
       console.warn(`[AI_REPLY] Error loading bia_learnings (non-fatal): ${String(learningsErr)}`)
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const learnErrLog = new Record(logsCol)
+        learnErrLog.set('user_id', userId || '')
+        learnErrLog.set('type', 'bia_learnings_lookup_error')
+        learnErrLog.set('message', 'Erro não-fatal ao carregar bia_learnings')
+        learnErrLog.set('details', String(learningsErr))
+        $app.saveNoValidate(learnErrLog)
+      } catch (_) {}
     }
 
     // Clean persona, mother and cadence instructions from canned loop phrase with unicode / hyphen tolerance
@@ -1927,6 +1937,15 @@ ${
       }
     } catch (kfErr) {
       console.warn(`[AI_REPLY] Error loading ai_knowledge_files (non-fatal): ${String(kfErr)}`)
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const kfErrLog = new Record(logsCol)
+        kfErrLog.set('user_id', userId || '')
+        kfErrLog.set('type', 'ai_knowledge_files_error')
+        kfErrLog.set('message', 'Erro não-fatal ao carregar ai_knowledge_files')
+        kfErrLog.set('details', String(kfErr))
+        $app.saveNoValidate(kfErrLog)
+      } catch (_) {}
     }
 
     // 2. Compatibilidade legada com ai_knowledge_files armazenados diretamente no registro do usuário

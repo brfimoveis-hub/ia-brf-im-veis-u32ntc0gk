@@ -13,12 +13,33 @@ routerAdd('POST', '/backend/v1/rag-search', (e) => {
 
   let kbItems = []
   try {
-    // Busca em ai_knowledge_files por registros ativos do usuário
+    // 1. Busca em bia_learnings ordenada por prioridade decrescente
+    const learnings = $app.findRecordsByFilter(
+      'bia_learnings',
+      'is_active = true',
+      '-priority,-created',
+      20,
+      0,
+    )
+    if (learnings && learnings.length > 0) {
+      learnings.forEach((lrn) => {
+        const title = lrn.getString('title') || 'Regra Permanente'
+        const ruleText = lrn.getString('rule_text') || ''
+        if (ruleText) {
+          kbItems.push({
+            title: '[Aprendizado Bia] ' + title,
+            content: ruleText,
+          })
+        }
+      })
+    }
+
+    // 2. Busca local em ai_knowledge_files por registros ativos do usuário
     const files = $app.findRecordsByFilter(
       'ai_knowledge_files',
       `user_id = '${userId}' && is_active != false`,
       '-created',
-      10,
+      15,
       0,
     )
     if (files && files.length > 0) {
@@ -40,6 +61,15 @@ routerAdd('POST', '/backend/v1/rag-search', (e) => {
       })
     }
   } catch (err) {
+    try {
+      const logsCol = $app.findCollectionByNameOrId('system_logs')
+      const errLog = new Record(logsCol)
+      errLog.set('user_id', userId || '')
+      errLog.set('type', 'rag_search_error')
+      errLog.set('message', 'Erro na busca local de conhecimento')
+      errLog.set('details', String(err))
+      $app.saveNoValidate(errLog)
+    } catch (_) {}
     $app.logger().error('KB files search error', 'err', err)
   }
 
