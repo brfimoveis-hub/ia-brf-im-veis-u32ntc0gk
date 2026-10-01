@@ -137,7 +137,9 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
-    // Lock acquisition with 20s TTL (reduzido de 120s para 20s para evitar descarte de mensagens em sequência)
+    // Lock acquisition with 180s TTL (3 min). Trava com now - lockTime >= 180000 é expirada e sobrescrita.
+    // Tags sem timestamp (ai_processing legado) ou inválidas são expiradas imediatamente.
+    const lockTtlMs = 180000
     try {
       $app.runInTransaction((txApp) => {
         const customer = txApp.findRecordById('customers', customerId)
@@ -145,18 +147,29 @@ onRecordAfterCreateSuccess((e) => {
         let tags = []
         if (Array.isArray(rawTags)) {
           tags = rawTags.filter((t) => typeof t === 'string')
+        } else if (typeof rawTags === 'string') {
+          try {
+            const parsed = JSON.parse(rawTags)
+            if (Array.isArray(parsed)) tags = parsed.filter((t) => typeof t === 'string')
+          } catch (_) {}
         }
 
-        const now = new Date().getTime()
+        const nowMs = new Date().getTime()
         const lockPrefix = 'ai_processing:'
         let activeLock = false
 
-        for (const t of tags) {
+        for (let i = 0; i < tags.length; i++) {
+          const t = tags[i]
+          if (t === 'ai_processing') {
+            // Tag legada sem timestamp numérico trava para sempre -> considerar expirada e limpar
+            activeLock = false
+            break
+          }
           if (t.startsWith(lockPrefix)) {
             const lockTimeStr = t.substring(lockPrefix.length)
             const lockTime = parseInt(lockTimeStr, 10)
-            // Lock timeout de 20 segundos
-            if (!isNaN(lockTime) && now - lockTime < 20000) {
+            // Trava ativa apenas se tiver timestamp válido e não tiver completado 180.000ms (3 min)
+            if (!isNaN(lockTime) && nowMs - lockTime < lockTtlMs) {
               activeLock = true
               break
             }
@@ -187,7 +200,7 @@ onRecordAfterCreateSuccess((e) => {
         }
 
         const newTags = tags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:'))
-        newTags.push(`ai_processing:${now}`)
+        newTags.push(`ai_processing:${nowMs}`)
         customer.set('tags', newTags)
         txApp.saveNoValidate(customer)
         acquiredLock = true
@@ -195,7 +208,7 @@ onRecordAfterCreateSuccess((e) => {
     } catch (err) {
       if (err.message === 'LOCKED') {
         console.log(
-          `[AI_REPLY] Customer ${customerId} already has active ai_processing lock (<20s), skipping.`,
+          `[AI_REPLY] Customer ${customerId} already has active ai_processing lock (<180s), skipping.`,
         )
         return e.next()
       }
@@ -342,12 +355,12 @@ onRecordAfterCreateSuccess((e) => {
             }
           }
 
-          const matchTerms = [
-            lName,
-            lSlug,
-            lEnterprise,
-            ...(Array.isArray(keywords) ? keywords : []),
-          ].filter(Boolean)
+          const matchTerms = [lName, lSlug, lEnterprise]
+          if (Array.isArray(keywords)) {
+            for (let kwIdx = 0; kwIdx < keywords.length; kwIdx++) {
+              matchTerms.push(keywords[kwIdx])
+            }
+          }
 
           const hasMatch = matchTerms.some((term) => {
             if (!term || typeof term !== 'string') return false
@@ -525,25 +538,46 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
-    // Cooldown per customer (min 5 seconds anti-flood)
+    // Variáveis com escopo hoistado para o topo da função para evitar ReferenceError em Goja
+    let matchedProps = []
+    let detectedSpecificPropertyQuery = false
+    let targetSpecificProp = null
+
+    // Anti-flood com DEBOUNCE ACUMULATIVO (remover descarte silencioso <5s).
+    // Caso real: se nova mensagem do lead chega logo após resposta da IA ou em sequência,
+    // jamais descartar com return e.next(). Buscar mensagens do lead dos últimos 30s,
+    // concatenar o conteúdo e processar o conjunto priorizando a mensagem mais recente.
+    let customerMessage = (e.record.getString('content') || '').trim()
     try {
-      const customerLastAiMsgs = $app.findRecordsByFilter(
+      const thirtySecondsAgoIso = new Date(now.getTime() - 30000)
+        .toISOString()
+        .replace('T', ' ')
+        .substring(0, 19)
+      const recentCustMsgs = $app.findRecordsByFilter(
         'conversations',
-        `customer_id = '${customerId}' && sender = 'ai'`,
-        '-created',
-        1,
+        `customer_id = '${customerId}' && (sender = 'customer' || sender = 'user' || sender = 'lead') && created >= '${thirtySecondsAgoIso}'`,
+        'created',
+        20,
         0,
       )
-      if (customerLastAiMsgs.length > 0) {
-        const lastAiDate = new Date(customerLastAiMsgs[0].getString('created'))
-        const minCooldownMs = 5000
-        if (now.getTime() - lastAiDate.getTime() < minCooldownMs) {
-          console.log(`[AI_REPLY] Anti-flood cooldown active (<5s) for customer ${customerId}`)
-          return e.next()
+      if (recentCustMsgs && recentCustMsgs.length > 1) {
+        const aggregatedParts = []
+        for (let i = 0; i < recentCustMsgs.length; i++) {
+          const mTxt = (recentCustMsgs[i].getString('content') || '').trim()
+          if (mTxt && aggregatedParts.indexOf(mTxt) === -1) {
+            aggregatedParts.push(mTxt)
+          }
+        }
+        if (aggregatedParts.length > 1) {
+          // Processar conjunto priorizando a mais recente no final
+          customerMessage = aggregatedParts.join(' | ')
+          console.log(
+            `[AI_REPLY] Anti-flood debounce acumulativo ativado (30s): agrupadas ${aggregatedParts.length} mensagens para customer ${customerId}: "${customerMessage.substring(0, 100)}"`,
+          )
         }
       }
-    } catch (err) {
-      console.warn(`[AI_REPLY] Anti-flood check error (non-fatal): ${String(err)}`)
+    } catch (debounceErr) {
+      console.warn(`[AI_REPLY] Debounce check warning (non-fatal): ${String(debounceErr)}`)
     }
 
     if (tags.includes('ai_paused')) {
@@ -648,7 +682,9 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
     )
     const cleanMotherAiInstructions = cleanInstructionText(motherAiInstructions)
 
-    const customerMessage = e.record.getString('content') || ''
+    if (!customerMessage) {
+      customerMessage = (e.record.getString('content') || '').trim()
+    }
     const currentStatus = customer.getString('status') || 'Novo'
     let activeCadenceText = ''
 
@@ -1167,9 +1203,10 @@ ${
     let extractedBedrooms = 0
     let extractedLocation = ''
     let matchedLocFilter = ''
-    let matchedProps = []
-    let detectedSpecificPropertyQuery = false
-    let targetSpecificProp = null
+    const matchedIdsMap = {}
+    matchedProps = []
+    detectedSpecificPropertyQuery = false
+    targetSpecificProp = null
 
     try {
       // Build search text using current customer message AND recent customer messages
@@ -1331,16 +1368,18 @@ ${
           }
         }
 
-        const playbookTerms = [
-          pbEmpreendimento,
-          pbName,
-          ...(Array.isArray(pbKeywords) ? pbKeywords : []),
-        ]
+        const playbookTerms = [pbEmpreendimento, pbName]
+        if (Array.isArray(pbKeywords)) {
+          for (let pkIdx = 0; pkIdx < pbKeywords.length; pkIdx++) {
+            playbookTerms.push(pbKeywords[pkIdx])
+          }
+        }
+        const filteredPlaybookTerms = playbookTerms
           .filter(Boolean)
           .map((t) => String(t).trim())
           .filter((t) => t.length > 2)
 
-        for (const term of playbookTerms) {
+        for (const term of filteredPlaybookTerms) {
           const safeTerm = term.replace(/'/g, "''")
           try {
             const pbProps = $app.findRecordsByFilter(
@@ -1350,9 +1389,10 @@ ${
               3,
               0,
             )
-            for (const pr of pbProps) {
-              if (!matchedIds.has(pr.id)) {
-                matchedIds.add(pr.id)
+            for (let pbIdx = 0; pbIdx < pbProps.length; pbIdx++) {
+              const pr = pbProps[pbIdx]
+              if (!matchedIdsMap[pr.id]) {
+                matchedIdsMap[pr.id] = true
                 matchedProps.push(pr)
               }
             }
@@ -1422,13 +1462,14 @@ ${
         },
       ]
 
-      const matchedIds = new Set()
-      for (const proj of knownProjects) {
+      for (let i = 0; i < knownProjects.length; i++) {
+        const proj = knownProjects[i]
         if (proj.regex.test(combinedCustAndAdText)) {
           const projResults = $app.findRecordsByFilter('properties', proj.filter, '-created', 3, 0)
-          for (const pr of projResults) {
-            if (!matchedIds.has(pr.id)) {
-              matchedIds.add(pr.id)
+          for (let j = 0; j < projResults.length; j++) {
+            const pr = projResults[j]
+            if (!matchedIdsMap[pr.id]) {
+              matchedIdsMap[pr.id] = true
               matchedProps.push(pr)
             }
           }
@@ -1436,32 +1477,39 @@ ${
       }
 
       // 1b. Check if customer mentioned specific property codes or URLs (e.g. #LM344, #AP344, LM 344, AP-344, 344, brfimoveis.com.br/344/...)
-      const extractedPropertyNumbers = new Set()
+      const extractedPropertyNumbers = []
+      const addPropNum = (num) => {
+        if (num && extractedPropertyNumbers.indexOf(num) === -1) {
+          extractedPropertyNumbers.push(num)
+        }
+      }
 
       // Se foi detectado na ÚLTIMA mensagem do lead (lastMsgPropertyCodeOrNum), priorizar com foco absoluto!
       if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
         const numOnlyLast = lastMsgPropertyCodeOrNum.replace(/\D/g, '')
         if (numOnlyLast) {
-          extractedPropertyNumbers.add(numOnlyLast)
+          addPropNum(numOnlyLast)
         }
         detectedSpecificPropertyQuery = true
       }
 
       // Extração de URLs do site brfimoveis com ID numérico: brfimoveis.com.br/NNN/...
-      const urlIdMatches = combinedCustAndAdText.matchAll(/brfimoveis\.com\.br\/(\d{1,6})\b/gi)
-      for (const um of urlIdMatches) {
-        if (um[1]) {
-          extractedPropertyNumbers.add(um[1])
+      // Substituição de matchAll por loop regex.exec (Goja ES5)
+      const urlIdRegex = /brfimoveis\.com\.br\/(\d{1,6})\b/gi
+      let urlIdExecMatch = null
+      while ((urlIdExecMatch = urlIdRegex.exec(combinedCustAndAdText)) !== null) {
+        if (urlIdExecMatch[1]) {
+          addPropNum(urlIdExecMatch[1])
           detectedSpecificPropertyQuery = true
         }
       }
 
       // Extração de códigos com ou sem hashtag e prefixos (ex: #LM344, #AP-344, LM344, AP-344, CS331, TR 338, ARU-341, ou número de 3 dígitos)
-      const codeMatches = combinedCustAndAdText.matchAll(
-        /(?:^|[\s#])([a-z]{1,4}[-\s]?\d{2,5}|\b\d{3,4}\b)/gi,
-      )
-      for (const cm of codeMatches) {
-        const matchCandidate = cm[1].trim()
+      // Substituição de matchAll por loop regex.exec (Goja ES5)
+      const codeMatchesRegex = /(?:^|[\s#])([a-z]{1,4}[-\s]?\d{2,5}|\b\d{3,4}\b)/gi
+      let codeExecMatch = null
+      while ((codeExecMatch = codeMatchesRegex.exec(combinedCustAndAdText)) !== null) {
+        const matchCandidate = codeExecMatch[1].trim()
         const numOnly = matchCandidate.replace(/\D/g, '')
         // Ignora valores financeiros como 500k, anos como 2026, ou DDDs/telefones comuns
         if (numOnly && numOnly.length >= 2 && numOnly.length <= 5) {
@@ -1473,7 +1521,7 @@ ${
             numOnly !== '2025' &&
             numOnly !== '2026'
           ) {
-            extractedPropertyNumbers.add(numOnly)
+            addPropNum(numOnly)
             detectedSpecificPropertyQuery = true
           }
         }
@@ -1490,13 +1538,15 @@ ${
       }
 
       // Buscar no catálogo de properties pelo ID numérico isolado (no code OU na url)
-      for (const propNum of extractedPropertyNumbers) {
+      for (let pIdx = 0; pIdx < extractedPropertyNumbers.length; pIdx++) {
+        const propNum = extractedPropertyNumbers[pIdx]
         try {
           const codeFilter = `is_active = true && (code ~ '${propNum}' || url ~ '/${propNum}/')`
           const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 3, 0)
-          for (const cr of codeResults) {
-            if (!matchedIds.has(cr.id)) {
-              matchedIds.add(cr.id)
+          for (let cIdx = 0; cIdx < codeResults.length; cIdx++) {
+            const cr = codeResults[cIdx]
+            if (!matchedIdsMap[cr.id]) {
+              matchedIdsMap[cr.id] = true
               matchedProps.push(cr)
             }
           }
@@ -1510,7 +1560,8 @@ ${
       // Contingência ativa: se o lead pediu um imóvel específico (ex: 343) e ele ainda não estava no catálogo ativo,
       // tentar buscar mesmo inativo e reativar, ou buscar com filtro flexível
       if (detectedSpecificPropertyQuery && matchedProps.length === 0) {
-        for (const propNum of extractedPropertyNumbers) {
+        for (let pIdx = 0; pIdx < extractedPropertyNumbers.length; pIdx++) {
+          const propNum = extractedPropertyNumbers[pIdx]
           try {
             const anyProp = $app.findFirstRecordByFilter(
               'properties',
@@ -1524,8 +1575,8 @@ ${
                   `[AI_REPLY] Imóvel ${anyProp.getString('code')} reativado automaticamente para atendimento ao lead.`,
                 )
               }
-              if (!matchedIds.has(anyProp.id)) {
-                matchedIds.add(anyProp.id)
+              if (!matchedIdsMap[anyProp.id]) {
+                matchedIdsMap[anyProp.id] = true
                 matchedProps.push(anyProp)
               }
             }
@@ -1537,8 +1588,8 @@ ${
       if (lastMsgSpecificPropertyRequested && matchedProps.length > 0) {
         const topRequestedProp = matchedProps[0]
         matchedProps = [topRequestedProp]
-        matchedIds.clear()
-        matchedIds.add(topRequestedProp.id)
+        for (const k in matchedIdsMap) delete matchedIdsMap[k]
+        matchedIdsMap[topRequestedProp.id] = true
         targetSpecificProp = topRequestedProp
         console.log(
           `[AI_REPLY] ISOLAMENTO TOTAL APLICADO: lead focou no imóvel ${topRequestedProp.getString('code')} (${topRequestedProp.getString('title')}). Todos os outros empreendimentos suprimidos.`,
@@ -1590,9 +1641,10 @@ ${
         }
 
         if (criteriaResults.length > 0) {
-          for (const cr of criteriaResults) {
-            if (!matchedIds.has(cr.id)) {
-              matchedIds.add(cr.id)
+          for (let crIdx = 0; crIdx < criteriaResults.length; crIdx++) {
+            const cr = criteriaResults[crIdx]
+            if (!matchedIdsMap[cr.id]) {
+              matchedIdsMap[cr.id] = true
               matchedProps.push(cr)
             }
           }
@@ -1611,9 +1663,10 @@ ${
           4,
           0,
         )
-        for (const tl of topLaunches) {
-          if (!matchedIds.has(tl.id)) {
-            matchedIds.add(tl.id)
+        for (let tlIdx = 0; tlIdx < topLaunches.length; tlIdx++) {
+          const tl = topLaunches[tlIdx]
+          if (!matchedIdsMap[tl.id]) {
+            matchedIdsMap[tl.id] = true
             matchedProps.push(tl)
           }
         }
@@ -1625,9 +1678,10 @@ ${
             4,
             0,
           )
-          for (const gp of generalProps) {
-            if (!matchedIds.has(gp.id) && matchedProps.length < 6) {
-              matchedIds.add(gp.id)
+          for (let gpIdx = 0; gpIdx < generalProps.length; gpIdx++) {
+            const gp = generalProps[gpIdx]
+            if (!matchedIdsMap[gp.id] && matchedProps.length < 6) {
+              matchedIdsMap[gp.id] = true
               matchedProps.push(gp)
             }
           }
@@ -2547,7 +2601,7 @@ Motivos: <descreva sucintamente em 1 a 2 linhas o que corrigir>`
             }
 
             try {
-              const regenMessages = [...messages]
+              const regenMessages = messages.slice(0)
               regenMessages.push({
                 role: 'assistant',
                 content: responseText,
@@ -2628,42 +2682,51 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         console.warn(`[AI_PROPERTY_VALIDATION] Failed to load catalog: ${String(e)}`)
       }
 
-      const activeCodes = new Set()
-      const activeUrls = new Set()
-      const activeUrlNumbers = new Set()
+      const activeCodesMap = {}
+      const activeUrlsMap = {}
+      const activeUrlNumbersMap = {}
+      const activeCodesList = []
 
-      activeCatalogProps.forEach((p) => {
+      const addActiveCode = (c) => {
+        if (c && !activeCodesMap[c]) {
+          activeCodesMap[c] = true
+          activeCodesList.push(c)
+        }
+      }
+
+      for (let pIdx = 0; pIdx < activeCatalogProps.length; pIdx++) {
+        const p = activeCatalogProps[pIdx]
         const c = (p.getString('code') || '').trim().toUpperCase()
         if (c) {
-          activeCodes.add(c)
-          activeCodes.add(c.replace(/\s+/g, ''))
-          activeCodes.add(c.replace(/[-_\s]+/g, ''))
+          addActiveCode(c)
+          addActiveCode(c.replace(/\s+/g, ''))
+          addActiveCode(c.replace(/[-_\s]+/g, ''))
           // Extrai dígitos numéricos do código (ex: AP-344 -> 344)
           const cNum = c.replace(/\D/g, '')
           if (cNum) {
-            activeUrlNumbers.add(cNum)
-            activeCodes.add(cNum)
+            activeUrlNumbersMap[cNum] = true
+            addActiveCode(cNum)
             // Permite variações de prefixos no mesmo número (ex: LM344, AP344)
-            activeCodes.add(`LM${cNum}`)
-            activeCodes.add(`AP${cNum}`)
-            activeCodes.add(`LM-${cNum}`)
-            activeCodes.add(`AP-${cNum}`)
+            addActiveCode(`LM${cNum}`)
+            addActiveCode(`AP${cNum}`)
+            addActiveCode(`LM-${cNum}`)
+            addActiveCode(`AP-${cNum}`)
           }
         }
         const u = (p.getString('url') || '').trim().toLowerCase()
         if (u) {
-          activeUrls.add(u)
+          activeUrlsMap[u] = true
           const numMatch = u.match(/brfimoveis\.com\.br\/(\d+)/i)
           if (numMatch) {
-            activeUrlNumbers.add(numMatch[1])
-            activeCodes.add(numMatch[1])
-            activeCodes.add(`AP${numMatch[1]}`)
-            activeCodes.add(`LM${numMatch[1]}`)
-            activeCodes.add(`AP-${numMatch[1]}`)
-            activeCodes.add(`LM-${numMatch[1]}`)
+            activeUrlNumbersMap[numMatch[1]] = true
+            addActiveCode(numMatch[1])
+            addActiveCode(`AP${numMatch[1]}`)
+            addActiveCode(`LM${numMatch[1]}`)
+            addActiveCode(`AP-${numMatch[1]}`)
+            addActiveCode(`LM-${numMatch[1]}`)
           }
         }
-      })
+      }
       // Split text into blocks / paragraphs (separated by double newlines or list items / tables)
       // Check each block: does it cite a property code or a brfimoveis link?
       const rawBlocks = text.split(/\n\s*\n/)
@@ -2671,7 +2734,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       const removedBlocks = []
       let hadHallucinatedProperty = false
 
-      for (const block of rawBlocks) {
+      for (let bIdx = 0; bIdx < rawBlocks.length; bIdx++) {
+        const block = rawBlocks[bIdx]
         const trimmedBlock = block.trim()
         if (!trimmedBlock) continue
 
@@ -2679,7 +2743,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         const urlMatches = trimmedBlock.match(/https?:\/\/[^\s\)\>\"\'\`]+/gi) || []
         let hasInvalidUrl = false
         if (urlMatches.length > 0) {
-          for (const rawUrl of urlMatches) {
+          for (let uIdx = 0; uIdx < urlMatches.length; uIdx++) {
+            const rawUrl = urlMatches[uIdx]
             const cleanUrl = rawUrl.toLowerCase().replace(/[\.,;:!\?]+$/, '')
 
             // ALLOWLIST: Legitimate non-property links (YouTube channel BRF, WhatsApp, social networks)
@@ -2714,14 +2779,14 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
               const numMatch = cleanUrl.match(/brfimoveis\.com\.br\/(\d+)/i)
               if (numMatch) {
                 const urlNum = numMatch[1]
-                if (!activeUrlNumbers.has(urlNum)) {
+                if (!activeUrlNumbersMap[urlNum]) {
                   hasInvalidUrl = true
                   console.warn(
                     `[AI_PROPERTY_VALIDATION] Invalid/Hallucinated property URL detected: ${rawUrl}`,
                   )
                   break
                 }
-              } else if (!isCatalogStaticPage && !activeUrls.has(cleanUrl)) {
+              } else if (!isCatalogStaticPage && !activeUrlsMap[cleanUrl]) {
                 hasInvalidUrl = true
                 console.warn(
                   `[AI_PROPERTY_VALIDATION] Non-existent specific URL detected: ${rawUrl}`,
@@ -2741,32 +2806,32 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         // Look for typical property identifiers like "**AB 101**", "Código: AP-320", "📍 AP343", "*AP 343*"
         let hasInvalidCode = false
         const realPrefixes = ['LM', 'AP', 'CS', 'TR', 'ARU', 'BRF', 'COB']
-        const blacklistWords = new Set([
-          'TEM',
-          'COM',
-          'SÃO',
-          'SAO',
-          'ATE',
-          'ATÉ',
-          'POR',
-          'VALOR',
-          'LOTE',
-          'APTO',
-          'SALA',
-          'CASA',
-          'FAIXA',
-          'TOTAL',
-          'DE',
-          'EM',
-          'SEM',
-          'SOB',
-          'PRA',
-          'PARA',
-          'MAS',
-          'MAIS',
-          'OU',
-          'E',
-        ])
+        const blacklistWordsMap = {
+          TEM: true,
+          COM: true,
+          SÃO: true,
+          SAO: true,
+          ATE: true,
+          ATÉ: true,
+          POR: true,
+          VALOR: true,
+          LOTE: true,
+          APTO: true,
+          SALA: true,
+          CASA: true,
+          FAIXA: true,
+          TOTAL: true,
+          DE: true,
+          EM: true,
+          SEM: true,
+          SOB: true,
+          PRA: true,
+          PARA: true,
+          MAS: true,
+          MAIS: true,
+          OU: true,
+          E: true,
+        }
 
         const codeRegex =
           /(?:(#|código|cod|cód\.?|ref\.?)\s*[*_`]*([A-Z]{2,4}\s*[-_]?\s*\d{2,4})|(?:\b)([A-Z]{2,4}\s*[-_]?\s*\d{2,4}))(?:\s*([a-z²\d]+))?[*_`]*/gi
@@ -2782,7 +2847,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           const digitsOnly = rawCandidate.replace(/\D/g, '')
 
           // (b) Blacklist de palavras comuns pt-BR (ex: "TEM 82", "COM 3", "ATE 500")
-          if (blacklistWords.has(prefixLetters)) {
+          if (blacklistWordsMap[prefixLetters]) {
             continue
           }
 
@@ -2810,7 +2875,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
 
           // (a) Match sem prefixo trigger ('#', 'código', 'ref') só conta se o prefixo é um prefixo REAL do catálogo
           const hasExplicitTrigger = !!prefixTrigger
-          const isRealPrefix = realPrefixes.includes(prefixLetters)
+          const isRealPrefix = realPrefixes.indexOf(prefixLetters) !== -1
           if (!hasExplicitTrigger && !isRealPrefix) {
             // Palavra genérica não precedida de código/# e sem prefixo de catálogo conhecido -> não é código de imóvel
             continue
@@ -2827,7 +2892,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           ) {
             // Check if this code belongs to active properties
             let existsInCatalog = false
-            for (const ac of activeCodes) {
+            for (let acIdx = 0; acIdx < activeCodesList.length; acIdx++) {
+              const ac = activeCodesList[acIdx]
               if (
                 ac === extracted ||
                 ac === normExtracted ||
@@ -3876,45 +3942,49 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       } catch (_) {}
     }
   } finally {
-    if (acquiredLock) {
-      try {
-        const cust = $app.findRecordById('customers', customerId)
-        let rawTags = cust.get('tags')
-        let currentTags = []
-        if (Array.isArray(rawTags)) {
-          currentTags = rawTags.filter((t) => typeof t === 'string')
-        } else if (typeof rawTags === 'string') {
-          try {
-            const p = JSON.parse(rawTags)
-            if (Array.isArray(p)) currentTags = p.filter((t) => typeof t === 'string')
-          } catch (_) {}
-        }
-        const hasLockTag = currentTags.some(
-          (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
-        )
-        if (hasLockTag) {
-          cust.set(
-            'tags',
-            currentTags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
-          )
-          $app.saveNoValidate(cust)
-          console.log(`[AI_REPLY] Lock released cleanly for customer=${customerId}`)
-        }
-      } catch (cleanLockErr) {
-        console.error(
-          `[AI_REPLY] Error releasing lock for customer ${customerId}: ${String(cleanLockErr)}`,
-        )
-        // Fallback: direct SQL update to guarantee lock is released even if record model fails
+    // Liberação INCONDICIONAL no finally (não depende apenas de acquiredLock por concorrência)
+    // com fallback SQL direto caso o update via API/Record falhe
+    try {
+      const cust = $app.findRecordById('customers', customerId)
+      let rawTags = cust.get('tags')
+      let currentTags = []
+      if (Array.isArray(rawTags)) {
+        currentTags = rawTags.filter((t) => typeof t === 'string')
+      } else if (typeof rawTags === 'string') {
         try {
-          $app
-            .db()
-            .newQuery(
-              "UPDATE customers SET tags = (SELECT json_group_array(value) FROM json_each(customers.tags) WHERE value NOT LIKE 'ai_processing%') WHERE id = {:id}",
-            )
-            .bind({ id: customerId })
-            .execute()
-          console.log(`[AI_REPLY] Lock released via SQL fallback for customer=${customerId}`)
+          const p = JSON.parse(rawTags)
+          if (Array.isArray(p)) currentTags = p.filter((t) => typeof t === 'string')
         } catch (_) {}
+      }
+      const hasLockTag = currentTags.some(
+        (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
+      )
+      if (hasLockTag) {
+        cust.set(
+          'tags',
+          currentTags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
+        )
+        $app.saveNoValidate(cust)
+        console.log(`[AI_REPLY] Lock released cleanly for customer=${customerId}`)
+      }
+    } catch (cleanLockErr) {
+      console.error(
+        `[AI_REPLY] Error releasing lock for customer ${customerId}: ${String(cleanLockErr)}`,
+      )
+      // Fallback: direct SQL update to guarantee lock is released even if record model fails
+      try {
+        $app
+          .db()
+          .newQuery(
+            "UPDATE customers SET tags = (SELECT json_group_array(value) FROM json_each(customers.tags) WHERE value NOT LIKE 'ai_processing%') WHERE id = {:id}",
+          )
+          .bind({ id: customerId })
+          .execute()
+        console.log(`[AI_REPLY] Lock released via SQL fallback for customer=${customerId}`)
+      } catch (sqlErr) {
+        console.error(
+          `[AI_REPLY] SQL lock release fallback failed for ${customerId}: ${String(sqlErr)}`,
+        )
       }
     }
   }
