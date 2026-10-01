@@ -744,79 +744,37 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
 
     activeCadenceText += `\n\n${strictGuidelines}`
 
-    // Embeddings & RAG (defensive - busca direta no mesmo processo via $vectors.search)
+    // Embeddings & RAG contextual (busca local direta e segura em cadências ativas)
     let contextChunks = []
     try {
-      if (customerMessage.trim()) {
-        const res = $ai.embed({ input: customerMessage })
-        if (res && res.data && res.data[0] && res.data[0].embedding) {
-          const queryEmbedding = res.data[0].embedding
-
-          // 1. Busca vetorial direta em 'knowledge_base'
-          try {
-            const kbFilter = userId ? `user_id = '${userId}'` : ''
-            const kbSearchOpts = {
-              field: 'embedding',
-              query: queryEmbedding,
-              k: 3,
-            }
-            if (kbFilter) {
-              kbSearchOpts.filter = kbFilter
-            }
-            const kbResults = $vectors.search(e, 'knowledge_base', kbSearchOpts)
-            if (kbResults && kbResults.items && Array.isArray(kbResults.items)) {
-              kbResults.items.forEach((item) => {
-                const title = item.getString ? item.getString('title') : item.title || 'Geral'
-                const content = item.getString ? item.getString('content') : item.content || ''
-                if (content) {
-                  contextChunks.push(`### Informação (${title}):\n${content}`)
-                }
-              })
-            }
-          } catch (kbErr) {
-            console.warn(
-              `[AI_REPLY] RAG vector search non-fatal error (knowledge_base): ${String(kbErr)}`,
-            )
+      if (userId) {
+        try {
+          const matchedCadences = $app.findRecordsByFilter(
+            'cadences',
+            `user_id = '${userId}' && is_active = true`,
+            'order',
+            3,
+            0,
+          )
+          if (matchedCadences && matchedCadences.length > 0) {
+            matchedCadences.forEach((item) => {
+              const title = item.getString('title') || 'Fluxo'
+              const content = item.getString('content') || ''
+              const aiInstructions = item.getString('ai_instructions') || ''
+              if (content) {
+                contextChunks.push(`### Procedimento de Venda (${title}):\n${content}`)
+              }
+              if (aiInstructions) {
+                contextChunks.push(`Diretriz Específica para este Procedimento:\n${aiInstructions}`)
+              }
+            })
           }
-
-          // 2. Busca vetorial direta em 'cadences'
-          try {
-            const cadFilter = userId ? `user_id = '${userId}'` : ''
-            const cadSearchOpts = {
-              field: 'embedding',
-              query: queryEmbedding,
-              k: 2,
-            }
-            if (cadFilter) {
-              cadSearchOpts.filter = cadFilter
-            }
-            const cadResults = $vectors.search(e, 'cadences', cadSearchOpts)
-            if (cadResults && cadResults.items && Array.isArray(cadResults.items)) {
-              cadResults.items.forEach((item) => {
-                const title = item.getString ? item.getString('title') : item.title || 'Fluxo'
-                const content = item.getString ? item.getString('content') : item.content || ''
-                const aiInstructions = item.getString
-                  ? item.getString('ai_instructions')
-                  : item.ai_instructions || ''
-                if (content) {
-                  contextChunks.push(`### Procedimento de Venda (${title}):\n${content}`)
-                }
-                if (aiInstructions) {
-                  contextChunks.push(
-                    `Diretriz Específica para este Procedimento:\n${aiInstructions}`,
-                  )
-                }
-              })
-            }
-          } catch (cadErr) {
-            console.warn(
-              `[AI_REPLY] RAG vector search non-fatal error (cadences): ${String(cadErr)}`,
-            )
-          }
+        } catch (cadErr) {
+          console.warn(`[AI_REPLY] Cadences context lookup non-fatal error: ${String(cadErr)}`)
         }
       }
     } catch (err) {
-      console.warn(`[AI_REPLY] RAG vector search non-fatal error: ${String(err)}`)
+      console.warn(`[AI_REPLY] Context retrieval non-fatal error: ${String(err)}`)
     }
 
     let contextText = contextChunks.join('\n\n')
@@ -2168,6 +2126,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
     const systemPrompt = `Você é ${aiName}, da BRF Imóveis (www.brfimoveis.com.br).
 Sua identidade e instruções específicas (Persona):
 ${personaInstructions}
+${biaLearningsText}
 
 Instruções da IA Mãe (Base de Conhecimento Global):
 ${cleanMotherAiInstructions}
