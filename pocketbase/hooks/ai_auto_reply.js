@@ -353,8 +353,9 @@ onRecordAfterCreateSuccess((e) => {
     const customerFirstName = (customer.getString('first_name') || '').trim()
 
     // Validação estrita do nome do cliente:
-    // Nunca usar nomes estranhos, inconsistentes, compostos suspeitos do CRM (ex: "Mauro Maurício") ou lixo de cadastro.
-    // Se parecer suspeito, incompleto, telefone, e-mail ou não confiável, prefere NÃO usar nome.
+    // Extrai o primeiro nome real do lead a partir de customer first_name ou name.
+    // "Mauro Maurício" vira "Mauro" (jamais string vazia ou descarte).
+    // Se parecer suspeito, incompleto, telefone, e-mail ou não confiável, retorna vazio.
     function cleanAndValidateLeadName(firstName, fullName) {
       const candidate = (firstName || '').trim() || (fullName || '').trim()
       if (!candidate) return ''
@@ -367,11 +368,6 @@ onRecordAfterCreateSuccess((e) => {
         )
       )
         return ''
-
-      // Se contém "Mauro Maurício" ou repetição do nome do corretor Mauro Fengler misturado com outro nome
-      if (/mauro\s+maur[ií]cio/i.test(candidate)) {
-        return ''
-      }
 
       // Se for apenas o primeiro nome
       const parts = candidate.split(/\s+/).filter(Boolean)
