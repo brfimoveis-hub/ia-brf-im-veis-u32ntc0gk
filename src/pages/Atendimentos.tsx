@@ -32,6 +32,7 @@ import {
   Paperclip,
 } from 'lucide-react'
 import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
+import { BiaAvatar } from '@/components/common/BiaAvatar'
 import { sendManualReply } from '@/services/conversations'
 import { sendWhatsAppMessages } from '@/services/meta_whatsapp'
 import { toast } from '@/hooks/use-toast'
@@ -513,7 +514,7 @@ export default function Atendimentos() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Bot className="h-6 w-6 text-primary" />
+              <BiaAvatar size="md" />
               Atendimentos da IA (Bia)
             </h1>
             <Badge
@@ -692,8 +693,12 @@ export default function Atendimentos() {
 
                         <p className="text-xs text-slate-600 dark:text-slate-400 truncate line-clamp-1">
                           {thread.sender === 'ai' && (
-                            <span className="font-semibold text-primary dark:text-primary-foreground">
-                              Bia:{' '}
+                            <span className="inline-flex items-center gap-1 font-semibold text-primary dark:text-primary-foreground mr-1">
+                              <BiaAvatar
+                                size="sm"
+                                className="inline-block w-4 h-4 align-text-bottom"
+                              />
+                              Bia:
                             </span>
                           )}
                           {thread.sender === 'agent' && (
@@ -825,14 +830,17 @@ export default function Atendimentos() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className="text-right hidden lg:block">
-                    <span className="text-[11px] text-muted-foreground block">
-                      Assistente Atual
-                    </span>
-                    <span className="text-xs font-semibold text-primary flex items-center gap-1 justify-end">
-                      <Sparkles className="h-3 w-3" />
-                      {user?.ai_name || 'Bia (IA)'}
-                    </span>
+                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/60 border rounded-lg px-2.5 py-1">
+                    <BiaAvatar size="md" showStatusIndicator />
+                    <div className="text-left hidden sm:block">
+                      <span className="text-[10px] text-muted-foreground block uppercase font-medium tracking-wide">
+                        Assistente Virtual
+                      </span>
+                      <span className="text-xs font-semibold text-primary flex items-center gap-1">
+                        <Sparkles className="h-3 w-3 text-amber-500" />
+                        {user?.ai_name || 'Bia (IA)'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -914,7 +922,7 @@ export default function Atendimentos() {
                                 <div className="flex items-center gap-1.5 text-[11px] mb-1">
                                   {isAi && (
                                     <div className="flex items-center gap-1.5 font-bold text-[#008069] dark:text-[#25d366]">
-                                      <Sparkles className="h-3 w-3" />
+                                      <BiaAvatar size="sm" className="w-4 h-4" />
                                       <span>{user?.ai_name || 'Bia (IA)'}</span>
                                       <span className="text-[9px] font-normal px-1 py-0 rounded bg-emerald-700/10 dark:bg-emerald-300/20 text-emerald-800 dark:text-emerald-200">
                                         Automático

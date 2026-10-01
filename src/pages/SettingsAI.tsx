@@ -48,7 +48,9 @@ import {
   Calendar,
   User,
   ArrowUpDown,
+  Camera,
 } from 'lucide-react'
+import { defaultBiaImg, getBiaAvatarUrl } from '@/components/common/BiaAvatar'
 import {
   AiKnowledgeFile,
   getAiKnowledgeFiles,
@@ -217,6 +219,11 @@ export default function SettingsAI() {
   const [projectData, setProjectData] = useState<ProjectData>({ ...DEFAULT_PROJECT })
   const [postsMinInterval, setPostsMinInterval] = useState<number>(60)
 
+  // Bia Avatar State
+  const [aiAvatarFilename, setAiAvatarFilename] = useState<string>('')
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
   // Knowledge Files & Storage State
   const [knowledgeFiles, setKnowledgeFiles] = useState<AiKnowledgeFile[]>([])
   const [storageUsage, setStorageUsage] = useState<StorageUsageSummary | null>(null)
@@ -259,6 +266,7 @@ export default function SettingsAI() {
       setAiInstructions(userData.ai_instructions || '')
       setProjectData(parseProjectData(userData.project_data))
       setPostsMinInterval(userData.posts_min_interval_minutes || 60)
+      setAiAvatarFilename(userData.ai_avatar || '')
     } catch {
       setError(true)
     } finally {
@@ -307,6 +315,65 @@ export default function SettingsAI() {
     setError(false)
     setLoading(true)
     setRefreshKey((k) => k + 1)
+  }
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user?.id) return
+
+    // Validar tipo de imagem
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor selecione um arquivo de imagem válido (JPG ou PNG).')
+      return
+    }
+
+    setUploadingAvatar(true)
+    try {
+      const formData = new FormData()
+      formData.append('ai_avatar', file)
+
+      const updated = await pb.collection('users').update(user.id, formData)
+      setAiAvatarFilename(updated.ai_avatar || '')
+      toast.success('Foto da Bia atualizada com sucesso no CRM!')
+    } catch (err: any) {
+      console.error('Erro ao atualizar foto da Bia:', err)
+      toast.error('Não foi possível atualizar a foto da Bia.', { description: err?.message })
+    } finally {
+      setUploadingAvatar(false)
+      if (avatarInputRef.current) {
+        avatarInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleRemoveAvatar = async () => {
+    if (!user?.id) return
+    setUploadingAvatar(true)
+    try {
+      const updated = await pb.collection('users').update(user.id, {
+        ai_avatar: null,
+      })
+      setAiAvatarFilename(updated.ai_avatar || '')
+      toast.success('Foto personalizada removida. A Bia usará a imagem padrão oficial.')
+    } catch (err: any) {
+      toast.error('Erro ao remover foto da Bia.', { description: err?.message })
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
+  const handleDownloadOfficialAvatar = () => {
+    const currentAvatarUrl = aiAvatarFilename
+      ? getBiaAvatarUrl({ ...user, ai_avatar: aiAvatarFilename })
+      : defaultBiaImg
+
+    const anchor = document.createElement('a')
+    anchor.href = currentAvatarUrl
+    anchor.download = 'bia-avatar-oficial-brf-imoveis.png'
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    toast.success('Download da foto oficial iniciado!')
   }
 
   const handleSave = async () => {
@@ -1318,6 +1385,139 @@ export default function SettingsAI() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* SEÇÃO IDENTIDADE VISUAL & FOTO DA BIA */}
+      <Card className="border-amber-500/30 shadow-sm overflow-hidden bg-gradient-to-r from-amber-50/20 via-background to-background dark:from-amber-950/10">
+        <CardHeader className="bg-amber-500/5 pb-4 border-b border-amber-500/10">
+          <div className="flex items-center gap-2">
+            <Camera className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <CardTitle className="text-lg sm:text-xl text-slate-900 dark:text-slate-100">
+                Identidade Visual & Foto da Bia
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Foto oficial da assistente virtual Bia exibida no CRM, no chat de Atendimentos e em
+                todas as conversas com corretores e clientes.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6 space-y-5">
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+            {/* Preview circular 96px com borda dourada/primária */}
+            <div className="flex flex-col items-center gap-2 shrink-0">
+              <div className="relative">
+                <img
+                  src={
+                    aiAvatarFilename
+                      ? getBiaAvatarUrl({ ...user, ai_avatar: aiAvatarFilename })
+                      : defaultBiaImg
+                  }
+                  alt="Bia - Assistente Virtual BRF Imóveis"
+                  className="w-24 h-24 rounded-full object-cover shadow-md border-4 border-amber-500/60 ring-2 ring-primary/20 bg-muted"
+                  onError={(e) => {
+                    const target = e.currentTarget
+                    if (target.src !== defaultBiaImg) {
+                      target.src = defaultBiaImg
+                    }
+                  }}
+                />
+                {uploadingAvatar && (
+                  <div className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 text-white animate-spin" />
+                  </div>
+                )}
+              </div>
+              <Badge
+                variant="outline"
+                className="text-[11px] text-amber-700 dark:text-amber-300 border-amber-500/30"
+              >
+                {aiAvatarFilename ? 'Foto personalizada ativa' : 'Foto oficial padrão'}
+              </Badge>
+            </div>
+
+            {/* Ações de Upload e Remoção */}
+            <div className="flex-1 space-y-3 w-full">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Gerenciar Foto da Bia
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Formatos aceitos: JPG, PNG ou WEBP. Resolução recomendada de 512x512 pixels ou
+                  superior.
+                </p>
+              </div>
+
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                className="hidden"
+                onChange={handleAvatarUpload}
+                disabled={uploadingAvatar}
+              />
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={uploadingAvatar}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-9 gap-1.5"
+                >
+                  {uploadingAvatar ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5" />
+                  )}
+                  {aiAvatarFilename ? 'Trocar Foto' : 'Subir Nova Foto'}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadOfficialAvatar}
+                  className="text-xs h-9 gap-1.5 border-slate-300 dark:border-slate-700"
+                >
+                  <Download className="w-3.5 h-3.5 text-primary" />
+                  Baixar foto em alta resolução
+                </Button>
+
+                {aiAvatarFilename && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRemoveAvatar}
+                    disabled={uploadingAvatar}
+                    className="text-xs h-9 gap-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Restaurar Padrão
+                  </Button>
+                )}
+              </div>
+
+              {/* Box Informativo Oficial WhatsApp / Meta */}
+              <div className="mt-3 p-3.5 rounded-lg bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-blue-950 dark:text-blue-100">
+                    Sincronização com o WhatsApp Oficial
+                  </p>
+                  <p className="leading-relaxed text-blue-800 dark:text-blue-300">
+                    Para exibir esta foto no perfil do WhatsApp, atualize a foto do perfil do número{' '}
+                    <strong className="font-semibold">+55 48 99209-8050</strong> no WhatsApp
+                    Business ou no Meta Business Suite (Configurações comerciais → Perfil).
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

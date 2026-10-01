@@ -20,6 +20,7 @@ import {
   Building2,
   Trash2,
 } from 'lucide-react'
+import { BiaAvatar } from '@/components/common/BiaAvatar'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -67,8 +68,9 @@ export default function Layout() {
 
   const SidebarContent = () => (
     <div className="flex h-full flex-col bg-slate-900 text-slate-100">
-      <div className="flex h-16 items-center px-6 text-lg font-semibold border-b border-slate-800">
-        BRF IA CRM
+      <div className="flex h-16 items-center px-5 text-lg font-semibold border-b border-slate-800 gap-2.5">
+        <BiaAvatar size="sm" showStatusIndicator />
+        <span className="truncate">BRF IA CRM</span>
       </div>
       <div className="flex-1 overflow-y-auto py-4">
         <nav className="space-y-1 px-3">

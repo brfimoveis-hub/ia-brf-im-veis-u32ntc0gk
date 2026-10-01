@@ -14,12 +14,15 @@ routerAdd('POST', '/backend/v1/rag-search', (e) => {
   let kbItems = []
   try {
     const kbFilter = userId ? `user_id = '${userId}'` : ''
-    const kbResults = $vectors.search(e, 'knowledge_base', {
+    const kbOptions = {
       field: 'embedding',
       query: query,
       k: 3,
-      ...(kbFilter ? { filter: kbFilter } : {}),
-    })
+    }
+    if (kbFilter) {
+      kbOptions.filter = kbFilter
+    }
+    const kbResults = $vectors.search(e, 'knowledge_base', kbOptions)
     if (kbResults && kbResults.items && Array.isArray(kbResults.items)) {
       kbItems = kbResults.items
     }
@@ -30,12 +33,15 @@ routerAdd('POST', '/backend/v1/rag-search', (e) => {
   let cadencesItems = []
   try {
     const cadFilter = userId ? `user_id = '${userId}'` : ''
-    const cadResults = $vectors.search(e, 'cadences', {
+    const cadOptions = {
       field: 'embedding',
       query: query,
       k: 2,
-      ...(cadFilter ? { filter: cadFilter } : {}),
-    })
+    }
+    if (cadFilter) {
+      cadOptions.filter = cadFilter
+    }
+    const cadResults = $vectors.search(e, 'cadences', cadOptions)
     if (cadResults && cadResults.items && Array.isArray(cadResults.items)) {
       cadencesItems = cadResults.items
     }

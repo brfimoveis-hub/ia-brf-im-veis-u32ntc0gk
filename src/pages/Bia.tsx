@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/hooks/use-toast'
 import { Bot, Save, FileUp, Upload } from 'lucide-react'
+import { BiaAvatar, defaultBiaImg } from '@/components/common/BiaAvatar'
 import { assertCanUploadFiles } from '@/services/ai_knowledge_storage'
 
 export default function Bia() {
@@ -116,9 +117,7 @@ export default function Bia() {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex items-center gap-4">
-        <div className="p-3 bg-primary/10 text-primary rounded-full">
-          <Bot className="h-8 w-8" />
-        </div>
+        <BiaAvatar size="xl" className="w-16 h-16" />
         <div>
           <h1 className="text-3xl font-bold tracking-tight">IA Mãe (Bia)</h1>
           <p className="text-muted-foreground">
@@ -182,17 +181,17 @@ export default function Bia() {
             <CardDescription>A imagem que representará a IA.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
-            {user.ai_avatar ? (
-              <img
-                src={pb.files.getUrl(user, user.ai_avatar)}
-                alt="Avatar da IA"
-                className="w-24 h-24 rounded-full object-cover border"
-              />
-            ) : (
-              <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center border border-dashed">
-                <Bot className="h-10 w-10 text-slate-300" />
-              </div>
-            )}
+            <img
+              src={user.ai_avatar ? pb.files.getUrl(user, user.ai_avatar) : defaultBiaImg}
+              alt="Avatar da IA"
+              className="w-24 h-24 rounded-full object-cover border-4 border-amber-500/40 shadow-sm"
+              onError={(e) => {
+                const target = e.currentTarget
+                if (target.src !== defaultBiaImg) {
+                  target.src = defaultBiaImg
+                }
+              }}
+            />
             <Label htmlFor="ai_avatar_upload" className="cursor-pointer">
               <div className="flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors">
                 <Upload className="mr-2 h-4 w-4" /> Enviar Avatar

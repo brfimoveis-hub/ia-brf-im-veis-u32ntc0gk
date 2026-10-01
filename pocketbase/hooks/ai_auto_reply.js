@@ -644,12 +644,15 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
           // 1. Busca vetorial direta em 'knowledge_base'
           try {
             const kbFilter = userId ? `user_id = '${userId}'` : ''
-            const kbResults = $vectors.search(e, 'knowledge_base', {
+            const kbSearchOpts = {
               field: 'embedding',
               query: queryEmbedding,
               k: 3,
-              ...(kbFilter ? { filter: kbFilter } : {}),
-            })
+            }
+            if (kbFilter) {
+              kbSearchOpts.filter = kbFilter
+            }
+            const kbResults = $vectors.search(e, 'knowledge_base', kbSearchOpts)
             if (kbResults && kbResults.items && Array.isArray(kbResults.items)) {
               kbResults.items.forEach((item) => {
                 const title = item.getString ? item.getString('title') : item.title || 'Geral'
@@ -668,12 +671,15 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
           // 2. Busca vetorial direta em 'cadences'
           try {
             const cadFilter = userId ? `user_id = '${userId}'` : ''
-            const cadResults = $vectors.search(e, 'cadences', {
+            const cadSearchOpts = {
               field: 'embedding',
               query: queryEmbedding,
               k: 2,
-              ...(cadFilter ? { filter: cadFilter } : {}),
-            })
+            }
+            if (cadFilter) {
+              cadSearchOpts.filter = cadFilter
+            }
+            const cadResults = $vectors.search(e, 'cadences', cadSearchOpts)
             if (cadResults && cadResults.items && Array.isArray(cadResults.items)) {
               cadResults.items.forEach((item) => {
                 const title = item.getString ? item.getString('title') : item.title || 'Fluxo'
@@ -1041,6 +1047,8 @@ ${
     let extractedLocation = ''
     let matchedLocFilter = ''
     let matchedProps = []
+    let detectedSpecificPropertyQuery = false
+    let targetSpecificProp = null
 
     try {
       // Build search text using current customer message AND recent customer messages
@@ -1307,7 +1315,6 @@ ${
       }
 
       // 1b. Check if customer mentioned specific property codes or URLs (e.g. #LM344, #AP344, LM 344, AP-344, 344, brfimoveis.com.br/344/...)
-      let detectedSpecificPropertyQuery = false
       const extractedPropertyNumbers = new Set()
 
       // Extração de URLs do site brfimoveis com ID numérico: brfimoveis.com.br/NNN/...
@@ -1371,6 +1378,9 @@ ${
       }
 
       // Se encontrou o imóvel específico citado pelo lead, marcar flag crítica de foco exclusivo
+      if (detectedSpecificPropertyQuery && matchedProps.length > 0) {
+        targetSpecificProp = matchedProps[0]
+      }
       const hasFoundLeadSpecificProperty = detectedSpecificPropertyQuery && matchedProps.length > 0
       const leadRequestedPropertyMissing =
         detectedSpecificPropertyQuery && matchedProps.length === 0
@@ -2486,17 +2496,85 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         // Extract property code patterns: e.g. AB 101, AP 343, AP343, CS331, LM326, TR338, ARU341, BRF-101
         // Look for typical property identifiers like "**AB 101**", "Código: AP-320", "📍 AP343", "*AP 343*"
         let hasInvalidCode = false
-        const codeMatches =
-          trimmedBlock.match(
-            /(?:código|cod|cód\.?|ref\.?|\b)\s*[*_`]*([A-Z]{2,4}\s*[-_]?\s*\d{2,4})[*_`]*/gi,
-          ) || []
-        for (const matchStr of codeMatches) {
-          const extracted = matchStr
-            .replace(/^(?:código|cod|cód\.?|ref\.?)\s*/i, '')
-            .replace(/[*_`]/g, '')
-            .trim()
-            .toUpperCase()
+        const realPrefixes = ['LM', 'AP', 'CS', 'TR', 'ARU', 'BRF', 'COB']
+        const blacklistWords = new Set([
+          'TEM',
+          'COM',
+          'SÃO',
+          'SAO',
+          'ATE',
+          'ATÉ',
+          'POR',
+          'VALOR',
+          'LOTE',
+          'APTO',
+          'SALA',
+          'CASA',
+          'FAIXA',
+          'TOTAL',
+          'DE',
+          'EM',
+          'SEM',
+          'SOB',
+          'PRA',
+          'PARA',
+          'MAS',
+          'MAIS',
+          'OU',
+          'E',
+        ])
+
+        const codeRegex =
+          /(?:(#|código|cod|cód\.?|ref\.?)\s*[*_`]*([A-Z]{2,4}\s*[-_]?\s*\d{2,4})|(?:\b)([A-Z]{2,4}\s*[-_]?\s*\d{2,4}))(?:\s*([a-z²\d]+))?[*_`]*/gi
+        let matchResult
+        while ((matchResult = codeRegex.exec(trimmedBlock)) !== null) {
+          const prefixTrigger = matchResult[1] || '' // '#', 'código', 'ref', etc.
+          const rawCandidate = matchResult[2] || matchResult[3] || ''
+          const followingWord = (matchResult[4] || '').toLowerCase()
+
+          if (!rawCandidate) continue
+
+          const prefixLetters = rawCandidate.replace(/[^A-Za-z]/g, '').toUpperCase()
+          const digitsOnly = rawCandidate.replace(/\D/g, '')
+
+          // (b) Blacklist de palavras comuns pt-BR (ex: "TEM 82", "COM 3", "ATE 500")
+          if (blacklistWords.has(prefixLetters)) {
+            continue
+          }
+
+          // (c) Descartar matches seguidos de unidade de medida (ex: "82 m²", "82 m2", "metros", "dorms", "suítes")
+          if (
+            followingWord === 'm²' ||
+            followingWord === 'm2' ||
+            followingWord === 'metros' ||
+            followingWord === 'metro' ||
+            followingWord === 'dorm' ||
+            followingWord === 'dorms' ||
+            followingWord === 'dormitórios' ||
+            followingWord === 'dormitorios' ||
+            followingWord === 'quartos' ||
+            followingWord === 'quarto' ||
+            followingWord === 'suíte' ||
+            followingWord === 'suite' ||
+            followingWord === 'suítes' ||
+            followingWord === 'suites' ||
+            followingWord === 'vagas' ||
+            followingWord === 'vaga'
+          ) {
+            continue
+          }
+
+          // (a) Match sem prefixo trigger ('#', 'código', 'ref') só conta se o prefixo é um prefixo REAL do catálogo
+          const hasExplicitTrigger = !!prefixTrigger
+          const isRealPrefix = realPrefixes.includes(prefixLetters)
+          if (!hasExplicitTrigger && !isRealPrefix) {
+            // Palavra genérica não precedida de código/# e sem prefixo de catálogo conhecido -> não é código de imóvel
+            continue
+          }
+
+          const extracted = rawCandidate.toUpperCase().trim()
           const normExtracted = extracted.replace(/\s+/g, '').replace(/[-_]/g, '')
+
           // Exclude generic numbers or dates
           if (
             normExtracted.length >= 3 &&
@@ -3435,11 +3513,11 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       $app.saveNoValidate(errLog)
     } catch (_) {}
 
-    // Resilient fallback: attempt to send real catalog properties or safety response
+    // Resilient fallback: JAMAIS reiniciar a conversa nem trocar de imóvel
     try {
       if (customerId && (conversationChannel === 'whatsapp' || !conversationChannel)) {
         console.log(
-          `[AI_REPLY] Top-level catch attempting emergency catalog fallback for ${customerId}...`,
+          `[AI_REPLY] Top-level catch attempting resilient focus fallback for ${customerId}...`,
         )
         let emergencyReply = ''
 
@@ -3447,71 +3525,39 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         let safeHour =
           typeof brHour === 'number' ? brHour : new Date(Date.now() - 3 * 3600 * 1000).getUTCHours()
 
-        // Try to query active properties directly
+        let custDisplayName = ''
         try {
-          const fallbackProps = $app.findRecordsByFilter(
-            'properties',
-            'is_active = true',
-            'price',
-            3,
-            0,
-          )
-          if (fallbackProps && fallbackProps.length > 0) {
-            let custDisplayName = ''
-            try {
-              const custRec = $app.findRecordById('customers', customerId)
-              const cName = (
-                custRec.getString('first_name') ||
-                custRec.getString('name') ||
-                ''
-              ).trim()
-              if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
-                custDisplayName = cName.split(' ')[0]
-              }
-            } catch (_) {}
-
-            const topProp = fallbackProps[0]
-            const pTitle = (topProp.getString('title') || '').trim()
-            const pCity = (topProp.getString('city') || '').trim()
-            const pNeigh = (topProp.getString('neighborhood') || '').trim()
-            const pBeds = topProp.getInt('bedrooms')
-            const pSuites = topProp.getInt('suites')
-            const loc = [pNeigh, pCity].filter(Boolean).join(', ')
-
-            const emGreeting =
-              typeof buildTemporalGreeting === 'function'
-                ? buildTemporalGreeting(custDisplayName, safeHour)
-                : 'Olá!'
-            emergencyReply = `${emGreeting} Temos uma excelente opção na região que se encaixa muito bem: o *${pTitle}*`
-            if (loc) emergencyReply += ` em ${loc}`
-            if (pBeds > 0) {
-              emergencyReply += `, com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}${pSuites > 0 ? ` (${pSuites} suíte${pSuites > 1 ? 's' : ''})` : ''}`
-            }
-            emergencyReply += `.\n\nVocê pretende adquirir à vista ou vai utilizar financiamento bancário? Quer que eu te mande as fotos e a tabela de valores?`
+          const custRec = $app.findRecordById('customers', customerId)
+          const cName = (custRec.getString('first_name') || custRec.getString('name') || '').trim()
+          if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
+            custDisplayName = cName.split(' ')[0]
           }
-        } catch (catDbErr) {
-          console.warn(`[AI_REPLY] Emergency catalog lookup error: ${String(catDbErr)}`)
-        }
+        } catch (_) {}
 
-        // If catalog lookup also failed, use minimal safety message with temporal greeting
-        if (!emergencyReply) {
-          let custDisplayName = ''
-          try {
-            const custRec = $app.findRecordById('customers', customerId)
-            const cName = (
-              custRec.getString('first_name') ||
-              custRec.getString('name') ||
-              ''
-            ).trim()
-            if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
-              custDisplayName = cName.split(' ')[0]
-            }
-          } catch (_) {}
-          const emGreeting =
-            typeof buildTemporalGreeting === 'function'
-              ? buildTemporalGreeting(custDisplayName, safeHour)
-              : 'Olá!'
-          emergencyReply = `${emGreeting} Você pode conferir nosso catálogo completo de imóveis diretamente no site: https://www.brfimoveis.com.br/imoveis/venda. Se preferir um atendimento exclusivo com o corretor Mauro, ele atende no link: https://wa.me/5548992098050`
+        const emGreeting =
+          typeof buildTemporalGreeting === 'function'
+            ? buildTemporalGreeting(custDisplayName, safeHour) + ' '
+            : ''
+
+        // REGRA CRÍTICA: O fallback JAMAIS deve reiniciar a conversa nem trocar de imóvel
+        // Se o lead perguntou por um imóvel específico ou há histórico, mantém o foco nesse imóvel
+        if (targetSpecificProp || (matchedProps && matchedProps.length > 0)) {
+          const propInFocus = targetSpecificProp || matchedProps[0]
+          const pCode = (propInFocus.getString('code') || '').trim()
+          const pTitle = (propInFocus.getString('title') || '').trim()
+          const pPrice = (propInFocus.getString('price_formatted') || '').trim()
+          const pUrl = (propInFocus.getString('url') || '').trim()
+          const propId = pCode ? `*${pCode}*` : pTitle ? `*${pTitle}*` : 'em foco'
+
+          emergencyReply = `${emGreeting}Com certeza! Em relação ao imóvel ${propId}${pPrice ? ` (valor de ${pPrice})` : ''}, estou separando o material completo e as plantas para você.\n\nVocê prefere receber por aqui no WhatsApp ou deseja que eu já agende uma visita com o Mauro?`
+          if (pUrl && !emergencyReply.includes(pUrl)) {
+            emergencyReply += `\nFicha detalhada: ${pUrl}`
+          }
+        } else if (detectedSpecificPropertyQuery) {
+          emergencyReply = `${emGreeting}Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes atualizados junto ao Mauro e já te envio as informações completas por aqui.`
+        } else {
+          // Sem imóvel específico e sem catálogo aleatório: resposta segura mantendo a continuidade sem reiniciar
+          emergencyReply = `${emGreeting}Recebi sua mensagem! Estou organizando as informações detalhadas para você. Em instantes já te trago o retorno completo.`
         }
 
         // Save conversation record
