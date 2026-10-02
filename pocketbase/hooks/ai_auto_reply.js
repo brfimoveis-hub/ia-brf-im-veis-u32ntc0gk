@@ -54,6 +54,13 @@ onRecordAfterCreateSuccess((e) => {
   var matchedProps = []
   var detectedSpecificPropertyQuery = false
   var targetSpecificProp = null
+  var hasFreeSearchIntent = false
+  function isFreeSearchIntent(text) {
+    if (!text || typeof text !== 'string') return false
+    return /\b(?:pesquisar(?:\s+para\s+mim)?|buscar(?:\s+para\s+mim)?|procurar(?:\s+para\s+mim)?|fazenda|área\s+rural|area\s+rural|sítio|sitio|chácara|chacara|terreno|rural)\b/i.test(
+      text,
+    )
+  }
   const customerId = e.record.getString('customer_id')
   const conversationChannel = e.record.getString('channel') || 'whatsapp'
   const incomingMsgId = e.record.id
@@ -567,6 +574,7 @@ onRecordAfterCreateSuccess((e) => {
     matchedProps = []
     detectedSpecificPropertyQuery = false
     targetSpecificProp = null
+    hasFreeSearchIntent = false
 
     // Anti-flood com DEBOUNCE ACUMULATIVO (remover descarte silencioso <5s).
     // Caso real: se nova mensagem do lead chega logo após resposta da IA ou em sequência,
@@ -1200,6 +1208,7 @@ ${
     matchedProps = []
     detectedSpecificPropertyQuery = false
     targetSpecificProp = null
+    hasFreeSearchIntent = false
 
     try {
       // Build search text using current customer message AND recent customer messages
@@ -1651,12 +1660,9 @@ ${
       }
 
       // CORREÇÃO C: BUSCA LIVRE SEM CÓDIGO ("pesquisar para mim", "fazenda em Urubici", "área rural", "casa em Florianópolis", etc.)
-      const isFreeSearchIntent =
-        /\b(?:pesquisar(?:\s+para\s+mim)?|buscar(?:\s+para\s+mim)?|procurar(?:\s+para\s+mim)?|fazenda|área\s+rural|area\s+rural|sítio|sitio|chácara|chacara|terreno|rural)\b/i.test(
-          combinedCustAndAdText,
-        )
+      hasFreeSearchIntent = isFreeSearchIntent(combinedCustAndAdText)
 
-      if (matchedProps.length === 0 && !detectedSpecificPropertyQuery && isFreeSearchIntent) {
+      if (matchedProps.length === 0 && !detectedSpecificPropertyQuery && hasFreeSearchIntent) {
         // Extrai termos-chave para busca textual em properties (tipo, cidade, título)
         const ruralKeywords = ['rural', 'fazenda', 'sitio', 'sítio', 'chacara', 'chácara']
         const isRuralQuery = ruralKeywords.some((k) =>
@@ -1722,7 +1728,7 @@ ${
       if (
         matchedProps.length === 0 &&
         !detectedSpecificPropertyQuery &&
-        !isFreeSearchIntent &&
+        !hasFreeSearchIntent &&
         !isMismatchDetected
       ) {
         const topLaunches = $app.findRecordsByFilter(
@@ -2263,13 +2269,13 @@ O cliente indicou que você se confundiu ou que não era aquele imóvel ("${inco
 3. PROIBIDO chutar ou sugerir outro imóvel ou lançamento agora! Apenas peça a confirmação do imóvel desejado com gentileza.\n`
     }
 
-    if (isFreeSearchIntent && matchedProps.length === 0) {
+    if (hasFreeSearchIntent && matchedProps.length === 0) {
       extraBehaviorRules += `\n[INSTRUÇÃO CRÍTICA DE BUSCA LIVRE SEM RESULTADO DIRETO]:
 O cliente pediu busca de um perfil ou região que não possui imóvel correspondente no catálogo ativo.
 1. Responda com transparência e clareza informando que não localizou opções disponíveis com essas características exatas na região solicitada.
 2. Pergunte com simpatia se ele aceitaria analisar opções em cidades/regiões próximas ou se prefere que o corretor Mauro busque oportunidades sob demanda na carteira de parceiros.
 3. É TERMINANTEMENTE PROIBIDO empurrar lançamentos não solicitados (ex: Vistage Residence) ou mudar de assunto.\n`
-    } else if (isFreeSearchIntent && matchedProps.length > 0) {
+    } else if (hasFreeSearchIntent && matchedProps.length > 0) {
       extraBehaviorRules += `\n[INSTRUÇÃO DE BUSCA LIVRE COM IMÓVEL COMPATÍVEL ENCONTRADO]:
 Apresente a opção encontrada no catálogo real informando com TOTAL TRANSPARÊNCIA a sua LOCALIZAÇÃO REAL (por exemplo: se o cliente pediu fazenda e a fazenda cadastrada é em São Joaquim, informe expressamente que ela fica em São Joaquim - SC, a poucos minutos de Urubici/região das vinícolas). Não invente que fica onde não fica.\n`
     }
@@ -3313,7 +3319,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           `[AI_REPLY] Desencaixe implícito ativo no fallback: pedindo confirmação sem empurrar imóvel.`,
         )
         responseText = `Peço desculpas pela confusão! Você poderia me confirmar o código (ex: #ARU341, #AP343) ou o link do imóvel que você gostaria de ver? Assim localizo exatamente a opção correta para você.`
-      } else if (isFreeSearchIntent && matchedProps.length === 0) {
+      } else if (hasFreeSearchIntent && matchedProps.length === 0) {
         console.log(
           `[AI_REPLY] Busca livre sem match no fallback: informando transparência sem empurrar lançamentos.`,
         )
@@ -3437,7 +3443,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       console.warn('[AI_REPLY] Final check detected canned sentence')
       if (isMismatchDetected) {
         responseText = `Peço desculpas pela confusão! Você poderia me confirmar o código (ex: #ARU341, #AP343) ou o link do imóvel que você gostaria de ver? Assim localizo exatamente o que você procura.`
-      } else if (isFreeSearchIntent && matchedProps.length === 0) {
+      } else if (hasFreeSearchIntent && matchedProps.length === 0) {
         responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique com o corretor Mauro na nossa carteira de parceiros?`
       } else if (detectedSpecificPropertyQuery) {
         if (matchedProps && matchedProps.length > 0) {
@@ -3977,35 +3983,155 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             ? fbSalutation + ', ' + custDisplayName + '! '
             : fbSalutation + '! '
 
+          // Obter histórico de mensagens recentes da IA para não repetir a mesma mensagem em sequência
+          var recentAiTexts = []
+          try {
+            var lastAiConvs = $app.findRecordsByFilter(
+              'conversations',
+              "customer_id = '" + customerId + "' && sender = 'ai'",
+              '-created',
+              4,
+              0,
+            )
+            for (var aiIdx = 0; aiIdx < lastAiConvs.length; aiIdx++) {
+              var cTxt = (lastAiConvs[aiIdx].getString('content') || '').trim().toLowerCase()
+              if (cTxt) recentAiTexts.push(cTxt)
+            }
+          } catch (_) {}
+
+          // Determinar se já houve interação recente para não saudar repetidamente em diálogo contínuo
+          var isConversationOngoing = recentAiTexts.length > 0
+          var effectiveGreeting = isConversationOngoing ? '' : emGreeting
+
           // REGRA CRÍTICA: Manter continuidade do imóvel em foco sem nunca reiniciar a conversa nem citar outro imóvel
-          if (targetSpecificProp || (matchedProps && matchedProps.length > 0)) {
-            var propInFocus = targetSpecificProp || matchedProps[0]
+          // Não usar propInFocus se o lead não pediu imóvel específico e matchedProps foi preenchido por catálogo genérico
+          var realTargetProp = null
+          if (targetSpecificProp) {
+            realTargetProp = targetSpecificProp
+          } else if (
+            typeof detectedSpecificPropertyQuery !== 'undefined' &&
+            detectedSpecificPropertyQuery &&
+            matchedProps &&
+            matchedProps.length > 0
+          ) {
+            realTargetProp = matchedProps[0]
+          }
+
+          if (realTargetProp) {
+            var propInFocus = realTargetProp
             var pCode = (propInFocus.getString('code') || '').trim()
             var pTitle = (propInFocus.getString('title') || '').trim()
             var pPrice = (propInFocus.getString('price_formatted') || '').trim()
             var pUrl = (propInFocus.getString('url') || '').trim()
             var propId = pCode ? '*' + pCode + '*' : pTitle ? '*' + pTitle + '*' : 'em foco'
 
-            emergencyReply =
-              emGreeting +
-              'Com certeza! Em relação ao imóvel ' +
-              propId +
-              (pPrice ? ' (valor de ' + pPrice + ')' : '') +
-              ', estou separando o material completo e as plantas para você.\n\nVocê prefere receber por aqui no WhatsApp ou deseja que eu já agende uma visita com o Mauro?'
-            if (pUrl && !emergencyReply.includes(pUrl)) {
-              emergencyReply += '\nFicha detalhada: ' + pUrl
+            var variations = [
+              effectiveGreeting +
+                'Com certeza! Em relação ao imóvel ' +
+                propId +
+                (pPrice ? ' (valor de ' + pPrice + ')' : '') +
+                ', estou separando o material completo e as plantas para você.\n\nVocê prefere receber por aqui no WhatsApp ou deseja que eu já agende uma visita com o Mauro?' +
+                (pUrl ? '\nFicha detalhada: ' + pUrl : ''),
+
+              effectiveGreeting +
+                'Perfeito! Já estou levantando as informações atualizadas do imóvel ' +
+                propId +
+                (pPrice ? ' (anunciado por ' + pPrice + ')' : '') +
+                ' com o Mauro.\n\nQuer que eu tire alguma dúvida específica sobre a planta ou localização?' +
+                (pUrl ? '\nLink oficial: ' + pUrl : ''),
+
+              effectiveGreeting +
+                'Excelente escolha! O imóvel ' +
+                propId +
+                (pPrice ? ' (' + pPrice + ')' : '') +
+                ' é uma excelente oportunidade. Estou organizando o espelho de disponibilidade e os diferenciais dele para te passar.\n\nVocê prefere tirar dúvidas por aqui ou falar direto com o Mauro?' +
+                (pUrl ? '\nConfira aqui: ' + pUrl : ''),
+
+              effectiveGreeting +
+                'Recebido! Estou conferindo os detalhes do imóvel ' +
+                propId +
+                ' para te atender da melhor forma.\n\nPosso te enviar o material completo por aqui?' +
+                (pUrl ? '\nDetalhes: ' + pUrl : ''),
+            ]
+
+            // Seleciona uma variação que ainda não foi enviada recentemente
+            emergencyReply = variations[0]
+            for (var vIdx = 0; vIdx < variations.length; vIdx++) {
+              var candNorm = variations[vIdx].trim().toLowerCase()
+              var alreadySent = false
+              for (var rIdx = 0; rIdx < recentAiTexts.length; rIdx++) {
+                if (
+                  recentAiTexts[rIdx] === candNorm ||
+                  recentAiTexts[rIdx].indexOf(candNorm.substring(0, 40)) !== -1
+                ) {
+                  alreadySent = true
+                  break
+                }
+              }
+              if (!alreadySent) {
+                emergencyReply = variations[vIdx]
+                break
+              }
             }
           } else if (
             typeof detectedSpecificPropertyQuery !== 'undefined' &&
             detectedSpecificPropertyQuery
           ) {
-            emergencyReply =
-              emGreeting +
-              'Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes atualizados junto ao Mauro e já te envio as informações completas por aqui.'
+            var specVariations = [
+              effectiveGreeting +
+                'Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes atualizados junto ao Mauro e já te envio as informações completas por aqui.',
+              effectiveGreeting +
+                'Já estou localizando a ficha e disponibilidade desse imóvel junto à nossa equipe. Em instantes te passo tudo por aqui!',
+              effectiveGreeting +
+                'Perfeito! Estou consultando o espelho atualizado deste imóvel com o Mauro e retorno em seguida com os dados completos.',
+            ]
+            emergencyReply = specVariations[0]
+            for (var svIdx = 0; svIdx < specVariations.length; svIdx++) {
+              var sCandNorm = specVariations[svIdx].trim().toLowerCase()
+              var sAlreadySent = false
+              for (var srIdx = 0; srIdx < recentAiTexts.length; srIdx++) {
+                if (recentAiTexts[srIdx] === sCandNorm) {
+                  sAlreadySent = true
+                  break
+                }
+              }
+              if (!sAlreadySent) {
+                emergencyReply = specVariations[svIdx]
+                break
+              }
+            }
+          } else if (typeof hasFreeSearchIntent !== 'undefined' && hasFreeSearchIntent) {
+            var freeSearchVariations = [
+              effectiveGreeting +
+                'Recebi sua solicitação de busca! Estou consultando a carteira da BRF Imóveis e nossos parceiros para localizar opções nesse perfil. Em instantes te trago o retorno.',
+              effectiveGreeting +
+                'Já iniciei o levantamento das opções compatíveis na região solicitada junto ao Mauro. Assim que mapear as unidades disponíveis te envio por aqui.',
+            ]
+            emergencyReply = freeSearchVariations[0]
           } else {
-            emergencyReply =
-              emGreeting +
-              'Recebi sua mensagem! Estou organizando as informações detalhadas para você. Em instantes já te trago o retorno completo.'
+            var genVariations = [
+              effectiveGreeting +
+                'Recebi sua mensagem! Estou organizando as informações detalhadas para você. Em instantes já te trago o retorno completo.',
+              effectiveGreeting +
+                'Tudo certo! Já registrei sua solicitação e estou separando as melhores opções para você. Um momento, por favor!',
+              effectiveGreeting +
+                'Obrigada pelo contato! Estou consultando os dados necessários para te responder com precisão. Já te envio o retorno!',
+            ]
+            emergencyReply = genVariations[0]
+            for (var gvIdx = 0; gvIdx < genVariations.length; gvIdx++) {
+              var gCandNorm = genVariations[gvIdx].trim().toLowerCase()
+              var gAlreadySent = false
+              for (var grIdx = 0; grIdx < recentAiTexts.length; grIdx++) {
+                if (recentAiTexts[grIdx] === gCandNorm) {
+                  gAlreadySent = true
+                  break
+                }
+              }
+              if (!gAlreadySent) {
+                emergencyReply = genVariations[gvIdx]
+                break
+              }
+            }
           }
 
           // Gravação da mensagem em conversations (try/catch interno)
