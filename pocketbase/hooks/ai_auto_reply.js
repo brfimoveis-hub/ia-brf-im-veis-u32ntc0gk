@@ -1672,28 +1672,61 @@ ${
         try {
           let freeResults = []
           if (isRuralQuery) {
-            // Busca propriedades rurais cadastradas
+            // Busca propriedades rurais cadastradas com filtro expandido (property_type, description, title, code)
             freeResults = $app.findRecordsByFilter(
               'properties',
-              "is_active = true && (property_type ~ 'Rural' || property_type ~ 'Fazenda' || title ~ 'Rural' || title ~ 'Fazenda' || code ~ 'ARU')",
+              "is_active = true && (property_type ~ 'Rural' || property_type ~ 'Fazenda' || title ~ 'Rural' || title ~ 'Fazenda' || description ~ 'rural' || description ~ 'fazenda' || description ~ 'hectares' || code ~ 'ARU')",
               '-created',
               4,
               0,
             )
           } else {
-            // Busca genérica por palavras de localização ou tipo
+            // Busca genérica por palavras de localização ou tipo (incluindo property_type ~ term e description ~ term)
             const searchTerms = []
-            if (/urubici/i.test(combinedCustAndAdText))
+            if (/urubici/i.test(combinedCustAndAdText)) {
               searchTerms.push("city ~ 'Urubici' || title ~ 'Urubici' || description ~ 'Urubici'")
+              // Se pediu Urubici / Serra Catarinense, busca também na macrorregião (São Joaquim, Lages)
+              searchTerms.push(
+                "city ~ 'São Joaquim' || description ~ 'vinícolas' || description ~ 'vinicolas' || description ~ 'Serra'",
+              )
+            }
             if (/s[aã]o\s+joaquim/i.test(combinedCustAndAdText))
-              searchTerms.push("city ~ 'São Joaquim' || title ~ 'São Joaquim'")
+              searchTerms.push(
+                "city ~ 'São Joaquim' || title ~ 'São Joaquim' || description ~ 'São Joaquim'",
+              )
             if (/lages/i.test(combinedCustAndAdText))
-              searchTerms.push("city ~ 'Lages' || title ~ 'Lages'")
+              searchTerms.push("city ~ 'Lages' || title ~ 'Lages' || description ~ 'Lages'")
             if (/florian[oó]polis/i.test(combinedCustAndAdText))
-              searchTerms.push("city ~ 'Florianópolis'")
+              searchTerms.push(
+                "city ~ 'Florianópolis' || title ~ 'Florianópolis' || description ~ 'Florianópolis'",
+              )
             if (/s[aã]o\s+jos[eé]/i.test(combinedCustAndAdText))
-              searchTerms.push("city ~ 'São José'")
-            if (/palho[cç]a/i.test(combinedCustAndAdText)) searchTerms.push("city ~ 'Palhoça'")
+              searchTerms.push(
+                "city ~ 'São José' || title ~ 'São José' || description ~ 'São José'",
+              )
+            if (/palho[cç]a/i.test(combinedCustAndAdText))
+              searchTerms.push("city ~ 'Palhoça' || title ~ 'Palhoça' || description ~ 'Palhoça'")
+            if (/bigua[cç]u/i.test(combinedCustAndAdText))
+              searchTerms.push("city ~ 'Biguaçu' || title ~ 'Biguaçu' || description ~ 'Biguaçu'")
+            if (/barreiros/i.test(combinedCustAndAdText))
+              searchTerms.push(
+                "neighborhood ~ 'Barreiros' || title ~ 'Barreiros' || description ~ 'Barreiros'",
+              )
+            if (/jurer[eê]/i.test(combinedCustAndAdText))
+              searchTerms.push(
+                "neighborhood ~ 'Jurerê' || title ~ 'Jurerê' || description ~ 'Jurerê'",
+              )
+
+            if (/apartamento|apto/i.test(combinedCustAndAdText))
+              searchTerms.push("property_type ~ 'Apartamento' || description ~ 'apartamento'")
+            if (/casa/i.test(combinedCustAndAdText))
+              searchTerms.push("property_type ~ 'Casa' || description ~ 'casa'")
+            if (/terreno|lote/i.test(combinedCustAndAdText))
+              searchTerms.push("property_type ~ 'Terreno' || description ~ 'terreno'")
+            if (/studio/i.test(combinedCustAndAdText))
+              searchTerms.push("property_type ~ 'Studio' || description ~ 'studio'")
+            if (/cobertura/i.test(combinedCustAndAdText))
+              searchTerms.push("property_type ~ 'Cobertura' || description ~ 'cobertura'")
 
             if (searchTerms.length > 0) {
               const freeFilter = `is_active = true && (${searchTerms.join(' || ')})`
@@ -2272,12 +2305,15 @@ O cliente indicou que você se confundiu ou que não era aquele imóvel ("${inco
     if (hasFreeSearchIntent && matchedProps.length === 0) {
       extraBehaviorRules += `\n[INSTRUÇÃO CRÍTICA DE BUSCA LIVRE SEM RESULTADO DIRETO]:
 O cliente pediu busca de um perfil ou região que não possui imóvel correspondente no catálogo ativo.
-1. Responda com transparência e clareza informando que não localizou opções disponíveis com essas características exatas na região solicitada.
+1. Responda com transparência e clareza informando que no momento não localizou opções disponíveis com essas características exatas na região solicitada.
 2. Pergunte com simpatia se ele aceitaria analisar opções em cidades/regiões próximas ou se prefere que o corretor Mauro busque oportunidades sob demanda na carteira de parceiros.
 3. É TERMINANTEMENTE PROIBIDO empurrar lançamentos não solicitados (ex: Vistage Residence) ou mudar de assunto.\n`
     } else if (hasFreeSearchIntent && matchedProps.length > 0) {
       extraBehaviorRules += `\n[INSTRUÇÃO DE BUSCA LIVRE COM IMÓVEL COMPATÍVEL ENCONTRADO]:
-Apresente a opção encontrada no catálogo real informando com TOTAL TRANSPARÊNCIA a sua LOCALIZAÇÃO REAL (por exemplo: se o cliente pediu fazenda e a fazenda cadastrada é em São Joaquim, informe expressamente que ela fica em São Joaquim - SC, a poucos minutos de Urubici/região das vinícolas). Não invente que fica onde não fica.\n`
+1. NUNCA diga que o imóvel 'não consta no catálogo' quando ele constar na seção [CATÁLOGO DE IMÓVEIS REAIS] acima.
+2. Apresente a opção encontrada no catálogo real informando com TOTAL TRANSPARÊNCIA e EXATIDÃO a sua LOCALIZAÇÃO REAL.
+   Exemplo: se o lead pediu fazenda em Urubici e temos a propriedade ARU 341 em São Joaquim, NUNCA diga 'não consta no catálogo'; apresente a propriedade com entusiasmo consultivo, informando expressamente que ela fica em São Joaquim - SC (na Rota das Vinícolas, na Serra Catarinense, vizinha e muito próxima a Urubici, a cerca de 50-60km), destacando seus 132 hectares, água termal no subsolo, nascentes e vocação turística/vinícola.
+3. Jamais invente que o imóvel fica em cidade onde não fica: informe a cidade real e sua conexão com a macrorregião desejada.\n`
     }
 
     const systemPrompt = `Você é ${aiName}, da BRF Imóveis (www.brfimoveis.com.br).
@@ -2553,9 +2589,9 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       }
     }
 
-    // Intercept false negative if model says requested launches are not in catalog when matchedProps actually has them!
+    // Intercept false negative if model says requested launches/properties are not in catalog when matchedProps actually has them!
     const claimsCatalogUnavailable =
-      /não estão disponíveis no (?:nosso )?cat[aá]logo|n[aã]o constam no cat[aá]logo|n[aã]o temos esses empreendimentos no cat[aá]logo|esses empreendimentos ainda n[aã]o est[aã]o dispon[ií]veis|nenhum desses empreendimentos constam/i.test(
+      /não estão disponíveis no (?:nosso )?cat[aá]logo|n[aã]o constam? no cat[aá]logo|n[aã]o temos ess(?:es|e|a) (?:empreendimentos?|im[oó]ve(?:l|is)|opç[aã]o|opçõ?es)? no cat[aá]logo|ainda n[aã]o est[aã]o? dispon[ií]ve(?:l|is)|nenhum desses empreendimentos constam|infelizmente n[aã]o (?:temos|possu[ií]mos|encontrei|consta)/i.test(
         responseText,
       )
     if (claimsCatalogUnavailable && Array.isArray(matchedProps) && matchedProps.length > 0) {

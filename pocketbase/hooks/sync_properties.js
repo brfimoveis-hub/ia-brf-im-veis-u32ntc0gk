@@ -415,10 +415,13 @@ cronAdd('sync_properties_hourly', '0 * * * *', () => {
     }
     title = normalizeMojibake(title)
 
-    // CORREÇÃO F: Sanitização contra corrupção/lixo de repetição de caracteres (ex: "ÁÁÁÁÁÁÁ...")
-    if (/(.)\1{5,}/.test(title)) {
-      const fallbackCode = cleanCode('', pageUrl) || 'sem-código'
-      title = `Imóvel ${fallbackCode}`
+    // CORREÇÃO F: Sanitização contra repetições de caracteres/letras acentuadas no início do título e lixo remanescente
+    if (title) {
+      title = title.replace(/^([A-Za-zÀ-ÖØ-öø-ÿ])\1+/i, '$1').trim()
+      if (/(.)\1{4,}/.test(title)) {
+        const fallbackCode = cleanCode('', pageUrl) || 'sem-código'
+        title = `Imóvel ${fallbackCode}`
+      }
     }
 
     let price = 0
@@ -986,10 +989,13 @@ cronAdd('sync_properties_hourly', '0 * * * *', () => {
         const cleanedDesc = normalizeMojibake(currentDesc)
 
         // CORREÇÃO F: Sanitização contra títulos corrompidos com sequências repetidas
-        if (/(.)\1{5,}/.test(cleanedTitle)) {
-          const displayCode = cleanedCode || currentCode || 'imóvel'
-          const displayCity = cleanedCity || currentCity || 'SC'
-          cleanedTitle = `Imóvel ${displayCode} — ${displayCity}`
+        if (cleanedTitle) {
+          cleanedTitle = cleanedTitle.replace(/^([A-Za-zÀ-ÖØ-öø-ÿ])\1+/i, '$1').trim()
+          if (/(.)\1{4,}/.test(cleanedTitle)) {
+            const displayCode = cleanedCode || currentCode || 'imóvel'
+            const displayCity = cleanedCity || currentCity || 'SC'
+            cleanedTitle = `Imóvel ${displayCode} — ${displayCity}`
+          }
         }
 
         if (cleanedTitle !== currentTitle) {
@@ -1541,10 +1547,13 @@ routerAdd('POST', '/backend/v1/sync-properties', (c) => {
       const cleanedDesc = normalizeMojibake(currentDesc)
 
       // CORREÇÃO F: Sanitização contra títulos corrompidos com sequências repetidas
-      if (/(.)\1{5,}/.test(cleanedTitle)) {
-        const displayCode = cleanedCode || currentCode || 'imóvel'
-        const displayCity = cleanedCity || currentCity || 'SC'
-        cleanedTitle = `Imóvel ${displayCode} — ${displayCity}`
+      if (cleanedTitle) {
+        cleanedTitle = cleanedTitle.replace(/^([A-Za-zÀ-ÖØ-öø-ÿ])\1+/i, '$1').trim()
+        if (/(.)\1{4,}/.test(cleanedTitle)) {
+          const displayCode = cleanedCode || currentCode || 'imóvel'
+          const displayCity = cleanedCity || currentCity || 'SC'
+          cleanedTitle = `Imóvel ${displayCode} — ${displayCity}`
+        }
       }
 
       if (cleanedTitle !== currentTitle) {
