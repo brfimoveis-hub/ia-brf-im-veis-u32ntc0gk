@@ -45,7 +45,9 @@ export default function LaunchLanding() {
         } else {
           setLaunch(data)
           if (data.images && data.images.length > 0) {
-            setSelectedImage(pb.files.getUrl(data, data.images[0]))
+            setSelectedImage(
+              typeof pb?.files?.getURL === 'function' ? pb.files.getURL(data, data.images[0]) : '',
+            )
           }
         }
       })
@@ -111,7 +113,9 @@ export default function LaunchLanding() {
   const whatsappUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(defaultMsg)}`
 
   const imagesList = Array.isArray(launch.images)
-    ? launch.images.map((img) => pb.files.getUrl(launch, img))
+    ? launch.images.map((img) =>
+        typeof pb?.files?.getURL === 'function' ? pb.files.getURL(launch, img) : '',
+      )
     : []
 
   const differentialsList = Array.isArray(launch.differentials)

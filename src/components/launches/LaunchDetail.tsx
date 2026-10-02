@@ -827,7 +827,11 @@ export function LaunchDetail({ launch: initialLaunch, onBack, onUpdated }: Launc
                       className="relative rounded-xl overflow-hidden border aspect-4/3 group bg-slate-900"
                     >
                       <img
-                        src={pb.files.getUrl(launch, imgName)}
+                        src={
+                          typeof pb?.files?.getURL === 'function'
+                            ? pb.files.getURL(launch, imgName)
+                            : ''
+                        }
                         alt={`Foto ${idx + 1}`}
                         className="w-full h-full object-cover transition-transform group-hover:scale-105"
                       />
@@ -940,7 +944,10 @@ export function LaunchDetail({ launch: initialLaunch, onBack, onUpdated }: Launc
               ) : (
                 <div className="divide-y border rounded-xl overflow-hidden bg-card">
                   {launchKnowledgeFiles.map((fileItem) => {
-                    const fileUrl = pb.files.getUrl(fileItem, fileItem.file)
+                    const fileUrl =
+                      typeof pb?.files?.getURL === 'function'
+                        ? pb.files.getURL(fileItem, fileItem.file)
+                        : ''
                     const hasExtracted = Boolean(
                       fileItem.extracted_text && fileItem.extracted_text.trim(),
                     )

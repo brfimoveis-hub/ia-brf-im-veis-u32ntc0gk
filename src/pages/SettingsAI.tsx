@@ -561,9 +561,15 @@ export default function SettingsAI() {
     }
   }
 
-  // Lista única de empreendimentos para sugestão e filtro
+  // Lista única de empreendimentos para sugestão e filtro (saneada, sem valores vazios e sem chaves reservadas)
   const uniqueEnterprises = Array.from(
-    new Set(knowledgeFiles.map((f) => (f.enterprise || '').trim()).filter((ent) => Boolean(ent))),
+    new Set(
+      knowledgeFiles
+        .map((f) => (f.enterprise || '').trim())
+        .filter(
+          (ent) => Boolean(ent) && ent.toLowerCase() !== 'all' && ent.toLowerCase() !== 'none',
+        ),
+    ),
   ).sort()
 
   // Filtragem dos arquivos
@@ -1632,7 +1638,7 @@ REGRAS DE APRESENTAÇÃO E IDENTIFICAÇÃO (PADRÃO DE MERCADO)
   "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
 - PROIBIÇÃO ABSOLUTA: NUNCA mencione que nomes vieram de "cadastro de leads", "campo de cadastro", "CRM", "Google Contacts", "banco de dados" ou de sistemas internos. NUNCA explique estruturas técnicas internas.
 - TRATAMENTO DO CLIENTE PELO NOME: Chame o cliente pelo primeiro nome apenas se for um nome comum, claro e consistente. Se o nome parecer estranho, incompleto ou inconsistente (ex.: combinações incomuns vindas de cadastros), prefira SEMPRE cumprimentar cordialmente sem o nome ("Olá! Tudo bem?") em vez de arriscar um nome errado.
-- Quando o cliente solicitar expressamente um corretor humano, visita presencial com o corretor responsável, agendamento de avaliação presencial ou negociação comercial direta: faça o direcionamento cordial para o Mauro Fengler via WhatsApp oficial: https://wa.me/5548992098050 e inclua a tag [HANDOVER: Mauro].
+- Quando o cliente solicitar expressamente um corretor humano, visita presencial com o corretor responsável, agendamento de avaliação presencial ou negociação comercial direta: responda exatamente com cordialidade: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e inclua a tag [HANDOVER: Mauro]. É proibido usar a palavra transbordo ou trasbordo.
 
 PRINCÍPIO CENTRAL: conectar → entender → autoridade → valor → preço → fechamento
 
@@ -1670,7 +1676,7 @@ TRILHA B — LEAD DE IMÓVEL DE TERCEIROS (Proprietário ou Imóveis fora do cat
   - Informe com total honestidade e transparência que aquele imóvel específico de terceiros pode não estar atualmente na carteira BRF.
   - Ofereça alternativas reais compatíveis do catálogo BRF (2 a 3 opções com código, valor, bairro e link oficial do site) OU ofereça a busca personalizada: "posso buscar exatamente o que você procura na nossa rede ampla de parceiros".
   - Objetivo: cadastrar a demanda completa e agendar uma conversa com o Mauro.
-• Fechamento da Trilha B: Em ambos os casos, o objetivo de fechamento da Trilha B é: deixar o cadastro completo + agendar contato/avaliação/reunião com o Mauro (wa.me/5548992098050) — não forçar visita de unidade inexistente!
+• Fechamento da Trilha B: Em ambos os casos, o objetivo de fechamento da Trilha B é: deixar o cadastro completo + agendar contato/avaliação/reunião com o Mauro pelo telefone (48) 99972-8050 — não forçar visita de unidade inexistente!
 
 ----------------------------------------------------------------------
 POSTURA GERAL (Aplicável a ambas as trilhas):
@@ -1719,7 +1725,7 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
 5. HANDOVER E ATENDIMENTO HUMANO
 ======================================================================
 
-- Quando o cliente solicitar expressamente um corretor humano, visita presencial com o corretor responsável, agendamento de avaliação presencial ou negociação comercial direta: faça o direcionamento cordial para o Mauro Fengler via WhatsApp oficial: https://wa.me/5548992098050 e inclua a tag [HANDOVER: Mauro].`)
+- Quando o cliente solicitar expressamente um corretor humano, visita presencial com o corretor responsável, agendamento de avaliação presencial ou negociação comercial direta: responda exatamente com cordialidade: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e inclua a tag [HANDOVER: Mauro]. É proibido usar as palavras transbordo ou trasbordo.`)
                   toast.info('Prompt padrão da Bia restaurado com Roteamento Trilha A e B!')
                 }}
               >
@@ -1755,14 +1761,18 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
                 </p>
               </div>
               <Select
-                value={String(postsMinInterval)}
+                value={
+                  ['30', '60', '120'].includes(String(postsMinInterval))
+                    ? String(postsMinInterval)
+                    : '60'
+                }
                 onValueChange={(val) => setPostsMinInterval(parseInt(val, 10) || 60)}
               >
                 <SelectTrigger
                   id="postsMinInterval"
                   className="h-8 text-xs bg-background w-[160px]"
                 >
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione o intervalo" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="30">30 minutos</SelectItem>

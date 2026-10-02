@@ -182,7 +182,11 @@ export default function Bia() {
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
             <img
-              src={user.ai_avatar ? pb.files.getUrl(user, user.ai_avatar) : defaultBiaImg}
+              src={
+                user.ai_avatar && typeof pb?.files?.getURL === 'function'
+                  ? pb.files.getURL(user, user.ai_avatar)
+                  : defaultBiaImg
+              }
               alt="Avatar da IA"
               className="w-24 h-24 rounded-full object-cover border-4 border-amber-500/40 shadow-sm"
               onError={(e) => {

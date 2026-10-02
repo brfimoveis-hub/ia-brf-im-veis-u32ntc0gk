@@ -776,14 +776,14 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
 1. TRATE PRIMEIRO O QUE FOI PEDIDO PELO CLIENTE (REGRA FUNDAMENTAL):
    - Se o cliente perguntou sobre condições de pagamento, responda PRIMEIRO as condições de pagamento.
    - Se perguntou sobre uma planta ou unidade específica, responda PRIMEIRO sobre a planta/unidade.
-   - Se demonstrou urgência ("quero comprar hoje", "gostaria de realizar essa compra hoje"), CONDUZA IMEDIATAMENTE para o fechamento/reserva com o Mauro (wa.me/5548992098050)! NUNCA responda com perguntas genéricas de cadência atrasada ou recomece a qualificação!
+   - Se demonstrou urgência ("quero comprar hoje", "gostaria de realizar essa compra hoje"), CONDUZA IMEDIATAMENTE para o fechamento/reserva com o Mauro (telefone: (48) 99972-8050)! NUNCA responda com perguntas genéricas de cadência atrasada ou recomece a qualificação!
 2. DIÁLOGO HUMANO, AMISTOSO E UMA PERGUNTA POR VEZ:
    - Mantenha mensagens curtas (2 a 4 linhas no WhatsApp), empáticas e calorosas.
    - NUNCA envie blocos acumulados com 3 ou mais perguntas. Faça APENAS UMA pergunta simples e objetiva por vez para manter a conversa fluida e sugar o máximo de informações do cliente no ritmo dele.
 3. RESPEITO A FATOS JÁ INFORMADOS (ANTI-LOOP):
    - Se o lead já disse que o objetivo é INVESTIMENTO, NUNCA pergunte "vai morar ou investir?". A ficha do lead governa!
    - Se o lead já disse que vai pagar À VISTA, NUNCA pergunte sobre financiamento bancário!
-4. HANDOFF PARA HUMANO / FECHAMENTO URGENTE: Se o cliente pedir um "corretor", "humano", quiser fechar proposta hoje, ou perguntar algo que você não sabe, responda cordialmente encaminhando para o Mauro: "Vou te transferir agora para o Mauro, nosso especialista: https://wa.me/5548992098050" e inclua [HANDOVER: Mauro].`
+4. HANDOFF PARA HUMANO / FECHAMENTO URGENTE: Se o cliente pedir um "corretor", "humano", quiser fechar proposta hoje, ou perguntar algo que você não sabe, responda cordialmente: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e inclua [HANDOVER: Mauro]. É proibido usar a palavra transbordo ou trasbordo no texto ao cliente.`
 
     activeCadenceText += `\n\n${strictGuidelines}`
 
@@ -1844,7 +1844,7 @@ ${
 
     if (!propertyContext) {
       propertyContext =
-        '\n[CATÁLOGO DE IMÓVEIS]\nSite oficial: https://www.brfimoveis.com.br\nPara opções personalizadas e links diretos, consulte com Mauro: wa.me/5548992098050\n'
+        '\n[CATÁLOGO DE IMÓVEIS]\nSite oficial: https://www.brfimoveis.com.br\nPara opções personalizadas e atendimento direto, consulte o corretor Mauro: telefone (48) 99972-8050\n'
     }
 
     // 0. Obter índices de mercado vigentes (INCC / IGP-M) para cálculo de reajuste
@@ -1870,7 +1870,7 @@ ${
         indicesContextText += `INSTRUÇÃO DE ATUALIZAÇÃO E REAJUSTE DE PREÇOS:\n`
         indicesContextText += `1. Ao citar valores de tabelas de pagamento, verifique sempre o mês de referência da tabela no cabeçalho do documento.\n`
         indicesContextText += `2. Se a tabela for de meses anteriores ao mês vigente (ex: tabela de maio/26 ou junho/26), informe ao cliente com clareza e transparência que os valores e parcelas estão sujeitos ao reajuste contratual do INCC e/ou IGP-M acumulado desde a emissão da tabela.\n`
-        indicesContextText += `3. Cite os índices vigentes acima como referência oficial e recomende sempre a confirmação do espelho de vendas e saldo atualizado diretamente com o Mauro (wa.me/5548992098050).\n`
+        indicesContextText += `3. Cite os índices vigentes acima como referência oficial e recomende sempre a confirmação do espelho de vendas e saldo atualizado diretamente com o corretor Mauro: (48) 99972-8050.\n`
         indicesContextText += `4. Se houver mais de uma tabela do mesmo empreendimento, use EXCLUSIVAMENTE a tabela com a data mais recente.\n\n`
       }
     } catch (indErr) {
@@ -2233,7 +2233,7 @@ DIRETRIZ DE FOCO NO LANÇAMENTO:
 - Conduza o atendimento com base no dossiê acima.
 - Destaque as unidades, valores e diferenciais específicos do ${lName}.
 - Landing page oficial do lançamento: https://crm.brfimoveis.com.br/l/${lSlug} (você pode enviar para o cliente ver fotos e detalhes).
-- Se o cliente avançar para reserva, visita ao decorado ou proposta, direcione com segurança para o Mauro no WhatsApp wa.me/5548992098050 e marque [HANDOVER: Mauro].\n`
+- Se o cliente avançar para reserva, visita ao decorado ou proposta, direcione com cordialidade informando: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e marque [HANDOVER: Mauro].\n`
     } else if (matchedPlaybook && !isOwnerCaptureLead) {
       const pbName = matchedPlaybook.getString('name') || 'Anúncio'
       const pbEmpreendimento =
@@ -2268,7 +2268,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
 2. Posicione a autoridade da BRF: imobiliária especialista na Grande Florianópolis, canal com vídeos e tours no YouTube (https://www.youtube.com/channel/UCA2JsoiTVTf8vKgWG65YH_g) e carteira ativa de compradores.
 3. Mapeie os dados essenciais com naturalidade: tipo do imóvel, bairro/cidade, metragem privativa, dormitórios/suítes, vagas, valor pretendido e urgência.
 4. NUNCA passe avaliação ou preço fechado sem vistoria e análise técnica. Sinalize que a BRF realiza estudo mercadológico gratuito.
-5. Conduza ao fechamento da Trilha B: agendar avaliação/reunião com o Mauro (wa.me/5548992098050).\n`
+5. Conduza ao fechamento da Trilha B: agendar avaliação/reunião com o corretor Mauro pelo telefone (48) 99972-8050.\n`
     } else if (isMetaAdSource) {
       clientContext += `\n[ROTEAMENTO: TRILHA A — LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
       clientContext += `- Este lead veio de anúncio Meta: "${customerSource}".\n`
@@ -2356,7 +2356,7 @@ REGRA DE ATENDIMENTO A IMÓVEIS ESPECÍFICOS (FOCO TOTAL NO IMÓVEL DO LEAD):
 REGRA DE OURO SOBRE IMÓVEIS (TOLERÂNCIA ZERO PARA ALUCINAÇÃO):
 - NUNCA invente imóveis, códigos, preços, bairros ou links. Use SOMENTE os imóveis fornecidos no contexto acima (seção [CATÁLOGO DE IMÓVEIS REAIS]).
 - NUNCA monte links com URLs imaginárias (como /101/, /102/ ou links quebrados). Use EXATAMENTE os links oficiais fornecidos no catálogo.
-- Se a busca for genérica (cliente não citou imóvel específico, apenas características como "estúdio em Barreiros") e não houver imóvel perfeitamente compatível, SEJA HONESTO E TRANSPARENTE: diga claramente que no momento não temos esse formato específico/nessa região exata, E apresente 1 a 3 das melhores opções ativas mais próximas do catálogo real fornecido no contexto com link oficial, ou direcione para o catálogo geral no site https://www.brfimoveis.com.br/imoveis/venda e para o Mauro (wa.me/5548992098050). NUNCA faça mais perguntas de qualificação em loop quando o cliente já pediu opções!
+- Se a busca for genérica (cliente não citou imóvel específico, apenas características como "estúdio em Barreiros") e não houver imóvel perfeitamente compatível, SEJA HONESTO E TRANSPARENTE: diga claramente que no momento não temos esse formato específico/nessa região exata, E apresente 1 a 3 das melhores opções ativas mais próximas do catálogo real fornecido no contexto com link oficial, ou direcione para o catálogo geral no site https://www.brfimoveis.com.br/imoveis/venda e para o corretor Mauro: (48) 99972-8050. NUNCA faça mais perguntas de qualificação em loop quando o cliente já pediu opções!
 DIRETRIZ DE BASE DE CONHECIMENTO E EMPREENDIMENTOS:
 - A base de conhecimento documental está organizada por EMPREENDIMENTO.
 - Sempre identifique de qual empreendimento o lead está falando, perguntando ou interessado (ex: pelo anúncio, mensagens ou perguntas dele).
@@ -2393,12 +2393,12 @@ PROTOCOLO COMERCIAL CONSULTIVO E DIRETRIZES DE ATENDIMENTO (BRF IMÓVEIS):
    - NUNCA use clichês robóticos nem frases pré-fabricadas como "vou te passar os valores agora mesmo... o que é mais importante para você além do valor?". Conduza a conversa de forma inteligente, espontânea e focada.
 
 6. ALUGUEL/LOCAÇÃO E CAPTAÇÃO DE TERCEIROS:
-   - Se o cliente for um PROPRIETÁRIO querendo vender ou alugar o imóvel dele (Trilha B): parabenize a decisão, reforce a autoridade da BRF Imóveis, colete as informações do imóvel (tipo, bairro, metragem, dormitórios, valor pretendido) e conduza para agendar avaliação/reunião com o Mauro (wa.me/5548992098050). NUNCA diga secamente que "não trabalhamos com aluguel" quando o cliente for um proprietário oferecendo imóvel para a carteira da BRF!
+   - Se o cliente for um PROPRIETÁRIO querendo vender ou alugar o imóvel dele (Trilha B): parabenize a decisão, reforce a autoridade da BRF Imóveis, colete as informações do imóvel (tipo, bairro, metragem, dormitórios, valor pretendido) e conduza para agendar avaliação/reunião com o corretor Mauro pelo telefone (48) 99972-8050. NUNCA diga secamente que "não trabalhamos com aluguel" quando o cliente for um proprietário oferecendo imóvel para a carteira da BRF!
    - Se o cliente for um INQUILINO buscando alugar imóvel de terceiros: informe com gentileza que a carteira principal da BRF é focada em compra, investimento e permuta, mas pergunte se ele gostaria de analisar oportunidades acessíveis para aquisição própria ou se prefere que o Mauro busque na rede parceira.
 
 7. PERMUTA: Se o cliente mencionar que tem um imóvel para troca ou entrada, acolha positivamente e inclua a tag [PERMUTA] no final da resposta.
 
-8. HANDOVER HUMANO: Se o cliente pedir expressamente corretor humano ou você não souber uma informação super técnica de condomínio/documento, informe que Mauro pode atendê-lo: https://wa.me/5548992098050 e inclua [HANDOVER: Mauro].
+8. ATENDIMENTO COM CORRETOR HUMANO: Se o cliente pedir expressamente corretor humano ou você não souber uma informação super técnica de condomínio/documento, responda exatamente: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e inclua [HANDOVER: Mauro]. É proibido usar a palavra transbordo ou trasbordo no texto ao cliente.
 
 9. CANAL DO YOUTUBE OFICIAL DA BRF IMÓVEIS:
    - A BRF Imóveis possui um canal oficial no YouTube ("BRFIMOVEIS EIRELI ME" / Mauro Fengler) com vídeos e tours de imóveis: https://www.youtube.com/channel/UCA2JsoiTVTf8vKgWG65YH_g
@@ -3147,7 +3147,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     const handoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
     if (handoverMatch && handoverMatch[1]) {
       detectedHandover = handoverMatch[1].trim()
-      responseText = responseText.replace(/\[HANDOVER:\s*.*?\]/gi, '').trim()
+      responseText = responseText.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
     }
 
     const profileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
@@ -3475,6 +3475,11 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     // FINAL UNCONDITIONAL SANITIZATION & CANNED INTERCEPTION
     // Guarantee that no supervisor metadata, headers, or canned sentences can slip through to WhatsApp
     responseText = sanitizeAiResponse(responseText)
+    // Remove qualquer tag [HANDOVER: ...] remanescente do texto final
+    responseText = responseText.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
+    // Proibir termos de transbordo no texto visível ao cliente
+    responseText = responseText.replace(/\btransbordo\b/gi, 'atendimento especializado')
+    responseText = responseText.replace(/\btrasbordo\b/gi, 'atendimento especializado')
     if (isCannedValuesSentence(responseText)) {
       console.warn('[AI_REPLY] Final check detected canned sentence')
       if (isMismatchDetected) {

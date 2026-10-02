@@ -25,7 +25,13 @@ const SIZE_MAP = {
 export function getBiaAvatarUrl(userRecord?: any): string {
   if (userRecord && userRecord.ai_avatar) {
     try {
-      return pb.files.getUrl(userRecord, userRecord.ai_avatar)
+      if (typeof pb?.files?.getURL === 'function') {
+        return pb.files.getURL(userRecord, userRecord.ai_avatar)
+      }
+      if (typeof (pb?.files as any)?.getUrl === 'function') {
+        return (pb.files as any).getUrl(userRecord, userRecord.ai_avatar)
+      }
+      return defaultBiaImg
     } catch {
       return defaultBiaImg
     }

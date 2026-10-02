@@ -22,9 +22,9 @@ onRecordAfterUpdateSuccess((e) => {
     }
 
     try {
-      const agentPhone = '5548992098050'
+      const brokerPhone = '554899728050'
       const offerText =
-        'Notei que você tem bastante urgência ou uma necessidade específica! Se preferir falar diretamente com um corretor humano, pode chamar o Mauro neste link: wa.me/5548992098050'
+        'Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050.'
 
       const users = $app.findRecordsByFilter(
         'users',
@@ -44,7 +44,7 @@ onRecordAfterUpdateSuccess((e) => {
           headers: { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messaging_product: 'whatsapp',
-            to: agentPhone,
+            to: brokerPhone,
             type: 'text',
             text: { body: summaryText },
           }),
