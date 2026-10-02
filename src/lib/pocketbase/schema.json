@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-02T19:02:40.507Z",
+  "generatedAt": "2026-10-02T19:31:25.202Z",
   "collections": [
     {
       "name": "users",
@@ -1777,12 +1777,20 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "property_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "properties"
         }
       ],
       "indexes": [
         "CREATE INDEX idx_ai_knowledge_files_user ON ai_knowledge_files (user_id)",
         "CREATE INDEX idx_ai_knowledge_files_active ON ai_knowledge_files (is_active)",
-        "CREATE INDEX `idx_ai_knowledge_files_enterprise` ON `ai_knowledge_files` (enterprise)"
+        "CREATE INDEX `idx_ai_knowledge_files_enterprise` ON `ai_knowledge_files` (enterprise)",
+        "CREATE INDEX `idx_ai_knowledge_files_property` ON `ai_knowledge_files` (property_id)"
       ]
     },
     {

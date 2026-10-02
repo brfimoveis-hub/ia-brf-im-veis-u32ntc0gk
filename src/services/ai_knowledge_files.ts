@@ -20,6 +20,20 @@ export interface AiKnowledgeFile {
   user_id: string
   name: string
   enterprise?: string
+  property_id?: string
+  expand?: {
+    property_id?: {
+      id: string
+      code: string
+      title: string
+      url?: string
+      image_url?: string
+      price_formatted?: string
+      property_type?: string
+      city?: string
+      neighborhood?: string
+    }
+  }
   file: string
   file_size?: number
   mime_type?: string
@@ -35,6 +49,7 @@ export async function getAiKnowledgeFiles(userId?: string): Promise<AiKnowledgeF
   return await pb.collection('ai_knowledge_files').getFullList<AiKnowledgeFile>({
     filter,
     sort: '-created',
+    expand: 'property_id',
   })
 }
 
@@ -44,6 +59,7 @@ export async function uploadAiKnowledgeFile(
   customName?: string,
   enterprise?: string,
   currentUsedBytes?: number,
+  propertyId?: string,
 ): Promise<AiKnowledgeFile> {
   // Valida limite individual e limite de cota total de 1 GB da Bia
   await assertCanUploadFiles([file], currentUsedBytes, userId)
@@ -53,6 +69,9 @@ export async function uploadAiKnowledgeFile(
   formData.append('name', customName || file.name)
   if (enterprise && enterprise.trim()) {
     formData.append('enterprise', enterprise.trim())
+  }
+  if (propertyId && propertyId.trim()) {
+    formData.append('property_id', propertyId.trim())
   }
   formData.append('file', file)
   formData.append('file_size', String(file.size))
@@ -84,9 +103,11 @@ export async function uploadAiKnowledgeFile(
 
 export async function updateAiKnowledgeFile(
   id: string,
-  data: Partial<Pick<AiKnowledgeFile, 'name' | 'enterprise' | 'is_active'>>,
+  data: Partial<Pick<AiKnowledgeFile, 'name' | 'enterprise' | 'is_active' | 'property_id'>>,
 ): Promise<AiKnowledgeFile> {
-  return await pb.collection('ai_knowledge_files').update<AiKnowledgeFile>(id, data)
+  return await pb.collection('ai_knowledge_files').update<AiKnowledgeFile>(id, data, {
+    expand: 'property_id',
+  })
 }
 
 export async function uploadMultipleAiKnowledgeFiles(
@@ -94,6 +115,7 @@ export async function uploadMultipleAiKnowledgeFiles(
   userId: string,
   enterprise?: string,
   currentUsedBytes?: number,
+  propertyId?: string,
 ): Promise<AiKnowledgeFile[]> {
   // Valida todos os arquivos juntos antes de iniciar uploads
   await assertCanUploadFiles(files, currentUsedBytes, userId)
@@ -107,6 +129,7 @@ export async function uploadMultipleAiKnowledgeFiles(
       undefined,
       enterprise,
       cumulativeUsed,
+      propertyId,
     )
     results.push(uploaded)
     if (typeof cumulativeUsed === 'number') {
