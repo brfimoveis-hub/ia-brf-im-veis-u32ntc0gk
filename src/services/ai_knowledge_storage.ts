@@ -2,11 +2,11 @@ import pb from '@/lib/pocketbase/client'
 import { getAiKnowledgeFiles, type AiKnowledgeFile } from './ai_knowledge_files'
 import { getLaunches, type Launch } from './launches'
 
-// Cota de armazenamento total da Base de Conhecimento da Bia: 1 GB
-export const BIA_TOTAL_STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024 // 1 GB (1.073.741.824 bytes)
-export const BIA_TOTAL_STORAGE_LIMIT_LABEL = '1 GB'
-export const MAX_SINGLE_FILE_SIZE = 200 * 1024 * 1024 // 200 MB (permite books grandes com renders de lançamentos como Vistage)
-export const MAX_SINGLE_FILE_SIZE_LABEL = '200 MB'
+// Cota de armazenamento total da Base de Conhecimento da Bia: 2 GB
+export const BIA_TOTAL_STORAGE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024 // 2 GB (2.147.483.648 bytes)
+export const BIA_TOTAL_STORAGE_LIMIT_LABEL = '2 GB'
+export const MAX_SINGLE_FILE_SIZE = 500 * 1024 * 1024 // 500 MB (permite ebooks e books pesados em alta resolução com renders de lançamentos como Vistage)
+export const MAX_SINGLE_FILE_SIZE_LABEL = '500 MB'
 
 export interface StorageUsageSummary {
   totalUsedBytes: number
@@ -155,17 +155,16 @@ export async function assertCanUploadFiles(
     incomingTotalBytes += file.size
   }
 
-  // 3. Verificação de cota total compartilhada da Bia (1 GB)
+  // 3. Verificação de cota total compartilhada da Bia (2 GB)
   const newTotal = usedBytes + incomingTotalBytes
   if (newTotal > BIA_TOTAL_STORAGE_LIMIT_BYTES) {
     const currentUsedMb = (usedBytes / (1024 * 1024)).toFixed(1)
     const incomingMb = (incomingTotalBytes / (1024 * 1024)).toFixed(1)
     const exceededMb = Math.ceil((newTotal - BIA_TOTAL_STORAGE_LIMIT_BYTES) / (1024 * 1024))
     throw new Error(
-      `Cota de armazenamento da Bia atingida: espaço usado ${currentUsedMb} MB de 1 GB. O envio de ${incomingMb} MB ultrapassa a cota em ${exceededMb} MB. Remova arquivos antigos para liberar espaço.`,
+      `Cota de armazenamento da Bia atingida: espaço usado ${currentUsedMb} MB de ${BIA_TOTAL_STORAGE_LIMIT_LABEL}. O envio de ${incomingMb} MB ultrapassa a cota em ${exceededMb} MB. Remova arquivos antigos para liberar espaço.`,
     )
   }
-
   return {
     newTotalUsed: newTotal,
     willFit: true,

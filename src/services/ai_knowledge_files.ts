@@ -61,21 +61,46 @@ export async function uploadAiKnowledgeFile(
   currentUsedBytes?: number,
   propertyId?: string,
 ): Promise<AiKnowledgeFile> {
-  // Valida limite individual e limite de cota total de 1 GB da Bia
+  // Valida limite individual (500 MB) e limite de cota total (2 GB) da Bia
   await assertCanUploadFiles([file], currentUsedBytes, userId)
+
+  let finalEnterprise = enterprise?.trim() || ''
+  let finalPropertyId = propertyId?.trim() || ''
+
+  // Detecção proativa se o arquivo for do Vistage
+  const lowerName = (customName || file.name).toLowerCase()
+  if (!finalEnterprise && lowerName.includes('vistage')) {
+    finalEnterprise = 'Vistage Residence'
+  }
+
+  if (!finalPropertyId && lowerName.includes('vistage')) {
+    try {
+      const vistageProp = await pb
+        .collection('properties')
+        .getFirstListItem<any>("code = 'VISTAGE' || code = 'LM-VISTAGE' || title ~ 'Vistage'")
+      if (vistageProp?.id) {
+        finalPropertyId = vistageProp.id
+        if (!finalEnterprise) {
+          finalEnterprise = vistageProp.title || 'Vistage Residence'
+        }
+      }
+    } catch (_) {
+      // Best-effort lookup
+    }
+  }
 
   const formData = new FormData()
   formData.append('user_id', userId)
   formData.append('name', customName || file.name)
-  if (enterprise && enterprise.trim()) {
-    formData.append('enterprise', enterprise.trim())
+  if (finalEnterprise) {
+    formData.append('enterprise', finalEnterprise)
   }
-  if (propertyId && propertyId.trim()) {
-    formData.append('property_id', propertyId.trim())
+  if (finalPropertyId) {
+    formData.append('property_id', finalPropertyId)
   }
   formData.append('file', file)
   formData.append('file_size', String(file.size))
-  formData.append('mime_type', file.type || 'application/octet-stream')
+  formData.append('mime_type', file.type || 'application/pdf')
   formData.append('is_active', 'true')
 
   try {
@@ -96,6 +121,14 @@ export async function uploadAiKnowledgeFile(
     }
     if (error?.data?.data?.file?.message) {
       throw new Error(`Erro no arquivo "${file.name}": ${error.data.data.file.message}`)
+    }
+    const detailedErrors = error?.data?.data
+      ? Object.entries(error.data.data)
+          .map(([k, v]: [string, any]) => `${k}: ${v?.message || v}`)
+          .join(', ')
+      : ''
+    if (detailedErrors) {
+      throw new Error(`Erro no upload de "${file.name}": ${message} (${detailedErrors})`)
     }
     throw error
   }
