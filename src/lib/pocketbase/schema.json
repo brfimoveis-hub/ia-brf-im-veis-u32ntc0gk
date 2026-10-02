@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-02T20:25:10.569Z",
+  "generatedAt": "2026-10-02T20:57:04.227Z",
   "collections": [
     {
       "name": "users",
@@ -1726,7 +1726,8 @@
           "name": "file",
           "type": "file",
           "required": true,
-          "system": false
+          "system": false,
+          "maxSize": 524288000
         },
         {
           "name": "file_size",

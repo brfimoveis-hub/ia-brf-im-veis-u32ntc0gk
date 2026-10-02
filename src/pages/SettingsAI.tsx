@@ -56,7 +56,7 @@ import {
 } from 'lucide-react'
 import { defaultBiaImg, getBiaAvatarUrl } from '@/components/common/BiaAvatar'
 import {
-  AiKnowledgeFile,
+  type AiKnowledgeFile,
   getAiKnowledgeFiles,
   uploadAiKnowledgeFile,
   deleteAiKnowledgeFile,
@@ -73,8 +73,8 @@ import {
 } from '@/services/ai_knowledge_storage'
 import { StorageUsageBar } from '@/components/common/StorageUsageBar'
 import {
-  BiaLearning,
-  BiaLearningCategory,
+  type BiaLearning,
+  type BiaLearningCategory,
   getBiaLearnings,
   createBiaLearning,
   toggleBiaLearningActive,
@@ -475,13 +475,13 @@ export default function SettingsAI() {
 
     const fileList = Array.from(files)
 
-    // Pré-validação da cota de 1 GB, formatos aceitos e limite por arquivo (até 200 MB)
+    // Pré-validação da cota de 2 GB, formatos aceitos e limite por arquivo (até 500 MB)
     try {
       await assertCanUploadFiles(fileList, storageUsage?.totalUsedBytes, user.id)
     } catch (validationErr: any) {
       toast.error(
         validationErr.message ||
-          'Não foi possível enviar o arquivo. Verifique o tamanho (até 200 MB) e a cota total de 1 GB.',
+          'Não foi possível enviar o arquivo. Verifique o tamanho (até 500 MB) e a cota total de 2 GB.',
         {
           duration: 7000,
         },
@@ -1163,7 +1163,7 @@ export default function SettingsAI() {
                 onClick={() => {
                   if (storageUsage?.isFull) {
                     toast.error(
-                      'Espaço cheio: 1 GB atingido. Remova arquivos antigos para liberar espaço.',
+                      'Espaço cheio: cota da Bia atingida. Remova arquivos antigos para liberar espaço.',
                       { duration: 6000 },
                     )
                     return
@@ -1181,7 +1181,7 @@ export default function SettingsAI() {
                 ) : storageUsage?.isFull ? (
                   <>
                     <AlertCircle className="w-4 h-4 mr-2 text-rose-300" />
-                    Cota Esgotada (1 GB)
+                    Cota Esgotada (2 GB)
                   </>
                 ) : (
                   <>
@@ -1194,7 +1194,7 @@ export default function SettingsAI() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-5 p-3 sm:p-6">
-          {/* INDICADOR DE USO DA COTA TOTAL DE 1 GB DA BIA */}
+          {/* INDICADOR DE USO DA COTA TOTAL DE 2 GB DA BIA */}
           <StorageUsageBar usage={storageUsage} loading={loadingFiles} />
 
           {isUploading && (
@@ -1217,7 +1217,7 @@ export default function SettingsAI() {
               <span>
                 Formatos aceitos: <strong>PDF, DOCX, TXT, MD, CSV, XLSX e Imagens</strong> (Até{' '}
                 <strong>{MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL}</strong> por arquivo • Cota total:{' '}
-                <strong>1 GB</strong>).
+                <strong>2 GB</strong>).
               </span>
             </div>
             <span>

@@ -1,6 +1,8 @@
 import pb from '@/lib/pocketbase/client'
-import { getAiKnowledgeFiles, type AiKnowledgeFile } from './ai_knowledge_files'
-import { getLaunches, type Launch } from './launches'
+import { getAiKnowledgeFiles } from './ai_knowledge_files'
+import type { AiKnowledgeFile } from './ai_knowledge_files'
+import { getLaunches } from './launches'
+import type { Launch } from './launches'
 
 // Cota de armazenamento total da Base de Conhecimento da Bia: 2 GB
 export const BIA_TOTAL_STORAGE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024 // 2 GB (2.147.483.648 bytes)

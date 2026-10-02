@@ -75,7 +75,7 @@ export default function Bia() {
           title: 'Não foi possível enviar para a Bia',
           description:
             validationErr.message ||
-            'Verifique se o arquivo tem até 200 MB e se há espaço disponível na cota de 1 GB.',
+            'Verifique se o arquivo tem até 500 MB e se há espaço disponível na cota da Bia.',
           variant: 'destructive',
         })
         e.target.value = ''
@@ -247,7 +247,7 @@ export default function Bia() {
               </Link>
             </CardTitle>
             <CardDescription>
-              Envio rápido de tabelas, PDFs e livros para a Bia (até 200 MB por arquivo).
+              Envio rápido de tabelas, PDFs e livros para a Bia (até 500 MB por arquivo).
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">

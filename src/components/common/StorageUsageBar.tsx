@@ -67,7 +67,7 @@ export function StorageUsageBar({
         <Progress value={usagePercentage} className={`h-1.5 ${progressColorClass}`} />
         {isFull && (
           <p className="text-[11px] text-rose-600 font-medium">
-            Espaço cheio: 1 GB atingido. Remova arquivos antigos para liberar espaço.
+            Espaço cheio: cota da Bia atingida. Remova arquivos antigos para liberar espaço.
           </p>
         )}
       </div>
@@ -129,7 +129,7 @@ export function StorageUsageBar({
         <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-0.5">
           <span>0 MB</span>
           <span className="font-medium text-foreground">{usagePercentage}% utilizado</span>
-          <span>1 GB (1.024 MB)</span>
+          <span>{formattedLimit}</span>
         </div>
       </div>
 
@@ -137,7 +137,7 @@ export function StorageUsageBar({
         <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
           <div>
-            <strong className="block font-semibold">Espaço cheio: 1 GB atingido.</strong>
+            <strong className="block font-semibold">Espaço cheio: cota da Bia atingida.</strong>
             <span>
               Remova arquivos antigos para liberar espaço antes de enviar novos materiais.
             </span>
@@ -166,7 +166,7 @@ export function StorageUsageBar({
           </span>
           <span>•</span>
           <span>
-            Limite individual: <strong>até 200 MB</strong> por arquivo
+            Limite individual: <strong>até 500 MB</strong> por arquivo
           </span>
         </div>
       )}

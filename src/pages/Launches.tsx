@@ -221,7 +221,7 @@ export function Launches() {
         </div>
       </div>
 
-      {/* Indicador de Armazenamento Geral (1 GB compartilhado com até ~50 lançamentos) */}
+      {/* Indicador de Armazenamento Geral (compartilhado com até ~50 lançamentos) */}
       <StorageUsageBar usage={storageUsage} loading={loading} />
 
       {/* Banner Explicativo Bia Mãe */}
@@ -241,8 +241,8 @@ export function Launches() {
               Você cola tabelas, PDFs e folhetos crus para a <strong>Bia Mãe</strong>. Ela organiza
               as unidades, valores, diferenciais e escreve a <strong>cadência em 10 passos</strong>.
               Quando você aprova e clica em <em>Publicar</em>, a Bia atendente carrega este dossiê
-              para responder leads que vierem daquele lançamento no WhatsApp! O espaço de 1 GB
-              suporta todos os dossiês dos seus ~50 lançamentos.
+              para responder leads que vierem daquele lançamento no WhatsApp! O espaço total suporta
+              todos os dossiês dos seus ~50 lançamentos.
             </p>
           </div>
         </div>

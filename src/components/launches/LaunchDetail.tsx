@@ -37,8 +37,8 @@ import {
   uploadAiKnowledgeFile,
   getAiKnowledgeFiles,
   deleteAiKnowledgeFile,
-  type AiKnowledgeFile,
 } from '@/services/ai_knowledge_files'
+import type { AiKnowledgeFile } from '@/services/ai_knowledge_files'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -243,13 +243,13 @@ export function LaunchDetail({ launch: initialLaunch, onBack, onUpdated }: Launc
     if (!e.target.files || e.target.files.length === 0) return
     const incoming = Array.from(e.target.files)
 
-    // Validar cota total de 1 GB e limite por arquivo antes do envio
+    // Validar cota total de 2 GB e limite por arquivo antes do envio
     try {
       await assertCanUploadFiles(incoming, storageUsage?.totalUsedBytes)
     } catch (quotaErr: any) {
       toast({
         title: 'Não foi possível enviar',
-        description: quotaErr.message || 'Verifique o limite de arquivo ou a cota de 1 GB da Bia.',
+        description: quotaErr.message || 'Verifique o limite de arquivo ou a cota de 2 GB da Bia.',
         variant: 'destructive',
       })
       e.target.value = ''
@@ -268,7 +268,7 @@ export function LaunchDetail({ launch: initialLaunch, onBack, onUpdated }: Launc
       await refreshStorageAndMaterials()
       toast({
         title: 'Fotos enviadas!',
-        description: 'Imagens adicionadas à galeria do lançamento e computadas no espaço de 1 GB.',
+        description: 'Imagens adicionadas à galeria do lançamento e computadas no espaço de 2 GB.',
       })
     } catch (err: any) {
       console.error('Erro ao enviar imagem:', err)
@@ -293,7 +293,7 @@ export function LaunchDetail({ launch: initialLaunch, onBack, onUpdated }: Launc
     } catch (quotaErr: any) {
       toast({
         title: 'Não foi possível enviar material',
-        description: quotaErr.message || 'Verifique o limite de arquivo ou a cota de 1 GB da Bia.',
+        description: quotaErr.message || 'Verifique o limite de arquivo ou a cota de 2 GB da Bia.',
         variant: 'destructive',
       })
       e.target.value = ''
@@ -877,7 +877,7 @@ export function LaunchDetail({ launch: initialLaunch, onBack, onUpdated }: Launc
                   onClick={() => {
                     if (storageUsage?.isFull) {
                       toast({
-                        title: 'Espaço cheio: 1 GB atingido',
+                        title: 'Espaço cheio: capacidade da Bia atingida',
                         description: 'Remova arquivos antigos para liberar espaço.',
                         variant: 'destructive',
                       })
