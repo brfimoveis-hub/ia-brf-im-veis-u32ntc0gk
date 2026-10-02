@@ -415,6 +415,12 @@ cronAdd('sync_properties_hourly', '0 * * * *', () => {
     }
     title = normalizeMojibake(title)
 
+    // CORREÇÃO F: Sanitização contra corrupção/lixo de repetição de caracteres (ex: "ÁÁÁÁÁÁÁ...")
+    if (/(.)\1{5,}/.test(title)) {
+      const fallbackCode = cleanCode('', pageUrl) || 'sem-código'
+      title = `Imóvel ${fallbackCode}`
+    }
+
     let price = 0
     let priceFormatted = ''
     const priceMatch = html.match(/R\$\s*([\d\.,]+)/i)
@@ -973,11 +979,18 @@ cronAdd('sync_properties_hourly', '0 * * * *', () => {
         const currentUrl = rec.getString('url')
         const propType = rec.getString('property_type')
 
-        const cleanedTitle = normalizeMojibake(currentTitle)
+        let cleanedTitle = normalizeMojibake(currentTitle)
         const cleanedCode = cleanCode(currentCode, currentUrl)
         const cleanedCity = cleanCity(currentCity, currentUrl + ' ' + currentTitle)
         const cleanedNeigh = cleanNeighborhood(currentNeigh, currentUrl, currentTitle)
         const cleanedDesc = normalizeMojibake(currentDesc)
+
+        // CORREÇÃO F: Sanitização contra títulos corrompidos com sequências repetidas
+        if (/(.)\1{5,}/.test(cleanedTitle)) {
+          const displayCode = cleanedCode || currentCode || 'imóvel'
+          const displayCity = cleanedCity || currentCity || 'SC'
+          cleanedTitle = `Imóvel ${displayCode} — ${displayCity}`
+        }
 
         if (cleanedTitle !== currentTitle) {
           rec.set('title', cleanedTitle)
@@ -1521,11 +1534,18 @@ routerAdd('POST', '/backend/v1/sync-properties', (c) => {
       const currentUrl = rec.getString('url')
       const propType = rec.getString('property_type')
 
-      const cleanedTitle = normalizeMojibake(currentTitle)
+      let cleanedTitle = normalizeMojibake(currentTitle)
       const cleanedCode = cleanCode(currentCode, currentUrl)
       const cleanedCity = cleanCity(currentCity, currentUrl + ' ' + currentTitle)
       const cleanedNeigh = cleanNeighborhood(currentNeigh, currentUrl, currentTitle)
       const cleanedDesc = normalizeMojibake(currentDesc)
+
+      // CORREÇÃO F: Sanitização contra títulos corrompidos com sequências repetidas
+      if (/(.)\1{5,}/.test(cleanedTitle)) {
+        const displayCode = cleanedCode || currentCode || 'imóvel'
+        const displayCity = cleanedCity || currentCity || 'SC'
+        cleanedTitle = `Imóvel ${displayCode} — ${displayCity}`
+      }
 
       if (cleanedTitle !== currentTitle) {
         rec.set('title', cleanedTitle)

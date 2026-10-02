@@ -293,36 +293,58 @@ onRecordAfterCreateSuccess((e) => {
       customerNotes.toLowerCase().includes('origem: anúncio') ||
       customerNotes.toLowerCase().includes('origem: anuncio')
 
-    // PRE-DETECÇÃO DE IMÓVEL ESPECÍFICO NA ÚLTIMA MENSAGEM DO LEAD (MÁXIMA PRIORIDADE):
-    // Se o lead citou URL (ex: brfimoveis.com.br/343/...) ou código (#AP343, AP-343, 343) na ÚLTIMA mensagem,
-    // isso DEVE SOBREPOR IMEDIATAMENTE qualquer matchedLaunch ou matchedPlaybook do histórico/origem!
+    // PRE-DETECÇÃO DE DESENCAIXE IMPLÍCITO OU IMÓVEL ESPECÍFICO NA ÚLTIMA MENSAGEM DO LEAD (MÁXIMA PRIORIDADE):
     const incomingCustMsgText = (e.record.getString('content') || '').trim()
+    let isMismatchDetected = false
     let lastMsgSpecificPropertyRequested = false
     let lastMsgPropertyCodeOrNum = ''
 
+    // CORREÇÃO D: DESENCAIXE IMPLÍCITO
+    // Mensagens tipo "não foi isso que eu pedi", "está confundindo", "não era isso", "não pedi isso"
     if (incomingCustMsgText) {
-      const urlMatchInLast = incomingCustMsgText.match(/brfimoveis\.com\.br\/(\d{1,6})\b/i)
+      const mismatchRegex =
+        /\b(?:n[aã]o\s+foi\s+isso(?:\s+que\s+eu\s+pedi)?|n[aã]o\s+era\s+isso|est[aá]\s+confundindo|est[aá]\s+me\s+confundindo|t[aá]\s+confundindo|t[aá]\s+me\s+confundindo|confundiu|n[aã]o\s+pedi\s+isso|n[aã]o\s+quero\s+esse|n[aã]o\s+é\s+esse|n[aã]o\s+e\s+esse|voc[eê]\s+trocou\s+de\s+im[oó]vel|trocou\s+o\s+im[oó]vel|im[oó]vel\s+errado)\b/i
+      if (mismatchRegex.test(incomingCustMsgText)) {
+        isMismatchDetected = true
+        console.log(
+          `[AI_REPLY] DESENCAIXE IMPLÍCITO DETECTADO para lead ${customerId}: "${incomingCustMsgText}". Zerando foco de imóvel.`,
+        )
+      }
+    }
+
+    // CORREÇÃO A: FOCO DINÂMICO — a última mensagem manda sempre:
+    // Se customerMessage contém código (#ARU341, "aru341", "AP343", "LM344"), slug de URL do site (/341/, /343/) ou menção inequívoca
+    if (incomingCustMsgText && !isMismatchDetected) {
+      // 1. Slug de URL do site brfimoveis (/341/, /343/, brfimoveis.com.br/341/...)
+      const urlMatchInLast = incomingCustMsgText.match(/(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/i)
       if (urlMatchInLast && urlMatchInLast[1]) {
         lastMsgSpecificPropertyRequested = true
         lastMsgPropertyCodeOrNum = urlMatchInLast[1]
       } else {
-        const hashMatch = incomingCustMsgText.match(/#\s*([a-zA-Z]{1,4}[-\s]?\d{2,5}|\d{2,5})/i)
+        // 2. Hashtag com código ou número (ex: #ARU341, #aru 341, #AP343, #343)
+        const hashMatch = incomingCustMsgText.match(/#\s*([a-zA-Z]{1,4}[-_\s]?\d{2,5}|\d{2,5})/i)
         if (hashMatch && hashMatch[1]) {
           lastMsgSpecificPropertyRequested = true
-          lastMsgPropertyCodeOrNum = hashMatch[1].replace(/\s+/g, '')
+          lastMsgPropertyCodeOrNum = hashMatch[1].replace(/[-_\s]+/g, '').toUpperCase()
         } else {
-          const codeMatch = incomingCustMsgText.match(/\b(AP|LM|CS|TR|ARU)[-\s]?(\d{2,5})\b/i)
+          // 3. Código padrão com prefixos reais: ARU, AP, LM, CS, TR, COB (ex: "aru341", "ARU 341", "ap343", "LM-344")
+          const codeMatch = incomingCustMsgText.match(
+            /\b(AP|LM|CS|TR|ARU|COB|BRF)[-_\s]?(\d{2,5})\b/i,
+          )
           if (codeMatch) {
             lastMsgSpecificPropertyRequested = true
             lastMsgPropertyCodeOrNum = `${codeMatch[1].toUpperCase()}${codeMatch[2]}`
           } else {
-            // Número solto de 3 ou 4 dígitos acompanhado de termos como "imóvel", "apartamento", "apto", "código"
+            // 4. Termo com contexto tipo "imóvel 341", "imovel 343", "código 341", "ref 343"
             const numWithContext = incomingCustMsgText.match(
-              /(?:im[oó]vel|apartamento|apto|c[oó]digo|cod|ref)\s*#?\s*(\d{2,5})\b/i,
+              /(?:im[oó]vel|imovel|apartamento|apto|fazenda|casa|terreno|c[oó]digo|codigo|cod|ref)\s*#?\s*([a-zA-Z]{0,4}[-_\s]?\d{2,5})\b/i,
             )
             if (numWithContext && numWithContext[1]) {
-              lastMsgSpecificPropertyRequested = true
-              lastMsgPropertyCodeOrNum = numWithContext[1]
+              const cleanedCandidate = numWithContext[1].replace(/[-_\s]+/g, '').toUpperCase()
+              if (/\d{2,5}/.test(cleanedCandidate)) {
+                lastMsgSpecificPropertyRequested = true
+                lastMsgPropertyCodeOrNum = cleanedCandidate
+              }
             }
           }
         }
@@ -1455,57 +1477,63 @@ ${
         }
       }
 
-      // Se foi detectado na ÚLTIMA mensagem do lead (lastMsgPropertyCodeOrNum), priorizar com foco absoluto!
-      if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
+      // CORREÇÃO A & D:
+      // Se houve desencaixe ("não foi isso que eu pedi", "está confundindo", etc.), ZERAR foco anterior e NÃO buscar imóvel antigo
+      if (isMismatchDetected) {
+        detectedSpecificPropertyQuery = false
+        targetSpecificProp = null
+        lastMsgSpecificPropertyRequested = false
+        lastMsgPropertyCodeOrNum = ''
+      } else if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
+        // CORREÇÃO A: FOCO DINÂMICO — a última mensagem manda sempre:
+        // Se customerMessage contém código/slug/hashtag, LIMPAR imediatamente códigos antigos e usar APENAS o código da última mensagem!
         const numOnlyLast = lastMsgPropertyCodeOrNum.replace(/\D/g, '')
         if (numOnlyLast) {
-          addPropNum(numOnlyLast)
+          extractedPropertyNumbers.push(numOnlyLast)
         }
         detectedSpecificPropertyQuery = true
-      }
-
-      // Extração de URLs do site brfimoveis com ID numérico: brfimoveis.com.br/NNN/...
-      // Substituição de matchAll por loop regex.exec (Goja ES5)
-      const urlIdRegex = /brfimoveis\.com\.br\/(\d{1,6})\b/gi
-      let urlIdExecMatch = null
-      while ((urlIdExecMatch = urlIdRegex.exec(combinedCustAndAdText)) !== null) {
-        if (urlIdExecMatch[1]) {
-          addPropNum(urlIdExecMatch[1])
-          detectedSpecificPropertyQuery = true
-        }
-      }
-
-      // Extração de códigos com ou sem hashtag e prefixos (ex: #LM344, #AP-344, LM344, AP-344, CS331, TR 338, ARU-341, ou número de 3 dígitos)
-      // Substituição de matchAll por loop regex.exec (Goja ES5)
-      const codeMatchesRegex = /(?:^|[\s#])([a-z]{1,4}[-\s]?\d{2,5}|\b\d{3,4}\b)/gi
-      let codeExecMatch = null
-      while ((codeExecMatch = codeMatchesRegex.exec(combinedCustAndAdText)) !== null) {
-        const matchCandidate = codeExecMatch[1].trim()
-        const numOnly = matchCandidate.replace(/\D/g, '')
-        // Ignora valores financeiros como 500k, anos como 2026, ou DDDs/telefones comuns
-        if (numOnly && numOnly.length >= 2 && numOnly.length <= 5) {
-          if (
-            numOnly !== '500' &&
-            numOnly !== '100' &&
-            numOnly !== '200' &&
-            numOnly !== '2024' &&
-            numOnly !== '2025' &&
-            numOnly !== '2026'
-          ) {
-            addPropNum(numOnly)
+        console.log(
+          `[AI_REPLY] FOCO DINÂMICO ATIVADO pela última mensagem: código/num=${lastMsgPropertyCodeOrNum} (num=${numOnlyLast}). Histórico anterior limpo.`,
+        )
+      } else {
+        // Sem código explícito na última mensagem: extrair menções da mensagem atual + origem
+        const urlIdRegex = /(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/gi
+        let urlIdExecMatch = null
+        while ((urlIdExecMatch = urlIdRegex.exec(combinedCustAndAdText)) !== null) {
+          if (urlIdExecMatch[1]) {
+            addPropNum(urlIdExecMatch[1])
             detectedSpecificPropertyQuery = true
           }
         }
-      }
 
-      // Se houver menção explícita a termos como "imóvel", "imovel", "apartamento", "apto", "#" com número
-      if (
-        /#\s*[a-z]*\d+/i.test(combinedCustAndAdText) ||
-        /im[oó]vel\s*#?[a-z]*\d+/i.test(combinedCustAndAdText) ||
-        /c[oó]digo\s*#?[a-z]*\d+/i.test(combinedCustAndAdText) ||
-        /brfimoveis\.com\.br\/\d+/i.test(combinedCustAndAdText)
-      ) {
-        detectedSpecificPropertyQuery = true
+        const codeMatchesRegex = /(?:^|[\s#])([a-z]{1,4}[-_\s]?\d{2,5}|\b\d{3,4}\b)/gi
+        let codeExecMatch = null
+        while ((codeExecMatch = codeMatchesRegex.exec(combinedCustAndAdText)) !== null) {
+          const matchCandidate = codeExecMatch[1].trim()
+          const numOnly = matchCandidate.replace(/\D/g, '')
+          if (numOnly && numOnly.length >= 2 && numOnly.length <= 5) {
+            if (
+              numOnly !== '500' &&
+              numOnly !== '100' &&
+              numOnly !== '200' &&
+              numOnly !== '2024' &&
+              numOnly !== '2025' &&
+              numOnly !== '2026'
+            ) {
+              addPropNum(numOnly)
+              detectedSpecificPropertyQuery = true
+            }
+          }
+        }
+
+        if (
+          /#\s*[a-z]*\d+/i.test(combinedCustAndAdText) ||
+          /im[oó]vel\s*#?[a-z]*\d+/i.test(combinedCustAndAdText) ||
+          /c[oó]digo\s*#?[a-z]*\d+/i.test(combinedCustAndAdText) ||
+          /brfimoveis\.com\.br\/\d+/i.test(combinedCustAndAdText)
+        ) {
+          detectedSpecificPropertyQuery = true
+        }
       }
 
       // Buscar no catálogo de properties pelo ID numérico isolado (no code OU na url)
@@ -1622,11 +1650,81 @@ ${
         }
       }
 
-      // 3. Fallback: if user asked for options or no match, load top active properties
-      // REGRA CRÍTICA: Se o lead perguntou sobre um imóvel específico (código, link ou número) e ele NÃO foi localizado,
-      // NUNCA preencher o catálogo com outros lançamentos ou imóveis alternativos.
-      // NUNCA empurrar alternativas na primeira mensagem quando o cliente perguntou por algo pontual!
-      if (matchedProps.length === 0 && !detectedSpecificPropertyQuery) {
+      // CORREÇÃO C: BUSCA LIVRE SEM CÓDIGO ("pesquisar para mim", "fazenda em Urubici", "área rural", "casa em Florianópolis", etc.)
+      const isFreeSearchIntent =
+        /\b(?:pesquisar(?:\s+para\s+mim)?|buscar(?:\s+para\s+mim)?|procurar(?:\s+para\s+mim)?|fazenda|área\s+rural|area\s+rural|sítio|sitio|chácara|chacara|terreno|rural)\b/i.test(
+          combinedCustAndAdText,
+        )
+
+      if (matchedProps.length === 0 && !detectedSpecificPropertyQuery && isFreeSearchIntent) {
+        // Extrai termos-chave para busca textual em properties (tipo, cidade, título)
+        const ruralKeywords = ['rural', 'fazenda', 'sitio', 'sítio', 'chacara', 'chácara']
+        const isRuralQuery = ruralKeywords.some((k) =>
+          combinedCustAndAdText.toLowerCase().includes(k),
+        )
+
+        try {
+          let freeResults = []
+          if (isRuralQuery) {
+            // Busca propriedades rurais cadastradas
+            freeResults = $app.findRecordsByFilter(
+              'properties',
+              "is_active = true && (property_type ~ 'Rural' || property_type ~ 'Fazenda' || title ~ 'Rural' || title ~ 'Fazenda' || code ~ 'ARU')",
+              '-created',
+              4,
+              0,
+            )
+          } else {
+            // Busca genérica por palavras de localização ou tipo
+            const searchTerms = []
+            if (/urubici/i.test(combinedCustAndAdText))
+              searchTerms.push("city ~ 'Urubici' || title ~ 'Urubici' || description ~ 'Urubici'")
+            if (/s[aã]o\s+joaquim/i.test(combinedCustAndAdText))
+              searchTerms.push("city ~ 'São Joaquim' || title ~ 'São Joaquim'")
+            if (/lages/i.test(combinedCustAndAdText))
+              searchTerms.push("city ~ 'Lages' || title ~ 'Lages'")
+            if (/florian[oó]polis/i.test(combinedCustAndAdText))
+              searchTerms.push("city ~ 'Florianópolis'")
+            if (/s[aã]o\s+jos[eé]/i.test(combinedCustAndAdText))
+              searchTerms.push("city ~ 'São José'")
+            if (/palho[cç]a/i.test(combinedCustAndAdText)) searchTerms.push("city ~ 'Palhoça'")
+
+            if (searchTerms.length > 0) {
+              const freeFilter = `is_active = true && (${searchTerms.join(' || ')})`
+              freeResults = $app.findRecordsByFilter('properties', freeFilter, '-created', 4, 0)
+            }
+          }
+
+          for (let frIdx = 0; frIdx < freeResults.length; frIdx++) {
+            const fr = freeResults[frIdx]
+            if (!matchedIdsMap[fr.id]) {
+              matchedIdsMap[fr.id] = true
+              matchedProps.push(fr)
+            }
+          }
+          if (matchedProps.length > 0) {
+            console.log(
+              `[AI_REPLY] BUSCA LIVRE LOCALIZOU ${matchedProps.length} imóvel(is) compatível(is): ${matchedProps.map((m) => m.getString('code')).join(', ')}`,
+            )
+          } else {
+            console.log(
+              `[AI_REPLY] BUSCA LIVRE NÃO localizou imóveis exatos para "${combinedCustAndAdText}". PROIBIDO injetar lançamentos aleatórios.`,
+            )
+          }
+        } catch (freeErr) {
+          console.warn(`[AI_REPLY] Erro na busca livre de imóveis: ${String(freeErr)}`)
+        }
+      }
+
+      // 3. Fallback: SE e SOMENTE SE o lead não estiver em busca de imóvel específico nem em busca livre pontual
+      // REGRA CRÍTICA B & C: Se o lead perguntou sobre um imóvel específico (código, link ou número) ou fez busca livre específica e não achou,
+      // É TERMINANTEMENTE PROIBIDO preencher o catálogo com outros lançamentos ou imóveis alternativos (nem Vistage nem code ~ 'LM').
+      if (
+        matchedProps.length === 0 &&
+        !detectedSpecificPropertyQuery &&
+        !isFreeSearchIntent &&
+        !isMismatchDetected
+      ) {
         const topLaunches = $app.findRecordsByFilter(
           'properties',
           "is_active = true && code ~ 'LM'",
@@ -1867,6 +1965,11 @@ ${
           // 2. Se há um matchedLaunch ou matchedPlaybook em foco (sem conflito de imóvel específico),
           //    injetar APENAS os documentos dele e institucionais.
           // =========================================================================================
+          // CORREÇÃO B: ISOLAMENTO RAG SEM FALLBACK CRUZADO:
+          // Se há imóvel em foco (targetSpecificProp ou lastMsgSpecificPropertyRequested):
+          // Dossiê vem ESTRITAMENTE do registro em properties.
+          // Se enterpriseKeys ficar sem pasta do imóvel, PROIBIDO injetar outros lançamentos (nem Vistage nem code~'LM').
+          // Injetar APENAS os dados do cadastro do imóvel + arquivos "Geral / Institucional".
           if (lastMsgSpecificPropertyRequested || targetSpecificProp) {
             const propTitle = targetSpecificProp
               ? (targetSpecificProp.getString('title') || '').toLowerCase()
@@ -1883,6 +1986,11 @@ ${
                 (propCode && propCode.includes(entLower))
               )
             })
+            // Se não encontrou pasta dedicada para este imóvel específico, MANTER APENAS "Geral / Institucional"
+            // NUNCA re-injetar outros lançamentos como fallback!
+            if (enterpriseKeys.length === 0 && groupedFiles['Geral / Institucional']) {
+              enterpriseKeys = ['Geral / Institucional']
+            }
             console.log(
               `[AI_REPLY] ISOLAMENTO RAG: lead em foco no imóvel específico (${propCode || lastMsgPropertyCodeOrNum}). Chaves de documentos permitidas: ${enterpriseKeys.join(', ')}`,
             )
@@ -2145,6 +2253,27 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
 - O diálogo com o cliente já está em andamento (última interação há menos de 24h).
 - NÃO use saudações formais nem temporais ("Bom dia/Boa tarde/Boa noite/Olá/Oi"). Vá direto ao ponto, respondendo ou avançando com foco na demanda do cliente de forma consultiva e acolhedora.`
 
+    // DIRETRIZES ESPECÍFICAS DE DESENCAIXE E BUSCA LIVRE (CORREÇÕES C & D):
+    let extraBehaviorRules = ''
+    if (isMismatchDetected) {
+      extraBehaviorRules += `\n[INSTRUÇÃO CRÍTICA DE DESENCAIXE IMPLÍCITO DETECTADO]:
+O cliente indicou que você se confundiu ou que não era aquele imóvel ("${incomingCustMsgText}").
+1. Peça desculpas breves e sinceras pela confusão (ex: "Peço desculpas pela confusão!").
+2. Pergunte qual imóvel ele gostaria de ver — peça o código (ex: #ARU341, #AP343), o link do site ou as características (tipo e região).
+3. PROIBIDO chutar ou sugerir outro imóvel ou lançamento agora! Apenas peça a confirmação do imóvel desejado com gentileza.\n`
+    }
+
+    if (isFreeSearchIntent && matchedProps.length === 0) {
+      extraBehaviorRules += `\n[INSTRUÇÃO CRÍTICA DE BUSCA LIVRE SEM RESULTADO DIRETO]:
+O cliente pediu busca de um perfil ou região que não possui imóvel correspondente no catálogo ativo.
+1. Responda com transparência e clareza informando que não localizou opções disponíveis com essas características exatas na região solicitada.
+2. Pergunte com simpatia se ele aceitaria analisar opções em cidades/regiões próximas ou se prefere que o corretor Mauro busque oportunidades sob demanda na carteira de parceiros.
+3. É TERMINANTEMENTE PROIBIDO empurrar lançamentos não solicitados (ex: Vistage Residence) ou mudar de assunto.\n`
+    } else if (isFreeSearchIntent && matchedProps.length > 0) {
+      extraBehaviorRules += `\n[INSTRUÇÃO DE BUSCA LIVRE COM IMÓVEL COMPATÍVEL ENCONTRADO]:
+Apresente a opção encontrada no catálogo real informando com TOTAL TRANSPARÊNCIA a sua LOCALIZAÇÃO REAL (por exemplo: se o cliente pediu fazenda e a fazenda cadastrada é em São Joaquim, informe expressamente que ela fica em São Joaquim - SC, a poucos minutos de Urubici/região das vinícolas). Não invente que fica onde não fica.\n`
+    }
+
     const systemPrompt = `Você é ${aiName}, da BRF Imóveis (www.brfimoveis.com.br).
 Sua identidade e instruções específicas (Persona):
 ${personaInstructions}
@@ -2155,6 +2284,7 @@ ${cleanMotherAiInstructions}
 ${clientContext}
 ${channelContext}
 ${propertyContext}
+${extraBehaviorRules}
 
 ${collectedDataSummary}
 
@@ -2506,6 +2636,7 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
     // Optional Mother AI supervisor validation & Regeneration Flow
     if (motherAiInstructions && responseText.length > 0) {
       try {
+        const clientFirstName = (displayName || '').split(/\s+/)[0] || ''
         const evalPrompt = `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie a resposta da Bia:
 "${motherAiInstructions}".
 Critérios essenciais e regras obrigatórias de avaliação:
@@ -2513,7 +2644,8 @@ Critérios essenciais e regras obrigatórias de avaliação:
 2. Identificação padrão: "Bia, da BRF Imóveis" se ela for se apresentar.
 3. Se o lead perguntou sobre um imóvel específico, aprovar a resposta focada no imóvel.
 4. Se o lead disse que é para "investimento" ou "investidor", NUNCA exigir re-pergunta de "morar ou investir".
-5. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados com 3+ perguntas ou invenção de dados.
+5. NOME DO CLIENTE: O nome do cliente cadastrado é "${displayName}" (primeiro nome: "${clientFirstName}"). Chamar o cliente pelo nome dele (ex: "Olá, ${clientFirstName}", "${clientFirstName}, tudo bem?") é EXPRESSAMENTE PERMITIDO e DESEJÁVEL! NUNCA confunda o nome do cliente com nome de corretor/equipe. Reprovar citação de corretores SOMENTE se a Bia citar corretores terceiros como membros da equipe quando não deveria.
+6. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados com 3+ perguntas ou invenção de dados.
 
 FORMATO ESTRITO DA RESPOSTA:
 - Se a mensagem estiver em conformidade e aprovada, responda EXATAMENTE e APENAS a palavra: APROVADO
@@ -3174,13 +3306,19 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     const needsCatalogFallback =
       !responseText.trim() || (validationResult.hadHallucinatedProperty && responseText.length < 30)
 
-    // REGRA DE NEGÓCIO DE FOCO ABSOLUTO NO IMÓVEL DO LEAD:
-    // Se o lead perguntou sobre um imóvel específico (código, link ou número):
-    // 1. NUNCA substituir a resposta por alternativas/lançamentos de região via generateCatalogFallbackMessage.
-    // 2. Se a resposta ficou vazia ou foi limpa pela validação e o imóvel do lead FOI localizado, responder com foco nele.
-    // 3. Se a resposta ficou vazia e o imóvel NÃO foi localizado na base: informar cordialmente que vamos verificar e retornar, JAMAIS ofertar alternativa.
+    // REGRA DE NEGÓCIO DE FOCO ABSOLUTO NO IMÓVEL DO LEAD & DESENCAIXE / BUSCA LIVRE (CORREÇÕES A, B, C, D):
     if (cannedDetected || isTooSimilar || needsCatalogFallback) {
-      if (detectedSpecificPropertyQuery) {
+      if (isMismatchDetected) {
+        console.log(
+          `[AI_REPLY] Desencaixe implícito ativo no fallback: pedindo confirmação sem empurrar imóvel.`,
+        )
+        responseText = `Peço desculpas pela confusão! Você poderia me confirmar o código (ex: #ARU341, #AP343) ou o link do imóvel que você gostaria de ver? Assim localizo exatamente a opção correta para você.`
+      } else if (isFreeSearchIntent && matchedProps.length === 0) {
+        console.log(
+          `[AI_REPLY] Busca livre sem match no fallback: informando transparência sem empurrar lançamentos.`,
+        )
+        responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique com o corretor Mauro na nossa carteira de parceiros?`
+      } else if (detectedSpecificPropertyQuery) {
         console.log(
           `[AI_REPLY] Specific property query detected for customer ${customerId}. Enforcing strict focus on requested property. Suppressing generic launch fallback.`,
         )
@@ -3297,7 +3435,11 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     responseText = sanitizeAiResponse(responseText)
     if (isCannedValuesSentence(responseText)) {
       console.warn('[AI_REPLY] Final check detected canned sentence')
-      if (detectedSpecificPropertyQuery) {
+      if (isMismatchDetected) {
+        responseText = `Peço desculpas pela confusão! Você poderia me confirmar o código (ex: #ARU341, #AP343) ou o link do imóvel que você gostaria de ver? Assim localizo exatamente o que você procura.`
+      } else if (isFreeSearchIntent && matchedProps.length === 0) {
+        responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique com o corretor Mauro na nossa carteira de parceiros?`
+      } else if (detectedSpecificPropertyQuery) {
         if (matchedProps && matchedProps.length > 0) {
           const targetProp = matchedProps[0]
           const pTitle = (targetProp.getString('title') || '').trim()
