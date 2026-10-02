@@ -186,24 +186,7 @@ onRecordAfterCreateSuccess((e) => {
           }
         }
 
-        // Se chegam mensagens em sequência do mesmo lead (incomingMsgId mais recente), liberamos o lock para processar a nova mensagem
-        if (activeLock) {
-          try {
-            const latestMsgsCheck = txApp.findRecordsByFilter(
-              'conversations',
-              `customer_id = '${customerId}'`,
-              '-created',
-              1,
-              0,
-            )
-            if (latestMsgsCheck.length > 0 && latestMsgsCheck[0].id === incomingMsgId) {
-              console.log(
-                `[AI_REPLY] Nova mensagem sequencial do cliente ${customerId} detectada. Liberando lock anterior imediatamente.`,
-              )
-              activeLock = false
-            }
-          } catch (_) {}
-        }
+        // Se a trava estiver ativa há menos de 180s, respeitar rigorosamente a trava para evitar execuções paralelas concorrentes
 
         if (activeLock) {
           throw new Error('LOCKED')
@@ -319,8 +302,7 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
-    // CORREÇÃO A: FOCO DINÂMICO — a última mensagem manda sempre:
-    // Se customerMessage contém código (#ARU341, "aru341", "AP343", "LM344"), slug de URL do site (/341/, /343/) ou menção inequívoca
+    // CORREÇÃO A & NORMALIZAÇÃO AMPLA: aceitar "341", "ARU 341", "aru341", "#341", link contendo "/341/"
     if (incomingCustMsgText && !isMismatchDetected) {
       // 1. Slug de URL do site brfimoveis (/341/, /343/, brfimoveis.com.br/341/...)
       const urlMatchInLast = incomingCustMsgText.match(/(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/i)
@@ -328,8 +310,8 @@ onRecordAfterCreateSuccess((e) => {
         lastMsgSpecificPropertyRequested = true
         lastMsgPropertyCodeOrNum = urlMatchInLast[1]
       } else {
-        // 2. Hashtag com código ou número (ex: #ARU341, #aru 341, #AP343, #343)
-        const hashMatch = incomingCustMsgText.match(/#\s*([a-zA-Z]{1,4}[-_\s]?\d{2,5}|\d{2,5})/i)
+        // 2. Hashtag com código ou número (ex: #ARU341, #aru 341, #AP343, #343, #341)
+        const hashMatch = incomingCustMsgText.match(/#\s*([a-zA-Z]{0,4}[-_\s]?\d{2,5})/i)
         if (hashMatch && hashMatch[1]) {
           lastMsgSpecificPropertyRequested = true
           lastMsgPropertyCodeOrNum = hashMatch[1].replace(/[-_\s]+/g, '').toUpperCase()
@@ -351,6 +333,22 @@ onRecordAfterCreateSuccess((e) => {
               if (/\d{2,5}/.test(cleanedCandidate)) {
                 lastMsgSpecificPropertyRequested = true
                 lastMsgPropertyCodeOrNum = cleanedCandidate
+              }
+            } else {
+              // 5. Número isolado de imóvel no texto (ex: "o 341", "e o 341", "341") se não for ano corrente
+              const bareNumMatch = incomingCustMsgText.match(/\b(\d{3,4})\b/)
+              if (
+                bareNumMatch &&
+                bareNumMatch[1] &&
+                bareNumMatch[1] !== '2024' &&
+                bareNumMatch[1] !== '2025' &&
+                bareNumMatch[1] !== '2026' &&
+                bareNumMatch[1] !== '500' &&
+                bareNumMatch[1] !== '100' &&
+                bareNumMatch[1] !== '200'
+              ) {
+                lastMsgSpecificPropertyRequested = true
+                lastMsgPropertyCodeOrNum = bareNumMatch[1]
               }
             }
           }
@@ -713,7 +711,11 @@ FLUXO DAS 10 CADÊNCIAS (NUNCA pule etapas):
 DIRETRIZES OPERACIONAIS:
 1. Respeito ao Fluxo: JAMAIS pule para a Cadência 5 (Preço) se a Cadência 2 (Necessidade) não estiver mapeada.
 2. Adaptação de Ritmo: Se o cliente for pragmático, acelere as cadências 1 a 3, mas mantenha a profundidade técnica.
-3. Envio de Imóveis e Valores: Se o cliente perguntar ou exigir o preço ou opções, envie imediatamente 2 a 3 opções de imóveis reais do catálogo com código, valor, bairro e link oficial do site (ou as unidades do empreendimento focado se houver Playbook de Anúncio ativo). Nunca fique apenas fazendo perguntas.
+3. Envio de Imóveis e Valores (Regra de SDR de Alta Conversão):
+   - Na 1ª apresentação de um imóvel, NUNCA enviar link nem preço cheio.
+   - Apresente no MÁXIMO 2 opções por mensagem em texto corrido e amigável (sem tabelas markdown).
+   - Use 3 a 4 linhas despertando curiosidade e desejo (localização, destaque único, tipologia, estilo de vida) + preço como "a partir de R$ X" + UMA pergunta de continuidade ou comparativa.
+   - Link do site só se o cliente pedir expressamente, na fase de agendamento de visita/tour, ou em conversa madura (≥3 trocas com interesse confirmado).
 4. Tom de Voz: Consultivo, seguro, empático e focado em solução.
 
 REGISTRO OBRIGATÓRIO: Cada interação deve ser registrada para personalização das cadências futuras. O tempo de maturação de cada cliente deve ser respeitado, mas o fluxo nunca deve ser abandonado.
@@ -773,11 +775,11 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
 
     const strictGuidelines = `
 ### REGRAS OBRIGATÓRIAS DE DIÁLOGO E VENDA CONSULTIVA (SIGA ESTRITAMENTE):
-1. TRATE PRIMEIRO O QUE FOI PEDIDO PELO CLIENTE (REGRA FUNDAMENTAL):
-   - Se o cliente perguntou sobre condições de pagamento, responda PRIMEIRO as condições de pagamento.
-   - Se perguntou sobre uma planta ou unidade específica, responda PRIMEIRO sobre a planta/unidade.
-   - Se demonstrou urgência ("quero comprar hoje", "gostaria de realizar essa compra hoje"), CONDUZA IMEDIATAMENTE para o fechamento/reserva com o Mauro (telefone: (48) 99972-8050)! NUNCA responda com perguntas genéricas de cadência atrasada ou recomece a qualificação!
-2. DIÁLOGO HUMANO, AMISTOSO E UMA PERGUNTA POR VEZ:
+1. TRATE PRIMEIRO O QUE FOI PEDIDO PELO CLIENTE E RECONHEÇA O GANCHO (CONTINUIDADE):
+ - A resposta deve SEMPRE reconhecer o último gancho do lead ("Entendi, você quer comparar...", "Sobre a opção que vimos...") em vez de recomeçar a conversa do zero.
+ - Se o cliente perguntou sobre condições de pagamento, responda PRIMEIRO as condições de pagamento.
+ - Se perguntou sobre uma planta ou unidade específica, responda PRIMEIRO sobre a planta/unidade.
+ - Se demonstrou urgência ("quero comprar hoje", "gostaria de realizar essa compra hoje"), CONDUZA IMEDIATAMENTE para o fechamento/reserva com o Mauro (telefone: (48) 99972-8050)! NUNCA responda com perguntas genéricas de cadência atrasada ou recomece a qualificação!2. DIÁLOGO HUMANO, AMISTOSO E UMA PERGUNTA POR VEZ:
    - Mantenha mensagens curtas (2 a 4 linhas no WhatsApp), empáticas e calorosas.
    - NUNCA envie blocos acumulados com 3 ou mais perguntas. Faça APENAS UMA pergunta simples e objetiva por vez para manter a conversa fluida e sugar o máximo de informações do cliente no ritmo dele.
 3. RESPEITO A FATOS JÁ INFORMADOS (ANTI-LOOP):
@@ -1478,7 +1480,7 @@ ${
         }
       }
 
-      // 1b. Check if customer mentioned specific property codes or URLs (e.g. #LM344, #AP344, LM 344, AP-344, 344, brfimoveis.com.br/344/...)
+      // 1b. Extração ampla de códigos de imóveis (normalização: aceita 341, ARU 341, aru341, #341, /341/)
       const extractedPropertyNumbers = []
       const addPropNum = (num) => {
         if (num && extractedPropertyNumbers.indexOf(num) === -1) {
@@ -1486,62 +1488,72 @@ ${
         }
       }
 
-      // CORREÇÃO A & D:
+      // CORREÇÃO A & D & ANTI-CONTRADIÇÃO:
       // Se houve desencaixe ("não foi isso que eu pedi", "está confundindo", etc.), ZERAR foco anterior e NÃO buscar imóvel antigo
       if (isMismatchDetected) {
         detectedSpecificPropertyQuery = false
         targetSpecificProp = null
         lastMsgSpecificPropertyRequested = false
         lastMsgPropertyCodeOrNum = ''
-      } else if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
-        // CORREÇÃO A: FOCO DINÂMICO — a última mensagem manda sempre:
-        // Se customerMessage contém código/slug/hashtag, LIMPAR imediatamente códigos antigos e usar APENAS o código da última mensagem!
-        const numOnlyLast = lastMsgPropertyCodeOrNum.replace(/\D/g, '')
-        if (numOnlyLast) {
-          extractedPropertyNumbers.push(numOnlyLast)
-        }
-        detectedSpecificPropertyQuery = true
-        console.log(
-          `[AI_REPLY] FOCO DINÂMICO ATIVADO pela última mensagem: código/num=${lastMsgPropertyCodeOrNum} (num=${numOnlyLast}). Histórico anterior limpo.`,
-        )
       } else {
-        // Sem código explícito na última mensagem: extrair menções da mensagem atual + origem
-        const urlIdRegex = /(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/gi
-        let urlIdExecMatch = null
-        while ((urlIdExecMatch = urlIdRegex.exec(combinedCustAndAdText)) !== null) {
-          if (urlIdExecMatch[1]) {
-            addPropNum(urlIdExecMatch[1])
-            detectedSpecificPropertyQuery = true
+        // Se a última mensagem tem código/slug/hashtag, incluir prioritariamente
+        if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
+          const numOnlyLast = lastMsgPropertyCodeOrNum.replace(/\D/g, '')
+          if (numOnlyLast) {
+            addPropNum(numOnlyLast)
           }
+          detectedSpecificPropertyQuery = true
+          console.log(
+            `[AI_REPLY] FOCO DINÂMICO ATIVADO pela última mensagem: código/num=${lastMsgPropertyCodeOrNum} (num=${numOnlyLast}).`,
+          )
         }
 
-        const codeMatchesRegex = /(?:^|[\s#])([a-z]{1,4}[-_\s]?\d{2,5}|\b\d{3,4}\b)/gi
-        let codeExecMatch = null
-        while ((codeExecMatch = codeMatchesRegex.exec(combinedCustAndAdText)) !== null) {
-          const matchCandidate = codeExecMatch[1].trim()
-          const numOnly = matchCandidate.replace(/\D/g, '')
-          if (numOnly && numOnly.length >= 2 && numOnly.length <= 5) {
-            if (
-              numOnly !== '500' &&
-              numOnly !== '100' &&
-              numOnly !== '200' &&
-              numOnly !== '2024' &&
-              numOnly !== '2025' &&
-              numOnly !== '2026'
-            ) {
-              addPropNum(numOnly)
+        // ANTI-CONTRADIÇÃO: Varrer histórico recente da conversa (últimas 10 mensagens)
+        // Se um imóvel já foi citado/apresentado (ex: 341, ARU 341, LM 344, Vistage), ele entra nos matchedProps com prioridade e NUNCA pode receber "não consta"
+        try {
+          const recentConvSlice = (
+            fullCustomerHistory && fullCustomerHistory.length > 0
+              ? fullCustomerHistory.slice(-10)
+              : historyRecords
+          )
+            .map(function (m) {
+              return m.getString('content') || ''
+            })
+            .join(' ')
+
+          const combinedHistoryAndCurrent = `${combinedCustAndAdText} ${recentConvSlice}`
+          const histUrlIdRegex = /(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/gi
+          let histUrlMatch = null
+          while ((histUrlMatch = histUrlIdRegex.exec(combinedHistoryAndCurrent)) !== null) {
+            if (histUrlMatch[1]) {
+              addPropNum(histUrlMatch[1])
               detectedSpecificPropertyQuery = true
             }
           }
-        }
 
-        if (
-          /#\s*[a-z]*\d+/i.test(combinedCustAndAdText) ||
-          /im[oó]vel\s*#?[a-z]*\d+/i.test(combinedCustAndAdText) ||
-          /c[oó]digo\s*#?[a-z]*\d+/i.test(combinedCustAndAdText) ||
-          /brfimoveis\.com\.br\/\d+/i.test(combinedCustAndAdText)
-        ) {
-          detectedSpecificPropertyQuery = true
+          const histCodeRegex = /(?:^|[\s#])([a-z]{1,4}[-_\s]?\d{2,5}|\b\d{3,4}\b)/gi
+          let histCodeMatch = null
+          while ((histCodeMatch = histCodeRegex.exec(combinedHistoryAndCurrent)) !== null) {
+            const matchCandidate = histCodeMatch[1].trim()
+            const numOnly = matchCandidate.replace(/\D/g, '')
+            if (numOnly && numOnly.length >= 2 && numOnly.length <= 5) {
+              if (
+                numOnly !== '500' &&
+                numOnly !== '100' &&
+                numOnly !== '200' &&
+                numOnly !== '2024' &&
+                numOnly !== '2025' &&
+                numOnly !== '2026'
+              ) {
+                addPropNum(numOnly)
+                detectedSpecificPropertyQuery = true
+              }
+            }
+          }
+        } catch (histScanErr) {
+          console.warn(
+            `[AI_REPLY] Erro ao varrer histórico para anti-contradição: ${String(histScanErr)}`,
+          )
         }
       }
 
@@ -1592,16 +1604,33 @@ ${
         }
       }
 
-      // Se a última mensagem do lead foi sobre um imóvel específico e encontramos ele, LIMPAR qualquer outro imóvel anterior para ISOLAMENTO TOTAL
+      // DETECÇÃO DE COMPARAÇÃO / MÚLTIPLOS IMÓVEIS (ex: Vistage vs Fazenda ARU 341):
+      // Se a mensagem do lead ou o contexto recente compara dois imóveis, MANTER AMBOS no matchedProps!
+      const isComparisonIntent =
+        /\b(?:comparar|compara[cç][aã]o|versus|vs\.?|ou|diferen[cç]a|qual\s+dos\s+dois|entre\s+o|entre\s+os)\b/i.test(
+          combinedCustText,
+        ) ||
+        (/\bvistage\b/i.test(combinedCustText) && /\b(?:341|aru|fazenda)\b/i.test(combinedCustText))
+
+      // Se o lead citou um imóvel específico mas é uma comparação, manter até 2 imóveis em matchedProps
       if (lastMsgSpecificPropertyRequested && matchedProps.length > 0) {
-        const topRequestedProp = matchedProps[0]
-        matchedProps = [topRequestedProp]
-        for (const k in matchedIdsMap) delete matchedIdsMap[k]
-        matchedIdsMap[topRequestedProp.id] = true
-        targetSpecificProp = topRequestedProp
-        console.log(
-          `[AI_REPLY] ISOLAMENTO TOTAL APLICADO: lead focou no imóvel ${topRequestedProp.getString('code')} (${topRequestedProp.getString('title')}). Todos os outros empreendimentos suprimidos.`,
-        )
+        if (isComparisonIntent) {
+          console.log(
+            `[AI_REPLY] INTENÇÃO DE COMPARAÇÃO DETECTADA: mantendo múltiplos imóveis no contexto (total=${matchedProps.length}).`,
+          )
+          // Mantém os imóveis encontrados (até 2 opções) sem apagar a contraparte
+          matchedProps = matchedProps.slice(0, 2)
+          targetSpecificProp = matchedProps[0]
+        } else {
+          const topRequestedProp = matchedProps[0]
+          matchedProps = [topRequestedProp]
+          for (const k in matchedIdsMap) delete matchedIdsMap[k]
+          matchedIdsMap[topRequestedProp.id] = true
+          targetSpecificProp = topRequestedProp
+          console.log(
+            `[AI_REPLY] FOCO NO IMÓVEL: lead focou no imóvel ${topRequestedProp.getString('code')} (${topRequestedProp.getString('title')}).`,
+          )
+        }
       } else if (detectedSpecificPropertyQuery && matchedProps.length > 0) {
         targetSpecificProp = matchedProps[0]
       }
@@ -2017,9 +2046,27 @@ ${
               ? (targetSpecificProp.getString('code') || '').toLowerCase()
               : ''
 
+            // Se for intenção de comparação ou houver múltiplos imóveis matched, permitir documentos de ambos
+            const isComparingInRag =
+              (typeof isComparisonIntent !== 'undefined' && isComparisonIntent) ||
+              (Array.isArray(matchedProps) && matchedProps.length > 1)
+
             enterpriseKeys = enterpriseKeys.filter((entKey) => {
               if (entKey === 'Geral / Institucional') return true
               const entLower = entKey.toLowerCase()
+              if (isComparingInRag && Array.isArray(matchedProps)) {
+                for (var mpI = 0; mpI < matchedProps.length; mpI++) {
+                  var mpT = (matchedProps[mpI].getString('title') || '').toLowerCase()
+                  var mpC = (matchedProps[mpI].getString('code') || '').toLowerCase()
+                  if (
+                    (mpT && mpT.includes(entLower)) ||
+                    (mpC && mpC.includes(entLower)) ||
+                    entLower.includes('vistage')
+                  ) {
+                    return true
+                  }
+                }
+              }
               return (
                 (propTitle && propTitle.includes(entLower)) ||
                 (propCode && propCode.includes(entLower))
@@ -2031,7 +2078,7 @@ ${
               enterpriseKeys = ['Geral / Institucional']
             }
             console.log(
-              `[AI_REPLY] ISOLAMENTO RAG: lead em foco no imóvel específico (${propCode || lastMsgPropertyCodeOrNum}). Chaves de documentos permitidas: ${enterpriseKeys.join(', ')}`,
+              `[AI_REPLY] ISOLAMENTO RAG: lead em foco no imóvel específico (${propCode || lastMsgPropertyCodeOrNum}, comparing=${isComparingInRag}). Chaves de documentos permitidas: ${enterpriseKeys.join(', ')}`,
             )
           } else if (matchedLaunch || matchedPlaybook) {
             const launchName = (matchedLaunch ? matchedLaunch.getString('name') : '').toLowerCase()
@@ -2363,9 +2410,10 @@ DIRETRIZ DE BASE DE CONHECIMENTO E EMPREENDIMENTOS:
 - Priorize rigorosamente os documentos, diferenciais, valores e regras específicas do empreendimento em foco.
 
 PROTOCOLO COMERCIAL CONSULTIVO E DIRETRIZES DE ATENDIMENTO (BRF IMÓVEIS):
-1. DIÁLOGO HUMANO E ACOLHEDOR (UMA PERGUNTA POR VEZ):
+1. DIÁLOGO HUMANO, CONTINUIDADE E ACOLHEDOR (UMA PERGUNTA POR VEZ):
+   - RECONHECIMENTO DE GANCHO (CONTINUIDADE): Reconheça imediatamente o gancho do lead ("Entendi perfeitamente, você quer comparar...", "Faz todo sentido...") em vez de reiniciar a conversa.
    - Mantenha mensagens curtas (2 a 4 linhas no WhatsApp), tom caloroso, empático e de consultoria de alto nível.
-   - REGRA DE OURO DO MAURO: NUNCA envie questionários acumulados ou blocos com várias perguntas de uma vez (ex: "como chegou, o que busca, qual bairro, qual valor e quando quer mudar?"). Faça APENAS UMA pergunta simples e objetiva por vez para "sugar o máximo de informações do cliente" de forma agradável e natural.
+   - REGRA DE OURO DO MAURO: NUNCA envie questionários acumulados ou blocos com várias perguntas de uma vez. Faça APENAS UMA pergunta simples e objetiva por vez.
    - Sequência consultiva de qualificação:
      (a) Conexão e acolhimento: como conheceu a BRF Imóveis ou o empreendimento.
      (b) Finalidade: compra, venda de imóvel próprio, permuta ou aluguel.
@@ -2379,12 +2427,14 @@ PROTOCOLO COMERCIAL CONSULTIVO E DIRETRIZES DE ATENDIMENTO (BRF IMÓVEIS):
      * Pretende utilizar FGTS ou incluir algum bem/imóvel como parte da entrada?
    - Essa qualificação protege o posicionamento do imóvel e permite oferecer exatamente o que cabe na aprovação bancária do cliente.
 
-3. APRESENTAÇÃO CONSULTIVA DE IMÓVEIS (DESCREVER ANTES DE MANDAR LINK/PREÇO):
-   - Ao casar uma opção com o perfil do cliente, DESCREVA o empreendimento com suas próprias palavras no texto da conversa: nome do empreendimento, bairro/cidade, tipologia, estilo de vida e diferenciais marcantes (ex: acabamento, área de lazer, sacada com churrasqueira, proximidade do mar ou centro).
-   - NUNCA abra uma apresentação com código interno frio (ex: "Código: LM 310") nem despeje fichas técnicas brutas com dump de links e valores na primeira menção.
-   - Crie desejo e desperte curiosidade primeiro, e pergunte em tom consultivo: "Quer que eu te mande as fotos e a tabela de valores dessa opção?".
-   - Envie o link oficial do site, tabela detalhada ou faixa de preço SOMENTE APÓS o cliente manifestar interesse explícito ou confirmar que quer ver os detalhes.
-   - Se o cliente já qualificado pedir expressamente o link, fotos ou preços diretos, atenda com elegância fornecendo o link oficial do imóvel do catálogo da BRF Imóveis.
+3. APRESENTAÇÃO CONSULTIVA DE IMÓVEIS — REGRA DE SDR DE ALTA CONVERSÃO:
+   - NA 1ª APRESENTAÇÃO: NUNCA enviar link nem preço cheio.
+   - Máximo 2 opções por mensagem.
+   - Descreva em 3 a 4 linhas que gerem curiosidade e desejo: localização privilegiada, destaque único, tipologia e estilo de vida.
+   - Preço sempre como "a partir de R$ X" (nunca despejar tabela cheia nem dump de valores).
+   - Termine SEMPRE com UMA pergunta de continuidade (ex: "Quer que eu te envie as fotos e a ficha completa dessa opção?") ou pergunta comparativa entre as duas opções.
+   - Envie link apenas se o cliente pedir expressamente fotos/link ("me manda o link", "quero ver as fotos"), no agendamento de visita ou após 3+ trocas maduras.
+   - PROIBIDO usar tabelas markdown ou listas gigantes. Sempre texto corrido e fluido estilo WhatsApp.
 
 4. NÃO EMPURRAR PROPOSTA OU FECHAMENTO PRECOCE:
    - Só trate de proposta formal, minuta contratual ou documentação bancária quando o cliente demonstrar intenção firme em unidade específica.
@@ -3472,14 +3522,109 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       }
     }
 
+    // SANITIZAÇÃO WHATSAPP NA FUNÇÃO DE SAÍDA:
+    // 1. Remove [HANDOVER: ...]
+    // 2. **negrito** -> *negrito* (asterisco simples)
+    // 3. headers ### removidos
+    // 4. tabelas markdown -> linhas com "• campo — valor"
+    // 5. colapsar 3+ quebras de linha em no máximo 2
+    // 6. limitar ~900-950 chars com quebra amigável
+    function formatWhatsAppOutput(txt) {
+      if (!txt) return ''
+      let formatted = txt
+
+      // Remove handover tags e termos de transbordo
+      formatted = formatted.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
+      formatted = formatted.replace(/\btransbordo\b/gi, 'atendimento especializado')
+      formatted = formatted.replace(/\btrasbordo\b/gi, 'atendimento especializado')
+
+      // Remove headers markdown (###, ##, #)
+      formatted = formatted.replace(/^#{1,6}\s*(.*?)$/gm, '$1')
+
+      // Converte tabelas markdown em linhas com bullet "• campo — valor"
+      // Detecta bloco de tabela com | ... | ... |
+      const lines = formatted.split('\n')
+      const newLines = []
+      let tableHeader = []
+      let inTable = false
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim()
+        if (line.startsWith('|') && line.endsWith('|')) {
+          const cells = line
+            .slice(1, -1)
+            .split('|')
+            .map(function (c) {
+              return c.trim()
+            })
+
+          // Linha separadora |---|---|
+          if (
+            cells.every(function (c) {
+              return /^[-:\s]+$/.test(c)
+            })
+          ) {
+            inTable = true
+            continue
+          }
+
+          if (!inTable) {
+            tableHeader = cells
+            inTable = true
+          } else {
+            // Linha de dados: associa ao header correspondente
+            const rowPairs = []
+            for (let c = 0; c < cells.length; c++) {
+              const hName = tableHeader[c] || `Item ${c + 1}`
+              const val = cells[c]
+              if (val) {
+                rowPairs.push(`${hName}: ${val}`)
+              }
+            }
+            if (rowPairs.length > 0) {
+              newLines.push(`• ${rowPairs.join(' — ')}`)
+            }
+          }
+        } else {
+          inTable = false
+          tableHeader = []
+          newLines.push(lines[i])
+        }
+      }
+      formatted = newLines.join('\n')
+
+      // Converte **negrito** em *negrito* (WhatsApp usa asterisco simples para negrito)
+      formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '*$1*')
+
+      // Colapsa 3 ou mais quebras de linha em no máximo 2
+      formatted = formatted.replace(/\n{3,}/g, '\n\n')
+
+      // Limitar a ~900-950 chars com quebra amigável no final de frase ou parágrafo
+      if (formatted.length > 950) {
+        let cutPoint = formatted.lastIndexOf('\n\n', 950)
+        if (cutPoint < 650) {
+          cutPoint = formatted.lastIndexOf('. ', 950)
+        }
+        if (cutPoint < 650) {
+          cutPoint = formatted.lastIndexOf('! ', 950)
+        }
+        if (cutPoint < 650) {
+          cutPoint = formatted.lastIndexOf('? ', 950)
+        }
+        if (cutPoint > 500) {
+          formatted = formatted.substring(0, cutPoint + 1).trim()
+        } else {
+          formatted = formatted.substring(0, 950).trim() + '...'
+        }
+      }
+
+      return formatted.trim()
+    }
+
     // FINAL UNCONDITIONAL SANITIZATION & CANNED INTERCEPTION
     // Guarantee that no supervisor metadata, headers, or canned sentences can slip through to WhatsApp
     responseText = sanitizeAiResponse(responseText)
-    // Remove qualquer tag [HANDOVER: ...] remanescente do texto final
-    responseText = responseText.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
-    // Proibir termos de transbordo no texto visível ao cliente
-    responseText = responseText.replace(/\btransbordo\b/gi, 'atendimento especializado')
-    responseText = responseText.replace(/\btrasbordo\b/gi, 'atendimento especializado')
+    responseText = formatWhatsAppOutput(responseText)
     if (isCannedValuesSentence(responseText)) {
       console.warn('[AI_REPLY] Final check detected canned sentence')
       if (isMismatchDetected) {
@@ -3512,6 +3657,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         responseText = `Como posso te ajudar na sua busca hoje na BRF Imóveis?`
       }
     }
+    responseText = formatWhatsAppOutput(responseText)
 
     // Duplicate message final guard
     let isDuplicate = false
@@ -3765,6 +3911,49 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     let cleanPhone = customerPhone.replace(/\D/g, '')
     if (cleanPhone.length === 10 || cleanPhone.length === 11) {
       cleanPhone = '55' + cleanPhone
+    }
+
+    // DEDUP DE ENVIO (ANTI-DUPLICAÇÃO 45-60s)
+    // Antes do POST ao Graph API, consultar conversations (customer_id + sender='ai' criado há menos de 45-60s)
+    // e abortar se houver envio recente para matar duplicados de corridas concorrentes
+    let hasRecentAiSend = false
+    try {
+      const dedupCutoffIso = new Date(now.getTime() - 45000)
+        .toISOString()
+        .replace('T', ' ')
+        .substring(0, 19)
+      const recentAiSends = $app.findRecordsByFilter(
+        'conversations',
+        `customer_id = '${customerId}' && sender = 'ai' && created >= '${dedupCutoffIso}'`,
+        '-created',
+        5,
+        0,
+      )
+      // Se houver mensagem de IA enviada há menos de 45s cujo conteúdo seja similar ou já exista envio registrado
+      if (recentAiSends && recentAiSends.length > 0) {
+        for (let rIdx = 0; rIdx < recentAiSends.length; rIdx++) {
+          const recAiMsg = recentAiSends[rIdx]
+          // Ignorar se for exatamente o registro salvo milissegundos antes nesta mesma execução
+          const recAiContent = (recAiMsg.getString('content') || '').trim()
+          if (recAiContent === responseText.trim()) {
+            continue // É o nosso próprio registro salvo na linha 3617
+          }
+          hasRecentAiSend = true
+          console.warn(
+            `[AI_REPLY] DEDUP DE ENVIO ATIVADO: resposta recente enviada há menos de 45s para lead ${customerId}. Abortando envio duplicado.`,
+          )
+          break
+        }
+      }
+    } catch (dedupErr) {
+      console.warn(`[AI_REPLY] Erro não fatal no check de dedup: ${String(dedupErr)}`)
+    }
+
+    if (hasRecentAiSend) {
+      console.log(
+        `[AI_REPLY] Abortando envio via WhatsApp por dedup (<45s) para lead ${customerId}.`,
+      )
+      return e.next()
     }
 
     // Send WhatsApp reply via Meta Cloud API v21.0
