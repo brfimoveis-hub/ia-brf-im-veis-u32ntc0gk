@@ -75,60 +75,149 @@ onRecordAfterCreateSuccess((e) => {
       '[Material visual/imagem anexado à base de conhecimento: ' + originalName + ']'
   }
 
-  // 4. Identificar Empreendimento (Auto-classificação) se ainda não preenchido
+  // 4. Identificar Imóvel (property_id) e Empreendimento (Auto-classificação compatível com Goja)
+  let detectedPropertyId = (record.getString('property_id') || '').trim()
   let detectedEnterprise = (record.getString('enterprise') || '').trim()
   const combinedInspection = (originalName + ' ' + extractedMarkdown).toLowerCase()
+  const combinedAlphanum = combinedInspection.replace(/[^a-z0-9]/g, '')
+
+  // Se property_id ainda não foi atribuído, buscar entre os imóveis ativos do catálogo
+  if (!detectedPropertyId) {
+    try {
+      const activeProperties = $app.findRecordsByFilter(
+        'properties',
+        'is_active = true',
+        'code',
+        200,
+        0,
+      )
+      if (activeProperties && activeProperties.length > 0) {
+        // Passo 1: busca por correspondência de código do imóvel (ex: #AP343, AP343, ARU 341, LM 330)
+        for (var pi = 0; pi < activeProperties.length; pi++) {
+          const propRec = activeProperties[pi]
+          const rawCode = (propRec.getString('code') || '').toLowerCase().trim()
+          if (!rawCode || rawCode.length < 3) continue
+
+          const codeClean = rawCode.replace(/[^a-z0-9]/g, '')
+          if (codeClean.length >= 3) {
+            // Verifica no texto alfanumérico ou com separadores
+            if (
+              combinedAlphanum.indexOf(codeClean) !== -1 ||
+              combinedInspection.indexOf(rawCode) !== -1
+            ) {
+              detectedPropertyId = propRec.id
+              if (!detectedEnterprise) {
+                detectedEnterprise = propRec.getString('title') || propRec.getString('code')
+              }
+              break
+            }
+          }
+        }
+
+        // Passo 2: se ainda não achou, buscar por termos distintivos no título do imóvel
+        if (!detectedPropertyId) {
+          const keyTerms = [
+            'vistage',
+            'viva balneário',
+            'viva balneario',
+            'neo continente',
+            'colinas de são pedro',
+            'colinas de sao pedro',
+            'solar di plaza',
+            'solar plaza',
+            'villa dos açores',
+            'villa dos acores',
+            'viva trindade',
+            'opus agronômica',
+            'opus agronomica',
+            'essenzia canasvieiras',
+            'condomínio fly ville',
+            'fly ville',
+            'luminare residence',
+            'luminare',
+          ]
+
+          for (var pii = 0; pii < activeProperties.length; pii++) {
+            const propRec2 = activeProperties[pii]
+            const pTitle = (propRec2.getString('title') || '').toLowerCase()
+            let matchedTerm = false
+            for (var ki = 0; ki < keyTerms.length; ki++) {
+              const kw = keyTerms[ki]
+              if (pTitle.indexOf(kw) !== -1 && combinedInspection.indexOf(kw) !== -1) {
+                matchedTerm = true
+                break
+              }
+            }
+            if (matchedTerm) {
+              detectedPropertyId = propRec2.id
+              if (!detectedEnterprise) {
+                detectedEnterprise = propRec2.getString('title') || propRec2.getString('code')
+              }
+              break
+            }
+          }
+        }
+      }
+    } catch (detectErr) {
+      console.warn(
+        '[AI_KNOWLEDGE_FILES] Erro na detecção automática de imóvel: ' + String(detectErr),
+      )
+    }
+  }
 
   if (!detectedEnterprise) {
-    if (combinedInspection.includes('vistage')) {
+    if (combinedInspection.indexOf('vistage') !== -1) {
       detectedEnterprise = 'Vistage Residence'
     } else if (
-      combinedInspection.includes('viva trindade') ||
-      combinedInspection.includes('viva_trindade')
+      combinedInspection.indexOf('viva trindade') !== -1 ||
+      combinedInspection.indexOf('viva_trindade') !== -1
     ) {
       detectedEnterprise = 'Viva Trindade'
     } else if (
-      combinedInspection.includes('neo continente') ||
-      combinedInspection.includes('neo_continente')
+      combinedInspection.indexOf('neo continente') !== -1 ||
+      combinedInspection.indexOf('neo_continente') !== -1
     ) {
       detectedEnterprise = 'Neo Continente'
     } else if (
-      combinedInspection.includes('viva balne') ||
-      combinedInspection.includes('viva_balne')
+      combinedInspection.indexOf('viva balne') !== -1 ||
+      combinedInspection.indexOf('viva_balne') !== -1
     ) {
       detectedEnterprise = 'Viva Balneário Estreito'
-    } else if (combinedInspection.includes('essenzia')) {
+    } else if (combinedInspection.indexOf('essenzia') !== -1) {
       detectedEnterprise = 'Essenzia Canasvieiras'
-    } else if (combinedInspection.includes('terr') || combinedInspection.includes('jurere')) {
+    } else if (
+      combinedInspection.indexOf('terr') !== -1 ||
+      combinedInspection.indexOf('jurere') !== -1
+    ) {
       detectedEnterprise = 'Terrá Jurerê'
-    } else if (combinedInspection.includes('opus')) {
+    } else if (combinedInspection.indexOf('opus') !== -1) {
       detectedEnterprise = 'Opus Agronômica'
-    } else if (combinedInspection.includes('sophia')) {
+    } else if (combinedInspection.indexOf('sophia') !== -1) {
       detectedEnterprise = 'Residencial Sophia'
     } else if (
-      combinedInspection.includes('colina') ||
-      combinedInspection.includes('são pedro') ||
-      combinedInspection.includes('sao pedro')
+      combinedInspection.indexOf('colina') !== -1 ||
+      combinedInspection.indexOf('são pedro') !== -1 ||
+      combinedInspection.indexOf('sao pedro') !== -1
     ) {
       detectedEnterprise = 'Colinas de São Pedro'
     } else if (
-      combinedInspection.includes('fly ville') ||
-      combinedInspection.includes('fly_ville')
+      combinedInspection.indexOf('fly ville') !== -1 ||
+      combinedInspection.indexOf('fly_ville') !== -1
     ) {
       detectedEnterprise = 'Condomínio Fly Ville'
     } else if (
-      combinedInspection.includes('solar plaza') ||
-      combinedInspection.includes('solar di plaza') ||
-      combinedInspection.includes('solar_plaza')
+      combinedInspection.indexOf('solar plaza') !== -1 ||
+      combinedInspection.indexOf('solar di plaza') !== -1 ||
+      combinedInspection.indexOf('solar_plaza') !== -1
     ) {
       detectedEnterprise = 'Solar Plaza'
-    } else if (combinedInspection.includes('nova governador')) {
+    } else if (combinedInspection.indexOf('nova governador') !== -1) {
       detectedEnterprise = 'Nova Governador Celso Ramos'
-    } else if (combinedInspection.includes('luminare')) {
+    } else if (combinedInspection.indexOf('luminare') !== -1) {
       detectedEnterprise = 'Luminare Residence'
     } else if (
-      combinedInspection.includes('polo empresarial') ||
-      combinedInspection.includes('pegf')
+      combinedInspection.indexOf('polo empresarial') !== -1 ||
+      combinedInspection.indexOf('pegf') !== -1
     ) {
       detectedEnterprise = 'Polo Empresarial Grande Florianópolis'
     }
@@ -154,6 +243,10 @@ onRecordAfterCreateSuccess((e) => {
       recToUpdate.set('extracted_text', extractedMarkdown.trim())
     }
 
+    if (detectedPropertyId) {
+      recToUpdate.set('property_id', detectedPropertyId)
+    }
+
     if (detectedEnterprise) {
       recToUpdate.set('enterprise', detectedEnterprise)
     }
@@ -172,6 +265,8 @@ onRecordAfterCreateSuccess((e) => {
     console.log(
       '[AI_KNOWLEDGE_FILES] Processed record=' +
         record.id +
+        ' property_id=' +
+        (detectedPropertyId || 'none') +
         ' enterprise=' +
         (detectedEnterprise || 'none') +
         ' len=' +
@@ -293,56 +388,139 @@ onRecordAfterUpdateSuccess((e) => {
     }
   }
 
-  // Auto-classificação caso enterprise esteja em branco
+  // Auto-classificação caso property_id ou enterprise estejam em branco
+  let detectedPropertyId = (record.getString('property_id') || '').trim()
   let detectedEnterprise = (record.getString('enterprise') || '').trim()
   const combinedInspection = (originalName + ' ' + extractedMarkdown).toLowerCase()
+  const combinedAlphanum = combinedInspection.replace(/[^a-z0-9]/g, '')
+
+  if (!detectedPropertyId) {
+    try {
+      const activeProperties = $app.findRecordsByFilter(
+        'properties',
+        'is_active = true',
+        'code',
+        200,
+        0,
+      )
+      if (activeProperties && activeProperties.length > 0) {
+        for (var piU = 0; piU < activeProperties.length; piU++) {
+          const propRec = activeProperties[piU]
+          const rawCode = (propRec.getString('code') || '').toLowerCase().trim()
+          if (!rawCode || rawCode.length < 3) continue
+
+          const codeClean = rawCode.replace(/[^a-z0-9]/g, '')
+          if (codeClean.length >= 3) {
+            if (
+              combinedAlphanum.indexOf(codeClean) !== -1 ||
+              combinedInspection.indexOf(rawCode) !== -1
+            ) {
+              detectedPropertyId = propRec.id
+              if (!detectedEnterprise) {
+                detectedEnterprise = propRec.getString('title') || propRec.getString('code')
+              }
+              break
+            }
+          }
+        }
+
+        if (!detectedPropertyId) {
+          const keyTerms = [
+            'vistage',
+            'viva balneário',
+            'viva balneario',
+            'neo continente',
+            'colinas de são pedro',
+            'colinas de sao pedro',
+            'solar di plaza',
+            'solar plaza',
+            'villa dos açores',
+            'villa dos acores',
+            'viva trindade',
+            'opus agronômica',
+            'opus agronomica',
+            'essenzia canasvieiras',
+            'condomínio fly ville',
+            'fly ville',
+            'luminare residence',
+            'luminare',
+          ]
+
+          for (var piiU = 0; piiU < activeProperties.length; piiU++) {
+            const propRec2 = activeProperties[piiU]
+            const pTitle = (propRec2.getString('title') || '').toLowerCase()
+            let matchedTerm = false
+            for (var kiU = 0; kiU < keyTerms.length; kiU++) {
+              const kw = keyTerms[kiU]
+              if (pTitle.indexOf(kw) !== -1 && combinedInspection.indexOf(kw) !== -1) {
+                matchedTerm = true
+                break
+              }
+            }
+            if (matchedTerm) {
+              detectedPropertyId = propRec2.id
+              if (!detectedEnterprise) {
+                detectedEnterprise = propRec2.getString('title') || propRec2.getString('code')
+              }
+              break
+            }
+          }
+        }
+      }
+    } catch (detectErr2) {
+      console.warn('[AI_KNOWLEDGE_FILES] Erro na detecção em update: ' + String(detectErr2))
+    }
+  }
 
   if (!detectedEnterprise) {
-    if (combinedInspection.includes('vistage')) {
+    if (combinedInspection.indexOf('vistage') !== -1) {
       detectedEnterprise = 'Vistage Residence'
     } else if (
-      combinedInspection.includes('viva trindade') ||
-      combinedInspection.includes('viva_trindade')
+      combinedInspection.indexOf('viva trindade') !== -1 ||
+      combinedInspection.indexOf('viva_trindade') !== -1
     ) {
       detectedEnterprise = 'Viva Trindade'
     } else if (
-      combinedInspection.includes('neo continente') ||
-      combinedInspection.includes('neo_continente')
+      combinedInspection.indexOf('neo continente') !== -1 ||
+      combinedInspection.indexOf('neo_continente') !== -1
     ) {
       detectedEnterprise = 'Neo Continente'
     } else if (
-      combinedInspection.includes('viva balne') ||
-      combinedInspection.includes('viva_balne')
+      combinedInspection.indexOf('viva balne') !== -1 ||
+      combinedInspection.indexOf('viva_balne') !== -1
     ) {
       detectedEnterprise = 'Viva Balneário Estreito'
-    } else if (combinedInspection.includes('essenzia')) {
+    } else if (combinedInspection.indexOf('essenzia') !== -1) {
       detectedEnterprise = 'Essenzia Canasvieiras'
-    } else if (combinedInspection.includes('terr') || combinedInspection.includes('jurere')) {
+    } else if (
+      combinedInspection.indexOf('terr') !== -1 ||
+      combinedInspection.indexOf('jurere') !== -1
+    ) {
       detectedEnterprise = 'Terrá Jurerê'
-    } else if (combinedInspection.includes('opus')) {
+    } else if (combinedInspection.indexOf('opus') !== -1) {
       detectedEnterprise = 'Opus Agronômica'
-    } else if (combinedInspection.includes('sophia')) {
+    } else if (combinedInspection.indexOf('sophia') !== -1) {
       detectedEnterprise = 'Residencial Sophia'
     } else if (
-      combinedInspection.includes('colina') ||
-      combinedInspection.includes('são pedro') ||
-      combinedInspection.includes('sao pedro')
+      combinedInspection.indexOf('colina') !== -1 ||
+      combinedInspection.indexOf('são pedro') !== -1 ||
+      combinedInspection.indexOf('sao pedro') !== -1
     ) {
       detectedEnterprise = 'Colinas de São Pedro'
     } else if (
-      combinedInspection.includes('fly ville') ||
-      combinedInspection.includes('fly_ville')
+      combinedInspection.indexOf('fly ville') !== -1 ||
+      combinedInspection.indexOf('fly_ville') !== -1
     ) {
       detectedEnterprise = 'Condomínio Fly Ville'
     } else if (
-      combinedInspection.includes('solar plaza') ||
-      combinedInspection.includes('solar di plaza') ||
-      combinedInspection.includes('solar_plaza')
+      combinedInspection.indexOf('solar plaza') !== -1 ||
+      combinedInspection.indexOf('solar di plaza') !== -1 ||
+      combinedInspection.indexOf('solar_plaza') !== -1
     ) {
       detectedEnterprise = 'Solar Plaza'
-    } else if (combinedInspection.includes('nova governador')) {
+    } else if (combinedInspection.indexOf('nova governador') !== -1) {
       detectedEnterprise = 'Nova Governador Celso Ramos'
-    } else if (combinedInspection.includes('luminare')) {
+    } else if (combinedInspection.indexOf('luminare') !== -1) {
       detectedEnterprise = 'Luminare Residence'
     }
   }
@@ -360,7 +538,8 @@ onRecordAfterUpdateSuccess((e) => {
 
   if (
     (extractedMarkdown && extractedMarkdown !== currentExtracted) ||
-    detectedEnterprise ||
+    (detectedPropertyId && !record.getString('property_id')) ||
+    (detectedEnterprise && !record.getString('enterprise')) ||
     isTrashFile ||
     fileSummary
   ) {
@@ -368,6 +547,9 @@ onRecordAfterUpdateSuccess((e) => {
       const recToUpdate = $app.findRecordById('ai_knowledge_files', record.id)
       if (extractedMarkdown && extractedMarkdown !== currentExtracted) {
         recToUpdate.set('extracted_text', extractedMarkdown.trim())
+      }
+      if (detectedPropertyId && !record.getString('property_id')) {
+        recToUpdate.set('property_id', detectedPropertyId)
       }
       if (detectedEnterprise && !record.getString('enterprise')) {
         recToUpdate.set('enterprise', detectedEnterprise)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useAutoRetry } from '@/hooks/use-auto-retry'
@@ -49,6 +49,10 @@ import {
   User,
   ArrowUpDown,
   Camera,
+  ExternalLink,
+  MapPin,
+  Home,
+  Link2,
 } from 'lucide-react'
 import { defaultBiaImg, getBiaAvatarUrl } from '@/components/common/BiaAvatar'
 import {
@@ -61,6 +65,7 @@ import {
   MAX_AI_KNOWLEDGE_FILE_SIZE,
   MAX_AI_KNOWLEDGE_FILE_SIZE_LABEL,
 } from '@/services/ai_knowledge_files'
+import { getActiveProperties, detectPropertyFromText, type Property } from '@/services/properties'
 import {
   calculateBiaStorageUsage,
   assertCanUploadFiles,
@@ -233,13 +238,17 @@ export default function SettingsAI() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [selectedFileForPreview, setSelectedFileForPreview] = useState<AiKnowledgeFile | null>(null)
 
-  // Empreendimento: Upload & Edição & Filtro
+  // Imóveis do catálogo para vínculo em ai_knowledge_files
+  const [properties, setProperties] = useState<Property[]>([])
+  const [uploadPropertyId, setUploadPropertyId] = useState<string>('')
   const [uploadEnterprise, setUploadEnterprise] = useState('')
   const [filterEnterprise, setFilterEnterprise] = useState<string>('all')
+  const [filterPropertyId, setFilterPropertyId] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [editingFile, setEditingFile] = useState<AiKnowledgeFile | null>(null)
   const [editFileName, setEditFileName] = useState('')
   const [editFileEnterprise, setEditFileEnterprise] = useState('')
+  const [editFilePropertyId, setEditFilePropertyId] = useState<string>('')
   const [savingEdit, setSavingEdit] = useState(false)
 
   // Caderno de Aprendizados da Bia (bia_learnings)
@@ -278,12 +287,14 @@ export default function SettingsAI() {
     if (!user?.id) return
     setLoadingFiles(true)
     try {
-      const [files, usage] = await Promise.all([
+      const [files, usage, propsList] = await Promise.all([
         getAiKnowledgeFiles(user.id),
         calculateBiaStorageUsage(user.id),
+        getActiveProperties(),
       ])
       setKnowledgeFiles(files)
       setStorageUsage(usage)
+      setProperties(propsList)
     } catch (err: any) {
       console.warn('Erro ao carregar arquivos da base de conhecimento:', err)
     } finally {
@@ -492,9 +503,29 @@ export default function SettingsAI() {
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i]
 
+      // Se o usuário não selecionou manualmente um imóvel no dropdown, roda auto-detecção a partir do nome
+      let resolvedPropId = uploadPropertyId
+      let resolvedEnterprise = uploadEnterprise
+      if (!resolvedPropId) {
+        const autoDetected = detectPropertyFromText(file.name, properties)
+        if (autoDetected) {
+          resolvedPropId = autoDetected.id
+          if (!resolvedEnterprise) {
+            resolvedEnterprise = autoDetected.title || autoDetected.code
+          }
+        }
+      }
+
       setUploadProgressText(`Processando ${i + 1} de ${fileList.length}: ${file.name}`)
       try {
-        await uploadAiKnowledgeFile(file, user.id, undefined, uploadEnterprise, runningUsedBytes)
+        await uploadAiKnowledgeFile(
+          file,
+          user.id,
+          undefined,
+          resolvedEnterprise || undefined,
+          runningUsedBytes,
+          resolvedPropId || undefined,
+        )
         runningUsedBytes += file.size
         successCount++
       } catch (uploadErr: any) {
@@ -538,15 +569,26 @@ export default function SettingsAI() {
     setEditingFile(fileItem)
     setEditFileName(fileItem.name || '')
     setEditFileEnterprise(fileItem.enterprise || '')
+    setEditFilePropertyId(fileItem.property_id || '')
   }
 
   const handleSaveEdit = async () => {
     if (!editingFile) return
     setSavingEdit(true)
     try {
+      // Se selecionou um imóvel, podemos herdar o nome do empreendimento se estiver vazio
+      let nextEnterprise = editFileEnterprise.trim()
+      if (!nextEnterprise && editFilePropertyId) {
+        const foundP = properties.find((p) => p.id === editFilePropertyId)
+        if (foundP) {
+          nextEnterprise = foundP.title || foundP.code
+        }
+      }
+
       const updated = await updateAiKnowledgeFile(editingFile.id, {
         name: editFileName.trim() || editingFile.name,
-        enterprise: editFileEnterprise.trim(),
+        enterprise: nextEnterprise,
+        property_id: editFilePropertyId || undefined,
       })
       toast.success('Arquivo atualizado com sucesso!')
       setKnowledgeFiles((prev) => prev.map((f) => (f.id === updated.id ? updated : f)))
@@ -572,6 +614,15 @@ export default function SettingsAI() {
     ),
   ).sort()
 
+  // Mapa de imóveis por ID para busca rápida
+  const propertyMap = useMemo(() => {
+    const map = new Map<string, Property>()
+    properties.forEach((p) => {
+      map.set(p.id, p)
+    })
+    return map
+  }, [properties])
+
   // Filtragem dos arquivos
   const filteredFiles = knowledgeFiles.filter((item) => {
     if (filterEnterprise === 'none') {
@@ -580,27 +631,88 @@ export default function SettingsAI() {
       if ((item.enterprise || '').trim() !== filterEnterprise) return false
     }
 
+    if (filterPropertyId === 'unlinked') {
+      if (item.property_id) return false
+    } else if (filterPropertyId !== 'all') {
+      if (item.property_id !== filterPropertyId) return false
+    }
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
       const matchName = item.name.toLowerCase().includes(q)
       const matchEnt = (item.enterprise || '').toLowerCase().includes(q)
       const matchText = (item.extracted_text || '').toLowerCase().includes(q)
-      if (!matchName && !matchEnt && !matchText) return false
+      const linkedP = item.property_id ? propertyMap.get(item.property_id) : undefined
+      const matchProp = linkedP
+        ? (linkedP.code || '').toLowerCase().includes(q) ||
+          (linkedP.title || '').toLowerCase().includes(q)
+        : false
+      if (!matchName && !matchEnt && !matchText && !matchProp) return false
     }
 
     return true
   })
 
-  // Agrupamento para exibição organizada
-  const groupedDisplayFiles = filteredFiles.reduce<Record<string, AiKnowledgeFile[]>>(
-    (acc, file) => {
-      const key = (file.enterprise || '').trim() || 'Geral / Sem Empreendimento'
-      if (!acc[key]) acc[key] = []
-      acc[key].push(file)
-      return acc
-    },
-    {},
-  )
+  // Agrupamento dos arquivos por Imóvel Vinculado (com fallback para Geral / Institucional)
+  interface GroupInfo {
+    id: string
+    title: string
+    code?: string
+    city?: string
+    neighborhood?: string
+    url?: string
+    isProperty: boolean
+    files: AiKnowledgeFile[]
+  }
+
+  const groupedDisplayList = useMemo(() => {
+    const groupsMap = new Map<string, GroupInfo>()
+
+    filteredFiles.forEach((file) => {
+      const propId = file.property_id
+      const linkedProp = propId ? propertyMap.get(propId) : undefined
+
+      if (linkedProp) {
+        const key = `prop_${linkedProp.id}`
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, {
+            id: key,
+            code: linkedProp.code,
+            title: linkedProp.title,
+            city: linkedProp.city,
+            neighborhood: linkedProp.neighborhood,
+            url: linkedProp.url,
+            isProperty: true,
+            files: [],
+          })
+        }
+        groupsMap.get(key)!.files.push(file)
+      } else {
+        const entName = (file.enterprise || '').trim()
+        const key = entName ? `ent_${entName}` : 'general'
+        const label = entName || 'Geral / Institucional'
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, {
+            id: key,
+            title: label,
+            isProperty: false,
+            files: [],
+          })
+        }
+        groupsMap.get(key)!.files.push(file)
+      }
+    })
+
+    // Ordenar: grupos de imóveis primeiro (por código), depois Geral / Institucional
+    return Array.from(groupsMap.values()).sort((a, b) => {
+      if (a.isProperty && !b.isProperty) return -1
+      if (!a.isProperty && b.isProperty) return 1
+      if (a.isProperty && b.isProperty) {
+        return (a.code || '').localeCompare(b.code || '')
+      }
+      return a.title.localeCompare(b.title)
+    })
+  }, [filteredFiles, propertyMap])
 
   const handleDeleteFile = async (fileItem: AiKnowledgeFile) => {
     const confirmDelete = window.confirm(
@@ -990,9 +1102,40 @@ export default function SettingsAI() {
               </CardDescription>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <div className="w-full sm:w-56">
+              <div className="w-full sm:w-64">
+                <Select
+                  value={uploadPropertyId || 'auto'}
+                  onValueChange={(val) => {
+                    if (val === 'auto') {
+                      setUploadPropertyId('')
+                    } else {
+                      setUploadPropertyId(val)
+                      const found = properties.find((p) => p.id === val)
+                      if (found && !uploadEnterprise) {
+                        setUploadEnterprise(found.title || found.code)
+                      }
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs bg-background">
+                    <SelectValue placeholder="Imóvel (Auto-detectar pelo nome)" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value="auto">🔍 Auto-detectar imóvel pelo nome</SelectItem>
+                    {properties.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.code ? `[${p.code}] ` : ''}
+                        {p.title}
+                        {p.city ? ` (${p.city})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-full sm:w-48">
                 <Input
-                  placeholder="Empreendimento ao subir (opcional)"
+                  placeholder="Tag / Empreendimento"
                   value={uploadEnterprise}
                   onChange={(e) => setUploadEnterprise(e.target.value)}
                   className="h-9 text-xs bg-background"
@@ -1082,24 +1225,39 @@ export default function SettingsAI() {
             </span>
           </div>
 
-          {/* FILTRO E BUSCA DE ARQUIVOS POR EMPREENDIMENTO */}
+          {/* FILTRO E BUSCA DE ARQUIVOS POR EMPREENDIMENTO E IMÓVEL */}
           {knowledgeFiles.length > 0 && (
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar arquivo por nome ou conteúdo..."
+                  placeholder="Buscar arquivo por nome, imóvel, código (#AP343) ou conteúdo..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-8 h-9 text-xs"
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-muted-foreground shrink-0 hidden sm:block" />
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <Select value={filterPropertyId} onValueChange={setFilterPropertyId}>
+                  <SelectTrigger className="h-9 text-xs w-full sm:w-[200px]">
+                    <SelectValue placeholder="Filtrar por Imóvel" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value="all">Todos os Imóveis</SelectItem>
+                    <SelectItem value="unlinked">Sem vínculo com imóvel</SelectItem>
+                    {properties.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.code ? `[${p.code}] ` : ''}
+                        {p.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
                 <Select value={filterEnterprise} onValueChange={setFilterEnterprise}>
-                  <SelectTrigger className="h-9 text-xs w-full sm:w-[220px]">
-                    <SelectValue placeholder="Filtrar por Empreendimento" />
+                  <SelectTrigger className="h-9 text-xs w-full sm:w-[180px]">
+                    <SelectValue placeholder="Empreendimento" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os Empreendimentos</SelectItem>
@@ -1154,6 +1312,7 @@ export default function SettingsAI() {
                 onClick={() => {
                   setSearchQuery('')
                   setFilterEnterprise('all')
+                  setFilterPropertyId('all')
                 }}
                 className="text-xs mt-1"
               >
@@ -1162,132 +1321,201 @@ export default function SettingsAI() {
             </div>
           ) : (
             <div className="space-y-4">
-              {Object.entries(groupedDisplayFiles).map(([groupName, filesInGroup]) => (
-                <div key={groupName} className="border rounded-lg overflow-hidden bg-card">
-                  <div className="bg-muted/50 px-3.5 py-2 border-b flex items-center justify-between">
-                    <span className="font-semibold text-xs flex items-center gap-1.5 text-foreground">
-                      <Tag className="w-3.5 h-3.5 text-primary" />
-                      {groupName}
-                    </span>
-                    <Badge variant="outline" className="text-[10px] h-5">
-                      {filesInGroup.length} {filesInGroup.length === 1 ? 'arquivo' : 'arquivos'}
-                    </Badge>
-                  </div>
+              {groupedDisplayList.map((group) => {
+                const isProp = group.isProperty
+                return (
+                  <div
+                    key={group.id}
+                    className="border rounded-lg overflow-hidden bg-card shadow-xs"
+                  >
+                    <div className="bg-muted/50 px-3.5 py-2.5 border-b flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        {isProp ? (
+                          <>
+                            <Home className="w-4 h-4 text-primary shrink-0" />
+                            {group.code && (
+                              <Badge
+                                variant="outline"
+                                className="font-mono text-[11px] h-5 bg-background"
+                              >
+                                {group.code}
+                              </Badge>
+                            )}
+                            <span className="font-semibold text-xs text-foreground truncate max-w-xs sm:max-w-md">
+                              {group.title}
+                            </span>
+                            {group.city && (
+                              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                {group.city}
+                                {group.neighborhood ? ` • ${group.neighborhood}` : ''}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <Tag className="w-4 h-4 text-slate-500 shrink-0" />
+                            <span className="font-semibold text-xs text-foreground">
+                              {group.title}
+                            </span>
+                          </>
+                        )}
+                      </div>
 
-                  <div className="divide-y">
-                    {filesInGroup.map((fileItem) => {
-                      const fileUrl = getAiKnowledgeFileUrl(fileItem)
-                      const isSelected = selectedFileForPreview?.id === fileItem.id
-                      const hasExtractedText = Boolean(
-                        fileItem.extracted_text && fileItem.extracted_text.trim(),
-                      )
+                      <div className="flex items-center gap-2">
+                        {group.url && (
+                          <a
+                            href={group.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded transition-colors"
+                            title="Ver página oficial do imóvel no site"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Página no Site
+                          </a>
+                        )}
+                        <Badge variant="secondary" className="text-[10px] h-5">
+                          {group.files.length} {group.files.length === 1 ? 'arquivo' : 'arquivos'}
+                        </Badge>
+                      </div>
+                    </div>
 
-                      return (
-                        <div
-                          key={fileItem.id}
-                          className="p-3 hover:bg-muted/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm"
-                        >
-                          <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                            {getFileIcon(fileItem.name, fileItem.mime_type)}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p
-                                  className="font-medium text-foreground truncate max-w-[260px] sm:max-w-[360px]"
-                                  title={fileItem.name}
-                                >
-                                  {fileItem.name}
-                                </p>
-                                {fileItem.enterprise && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-primary/20"
+                    <div className="divide-y">
+                      {group.files.map((fileItem) => {
+                        const fileUrl = getAiKnowledgeFileUrl(fileItem)
+                        const isSelected = selectedFileForPreview?.id === fileItem.id
+                        const hasExtractedText = Boolean(
+                          fileItem.extracted_text && fileItem.extracted_text.trim(),
+                        )
+                        const linkedProp = fileItem.property_id
+                          ? propertyMap.get(fileItem.property_id)
+                          : undefined
+
+                        return (
+                          <div
+                            key={fileItem.id}
+                            className="p-3 hover:bg-muted/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm"
+                          >
+                            <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                              {getFileIcon(fileItem.name, fileItem.mime_type)}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p
+                                    className="font-medium text-foreground truncate max-w-[260px] sm:max-w-[360px]"
+                                    title={fileItem.name}
                                   >
-                                    <Tag className="w-2.5 h-2.5 mr-1" />
-                                    {fileItem.enterprise}
-                                  </Badge>
-                                )}
-                                {hasExtractedText ? (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[10px] h-5 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200"
-                                  >
-                                    <Sparkles className="w-2.5 h-2.5 mr-1" />
-                                    Texto Indexado
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                                    Arquivo Bruto
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                                <span>{formatBytes(fileItem.file_size)}</span>
-                                <span>•</span>
-                                <span>Enviado em {formatDate(fileItem.created)}</span>
+                                    {fileItem.name}
+                                  </p>
+
+                                  {linkedProp ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] h-5 px-1.5 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300"
+                                    >
+                                      <Link2 className="w-2.5 h-2.5 mr-1" />
+                                      {linkedProp.code || linkedProp.title}
+                                    </Badge>
+                                  ) : fileItem.enterprise ? (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-primary/20"
+                                    >
+                                      <Tag className="w-2.5 h-2.5 mr-1" />
+                                      {fileItem.enterprise}
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] h-5 px-1.5 text-muted-foreground"
+                                    >
+                                      Geral / Sem Vínculo
+                                    </Badge>
+                                  )}
+
+                                  {hasExtractedText ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] h-5 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                    >
+                                      <Sparkles className="w-2.5 h-2.5 mr-1" />
+                                      Texto Indexado
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                                      Arquivo Bruto
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                                  <span>{formatBytes(fileItem.file_size)}</span>
+                                  <span>•</span>
+                                  <span>Enviado em {formatDate(fileItem.created)}</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 text-xs gap-1"
-                              onClick={() => handleOpenEdit(fileItem)}
-                              title="Editar nome ou empreendimento"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                              Editar
-                            </Button>
-
-                            {hasExtractedText && (
+                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 className="h-8 text-xs gap-1"
-                                onClick={() =>
-                                  setSelectedFileForPreview(isSelected ? null : fileItem)
-                                }
+                                onClick={() => handleOpenEdit(fileItem)}
+                                title="Editar vínculo com imóvel ou nome"
                               >
-                                <FileText className="w-3.5 h-3.5" />
-                                {isSelected ? 'Ocultar Texto' : 'Ver Texto'}
+                                <Edit2 className="w-3.5 h-3.5" />
+                                Vínculo
                               </Button>
-                            )}
 
-                            <a
-                              href={fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              download
-                              className="inline-flex"
-                            >
-                              <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                                <Download className="w-3.5 h-3.5" />
-                                Baixar
-                              </Button>
-                            </a>
-
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={deletingId === fileItem.id}
-                              onClick={() => handleDeleteFile(fileItem)}
-                              className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                              title="Excluir arquivo da base"
-                            >
-                              {deletingId === fileItem.id ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="w-3.5 h-3.5" />
+                              {hasExtractedText && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 text-xs gap-1"
+                                  onClick={() =>
+                                    setSelectedFileForPreview(isSelected ? null : fileItem)
+                                  }
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  {isSelected ? 'Ocultar Texto' : 'Ver Texto'}
+                                </Button>
                               )}
-                            </Button>
+
+                              <a
+                                href={fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                download
+                                className="inline-flex"
+                              >
+                                <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+                                  <Download className="w-3.5 h-3.5" />
+                                  Baixar
+                                </Button>
+                              </a>
+
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={deletingId === fileItem.id}
+                                onClick={() => handleDeleteFile(fileItem)}
+                                className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                                title="Excluir arquivo da base"
+                              >
+                                {deletingId === fileItem.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -1320,14 +1548,52 @@ export default function SettingsAI() {
                 </div>
 
                 <div className="space-y-1">
+                  <Label htmlFor="editDocProperty" className="text-xs font-semibold">
+                    Vínculo com Imóvel do Catálogo
+                  </Label>
+                  <Select
+                    value={editFilePropertyId || 'none'}
+                    onValueChange={(val) => {
+                      if (val === 'none') {
+                        setEditFilePropertyId('')
+                      } else {
+                        setEditFilePropertyId(val)
+                        const found = properties.find((p) => p.id === val)
+                        if (found && !editFileEnterprise) {
+                          setEditFileEnterprise(found.title || found.code)
+                        }
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="editDocProperty" className="h-9 text-xs">
+                      <SelectValue placeholder="Selecione o imóvel para vincular" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      <SelectItem value="none">Nenhum (Geral / Institucional)</SelectItem>
+                      {properties.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.code ? `[${p.code}] ` : ''}
+                          {p.title}
+                          {p.city ? ` (${p.city})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Ao vincular um imóvel, a Bia usará este documento como fonte primária ao
+                    responder sobre o imóvel em foco.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
                   <Label htmlFor="editDocEnterprise" className="text-xs">
-                    Empreendimento (Tag de Agrupamento)
+                    Tag / Empreendimento (Opcional)
                   </Label>
                   <Input
                     id="editDocEnterprise"
                     value={editFileEnterprise}
                     onChange={(e) => setEditFileEnterprise(e.target.value)}
-                    placeholder="Ex: Villa dos Açores"
+                    placeholder="Ex: Vistage Residence"
                     className="h-9 text-xs"
                     list="knownEnterprisesEditList"
                   />
@@ -1337,10 +1603,6 @@ export default function SettingsAI() {
                       <option key={ent} value={ent} />
                     ))}
                   </datalist>
-                  <p className="text-[11px] text-muted-foreground">
-                    Quando um lead perguntar por este empreendimento, a Bia priorizará este
-                    documento.
-                  </p>
                 </div>
               </div>
 

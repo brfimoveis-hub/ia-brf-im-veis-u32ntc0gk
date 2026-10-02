@@ -2018,6 +2018,7 @@ ${
               title: docTitle,
               content: safeText,
               isRelevant: isRelevantEnterprise,
+              property_id: kf.getString('property_id') || '',
             })
           }
         }
@@ -2045,6 +2046,7 @@ ${
             const propCode = targetSpecificProp
               ? (targetSpecificProp.getString('code') || '').toLowerCase()
               : ''
+            const propId = targetSpecificProp ? targetSpecificProp.id : ''
 
             // Se for intenção de comparação ou houver múltiplos imóveis matched, permitir documentos de ambos
             const isComparingInRag =
@@ -2058,10 +2060,30 @@ ${
                 for (var mpI = 0; mpI < matchedProps.length; mpI++) {
                   var mpT = (matchedProps[mpI].getString('title') || '').toLowerCase()
                   var mpC = (matchedProps[mpI].getString('code') || '').toLowerCase()
+                  var mpId = matchedProps[mpI].id
+                  // Verifica se algum arquivo deste grupo tem property_id igual ao imóvel
+                  const groupDocs = groupedFiles[entKey] || []
+                  for (var gdi = 0; gdi < groupDocs.length; gdi++) {
+                    if (groupDocs[gdi].property_id && groupDocs[gdi].property_id === mpId) {
+                      return true
+                    }
+                  }
                   if (
                     (mpT && mpT.includes(entLower)) ||
                     (mpC && mpC.includes(entLower)) ||
                     entLower.includes('vistage')
+                  ) {
+                    return true
+                  }
+                }
+              }
+              // Checagem direta por property_id nos arquivos do grupo
+              if (propId) {
+                const groupDocsSingle = groupedFiles[entKey] || []
+                for (var gsi = 0; gsi < groupDocsSingle.length; gsi++) {
+                  if (
+                    groupDocsSingle[gsi].property_id &&
+                    groupDocsSingle[gsi].property_id === propId
                   ) {
                     return true
                   }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import {
@@ -15,9 +16,10 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/hooks/use-toast'
-import { Bot, Save, FileUp, Upload } from 'lucide-react'
+import { Bot, Save, FileUp, Upload, Database, ArrowRight } from 'lucide-react'
 import { BiaAvatar, defaultBiaImg } from '@/components/common/BiaAvatar'
 import { assertCanUploadFiles } from '@/services/ai_knowledge_storage'
+import { uploadAiKnowledgeFile } from '@/services/ai_knowledge_files'
 
 export default function Bia() {
   const { user, loading: authLoading } = useAuth()
@@ -64,7 +66,7 @@ export default function Bia() {
     if (!user || !e.target.files || e.target.files.length === 0) return
     const file = e.target.files[0]
 
-    // Se for arquivo de base de conhecimento, checa a cota total de 1 GB
+    // Se for arquivo de base de conhecimento, subir na coleção dedicada ai_knowledge_files
     if (field === 'ai_knowledge_files') {
       try {
         await assertCanUploadFiles([file], undefined, user.id)
@@ -79,6 +81,27 @@ export default function Bia() {
         e.target.value = ''
         return
       }
+
+      setLoading(true)
+      try {
+        await uploadAiKnowledgeFile(file, user.id)
+        toast({
+          title: 'Arquivo indexado com sucesso!',
+          description:
+            'Documento enviado para a Base de Conhecimento da Bia com detecção automática de imóvel.',
+        })
+      } catch (err: any) {
+        console.error(err)
+        toast({
+          title: 'Erro no upload',
+          description: err?.message || 'Não foi possível enviar o arquivo.',
+          variant: 'destructive',
+        })
+      } finally {
+        setLoading(false)
+        e.target.value = ''
+      }
+      return
     }
 
     setLoading(true)
@@ -214,31 +237,47 @@ export default function Bia() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Base de Conhecimento</CardTitle>
+            <CardTitle className="text-lg flex items-center justify-between">
+              <span>Base de Conhecimento</span>
+              <Link
+                to="/settings/ai"
+                className="text-xs text-primary font-normal flex items-center gap-1 hover:underline"
+              >
+                Gerenciador Avançado <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </CardTitle>
             <CardDescription>
-              Documentos de referência para a IA (até 200 MB por arquivo).
+              Envio rápido de tabelas, PDFs e livros para a Bia (até 200 MB por arquivo).
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
             <div className="w-24 h-24 rounded-lg bg-slate-100 flex items-center justify-center border border-dashed">
-              <FileUp className="h-10 w-10 text-slate-300" />
+              <Database className="h-10 w-10 text-slate-400" />
             </div>
-            {user.ai_knowledge_files && (
-              <p className="text-sm text-green-600 font-medium">Arquivo carregado</p>
-            )}
-            <Label htmlFor="ai_kb_upload" className="cursor-pointer">
-              <div className="flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors">
-                <Upload className="mr-2 h-4 w-4" /> Enviar Base
-              </div>
-              <input
-                id="ai_kb_upload"
-                type="file"
-                accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp"
-                className="hidden"
-                onChange={(e) => handleFileUpload(e, 'ai_knowledge_files')}
-                disabled={loading}
-              />
-            </Label>
+            <p className="text-xs text-center text-muted-foreground max-w-xs">
+              Os arquivos sobem com auto-detecção de imóvel e indexação automática para o cérebro da
+              Bia.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Label htmlFor="ai_kb_upload" className="cursor-pointer">
+                <div className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium">
+                  <Upload className="mr-2 h-4 w-4" /> Enviar Arquivo
+                </div>
+                <input
+                  id="ai_kb_upload"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp"
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e, 'ai_knowledge_files')}
+                  disabled={loading}
+                />
+              </Label>
+              <Link to="/settings/ai">
+                <Button variant="outline" size="sm" type="button">
+                  Abrir Base Completa
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>
