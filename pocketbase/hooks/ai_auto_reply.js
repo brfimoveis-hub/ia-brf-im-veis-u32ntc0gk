@@ -302,8 +302,29 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
+    // CORREÇÃO 2 — DETECÇÃO DE MENSAGENS CURTAS DE CONTINUIDADE
+    // Mensagens como "Aguardando", "Pois não", "ok", "sim", "pode mandar", "ebuk e tabela", "manda", "quero ver" etc.
+    // Devem herdar o imóvel em discussão no turno imediatamente anterior, NUNCA ressuscitar foco antigo de comparação.
+    const isShortContinuationMsg = (() => {
+      if (!incomingCustMsgText) return false
+      const cleanMsg = incomingCustMsgText
+        .trim()
+        .toLowerCase()
+        .replace(/[.!?,;:\-_~]+/g, '')
+      if (cleanMsg.length <= 4) {
+        if (/^(ok|sim|s|ta|tá|manda|ver|bom|oi|ola|olá|bora)$/.test(cleanMsg)) return true
+      }
+      return (
+        /^(aguardando|pois n[aã]o|pode mandar|pode enviar|manda a[ií]|manda bala|manda ver|ebuk e tabela|e-?book e tabela|quero o e-?book|tabela e e-?book|quero a tabela|manda a tabela|mande a tabela|pode mandar a tabela|estou aguardando|no aguardo|com certeza|perfeito|combinado|show|beleza|tudo bem|vamos l[aá]|pode ser|claro)$/i.test(
+          cleanMsg,
+        ) ||
+        (/\b(?:ebuk|ebook|e-book)\b/i.test(cleanMsg) && cleanMsg.length <= 25)
+      )
+    })()
+
     // CORREÇÃO A & NORMALIZAÇÃO AMPLA: aceitar "341", "ARU 341", "aru341", "#341", link contendo "/341/"
-    if (incomingCustMsgText && !isMismatchDetected) {
+    // Se for mensagem curta de continuação, NÃO buscar código numérico solto na mensagem atual que possa conflitar
+    if (incomingCustMsgText && !isMismatchDetected && !isShortContinuationMsg) {
       // 1. Slug de URL do site brfimoveis (/341/, /343/, brfimoveis.com.br/341/...)
       const urlMatchInLast = incomingCustMsgText.match(/(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/i)
       if (urlMatchInLast && urlMatchInLast[1]) {
@@ -1508,20 +1529,30 @@ ${
           )
         }
 
-        // ANTI-CONTRADIÇÃO: Varrer histórico recente da conversa (últimas 10 mensagens)
-        // Se um imóvel já foi citado/apresentado (ex: 341, ARU 341, LM 344, Vistage), ele entra nos matchedProps com prioridade e NUNCA pode receber "não consta"
+        // CORREÇÃO 2 — HERANÇA DO IMÓVEL EM DISCUSSÃO NO TURNO ANTERIOR:
+        // Se a mensagem do lead for curta/continuidade ("Aguardando", "Pois não", "ok", "ebuk e tabela"),
+        // deve herdar imediatamente o imóvel discutido no turno anterior (última mensagem da IA ou par anterior),
+        // NUNCA ressuscitar foco antigo de comparação varrendo 10-12 mensagens concatenadas!
         try {
-          const recentConvSlice = (
-            fullCustomerHistory && fullCustomerHistory.length > 0
-              ? fullCustomerHistory.slice(-10)
-              : historyRecords
-          )
+          const sliceForPropertyScan = isShortContinuationMsg
+            ? fullCustomerHistory && fullCustomerHistory.length > 0
+              ? fullCustomerHistory.slice(-2)
+              : historyRecords.slice(-2)
+            : fullCustomerHistory && fullCustomerHistory.length > 0
+              ? fullCustomerHistory.slice(-4)
+              : historyRecords.slice(-4)
+
+          const recentConvSlice = sliceForPropertyScan
             .map(function (m) {
               return m.getString('content') || ''
             })
             .join(' ')
 
-          const combinedHistoryAndCurrent = `${combinedCustAndAdText} ${recentConvSlice}`
+          // Se for continuação curta, prioriza herança do turno imediatamente anterior
+          const combinedHistoryAndCurrent = isShortContinuationMsg
+            ? recentConvSlice
+            : `${combinedCustAndAdText} ${recentConvSlice}`
+
           const histUrlIdRegex = /(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/gi
           let histUrlMatch = null
           while ((histUrlMatch = histUrlIdRegex.exec(combinedHistoryAndCurrent)) !== null) {
@@ -1604,13 +1635,29 @@ ${
         }
       }
 
-      // DETECÇÃO DE COMPARAÇÃO / MÚLTIPLOS IMÓVEIS (ex: Vistage vs Fazenda ARU 341):
-      // Se a mensagem do lead ou o contexto recente compara dois imóveis, MANTER AMBOS no matchedProps!
+      // CORREÇÃO 2 — DETECÇÃO DE COMPARAÇÃO AVALIADA SOMENTE NA MENSAGEM ATUAL (MÁXIMO PAR ANTERIOR):
+      // NÃO avaliar isComparisonIntent sobre 12 mensagens concatenadas para não ressuscitar comparações passadas encerradas!
+      const immediateComparisonContext = (() => {
+        const lastTwoMsgs = (
+          fullCustomerHistory && fullCustomerHistory.length > 0
+            ? fullCustomerHistory.slice(-2)
+            : historyRecords.slice(-2)
+        )
+          .map(function (m) {
+            return m.getString('content') || ''
+          })
+          .join(' ')
+        return `${customerMessage} ${lastTwoMsgs}`.toLowerCase()
+      })()
+
       const isComparisonIntent =
-        /\b(?:comparar|compara[cç][aã]o|versus|vs\.?|ou|diferen[cç]a|qual\s+dos\s+dois|entre\s+o|entre\s+os)\b/i.test(
-          combinedCustText,
+        !isShortContinuationMsg &&
+        (/\b(?:comparar|compara[cç][aã]o|versus|vs\.?|diferen[cç]a|qual\s+dos\s+dois|entre\s+o|entre\s+os)\b/i.test(
+          customerMessage,
         ) ||
-        (/\bvistage\b/i.test(combinedCustText) && /\b(?:341|aru|fazenda)\b/i.test(combinedCustText))
+          (/\bvistage\b/i.test(immediateComparisonContext) &&
+            /\b(?:341|aru|fazenda|322|ap322)\b/i.test(immediateComparisonContext) &&
+            /\b(?:versus|vs\.?|comparar|ou|qual)\b/i.test(immediateComparisonContext)))
 
       // Se o lead citou um imóvel específico mas é uma comparação, manter até 2 imóveis em matchedProps
       if (lastMsgSpecificPropertyRequested && matchedProps.length > 0) {
@@ -2048,51 +2095,59 @@ ${
               : ''
             const propId = targetSpecificProp ? targetSpecificProp.id : ''
 
-            // Se for intenção de comparação ou houver múltiplos imóveis matched, permitir documentos de ambos
+            // CORREÇÃO 2 — Prioridade máxima aos documentos do empreendimento atualmente em pauta no RAG:
+            // isComparingInRag só deve ser true se houver intenção explícita de comparação fresca (!isShortContinuationMsg)
             const isComparingInRag =
-              (typeof isComparisonIntent !== 'undefined' && isComparisonIntent) ||
-              (Array.isArray(matchedProps) && matchedProps.length > 1)
+              !isShortContinuationMsg &&
+              typeof isComparisonIntent !== 'undefined' &&
+              isComparisonIntent &&
+              Array.isArray(matchedProps) &&
+              matchedProps.length > 1
 
             enterpriseKeys = enterpriseKeys.filter((entKey) => {
               if (entKey === 'Geral / Institucional') return true
               const entLower = entKey.toLowerCase()
+              const groupDocs = groupedFiles[entKey] || []
+
               if (isComparingInRag && Array.isArray(matchedProps)) {
                 for (var mpI = 0; mpI < matchedProps.length; mpI++) {
                   var mpT = (matchedProps[mpI].getString('title') || '').toLowerCase()
                   var mpC = (matchedProps[mpI].getString('code') || '').toLowerCase()
                   var mpId = matchedProps[mpI].id
                   // Verifica se algum arquivo deste grupo tem property_id igual ao imóvel
-                  const groupDocs = groupedFiles[entKey] || []
                   for (var gdi = 0; gdi < groupDocs.length; gdi++) {
                     if (groupDocs[gdi].property_id && groupDocs[gdi].property_id === mpId) {
                       return true
                     }
                   }
+                  // Corrigido: NUNCA liberar indiscriminadamente pastas sem correspondência real ao imóvel em foco
                   if (
                     (mpT && mpT.includes(entLower)) ||
                     (mpC && mpC.includes(entLower)) ||
-                    entLower.includes('vistage')
+                    (mpT.includes('vistage') && entLower.includes('vistage'))
                   ) {
                     return true
                   }
                 }
+                return false
               }
-              // Checagem direta por property_id nos arquivos do grupo
+
+              // Checagem estrita para o imóvel atualmente em foco:
+              // 1. Se os arquivos do grupo têm property_id correspondente
               if (propId) {
-                const groupDocsSingle = groupedFiles[entKey] || []
-                for (var gsi = 0; gsi < groupDocsSingle.length; gsi++) {
-                  if (
-                    groupDocsSingle[gsi].property_id &&
-                    groupDocsSingle[gsi].property_id === propId
-                  ) {
+                for (var gsi = 0; gsi < groupDocs.length; gsi++) {
+                  if (groupDocs[gsi].property_id && groupDocs[gsi].property_id === propId) {
                     return true
                   }
                 }
               }
-              return (
-                (propTitle && propTitle.includes(entLower)) ||
-                (propCode && propCode.includes(entLower))
-              )
+
+              // 2. Ou se o título/código do imóvel em foco casa diretamente com a chave do empreendimento
+              const titleMatches =
+                propTitle && (propTitle.includes(entLower) || entLower.includes(propTitle))
+              const codeMatches =
+                propCode && (propCode.includes(entLower) || entLower.includes(propCode))
+              return titleMatches || codeMatches
             })
             // Se não encontrou pasta dedicada para este imóvel específico, MANTER APENAS "Geral / Institucional"
             // NUNCA re-injetar outros lançamentos como fallback!
@@ -2758,8 +2813,9 @@ Critérios essenciais e regras obrigatórias de avaliação:
 2. Identificação padrão: "Bia, da BRF Imóveis" se ela for se apresentar.
 3. Se o lead perguntou sobre um imóvel específico, aprovar a resposta focada no imóvel.
 4. Se o lead disse que é para "investimento" ou "investidor", NUNCA exigir re-pergunta de "morar ou investir".
-5. NOME DO CLIENTE: O nome do cliente cadastrado é "${displayName}" (primeiro nome: "${clientFirstName}"). Chamar o cliente pelo nome dele (ex: "Olá, ${clientFirstName}", "${clientFirstName}, tudo bem?") é EXPRESSAMENTE PERMITIDO e DESEJÁVEL! NUNCA confunda o nome do cliente com nome de corretor/equipe. Reprovar citação de corretores SOMENTE se a Bia citar corretores terceiros como membros da equipe quando não deveria.
-6. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados com 3+ perguntas ou invenção de dados.
+5. NOME DO CLIENTE: O nome do cliente atual é "${displayName}" (primeiro nome: "${clientFirstName}"). Saudar ou chamar o cliente pelo próprio nome (ex: "Olá, ${clientFirstName}", "${clientFirstName}, como vai?") é OBRIGATÓRIO/CORRETO e DESEJÁVEL! É expressamente PROIBIDO reprovar porque a Bia usou o nome "${clientFirstName}" ou "${displayName}" — ele(a) é o cliente!
+6. CORRETOR OFICIAL: O corretor responsável pela BRF Imóveis é "Mauro (48) 99972-8050" (ou "corretor Mauro", "Mauro Fengler"). Essa frase de transbordo/contato é OFICIAL e AUTORIZADA — JAMAIS reprove por citar o corretor Mauro ou seu telefone oficial. NUNCA confunda o cliente "${displayName}" com o corretor Mauro.
+7. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados com 3+ perguntas ou invenção de dados.
 
 FORMATO ESTRITO DA RESPOSTA:
 - Se a mensagem estiver em conformidade e aprovada, responda EXATAMENTE e APENAS a palavra: APROVADO
@@ -2791,7 +2847,34 @@ Motivos: <descreva sucintamente em 1 a 2 linhas o que corrigir>`
             /^(\*\*|\*)?APROVADO(\*\*|\*)?$/i.test(motherFeedback) ||
             motherFeedback.toLowerCase().startsWith('aprovado')
 
-          // GUARDA ANTI-REPROVAÇÃO FALSA NO MEIO DO DIÁLOGO:
+          // GUARDA 1 — CONFUSÃO CLIENTE / CORRETOR / USO DO NOME DO CLIENTE OU MAURO:
+          // Se o motivo da reprovação mencionar confusão entre cliente e corretor, citar o corretor Mauro ou uso legítimo do nome do cliente, ANULAR reprovação!
+          if (!isApproved) {
+            const lowerFb = motherFeedback.toLowerCase()
+            const hasClientBrokerConfusion =
+              lowerFb.includes('corretor') ||
+              lowerFb.includes('mauro') ||
+              lowerFb.includes('confund') ||
+              lowerFb.includes('nome do cliente') ||
+              lowerFb.includes('chamar pelo nome') ||
+              (clientFirstName && lowerFb.includes(clientFirstName.toLowerCase()))
+
+            const isHardViolation =
+              lowerFb.includes('alucin') ||
+              lowerFb.includes('fora do catálogo') ||
+              lowerFb.includes('fora do catalogo') ||
+              lowerFb.includes('link inválido') ||
+              lowerFb.includes('link invalido')
+
+            if (hasClientBrokerConfusion && !isHardViolation) {
+              console.log(
+                `[AI_REPLY] IA Mãe reprovou por suposta confusao corretor/cliente ou uso de nome ("${motherFeedback.substring(0, 80)}..."). Anulando reprovacao (isApproved=true) e enviando.`,
+              )
+              isApproved = true
+            }
+          }
+
+          // GUARDA 2 — ANTI-REPROVAÇÃO FALSA NO MEIO DO DIÁLOGO:
           // Se a conversa já está em andamento (!isFirstAiMessageOrAfter24h) e o motivo da reprovação foi apenas falta de saudação ou identificação inicial,
           // IGNORAR a reprovação e manter a mensagem aprovada!
           if (!isApproved && !isFirstAiMessageOrAfter24h) {
@@ -3935,45 +4018,75 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       cleanPhone = '55' + cleanPhone
     }
 
-    // DEDUP DE ENVIO (ANTI-DUPLICAÇÃO 45-60s)
-    // Antes do POST ao Graph API, consultar conversations (customer_id + sender='ai' criado há menos de 45-60s)
-    // e abortar se houver envio recente para matar duplicados de corridas concorrentes
-    let hasRecentAiSend = false
+    // CORREÇÃO 1 — DEDUP POR CONTEÚDO NORMALIZADO (SUBSTITUINDO O DEDUP TEMPORAL DE 45s)
+    // Normalizar texto (trim + colapsar espaços/quebras repetidas) e comparar com a última mensagem 'ai'
+    // REALMENTE ENVIADA ao WhatsApp registrada nos logs da Meta (status=200/ok=true).
+    // Bloquear APENAS se o conteúdo for idêntico. Mensagens regeneradas ou corrigidas DEVEM SEMPRE ser enviadas!
+    function normalizeMsgContent(txt) {
+      if (!txt) return ''
+      return String(txt).replace(/\s+/g, ' ').trim().toLowerCase()
+    }
+
+    const normalizedCurrentResponse = normalizeMsgContent(responseText)
+    let isContentIdenticalToLastSent = false
+    let lastSentPreviewLogged = ''
+
     try {
-      const dedupCutoffIso = new Date(now.getTime() - 45000)
-        .toISOString()
-        .replace('T', ' ')
-        .substring(0, 19)
-      const recentAiSends = $app.findRecordsByFilter(
-        'conversations',
-        `customer_id = '${customerId}' && sender = 'ai' && created >= '${dedupCutoffIso}'`,
+      const recentAiLogs = $app.findRecordsByFilter(
+        'system_logs',
+        `type = 'whatsapp_ai_send' && payload ~ '${customerId}'`,
         '-created',
         5,
         0,
       )
-      // Se houver mensagem de IA enviada há menos de 45s cujo conteúdo seja similar ou já exista envio registrado
-      if (recentAiSends && recentAiSends.length > 0) {
-        for (let rIdx = 0; rIdx < recentAiSends.length; rIdx++) {
-          const recAiMsg = recentAiSends[rIdx]
-          // Ignorar se for exatamente o registro salvo milissegundos antes nesta mesma execução
-          const recAiContent = (recAiMsg.getString('content') || '').trim()
-          if (recAiContent === responseText.trim()) {
-            continue // É o nosso próprio registro salvo na linha 3617
+
+      for (let lIdx = 0; lIdx < recentAiLogs.length; lIdx++) {
+        const logItem = recentAiLogs[lIdx]
+        const detailsStr = logItem.getString('details') || ''
+        let isRealMetaOk = false
+        try {
+          const det = JSON.parse(detailsStr)
+          if (det && det.statusCode >= 200 && det.statusCode < 300) {
+            isRealMetaOk = true
           }
-          hasRecentAiSend = true
-          console.warn(
-            `[AI_REPLY] DEDUP DE ENVIO ATIVADO: resposta recente enviada há menos de 45s para lead ${customerId}. Abortando envio duplicado.`,
-          )
-          break
+        } catch (_) {}
+
+        if (!isRealMetaOk) {
+          const msgStr = logItem.getString('message') || ''
+          if (msgStr.includes('sucesso')) {
+            isRealMetaOk = true
+          }
+        }
+
+        if (isRealMetaOk) {
+          const payloadStr = logItem.getString('payload') || ''
+          let sentText = ''
+          try {
+            const pObj = JSON.parse(payloadStr)
+            sentText = pObj.preview || pObj.full_text || ''
+          } catch (_) {}
+
+          if (sentText) {
+            const normalizedSent = normalizeMsgContent(sentText)
+            lastSentPreviewLogged = sentText.substring(0, 60)
+            // Se o texto normalizado for idêntico ao já enviado ou prefixo exato caso o preview tenha sido truncado
+            if (
+              normalizedSent === normalizedCurrentResponse ||
+              (normalizedSent.length >= 80 && normalizedCurrentResponse.startsWith(normalizedSent))
+            ) {
+              isContentIdenticalToLastSent = true
+              break
+            }
+          }
         }
       }
     } catch (dedupErr) {
-      console.warn(`[AI_REPLY] Erro não fatal no check de dedup: ${String(dedupErr)}`)
+      console.warn(`[AI_REPLY] Erro não fatal no check de dedup de conteúdo: ${String(dedupErr)}`)
     }
 
-    if (hasRecentAiSend) {
+    if (isContentIdenticalToLastSent) {
       console.log(
-        `[AI_REPLY] Abortando envio via WhatsApp por dedup (<45s) para lead ${customerId}.`,
+        `[AI_REPLY] DEDUP DE CONTEÚDO ATIVADO: resposta idêntica à última já enviada via WhatsApp para lead ${customerId} (preview="${lastSentPreviewLogged}"). Bloqueando envio duplicado.`,
       )
       return e.next()
     }
@@ -4024,7 +4137,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         logRec.set(
           'payload',
           JSON.stringify({
-            preview: responseText.substring(0, 100),
+            preview: responseText.substring(0, 120),
+            full_text: responseText,
             customer_id: customerId,
           }),
         )
@@ -4432,18 +4546,95 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             }
 
             if (emMetaToken && emPhoneId && emCleanPhone) {
-              callMetaWithRetry(
-                'https://graph.facebook.com/v21.0/' + emPhoneId + '/messages',
-                'POST',
-                { Authorization: 'Bearer ' + emMetaToken, 'Content-Type': 'application/json' },
-                JSON.stringify({
-                  messaging_product: 'whatsapp',
-                  to: emCleanPhone,
-                  type: 'text',
-                  text: { body: emergencyReply },
-                }),
-              )
-              console.log('[AI_REPLY] Emergency fallback sent to ' + emCleanPhone)
+              // CORREÇÃO 1 (FALLBACK): Dedup por conteúdo normalizado também no fallback de emergência
+              var normEmReply = (emergencyReply || '').replace(/\s+/g, ' ').trim().toLowerCase()
+              var isEmIdentical = false
+              var lastEmSentPreview = ''
+              try {
+                var recentEmLogs = $app.findRecordsByFilter(
+                  'system_logs',
+                  "type = 'whatsapp_ai_send' && payload ~ '" + customerId + "'",
+                  '-created',
+                  3,
+                  0,
+                )
+                for (var emLIdx = 0; emLIdx < recentEmLogs.length; emLIdx++) {
+                  var emItem = recentEmLogs[emLIdx]
+                  var emPayStr = emItem.getString('payload') || ''
+                  var emSentTxt = ''
+                  try {
+                    var emPObj = JSON.parse(emPayStr)
+                    emSentTxt = emPObj.preview || emPObj.full_text || ''
+                  } catch (_) {}
+                  if (emSentTxt) {
+                    var normPrev = emSentTxt.replace(/\s+/g, ' ').trim().toLowerCase()
+                    if (
+                      normPrev === normEmReply ||
+                      (normPrev.length >= 80 && normEmReply.indexOf(normPrev) === 0)
+                    ) {
+                      isEmIdentical = true
+                      lastEmSentPreview = emSentTxt.substring(0, 60)
+                      break
+                    }
+                  }
+                }
+              } catch (_) {}
+
+              if (isEmIdentical) {
+                console.log(
+                  '[AI_REPLY] Emergency fallback cancelado por DEDUP DE CONTEÚDO idêntico (preview="' +
+                    lastEmSentPreview +
+                    '").',
+                )
+              } else {
+                var emSendRes = callMetaWithRetry(
+                  'https://graph.facebook.com/v21.0/' + emPhoneId + '/messages',
+                  'POST',
+                  { Authorization: 'Bearer ' + emMetaToken, 'Content-Type': 'application/json' },
+                  JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: emCleanPhone,
+                    type: 'text',
+                    text: { body: emergencyReply },
+                  }),
+                )
+                var emIsOk = emSendRes && emSendRes.statusCode >= 200 && emSendRes.statusCode < 300
+                console.log(
+                  '[AI_REPLY] Emergency fallback sent to ' + emCleanPhone + ' ok=' + emIsOk,
+                )
+
+                try {
+                  var logsColFb = $app.findCollectionByNameOrId('system_logs')
+                  var logRecFb = new Record(logsColFb)
+                  logRecFb.set('user_id', userId || '')
+                  logRecFb.set('type', 'whatsapp_ai_send')
+                  logRecFb.set(
+                    'message',
+                    emIsOk
+                      ? 'Resposta de fallback enviada com sucesso para ' + emCleanPhone
+                      : 'Falha ao enviar resposta de fallback para ' + emCleanPhone,
+                  )
+                  logRecFb.set(
+                    'details',
+                    JSON.stringify({
+                      statusCode: emSendRes ? emSendRes.statusCode : 0,
+                      response: emSendRes ? emSendRes.json || emSendRes.body : null,
+                      phone_id: emPhoneId,
+                      to: emCleanPhone,
+                    }),
+                  )
+                  logRecFb.set(
+                    'payload',
+                    JSON.stringify({
+                      preview: emergencyReply.substring(0, 120),
+                      full_text: emergencyReply,
+                      customer_id: customerId,
+                      is_emergency_fallback: true,
+                    }),
+                  )
+                  $app.saveNoValidate(logRecFb)
+                } catch (_) {}
+              }
             }
           } catch (waSendErr) {
             console.warn('[AI_REPLY] Emergency fallback WhatsApp send error: ' + String(waSendErr))

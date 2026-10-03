@@ -95,20 +95,32 @@ routerAdd('POST', '/backend/v1/rag-search', (e) => {
 
         // Classificar: pertence ao imóvel em foco?
         let isForTargetProp = false
-        if (resolvedPropId && fPropId === resolvedPropId) {
+        if (resolvedPropId && fPropId && fPropId === resolvedPropId) {
           isForTargetProp = true
         } else if (targetCode || targetTitle) {
           const combinedDocInfo = (fName + ' ' + fEnterprise).toLowerCase()
           if (targetCode && combinedDocInfo.indexOf(targetCode) !== -1) {
             isForTargetProp = true
-          } else if (targetTitle && combinedDocInfo.indexOf(targetTitle) !== -1) {
+          } else if (
+            targetTitle &&
+            ((targetTitle.indexOf('vistage') !== -1 && combinedDocInfo.indexOf('vistage') !== -1) ||
+              (targetTitle.indexOf('colinas') !== -1 &&
+                combinedDocInfo.indexOf('colinas') !== -1) ||
+              (targetTitle.indexOf('opus') !== -1 && combinedDocInfo.indexOf('opus') !== -1))
+          ) {
             isForTargetProp = true
           }
         }
 
         if (isForTargetProp) {
           propertySpecificFiles.push(f)
-        } else if (!fPropId || fEnterprise === 'Geral / Institucional' || fEnterprise === '') {
+        } else if (
+          (!fPropId &&
+            (fEnterprise === 'Geral / Institucional' ||
+              fEnterprise === 'Geral / Portfólio' ||
+              fEnterprise === '')) ||
+          (!resolvedPropId && !fPropId)
+        ) {
           generalFiles.push(f)
         }
       }

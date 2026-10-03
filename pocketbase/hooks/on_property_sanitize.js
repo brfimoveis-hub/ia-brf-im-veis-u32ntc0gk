@@ -8,7 +8,12 @@ onRecordCreate((e) => {
   if (record) {
     const title = record.getString('title')
     if (title) {
-      let clean = title.replace(/^([A-Za-zÀ-ÖØ-öø-ÿ])\1+/i, '$1').trim()
+      let clean = title
+      if (typeof clean.normalize === 'function') {
+        clean = clean.normalize('NFC')
+      }
+      // Preservar acentuação portuguesa: colapsar apenas caracteres idênticos repetidos 3 ou mais vezes
+      clean = clean.replace(/(.)\1{2,}/g, '$1$1').trim()
       if (/(.)\1{4,}/.test(clean)) {
         const code = record.getString('code') || 'imóvel'
         const city = record.getString('city') || 'SC'
@@ -27,7 +32,12 @@ onRecordUpdate((e) => {
   if (record) {
     const title = record.getString('title')
     if (title) {
-      let clean = title.replace(/^([A-Za-zÀ-ÖØ-öø-ÿ])\1+/i, '$1').trim()
+      let clean = title
+      if (typeof clean.normalize === 'function') {
+        clean = clean.normalize('NFC')
+      }
+      // Preservar acentuação portuguesa: colapsar apenas caracteres idênticos repetidos 3 ou mais vezes
+      clean = clean.replace(/(.)\1{2,}/g, '$1$1').trim()
       if (/(.)\1{4,}/.test(clean)) {
         const code = record.getString('code') || 'imóvel'
         const city = record.getString('city') || 'SC'
