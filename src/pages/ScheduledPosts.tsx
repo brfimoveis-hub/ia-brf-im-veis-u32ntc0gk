@@ -80,7 +80,7 @@ import {
   saveUserMinInterval,
   formatIntervalDescription,
 } from '@/services/scheduled_posts'
-import { getLaunches, Launch } from '@/services/launches'
+import { getLaunches, type Launch } from '@/services/launches'
 import { DRIVE_FOLDERS_DATA } from '@/data/vistage-drive-content'
 import { formatStorageBytes } from '@/services/ai_knowledge_storage'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
