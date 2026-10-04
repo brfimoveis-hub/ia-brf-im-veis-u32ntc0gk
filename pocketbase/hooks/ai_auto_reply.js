@@ -2416,8 +2416,186 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
 - O diálogo com o cliente já está em andamento (última interação há menos de 24h).
 - NÃO use saudações formais nem temporais ("Bom dia/Boa tarde/Boa noite/Olá/Oi"). Vá direto ao ponto, respondendo ou avançando com foco na demanda do cliente de forma consultiva e acolhedora.`
 
+    // ======================================================================
+    // PILAR C: DETECÇÃO DE PERFIL, PIVÔ NA REJEIÇÃO E GUARDA DE RECUSA
+    // ======================================================================
+    const custIncomingMsg = (customerMessage || incomingCustMsgText || '').trim()
+    const lowerCustIncoming = custIncomingMsg.toLowerCase()
+
+    // (a) Extração de perfil por Regex simples:
+    // Faixa de valor: "até 1.000.000", "900 mil", "2 milhões", "até 500k", etc.
+    let extractedPillarPriceRange = ''
+    const valMatch = custIncomingMsg.match(
+      /(?:at[eé]|faixa|or[cç]amento|valor|pre[cç]o|at[eé]\s*r\$|r\$)?\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?|\d+)\s*(k|mil|milh[oõ]es|milhao|milhão)\b/i,
+    )
+    if (valMatch) {
+      extractedPillarPriceRange = valMatch[0].trim()
+    } else {
+      const bareValMatch = custIncomingMsg.match(
+        /\b(?:at[eé]|valor\s*de|or[cç]amento\s*de|pre[cç]o\s*de)?\s*r\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?|\d{5,8})\b/i,
+      )
+      if (bareValMatch) extractedPillarPriceRange = bareValMatch[0].trim()
+    }
+
+    // Forma de pagamento: "à vista", "financiado", "parcelado"
+    let extractedPillarPayment = ''
+    if (/\b(?:[aà]\s*vista|recursos\s+pr[oó]prios|dinheiro)\b/i.test(lowerCustIncoming)) {
+      extractedPillarPayment = 'à vista'
+    } else if (
+      /\b(?:financiad[ao]|financiamento|financiar|carta\s+de\s+cr[eé]dito|fgts|banco|caixa)\b/i.test(
+        lowerCustIncoming,
+      )
+    ) {
+      extractedPillarPayment = 'financiado'
+    } else if (
+      /\b(?:parcelad[ao]|parcelamento|parcelar|direto\s+com\s+a\s+construtora|entrada\s*\+\s*parcelas)\b/i.test(
+        lowerCustIncoming,
+      )
+    ) {
+      extractedPillarPayment = 'parcelado'
+    }
+
+    // Objetivo: "morar", "investir"
+    let extractedPillarObjective = ''
+    if (
+      /\b(?:investir|investimento|rentabilidade|revenda|renda|airbnb|loca[cç][aã]o)\b/i.test(
+        lowerCustIncoming,
+      )
+    ) {
+      extractedPillarObjective = 'investir'
+    } else if (
+      /\b(?:morar|moradia|minha\s+fam[ií]lia|minha\s+resor|resid[eê]ncia)\b/i.test(
+        lowerCustIncoming,
+      )
+    ) {
+      extractedPillarObjective = 'morar'
+    }
+
+    // Carregar e fazer merge no lead_profile_json do customer
+    let currentProfileJson = {}
+    try {
+      const rawProfileJson = customer.get('lead_profile_json')
+      if (rawProfileJson) {
+        if (typeof rawProfileJson === 'object') {
+          currentProfileJson = rawProfileJson
+        } else if (typeof rawProfileJson === 'string') {
+          currentProfileJson = JSON.parse(rawProfileJson)
+        }
+      }
+    } catch (_) {}
+
+    let profileJsonChanged = false
+    if (extractedPillarPriceRange && currentProfileJson.price_range !== extractedPillarPriceRange) {
+      currentProfileJson.price_range = extractedPillarPriceRange
+      profileJsonChanged = true
+    }
+    if (extractedPillarPayment && currentProfileJson.payment_method !== extractedPillarPayment) {
+      currentProfileJson.payment_method = extractedPillarPayment
+      profileJsonChanged = true
+    }
+    if (extractedPillarObjective && currentProfileJson.objective !== extractedPillarObjective) {
+      currentProfileJson.objective = extractedPillarObjective
+      profileJsonChanged = true
+    }
+
+    if (profileJsonChanged) {
+      try {
+        customer.set('lead_profile_json', currentProfileJson)
+        $app.saveNoValidate(customer)
+        console.log(
+          `[AI_REPLY] [PILAR_C] lead_profile_json atualizado para customer=${customerId}: ${JSON.stringify(currentProfileJson)}`,
+        )
+      } catch (profErr) {
+        console.warn(`[AI_REPLY] [PILAR_C] Erro ao salvar lead_profile_json: ${String(profErr)}`)
+      }
+    }
+
+    // (b) Pivô na rejeição:
+    // "não é isso que procuro" / "não é isso" / "outro"
+    const isRejectionPivot =
+      /\b(?:n[aã]o\s+[ée]\s+isso(?:\s+que\s+(?:eu\s+)?procuro)?|n[aã]o\s+e\s+isso(?:\s+que\s+(?:eu\s+)?procuro)?|outro(?:\s+im[oó]vel|\s+tipo|\s+bairro|\s+lan[cç]amento)?|outra\s+op[cç][aã]o|n[aã]o\s+gostei(?:\s+desse|\s+deste|\s+dessa)?|n[aã]o\s+me\s+agradou|procuro\s+outro|quero\s+outro)\b/i.test(
+        lowerCustIncoming,
+      )
+
+    let currentRejectionCount = 0
+    try {
+      currentRejectionCount = customer.getInt('rejection_count') || 0
+    } catch (_) {}
+
+    if (isRejectionPivot) {
+      currentRejectionCount++
+      try {
+        customer.set('rejection_count', currentRejectionCount)
+        customer.set('last_rejection_reason', custIncomingMsg.substring(0, 200))
+        $app.saveNoValidate(customer)
+        console.log(
+          `[AI_REPLY] [PILAR_C] Pivô na rejeição acionado para customer=${customerId}. rejection_count=${currentRejectionCount}`,
+        )
+      } catch (rejErr) {
+        console.warn(`[AI_REPLY] [PILAR_C] Erro ao registrar rejeição: ${String(rejErr)}`)
+      }
+    }
+
+    // (c) Guarda de recusa:
+    // "não obrigada" / "já sei" / "vou pensar"
+    const isPoliteRefusal =
+      /\b(?:n[aã]o\s+obrigad[ao]|n[aã]o\,\s*obrigad[ao]|j[aá]\s+sei|vou\s+pensar|deixa\s+pra\s+depois|depois\s+eu\s+vejo|qualquer\s+coisa\s+te\s+chamo|no\s+momento\s+n[aã]o)\b/i.test(
+        lowerCustIncoming,
+      )
+
+    if (isPoliteRefusal) {
+      try {
+        const tomorrowIso = new Date(now.getTime() + 24 * 3600 * 1000)
+          .toISOString()
+          .replace('T', ' ')
+          .substring(0, 19)
+        customer.set('persistence_status', 'aguardando_momento')
+        customer.set('follow_up_step', 'd1')
+        customer.set('next_follow_up_at', tomorrowIso)
+        $app.saveNoValidate(customer)
+        console.log(
+          `[AI_REPLY] [PILAR_C] Guarda de recusa gravada: persistence_status='aguardando_momento', follow_up_step='d1', next_follow_up_at=${tomorrowIso}`,
+        )
+      } catch (refErr) {
+        console.warn(`[AI_REPLY] [PILAR_C] Erro ao gravar guarda de recusa: ${String(refErr)}`)
+      }
+    }
+
     // DIRETRIZES ESPECÍFICAS DE DESENCAIXE E BUSCA LIVRE (CORREÇÕES C & D):
     let extraBehaviorRules = ''
+
+    // Injeção do perfil extraído no prompt para a Bia direcionar até 2 opções dentro do perfil
+    if (
+      currentProfileJson &&
+      (currentProfileJson.price_range ||
+        currentProfileJson.payment_method ||
+        currentProfileJson.objective)
+    ) {
+      extraBehaviorRules += `\n[PILAR C — PERFIL DO LEAD CONSOLIDADO]:
+- Faixa de valor: ${currentProfileJson.price_range || 'Não informada'}
+- Forma de pagamento: ${currentProfileJson.payment_method || 'Não informada'}
+- Objetivo: ${currentProfileJson.objective || 'Não informado'}
+INSTRUÇÃO: Direcione no máximo as 2 MELHORES opções do portfólio BRF estritamente dentro deste perfil.\n`
+    }
+
+    if (isRejectionPivot) {
+      extraBehaviorRules += `\n[PILAR C — INSTRUÇÃO DE PIVÔ NA REJEIÇÃO]:
+O lead indicou que este imóvel não é o que procura ("${custIncomingMsg}").
+1. Valide a resposta com empatia e naturalidade (ex: "Entendido perfeitamente! Cada perfil tem suas prioridades").
+2. Pergunte com gentileza o que faltou ou o que seria essencial (ex: mais espaço, localização, sacada, orçamento).
+3. Reapresente até 2 alternativas do catálogo BRF alinhadas ao perfil do lead.
+4. REGRA DE OURO DA 1ª APRESENTAÇÃO: SEM link e SEM preço cheio (use "a partir de R$ X", curiosidade, tipologia e localização).\n`
+    }
+
+    if (isPoliteRefusal) {
+      extraBehaviorRules += `\n[PILAR C — GUARDA DE RECUSA ("NÃO OBRIGADA" / "JÁ SEI" / "VOU PENSAR")]:
+O lead deu uma resposta evasiva ou de recusa educada ("${custIncomingMsg}").
+1. NÃO envie despedida seca nem abandone o contato!
+2. Valide com simpatia, elegância e empatia ("Com certeza, faz parte analisar com calma!").
+3. Deixe valor perceptível (ex: destaque que o mercado da região é dinâmico ou reforce que ficou à disposição com o material para quando ele quiser analisar).
+4. Mantenha as portas totalmente abertas com gentileza e calor humano, sem pressionar.\n`
+    }
+
     if (isMismatchDetected) {
       extraBehaviorRules += `\n[INSTRUÇÃO CRÍTICA DE DESENCAIXE IMPLÍCITO DETECTADO]:
 O cliente indicou que você se confundiu ou que não era aquele imóvel ("${incomingCustMsgText}").
