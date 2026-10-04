@@ -286,26 +286,84 @@ onRecordAfterCreateSuccess((e) => {
     // PRE-DETECÇÃO DE DESENCAIXE IMPLÍCITO OU IMÓVEL ESPECÍFICO NA ÚLTIMA MENSAGEM DO LEAD (MÁXIMA PRIORIDADE):
     const incomingCustMsgText = (e.record.getString('content') || '').trim()
     let isMismatchDetected = false
+    let isCustomerExplicitRejection = false
     let lastMsgSpecificPropertyRequested = false
     let lastMsgPropertyCodeOrNum = ''
+    let isShortContinuationMsg = false
 
-    // CORREÇÃO D: DESENCAIXE IMPLÍCITO
-    // Mensagens tipo "não foi isso que eu pedi", "está confundindo", "não era isso", "não pedi isso"
+    // Função utilitária para extrair código explícito de imóvel no texto
+    // Retorna { fullCode: "AP343", numOnly: "343" } ou null
+    function extractExplicitPropertyCode(txt) {
+      if (!txt || typeof txt !== 'string') return null
+      const cleaned = txt.trim()
+      if (!cleaned) return null
+
+      // 1. Slug de URL do site brfimoveis (ex: brfimoveis.com.br/343/..., /343/)
+      const urlMatch = cleaned.match(/(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/i)
+      if (urlMatch && urlMatch[1]) {
+        return { fullCode: urlMatch[1], numOnly: urlMatch[1] }
+      }
+
+      // 2. Hashtag com código ou número (ex: #AP343, #ap 343, #343, #ARU341, #341)
+      const hashMatch = cleaned.match(/#\s*([a-zA-Z]{0,4})\s*(\d{2,5})\b/i)
+      if (hashMatch && hashMatch[2]) {
+        const prefix = (hashMatch[1] || '').toUpperCase()
+        const numOnly = hashMatch[2]
+        return { fullCode: prefix ? `${prefix}${numOnly}` : numOnly, numOnly: numOnly }
+      }
+
+      // 3. Código padrão com prefixo real (ex: AP 343, AP343, ap 343, ARU 341, LM-344, CS 331, TR 338, COB 290)
+      const codeMatch = cleaned.match(/\b(AP|LM|CS|TR|ARU|COB|BRF)[-_\s]*(\d{2,5})\b/i)
+      if (codeMatch && codeMatch[2]) {
+        const prefix = codeMatch[1].toUpperCase()
+        const numOnly = codeMatch[2]
+        return { fullCode: `${prefix}${numOnly}`, numOnly: numOnly }
+      }
+
+      // 4. Termo com contexto imobiliário (ex: "imóvel 343", "apartamento 343", "código 343", "apto 343", "ref 343")
+      const numWithContext = cleaned.match(
+        /(?:im[oó]vel|imovel|apartamento|apto|fazenda|casa|terreno|c[oó]digo|codigo|cod|ref)\s*#?\s*([a-zA-Z]{0,4})\s*(\d{2,5})\b/i,
+      )
+      if (numWithContext && numWithContext[2]) {
+        const prefix = (numWithContext[1] || '').toUpperCase()
+        const numOnly = numWithContext[2]
+        return { fullCode: prefix ? `${prefix}${numOnly}` : numOnly, numOnly: numOnly }
+      }
+
+      // 5. Número isolado explícito de imóvel no texto (ex: "343", "o 343", "e o 343", "informações do 343")
+      // Ignora anos correntes ou valores arredondados genéricos
+      const bareNumMatch = cleaned.match(/\b(\d{3,4})\b/)
+      if (
+        bareNumMatch &&
+        bareNumMatch[1] &&
+        bareNumMatch[1] !== '2024' &&
+        bareNumMatch[1] !== '2025' &&
+        bareNumMatch[1] !== '2026' &&
+        bareNumMatch[1] !== '500' &&
+        bareNumMatch[1] !== '100' &&
+        bareNumMatch[1] !== '200'
+      ) {
+        return { fullCode: bareNumMatch[1], numOnly: bareNumMatch[1] }
+      }
+
+      return null
+    }
+
+    // ITEM 6: ANTI-INSISTÊNCIA — Detecção de recusa/frustração do cliente
     if (incomingCustMsgText) {
-      const mismatchRegex =
-        /\b(?:n[aã]o\s+foi\s+isso(?:\s+que\s+eu\s+pedi)?|n[aã]o\s+era\s+isso|est[aá]\s+confundindo|est[aá]\s+me\s+confundindo|t[aá]\s+confundindo|t[aá]\s+me\s+confundindo|confundiu|n[aã]o\s+pedi\s+isso|n[aã]o\s+quero\s+esse|n[aã]o\s+é\s+esse|n[aã]o\s+e\s+esse|voc[eê]\s+trocou\s+de\s+im[oó]vel|trocou\s+o\s+im[oó]vel|im[oó]vel\s+errado)\b/i
-      if (mismatchRegex.test(incomingCustMsgText)) {
+      const refusalRegex =
+        /\b(?:n[aã]o\s+é\s+nada\s+disso|n[aã]o\s+e\s+nada\s+disso|n[aã]o\s+[eé]\s+isso|n[aã]o\s+era\s+isso|voc[eê]\s+est[aá]\s+doida|voc[eê]\s+t[aá]\s+doida|t[aá]\s+me\s+fazendo\s+de\s+ot[aá]rio|t[aá]\s+me\s+fazendo\s+de\s+trouxa|est[aá]\s+me\s+fazendo\s+de\s+ot[aá]rio|parece\s+que\s+n[aã]o|estamos\s+falando\s+do\s+mesmo\s+im[oó]vel|n[aã]o\s+foi\s+isso(?:\s+que\s+eu\s+pedi)?|est[aá]\s+confundindo|est[aá]\s+me\s+confundindo|t[aá]\s+confundindo|t[aá]\s+me\s+confundindo|confundiu|n[aã]o\s+pedi\s+isso|n[aã]o\s+quero\s+esse|n[aã]o\s+é\s+esse|n[aã]o\s+e\s+esse|voc[eê]\s+trocou\s+de\s+im[oó]vel|trocou\s+o\s+im[oó]vel|im[oó]vel\s+errado)\b/i
+      if (refusalRegex.test(incomingCustMsgText)) {
         isMismatchDetected = true
+        isCustomerExplicitRejection = true
         console.log(
-          `[AI_REPLY] DESENCAIXE IMPLÍCITO DETECTADO para lead ${customerId}: "${incomingCustMsgText}". Zerando foco de imóvel.`,
+          `[AI_REPLY] [ANTI-INSISTÊNCIA] Recusa/frustração explícita detectada para lead ${customerId}: "${incomingCustMsgText}".`,
         )
       }
     }
 
     // CORREÇÃO 2 — DETECÇÃO DE MENSAGENS CURTAS DE CONTINUIDADE
-    // Mensagens como "Aguardando", "Pois não", "ok", "sim", "pode mandar", "ebuk e tabela", "manda", "quero ver" etc.
-    // Devem herdar o imóvel em discussão no turno imediatamente anterior, NUNCA ressuscitar foco antigo de comparação.
-    const isShortContinuationMsg = (() => {
+    isShortContinuationMsg = (() => {
       if (!incomingCustMsgText) return false
       const cleanMsg = incomingCustMsgText
         .trim()
@@ -315,65 +373,24 @@ onRecordAfterCreateSuccess((e) => {
         if (/^(ok|sim|s|ta|tá|manda|ver|bom|oi|ola|olá|bora)$/.test(cleanMsg)) return true
       }
       return (
-        /^(aguardando|pois n[aã]o|pode mandar|pode enviar|manda a[ií]|manda bala|manda ver|ebuk e tabela|e-?book e tabela|quero o e-?book|tabela e e-?book|quero a tabela|manda a tabela|mande a tabela|pode mandar a tabela|estou aguardando|no aguardo|com certeza|perfeito|combinado|show|beleza|tudo bem|vamos l[aá]|pode ser|claro)$/i.test(
+        /^(aguardando|pois n[aã]o|pode mandar|pode mandar aqui|pode enviar|pode mandar por aqui|manda a[ií]|manda bala|manda ver|ebuk e tabela|e-?book e tabela|quero o e-?book|tabela e e-?book|quero a tabela|manda a tabela|mande a tabela|pode mandar a tabela|estou aguardando|no aguardo|com certeza|perfeito|combinado|show|beleza|tudo bem|vamos l[aá]|pode ser|claro)$/i.test(
           cleanMsg,
         ) ||
         (/\b(?:ebuk|ebook|e-book)\b/i.test(cleanMsg) && cleanMsg.length <= 25)
       )
     })()
 
-    // CORREÇÃO A & NORMALIZAÇÃO AMPLA: aceitar "341", "ARU 341", "aru341", "#341", link contendo "/341/"
-    // Se for mensagem curta de continuação, NÃO buscar código numérico solto na mensagem atual que possa conflitar
-    if (incomingCustMsgText && !isMismatchDetected && !isShortContinuationMsg) {
-      // 1. Slug de URL do site brfimoveis (/341/, /343/, brfimoveis.com.br/341/...)
-      const urlMatchInLast = incomingCustMsgText.match(/(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/i)
-      if (urlMatchInLast && urlMatchInLast[1]) {
+    // ITEM 1: FOCO DEFINITIVO — Se a última mensagem contém código explícito, extrair com prioridade absoluta
+    if (incomingCustMsgText) {
+      const directCodeFound = extractExplicitPropertyCode(incomingCustMsgText)
+      if (directCodeFound) {
         lastMsgSpecificPropertyRequested = true
-        lastMsgPropertyCodeOrNum = urlMatchInLast[1]
-      } else {
-        // 2. Hashtag com código ou número (ex: #ARU341, #aru 341, #AP343, #343, #341)
-        const hashMatch = incomingCustMsgText.match(/#\s*([a-zA-Z]{0,4}[-_\s]?\d{2,5})/i)
-        if (hashMatch && hashMatch[1]) {
-          lastMsgSpecificPropertyRequested = true
-          lastMsgPropertyCodeOrNum = hashMatch[1].replace(/[-_\s]+/g, '').toUpperCase()
-        } else {
-          // 3. Código padrão com prefixos reais: ARU, AP, LM, CS, TR, COB (ex: "aru341", "ARU 341", "ap343", "LM-344")
-          const codeMatch = incomingCustMsgText.match(
-            /\b(AP|LM|CS|TR|ARU|COB|BRF)[-_\s]?(\d{2,5})\b/i,
-          )
-          if (codeMatch) {
-            lastMsgSpecificPropertyRequested = true
-            lastMsgPropertyCodeOrNum = `${codeMatch[1].toUpperCase()}${codeMatch[2]}`
-          } else {
-            // 4. Termo com contexto tipo "imóvel 341", "imovel 343", "código 341", "ref 343"
-            const numWithContext = incomingCustMsgText.match(
-              /(?:im[oó]vel|imovel|apartamento|apto|fazenda|casa|terreno|c[oó]digo|codigo|cod|ref)\s*#?\s*([a-zA-Z]{0,4}[-_\s]?\d{2,5})\b/i,
-            )
-            if (numWithContext && numWithContext[1]) {
-              const cleanedCandidate = numWithContext[1].replace(/[-_\s]+/g, '').toUpperCase()
-              if (/\d{2,5}/.test(cleanedCandidate)) {
-                lastMsgSpecificPropertyRequested = true
-                lastMsgPropertyCodeOrNum = cleanedCandidate
-              }
-            } else {
-              // 5. Número isolado de imóvel no texto (ex: "o 341", "e o 341", "341") se não for ano corrente
-              const bareNumMatch = incomingCustMsgText.match(/\b(\d{3,4})\b/)
-              if (
-                bareNumMatch &&
-                bareNumMatch[1] &&
-                bareNumMatch[1] !== '2024' &&
-                bareNumMatch[1] !== '2025' &&
-                bareNumMatch[1] !== '2026' &&
-                bareNumMatch[1] !== '500' &&
-                bareNumMatch[1] !== '100' &&
-                bareNumMatch[1] !== '200'
-              ) {
-                lastMsgSpecificPropertyRequested = true
-                lastMsgPropertyCodeOrNum = bareNumMatch[1]
-              }
-            }
-          }
-        }
+        lastMsgPropertyCodeOrNum = directCodeFound.fullCode
+        // Se a mensagem trouxe código explícito novo, ela re-alinha a conversa e supera recusa anterior
+        isMismatchDetected = false
+        console.log(
+          `[AI_REPLY] [FOCO EXPLÍCITO DETECTADO] Código "${directCodeFound.fullCode}" (num=${directCodeFound.numOnly}) encontrado na mensagem atual do lead.`,
+        )
       }
     }
 
@@ -1312,118 +1329,229 @@ ${
       }
 
       // 1. Check if customer mentioned known projects / launches (can match MULTIPLE projects at once)
-      // (e.g. AP-320, LM 329, Terrá, Viva Trindade, Villa Areias, Villa dos Acordes/Açores, Studios Canasvieiras, Viva Balneário, Colinas de São Pedro, Solar Di Plaza, etc.)
-      // Include customer source & notes in the project detection so ad referral triggers catalog matching
+      // REGRA ITEM 1: Se o lead pediu código explícito ou herança direta nesta sessão, NÃO executar knownProjects
+      // para não contaminar matchedProps com lançamentos genéricos (ex: Colinas, Neo, Terrá)
       const combinedCustAndAdText = `${combinedCustText} ${customerSource.toLowerCase()} ${customerNotes.toLowerCase()}`
 
-      const knownProjects = [
-        {
-          regex: /terr[aá]/i,
-          filter:
-            "is_active = true && (title ~ 'Terrá' || title ~ 'Terra' || features ~ 'Terrá' || code ~ '329')",
-        },
-        {
-          regex: /viva\s*trindade/i,
-          filter:
-            "is_active = true && (title ~ 'Viva Trindade' || features ~ 'Viva Trindade' || code ~ '301')",
-        },
-        {
-          regex: /villa\s*(?:dos\s*)?ac[oó]rdes|villa\s*(?:dos\s*)?a[cç][oó]res/i,
-          filter:
-            "is_active = true && (title ~ 'Acordes' || title ~ 'Açores' || title ~ 'Acores' || features ~ 'Villa dos Acordes' || features ~ 'Villa dos Açores' || code ~ '280')",
-        },
-        {
-          regex: /villa\s*areias|residencial\s*areias/i,
-          filter:
-            "is_active = true && (title ~ 'Areias' || features ~ 'Villa Areias' || features ~ 'Residencial Areias' || code ~ '295')",
-        },
-        {
-          regex: /canasvieiras|canas\s*vieiras|studios?\s*canas|studios?\s*vista\s*mar/i,
-          filter:
-            "is_active = true && (features ~ 'Canasvieiras' || features ~ 'Studios' || title ~ 'Canasvieiras' || code ~ '330')",
-        },
-        {
-          regex: /viva\s*balne[aá]rio/i,
-          filter:
-            "is_active = true && (title ~ 'Viva Balneário' || title ~ 'Viva Balneario' || features ~ 'Viva Balneário' || code ~ '342')",
-        },
-        {
-          regex: /colinas\s*(?:de\s*)?s[aã]o\s*pedro/i,
-          filter:
-            "is_active = true && (title ~ 'Colinas' || features ~ 'Colinas de São Pedro' || code ~ '326' || code ~ '337' || code ~ '333')",
-        },
-        {
-          regex: /solar\s*(?:di\s*)?plaza/i,
-          filter:
-            "is_active = true && (title ~ 'Solar' || features ~ 'Solar Di Plaza' || code ~ '327')",
-        },
-        {
-          regex: /neo\s*continente/i,
-          filter:
-            "is_active = true && (title ~ 'Neo Continente' || features ~ 'Neo Continente' || code ~ '289')",
-        },
-        {
-          regex: /biguacu\s*rio\s*caveiras|rio\s*caveiras/i,
-          filter: "is_active = true && (features ~ 'Rio Caveiras' || code ~ '310')",
-        },
-        {
-          regex: /opus|agron[oô]mica\s*opus/i,
-          filter: "is_active = true && (features ~ 'Opus' || code ~ '311')",
-        },
-      ]
+      if (!lastMsgSpecificPropertyRequested && !isShortContinuationMsg) {
+        const knownProjects = [
+          {
+            regex: /terr[aá]/i,
+            filter:
+              "is_active = true && (title ~ 'Terrá' || title ~ 'Terra' || features ~ 'Terrá' || code ~ '329')",
+          },
+          {
+            regex: /viva\s*trindade/i,
+            filter:
+              "is_active = true && (title ~ 'Viva Trindade' || features ~ 'Viva Trindade' || code ~ '301')",
+          },
+          {
+            regex: /villa\s*(?:dos\s*)?ac[oó]rdes|villa\s*(?:dos\s*)?a[cç][oó]res/i,
+            filter:
+              "is_active = true && (title ~ 'Acordes' || title ~ 'Açores' || title ~ 'Acores' || features ~ 'Villa dos Acordes' || features ~ 'Villa dos Açores' || code ~ '280')",
+          },
+          {
+            regex: /villa\s*areias|residencial\s*areias/i,
+            filter:
+              "is_active = true && (title ~ 'Areias' || features ~ 'Villa Areias' || features ~ 'Residencial Areias' || code ~ '295')",
+          },
+          {
+            regex: /canasvieiras|canas\s*vieiras|studios?\s*canas|studios?\s*vista\s*mar/i,
+            filter:
+              "is_active = true && (features ~ 'Canasvieiras' || features ~ 'Studios' || title ~ 'Canasvieiras' || code ~ '330')",
+          },
+          {
+            regex: /viva\s*balne[aá]rio/i,
+            filter:
+              "is_active = true && (title ~ 'Viva Balneário' || title ~ 'Viva Balneario' || features ~ 'Viva Balneário' || code ~ '342')",
+          },
+          {
+            regex: /colinas\s*(?:de\s*)?s[aã]o\s*pedro/i,
+            filter:
+              "is_active = true && (title ~ 'Colinas' || features ~ 'Colinas de São Pedro' || code ~ '326' || code ~ '337' || code ~ '333')",
+          },
+          {
+            regex: /solar\s*(?:di\s*)?plaza/i,
+            filter:
+              "is_active = true && (title ~ 'Solar' || features ~ 'Solar Di Plaza' || code ~ '327')",
+          },
+          {
+            regex: /neo\s*continente/i,
+            filter:
+              "is_active = true && (title ~ 'Neo Continente' || features ~ 'Neo Continente' || code ~ '289')",
+          },
+          {
+            regex: /biguacu\s*rio\s*caveiras|rio\s*caveiras/i,
+            filter: "is_active = true && (features ~ 'Rio Caveiras' || code ~ '310')",
+          },
+          {
+            regex: /opus|agron[oô]mica\s*opus/i,
+            filter: "is_active = true && (features ~ 'Opus' || code ~ '311')",
+          },
+        ]
 
-      for (let i = 0; i < knownProjects.length; i++) {
-        const proj = knownProjects[i]
-        if (proj.regex.test(combinedCustAndAdText)) {
-          const projResults = $app.findRecordsByFilter('properties', proj.filter, '-created', 3, 0)
-          for (let j = 0; j < projResults.length; j++) {
-            const pr = projResults[j]
-            if (!matchedIdsMap[pr.id]) {
-              matchedIdsMap[pr.id] = true
-              matchedProps.push(pr)
+        for (let i = 0; i < knownProjects.length; i++) {
+          const proj = knownProjects[i]
+          if (proj.regex.test(combinedCustAndAdText)) {
+            const projResults = $app.findRecordsByFilter(
+              'properties',
+              proj.filter,
+              '-created',
+              3,
+              0,
+            )
+            for (let j = 0; j < projResults.length; j++) {
+              const pr = projResults[j]
+              if (!matchedIdsMap[pr.id]) {
+                matchedIdsMap[pr.id] = true
+                matchedProps.push(pr)
+              }
             }
           }
         }
       }
 
-      // 1b. Extração ampla de códigos de imóveis (normalização: aceita 341, ARU 341, aru341, #341, /341/)
-      const extractedPropertyNumbers = []
-      const addPropNum = (num) => {
-        if (num && extractedPropertyNumbers.indexOf(num) === -1) {
-          extractedPropertyNumbers.push(num)
-        }
+      // 1b. Extração ampla de códigos de imóveis e busca exata normalizada
+      // Helper estrito: normalizar código sem espaços, hífens ou letras minúsculas (ex: "AP 343" -> "AP343", "343" -> "343")
+      function normalizeCodeStrict(c) {
+        if (!c) return ''
+        return String(c)
+          .replace(/[-_\s]+/g, '')
+          .toUpperCase()
       }
 
-      // CORREÇÃO A & D & ANTI-CONTRADIÇÃO:
-      // Se houve desencaixe ("não foi isso que eu pedi", "está confundindo", etc.), ZERAR foco anterior e NÃO buscar imóvel antigo
-      if (isMismatchDetected) {
-        detectedSpecificPropertyQuery = false
-        targetSpecificProp = null
-        lastMsgSpecificPropertyRequested = false
-        lastMsgPropertyCodeOrNum = ''
-      } else {
-        // Se a última mensagem tem código/slug/hashtag, incluir prioritariamente
-        if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
-          const numOnlyLast = lastMsgPropertyCodeOrNum.replace(/\D/g, '')
-          if (numOnlyLast) {
-            addPropNum(numOnlyLast)
+      // Helper estrito: extrai apenas os dígitos finais
+      function extractCodeDigits(c) {
+        if (!c) return ''
+        const m = String(c).match(/\d{2,5}/)
+        return m ? m[0] : ''
+      }
+
+      // Helper estrito de busca exata em properties
+      // Proibido fuzzy por prefixo: 343 NUNCA deve retornar 333 ou 337
+      function findPropertyByExactCode(targetCodeStr) {
+        if (!targetCodeStr) return null
+        const normTarget = normalizeCodeStrict(targetCodeStr)
+        const digits = extractCodeDigits(targetCodeStr)
+        if (!digits) return null
+
+        try {
+          // Busca no banco por aproximação inicial apenas para os dígitos exatos
+          const candidates = $app.findRecordsByFilter(
+            'properties',
+            `code ~ '${digits}' || url ~ '/${digits}/'`,
+            '-created',
+            20,
+            0,
+          )
+
+          // 1º passo: correspondência idêntica no código normalizado sem espaços
+          for (let ci = 0; ci < candidates.length; ci++) {
+            const cand = candidates[ci]
+            const candCodeNorm = normalizeCodeStrict(cand.getString('code'))
+            if (candCodeNorm === normTarget) {
+              return cand
+            }
           }
-          detectedSpecificPropertyQuery = true
-          console.log(
-            `[AI_REPLY] FOCO DINÂMICO ATIVADO pela última mensagem: código/num=${lastMsgPropertyCodeOrNum} (num=${numOnlyLast}).`,
+
+          // 2º passo: correspondência idêntica nos dígitos numéricos (ex: lead pediu '343' e cadastro é 'AP 343' ou 'AP343')
+          for (let ci = 0; ci < candidates.length; ci++) {
+            const cand = candidates[ci]
+            const candDigits = extractCodeDigits(cand.getString('code'))
+            if (candDigits === digits) {
+              return cand
+            }
+          }
+
+          // 3º passo: conferência na URL oficial (ex: brfimoveis.com.br/343/...)
+          for (let ci = 0; ci < candidates.length; ci++) {
+            const cand = candidates[ci]
+            const candUrl = cand.getString('url') || ''
+            if (candUrl.includes(`/${digits}/`) || candUrl.endsWith(`/${digits}`)) {
+              return cand
+            }
+          }
+        } catch (lookupEx) {
+          console.warn(
+            `[AI_REPLY] Erro ao buscar código exato ${targetCodeStr}: ${String(lookupEx)}`,
           )
         }
+        return null
+      }
 
-        // CORREÇÃO 2 — HERANÇA DO IMÓVEL EM DISCUSSÃO NO TURNO ANTERIOR:
-        // Se a mensagem do lead for curta/continuidade ("Aguardando", "Pois não", "ok", "ebuk e tabela"),
-        // deve herdar imediatamente o imóvel discutido no turno anterior (última mensagem da IA ou par anterior),
-        // NUNCA ressuscitar foco antigo de comparação varrendo 10-12 mensagens concatenadas!
+      // ITEM 1 & 6: FOCO DEFINITIVO
+      // Se a última mensagem contém código explícito (AP343/ap 343/#AP343/"343"):
+      // esse imóvel vence TUDO: limpar matchedProps, ignorar knownProjects/matchedLaunch/matchedPlaybook/histórico.
+      if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
+        const exactMatchProp = findPropertyByExactCode(lastMsgPropertyCodeOrNum)
+        if (exactMatchProp) {
+          matchedProps = [exactMatchProp]
+          for (const k in matchedIdsMap) delete matchedIdsMap[k]
+          matchedIdsMap[exactMatchProp.id] = true
+          targetSpecificProp = exactMatchProp
+          detectedSpecificPropertyQuery = true
+          matchedLaunch = null
+          matchedPlaybook = null
+          console.log(
+            `[AI_REPLY] [FOCO FINAL] ${lastMsgPropertyCodeOrNum} → ${exactMatchProp.id} (code="${exactMatchProp.getString('code')}", price="${exactMatchProp.getString('price_formatted')}")`,
+          )
+        } else {
+          // Se nenhum imóvel corresponde exatamente, NÃO inferir outro! Proibido fuzzy por prefixo.
+          matchedProps = []
+          for (const k in matchedIdsMap) delete matchedIdsMap[k]
+          targetSpecificProp = null
+          detectedSpecificPropertyQuery = true
+          matchedLaunch = null
+          matchedPlaybook = null
+          console.log(
+            `[AI_REPLY] [FOCO FINAL] ${lastMsgPropertyCodeOrNum} → NÃO ENCONTRADO (nenhum imóvel inferido por aproximação).`,
+          )
+        }
+      } else if (isShortContinuationMsg) {
+        // Mensagens curtas de continuação ("pode mandar aqui", "ok", "manda") herdam o foco FINAL da última mensagem com código da sessão
+        let inheritedProp = null
         try {
-          const sliceForPropertyScan = isShortContinuationMsg
-            ? fullCustomerHistory && fullCustomerHistory.length > 0
-              ? fullCustomerHistory.slice(-2)
-              : historyRecords.slice(-2)
-            : fullCustomerHistory && fullCustomerHistory.length > 0
+          const recentSessionMsgs = (
+            fullCustomerHistory && fullCustomerHistory.length > 0
+              ? fullCustomerHistory
+              : historyRecords || []
+          ).slice(-8)
+
+          // Varrer de trás para frente procurando a mensagem mais recente com código explícito
+          for (let hIdx = recentSessionMsgs.length - 1; hIdx >= 0; hIdx--) {
+            const hMsg = recentSessionMsgs[hIdx]
+            const hTxt = hMsg.getString('content') || ''
+            const parsedCode = extractExplicitPropertyCode(hTxt)
+            if (parsedCode && parsedCode.fullCode) {
+              const candProp = findPropertyByExactCode(parsedCode.fullCode)
+              if (candProp) {
+                inheritedProp = candProp
+                break
+              }
+            }
+          }
+        } catch (heritErr) {
+          console.warn(`[AI_REPLY] Erro ao buscar herança de sessão: ${String(heritErr)}`)
+        }
+
+        if (inheritedProp) {
+          matchedProps = [inheritedProp]
+          for (const k in matchedIdsMap) delete matchedIdsMap[k]
+          matchedIdsMap[inheritedProp.id] = true
+          targetSpecificProp = inheritedProp
+          detectedSpecificPropertyQuery = true
+          matchedLaunch = null
+          matchedPlaybook = null
+          console.log(
+            `[AI_REPLY] [FOCO FINAL] Herança de sessão ativa → ${inheritedProp.id} (code="${inheritedProp.getString('code')}", price="${inheritedProp.getString('price_formatted')}")`,
+          )
+        }
+      } else if (!isMismatchDetected) {
+        // Se NÃO há código explícito na mensagem atual e NÃO é mensagem de continuação,
+        // manter busca de apoio por critérios ou histórico recente sem sobrescrever foco
+        try {
+          const sliceForPropertyScan =
+            fullCustomerHistory && fullCustomerHistory.length > 0
               ? fullCustomerHistory.slice(-4)
               : historyRecords.slice(-4)
 
@@ -1433,138 +1561,39 @@ ${
             })
             .join(' ')
 
-          // Se for continuação curta, prioriza herança do turno imediatamente anterior
-          const combinedHistoryAndCurrent = isShortContinuationMsg
-            ? recentConvSlice
-            : `${combinedCustAndAdText} ${recentConvSlice}`
-
-          const histUrlIdRegex = /(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/gi
-          let histUrlMatch = null
-          while ((histUrlMatch = histUrlIdRegex.exec(combinedHistoryAndCurrent)) !== null) {
-            if (histUrlMatch[1]) {
-              addPropNum(histUrlMatch[1])
-              detectedSpecificPropertyQuery = true
-            }
-          }
+          const combinedHistoryAndCurrent = `${combinedCustAndAdText} ${recentConvSlice}`
 
           const histCodeRegex = /(?:^|[\s#])([a-z]{1,4}[-_\s]?\d{2,5}|\b\d{3,4}\b)/gi
           let histCodeMatch = null
           while ((histCodeMatch = histCodeRegex.exec(combinedHistoryAndCurrent)) !== null) {
             const matchCandidate = histCodeMatch[1].trim()
             const numOnly = matchCandidate.replace(/\D/g, '')
-            if (numOnly && numOnly.length >= 2 && numOnly.length <= 5) {
-              if (
-                numOnly !== '500' &&
-                numOnly !== '100' &&
-                numOnly !== '200' &&
-                numOnly !== '2024' &&
-                numOnly !== '2025' &&
-                numOnly !== '2026'
-              ) {
-                addPropNum(numOnly)
+            if (
+              numOnly &&
+              numOnly.length >= 2 &&
+              numOnly.length <= 5 &&
+              numOnly !== '500' &&
+              numOnly !== '100' &&
+              numOnly !== '200' &&
+              numOnly !== '2024' &&
+              numOnly !== '2025' &&
+              numOnly !== '2026'
+            ) {
+              const matchedHistProp = findPropertyByExactCode(numOnly)
+              if (matchedHistProp && !matchedIdsMap[matchedHistProp.id]) {
+                matchedIdsMap[matchedHistProp.id] = true
+                matchedProps.push(matchedHistProp)
                 detectedSpecificPropertyQuery = true
               }
             }
           }
         } catch (histScanErr) {
-          console.warn(
-            `[AI_REPLY] Erro ao varrer histórico para anti-contradição: ${String(histScanErr)}`,
-          )
+          console.warn(`[AI_REPLY] Erro ao varrer histórico secundário: ${String(histScanErr)}`)
         }
-      }
 
-      // Buscar no catálogo de properties pelo ID numérico isolado (no code OU na url)
-      for (let pIdx = 0; pIdx < extractedPropertyNumbers.length; pIdx++) {
-        const propNum = extractedPropertyNumbers[pIdx]
-        try {
-          const codeFilter = `is_active = true && (code ~ '${propNum}' || url ~ '/${propNum}/')`
-          const codeResults = $app.findRecordsByFilter('properties', codeFilter, '-created', 3, 0)
-          for (let cIdx = 0; cIdx < codeResults.length; cIdx++) {
-            const cr = codeResults[cIdx]
-            if (!matchedIdsMap[cr.id]) {
-              matchedIdsMap[cr.id] = true
-              matchedProps.push(cr)
-            }
-          }
-        } catch (lookupErr) {
-          console.warn(
-            `[AI_REPLY] Error searching property by num ${propNum}: ${String(lookupErr)}`,
-          )
-        }
-      }
-
-      // Contingência ativa: se o lead pediu um imóvel específico (ex: 343) e ele ainda não estava no catálogo ativo,
-      // tentar buscar mesmo inativo e reativar, ou buscar com filtro flexível
-      if (detectedSpecificPropertyQuery && matchedProps.length === 0) {
-        for (let pIdx = 0; pIdx < extractedPropertyNumbers.length; pIdx++) {
-          const propNum = extractedPropertyNumbers[pIdx]
-          try {
-            const anyProp = $app.findFirstRecordByFilter(
-              'properties',
-              `code ~ '${propNum}' || url ~ '/${propNum}/'`,
-            )
-            if (anyProp) {
-              if (!anyProp.get('is_active')) {
-                anyProp.set('is_active', true)
-                $app.saveNoValidate(anyProp)
-                console.log(
-                  `[AI_REPLY] Imóvel ${anyProp.getString('code')} reativado automaticamente para atendimento ao lead.`,
-                )
-              }
-              if (!matchedIdsMap[anyProp.id]) {
-                matchedIdsMap[anyProp.id] = true
-                matchedProps.push(anyProp)
-              }
-            }
-          } catch (_) {}
-        }
-      }
-
-      // CORREÇÃO 2 — DETECÇÃO DE COMPARAÇÃO AVALIADA SOMENTE NA MENSAGEM ATUAL (MÁXIMO PAR ANTERIOR):
-      // NÃO avaliar isComparisonIntent sobre 12 mensagens concatenadas para não ressuscitar comparações passadas encerradas!
-      const immediateComparisonContext = (() => {
-        const lastTwoMsgs = (
-          fullCustomerHistory && fullCustomerHistory.length > 0
-            ? fullCustomerHistory.slice(-2)
-            : historyRecords.slice(-2)
-        )
-          .map(function (m) {
-            return m.getString('content') || ''
-          })
-          .join(' ')
-        return `${customerMessage} ${lastTwoMsgs}`.toLowerCase()
-      })()
-
-      const isComparisonIntent =
-        !isShortContinuationMsg &&
-        (/\b(?:comparar|compara[cç][aã]o|versus|vs\.?|diferen[cç]a|qual\s+dos\s+dois|entre\s+o|entre\s+os)\b/i.test(
-          customerMessage,
-        ) ||
-          (/\bvistage\b/i.test(immediateComparisonContext) &&
-            /\b(?:341|aru|fazenda|322|ap322)\b/i.test(immediateComparisonContext) &&
-            /\b(?:versus|vs\.?|comparar|ou|qual)\b/i.test(immediateComparisonContext)))
-
-      // Se o lead citou um imóvel específico mas é uma comparação, manter até 2 imóveis em matchedProps
-      if (lastMsgSpecificPropertyRequested && matchedProps.length > 0) {
-        if (isComparisonIntent) {
-          console.log(
-            `[AI_REPLY] INTENÇÃO DE COMPARAÇÃO DETECTADA: mantendo múltiplos imóveis no contexto (total=${matchedProps.length}).`,
-          )
-          // Mantém os imóveis encontrados (até 2 opções) sem apagar a contraparte
-          matchedProps = matchedProps.slice(0, 2)
+        if (matchedProps.length > 0 && !targetSpecificProp) {
           targetSpecificProp = matchedProps[0]
-        } else {
-          const topRequestedProp = matchedProps[0]
-          matchedProps = [topRequestedProp]
-          for (const k in matchedIdsMap) delete matchedIdsMap[k]
-          matchedIdsMap[topRequestedProp.id] = true
-          targetSpecificProp = topRequestedProp
-          console.log(
-            `[AI_REPLY] FOCO NO IMÓVEL: lead focou no imóvel ${topRequestedProp.getString('code')} (${topRequestedProp.getString('title')}).`,
-          )
         }
-      } else if (detectedSpecificPropertyQuery && matchedProps.length > 0) {
-        targetSpecificProp = matchedProps[0]
       }
 
       const hasFoundLeadSpecificProperty = detectedSpecificPropertyQuery && matchedProps.length > 0
