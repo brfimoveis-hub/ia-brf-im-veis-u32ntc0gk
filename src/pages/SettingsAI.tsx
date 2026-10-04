@@ -72,6 +72,7 @@ import {
   type StorageUsageSummary,
 } from '@/services/ai_knowledge_storage'
 import { StorageUsageBar } from '@/components/common/StorageUsageBar'
+import { CatalogIntegrityReport } from '@/components/launches/CatalogIntegrityReport'
 import {
   type BiaLearning,
   type BiaLearningCategory,
@@ -806,6 +807,18 @@ export default function SettingsAI() {
         </div>
       </div>
 
+      {/* RELATÓRIO DE INTEGRIDADE DO CATÁLOGO & DOSSIÊS (ATENDE SOLICITAÇÃO MAURO) */}
+      <CatalogIntegrityReport
+        userId={user?.id}
+        onSelectProperty={(propId) => {
+          setFilterPropertyId(propId)
+          // Scroll suave até a seção de base de conhecimento
+          const el = document.getElementById('base-conhecimento-section')
+          if (el) el.scrollIntoView({ behavior: 'smooth' })
+        }}
+        onRefreshKnowledgeFiles={loadKnowledgeFiles}
+      />
+
       {/* SEÇÃO NOVA: CADERNO DE APRENDIZADOS DA BIA */}
       <Card className="border-amber-500/30 shadow-sm overflow-hidden bg-gradient-to-b from-amber-50/20 to-background dark:from-amber-950/10">
         <CardHeader className="bg-amber-50/50 dark:bg-amber-950/20 pb-4 border-b border-amber-500/20">
@@ -1087,7 +1100,7 @@ export default function SettingsAI() {
       </Dialog>
 
       {/* SEÇÃO 1: BASE DE CONHECIMENTO DA BIA (DOCUMENTOS & TREINAMENTO) */}
-      <Card className="border-primary/20 shadow-sm overflow-hidden">
+      <Card id="base-conhecimento-section" className="border-primary/20 shadow-sm overflow-hidden">
         <CardHeader className="bg-primary/5 pb-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>

@@ -32,6 +32,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { LaunchDetail } from '@/components/launches/LaunchDetail'
+import { CatalogIntegrityReport } from '@/components/launches/CatalogIntegrityReport'
 
 export function Launches() {
   const [launches, setLaunches] = useState<Launch[]>([])
@@ -223,6 +224,9 @@ export function Launches() {
 
       {/* Indicador de Armazenamento Geral (compartilhado com até ~50 lançamentos) */}
       <StorageUsageBar usage={storageUsage} loading={loading} />
+
+      {/* Relatório de Integridade de Imóveis & Lançamentos */}
+      <CatalogIntegrityReport onRefreshKnowledgeFiles={loadData} />
 
       {/* Banner Explicativo Bia Mãe */}
       <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">

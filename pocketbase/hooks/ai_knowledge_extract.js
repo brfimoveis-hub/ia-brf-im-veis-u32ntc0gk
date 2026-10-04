@@ -587,3 +587,137 @@ onRecordAfterUpdateSuccess((e) => {
 
   return e.next()
 }, 'ai_knowledge_files')
+
+/**
+ * Endpoint para reprocessar e auto-organizar todos os arquivos de conhecimento da IA
+ * (útil para organizar em massa arquivos antigos ou recém-migrados no respectivo dossiê)
+ * POST /backend/v1/ai-knowledge/auto-organize
+ */
+routerAdd('POST', '/backend/v1/ai-knowledge/auto-organize', (c) => {
+  try {
+    const authRecord = c.requestInfo().auth
+    if (!authRecord) {
+      return c.json(401, { error: 'Não autorizado.' })
+    }
+
+    const files = $app.findRecordsByFilter('ai_knowledge_files', '', '-created', 500, 0)
+    const activeProperties = $app.findRecordsByFilter(
+      'properties',
+      'is_active = true',
+      'code',
+      200,
+      0,
+    )
+
+    let updatedCount = 0
+
+    for (let i = 0; i < files.length; i++) {
+      const rec = files[i]
+      let dirty = false
+      let currentPropId = (rec.getString('property_id') || '').trim()
+      let currentEnterprise = (rec.getString('enterprise') || '').trim()
+      const originalName = rec.getString('name') || rec.getString('file') || ''
+      const extractedText = rec.getString('extracted_text') || ''
+      const combined = (originalName + ' ' + extractedText).toLowerCase()
+      const alphanum = combined.replace(/[^a-z0-9]/g, '')
+
+      if (!currentPropId && activeProperties && activeProperties.length > 0) {
+        for (let j = 0; j < activeProperties.length; j++) {
+          const prop = activeProperties[j]
+          const rawCode = (prop.getString('code') || '').toLowerCase().trim()
+          if (!rawCode || rawCode.length < 2) continue
+          const codeClean = rawCode.replace(/[^a-z0-9]/g, '')
+          if (
+            codeClean.length >= 2 &&
+            (alphanum.indexOf(codeClean) !== -1 || combined.indexOf(rawCode) !== -1)
+          ) {
+            currentPropId = prop.id
+            if (!currentEnterprise) {
+              currentEnterprise = prop.getString('title') || prop.getString('code')
+            }
+            break
+          }
+        }
+
+        if (!currentPropId) {
+          const keyTerms = [
+            'vistage',
+            'viva balneário',
+            'viva balneario',
+            'neo continente',
+            'colinas de são pedro',
+            'colinas de sao pedro',
+            'solar di plaza',
+            'solar plaza',
+            'villa dos açores',
+            'villa dos acores',
+            'viva trindade',
+            'opus agronômica',
+            'opus agronomica',
+            'essenzia canasvieiras',
+            'luminare residence',
+            'luminare',
+          ]
+
+          for (let k = 0; k < activeProperties.length; k++) {
+            const prop2 = activeProperties[k]
+            const pTitle = (prop2.getString('title') || '').toLowerCase()
+            let matched = false
+            for (let t = 0; t < keyTerms.length; t++) {
+              if (pTitle.indexOf(keyTerms[t]) !== -1 && combined.indexOf(keyTerms[t]) !== -1) {
+                matched = true
+                break
+              }
+            }
+            if (matched) {
+              currentPropId = prop2.id
+              if (!currentEnterprise) {
+                currentEnterprise = prop2.getString('title') || prop2.getString('code')
+              }
+              break
+            }
+          }
+        }
+      }
+
+      if (!currentEnterprise) {
+        if (combined.indexOf('vistage') !== -1) currentEnterprise = 'Vistage Residence'
+        else if (combined.indexOf('viva trindade') !== -1) currentEnterprise = 'Viva Trindade'
+        else if (
+          combined.indexOf('solar plaza') !== -1 ||
+          combined.indexOf('solar di plaza') !== -1
+        )
+          currentEnterprise = 'Solar Plaza'
+        else if (combined.indexOf('nova governador') !== -1)
+          currentEnterprise = 'Nova Governador Celso Ramos'
+        else if (combined.indexOf('luminare') !== -1) currentEnterprise = 'Luminare Residence'
+        else currentEnterprise = 'Geral / Institucional'
+      }
+
+      if (currentPropId && currentPropId !== rec.getString('property_id')) {
+        rec.set('property_id', currentPropId)
+        dirty = true
+      }
+      if (currentEnterprise && currentEnterprise !== rec.getString('enterprise')) {
+        rec.set('enterprise', currentEnterprise)
+        dirty = true
+      }
+
+      if (dirty) {
+        $app.saveNoValidate(rec)
+        updatedCount++
+      }
+    }
+
+    return c.json(200, {
+      success: true,
+      message:
+        'Auto-organização concluída: ' +
+        updatedCount +
+        ' arquivo(s) organizados nos dossiês de imóveis.',
+      updated_count: updatedCount,
+    })
+  } catch (err) {
+    return c.json(500, { error: 'Falha na auto-organização: ' + String(err) })
+  }
+})

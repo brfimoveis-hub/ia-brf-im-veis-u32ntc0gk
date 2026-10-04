@@ -4,10 +4,7 @@
 // Garante UTF-8 limpo, sem mojibake, sem entidades HTML sujas (&times;), imagens válidas e sem prefixo de código corrompido.
 // PocketBase JSVM: todas as funções de processamento inline dentro dos callbacks ou reusadas diretamente.
 
-// Execução a cada hora
-cronAdd('sync_properties_hourly', '0 * * * *', () => {
-  $app.logger().info('Iniciando sincronização horária de imóveis da BRF...')
-
+function runCatalogSyncProcess(triggerSource) {
   function normalizeMojibake(text) {
     if (!text || typeof text !== 'string') return ''
     let cleaned = text
@@ -1105,13 +1102,50 @@ cronAdd('sync_properties_hourly', '0 * * * *', () => {
       }
     }
 
+    // Sincronização cruzada: se houver lançamentos em 'launches' sem website_url oficial, tenta associar ou atualizar
+    try {
+      const allLaunches = $app.findRecordsByFilter(
+        'launches',
+        "status != 'arquivado'",
+        '-created',
+        50,
+        0,
+      )
+      for (let lRec of allLaunches) {
+        try {
+          const lSlug = lRec.getString('slug')
+          const lName = (lRec.getString('name') || '').toLowerCase()
+          let lWebUrl = lRec.getString('website_url')
+
+          if (!lWebUrl) {
+            // Tenta achar propriedade correspondente no catálogo
+            for (let item of ESSENTIAL_CATALOG) {
+              const itemTitleLower = (item.title || '').toLowerCase()
+              if (
+                itemTitleLower.includes(lName) ||
+                (lSlug && item.url && item.url.includes(lSlug))
+              ) {
+                lRec.set('website_url', item.url)
+                $app.saveNoValidate(lRec)
+                break
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (launchErr) {
+      $app.logger().warn('Aviso na sincronização cruzada de lançamentos: ' + launchErr.message)
+    }
+
     try {
       const logsColl = $app.findCollectionByNameOrId('system_logs')
       const logRec = new Record(logsColl)
       logRec.set('type', 'properties_sync')
       logRec.set(
         'message',
-        'Sincronização de catálogo concluída: ' +
+        'Sincronização de catálogo [' +
+          (triggerSource || 'cron') +
+          '] concluída: ' +
           createdCount +
           ' criados, ' +
           updatedCount +
@@ -1120,6 +1154,7 @@ cronAdd('sync_properties_hourly', '0 * * * *', () => {
           ' erros.',
       )
       logRec.set('payload', {
+        source: triggerSource || 'cron',
         created: createdCount,
         updated: updatedCount,
         errors: errorsCount,
@@ -1128,473 +1163,70 @@ cronAdd('sync_properties_hourly', '0 * * * *', () => {
       $app.save(logRec)
     } catch (_) {}
   } catch (globalErr) {
-    $app.logger().error('Falha geral no cron sync_properties_hourly: ' + globalErr.message)
+    $app.logger().error('Falha geral no job de sincronização de imóveis: ' + globalErr.message)
+  }
+}
+
+// Execução diária às 05:00 UTC (02:00 BRT) - Atende requisito de atualização diária pelo site oficial do Mauro
+cronAdd('sync_properties_daily_05h', '0 5 * * *', () => {
+  $app
+    .logger()
+    .info('Iniciando sincronização diária (~05h) de imóveis e lançamentos da BRF Imóveis...')
+  try {
+    $http.send({
+      url: 'http://127.0.0.1:8090/backend/v1/sync-properties-cron?source=daily_05h',
+      method: 'POST',
+      timeout: 120,
+    })
+  } catch (cronErr) {
+    $app.logger().error('Falha no disparo do cron diário de sincronização: ' + cronErr.message)
+  }
+})
+
+// Execução a cada hora para checagem contínua e resiliência
+cronAdd('sync_properties_hourly', '0 * * * *', () => {
+  $app.logger().info('Iniciando sincronização horária de imóveis da BRF...')
+  try {
+    $http.send({
+      url: 'http://127.0.0.1:8090/backend/v1/sync-properties-cron?source=hourly',
+      method: 'POST',
+      timeout: 120,
+    })
+  } catch (cronErr) {
+    $app.logger().error('Falha no disparo do cron horário de sincronização: ' + cronErr.message)
+  }
+})
+
+// Endpoint interno invocado pelos crons (sem necessidade de auth bearer externa)
+routerAdd('POST', '/backend/v1/sync-properties-cron', (c) => {
+  try {
+    const source = c.request().url.query().get('source') || 'cron'
+    runCatalogSyncProcess(source)
+    return c.json(200, { success: true, source: source })
+  } catch (err) {
+    $app.logger().error('Erro no sync-properties-cron: ' + err.message)
+    return c.json(500, { success: false, error: err.message })
   }
 })
 
 // Endpoint HTTP para disparar sincronização sob demanda (admin ou webhook)
 routerAdd('POST', '/backend/v1/sync-properties', (c) => {
   try {
-    function normalizeMojibake(text) {
-      if (!text || typeof text !== 'string') return ''
-      let cleaned = text
-
-      const mojibakeMap = [
-        [/BALNERIO\s+CAMBORI\u06a0/gi, 'Balneário Camboriú'],
-        [/BALNERIO\s+CAMBORI[UÚuú]?/gi, 'Balneário Camboriú'],
-        [/Balne\u1ca9o\s+Cambori\u06a0/gi, 'Balneário Camboriú'],
-        [/Balne\u1ca9o\s+Cambori[uú]/gi, 'Balneário Camboriú'],
-        [/Balne\u1ca9o/gi, 'Balneário'],
-        [/Balne\u00e1rio/gi, 'Balneário'],
-        [/Balne\uFFFDrio/gi, 'Balneário'],
-        [/Balne\u00b2\u00a9o/gi, 'Balneário'],
-        [/Balne\u00b2rio/gi, 'Balneário'],
-        [/BALNERIO\s+ESTREITO\s+FLORIAN\u04d0OLIS/gi, 'Balneário Estreito Florianópolis'],
-        [/BALNERIO\s+ESTREITO/gi, 'Balneário Estreito'],
-        [/BALNERIO\/ESTREITO/gi, 'Balneário/Estreito'],
-        [/BALNERIO/gi, 'Balneário'],
-        [/FLORIAN\u04d0OLIS/gi, 'FLORIANÓPOLIS'],
-        [/Florian\u04d0olis/gi, 'Florianópolis'],
-        [/Florian\udb40\udfecis/gi, 'Florianópolis'],
-        [/Florian\u00f3polis/gi, 'Florianópolis'],
-        [/S\u00cf\s*JOS\u0260\s*\(SC\)/gi, 'São José (SC)'],
-        [/S\u00cf\s*JOS\u0260/gi, 'São José'],
-        [/S\u00cf\s*JOS\u026c/gi, 'São José'],
-        [/S\u00cf\s*JOSE/gi, 'São José'],
-        [/S\u00cf\s*JOS/gi, 'São José'],
-        [/S\u00cf\s*PEDRO/gi, 'São Pedro'],
-        [/S\u00cf\s*Pedro/gi, 'São Pedro'],
-        [/S\u00cf\s*JO\u00c3O/gi, 'São João'],
-        [/S\u00cf\s*Jo\u00e3o/gi, 'São João'],
-        [/S\u00cf\s*PAULO/gi, 'São Paulo'],
-        [/S\u00cf\s*Paulo/gi, 'São Paulo'],
-        [/S\u00cf\s*BENTO/gi, 'São Bento'],
-        [/S\u00cf\s*Bento/gi, 'São Bento'],
-        [/S\u00cf\s*LUCAS/gi, 'São Lucas'],
-        [/S\u00cf\s*Lucas/gi, 'São Lucas'],
-        [/S\u00cf\s*MIGUEL/gi, 'São Miguel'],
-        [/S\u00cf\s*Miguel/gi, 'São Miguel'],
-        [/S\u00cf\s*FRANCISCO/gi, 'São Francisco'],
-        [/S\u00cf\s*Francisco/gi, 'São Francisco'],
-        [/S\u00cf\s*SEBASTI\u00c3O/gi, 'São Sebastião'],
-        [/S\u00cf\s*Sebasti\u00e3o/gi, 'São Sebastião'],
-        [/S\u3be0Jos\u987fC/gi, 'São José/SC'],
-        [/S\u3be0Jos/gi, 'São José'],
-        [/S\u3be0Pedro/gi, 'São Pedro'],
-        [/S\.Jos\u987fC/gi, 'São José/SC'],
-        [/S\.Jos\u982d/gi, 'São José'],
-        [/S\.Jos\u0260/gi, 'São José'],
-        [/S\.Jos\u026c/gi, 'São José'],
-        [/S\.Jos\u00e9/gi, 'São José'],
-        [/S\.Jose/gi, 'São José'],
-        [/S\u00e3o\s+Jos\u00e9\u982c/gi, 'São José,'],
-        [/S\u00e3o\s+Jos\u00e9\u980d/gi, 'São José'],
-        [/S\u00e3o\s+Jos\u0260/gi, 'São José'],
-        [/S\u00e3o\s+Jos\u026c/gi, 'São José'],
-        [/S\u00e3o\s+Jos\u00e9\u987fC/gi, 'São José/SC'],
-        [/S\u00e3o\s+Jos\u00e9\u9803/gi, 'São José cresce'],
-        [/OPORTUNIDADE\s+\u068eICA/gi, 'OPORTUNIDADE ÚNICA'],
-        [/OPORTUNIDADE\s+\u068eICO/gi, 'OPORTUNIDADE ÚNICA'],
-        [/OPORTUNIDADE\s+IMPERD\u0356EL/gi, 'OPORTUNIDADE IMPERDÍVEL'],
-        [/OPORTUNIDADE\s+IMPERDIVEL/gi, 'OPORTUNIDADE IMPERDÍVEL'],
-        [/\u068eICA/gi, 'ÚNICA'],
-        [/\u068eICO/gi, 'ÚNICO'],
-        [/\u068eICK/gi, 'ÚNICO'],
-        [/\u068eico/gi, 'Único'],
-        [/\u068eica/gi, 'Única'],
-        [/\u068eTIMO/gi, 'ÚLTIMO'],
-        [/\u068etimo/gi, 'Último'],
-        [/\u068eTIMA/gi, 'ÚLTIMA'],
-        [/\u068etima/gi, 'Última'],
-        [/-\u068eTIMO/gi, '- ÚLTIMO'],
-        [/NA\s+PALHO\u01c1/gi, 'NA PALHOÇA'],
-        [/Palho\u01c1\s*SC/gi, 'Palhoça SC'],
-        [/Palho\u01c1/gi, 'Palhoça'],
-        [/JURERE\s+INTERNACIONAL/gi, 'Jurerê Internacional'],
-        [/Jurer\u02a0Internacional/gi, 'Jurerê Internacional'],
-        [/JUR\u02a0INTERNACIONAL/gi, 'JURERÊ INTERNACIONAL'],
-        [/Jurer\u02a0/gi, 'Jurerê'],
-        [/JUR\u02a0/gi, 'JURERÊ'],
-        [/Pedra\s+Branca/gi, 'Pedra Branca'],
-        [/Saco\s+dos\s+Lim\u00f5es\u00f5es\u00f5es/gi, 'Saco dos Limões'],
-        [/Saco\s+dos\s+Lim\u00f5es\u00f5es/gi, 'Saco dos Limões'],
-        [/Saco\s+dos\s+Lim\uFFFD\uFFFD/gi, 'Saco dos Limões'],
-        [/Saco\s+dos\s+Lim/gi, 'Saco dos Limões'],
-        [/Nossa\s+Senhora\s+do\s+Ros\u00b2\u00a9o/gi, 'Nossa Senhora do Rosário'],
-        [/Nossa\s+Senhora\s+do\s+Ros\u1ca9o/gi, 'Nossa Senhora do Rosário'],
-        [/Nossa\s+Senhora\s+do\s+Ros\uFFFDrio/gi, 'Nossa Senhora do Rosário'],
-        [/Ros\u00b2\u00a9o/gi, 'Rosário'],
-        [/Ros\u1ca9o/gi, 'Rosário'],
-        [/Ros\uFFFDrio/gi, 'Rosário'],
-        [/Agron\udb6d\ude63a/gi, 'Agronômica'],
-        [/Cobi\u7864o/gi, 'Cobiçado'],
-        [/Ac\u00f3res/gi, 'Açores'],
-        [/Mo\u786d\u00adbique/gi, 'Moçambique'],
-        [/Mo\u786d\u00ad/gi, 'Moçambique'],
-        [/Lan\u786dento/gi, 'Lançamento'],
-        [/LAN\u01c1MENTO/gi, 'LANÇAMENTO'],
-        [/ALTO\s+PADR\u00cf/gi, 'ALTO PADRÃO'],
-        [/alto\s+padr\u00cf/gi, 'alto padrão'],
-        [/Alto\s+Padr\u00cf/gi, 'Alto Padrão'],
-        [/PADR\u00cf/gi, 'PADRÃO'],
-        [/padr\u00cf/gi, 'padrão'],
-        [/Padr\u00cf/gi, 'Padrão'],
-        [/alto\s+padr\u3be0/gi, 'alto padrão'],
-        [/Alto\s+Padr\u3be0/gi, 'Alto Padrão'],
-        [/padr\u3be0/gi, 'padrão'],
-        [/INCORPORA\u01c3O/gi, 'INCORPORAÇÃO'],
-        [/incorpora\u01c3o/gi, 'incorporação'],
-        [/incorpora\u00b2\u00a9a/gi, 'incorporação imobiliária'],
-        [/incorpora\u78ef\s+imobili\u1ca9a/gi, 'incorporação imobiliária'],
-        [/incorpora\u78ef/gi, 'incorporação'],
-        [/Incorpora\u78ef/gi, 'Incorporação'],
-        [/localiza\u78ef\s+estrat\u99e9ca/gi, 'localização estratégica'],
-        [/localiza\u78ef\s+privilegiada/gi, 'localização privilegiada'],
-        [/localiza\u78ef/gi, 'localização'],
-        [/Localiza\u78ef/gi, 'Localização'],
-        [/sofistica\u78ef/gi, 'sofisticação'],
-        [/Sofistica\u78ef/gi, 'Sofisticação'],
-        [/seguran\u7861/gi, 'segurança'],
-        [/Seguran\u7861/gi, 'Segurança'],
-        [/seguran\u786c/gi, 'segurança'],
-        [/espa\u786f\u00b3o/gi, 'espaçoso'],
-        [/espa\u786f\u00b3a/gi, 'espaçosa'],
-        [/espa\u786f,/gi, 'espaço,'],
-        [/espa\u786f/gi, 'espaço'],
-        [/Espa\u786f/gi, 'Espaço'],
-        [/espa\u7bb0/gi, 'espaço'],
-        [/su\u00edte\u00edte\u0356ES/gi, 'suítes'],
-        [/su\u00edte\u00edte\u0356E/gi, 'suíte'],
-        [/su\u00edte\u00edte\u0356/gi, 'suíte'],
-        [/su\u00edte\u00edtes/gi, 'suítes'],
-        [/su\u00edte\u00edte/gi, 'suíte'],
-        [/su\u00edte\u00edte\u00edte\u00edte\u00edtes/gi, 'suítes'],
-        [/su\u00edte\u00edte\u00edte\u00edte/gi, 'suítes'],
-        [/su\u00edte\u00edte\u00edte/gi, 'suíte'],
-        [/demi-su\u00edte\u00edte\u00edte\u00edte\u00edtes/gi, 'demi-suítes'],
-        [/demi-su\u00edte\u00edte\u00edte\u00edte/gi, 'demi-suítes'],
-        [/demi-su\u00edte\u00edte\u00edte/gi, 'demi-suíte'],
-        [/demi-su\u00edte\u00edtes/gi, 'demi-suítes'],
-        [/demi-su\u00edte\u00edte/gi, 'demi-suíte'],
-        [/demi-su\uFFFD/gi, 'demi-suíte'],
-        [/demi-su\b/gi, 'demi-suíte'],
-        [/su\u00edte\u00edtea\s+em/gi, 'sua em'],
-        [/su\u00edte\u00edtea/gi, 'sua'],
-        [/su\u00edte\u00edtel/gi, 'Sul'],
-        [/su\u00edte\u00edtebsolo/gi, 'subsolo'],
-        [/su\u00edte\u00edte\u00ad/gi, 'suíte'],
-        [/su\uFFFDs/gi, 'suítes'],
-        [/su\uFFFD/gi, 'suíte'],
-        [/DORMIT\u04d2IOS/gi, 'DORMITÓRIOS'],
-        [/dormit\u04d2ios/gi, 'dormitórios'],
-        [/dormit\u04d2io/gi, 'dormitório'],
-        [/dormit\udb72\ude69o/gi, 'dormitório'],
-        [/dormit\udb72\ude69os/gi, 'dormitórios'],
-        [/DORMIT\udb72\ude69OS/gi, 'DORMITÓRIOS'],
-        [/im\u03f6el/gi, 'imóvel'],
-        [/im\u03f6eis/gi, 'imóveis'],
-        [/IM\u0416EL/gi, 'IMÓVEL'],
-        [/IM\u0416EIS/gi, 'IMÓVEIS'],
-        [/N\u068dERO/gi, 'NÚMERO'],
-        [/n\u068dero/gi, 'número'],
-        [/AN\u068eCIO/gi, 'ANÚNCIO'],
-        [/an\u068ecio/gi, 'anúncio'],
-        [/FUTURO\s+\u0260\s*AGORA/gi, 'FUTURO É AGORA'],
-        [/\b\u0260\b/g, 'é'],
-        [/\b\u026c\b/g, 'é'],
-        [/T\u0252REO/gi, 'TÉRREO'],
-        [/t\u0252reo/gi, 'térreo'],
-        [/t\u9cb2eo/gi, 'térreo'],
-        [/t\u00e9rreo/gi, 'térreo'],
-        [/MOBILIAADO/gi, 'MOBILIADO'],
-        [/Pr\udb78\ude69m\u00ad\s*\u07dd\s*Avenida das Torres/gi, 'Próximo à Avenida das Torres'],
-        [/Pr\udb78\ude69mo/gi, 'Próximo'],
-        [/Pr\udb78\ude69m\u00ad/gi, 'Próximo'],
-        [/Pr\u00b2\u00a9mo/gi, 'Próximo'],
-        [/f\u18e9l\s+acesso/gi, 'fácil acesso'],
-        [/f\u18e9l/gi, 'fácil'],
-        [/\u0800Avenida/gi, 'à Avenida'],
-        [/\u0800BR-101/gi, 'à BR-101'],
-        [/\u0800venda/gi, 'à venda'],
-        [/\u0800Venda/gi, 'à Venda'],
-        [/\u0800margens/gi, 'às margens'],
-        [/\u0800/g, 'à '],
-        [/\b\u07dd\b/g, 'à'],
-        [/voc\ua8a0/gi, 'você'],
-        [/voc\u00ea/gi, 'você'],
-        [/essa\s+\u0260\s+a/gi, 'essa é a'],
-        [/este\s+\u0260\s+o/gi, 'este é o'],
-        [/isso\s+\u0260\s+o/gi, 'isso é o'],
-        [/Assim\s+\u0260\s+o/gi, 'Assim é o'],
-        [/Aqui\s+voc\u00ea\s+Ganha/gi, 'Aqui você ganha'],
-        [/espera\s+com\s+uma\s+casa/gi, 'te espera com uma casa'],
-        [/magnco/gi, 'magnífico'],
-        [/condomo/gi, 'condomínio'],
-        [/edla/gi, 'edícula'],
-        [/Edla/gi, 'Edícula'],
-        [/imperdl/gi, 'imperdível'],
-        [/Imperdl/gi, 'Imperdível'],
-        [/fama\?/gi, 'família?'],
-        [/fama\./gi, 'família.'],
-        [/fama\b/gi, 'família'],
-        [/prop\u03f3\u05b4o/gi, 'propósito'],
-        [/prop\u03f3\u05b4a/gi, 'propícia'],
-        [/eleg\u2bb1ia/gi, 'elegância'],
-        [/vis\u3be0/gi, 'visão'],
-        [/regimais/gi, 'regiões mais'],
-        [/constru\s+com\s+laje/gi, 'construída com laje'],
-        [/constru:\s*/gi, 'construída: '],
-        [/NEG\u04c3IO/gi, 'NEGÓCIO'],
-        [/neg\u04c3io/gi, 'negócio'],
-        [/opera\u7d65s/gi, 'operações'],
-        [/EQUIL\u0342RIO/gi, 'EQUILÍBRIO'],
-        [/equil\u0342rio/gi, 'equilíbrio'],
-        [/PRIVIL\u0247IO/gi, 'PRIVILÉGIO'],
-        [/privil\u0247io/gi, 'privilégio'],
-        [/ESTRAT\u0247ICA/gi, 'ESTRATÉGICA'],
-        [/estrat\u0247ica/gi, 'estratégica'],
-        [/estrat\u99e9ca/gi, 'estratégica'],
-        [/at\u982c\s*vagas/gi, 'até 8 vagas'],
-        [/at\u982c/gi, 'até'],
-        [/at\u00e9\s*\u982c/gi, 'até '],
-        [/Kurt\s+Ratour/gi, 'Kurt Radtke'],
-        [/rea\s+total/gi, 'Área total'],
-        [/rea\s+constru/gi, 'Área construída'],
-        [/rea\s+Para/gi, 'Área Para'],
-        [/rea\s+para/gi, 'Área para'],
-        [/rea\s+grande/gi, 'Área grande'],
-        [/rea\s+de/gi, 'Área de'],
-        [/rea\s+comercial/gi, 'Área comercial'],
-        [/rea\s+industrial/gi, 'Área industrial'],
-        [/rea\s+privativa/gi, 'Área privativa'],
-        [/rea\s+Rural/gi, 'Área Rural'],
-        [/rea\s+rural/gi, 'Área rural'],
-        [/EM\s+REA/gi, 'EM ÁREA'],
-        [/em\s+rea/gi, 'em área'],
-        [/gua\s+Termal/gi, 'Água Termal'],
-        [/gua\s+termal/gi, 'Água termal'],
-        [/J\u7861maginou/gi, 'Já imaginou'],
-        [/J\u7861/gi, 'Já'],
-        [/j\u1ca1lugadas/gi, 'já alugadas'],
-        [/j\u1ca1/gi, 'já'],
-        [/J\u1ca1/gi, 'Já'],
-        [/n\u3be0perca/gi, 'não perca'],
-        [/n\u3be0/gi, 'não '],
-        [/N\u3be0/gi, 'Não '],
-        [/regi\u3be0/gi, 'região'],
-        [/Regi\u3be0/gi, 'Região'],
-        [/2pisos/gi, '2 pisos'],
-        [/mts/gi, 'metros'],
-        [/2Dorm\/su\u00ed\s*\+\s*Lav\./gi, '2 dormitórios (1 suíte) + lavabo'],
-        [
-          /3Dorm\/su\u00edte\u00edte\s+demi-su\u00edte\u00edte\u00edte\u00edte/gi,
-          '3 dormitórios (1 suíte + demi-suíte)',
-        ],
-        [
-          /3DORM\/su\u00edte\u00edte\u0340\+2 demi-su\u00edte\u00edte\u00edte\u00edte/gi,
-          '3 dormitórios (1 suíte + 2 demi-suítes)',
-        ],
-        [
-          /3\s*DORMIT\u04d2IOS\/su\u00edte\u00edte\u0356E\/LAVABO/gi,
-          '3 DORMITÓRIOS (1 SUÍTE) / LAVABO',
-        ],
-        [/\u04f4ima Casa/gi, 'Ótima Casa'],
-        [/\u04f4ima/gi, 'Ótima'],
-        [/Ӵima Casa/gi, 'Ótima Casa'],
-        [/Ӵima/gi, 'Ótima'],
-        [/\?{4,}/g, ''],
-        [/&times;/gi, ''],
-        [/&amp;/g, '&'],
-        [/&nbsp;/g, ' '],
-        [/&quot;/g, '"'],
-        [/&#39;/g, "'"],
-        [/&lt;/g, '<'],
-        [/&gt;/g, '>'],
-        [/&ccedil;/g, 'ç'],
-        [/&atilde;/g, 'ã'],
-        [/&otilde;/g, 'õ'],
-        [/&eacute;/g, 'é'],
-        [/&aacute;/g, 'á'],
-        [/&iacute;/g, 'í'],
-        [/&oacute;/g, 'ó'],
-        [/&uacute;/g, 'ú'],
-        [/&Ccedil;/g, 'Ç'],
-        [/&Atilde;/g, 'Ã'],
-        [/&Otilde;/g, 'Õ'],
-        [/&Eacute;/g, 'É'],
-        [/&Aacute;/g, 'Á'],
-        [/&Iacute;/g, 'Í'],
-        [/&Oacute;/g, 'Ó'],
-        [/&Uacute;/g, 'Ú'],
-      ]
-
-      for (let [pattern, replacement] of mojibakeMap) {
-        cleaned = cleaned.replace(pattern, replacement)
-      }
-
-      cleaned = cleaned
-        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/g, '')
-        .replace(
-          /[\u068e\u04d0\u0260\u06a0\u00cf\u026c\u01c1\u01c3\u04d2\u03f6\u0416\u068d\u0252\u9cb2\u07dd\ua8a0\u7861\u786f\u78ef\u786d\u7864\u7bb0\u7d65\u99e9\u982c\u987f\u980d\u9803\u3be0\u18e9\u0342\u0247\u0356\u0340\u03f3\u05b4\u2bb1]/g,
-          '',
-        )
-        .replace(/\s{2,}/g, ' ')
-
-      return cleaned.trim()
+    const authRecord = c.requestInfo().auth
+    if (!authRecord) {
+      return c.json(401, {
+        success: false,
+        error: 'Acesso restrito: autenticação necessária.',
+      })
     }
 
-    function cleanCode(code, url) {
-      if (!code && !url) return ''
-      let c = (code || '').trim()
-      c = c.replace(/^(?:c[oó]digo|c[oó]d\.?|#|igo)\s*:?\s*/i, '').trim()
-      if (!c && url) {
-        const m = url.match(/\/(\d{2,4})\/imoveis\//)
-        if (m) c = 'BRF-' + m[1]
-      }
-      return c
-    }
-
-    function cleanCity(city, textToInferFrom) {
-      let c = normalizeMojibake(city || '')
-      if (!c || c === '×' || c === '&times;' || c.toLowerCase().includes('times') || c.length < 3) {
-        const text = (textToInferFrom || '').toLowerCase()
-        if (text.includes('florianopolis') || text.includes('florianópolis')) return 'Florianópolis'
-        if (
-          text.includes('sao-jose') ||
-          text.includes('são josé') ||
-          text.includes('sao jose') ||
-          text.includes('s.josé')
-        )
-          return 'São José'
-        if (text.includes('biguacu') || text.includes('biguaçu')) return 'Biguaçu'
-        if (text.includes('palhoca') || text.includes('palhoça')) return 'Palhoça'
-        return ''
-      }
-      if (/florian/i.test(c)) return 'Florianópolis'
-      if (/s[aã]o\s*jos[eé]/i.test(c)) return 'São José'
-      if (/bigua[cç]u/i.test(c)) return 'Biguaçu'
-      if (/palho[cç]a/i.test(c)) return 'Palhoça'
-      return c.replace(/\s*-\s*SC$/i, '').trim()
-    }
-
-    function cleanNeighborhood(neigh, url, title) {
-      let n = normalizeMojibake(neigh || '')
-      if (!n || /agende\s+sua\s+visita|\?{2,}|&times;|times/i.test(n) || n.length < 2) {
-        if (url) {
-          const m = url.match(
-            /imoveis\/venda-[a-z0-9-]+-([a-z0-9-]+)-(?:florianopolis|sao-jose|biguacu|palhoca)-sc/i,
-          )
-          if (m && m[1]) {
-            const slug = m[1].replace(/-/g, ' ')
-            return slug.charAt(0).toUpperCase() + slug.slice(1)
-          }
-        }
-        const knownBairros = [
-          'Trindade',
-          'Jurerê',
-          'Canasvieiras',
-          'Capoeiras',
-          'Coqueiros',
-          'Estreito',
-          'Balneário',
-          'Balneário do Estreito',
-          'Agronômica',
-          'Serraria',
-          'Areias',
-          'Kobrasol',
-          'Campinas',
-          'Barreiros',
-          'Praia Comprida',
-          'Centro',
-          'Saco dos Limões',
-          'Rio Caveiras',
-          'Bom Viver',
-          'Pantanal',
-          'Córrego Grande',
-          'Itacorubi',
-        ]
-        for (let b of knownBairros) {
-          if (new RegExp('\\b' + b + '\\b', 'i').test(title || '')) {
-            return b
-          }
-        }
-        return ''
-      }
-      return n
-    }
-
-    let updatedCount = 0
-    const existingRecords = $app.findRecordsByFilter(
-      'properties',
-      'is_active = true',
-      '-created',
-      500,
-    )
-    for (let rec of existingRecords) {
-      let dirty = false
-      const currentTitle = rec.getString('title')
-      const currentCode = rec.getString('code')
-      const currentCity = rec.getString('city')
-      const currentNeigh = rec.getString('neighborhood')
-      const currentDesc = rec.getString('description')
-      const currentUrl = rec.getString('url')
-      const propType = rec.getString('property_type')
-
-      let cleanedTitle = normalizeMojibake(currentTitle)
-      const cleanedCode = cleanCode(currentCode, currentUrl)
-      const cleanedCity = cleanCity(currentCity, currentUrl + ' ' + currentTitle)
-      const cleanedNeigh = cleanNeighborhood(currentNeigh, currentUrl, currentTitle)
-      const cleanedDesc = normalizeMojibake(currentDesc)
-
-      // CORREÇÃO F: Sanitização contra títulos corrompidos com sequências repetidas
-      if (cleanedTitle) {
-        cleanedTitle = cleanedTitle.replace(/^([A-Za-zÀ-ÖØ-öø-ÿ])\1+/i, '$1').trim()
-        if (/(.)\1{4,}/.test(cleanedTitle)) {
-          const displayCode = cleanedCode || currentCode || 'imóvel'
-          const displayCity = cleanedCity || currentCity || 'SC'
-          cleanedTitle = `Imóvel ${displayCode} — ${displayCity}`
-        }
-      }
-
-      if (cleanedTitle !== currentTitle) {
-        rec.set('title', cleanedTitle)
-        dirty = true
-      }
-      if (cleanedCode && cleanedCode !== currentCode) {
-        rec.set('code', cleanedCode)
-        dirty = true
-      }
-      if (cleanedCity !== currentCity) {
-        rec.set('city', cleanedCity)
-        dirty = true
-      }
-      if (cleanedNeigh !== currentNeigh) {
-        rec.set('neighborhood', cleanedNeigh)
-        dirty = true
-      }
-      if (cleanedDesc !== currentDesc) {
-        rec.set('description', cleanedDesc)
-        dirty = true
-      }
-
-      if (/terreno/i.test(propType) && (rec.getInt('bedrooms') > 0 || rec.getInt('suites') > 0)) {
-        rec.set('bedrooms', 0)
-        rec.set('suites', 0)
-        dirty = true
-      }
-
-      if (dirty) {
-        $app.save(rec)
-        updatedCount++
-      }
-    }
+    // Executa o processo de sincronização e sanitização
+    runCatalogSyncProcess('manual_http')
 
     return c.json(200, {
       success: true,
       message:
-        'Sincronização e sanitização concluída com sucesso: ' +
-        updatedCount +
-        ' registros atualizados.',
+        'Sincronização e sanitização com o site oficial da BRF Imóveis concluída com sucesso.',
     })
   } catch (err) {
     return c.json(500, {
