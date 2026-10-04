@@ -927,7 +927,7 @@ function runCatalogSyncProcess(triggerSource) {
     {
       code: 'AP-344',
       title: 'Apartamento 3 dormitórios em Barreiros - São José/SC',
-      url: 'https://www.brfimoveis.com.br/344/imoveis/venda-apartamento-3-dormitorios-barreiros-sao-jose-sc',
+      url: 'https://www.brfimoveis.com.br/344/imoveis/venda-apartamento-3-quartos-barreiros-sao-jose-sc',
       city: 'São José',
       neighborhood: 'Barreiros',
       property_type: 'Apartamento',
@@ -956,6 +956,91 @@ function runCatalogSyncProcess(triggerSource) {
       is_active: true,
     },
   ]
+
+  // Mapa oficial dos 49 links canônicos enviados por Mauro para convergência estrita
+  const OFFICIAL_PROPERTY_URL_MAP = {
+    344: 'https://www.brfimoveis.com.br/344/imoveis/venda-apartamento-3-quartos-barreiros-sao-jose-sc',
+    343: 'https://www.brfimoveis.com.br/343/imoveis/venda-apartamento-2-quartos-capoeiras-florianopolis-sc',
+    342: 'https://www.brfimoveis.com.br/342/imoveis/venda-lancamento-2-quartos-balneario-florianopolis-sc',
+    341: 'https://www.brfimoveis.com.br/341/imoveis/venda-area-rural-fazenda-sao-joaquim-sc',
+    339: 'https://www.brfimoveis.com.br/339/imoveis/venda-terreno-floresta-sao-jose-sc',
+    338: 'https://www.brfimoveis.com.br/338/imoveis/venda-area-tijuquinhas-guaporanga-biguacu-sc',
+    337: 'https://www.brfimoveis.com.br/337/imoveis/venda-lancamento-3-quartos-barreiros-sao-jose-sc',
+    336: 'https://www.brfimoveis.com.br/336/imoveis/venda-apartamento-3-quartos-jurere-internacional-florianopolis-sc',
+    334: 'https://www.brfimoveis.com.br/334/imoveis/venda-apartamento-3-quartos-jurere-internacional-florianopolis-sc',
+    333: 'https://www.brfimoveis.com.br/333/imoveis/venda-apartamento-3-quartos-barreiros-sao-jose-sc',
+    331: 'https://www.brfimoveis.com.br/331/imoveis/venda-casa-4-quartos-ingleses-do-rio-vermelho-florianopolis-sc',
+    330: 'https://www.brfimoveis.com.br/330/imoveis/venda-lancamento-lancamento-florianopolis-sc',
+    329: 'https://www.brfimoveis.com.br/329/imoveis/venda-lancamento-3-quartos-florianopolis-sc',
+    328: 'https://www.brfimoveis.com.br/328/imoveis/venda-apartamento-2-quartos-areias-sao-jose-sc',
+    327: 'https://www.brfimoveis.com.br/327/imoveis/venda-apartamento-3-quartos-capoeiras-florianopolis-sc',
+    326: 'https://www.brfimoveis.com.br/326/imoveis/venda-lancamento-apartamento-2-quartos-florianopolis-sc',
+    325: 'https://www.brfimoveis.com.br/325/imoveis/venda-empresa-florianopolis-sc',
+    324: 'https://www.brfimoveis.com.br/324/imoveis/venda-terreno-em-condominio-cidade-universitaria-pedra-branca-palhoca-sc',
+    322: 'https://www.brfimoveis.com.br/322/imoveis/venda-apartamento-3-quartos-passa-vinte-palhoca-sc',
+    321: 'https://www.brfimoveis.com.br/321/imoveis/venda-casa-4-quartos-balneario-florianopolis-sc',
+    320: 'https://www.brfimoveis.com.br/320/imoveis/venda-apartamento-3-quartos-centro-balneario-camboriu-sc',
+    318: 'https://www.brfimoveis.com.br/318/imoveis/venda-apartamento-3-quartos-coqueiros-florianopolis-sc',
+    317: 'https://www.brfimoveis.com.br/317/imoveis/venda-apartamento-coqueiros-florianopolis-sc',
+    311: 'https://www.brfimoveis.com.br/311/imoveis/venda-lancamento-lancamento-2-quartos-agronomica-florianopolis-sc',
+    310: 'https://www.brfimoveis.com.br/310/imoveis/venda-lancamento-lancamento-2-quartos-rio-caveiras-biguacu-sc',
+    309: 'https://www.brfimoveis.com.br/309/imoveis/venda-apartamento-3-quartos-balneario-florianopolis-sc',
+    308: 'https://www.brfimoveis.com.br/308/imoveis/venda-apartamento-2-quartos-nossa-senhora-do-rosario-sao-jose-sc',
+    306: 'https://www.brfimoveis.com.br/306/imoveis/venda-lancamento-empresa-governador-celso-ramos-governador-celso-ramos-sc',
+    301: 'https://www.brfimoveis.com.br/301/imoveis/venda-lancamento-lancamento-1-quarto-trindade-florianopolis-sc',
+    296: 'https://www.brfimoveis.com.br/296/imoveis/venda-lancamento-lancamento-3-quartos-centro-balneario-camboriu-sc',
+    295: 'https://www.brfimoveis.com.br/295/imoveis/venda-lancamento-lancamento-2-quartos-areias-sao-jose-sc',
+    289: 'https://www.brfimoveis.com.br/289/imoveis/venda-lancamento-lancamento-2-quartos-estreito-florianopolis-sc',
+    284: 'https://www.brfimoveis.com.br/284/imoveis/venda-casa-3-quartos-ingleses-do-rio-vermelho-florianopolis-sc',
+    282: 'https://www.brfimoveis.com.br/282/imoveis/venda-casa-4-quartos-saco-dos-limoes-florianopolis-sc',
+    276: 'https://www.brfimoveis.com.br/276/imoveis/venda-casa-8-quartos-serraria-sao-jose-sc',
+    274: 'https://www.brfimoveis.com.br/274/imoveis/venda-terreno-rocado-sao-jose-sc',
+    265: 'https://www.brfimoveis.com.br/265/imoveis/venda-lancamento-lancamento-2-quartos-barreiros-sao-jose-sc',
+    259: 'https://www.brfimoveis.com.br/259/imoveis/venda-casa-3-quartos-balneario-florianopolis-sc',
+    248: 'https://www.brfimoveis.com.br/248/imoveis/venda-terreno-bombas-bombinhas-sc',
+    247: 'https://www.brfimoveis.com.br/247/imoveis/venda-terreno-sao-joao-do-rio-vermelho-florianopolis-sc',
+    246: 'https://www.brfimoveis.com.br/246/imoveis/venda-lote-capoeiras-florianopolis-sc',
+    224: 'https://www.brfimoveis.com.br/224/imoveis/venda-apartamento-3-quartos-jurere-internacional-florianopolis-sc',
+    215: 'https://www.brfimoveis.com.br/215/imoveis/venda-casa-4-quartos-pinheira-ens-brito-palhoca-sc',
+    214: 'https://www.brfimoveis.com.br/214/imoveis/venda-casa-3-quartos-serraria-sao-jose-sc',
+    207: 'https://www.brfimoveis.com.br/207/imoveis/venda-casa-3-quartos-estreito-florianopolis-sc',
+    193: 'https://www.brfimoveis.com.br/193/imoveis/venda-casa-3-quartos-serraria-sao-jose-sc',
+    192: 'https://www.brfimoveis.com.br/192/imoveis/venda-casa-6-quartos-estreito-florianopolis-sc',
+    62: 'https://www.brfimoveis.com.br/62/imoveis/venda-casa-6-quartos-balneario-florianopolis-sc',
+    55: 'https://www.brfimoveis.com.br/55/imoveis/venda-apartamento-3-quartos-canto-balneario-florianopolis-sc',
+  }
+
+  // De-para de códigos legados do CRM para IDs da lista oficial
+  const CODE_TO_OFFICIAL_ID = {
+    'AP 231': 55,
+    AP231: 55,
+    CA239: 62,
+    'CA 239': 62,
+    'CS 360': 192,
+    CS360: 192,
+    'CS 361': 193,
+    CS361: 193,
+    'CS 372': 207,
+    CS372: 207,
+    CS389: 214,
+    'CS 389': 214,
+    CS378: 215,
+    'CS 378': 215,
+    AP387: 224,
+    'AP 387': 224,
+    LT406: 246,
+    'LT 406': 246,
+    'TR 130': 247,
+    TR130: 247,
+    'TR 404': 248,
+    TR404: 248,
+    CS415: 259,
+    'CS 415': 259,
+    'TR 421': 274,
+    TR421: 274,
+    'CS 424': 276,
+    CS424: 276,
+  }
 
   let createdCount = 0
   let updatedCount = 0
@@ -1013,6 +1098,31 @@ function runCatalogSyncProcess(triggerSource) {
         }
         if (cleanedDesc !== currentDesc) {
           rec.set('description', cleanedDesc)
+          dirty = true
+        }
+
+        // CORREÇÃO: Alinhamento com a lista oficial do Mauro (49 links canônicos)
+        // Garante que o hook preserve/reconstrua URLs exatamente no mesmo padrão oficial (/ID/imoveis/venda-...)
+        let targetOfficialUrl = null
+        const currentUrlMatch = currentUrl.match(/\/(\d+)\/imoveis\//)
+        const urlId = currentUrlMatch ? parseInt(currentUrlMatch[1], 10) : null
+        const codeNumMatch = (cleanedCode || currentCode || '').match(/\d+/)
+        const codeNum = codeNumMatch ? parseInt(codeNumMatch[0], 10) : null
+        const rawCodeUpper = (cleanedCode || currentCode || '').trim().toUpperCase()
+
+        if (urlId && OFFICIAL_PROPERTY_URL_MAP[urlId]) {
+          targetOfficialUrl = OFFICIAL_PROPERTY_URL_MAP[urlId]
+        } else if (codeNum && OFFICIAL_PROPERTY_URL_MAP[codeNum]) {
+          targetOfficialUrl = OFFICIAL_PROPERTY_URL_MAP[codeNum]
+        } else if (
+          CODE_TO_OFFICIAL_ID[rawCodeUpper] &&
+          OFFICIAL_PROPERTY_URL_MAP[CODE_TO_OFFICIAL_ID[rawCodeUpper]]
+        ) {
+          targetOfficialUrl = OFFICIAL_PROPERTY_URL_MAP[CODE_TO_OFFICIAL_ID[rawCodeUpper]]
+        }
+
+        if (targetOfficialUrl && targetOfficialUrl !== currentUrl) {
+          rec.set('url', targetOfficialUrl)
           dirty = true
         }
 
