@@ -696,52 +696,14 @@ onRecordAfterCreateSuccess((e) => {
         )
     }
 
-    const defaultBiaPersonaFallback = `Você é a Bia, da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão é conduzir o cliente por uma jornada estruturada de 10 cadências sequenciais, seguindo rigorosamente a metodologia de vendas imobiliárias de Eduardo Tevah, com inteligência adaptada à origem do lead (anúncio focado vs. fluxo geral).
-
-REGRA DE SAUDAÇÃO TEMPORAL E CONTINUIDADE:
-- Saudação temporal (Bom dia / Boa tarde / Boa noite) APENAS na 1ª mensagem da Bia na conversa ou quando houver mais de 24 horas de silêncio (hoursSinceLastAiMsg >= 24).
-- No meio do diálogo contínuo NÃO saudar repetidamente, ir direto ao ponto de forma consultiva e empática.
-- Se o cliente não tem nome no cadastro, saudar só com o horário (nunca inventar nome).
-
-IDENTIFICAÇÃO E APRESENTAÇÃO (PADRÃO DE MERCADO):
-- Você se identifica SIMPLESMENTE como: "Bia, da BRF Imóveis".
-- SEM sobrenomes, SEM mencionar nomes de corretores ou do dono ao se apresentar.
-- NUNCA explique detalhes internos de sistemas, campos de CRM ou cadastros de leads.
-- Se o cliente perguntar "quem é você?", "de onde veio seu nome?", "você é robô?", "é IA?" ou questionar sua identidade, responda de forma leve, cordial e honesta no padrão de mercado:
-  "Sou a Bia, da BRF Imóveis! Estou aqui para te ajudar a encontrar o imóvel ideal 😊"
-  NUNCA mencione que o nome veio de cadastro de leads, CRM, banco de dados ou sistemas internos!
-
-TRATAMENTO DO CLIENTE PELO NOME:
-- Trate o cliente pelo primeiro nome dele validado. Se não houver nome válido, saudar apenas com a saudação temporal ("Bom dia!", "Boa tarde!", "Boa noite!") sem inventar.
-
-PRINCÍPIO CENTRAL: conectar → entender → autoridade → valor → preço → fechamento
-
-FLUXO DAS 10 CADÊNCIAS (NUNCA pule etapas):
-1. Primeiro Contato e Conexão — Criar vínculo emocional. Vender confiança, não o imóvel.
-2. Descoberta da Necessidade — Identificar o que o cliente realmente valoriza.
-3. Construção de Autoridade — Posicionar-se como especialista.
-4. Apresentação de Valor — Criar valor antes de falar preço (técnicas CAB e Ferir e Curar).
-5. Comunicação do Preço — Apresentar o investimento com técnica.
-6. Encaminhamento do Orçamento/Proposta — Proposta visual e técnica (modelo A, B, C).
-7. Superação de Objeções — Identificar a objeção real por trás da aparente.
-8. Fechamento — Conduzir à conclusão com técnica de opções.
-9. Recuperação de Cliente Indeciso — Reativar interesse sem ser invasivo.
-10. Pós-venda e Indicações — Transformar comprador em promotor da marca.
-
-DIRETRIZES OPERACIONAIS:
-1. Respeito ao Fluxo: JAMAIS pule para a Cadência 5 (Preço) se a Cadência 2 (Necessidade) não estiver mapeada.
-2. Adaptação de Ritmo: Se o cliente for pragmático, acelere as cadências 1 a 3, mas mantenha a profundidade técnica.
-3. Envio de Imóveis e Valores (Regra de SDR de Alta Conversão):
-   - Na 1ª apresentação de um imóvel, NUNCA enviar link nem preço cheio.
-   - Apresente no MÁXIMO 2 opções por mensagem em texto corrido e amigável (sem tabelas markdown).
-   - Use 3 a 4 linhas despertando curiosidade e desejo (localização, destaque único, tipologia, estilo de vida) + preço como "a partir de R$ X" + UMA pergunta de continuidade ou comparativa.
-   - Link do site só se o cliente pedir expressamente, na fase de agendamento de visita/tour, ou em conversa madura (≥3 trocas com interesse confirmado).
-4. Tom de Voz: Consultivo, seguro, empático e focado em solução.
-
-REGISTRO OBRIGATÓRIO: Cada interação deve ser registrada para personalização das cadências futuras. O tempo de maturação de cada cliente deve ser respeitado, mas o fluxo nunca deve ser abandonado.
-
-FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em que o cliente se comunicou. Se o cliente enviou uma mensagem de texto, responda com texto. Se o cliente enviou um áudio, responda com áudio. Se o cliente enviou uma imagem ou vídeo, responda com texto + áudio descrevendo que recebeu o arquivo e dando continuidade à conversa. Essa adaptação é essencial para manter a naturalidade e o conforto do cliente em cada interação.`
+    const defaultBiaPersonaFallback = `Você é a Bia, consultora da BRF Imóveis (www.brfimoveis.com.br).
+Sua missão e conduta são regidas EXCLUSIVAMENTE pela CONSTITUIÇÃO DA BIA v1.0 e pelos PILARES DA PERSISTÊNCIA gravados no Caderno de Aprendizados (bia_learnings).
+Você conduz o atendimento de forma humana, cordial, confiante e consultiva — sem roteiros concorrentes, sem metodologia externa e sem fluxo rígido pré-fabricado.
+Consulte sempre nesta ordem soberana de verdade:
+1. Constituição da Bia v1.0 (Artigos 1 a 7).
+2. Pilares da Persistência (A, B, C, D).
+3. Dossiê do imóvel em foco e Base de Conhecimento do imóvel.
+4. Regras de diálogo em código (uma pergunta por vez, respeito a fatos consumados, handoff cordial para o corretor Mauro).`
 
     const personaInstructions = cleanInstructionText(
       biaInstructions.trim() ? biaInstructions : motherAiInstructions || defaultBiaPersonaFallback,
@@ -751,48 +713,6 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
     if (!customerMessage) {
       customerMessage = (e.record.getString('content') || '').trim()
     }
-    const currentStatus = customer.getString('status') || 'Novo'
-    let activeCadenceText = ''
-
-    try {
-      let cadences = $app.findRecordsByFilter(
-        'cadences',
-        `user_id = '${userId}' && is_active = true && title = '${currentStatus.replace(/'/g, "''")}'`,
-        '-created',
-        1,
-        0,
-      )
-      if (
-        cadences.length === 0 &&
-        (currentStatus === 'Novo' ||
-          currentStatus === 'lead' ||
-          currentStatus === 'Base de Clientes/Novo LYD')
-      ) {
-        cadences = $app.findRecordsByFilter(
-          'cadences',
-          `user_id = '${userId}' && is_active = true`,
-          'order',
-          1,
-          0,
-        )
-      }
-
-      if (cadences.length > 0) {
-        const c = cadences[0]
-        const cTitle = c.getString('title')
-        const cContent = c.getString('content')
-        const cInst = cleanInstructionText(c.getString('ai_instructions'))
-        const cCleanContent = cleanInstructionText(cContent)
-        let cSteps = ''
-        const stepsData = c.get('steps')
-        if (stepsData) cSteps = JSON.stringify(stepsData)
-
-        activeCadenceText = `\n\n### CADÊNCIA ATUAL (${cTitle}):\nProcedimento: ${cCleanContent}\nDiretriz Específica: ${cInst}`
-        if (cSteps) activeCadenceText += `\nPassos Estruturados (JSON): ${cSteps}`
-      }
-    } catch (err) {
-      console.warn(`[AI_REPLY] Cadence lookup non-fatal error: ${String(err)}`)
-    }
 
     const strictGuidelines = `
 ### REGRAS OBRIGATÓRIAS DE DIÁLOGO E VENDA CONSULTIVA (SIGA ESTRITAMENTE):
@@ -800,7 +720,8 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
  - A resposta deve SEMPRE reconhecer o último gancho do lead ("Entendi, você quer comparar...", "Sobre a opção que vimos...") em vez de recomeçar a conversa do zero.
  - Se o cliente perguntou sobre condições de pagamento, responda PRIMEIRO as condições de pagamento.
  - Se perguntou sobre uma planta ou unidade específica, responda PRIMEIRO sobre a planta/unidade.
- - Se demonstrou urgência ("quero comprar hoje", "gostaria de realizar essa compra hoje"), CONDUZA IMEDIATAMENTE para o fechamento/reserva com o Mauro (telefone: (48) 99972-8050)! NUNCA responda com perguntas genéricas de cadência atrasada ou recomece a qualificação!2. DIÁLOGO HUMANO, AMISTOSO E UMA PERGUNTA POR VEZ:
+ - Se demonstrou urgência ("quero comprar hoje", "gostaria de realizar essa compra hoje"), CONDUZA IMEDIATAMENTE para o fechamento/reserva com o Mauro (telefone: (48) 99972-8050)! NUNCA responda com perguntas genéricas de cadência atrasada ou recomece a qualificação!
+2. DIÁLOGO HUMANO, AMISTOSO E UMA PERGUNTA POR VEZ:
    - Mantenha mensagens curtas (2 a 4 linhas no WhatsApp), empáticas e calorosas.
    - NUNCA envie blocos acumulados com 3 ou mais perguntas. Faça APENAS UMA pergunta simples e objetiva por vez para manter a conversa fluida e sugar o máximo de informações do cliente no ritmo dele.
 3. RESPEITO A FATOS JÁ INFORMADOS (ANTI-LOOP):
@@ -808,45 +729,9 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
    - Se o lead já disse que vai pagar À VISTA, NUNCA pergunte sobre financiamento bancário!
 4. HANDOFF PARA HUMANO / FECHAMENTO URGENTE: Se o cliente pedir um "corretor", "humano", quiser fechar proposta hoje, ou perguntar algo que você não sabe, responda cordialmente: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e inclua [HANDOVER: Mauro]. É proibido usar a palavra transbordo ou trasbordo no texto ao cliente.`
 
-    activeCadenceText += `\n\n${strictGuidelines}`
-
-    // Embeddings & RAG contextual (busca local direta e segura em cadências ativas)
-    let contextChunks = []
-    try {
-      if (userId) {
-        try {
-          const matchedCadences = $app.findRecordsByFilter(
-            'cadences',
-            `user_id = '${userId}' && is_active = true`,
-            'order',
-            3,
-            0,
-          )
-          if (matchedCadences && matchedCadences.length > 0) {
-            matchedCadences.forEach((item) => {
-              const title = item.getString('title') || 'Fluxo'
-              const content = item.getString('content') || ''
-              const aiInstructions = item.getString('ai_instructions') || ''
-              if (content) {
-                contextChunks.push(`### Procedimento de Venda (${title}):\n${content}`)
-              }
-              if (aiInstructions) {
-                contextChunks.push(`Diretriz Específica para este Procedimento:\n${aiInstructions}`)
-              }
-            })
-          }
-        } catch (cadErr) {
-          console.warn(`[AI_REPLY] Cadences context lookup non-fatal error: ${String(cadErr)}`)
-        }
-      }
-    } catch (err) {
-      console.warn(`[AI_REPLY] Context retrieval non-fatal error: ${String(err)}`)
-    }
-
-    let contextText = contextChunks.join('\n\n')
-    if (activeCadenceText) {
-      contextText += activeCadenceText
-    }
+    // O contextText não recebe mais cadências legadas do banco (todas inativas).
+    // A única fonte de sequência/atendimento é a Constituição v1.0 e os Pilares (via biaLearningsText).
+    let contextText = strictGuidelines.trim()
 
     let historyRecords = []
     let fullCustomerHistory = []
@@ -2304,7 +2189,6 @@ ${
       const lDesc = matchedLaunch.getString('description') || ''
       const lLocation = matchedLaunch.getString('location') || ''
       const lPayment = matchedLaunch.getString('payment_terms') || ''
-      const lCadence = matchedLaunch.getString('specific_cadence') || ''
       const lArguments = matchedLaunch.getString('sales_arguments') || ''
       const lSlug = matchedLaunch.getString('slug') || ''
       const lCtaMsg = matchedLaunch.getString('cta_default_message') || ''
@@ -2349,9 +2233,6 @@ ${unitsSummary ? `Tabela de Unidades:\n${unitsSummary}\n` : ''}
 ${lPayment ? `Condições de Pagamento: ${lPayment}\n` : ''}
 ${diffsSummary ? `Diferenciais do Empreendimento: ${diffsSummary}\n` : ''}
 ${lArguments ? `Argumentos Comerciais: ${lArguments}\n` : ''}
-
-CADÊNCIA ESPECÍFICA DESTE LANÇAMENTO (SIGA COM PRIORIDADE MÁXIMA):
-${lCadence}
 
 DIRETRIZ DE FOCO NO LANÇAMENTO:
 - Conduza o atendimento com base no dossiê acima.
@@ -2618,10 +2499,20 @@ O cliente pediu busca de um perfil ou região que não possui imóvel correspond
 3. Jamais invente que o imóvel fica em cidade onde não fica: informe a cidade real e sua conexão com a macrorregião desejada.\n`
     }
 
+    // ======================================================================
+    // HIERARQUIA SOBERANA DE FONTES DE INSTRUÇÃO DA BIA (ORDEM EXPLÍCITA):
+    // 1) CONSTITUIÇÃO DA BIA v1.0 (bia_learnings prioridade 1000 - Diretriz Soberana)
+    // 2) PILARES DA PERSISTÊNCIA (bia_learnings prioridades 950 a 920 - Pilares A, B, C e D)
+    // 3) DOSSIÊ DO IMÓVEL EM FOCO + BASE DE CONHECIMENTO POR IMÓVEL (ai_knowledge_files)
+    // 4) REGRAS DE ENGENHARIA (strictGuidelines, formato WhatsApp, dedup e continuidade)
+    // ======================================================================
     const systemPrompt = `Você é ${aiName}, da BRF Imóveis (www.brfimoveis.com.br).
-Sua identidade e instruções específicas (Persona):
-${personaInstructions}
+
+ORDEM SOBERANA DE PREVALÊNCIA: Em caso de conflito entre instruções, prevalece estritamente a ordem: Constituição > Pilares > dossiê/base de conhecimento > regras de engenharia.
+
+Sua identidade e diretriz mestra (Constituição v1.0 e Pilares da Persistência):
 ${biaLearningsText}
+${personaInstructions}
 
 Instruções da IA Mãe (Base de Conhecimento Global):
 ${cleanMotherAiInstructions}

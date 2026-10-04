@@ -196,24 +196,11 @@ routerAdd('POST', '/backend/v1/rag-search', (e) => {
     $app.logger().error('RAG search error', 'err', err)
   }
 
-  let cadencesItems = []
-  try {
-    const cadFilter = `user_id = '${userId}' && is_active = true`
-    const cadList = $app.findRecordsByFilter('cadences', cadFilter, 'order', 5, 0)
-    if (cadList && cadList.length > 0) {
-      cadencesItems = cadList
-    }
-  } catch (err) {
-    $app.logger().error('Cadences search error', 'err', err)
-  }
-
+  // A coleção 'cadences' foi aposentada em favor da Constituição v1.0 e Pilares gravados em bia_learnings.
+  // Retorna array vazio para manter retrocompatibilidade com o contrato da resposta JSON sem injetar instruções concorrentes.
   return e.json(200, {
     knowledge_base: kbItems,
     property_dossier: propertyDossier,
-    cadences: cadencesItems.map((r) => ({
-      title: r.getString('title') || '',
-      content: r.getString('content') || '',
-      ai_instructions: r.getString('ai_instructions') || '',
-    })),
+    cadences: [],
   })
 })

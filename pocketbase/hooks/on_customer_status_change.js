@@ -24,56 +24,9 @@ onRecordAfterUpdateSuccess((e) => {
   const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
   const baseInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
 
-  let cadenceRecord = null
-  try {
-    const cadences = $app.findRecordsByFilter(
-      'cadences',
-      `user_id = '${userId}' && is_active = true && title = '${newStatus.replace(/'/g, "''")}'`,
-      '-created',
-      1,
-      0,
-    )
-    if (cadences.length > 0) {
-      cadenceRecord = cadences[0]
-    }
-  } catch (err) {
-    $app.logger().error('Error fetching cadence for status change', err)
-  }
-
-  if (!cadenceRecord) {
-    try {
-      const logsCol = $app.findCollectionByNameOrId('system_logs')
-      const logRecord = new Record(logsCol)
-      logRecord.set('user_id', userId)
-      logRecord.set('type', 'diagnostic_warning')
-      logRecord.set('message', 'Cadência não encontrada')
-      logRecord.set(
-        'details',
-        `Nenhuma cadência ativa encontrada para a fase '${newStatus}'. Usando apenas instruções base da IA.`,
-      )
-      logRecord.set('payload', { customer_id: customerId, status: newStatus })
-      $app.saveNoValidate(logRecord)
-    } catch (_) {}
-  }
-
-  const cadenceContent = cadenceRecord ? cadenceRecord.getString('content') : ''
-  const cadenceInstructions = cadenceRecord ? cadenceRecord.getString('ai_instructions') : ''
-  let cadenceStepsJson = ''
-  try {
-    if (cadenceRecord) {
-      const steps = cadenceRecord.get('steps')
-      if (steps) cadenceStepsJson = JSON.stringify(steps)
-    }
-  } catch (_) {}
-
+  // A coleção 'cadences' legada não é mais consultada para atendimento.
+  // A Bia se conduz exclusivamente pela Constituição da Bia v1.0 e pelos Pilares (baseInstructions).
   let aiInstructions = baseInstructions
-  if (cadenceContent || cadenceInstructions || cadenceStepsJson) {
-    aiInstructions += `\n\nDIRETRIZES DA FASE ATUAL (${newStatus}):\n`
-    if (cadenceContent) aiInstructions += `Procedimento/Conteúdo: ${cadenceContent}\n`
-    if (cadenceInstructions) aiInstructions += `Instruções Específicas: ${cadenceInstructions}\n`
-    if (cadenceStepsJson) aiInstructions += `Passos da Cadência (JSON): ${cadenceStepsJson}\n`
-    aiInstructions += `\nIMPORTANTE: Com base nos passos da cadência, conduza o lead para o próximo passo. Quando o lead atingir o objetivo de uma nova fase, você poderá incluir a tag [STATUS: Nova_Fase] nas próximas mensagens para atualizar o CRM. ATENÇÃO: Você NUNCA deve mover o lead para a fase "Fechamento" ou estágios finais automaticamente. Essa ação é restrita a humanos, então não forneça a tag [STATUS: Fechamento].\n`
-  }
 
   if (!aiInstructions.trim()) {
     $app.logger().info('AI Trigger skipped: No instructions', 'customerId', customerId)

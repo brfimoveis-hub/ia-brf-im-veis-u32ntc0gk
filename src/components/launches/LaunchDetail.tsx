@@ -738,36 +738,36 @@ export function LaunchDetail({ launch: initialLaunch, onBack, onUpdated }: Launc
           </Card>
         </TabsContent>
 
-        {/* Aba 3: Cadência Específica */}
+        {/* Aba 3: Notas / Histórico de Cadência */}
         <TabsContent value="cadence" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Cadência Específica de 10 Passos</CardTitle>
+              <CardTitle className="text-base">
+                Notas Operacionais / Histórico de Cadência
+              </CardTitle>
               <CardDescription className="text-xs">
-                As instruções prioritárias que a Bia atendente segue quando o lead tem origem deste
-                lançamento.
+                Arquivo e anotações internas deste lançamento. A Bia atendente segue a Constituição
+                v1.0 soberana e o dossiê oficial (unidades, diferenciais e materiais em PDF).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                <Sparkles className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Fonte Única Ativa:</strong> As instruções de atendimento da Bia vêm
+                  exclusivamente da <strong>Constituição da Bia v1.0</strong> e dos{' '}
+                  <strong>Pilares da Persistência</strong>. O dossiê do imóvel (unidades,
+                  diferenciais e materiais) alimenta os dados do produto. Este campo permanece
+                  disponível para registro interno e histórico da equipe.
+                </span>
+              </div>
               <Textarea
                 name="specific_cadence"
                 value={formData.specific_cadence}
                 onChange={handleInputChange}
-                placeholder="Insira a cadência específica de vendas do empreendimento (ou peça para a Bia Mãe estruturar)..."
-                className="min-h-[300px] text-xs font-mono leading-relaxed"
+                placeholder="Anotações internas de cadência ou roteiro comercial da equipe..."
+                className="min-h-[260px] text-xs font-mono leading-relaxed"
               />
-              <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
-                <Sparkles className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Dica:</strong> Se precisar aprimorar a cadência, vá na aba{' '}
-                  <strong>"Chat c/ Bia Mãe"</strong> e peça:{' '}
-                  <em>
-                    "Bia Mãe, escreva a cadência em 10 passos para o {launch.name} focada em
-                    investidores e famílias"
-                  </em>
-                  .
-                </span>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
