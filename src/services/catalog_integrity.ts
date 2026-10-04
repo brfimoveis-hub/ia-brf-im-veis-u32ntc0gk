@@ -250,11 +250,70 @@ export async function getCatalogIntegrityReport(userId?: string): Promise<Catalo
 /**
  * Dispara re-sincronização do catálogo via backend
  */
-export async function triggerCatalogSync(): Promise<{ success: boolean; message: string }> {
-  const res = await pb.send<{ success: boolean; message: string }>('/backend/v1/sync-properties', {
-    method: 'POST',
-  })
-  return res
+export interface CatalogSyncStatusResponse {
+  status: 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'error'
+  message?: string
+  created: number
+  updated: number
+  errors: number
+  total: number
+  per_property?: Array<{ code: string; title: string; status: string; error?: string }>
+  started_at?: string | null
+  completed_at?: string | null
+  failed_at?: string | null
+  last_updated?: string | null
+  error?: string
+}
+
+/**
+ * Dispara re-sincronização assíncrona do catálogo via backend
+ */
+export async function triggerCatalogSync(): Promise<{
+  success: boolean
+  status?: string
+  message: string
+}> {
+  try {
+    const res = await pb.send<{ success: boolean; status?: string; message: string }>(
+      '/backend/v1/sync-properties',
+      {
+        method: 'POST',
+      },
+    )
+    return res
+  } catch (err: any) {
+    const status = err?.status || err?.response?.status
+    let friendlyMessage = 'Erro ao conectar ao servidor de sincronização.'
+    if (status === 401) {
+      friendlyMessage = 'Acesso restrito: autenticação necessária.'
+    } else if (status === 504 || err?.name === 'TimeoutError') {
+      friendlyMessage = 'Tempo limite de resposta do gateway excedido.'
+    } else if (err?.message) {
+      friendlyMessage = err.message
+    }
+    throw new Error(friendlyMessage)
+  }
+}
+
+/**
+ * Consulta o status atual do processamento de sincronização
+ */
+export async function getCatalogSyncStatus(): Promise<CatalogSyncStatusResponse> {
+  try {
+    const res = await pb.send<CatalogSyncStatusResponse>('/backend/v1/sync-properties/status', {
+      method: 'GET',
+    })
+    return res
+  } catch (err: any) {
+    return {
+      status: 'idle',
+      message: err?.message || 'Não foi possível obter o status da sincronização.',
+      created: 0,
+      updated: 0,
+      errors: 0,
+      total: 49,
+    }
+  }
 }
 
 /**

@@ -16,6 +16,10 @@ onRecordAfterCreateSuccess((e) => {
     const originalName = record.getString('name') || fileName
     const lowerName = originalName.toLowerCase()
 
+    const fileSize = record.getInt('file_size') || 0
+    const isTrashFile = fileSize === 0
+    const MAX_PDF_EXTRACT_BYTES = 25 * 1024 * 1024 // 25 MB: PDFs maiores ou books de renders pesados pulam extração para evitar OOM
+
     // 1. Tentar extração via $documents.toMarkdown para documentos estruturados
     const isDocument =
       lowerName.endsWith('.pdf') ||
@@ -26,23 +30,41 @@ onRecordAfterCreateSuccess((e) => {
       lowerName.endsWith('.pptx')
 
     if (isDocument) {
-      try {
-        const docResult = $documents.toMarkdown({
-          record: record,
-          field: 'file',
-        })
-        if (docResult && docResult.markdown && docResult.markdown.trim()) {
-          extractedMarkdown = docResult.markdown.trim()
-        }
-      } catch (docErr) {
-        console.warn('[AI_KNOWLEDGE_FILES] $documents.toMarkdown failed: ' + String(docErr))
-      }
+      // Regra de segurança: se for PDF > 25 MB, pula a extração pesada direto para não estourar memória do servidor
+      const isHeavyPdf = lowerName.endsWith('.pdf') && fileSize > MAX_PDF_EXTRACT_BYTES
 
-      // Se for PDF e a extração retornou vazia ou falhou (ex: PDF escaneado ou composto apenas por imagens/renders)
-      if (!extractedMarkdown && lowerName.endsWith('.pdf')) {
+      if (isHeavyPdf) {
+        console.log(
+          '[AI_KNOWLEDGE_FILES] Arquivo PDF pesado detectado (' +
+            (fileSize / (1024 * 1024)).toFixed(1) +
+            ' MB). Pulando $documents.toMarkdown para preservar memória e integridade do upload: ' +
+            originalName,
+        )
         extractedMarkdown =
-          '[PDF visual, sem texto extraível] — Material/Book visual de apresentação: ' +
-          originalName
+          '[Book PDF de apresentação visual — arquivo pesado com alta resolução de renders: ' +
+          originalName +
+          ']'
+      } else {
+        try {
+          const docResult = $documents.toMarkdown({
+            record: record,
+            field: 'file',
+          })
+          if (docResult && docResult.markdown && docResult.markdown.trim()) {
+            extractedMarkdown = docResult.markdown.trim()
+          }
+        } catch (docErr) {
+          console.warn(
+            '[AI_KNOWLEDGE_FILES] $documents.toMarkdown failed (não-bloqueante): ' + String(docErr),
+          )
+        }
+
+        // Se for PDF e a extração retornou vazia ou falhou (ex: PDF escaneado ou composto apenas por imagens/renders)
+        if (!extractedMarkdown && lowerName.endsWith('.pdf')) {
+          extractedMarkdown =
+            '[PDF visual, sem texto extraível] — Material/Book visual de apresentação: ' +
+            originalName
+        }
       }
     }
 
@@ -227,9 +249,7 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
-    // Se o arquivo tiver 0 bytes estritos, desativar automaticamente como arquivo corrompido
-    const fileSize = record.getInt('file_size') || 0
-    const isTrashFile = fileSize === 0
+    // Validação de arquivo corrompido (fileSize já calculado acima)
 
     // Resumo amigável caso seja PDF visual/apresentação
     let fileSummary = record.getString('summary') || ''
@@ -351,6 +371,10 @@ onRecordAfterUpdateSuccess((e) => {
     const lowerName = originalName.toLowerCase()
     let extractedMarkdown = currentExtracted
 
+    const fileSize = record.getInt('file_size') || 0
+    const isTrashFile = fileSize === 0
+    const MAX_PDF_EXTRACT_BYTES = 25 * 1024 * 1024
+
     if (!extractedMarkdown) {
       const isDocument =
         lowerName.endsWith('.pdf') ||
@@ -361,22 +385,40 @@ onRecordAfterUpdateSuccess((e) => {
         lowerName.endsWith('.pptx')
 
       if (isDocument) {
-        try {
-          const docResult = $documents.toMarkdown({
-            record: record,
-            field: 'file',
-          })
-          if (docResult && docResult.markdown && docResult.markdown.trim()) {
-            extractedMarkdown = docResult.markdown.trim()
-          }
-        } catch (docErr) {
-          console.warn('[AI_KNOWLEDGE_FILES] $documents.toMarkdown failed: ' + String(docErr))
-        }
+        const isHeavyPdf = lowerName.endsWith('.pdf') && fileSize > MAX_PDF_EXTRACT_BYTES
 
-        if (!extractedMarkdown && lowerName.endsWith('.pdf')) {
+        if (isHeavyPdf) {
+          console.log(
+            '[AI_KNOWLEDGE_FILES] Arquivo PDF pesado em update (' +
+              (fileSize / (1024 * 1024)).toFixed(1) +
+              ' MB). Pulando $documents.toMarkdown: ' +
+              originalName,
+          )
           extractedMarkdown =
-            '[PDF visual, sem texto extraível] — Material/Book visual de apresentação: ' +
-            originalName
+            '[Book PDF de apresentação visual — arquivo pesado com alta resolução de renders: ' +
+            originalName +
+            ']'
+        } else {
+          try {
+            const docResult = $documents.toMarkdown({
+              record: record,
+              field: 'file',
+            })
+            if (docResult && docResult.markdown && docResult.markdown.trim()) {
+              extractedMarkdown = docResult.markdown.trim()
+            }
+          } catch (docErr) {
+            console.warn(
+              '[AI_KNOWLEDGE_FILES] $documents.toMarkdown failed (não-bloqueante): ' +
+                String(docErr),
+            )
+          }
+
+          if (!extractedMarkdown && lowerName.endsWith('.pdf')) {
+            extractedMarkdown =
+              '[PDF visual, sem texto extraível] — Material/Book visual de apresentação: ' +
+              originalName
+          }
         }
       }
 
@@ -537,9 +579,6 @@ onRecordAfterUpdateSuccess((e) => {
         detectedEnterprise = 'Luminare Residence'
       }
     }
-
-    const fileSize = record.getInt('file_size') || 0
-    const isTrashFile = fileSize === 0
 
     let fileSummary = record.getString('summary') || ''
     if (!fileSummary && extractedMarkdown.startsWith('[PDF visual, sem texto extraível]')) {

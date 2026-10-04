@@ -531,9 +531,11 @@ export default function SettingsAI() {
         successCount++
       } catch (uploadErr: any) {
         console.error(`Falha no upload do arquivo ${file.name}:`, uploadErr)
-        const errMsg = uploadErr.message || `Falha no upload de "${file.name}"`
+        const errMsg =
+          uploadErr?.message ||
+          `Falha ao salvar "${file.name}". O arquivo não pôde ser transferido.`
         failureReasons.push(`${file.name}: ${errMsg}`)
-        toast.error(errMsg, { duration: 6000 })
+        toast.error(errMsg, { duration: 7000 })
         failCount++
       }
     }

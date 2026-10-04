@@ -119,6 +119,11 @@ export async function uploadAiKnowledgeFile(
         `O arquivo "${file.name}" (${fileMb} MB) foi recusado pelo servidor por tamanho excessivo. O limite máximo permitido é ${MAX_SINGLE_FILE_SIZE_LABEL}.`,
       )
     }
+    if (status === 504 || status === 502) {
+      throw new Error(
+        `Tempo limite excedido ao processar "${file.name}". O upload foi interrompido pelo gateway de rede.`,
+      )
+    }
     if (error?.data?.data?.file?.message) {
       throw new Error(`Erro no arquivo "${file.name}": ${error.data.data.file.message}`)
     }

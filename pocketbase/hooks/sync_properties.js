@@ -2,7 +2,7 @@
 // Sincronização periódica e sob demanda do catálogo de imóveis da BRF Imóveis
 // Fonte oficial: https://www.brfimoveis.com.br
 // Garante UTF-8 limpo, sem mojibake, sem entidades HTML sujas (&times;), imagens válidas e sem prefixo de código corrompido.
-// PocketBase JSVM: todas as funções de processamento inline dentro dos callbacks ou reusadas diretamente.
+// Execução assíncrona tolerante por URL com status gravado e consultável em system_logs ('property_sync_state').
 
 function runCatalogSyncProcess(triggerSource) {
   function normalizeMojibake(text) {
@@ -1045,6 +1045,52 @@ function runCatalogSyncProcess(triggerSource) {
   let createdCount = 0
   let updatedCount = 0
   let errorsCount = 0
+  const perPropertyResults = []
+
+  // Helper para atualizar ou criar o registro único de estado da sincronização em system_logs
+  function updateSyncState(status, extraData) {
+    try {
+      const logsColl = $app.findCollectionByNameOrId('system_logs')
+      let stateRec = null
+      try {
+        stateRec = $app.findFirstRecordByFilter('system_logs', "type = 'property_sync_state'")
+      } catch (_) {}
+
+      if (!stateRec) {
+        stateRec = new Record(logsColl)
+        stateRec.set('type', 'property_sync_state')
+      }
+
+      stateRec.set(
+        'message',
+        extraData && extraData.message ? extraData.message : 'Status: ' + status,
+      )
+      const payload = {
+        status: status,
+        source: triggerSource || 'manual',
+        created: createdCount,
+        updated: updatedCount,
+        errors: errorsCount,
+        total: ESSENTIAL_CATALOG.length,
+        per_property: perPropertyResults.slice(-50),
+        last_updated: new Date().toISOString(),
+      }
+      if (extraData) {
+        for (var k in extraData) {
+          payload[k] = extraData[k]
+        }
+      }
+      stateRec.set('payload', payload)
+      $app.saveNoValidate(stateRec)
+    } catch (stErr) {
+      $app.logger().warn('Erro ao atualizar property_sync_state: ' + stErr.message)
+    }
+  }
+
+  updateSyncState('running', {
+    started_at: new Date().toISOString(),
+    message: 'Sincronização em andamento...',
+  })
 
   try {
     const existingRecords = $app.findRecordsByFilter(
@@ -1181,6 +1227,11 @@ function runCatalogSyncProcess(triggerSource) {
           existing.set('is_active', true)
           $app.save(existing)
           updatedCount++
+          perPropertyResults.push({
+            code: item.code,
+            title: item.title,
+            status: 'updated',
+          })
         } else {
           const coll = $app.findCollectionByNameOrId('properties')
           const newRec = new Record(coll)
@@ -1205,10 +1256,21 @@ function runCatalogSyncProcess(triggerSource) {
           newRec.set('is_active', true)
           $app.save(newRec)
           createdCount++
+          perPropertyResults.push({
+            code: item.code,
+            title: item.title,
+            status: 'created',
+          })
         }
       } catch (err) {
         $app.logger().error('Erro ao salvar item essencial (' + item.code + '): ' + err.message)
         errorsCount++
+        perPropertyResults.push({
+          code: item.code,
+          title: item.title,
+          status: 'error',
+          error: err.message,
+        })
       }
     }
 
@@ -1247,33 +1309,45 @@ function runCatalogSyncProcess(triggerSource) {
       $app.logger().warn('Aviso na sincronização cruzada de lançamentos: ' + launchErr.message)
     }
 
+    const finalMsg =
+      'Sincronização de catálogo [' +
+      (triggerSource || 'cron') +
+      '] concluída: ' +
+      createdCount +
+      ' criados, ' +
+      updatedCount +
+      ' atualizados, ' +
+      errorsCount +
+      ' erros.'
+
+    updateSyncState('completed', {
+      completed_at: new Date().toISOString(),
+      message: finalMsg,
+      per_property: perPropertyResults,
+    })
+
     try {
       const logsColl = $app.findCollectionByNameOrId('system_logs')
       const logRec = new Record(logsColl)
       logRec.set('type', 'properties_sync')
-      logRec.set(
-        'message',
-        'Sincronização de catálogo [' +
-          (triggerSource || 'cron') +
-          '] concluída: ' +
-          createdCount +
-          ' criados, ' +
-          updatedCount +
-          ' atualizados, ' +
-          errorsCount +
-          ' erros.',
-      )
+      logRec.set('message', finalMsg)
       logRec.set('payload', {
         source: triggerSource || 'cron',
         created: createdCount,
         updated: updatedCount,
         errors: errorsCount,
+        per_property: perPropertyResults.slice(-50),
         timestamp: new Date().toISOString(),
       })
       $app.save(logRec)
     } catch (_) {}
   } catch (globalErr) {
     $app.logger().error('Falha geral no job de sincronização de imóveis: ' + globalErr.message)
+    updateSyncState('failed', {
+      failed_at: new Date().toISOString(),
+      message: 'Falha na sincronização: ' + globalErr.message,
+      error: globalErr.message,
+    })
   }
 }
 
@@ -1307,6 +1381,31 @@ cronAdd('sync_properties_hourly', '0 * * * *', () => {
   }
 })
 
+// Cron de alta frequência (a cada minuto) para consumir solicitações manuais de sincronização em segundo plano
+cronAdd('sync_properties_dispatcher', '* * * * *', () => {
+  try {
+    const logsColl = $app.findCollectionByNameOrId('system_logs')
+    let reqRec = null
+    try {
+      reqRec = $app.findFirstRecordByFilter(
+        'system_logs',
+        "type = 'property_sync_state' && payload.status = 'queued'",
+      )
+    } catch (_) {}
+
+    if (reqRec) {
+      $app
+        .logger()
+        .info(
+          '[SYNC_PROPERTIES] Encontrada solicitação queued. Disparando runCatalogSyncProcess em segundo plano...',
+        )
+      runCatalogSyncProcess('manual_dispatcher')
+    }
+  } catch (dispatchErr) {
+    $app.logger().warn('[SYNC_PROPERTIES] Erro no dispatcher cron: ' + dispatchErr.message)
+  }
+})
+
 // Endpoint interno invocado pelos crons (sem necessidade de auth bearer externa)
 routerAdd('POST', '/backend/v1/sync-properties-cron', (c) => {
   try {
@@ -1319,7 +1418,53 @@ routerAdd('POST', '/backend/v1/sync-properties-cron', (c) => {
   }
 })
 
+// Endpoint HTTP consultável: retorna o estado atual da sincronização (status, contadores, timestamps, erros)
+routerAdd('GET', '/backend/v1/sync-properties/status', (c) => {
+  try {
+    let stateRec = null
+    try {
+      stateRec = $app.findFirstRecordByFilter(
+        'system_logs',
+        "type = 'property_sync_state'",
+        '-created',
+      )
+    } catch (_) {}
+
+    if (!stateRec) {
+      return c.json(200, {
+        status: 'idle',
+        message: 'Nenhuma sincronização recente registrada.',
+        created: 0,
+        updated: 0,
+        errors: 0,
+        total: 49,
+      })
+    }
+
+    const payload = stateRec.get('payload') || {}
+    return c.json(200, {
+      status: payload.status || 'idle',
+      message: stateRec.getString('message') || payload.message || '',
+      created: payload.created || 0,
+      updated: payload.updated || 0,
+      errors: payload.errors || 0,
+      total: payload.total || 49,
+      per_property: payload.per_property || [],
+      started_at: payload.started_at || null,
+      completed_at: payload.completed_at || null,
+      failed_at: payload.failed_at || null,
+      last_updated: payload.last_updated || stateRec.getString('updated'),
+    })
+  } catch (err) {
+    return c.json(500, {
+      status: 'error',
+      error: err.message,
+    })
+  }
+})
+
 // Endpoint HTTP para disparar sincronização sob demanda (admin ou webhook)
+// Responde IMEDIATAMENTE (< 2s) gravando estado 'queued' para não estourar gateway timeout
 routerAdd('POST', '/backend/v1/sync-properties', (c) => {
   try {
     const authRecord = c.requestInfo().auth
@@ -1330,13 +1475,47 @@ routerAdd('POST', '/backend/v1/sync-properties', (c) => {
       })
     }
 
-    // Executa o processo de sincronização e sanitização
-    runCatalogSyncProcess('manual_http')
+    // Registra/atualiza o estado como 'queued' para o dispatcher cron processar imediatamente fora da requisição HTTP
+    const logsColl = $app.findCollectionByNameOrId('system_logs')
+    let stateRec = null
+    try {
+      stateRec = $app.findFirstRecordByFilter('system_logs', "type = 'property_sync_state'")
+    } catch (_) {}
+
+    if (!stateRec) {
+      stateRec = new Record(logsColl)
+      stateRec.set('type', 'property_sync_state')
+    }
+
+    stateRec.set('message', 'Sincronização solicitada pelo usuário. Aguardando processamento...')
+    stateRec.set('payload', {
+      status: 'queued',
+      source: 'manual_http',
+      requested_at: new Date().toISOString(),
+      requested_by: authRecord.id,
+      total: 49,
+      created: 0,
+      updated: 0,
+      errors: 0,
+    })
+    $app.saveNoValidate(stateRec)
+
+    // Tenta também um acionamento rápido e assíncrono via chamada interna sem travar o cliente
+    try {
+      $http.send({
+        url: 'http://127.0.0.1:8090/backend/v1/sync-properties-cron?source=manual_async',
+        method: 'POST',
+        timeout: 1, // timeout de 1s para responder de imediato ao cliente mesmo se a execução continuar
+      })
+    } catch (_) {
+      // Ignora timeout intencional do disparo imediato pois o cron de 1 min dispatcher é o salvaguarda garantido
+    }
 
     return c.json(200, {
       success: true,
+      status: 'queued',
       message:
-        'Sincronização e sanitização com o site oficial da BRF Imóveis concluída com sucesso.',
+        'Sincronização iniciada em segundo plano. O catálogo está sendo atualizado e auditado.',
     })
   } catch (err) {
     return c.json(500, {

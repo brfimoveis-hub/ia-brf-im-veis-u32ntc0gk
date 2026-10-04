@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import {
   type CatalogIntegritySummary,
   type PropertyIntegrityReportItem,
+  type CatalogSyncStatusResponse,
   getCatalogIntegrityReport,
   triggerCatalogSync,
+  getCatalogSyncStatus,
   triggerAiKnowledgeAutoOrganize,
 } from '@/services/catalog_integrity'
 import {
@@ -51,6 +53,7 @@ export function CatalogIntegrityReport({
   const [report, setReport] = useState<CatalogIntegritySummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<CatalogSyncStatusResponse | null>(null)
   const [autoOrganizing, setAutoOrganizing] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'complete' | 'incomplete'>('all')
   const [missingFilter, setMissingFilter] = useState<string>('all')
@@ -77,24 +80,74 @@ export function CatalogIntegrityReport({
     loadReport()
   }, [userId])
 
+  // Polling de status enquanto estiver em fila ('queued') ou em execução ('running')
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    if (syncing || syncStatus?.status === 'queued' || syncStatus?.status === 'running') {
+      timer = setInterval(async () => {
+        try {
+          const st = await getCatalogSyncStatus()
+          setSyncStatus(st)
+
+          if (st.status === 'completed') {
+            setSyncing(false)
+            toast({
+              title: 'Sincronização concluída com sucesso!',
+              description:
+                st.message ||
+                `${st.updated + st.created} imóveis sincronizados com o site oficial.`,
+            })
+            await loadReport()
+            if (onRefreshKnowledgeFiles) onRefreshKnowledgeFiles()
+          } else if (st.status === 'failed' || st.status === 'error') {
+            setSyncing(false)
+            toast({
+              title: 'Falha na sincronização',
+              description: st.message || st.error || 'Erro no processamento da sincronização.',
+              variant: 'destructive',
+            })
+          }
+        } catch {
+          /* intentionally ignored */
+        }
+      }, 4000)
+    }
+
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [syncing, syncStatus?.status])
+
   const handleSyncSite = async () => {
     setSyncing(true)
     try {
       const res = await triggerCatalogSync()
       toast({
-        title: 'Sincronização iniciada!',
-        description: res.message || 'Catálogo atualizado com o site oficial da BRF Imóveis.',
+        title: 'Sincronização iniciada em segundo plano!',
+        description:
+          res.message || 'O catálogo está sendo sincronizado e auditado com o site oficial.',
       })
-      await loadReport()
-      if (onRefreshKnowledgeFiles) onRefreshKnowledgeFiles()
+
+      // Consulta status inicial
+      const initialStatus = await getCatalogSyncStatus()
+      setSyncStatus(initialStatus)
+
+      if (initialStatus.status === 'completed') {
+        setSyncing(false)
+        await loadReport()
+        if (onRefreshKnowledgeFiles) onRefreshKnowledgeFiles()
+      }
     } catch (err: any) {
+      setSyncing(false)
+      const errorMsg =
+        err?.message ||
+        'Não foi possível iniciar a sincronização com o site oficial. Verifique a conexão com o servidor.'
       toast({
         title: 'Falha na sincronização',
-        description: err?.message || 'Erro ao sincronizar com o site.',
+        description: errorMsg,
         variant: 'destructive',
       })
-    } finally {
-      setSyncing(false)
     }
   }
 
@@ -205,6 +258,31 @@ export function CatalogIntegrityReport({
       </CardHeader>
 
       <CardContent className="space-y-4 pt-4 p-3 sm:p-6">
+        {/* BANNER DE STATUS DA SINCRONIZAÇÃO EM ANDAMENTO OU RECENTE */}
+        {syncStatus && (syncStatus.status === 'queued' || syncStatus.status === 'running') && (
+          <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5">
+              <RefreshCw className="w-4 h-4 text-emerald-600 animate-spin shrink-0" />
+              <div>
+                <span className="font-semibold text-emerald-950 dark:text-emerald-100 block">
+                  {syncStatus.status === 'queued'
+                    ? 'Sincronização na fila de execução...'
+                    : 'Sincronizando imóveis em segundo plano...'}
+                </span>
+                <span className="text-muted-foreground text-[11px]">
+                  {syncStatus.message || 'Auditando os 49 links canônicos do site oficial.'}
+                </span>
+              </div>
+            </div>
+            <Badge
+              variant="outline"
+              className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]"
+            >
+              Assíncrono Ativo
+            </Badge>
+          </div>
+        )}
+
         {/* KPI CARDS */}
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
