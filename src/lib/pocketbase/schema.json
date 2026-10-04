@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-04T17:56:15.516Z",
+  "generatedAt": "2026-10-04T18:13:31.108Z",
   "collections": [
     {
       "name": "users",
@@ -1818,6 +1818,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "website_url",
+          "type": "url",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []

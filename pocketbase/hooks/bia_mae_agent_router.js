@@ -36,11 +36,19 @@ routerAdd('POST', '/backend/v1/bia-mae/chat', (e) => {
   // Prepara o contexto de dados do lançamento se houver
   let launchContext = ''
   if (currentLaunch) {
+    const lWebsiteUrl = (currentLaunch.getString('website_url') || '').trim()
+    const lSlug = currentLaunch.getString('slug') || ''
+    const officialSiteUrl =
+      lWebsiteUrl ||
+      (lSlug ? `https://crm.brfimoveis.com.br/l/${lSlug}` : 'https://www.brfimoveis.com.br')
+
     launchContext = `
 [DADOS ATUAIS DO LANÇAMENTO EM EDIÇÃO]
 ID: ${currentLaunch.id}
 Nome: ${currentLaunch.getString('name')}
-Slug: ${currentLaunch.getString('slug')}
+Slug: ${lSlug}
+Link Oficial no Site (brfimoveis.com.br): ${officialSiteUrl}
+${lWebsiteUrl ? `Website URL Customizada: ${lWebsiteUrl}` : ''}
 Empreendimento: ${currentLaunch.getString('enterprise_name')}
 Status atual: ${currentLaunch.getString('status')}
 Localização: ${currentLaunch.getString('location')}

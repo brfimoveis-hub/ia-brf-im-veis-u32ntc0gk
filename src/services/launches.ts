@@ -22,6 +22,7 @@ export interface Launch {
   user_id?: string
   name: string
   slug: string
+  website_url?: string
   enterprise_name: string
   status: 'rascunho' | 'em_revisao' | 'publicado' | 'arquivado'
   headline?: string

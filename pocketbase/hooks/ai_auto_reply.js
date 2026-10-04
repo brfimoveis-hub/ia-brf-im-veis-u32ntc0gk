@@ -2221,6 +2221,11 @@ ${
       const lArguments = matchedLaunch.getString('sales_arguments') || ''
       const lSlug = matchedLaunch.getString('slug') || ''
       const lCtaMsg = matchedLaunch.getString('cta_default_message') || ''
+      const lWebsiteUrl = (matchedLaunch.getString('website_url') || '').trim()
+      // Prioridade absoluta: link oficial no site da BRF (ex: https://www.brfimoveis.com.br/vistage), fallback landing interna CRM
+      const lOfficialLink =
+        lWebsiteUrl ||
+        (lSlug ? `https://crm.brfimoveis.com.br/l/${lSlug}` : 'https://www.brfimoveis.com.br')
 
       let lUnits = matchedLaunch.get('units') || []
       if (typeof lUnits === 'string') {
@@ -2262,11 +2267,12 @@ ${unitsSummary ? `Tabela de Unidades:\n${unitsSummary}\n` : ''}
 ${lPayment ? `Condições de Pagamento: ${lPayment}\n` : ''}
 ${diffsSummary ? `Diferenciais do Empreendimento: ${diffsSummary}\n` : ''}
 ${lArguments ? `Argumentos Comerciais: ${lArguments}\n` : ''}
+Página Oficial do Lançamento: ${lOfficialLink}
 
 DIRETRIZ DE FOCO NO LANÇAMENTO:
 - Conduza o atendimento com base no dossiê acima.
 - Destaque as unidades, valores e diferenciais específicos do ${lName}.
-- Landing page oficial do lançamento: https://crm.brfimoveis.com.br/l/${lSlug} (você pode enviar para o cliente ver fotos e detalhes).
+- Página oficial do lançamento: ${lOfficialLink} (você pode enviar para o cliente ver fotos, plantas e detalhes oficiais).
 - Se o cliente avançar para reserva, visita ao decorado ou proposta, direcione com cordialidade informando: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e marque [HANDOVER: Mauro].\n`
     } else if (matchedPlaybook && !isOwnerCaptureLead) {
       const pbName = matchedPlaybook.getString('name') || 'Anúncio'
