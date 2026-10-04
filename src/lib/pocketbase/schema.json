@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-04T14:39:37.691Z",
+  "generatedAt": "2026-10-04T14:49:02.479Z",
   "collections": [
     {
       "name": "users",
@@ -2535,6 +2535,116 @@
         {
           "name": "image_urls",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "follow_ups_scheduled",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "customer_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "customers"
+        },
+        {
+          "name": "property_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "properties"
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "d1",
+            "d3",
+            "d7",
+            "d14",
+            "promised_followup",
+            "manual"
+          ]
+        },
+        {
+          "name": "scheduled_date",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "pending",
+            "sent",
+            "canceled",
+            "skipped"
+          ]
+        },
+        {
+          "name": "message_template",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "promise_context",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_error",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sent_at",
+          "type": "text",
           "required": false,
           "system": false
         },
