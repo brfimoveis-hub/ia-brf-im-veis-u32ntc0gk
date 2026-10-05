@@ -172,6 +172,9 @@ onRecordAfterCreateSuccess((e) => {
               { term: 'villa dos açores', code: 'LM330', defaultName: 'Villa dos Açores' },
               { term: 'villa dos acores', code: 'LM330', defaultName: 'Villa dos Açores' },
               { term: 'viva trindade', code: 'LM328', defaultName: 'Viva Trindade' },
+              { term: 'oceanic', code: 'LM265', defaultName: 'Oceanic Residence' },
+              { term: 'allure', code: '', defaultName: 'Allure Home' },
+              { term: 'areias', code: 'LM295', defaultName: 'Residencial Areias' },
               { term: 'neo continente', code: '', defaultName: 'Neo Continente' },
               { term: 'colinas de são pedro', code: '', defaultName: 'Colinas de São Pedro' },
               { term: 'colinas de sao pedro', code: '', defaultName: 'Colinas de São Pedro' },
@@ -825,6 +828,11 @@ routerAdd('POST', '/backend/v1/ai-knowledge/auto-organize', (c) => {
             'essenzia canasvieiras',
             'luminare residence',
             'luminare',
+            'oceanic residence',
+            'oceanic',
+            'residencial areias',
+            'allure home',
+            'allure',
           ]
 
           for (let k = 0; k < activeProperties.length; k++) {
@@ -859,6 +867,9 @@ routerAdd('POST', '/backend/v1/ai-knowledge/auto-organize', (c) => {
         else if (combined.indexOf('nova governador') !== -1)
           currentEnterprise = 'Nova Governador Celso Ramos'
         else if (combined.indexOf('luminare') !== -1) currentEnterprise = 'Luminare Residence'
+        else if (combined.indexOf('oceanic') !== -1) currentEnterprise = 'Oceanic Residence'
+        else if (combined.indexOf('areias') !== -1) currentEnterprise = 'Residencial Areias'
+        else if (combined.indexOf('allure') !== -1) currentEnterprise = 'Allure Home'
         else currentEnterprise = 'Geral / Institucional'
       }
 

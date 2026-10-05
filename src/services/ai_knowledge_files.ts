@@ -191,5 +191,14 @@ export async function toggleAiKnowledgeFileActive(
 }
 
 export function getAiKnowledgeFileUrl(record: AiKnowledgeFile): string {
-  return pb.files.getURL(record, record.file)
+  if (record.file) {
+    return pb.files.getURL(record, record.file)
+  }
+  // Se não houver arquivo binário salvo mas houver link público no extracted_text ou resumo
+  const text = record.extracted_text || record.summary || ''
+  const linkMatch = text.match(/https:\/\/(?:drive\.google\.com|docs\.google\.com)[^\s"'>)]+/)
+  if (linkMatch) {
+    return linkMatch[0]
+  }
+  return '#'
 }
