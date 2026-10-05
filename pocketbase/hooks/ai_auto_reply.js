@@ -714,13 +714,12 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     const defaultBiaPersonaFallback = `Você é a Bia, consultora da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão e conduta são regidas EXCLUSIVAMENTE pela CONSTITUIÇÃO DA BIA v1.0 e pelos PILARES DA PERSISTÊNCIA gravados no Caderno de Aprendizados (bia_learnings).
+Sua missão e conduta são regidas EXCLUSIVAMENTE pela CONSTITUIÇÃO DA BIA v2.0 gravada no Caderno de Aprendizados (bia_learnings prioridade máxima).
 Você conduz o atendimento de forma humana, cordial, confiante e consultiva — sem roteiros concorrentes, sem metodologia externa e sem fluxo rígido pré-fabricado.
 Consulte sempre nesta ordem soberana de verdade:
-1. Constituição da Bia v1.0 (Artigos 1 a 7).
-2. Pilares da Persistência (A, B, C, D).
-3. Dossiê do imóvel em foco e Base de Conhecimento do imóvel.
-4. Regras de diálogo em código (uma pergunta por vez, respeito a fatos consumados, handoff cordial para o corretor Mauro).`
+1. Constituição da Bia v2.0 (Artigos 1 a 10).
+2. Dossiê do imóvel em foco e Base de Conhecimento do imóvel.
+3. Regras de diálogo em código (uma pergunta por vez, respeito a fatos consumados, pedido de visita é fechamento, acionar o Mauro apenas quando esgotar o que sabe).`
 
     const personaInstructions = cleanInstructionText(
       biaInstructions.trim() ? biaInstructions : motherAiInstructions || defaultBiaPersonaFallback,
@@ -744,10 +743,10 @@ Consulte sempre nesta ordem soberana de verdade:
 3. RESPEITO A FATOS JÁ INFORMADOS (ANTI-LOOP):
    - Se o lead já disse que o objetivo é INVESTIMENTO, NUNCA pergunte "vai morar ou investir?". A ficha do lead governa!
    - Se o lead já disse que vai pagar À VISTA, NUNCA pergunte sobre financiamento bancário!
-4. HANDOFF PARA HUMANO / FECHAMENTO URGENTE: Se o cliente pedir um "corretor", "humano", quiser fechar proposta hoje, ou perguntar algo que você não sabe, responda cordialmente: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e inclua [HANDOVER: Mauro]. É proibido usar a palavra transbordo ou trasbordo no texto ao cliente.`
+4. ACIONAMENTO DO MAURO / CORRETOR HUMANO: Pedido de visita, reserva ou proposta É FECHAMENTO, NÃO É TRANSBORDO! Trate como vitória, confirme o interesse e registre para o Mauro conduzir. Acione o Mauro somente quando o cliente pedir expressamente corretor humano ou você não tiver mais resposta adequada para dar, depois de esgotar tudo o que sabe. Nunca diga "vou pedir para o corretor Mauro entrar em contato" diante de interesse de visita/reserva/proposta.`
 
     // O contextText não recebe mais cadências legadas do banco (todas inativas).
-    // A única fonte de sequência/atendimento é a Constituição v1.0 e os Pilares (via biaLearningsText).
+    // A única fonte de sequência/atendimento é a Constituição v2.0 (via biaLearningsText).
     let contextText = strictGuidelines.trim()
 
     let historyRecords = []
@@ -1547,50 +1546,12 @@ ${
           )
         }
       } else if (!isMismatchDetected) {
-        // Se NÃO há código explícito na mensagem atual e NÃO é mensagem de continuação,
-        // manter busca de apoio por critérios ou histórico recente sem sobrescrever foco
-        try {
-          const sliceForPropertyScan =
-            fullCustomerHistory && fullCustomerHistory.length > 0
-              ? fullCustomerHistory.slice(-4)
-              : historyRecords.slice(-4)
-
-          const recentConvSlice = sliceForPropertyScan
-            .map(function (m) {
-              return m.getString('content') || ''
-            })
-            .join(' ')
-
-          const combinedHistoryAndCurrent = `${combinedCustAndAdText} ${recentConvSlice}`
-
-          const histCodeRegex = /(?:^|[\s#])([a-z]{1,4}[-_\s]?\d{2,5}|\b\d{3,4}\b)/gi
-          let histCodeMatch = null
-          while ((histCodeMatch = histCodeRegex.exec(combinedHistoryAndCurrent)) !== null) {
-            const matchCandidate = histCodeMatch[1].trim()
-            const numOnly = matchCandidate.replace(/\D/g, '')
-            if (
-              numOnly &&
-              numOnly.length >= 2 &&
-              numOnly.length <= 5 &&
-              numOnly !== '500' &&
-              numOnly !== '100' &&
-              numOnly !== '200' &&
-              numOnly !== '2024' &&
-              numOnly !== '2025' &&
-              numOnly !== '2026'
-            ) {
-              const matchedHistProp = findPropertyByExactCode(numOnly)
-              if (matchedHistProp && !matchedIdsMap[matchedHistProp.id]) {
-                matchedIdsMap[matchedHistProp.id] = true
-                matchedProps.push(matchedHistProp)
-                detectedSpecificPropertyQuery = true
-              }
-            }
-          }
-        } catch (histScanErr) {
-          console.warn(`[AI_REPLY] Erro ao varrer histórico secundário: ${String(histScanErr)}`)
-        }
-
+        // REGRA DE MÁQUINA 2: FOCO ÚNICO
+        // Código digitado pelo cliente vence tudo. Caminho sliceForPropertyScan/histCodeRegex DESATIVADO
+        // para nunca ressuscitar códigos antigos do histórico e sobrescrever o foco atual.
+        console.log(
+          '[AI_REPLY] [FOCO ÚNICO] sliceForPropertyScan desativado para proteger o foco atual.',
+        )
         if (matchedProps.length > 0 && !targetSpecificProp) {
           targetSpecificProp = matchedProps[0]
         }
@@ -1837,7 +1798,7 @@ ${
         '\n[CATÁLOGO DE IMÓVEIS]\nSite oficial: https://www.brfimoveis.com.br\nPara opções personalizadas e atendimento direto, consulte o corretor Mauro: telefone (48) 99972-8050\n'
     }
 
-    // 0. Obter índices de mercado vigentes (INCC / IGP-M) para cálculo de reajuste
+    // 0. Obter índices de mercado vigentes e MEMOS DE MERCADO por bairro (Constituição v2.0 Art. 10)
     let indicesContextText = ''
     try {
       const latestIndices = $app.findRecordsByFilter('market_indices', '', '-created', 10, 0)
@@ -1859,12 +1820,27 @@ ${
         }
         indicesContextText += `INSTRUÇÃO DE ATUALIZAÇÃO E REAJUSTE DE PREÇOS:\n`
         indicesContextText += `1. Ao citar valores de tabelas de pagamento, verifique sempre o mês de referência da tabela no cabeçalho do documento.\n`
-        indicesContextText += `2. Se a tabela for de meses anteriores ao mês vigente (ex: tabela de maio/26 ou junho/26), informe ao cliente com clareza e transparência que os valores e parcelas estão sujeitos ao reajuste contratual do INCC e/ou IGP-M acumulado desde a emissão da tabela.\n`
-        indicesContextText += `3. Cite os índices vigentes acima como referência oficial e recomende sempre a confirmação do espelho de vendas e saldo atualizado diretamente com o corretor Mauro: (48) 99972-8050.\n`
-        indicesContextText += `4. Se houver mais de uma tabela do mesmo empreendimento, use EXCLUSIVAMENTE a tabela com a data mais recente.\n\n`
+        indicesContextText += `2. Se a tabela for de meses anteriores ao mês vigente, informe ao cliente com clareza e transparência que os valores e parcelas estão sujeitos ao reajuste contratual do INCC e/ou IGP-M acumulado.\n`
+        indicesContextText += `3. Se houver mais de uma tabela do mesmo empreendimento, use EXCLUSIVAMENTE a tabela com a data mais recente.\n\n`
       }
     } catch (indErr) {
       console.warn(`[AI_REPLY] Error loading market_indices (non-fatal): ${String(indErr)}`)
+    }
+
+    // Injeção de Memos de Inteligência de Mercado por bairro (Art. 10 da Constituição v2.0)
+    try {
+      const activeMemos = $app.findRecordsByFilter('market_memos', '', '-created', 20, 0)
+      if (activeMemos && activeMemos.length > 0) {
+        indicesContextText += `\n[MEMO DE INTELIGÊNCIA DE MERCADO OFICIAL DO DIA - CONSTITUIÇÃO v2.0 ART. 10]:\n`
+        indicesContextText += `REGRA INVIOLÁVEL: A Bia domina por bairro o valor do m², a valorização anual e o comparativo imobiliário x investimento bancário (poupança). Todo número citado DEVE vir estritamente dos memos abaixo (com fonte e data de referência). NUNCA invente estatísticas de mercado.\n`
+        for (let mIdx = 0; mIdx < activeMemos.length; mIdx++) {
+          const mRec = activeMemos[mIdx]
+          indicesContextText += `• Bairro: ${mRec.getString('neighborhood')} (${mRec.getString('city') || 'Grande Fpolis'}) — m²: R$ ${mRec.get('avg_price_m2')} | Valorização anual: ${mRec.get('annual_appreciation_pct')}% | Poupança ref: ${mRec.get('benchmark_savings_pct')}% | Memo: "${mRec.getString('memo_text')}" (Fonte: ${mRec.getString('source')} - Data: ${mRec.getString('reference_date')})\n`
+        }
+        indicesContextText += `\n`
+      }
+    } catch (memoErr) {
+      console.warn(`[AI_REPLY] Error loading market_memos (non-fatal): ${String(memoErr)}`)
     }
 
     let filesContextText = indicesContextText
@@ -2273,7 +2249,7 @@ DIRETRIZ DE FOCO NO LANÇAMENTO:
 - Conduza o atendimento com base no dossiê acima.
 - Destaque as unidades, valores e diferenciais específicos do ${lName}.
 - Página oficial do lançamento: ${lOfficialLink} (você pode enviar para o cliente ver fotos, plantas e detalhes oficiais).
-- Se o cliente avançar para reserva, visita ao decorado ou proposta, direcione com cordialidade informando: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e marque [HANDOVER: Mauro].\n`
+- Se o cliente avançar para reserva, visita ao decorado ou proposta: TRATE COMO FECHAMENTO (Art. 3, item 6 da Constituição v2.0), NUNCA COMO TRANSBORDO. Confirme com entusiasmo o interesse e registre para condução do fechamento. É PROIBIDO dizer "vou pedir para o corretor entrar em contato".\n`
     } else if (matchedPlaybook && !isOwnerCaptureLead) {
       const pbName = matchedPlaybook.getString('name') || 'Anúncio'
       const pbEmpreendimento =
@@ -2308,7 +2284,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
 2. Posicione a autoridade da BRF: imobiliária especialista na Grande Florianópolis, canal com vídeos e tours no YouTube (https://www.youtube.com/channel/UCA2JsoiTVTf8vKgWG65YH_g) e carteira ativa de compradores.
 3. Mapeie os dados essenciais com naturalidade: tipo do imóvel, bairro/cidade, metragem privativa, dormitórios/suítes, vagas, valor pretendido e urgência.
 4. NUNCA passe avaliação ou preço fechado sem vistoria e análise técnica. Sinalize que a BRF realiza estudo mercadológico gratuito.
-5. Conduza ao fechamento da Trilha B: agendar avaliação/reunião com o corretor Mauro pelo telefone (48) 99972-8050.\n`
+5. Conduza ao fechamento da Trilha B: parabenize, colete os dados básicos e registre no CRM para o Mauro conduzir a captação.\n`
     } else if (isMetaAdSource) {
       clientContext += `\n[ROTEAMENTO: TRILHA A — LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
       clientContext += `- Este lead veio de anúncio Meta: "${customerSource}".\n`
@@ -2629,7 +2605,7 @@ PROTOCOLO COMERCIAL CONSULTIVO E DIRETRIZES DE ATENDIMENTO (BRF IMÓVEIS):
 
 7. PERMUTA: Se o cliente mencionar que tem um imóvel para troca ou entrada, acolha positivamente e inclua a tag [PERMUTA] no final da resposta.
 
-8. ATENDIMENTO COM CORRETOR HUMANO: Se o cliente pedir expressamente corretor humano ou você não souber uma informação super técnica de condomínio/documento, responda exatamente: "Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050." e inclua [HANDOVER: Mauro]. É proibido usar a palavra transbordo ou trasbordo no texto ao cliente.
+8. ATENDIMENTO COM CORRETOR HUMANO: Pedido de visita é FECHAMENTO, não transbordo! Acione o Mauro somente quando o cliente pedir expressamente corretor humano ou quando você esgotar tudo o que sabe sem ter mais resposta adequada para dar. É proibido usar a palavra transbordo ou trasbordo no texto ao cliente.
 
 9. CANAL DO YOUTUBE OFICIAL DA BRF IMÓVEIS:
    - A BRF Imóveis possui um canal oficial no YouTube ("BRFIMOVEIS EIRELI ME" / Mauro Fengler) com vídeos e tours de imóveis: https://www.youtube.com/channel/UCA2JsoiTVTf8vKgWG65YH_g
@@ -2906,20 +2882,43 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
       return false
     }
 
+    // REGRAS DE MÁQUINA 3 & 6:
+    // Higienizar tags internas ([HANDOVER], [STATUS], etc.) ANTES da avaliação da Mãe IA
+    const earlyHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
+    if (earlyHandoverMatch && earlyHandoverMatch[1]) {
+      detectedHandover = earlyHandoverMatch[1].trim()
+    }
+    responseText = responseText.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
+    responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+    responseText = responseText.replace(/\[PHASE:\s*.*?\]/gi, '').trim()
+    responseText = responseText.replace(/\[PERMUTA\]/gi, '').trim()
+    responseText = sanitizeAiResponse(responseText)
+
     // Optional Mother AI supervisor validation & Regeneration Flow
     if (motherAiInstructions && responseText.length > 0) {
       try {
         const clientFirstName = (displayName || '').split(/\s+/)[0] || ''
-        const evalPrompt = `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie a resposta da Bia:
-"${motherAiInstructions}".
+
+        // REGRA DE MÁQUINA 1: Mãe IA valida preço e dados estritamente contra o dossiê do imóvel em foco
+        let focusPropValidationInfo = ''
+        if (targetSpecificProp) {
+          focusPropValidationInfo = `\n[IMÓVEL EM FOCO]: Código ${targetSpecificProp.getString('code')}, Título "${targetSpecificProp.getString('title')}", Valor ${targetSpecificProp.getString('price_formatted')}, Localização: ${targetSpecificProp.getString('neighborhood')}, ${targetSpecificProp.getString('city')}. Link: ${targetSpecificProp.getString('url')}.\nAVALIE O PREÇO E DADOS CONTRA ESTE IMÓVEL EM FOCO — NUNCA CONTRA TABELAS DE OUTROS LANÇAMENTOS!\n`
+        } else if (matchedLaunch) {
+          focusPropValidationInfo = `\n[LANÇAMENTO EM FOCO]: ${matchedLaunch.getString('name')} (${matchedLaunch.getString('enterprise_name')}). AVALIE PREÇO E DADOS CONTRA O DOSSIÊ DESTE LANÇAMENTO ESPECÍFICO — NUNCA CONTRA OUTROS LANÇAMENTOS!\n`
+        }
+
+        const evalPrompt = `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie a resposta da Bia sob a CONSTITUIÇÃO DA BIA v2.0:
 Critérios essenciais e regras obrigatórias de avaliação:
-1. Saudação: Exigir saudação temporal (Bom dia/Boa tarde/Boa noite) APENAS na primeiríssima mensagem da Bia (hoursSinceLastAiMsg >= 24 ou primeira interação: ${isFirstAiMessageOrAfter24h ? 'SIM, É PRIMEIRA MENSAGEM' : 'NÃO, É DIÁLOGO EM ANDAMENTO'}). Se a conversa já está no MEIO do diálogo (interação contínua, hoursSinceLastAiMsg < 24), é PROIBIDO reprovar por falta de saudação. Diálogo contínuo DEVE ir direto ao ponto!
-2. Identificação padrão: "Bia, da BRF Imóveis" se ela for se apresentar.
-3. Se o lead perguntou sobre um imóvel específico, aprovar a resposta focada no imóvel.
-4. Se o lead disse que é para "investimento" ou "investidor", NUNCA exigir re-pergunta de "morar ou investir".
-5. NOME DO CLIENTE: O nome do cliente atual é "${displayName}" (primeiro nome: "${clientFirstName}"). Saudar ou chamar o cliente pelo próprio nome (ex: "Olá, ${clientFirstName}", "${clientFirstName}, como vai?") é OBRIGATÓRIO/CORRETO e DESEJÁVEL! É expressamente PROIBIDO reprovar porque a Bia usou o nome "${clientFirstName}" ou "${displayName}" — ele(a) é o cliente!
-6. CORRETOR OFICIAL: O corretor responsável pela BRF Imóveis é "Mauro (48) 99972-8050" (ou "corretor Mauro", "Mauro Fengler"). Essa frase de transbordo/contato é OFICIAL e AUTORIZADA — JAMAIS reprove por citar o corretor Mauro ou seu telefone oficial. NUNCA confunda o cliente "${displayName}" com o corretor Mauro.
-7. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados com 3+ perguntas ou invenção de dados.
+${focusPropValidationInfo}
+1. VALIDAÇÃO DE PREÇO E DADOS: Valide sempre e exclusivamente contra o dossiê e cadastro do imóvel/lançamento em foco acima! NUNCA compare com tabela de outro lançamento nem com Vistage global quando o foco for outro imóvel.
+2. PEDIDO DE VISITA É FECHAMENTO: A Bia tratar pedido de visita como fechamento e vitória é CORRETO e OBRIGATÓRIO (Art. 3 item 6 da Constituição v2.0). É expressamente PROIBIDO reprovar a Bia por confirmar visita/fechamento!
+3. Saudação: Exigir saudação temporal (Bom dia/Boa tarde/Boa noite) APENAS na primeiríssima mensagem da Bia (hoursSinceLastAiMsg >= 24 ou primeira interação: ${isFirstAiMessageOrAfter24h ? 'SIM, É PRIMEIRA MENSAGEM' : 'NÃO, É DIÁLOGO EM ANDAMENTO'}). Se a conversa já está no MEIO do diálogo (interação contínua, hoursSinceLastAiMsg < 24), é PROIBIDO reprovar por falta de saudação. Diálogo contínuo DEVE ir direto ao ponto!
+4. Identificação padrão: "Bia, da BRF Imóveis" se ela for se apresentar.
+5. Se o lead perguntou sobre um imóvel específico, aprovar a resposta focada no imóvel.
+6. Se o lead disse que é para "investimento" ou "investidor", NUNCA exigir re-pergunta de "morar ou investir".
+7. NOME DO CLIENTE: O nome do cliente atual é "${displayName}" (primeiro nome: "${clientFirstName}"). Saudar ou chamar o cliente pelo próprio nome é OBRIGATÓRIO e CORRETO.
+8. INTELIGÊNCIA DE MERCADO (Art. 10): Estatísticas imobiliárias e de rentabilidade devem ter origem no memo oficial de mercado.
+9. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados com 3+ perguntas ou invenção grosseira de dados.
 
 FORMATO ESTRITO DA RESPOSTA:
 - Se a mensagem estiver em conformidade e aprovada, responda EXATAMENTE e APENAS a palavra: APROVADO
@@ -4403,6 +4402,134 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       } catch (handoverErr) {
         console.warn(`[AI_REPLY] Handover notification error (non-fatal): ${String(handoverErr)}`)
       }
+    }
+
+    // ======================================================================
+    // CONSTITUIÇÃO DA BIA v2.0 - ART. 6: ANÁLISE DE CRÉDITO & CONSENTIMENTO
+    // ======================================================================
+    try {
+      const lowerCust = (customerMessage || '').toLowerCase()
+      const lowerResp = (responseText || '').toLowerCase()
+      let currentCreditStatus = customer.getString('credit_analysis_status') || 'nao_oferecido'
+
+      // Detectar se a Bia acabou de oferecer a análise para a Neuci nesta resposta
+      if (
+        lowerResp.includes('neuci') ||
+        lowerResp.includes('posso encaminhar você para a minha agente neuci') ||
+        lowerResp.includes('encaminhar você para a minha agente neuci') ||
+        (lowerResp.includes('análise de crédito') && lowerResp.includes('agente'))
+      ) {
+        if (currentCreditStatus === 'nao_oferecido' || !currentCreditStatus) {
+          customer.set('credit_analysis_status', 'oferecido')
+          customer.set('credit_analysis_offered_at', new Date().toISOString())
+          $app.saveNoValidate(customer)
+          currentCreditStatus = 'oferecido'
+          console.log(`[CREDIT_FLOW] Análise de crédito oferecida ao cliente ${customerId}`)
+        }
+      }
+
+      // Se já estava oferecido, verificar se a mensagem do cliente CONCORDA expressamente
+      if (currentCreditStatus === 'oferecido') {
+        const isConsent =
+          /\b(sim|com certeza|pode|pode sim|claro|por favor|quero|aceito|concordo|encaminha|manda|pode mandar|pode encaminhar|ok|perfeito)\b/i.test(
+            lowerCust,
+          )
+        const isRefusal =
+          /\b(n[aã]o|depois|agora n[aã]o|ainda n[aã]o|n[aã]o precisa|deixa|prefiro n[aã]o)\b/i.test(
+            lowerCust,
+          )
+
+        if (isConsent && !isRefusal) {
+          console.log(
+            `[CREDIT_FLOW] Consentimento CONFIRMADO pelo cliente ${customerId}! Disparando Neuci + Mauro...`,
+          )
+
+          // Identificar imóvel e link
+          let propCode = ''
+          let propUrl = ''
+          if (targetSpecificProp) {
+            propCode = targetSpecificProp.getString('code') || ''
+            propUrl = targetSpecificProp.getString('url') || ''
+          } else if (matchedLaunch) {
+            propCode =
+              matchedLaunch.getString('enterprise_name') || matchedLaunch.getString('name') || ''
+            propUrl = matchedLaunch.getString('url') || 'https://brfimoveis.com.br'
+          }
+
+          if (!propUrl && propCode) {
+            propUrl = `https://brfimoveis.com.br/imovel/${propCode.toLowerCase()}`
+          }
+          if (!propUrl) {
+            propUrl = 'https://brfimoveis.com.br'
+          }
+
+          const clientCustName =
+            customer.getString('name') ||
+            customer.getString('first_name') ||
+            displayName ||
+            'Cliente'
+          const clientPhoneRaw = customer.getString('phone') || ''
+
+          const msgNeuci = `cliente ${clientCustName} pretende uma análise de crédito para comprar o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
+          const msgMauro = `cliente ${clientCustName} foi solicitado análise de crédito para o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
+
+          // Número da Neuci (48) 99902-0349 -> 5548999020349
+          const phoneNeuci = '5548999020349'
+          // Número do Mauro (48) 99972-8050 -> 5548999728050
+          const phoneMauro = '5548999728050'
+
+          if (metaToken && metaPhoneId) {
+            // Disparo para Neuci
+            try {
+              callMetaWithRetry(
+                `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                'POST',
+                { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  to: phoneNeuci,
+                  type: 'text',
+                  text: { body: msgNeuci },
+                }),
+              )
+              console.log(`[CREDIT_FLOW] Notificação enviada à Neuci com sucesso (${phoneNeuci}).`)
+            } catch (neuciErr) {
+              console.warn(`[CREDIT_FLOW] Erro ao notificar Neuci: ${String(neuciErr)}`)
+            }
+
+            // Disparo simultâneo para Mauro
+            try {
+              callMetaWithRetry(
+                `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                'POST',
+                { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  to: phoneMauro,
+                  type: 'text',
+                  text: { body: msgMauro },
+                }),
+              )
+              console.log(`[CREDIT_FLOW] Notificação enviada ao Mauro com sucesso (${phoneMauro}).`)
+            } catch (mauroErr) {
+              console.warn(`[CREDIT_FLOW] Erro ao notificar Mauro: ${String(mauroErr)}`)
+            }
+          }
+
+          // Atualizar status do customer para consentido/enviado
+          customer.set('credit_analysis_status', 'enviado')
+          customer.set('credit_analysis_consented_at', new Date().toISOString())
+          $app.saveNoValidate(customer)
+        } else if (isRefusal) {
+          customer.set('credit_analysis_status', 'recusado')
+          $app.saveNoValidate(customer)
+          console.log(
+            `[CREDIT_FLOW] Cliente ${customerId} recusou a análise de crédito. Nada foi enviado.`,
+          )
+        }
+      }
+    } catch (creditFlowErr) {
+      console.warn(`[CREDIT_FLOW] Erro no fluxo de análise de crédito: ${String(creditFlowErr)}`)
     }
 
     console.log(`[AI_REPLY] Completed processing for customer=${customerId}`)
