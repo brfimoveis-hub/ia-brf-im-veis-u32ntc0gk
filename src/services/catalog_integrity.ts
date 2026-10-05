@@ -4,7 +4,14 @@ import { type Launch, getLaunches } from '@/services/launches'
 import { type AiKnowledgeFile, getAiKnowledgeFiles } from '@/services/ai_knowledge_files'
 
 export interface PropertyIntegrityMissingItem {
-  key: 'website_url' | 'price' | 'floor_plans' | 'ebook_or_table' | 'knowledge_files'
+  key:
+    | 'code'
+    | 'website_url'
+    | 'price'
+    | 'description'
+    | 'floor_plans'
+    | 'ebook_or_table'
+    | 'knowledge_files'
   label: string
   description: string
   severity: 'high' | 'medium' | 'low'
@@ -93,46 +100,57 @@ export async function getCatalogIntegrityReport(userId?: string): Promise<Catalo
     const missing: PropertyIntegrityMissingItem[] = []
     const linkedFiles = filesByPropId.get(prop.id) || []
 
-    // 1. Checagem de Link individual oficial
+    // 1. Checagem de Código preenchido
+    const hasValidCode = Boolean(prop.code && prop.code.trim().length > 0)
+    if (!hasValidCode) {
+      missing.push({
+        key: 'code',
+        label: 'Sem código de referência',
+        description: 'Código do imóvel ausente ou em branco',
+        severity: 'high',
+      })
+    }
+
+    // 2. Checagem de Link oficial brfimoveis.com.br
     const hasValidUrl = Boolean(
-      prop.url &&
-      prop.url.trim().length > 10 &&
-      (prop.url.includes('brfimoveis.com.br') || prop.url.startsWith('http')),
+      prop.url && prop.url.trim().length > 10 && prop.url.includes('brfimoveis.com.br'),
     )
 
     if (!hasValidUrl) {
       missingUrlCount++
       missing.push({
         key: 'website_url',
-        label: 'Sem link oficial do site',
-        description: 'Imóvel sem URL canônica em www.brfimoveis.com.br/{id}/imoveis/{slug}',
+        label: 'Sem link oficial brfimoveis.com.br',
+        description: 'Imóvel sem URL do domínio oficial brfimoveis.com.br',
         severity: 'high',
       })
     }
 
-    // 2. Checagem de Preço
-    const hasValidPrice = Boolean(
-      (typeof prop.price === 'number' && prop.price > 0) ||
-      (prop.price_formatted &&
-        prop.price_formatted.toLowerCase().includes('r$') &&
-        !prop.price_formatted.toLowerCase().includes('sob consulta')),
-    )
+    // 3. Checagem de Preço > 0
+    const hasValidPrice = Boolean(typeof prop.price === 'number' && prop.price > 0)
 
     if (!hasValidPrice) {
       missingPriceCount++
       missing.push({
         key: 'price',
-        label: 'Sem preço informado',
+        label: 'Sem preço informado (> 0)',
         description: 'Valor zerado ou em branco no cadastro',
         severity: 'high',
       })
     }
 
-    // 3. Checagem de Arquivos (Plantas, Ebook/Apresentação, Tabela de valores)
-    const allFileNames = linkedFiles.map((f) => (f.name || '').toLowerCase()).join(' ')
-    const allFileTexts = linkedFiles.map((f) => (f.extracted_text || '').toLowerCase()).join(' ')
-    const combinedFilesContent = allFileNames + ' ' + allFileTexts
+    // 4. Checagem de Descrição >= 20 caracteres
+    const hasValidDescription = Boolean(prop.description && prop.description.trim().length >= 20)
+    if (!hasValidDescription) {
+      missing.push({
+        key: 'description',
+        label: 'Descrição insuficiente (< 20 caracteres)',
+        description: 'A descrição precisa conter no mínimo 20 caracteres de texto',
+        severity: 'high',
+      })
+    }
 
+    // Arquivos, PDFs, plantas e fotos são informativos e opcionais (não penalizam integridade)
     const hasPriceTable =
       linkedFiles.some(
         (f) =>
@@ -163,29 +181,6 @@ export async function getCatalogIntegrityReport(userId?: string): Promise<Catalo
 
     if (linkedFiles.length === 0) {
       missingFilesCount++
-      missing.push({
-        key: 'knowledge_files',
-        label: 'Sem dossiê / arquivos vinculados',
-        description: 'Nenhum PDF, tabela ou apresentação vinculada em ai_knowledge_files',
-        severity: 'medium',
-      })
-    } else {
-      if (!hasFloorPlans) {
-        missing.push({
-          key: 'floor_plans',
-          label: 'Sem arquivo de plantas',
-          description: 'Não foi detectado arquivo de plantas humanizadas ou layout',
-          severity: 'low',
-        })
-      }
-      if (!hasPriceTable) {
-        missing.push({
-          key: 'ebook_or_table',
-          label: 'Sem tabela de valores acoplada',
-          description: 'Falta tabela vigente de preços e condições',
-          severity: 'medium',
-        })
-      }
     }
 
     // Associação com Lançamento correspondente (se houver)
@@ -207,7 +202,10 @@ export async function getCatalogIntegrityReport(userId?: string): Promise<Catalo
       }
     }
 
-    const isComplete = missing.length === 0
+    // Redefinição conforme especificação:
+    // is_complete = code preenchido && url contém brfimoveis.com.br && price > 0 && description >= 20 chars
+    // PDF, amenidades e fotos são opcionais e não tornam o imóvel incompleto
+    const isComplete = hasValidCode && hasValidUrl && hasValidPrice && hasValidDescription
     if (isComplete) {
       completeCount++
     } else {

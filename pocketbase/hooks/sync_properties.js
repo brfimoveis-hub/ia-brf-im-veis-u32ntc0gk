@@ -127,12 +127,19 @@ function runCatalogSyncProcess(triggerSource) {
       [/seguran\u7861/gi, 'segurança'],
       [/Seguran\u7861/gi, 'Segurança'],
       [/seguran\u786c/gi, 'segurança'],
+      [/espa篠e\s*luxo/gi, 'espaço e luxo'],
+      [/espa篠/gi, 'espaço '],
       [/espa\u786f\u00b3o/gi, 'espaçoso'],
       [/espa\u786f\u00b3a/gi, 'espaçosa'],
       [/espa\u786f,/gi, 'espaço,'],
       [/espa\u786f/gi, 'espaço'],
       [/Espa\u786f/gi, 'Espaço'],
       [/espa\u7bb0/gi, 'espaço'],
+      [/頡\s*oportunidade/gi, 'é a oportunidade'],
+      [/頡/gi, 'é a '],
+      [/seguran硠/gi, 'segurança'],
+      [/voc꠰/gi, 'você'],
+      [/㯬/gi, 'ão'],
       [/su\u00edte\u00edte\u0356ES/gi, 'suítes'],
       [/su\u00edte\u00edte\u0356E/gi, 'suíte'],
       [/su\u00edte\u00edte\u0356/gi, 'suíte'],
@@ -317,6 +324,8 @@ function runCatalogSyncProcess(triggerSource) {
     if (!code && !url) return ''
     let c = (code || '').trim()
     c = c.replace(/^(?:c[oó]digo|c[oó]d\.?|#|igo)\s*:?\s*/i, '').trim()
+    // Normalizar espaçamento de prefixos como "AP 334" -> "AP334", "TR 325" -> "TR325", "LM 326" -> "LM326"
+    c = c.replace(/^([A-Za-z]+)\s+(\d+)/, '$1$2')
     if (!c && url) {
       const m = url.match(/\/(\d{2,4})\/imoveis\//)
       if (m) c = 'BRF-' + m[1]

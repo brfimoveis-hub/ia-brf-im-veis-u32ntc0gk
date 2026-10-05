@@ -303,7 +303,9 @@ export function CatalogIntegrityReport({
                 </span>
                 <span className="text-xs text-muted-foreground">de {report.total_properties}</span>
               </div>
-              <p className="text-[10px] text-emerald-600 mt-0.5">Link + Preço + Plantas + Tabela</p>
+              <p className="text-[10px] text-emerald-600 mt-0.5">
+                Código + Link oficial + Preço + Descrição
+              </p>
             </div>
 
             <div className="p-3 rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 border-amber-200">
@@ -316,7 +318,9 @@ export function CatalogIntegrityReport({
                 </span>
                 <span className="text-xs text-muted-foreground">precisam de atenção</span>
               </div>
-              <p className="text-[10px] text-amber-600 mt-0.5">Falta link, valor ou arquivo</p>
+              <p className="text-[10px] text-amber-600 mt-0.5">
+                Falta código, link oficial, preço ou descrição
+              </p>
             </div>
 
             <div className="p-3 rounded-lg border bg-slate-50 dark:bg-slate-900 border-slate-200">

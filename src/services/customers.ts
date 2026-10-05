@@ -23,6 +23,9 @@ export interface Customer {
   price_range?: string
   lead_profile?: string
   last_sent_at?: string
+  credit_analysis_status?: 'nao_oferecido' | 'oferecido' | 'consentido' | 'recusado' | 'enviado'
+  credit_analysis_offered_at?: string
+  credit_analysis_consented_at?: string
 }
 
 export const createCustomer = (data: Partial<Customer>) =>
