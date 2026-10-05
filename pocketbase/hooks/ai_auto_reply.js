@@ -1307,11 +1307,12 @@ ${
       }
 
       // 1. Check if customer mentioned known projects / launches (can match MULTIPLE projects at once)
-      // REGRA ITEM 1: Se o lead pediu código explícito ou herança direta nesta sessão, NÃO executar knownProjects
-      // para não contaminar matchedProps com lançamentos genéricos (ex: Colinas, Neo, Terrá)
+      // REGRA ITEM 1: Se o lead pediu código explícito, herança direta nesta sessão ou se há imóvel em foco (targetSpecificProp),
+      // NÃO executar knownProjects para não contaminar matchedProps com lançamentos genéricos (ex: Colinas, Neo, Terrá)
+      // Alternativas/outros projetos SOMENTE em pivô de recusa.
       const combinedCustAndAdText = `${combinedCustText} ${customerSource.toLowerCase()} ${customerNotes.toLowerCase()}`
 
-      if (!lastMsgSpecificPropertyRequested && !isShortContinuationMsg) {
+      if (!lastMsgSpecificPropertyRequested && !isShortContinuationMsg && !targetSpecificProp) {
         const knownProjects = [
           {
             regex: /terr[aá]/i,
@@ -1388,7 +1389,6 @@ ${
           }
         }
       }
-
       // 1b. Extração ampla de códigos de imóveis e busca exata normalizada
       // Helper estrito: normalizar código sem espaços, hífens ou letras minúsculas (ex: "AP 343" -> "AP343", "343" -> "343")
       function normalizeCodeStrict(c) {
@@ -1731,7 +1731,7 @@ ${
           'ESTES IMÓVEIS ESTÃO CONFIRMADOS E DISPONÍVEIS NO CATÁLOGO. Se o cliente perguntou por eles ou por opções semelhantes, CONFIRME que temos sim disponíveis e apresente as informações e links oficiais abaixo:\n\n'
 
         matchedProps.forEach((p, idx) => {
-          const pCode = p.getString('code')
+          const pCode = (p.getString('code') || '').trim()
           const pTitle = p.getString('title')
           const pUrl = p.getString('url')
           const pCity = p.getString('city')
@@ -1743,6 +1743,7 @@ ${
           const pParking = p.getInt('parking_spaces')
           const pArea = p.getFloat('area_privativa')
           const pDesc = p.getString('description')
+          const isLaunchLm = /^LM/i.test(pCode.replace(/[-_\s]+/g, ''))
 
           propertyContext += `--- IMÓVEL ${idx + 1} ---\n`
           propertyContext += `Código: ${pCode}\n`
@@ -1750,6 +1751,10 @@ ${
           propertyContext += `Link Oficial do Imóvel: ${pUrl}\n`
           propertyContext += `Localização: ${pNeigh ? pNeigh + ', ' : ''}${pCity}\n`
           propertyContext += `Valor: ${pPrice}\n`
+          if (!isLaunchLm) {
+            propertyContext += `FONTE ÚNICA E EXCLUSIVA DE VALOR: ${pPrice || 'Valor sob consulta no link oficial'}. Imóvel de TERCEIROS — proibido citar valores de lançamentos.\n`
+          }
+          propertyContext += `Sinal de visita = FECHAMENTO: celebrar, pedir dia e período de preferência, confirmar que o Mauro conduzirá no local. Nunca pedir para o cliente ligar.\n`
           if (pBeds > 0)
             propertyContext += `Dormitórios: ${pBeds}${pSuites > 0 ? ` (${pSuites} suítes)` : ''}\n`
           if (pBaths > 0) propertyContext += `Banheiros: ${pBaths}\n`
@@ -1774,7 +1779,7 @@ ${
 
     if (!propertyContext) {
       propertyContext =
-        '\n[CATÁLOGO DE IMÓVEIS]\nSite oficial: https://www.brfimoveis.com.br\nPara opções personalizadas e atendimento direto, consulte o corretor Mauro: telefone (48) 99972-8050\n'
+        '\n[CATÁLOGO DE IMÓVEIS]\nSite oficial: https://www.brfimoveis.com.br\nPara opções personalizadas e agendamento de visita, informe o perfil desejado que a equipe BRF conduzirá seu atendimento exclusivo.\nSinal de visita = FECHAMENTO: celebrar, pedir dia e período de preferência, confirmar que o Mauro conduzirá no local. Nunca pedir para o cliente ligar.\n'
     }
 
     // 0. Obter índices de mercado vigentes e MEMOS DE MERCADO por bairro (Constituição v2.0 Art. 10)
@@ -2242,7 +2247,11 @@ ${
       /quero vender|tenho um (?:imóvel|apartamento|apto|casa|terreno|imovel)|tenho uma (?:casa|cobertura|sala)|por quanto vendo|colocar (?:à|a) venda|colocar para vender|quero alugar meu|quero anunciar|anunciar meu|administrar meu|captar|avaliação do meu|quanto vale meu/i
     const isOwnerCaptureLead = ownerIntentRegex.test(combinedCustText)
 
-    if (matchedLaunch && !isOwnerCaptureLead) {
+    const targetIsThirdParty =
+      targetSpecificProp &&
+      !/^LM/i.test((targetSpecificProp.getString('code') || '').replace(/[-_\s]+/g, ''))
+
+    if (matchedLaunch && !isOwnerCaptureLead && !targetIsThirdParty) {
       const lName = matchedLaunch.getString('name') || 'Lançamento'
       const lEnterprise = matchedLaunch.getString('enterprise_name') || lName
       const lHeadline = matchedLaunch.getString('headline') || ''
@@ -2278,7 +2287,6 @@ ${
           })
           .join('\n')
       }
-
       let lDiffs = matchedLaunch.get('differentials') || []
       if (typeof lDiffs === 'string') {
         try {
@@ -2422,42 +2430,70 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
     }
 
     // Carregar e fazer merge no lead_profile_json do customer
-    let currentProfileJson = {}
     try {
-      const rawProfileJson = customer.get('lead_profile_json')
-      if (rawProfileJson) {
-        if (typeof rawProfileJson === 'object') {
-          currentProfileJson = rawProfileJson
-        } else if (typeof rawProfileJson === 'string') {
-          currentProfileJson = JSON.parse(rawProfileJson)
+      let currentProfileJson = {}
+      try {
+        const rawProfileJson = customer.get('lead_profile_json')
+        if (rawProfileJson) {
+          if (typeof rawProfileJson === 'string') {
+            try {
+              currentProfileJson = JSON.parse(rawProfileJson)
+            } catch (_) {
+              currentProfileJson = {}
+            }
+          } else if (typeof rawProfileJson === 'object') {
+            try {
+              currentProfileJson = JSON.parse(JSON.stringify(rawProfileJson))
+            } catch (_) {
+              currentProfileJson = {}
+            }
+          }
+        }
+      } catch (_) {
+        currentProfileJson = {}
+      }
+
+      // Se lead_profile_json vier como Array ou nulo/não-objeto, recriar como objeto ({})
+      if (
+        !currentProfileJson ||
+        Array.isArray(currentProfileJson) ||
+        typeof currentProfileJson !== 'object'
+      ) {
+        currentProfileJson = {}
+      }
+
+      let profileJsonChanged = false
+      if (
+        extractedPillarPriceRange &&
+        currentProfileJson.price_range !== extractedPillarPriceRange
+      ) {
+        currentProfileJson.price_range = extractedPillarPriceRange
+        profileJsonChanged = true
+      }
+      if (extractedPillarPayment && currentProfileJson.payment_method !== extractedPillarPayment) {
+        currentProfileJson.payment_method = extractedPillarPayment
+        profileJsonChanged = true
+      }
+      if (extractedPillarObjective && currentProfileJson.objective !== extractedPillarObjective) {
+        currentProfileJson.objective = extractedPillarObjective
+        profileJsonChanged = true
+      }
+
+      if (profileJsonChanged) {
+        try {
+          customer.set('lead_profile_json', currentProfileJson)
+          $app.saveNoValidate(customer)
+          console.log(
+            `[AI_REPLY] [PILAR_C] lead_profile_json atualizado para customer=${customerId}: ${JSON.stringify(currentProfileJson)}`,
+          )
+        } catch (profErr) {
+          console.warn(`[AI_REPLY] [PILAR_C] Erro ao salvar lead_profile_json: ${String(profErr)}`)
         }
       }
-    } catch (_) {}
-
-    let profileJsonChanged = false
-    if (extractedPillarPriceRange && currentProfileJson.price_range !== extractedPillarPriceRange) {
-      currentProfileJson.price_range = extractedPillarPriceRange
-      profileJsonChanged = true
-    }
-    if (extractedPillarPayment && currentProfileJson.payment_method !== extractedPillarPayment) {
-      currentProfileJson.payment_method = extractedPillarPayment
-      profileJsonChanged = true
-    }
-    if (extractedPillarObjective && currentProfileJson.objective !== extractedPillarObjective) {
-      currentProfileJson.objective = extractedPillarObjective
-      profileJsonChanged = true
-    }
-
-    if (profileJsonChanged) {
-      try {
-        customer.set('lead_profile_json', currentProfileJson)
-        $app.saveNoValidate(customer)
-        console.log(
-          `[AI_REPLY] [PILAR_C] lead_profile_json atualizado para customer=${customerId}: ${JSON.stringify(currentProfileJson)}`,
-        )
-      } catch (profErr) {
-        console.warn(`[AI_REPLY] [PILAR_C] Erro ao salvar lead_profile_json: ${String(profErr)}`)
-      }
+    } catch (mergeErr) {
+      console.warn(
+        `[AI_REPLY] [PILAR_C] Erro seguro no bloco lead_profile_json: ${String(mergeErr)}`,
+      )
     }
 
     // (b) Pivô na rejeição:
@@ -2511,6 +2547,21 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
       }
     }
 
+    // (1.b) Limitação de blocos de contexto para evitar erro 413
+    const safeIndicesContextText =
+      (indicesContextText || '').length > 1200
+        ? (indicesContextText || '').substring(0, 1200) + '\n... [memo truncado a 1200 caracteres]'
+        : indicesContextText || ''
+    const safeCombinedContextText =
+      (combinedContextText || '').length > 1500
+        ? (combinedContextText || '').substring(0, 1500) +
+          '\n... [contexto RAG truncado a 1500 caracteres]'
+        : combinedContextText || ''
+    const safePropertyContext =
+      (propertyContext || '').length > 1200
+        ? (propertyContext || '').substring(0, 1200) + '\n... [catálogo truncado a 1200 caracteres]'
+        : propertyContext || ''
+
     // O comportamento da Bia é regido EXCLUSIVAMENTE pela diretriz soberana ativa (TEXTO ÚNICO DA BIA - v2.0)
     // Mantém no systemPrompt apenas: dados dos imóveis (propertyContext), resumo de dados coletados (collectedDataSummary),
     // índices de mercado/memos (indicesContextText) e a persona soberana ativa (biaLearningsText).
@@ -2520,25 +2571,46 @@ DIRETRIZ MESTRA E SOBERANA DE ATENDIMENTO:
 ${biaLearningsText}
 ${personaInstructions}
 
-${propertyContext}
+${safePropertyContext}
 
 ${collectedDataSummary}
 
-${indicesContextText ? `DADOS DE MERCADO E VALORIZAÇÃO:\n${indicesContextText}\n` : ''}
+${safeIndicesContextText ? `DADOS DE MERCADO E VALORIZAÇÃO:\n${safeIndicesContextText}\n` : ''}
 
 CONTEXTO RECUPERADO:
-${combinedContextText || '(Nenhum contexto adicional na base)'}`
+${safeCombinedContextText || '(Nenhum contexto adicional na base)'}`
 
     messages.push({ role: 'system', content: systemPrompt })
 
+    // (1.a) Limitar o histórico enviado a no máximo 10 mensagens, truncando antigas a ~300 chars e removendo vazias/duplicadas
     if (historyRecords && historyRecords.length > 0) {
+      const sanitizedHistory = []
+      const seenContents = {}
       historyRecords.forEach((msg) => {
         const msgSender = msg.getString('sender')
         if (msgSender === 'system') return
         const role = msgSender === 'ai' || msgSender === 'agent' ? 'assistant' : 'user'
         if (msg.id !== incomingMsgId) {
-          messages.push({ role: role, content: msg.getString('content') || '' })
+          const rawContent = (msg.getString('content') || '').trim()
+          if (!rawContent) return
+          // Anti-duplicação simples
+          const contentKey = `${role}:${rawContent}`
+          if (seenContents[contentKey]) return
+          seenContents[contentKey] = true
+          sanitizedHistory.push({ role: role, content: rawContent })
         }
+      })
+
+      // Pegar no máximo 10 mensagens mais recentes do histórico
+      const maxHistoryCount = 10
+      const recentSlice = sanitizedHistory.slice(-maxHistoryCount)
+      recentSlice.forEach((hItem, hIdx) => {
+        let content = hItem.content
+        // Truncar mensagens antigas (todas exceto as 2 mais recentes) a ~300 caracteres
+        if (hIdx < recentSlice.length - 2 && content.length > 300) {
+          content = content.substring(0, 300) + '...'
+        }
+        messages.push({ role: hItem.role, content: content })
       })
     }
 
@@ -2566,17 +2638,54 @@ ${combinedContextText || '(Nenhum contexto adicional na base)'}`
         console.warn(`[AI_REPLY] $ai.chat returned unexpected shape: ${JSON.stringify(chatRes)}`)
       }
     } catch (err) {
-      console.error(`[AI_REPLY] Skip AI Chat exception: ${String(err)}`)
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const aiErrLog = new Record(logsCol)
-        aiErrLog.set('user_id', userId || '')
-        aiErrLog.set('type', 'whatsapp_ai_reply_error')
-        aiErrLog.set('message', 'Erro ao chamar $ai.chat')
-        aiErrLog.set('details', String(err))
-        aiErrLog.set('payload', JSON.stringify({ customer_id: customerId, error: String(err) }))
-        $app.saveNoValidate(aiErrLog)
-      } catch (_) {}
+      const errStr = String(err)
+      console.error(`[AI_REPLY] Skip AI Chat exception: ${errStr}`)
+
+      // (1.c) Retry automático com payload mínimo se for erro 413 / Too Large
+      const is413OrTooLarge =
+        errStr.includes('413') ||
+        /too\s*large/i.test(errStr) ||
+        /entity\s*too\s*large/i.test(errStr)
+      if (is413OrTooLarge) {
+        console.warn('[AI_REPLY] Gateway 413 detectado! Tentando retry com payload mínimo...')
+        try {
+          const minimalSystemPrompt = `Você é ${aiName}, da BRF Imóveis.
+DIRETRIZ SOBERANA:
+${biaLearningsText}
+
+${safePropertyContext}`
+
+          const minimalMessages = [
+            { role: 'system', content: minimalSystemPrompt },
+            { role: 'user', content: customerMessage },
+          ]
+          const retryRes = $ai.chat({
+            model: 'fast',
+            messages: minimalMessages,
+          })
+          if (retryRes && retryRes.choices && retryRes.choices[0] && retryRes.choices[0].message) {
+            responseText = (retryRes.choices[0].message.content || '').trim()
+            console.log(
+              `[AI_REPLY] $ai.chat 413-retry SUCCESS (len=${responseText.length}): "${responseText.substring(0, 80)}..."`,
+            )
+          }
+        } catch (retryErr) {
+          console.error(`[AI_REPLY] 413-retry também falhou: ${String(retryErr)}`)
+        }
+      }
+
+      if (!responseText) {
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const aiErrLog = new Record(logsCol)
+          aiErrLog.set('user_id', userId || '')
+          aiErrLog.set('type', 'whatsapp_ai_reply_error')
+          aiErrLog.set('message', 'Erro ao chamar $ai.chat')
+          aiErrLog.set('details', errStr)
+          aiErrLog.set('payload', JSON.stringify({ customer_id: customerId, error: errStr }))
+          $app.saveNoValidate(aiErrLog)
+        } catch (_) {}
+      }
     }
 
     if (!responseText) {
@@ -2816,8 +2925,8 @@ Critérios essenciais e regras obrigatórias de avaliação:
 ${focusPropValidationInfo}
 1. VALIDAÇÃO DE PREÇO E DADOS: Valide sempre e exclusivamente contra o dossiê e cadastro do imóvel/lançamento em foco acima! NUNCA compare com tabela de outro lançamento nem com Vistage global quando o foco for outro imóvel.
 2. PEDIDO DE VISITA É FECHAMENTO: A Bia tratar pedido de visita como fechamento e vitória é CORRETO e OBRIGATÓRIO (Art. 3 item 6 da Constituição v2.0). É expressamente PROIBIDO reprovar a Bia por confirmar visita/fechamento!
-3. Saudação: Exigir saudação temporal (Bom dia/Boa tarde/Boa noite) APENAS na primeiríssima mensagem da Bia (hoursSinceLastAiMsg >= 24 ou primeira interação: ${isFirstAiMessageOrAfter24h ? 'SIM, É PRIMEIRA MENSAGEM' : 'NÃO, É DIÁLOGO EM ANDAMENTO'}). Se a conversa já está no MEIO do diálogo (interação contínua, hoursSinceLastAiMsg < 24), é PROIBIDO reprovar por falta de saudação. Diálogo contínuo DEVE ir direto ao ponto!
-4. Identificação padrão: "Bia, da BRF Imóveis" se ela for se apresentar.
+3. Saudação e Apresentação: Exigir saudação temporal (Bom dia/Boa tarde/Boa noite) e apresentação "Bia, da BRF Imóveis" APENAS na primeiríssima mensagem da Bia (hoursSinceLastAiMsg >= 24 ou primeira interação: ${isFirstAiMessageOrAfter24h ? 'SIM, É PRIMEIRA MENSAGEM' : 'NÃO, É DIÁLOGO EM ANDAMENTO'}). Se a conversa já está no MEIO do diálogo (interação contínua, hoursSinceLastAiMsg < 24), é PROIBIDO reprovar por ausência de saudação ou por falta de apresentação "Bia, da BRF Imóveis". Diálogo contínuo DEVE ir direto ao ponto!
+4. Identificação padrão: "Bia, da BRF Imóveis" se ela for se apresentar na 1ª mensagem.
 5. Se o lead perguntou sobre um imóvel específico, aprovar a resposta focada no imóvel.
 6. Se o lead disse que é para "investimento" ou "investidor", NUNCA exigir re-pergunta de "morar ou investir".
 7. NOME DO CLIENTE: O nome do cliente atual é "${displayName}" (primeiro nome: "${clientFirstName}"). Saudar ou chamar o cliente pelo próprio nome é OBRIGATÓRIO e CORRETO.
@@ -2885,24 +2994,34 @@ Motivos: <descreva sucintamente em 1 a 2 linhas o que corrigir>`
           }
 
           // GUARDA 2 — ANTI-REPROVAÇÃO FALSA NO MEIO DO DIÁLOGO:
-          // Se a conversa já está em andamento (!isFirstAiMessageOrAfter24h) e o motivo da reprovação foi apenas falta de saudação ou identificação inicial,
-          // IGNORAR a reprovação e manter a mensagem aprovada!
+          // Se a conversa já está em andamento (!isFirstAiMessageOrAfter24h) e o motivo da reprovação contiver falta de saudação ou apresentação/identificação "Bia, da BRF Imóveis",
+          // anular definitivamente a reprovação por falta de saudação/apresentação (só vale na primeira mensagem).
           if (!isApproved && !isFirstAiMessageOrAfter24h) {
             const lowerFb = motherFeedback.toLowerCase()
-            const isOnlyGreetingOrIntroComplaint =
-              (lowerFb.includes('saudação') ||
-                lowerFb.includes('saudacao') ||
-                lowerFb.includes('identificação') ||
-                lowerFb.includes('identificacao') ||
-                lowerFb.includes('bom dia') ||
-                lowerFb.includes('boa tarde')) &&
-              !lowerFb.includes('alucin') &&
-              !lowerFb.includes('fora do catálogo') &&
-              !lowerFb.includes('link inválido')
+            const hasGreetingOrIntroComplaint =
+              lowerFb.includes('saudação') ||
+              lowerFb.includes('saudacao') ||
+              lowerFb.includes('identificação') ||
+              lowerFb.includes('identificacao') ||
+              lowerFb.includes('apresentação') ||
+              lowerFb.includes('apresentacao') ||
+              lowerFb.includes('se apresentar') ||
+              lowerFb.includes('bia, da brf') ||
+              lowerFb.includes('brf imóveis') ||
+              lowerFb.includes('bom dia') ||
+              lowerFb.includes('boa tarde') ||
+              lowerFb.includes('boa noite')
 
-            if (isOnlyGreetingOrIntroComplaint) {
+            const isHardViolation =
+              lowerFb.includes('alucin') ||
+              lowerFb.includes('fora do catálogo') ||
+              lowerFb.includes('fora do catalogo') ||
+              lowerFb.includes('link inválido') ||
+              lowerFb.includes('link invalido')
+
+            if (hasGreetingOrIntroComplaint && !isHardViolation) {
               console.log(
-                `[AI_REPLY] IA Mãe reprovou erroneamente por falta de saudação no meio do diálogo contínuo. Anulando reprovação e mantendo resposta da Bia aprovada.`,
+                `[AI_REPLY] IA Mãe reprovou por saudação/identificação no meio do diálogo contínuo. Anulando reprovação definitivamente (isApproved=true) e mantendo resposta da Bia.`,
               )
               isApproved = true
             }
@@ -3524,7 +3643,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         console.log(
           `[AI_REPLY] Busca livre sem match no fallback: informando transparência sem empurrar lançamentos.`,
         )
-        responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique com o corretor Mauro na nossa carteira de parceiros?`
+        responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique na nossa carteira de parceiros?`
       } else if (detectedSpecificPropertyQuery) {
         console.log(
           `[AI_REPLY] Specific property query detected for customer ${customerId}. Enforcing strict focus on requested property. Suppressing generic launch fallback.`,
@@ -3745,7 +3864,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       if (isMismatchDetected) {
         responseText = `Peço desculpas pela confusão! Você poderia me confirmar o código (ex: #ARU341, #AP343) ou o link do imóvel que você gostaria de ver? Assim localizo exatamente o que você procura.`
       } else if (hasFreeSearchIntent && matchedProps.length === 0) {
-        responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique com o corretor Mauro na nossa carteira de parceiros?`
+        responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique na nossa carteira de parceiros?`
       } else if (detectedSpecificPropertyQuery) {
         if (matchedProps && matchedProps.length > 0) {
           const targetProp = matchedProps[0]
@@ -4636,21 +4755,21 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                 'Com certeza! Em relação ao imóvel ' +
                 propId +
                 (pPrice ? ' (valor de ' + pPrice + ')' : '') +
-                ', estou separando o material completo e as plantas para você.\n\nVocê prefere receber por aqui no WhatsApp ou deseja que eu já agende uma visita com o Mauro?' +
+                ', estou separando o material completo e as plantas para você.\n\nVocê prefere receber por aqui no WhatsApp ou deseja agendar uma visita com o Mauro no local?' +
                 (pUrl ? '\nFicha detalhada: ' + pUrl : ''),
 
               effectiveGreeting +
                 'Perfeito! Já estou levantando as informações atualizadas do imóvel ' +
                 propId +
                 (pPrice ? ' (anunciado por ' + pPrice + ')' : '') +
-                ' com o Mauro.\n\nQuer que eu tire alguma dúvida específica sobre a planta ou localização?' +
+                '.\n\nQuer que eu tire alguma dúvida específica sobre a planta ou localização?' +
                 (pUrl ? '\nLink oficial: ' + pUrl : ''),
 
               effectiveGreeting +
                 'Excelente escolha! O imóvel ' +
                 propId +
                 (pPrice ? ' (' + pPrice + ')' : '') +
-                ' é uma excelente oportunidade. Estou organizando o espelho de disponibilidade e os diferenciais dele para te passar.\n\nVocê prefere tirar dúvidas por aqui ou falar direto com o Mauro?' +
+                ' é uma excelente oportunidade. Estou organizando o espelho de disponibilidade e os diferenciais dele para te passar.\n\nVocê prefere tirar dúvidas por aqui ou deseja agendar uma visita no local?' +
                 (pUrl ? '\nConfira aqui: ' + pUrl : ''),
 
               effectiveGreeting +
