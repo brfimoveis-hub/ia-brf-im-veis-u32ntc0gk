@@ -1822,6 +1822,82 @@ ${
       console.warn(`[AI_REPLY] Error loading market_memos (non-fatal): ${String(memoErr)}`)
     }
 
+    // Injeção de Dados Brutos do Memo Diário de Financiamento Imobiliário (Banco Central / Principais Bancos)
+    try {
+      const latestFinMemos = $app.findRecordsByFilter('financing_memos', '', '-created', 1, 0)
+      if (latestFinMemos && latestFinMemos.length > 0) {
+        const finRec = latestFinMemos[0]
+        const refDateStr = finRec.getString('reference_date') || ''
+        const sourceStr =
+          finRec.getString('source') || 'Banco Central do Brasil / Portais Oficiais dos Bancos'
+        const isPartial = finRec.get('is_partial') === true
+
+        // Calcular defasagem da data de referência
+        let isStale = false
+        if (refDateStr) {
+          try {
+            const refTime = new Date(refDateStr).getTime()
+            const nowTime = new Date().getTime()
+            const diffHours = (nowTime - refTime) / (1000 * 60 * 60)
+            if (diffHours > 48) {
+              isStale = true
+            }
+          } catch (_) {}
+        }
+
+        indicesContextText += `\n[DADOS BRUTOS OFICIAIS - MEMO DIÁRIO DE FINANCIAMENTO IMOBILIÁRIO]:\n`
+        indicesContextText += `Data do Memo: ${refDateStr || 'Recente'} | Fonte: ${sourceStr}${isPartial ? ' (Dados parciais auditados)' : ''}\n`
+        if (isStale) {
+          indicesContextText += `AVISO DE VIGÊNCIA: Dados do dia ${refDateStr} — confirmar antes de citar números exatos ao cliente.\n`
+        }
+
+        // Tenta desempacotar dados estruturados por banco
+        let banksList = []
+        try {
+          const rawBanks = finRec.get('banks_data')
+          if (Array.isArray(rawBanks)) {
+            banksList = rawBanks
+          } else if (typeof rawBanks === 'string') {
+            banksList = JSON.parse(rawBanks)
+          }
+        } catch (_) {}
+
+        if (Array.isArray(banksList) && banksList.length > 0) {
+          indicesContextText += `CONDIÇÕES VIGENTES POR BANCO (FINANCIAMENTO RESIDENCIAL):\n`
+          for (let bIdx = 0; bIdx < banksList.length; bIdx++) {
+            const b = banksList[bIdx]
+            const bName = b.bank_name || b.bank_code || 'Banco'
+            const minEntrada = b.min_down_payment_pct != null ? `${b.min_down_payment_pct}%` : '20%'
+            const maxFin = b.max_financing_pct != null ? `${b.max_financing_pct}%` : '80%'
+            const taxaStr =
+              b.rate_details ||
+              (b.rate_effective_annual_pct
+                ? `${b.rate_effective_annual_pct}% a.a.`
+                : 'Sob consulta')
+            const compRenda =
+              b.max_income_commitment_pct != null ? `${b.max_income_commitment_pct}%` : '30%'
+            const prazo = b.max_term_months
+              ? `${b.max_term_months} meses (${Math.round(b.max_term_months / 12)} anos)`
+              : '420 meses (35 anos)'
+            const regras = b.special_rules ? ` Regras: ${b.special_rules}` : ''
+            const fgtsStr = b.fgts_accepted ? ' Aceita FGTS.' : ''
+
+            indicesContextText += `• ${bName}: Entrada mínima de ${minEntrada} (financia até ${maxFin}). Taxa anual: ${taxaStr}. Comprometimento máximo de renda: até ${compRenda} da renda bruta. Prazo máximo: ${prazo}.${fgtsStr}${regras}\n`
+          }
+          indicesContextText += `• REGRA PRÁTICA DE RENDA BRUTA EXIGIDA (30% da renda): Renda bruta familiar recomendada = Parcela pretendida ÷ 0,30 (exemplo: parcela de R$ 3.000 exige renda bruta aproximada de R$ 10.000).\n`
+        } else {
+          // Fallback para summary_text caso banks_data não esteja em formato de array
+          const sumText = finRec.getString('summary_text')
+          if (sumText) {
+            indicesContextText += `${sumText}\n`
+          }
+        }
+        indicesContextText += `\n`
+      }
+    } catch (finErr) {
+      console.warn(`[AI_REPLY] Error loading financing_memos (non-fatal): ${String(finErr)}`)
+    }
+
     let filesContextText = indicesContextText
     // 1. Arquivos da coleção dedicada ai_knowledge_files (com texto extraído de PDF/DOCX/TXT/MD/XLSX) agrupados por Empreendimento
     try {
@@ -2745,8 +2821,11 @@ ${focusPropValidationInfo}
 5. Se o lead perguntou sobre um imóvel específico, aprovar a resposta focada no imóvel.
 6. Se o lead disse que é para "investimento" ou "investidor", NUNCA exigir re-pergunta de "morar ou investir".
 7. NOME DO CLIENTE: O nome do cliente atual é "${displayName}" (primeiro nome: "${clientFirstName}"). Saudar ou chamar o cliente pelo próprio nome é OBRIGATÓRIO e CORRETO.
-8. INTELIGÊNCIA DE MERCADO (Art. 10): Estatísticas imobiliárias e de rentabilidade devem ter origem no memo oficial de mercado.
-9. Reprovar APENAS alucinação de imóveis/links fora do catálogo, questionários acumulados com 3+ perguntas ou invenção grosseira de dados.
+8. INTELIGÊNCIA DE MERCADO E FINANCIAMENTO IMOBILIÁRIO:
+   a) Estatísticas de valor do m² e rentabilidade imobiliária devem ter origem estrita no memo oficial de mercado.
+   b) Condições de financiamento imobiliário (percentual de entrada mínima, comprometimento de renda até 30%, taxas vigentes por banco, prazo e regras Caixa/bancos privados) devem ter origem estrita no memo de financiamento do dia.
+   c) Reprovar qualquer taxa ou percentual de financiamento bancário citado pela Bia que contradiga ou não exista no memo oficial de financiamento do dia.
+9. Reprovar APENAS alucinação de imóveis/links fora do catálogo, números de mercado ou financiamento sem origem nos memos, questionários acumulados com 3+ perguntas ou invenção grosseira de dados.
 
 FORMATO ESTRITO DA RESPOSTA:
 - Se a mensagem estiver em conformidade e aprovada, responda EXATAMENTE e APENAS a palavra: APROVADO
