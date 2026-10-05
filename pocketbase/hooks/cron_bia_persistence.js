@@ -29,7 +29,10 @@
  * RESTRIÇÕES GOJA: Sem matchAll, sem for..of em Set/Map, sem spreads de objeto, sem optional chaining.
  */
 
-cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
+// Desativado a pedido do Mauro — nenhuma retomada automática D+1/D+3/D+7/D+14 deve ser disparada pelo sistema.
+// O ritmo é da conversa viva e do cliente, sem robô disparando retomadas de persistence em lote.
+// Linha original: cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
+function runBiaPersistenceFollowupDisabled() {
   var app = $app
 
   // 1. Função inline de formatação e guarda WhatsApp na saída
@@ -668,4 +671,4 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
   console.log(
     '[BIA_PERSISTENCE] Execução concluída. Total de retomadas disparadas: ' + executedCount,
   )
-})
+}
