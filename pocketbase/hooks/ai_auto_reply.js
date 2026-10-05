@@ -2011,11 +2011,25 @@ ${
                 '\n... [conteúdo adicional truncado para brevidade]'
             }
 
+            const rawFileField = kf.getString('file')
+            let fileDownloadUrl = ''
+            if (rawFileField) {
+              const pbPublicBase =
+                $os.getenv('PB_PUBLIC_URL') ||
+                $os.getenv('PUBLIC_URL') ||
+                $os.getenv('PB_INSTANCE_URL') ||
+                'https://crm.brfimoveis.com.br'
+              fileDownloadUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/${kf.collectionId}/${kf.id}/${rawFileField}`
+            }
+
             groupedFiles[enterpriseName].push({
+              id: kf.id,
               title: docTitle,
               content: safeText,
               isRelevant: isRelevantEnterprise,
               property_id: kf.getString('property_id') || '',
+              file_name: rawFileField || '',
+              download_url: fileDownloadUrl,
             })
           }
         }
@@ -2151,7 +2165,11 @@ ${
                 filesContextText += `EMPREENDIMENTO: ${entKey.toUpperCase()}\n`
                 filesContextText += `=====================================================\n`
                 for (const doc of groupedFiles[entKey]) {
-                  filesContextText += `\n--- DOCUMENTO (${entKey}): ${doc.title} ---\n${doc.content}\n`
+                  filesContextText += `\n--- DOCUMENTO (${entKey}): ${doc.title} ---\n`
+                  if (doc.download_url) {
+                    filesContextText += `documento oficial disponível: ${doc.title} — ${doc.download_url}\n`
+                  }
+                  filesContextText += `${doc.content}\n`
                 }
                 filesContextText += '\n'
               }
@@ -3248,8 +3266,9 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             const rawUrl = urlMatches[uIdx]
             const cleanUrl = rawUrl.toLowerCase().replace(/[\.,;:!\?]+$/, '')
 
-            // ALLOWLIST: Legitimate non-property links (YouTube channel BRF, WhatsApp, social networks)
+            // ALLOWLIST: Legitimate non-property links (YouTube channel BRF, WhatsApp, social networks, PocketBase file downloads)
             const isAllowlistedUrl =
+              cleanUrl.includes('/api/files/') ||
               cleanUrl.includes('youtube.com/channel/uca2jsoitvtf8vkgwg65yh_g') ||
               cleanUrl.includes('youtube.com/@maurofenglerbrf') ||
               cleanUrl.includes('youtube.com/@brfimoveis') ||
@@ -3273,6 +3292,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             if (cleanUrl.includes('brfimoveis.com.br')) {
               // Check if it matches an active property url or valid static page
               const isCatalogStaticPage =
+                cleanUrl.includes('/api/files/') ||
+                cleanUrl.includes('/vistage') ||
                 cleanUrl.includes('/imoveis') ||
                 cleanUrl.includes('/venda') ||
                 cleanUrl.endsWith('brfimoveis.com.br') ||

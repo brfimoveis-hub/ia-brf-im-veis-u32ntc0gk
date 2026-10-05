@@ -104,8 +104,9 @@ onRecordAfterCreateSuccess((e) => {
     // 4. Identificar Imóvel (property_id) e Empreendimento (Auto-classificação compatível com Goja)
     let detectedPropertyId = (record.getString('property_id') || '').trim()
     let detectedEnterprise = (record.getString('enterprise') || '').trim()
-    const combinedInspection = (originalName + ' ' + extractedMarkdown).toLowerCase()
-    const combinedAlphanum = combinedInspection.replace(/[^a-z0-9]/g, '')
+    const nameInspection = (originalName || '').toLowerCase()
+    const textInspection = (extractedMarkdown || '').substring(0, 5000).toLowerCase()
+    const combinedInspection = (nameInspection + ' ' + textInspection).toLowerCase()
 
     // Se property_id ainda não foi atribuído, buscar entre os imóveis ativos do catálogo
     if (!detectedPropertyId) {
@@ -118,69 +119,134 @@ onRecordAfterCreateSuccess((e) => {
           0,
         )
         if (activeProperties && activeProperties.length > 0) {
-          // Passo 1: busca por correspondência de código do imóvel (ex: #AP343, AP343, ARU 341, LM 330)
+          // Passo 1: busca por correspondência EXATA de código no NOME DO ARQUIVO ou no TÍTULO/HEADER do documento.
+          // NUNCA buscar códigos genéricos em texto corrido (para evitar vincular Vistage a LM342 por mera citação).
+          let codeMatches = []
           for (var pi = 0; pi < activeProperties.length; pi++) {
             const propRec = activeProperties[pi]
             const rawCode = (propRec.getString('code') || '').toLowerCase().trim()
             if (!rawCode || rawCode.length < 3) continue
 
-            const codeClean = rawCode.replace(/[^a-z0-9]/g, '')
-            if (codeClean.length >= 3) {
-              // Verifica no texto alfanumérico ou com separadores
-              if (
-                combinedAlphanum.indexOf(codeClean) !== -1 ||
-                combinedInspection.indexOf(rawCode) !== -1
-              ) {
-                detectedPropertyId = propRec.id
-                if (!detectedEnterprise) {
-                  detectedEnterprise = propRec.getString('title') || propRec.getString('code')
-                }
-                break
-              }
+            // Regex com limite de fronteira de palavra / delimitador para evitar correspondências parciais
+            const escapedCode = rawCode.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&')
+            const codePattern = new RegExp('(?:^|[^a-z0-9])' + escapedCode + '(?:[^a-z0-9]|$)', 'i')
+
+            // Dá peso máximo se o código estiver no NOME DO ARQUIVO
+            if (codePattern.test(nameInspection)) {
+              codeMatches.push({ prop: propRec, priority: 1, code: rawCode })
+            } else if (codePattern.test(textInspection.substring(0, 600))) {
+              // Ou se o código estiver nos primeiros 600 caracteres (cabeçalho/título do documento)
+              codeMatches.push({ prop: propRec, priority: 2, code: rawCode })
             }
           }
 
-          // Passo 2: se ainda não achou, buscar por termos distintivos no título do imóvel
+          if (codeMatches.length === 1) {
+            detectedPropertyId = codeMatches[0].prop.id
+            if (!detectedEnterprise) {
+              detectedEnterprise =
+                codeMatches[0].prop.getString('title') || codeMatches[0].prop.getString('code')
+            }
+            console.log(
+              '[AI_KNOWLEDGE_FILES] vínculo: doc "' +
+                originalName +
+                '" → property ' +
+                codeMatches[0].prop.getString('code') +
+                ' (' +
+                codeMatches[0].prop.id +
+                ') por código exato.',
+            )
+          } else if (codeMatches.length > 1) {
+            console.warn(
+              '[AI_KNOWLEDGE_FILES] sem vínculo por ambiguidade: múltiplos códigos corresponderam no doc "' +
+                originalName +
+                '".',
+            )
+          }
+
+          // Passo 2: se ainda não achou por código exato, buscar por correspondência CLARA de nome do empreendimento
           if (!detectedPropertyId) {
-            const keyTerms = [
-              'vistage',
-              'viva balneário',
-              'viva balneario',
-              'neo continente',
-              'colinas de são pedro',
-              'colinas de sao pedro',
-              'solar di plaza',
-              'solar plaza',
-              'villa dos açores',
-              'villa dos acores',
-              'viva trindade',
-              'opus agronômica',
-              'opus agronomica',
-              'essenzia canasvieiras',
-              'condomínio fly ville',
-              'fly ville',
-              'luminare residence',
-              'luminare',
+            const enterpriseDictionary = [
+              { term: 'vistage', code: 'VISTAGE', defaultName: 'Vistage Residence' },
+              { term: 'viva balneário', code: 'LM342', defaultName: 'Viva Balneário Estreito' },
+              { term: 'viva balneario', code: 'LM342', defaultName: 'Viva Balneário Estreito' },
+              { term: 'villa dos açores', code: 'LM330', defaultName: 'Villa dos Açores' },
+              { term: 'villa dos acores', code: 'LM330', defaultName: 'Villa dos Açores' },
+              { term: 'viva trindade', code: 'LM328', defaultName: 'Viva Trindade' },
+              { term: 'neo continente', code: '', defaultName: 'Neo Continente' },
+              { term: 'colinas de são pedro', code: '', defaultName: 'Colinas de São Pedro' },
+              { term: 'colinas de sao pedro', code: '', defaultName: 'Colinas de São Pedro' },
+              { term: 'solar di plaza', code: '', defaultName: 'Solar Plaza' },
+              { term: 'solar plaza', code: '', defaultName: 'Solar Plaza' },
+              { term: 'opus agronômica', code: '', defaultName: 'Opus Agronômica' },
+              { term: 'opus agronomica', code: '', defaultName: 'Opus Agronômica' },
+              { term: 'essenzia canasvieiras', code: '', defaultName: 'Essenzia Canasvieiras' },
+              { term: 'condomínio fly ville', code: '', defaultName: 'Condomínio Fly Ville' },
+              { term: 'fly ville', code: '', defaultName: 'Condomínio Fly Ville' },
+              { term: 'luminare residence', code: '', defaultName: 'Luminare Residence' },
+              { term: 'luminare', code: '', defaultName: 'Luminare Residence' },
             ]
 
-            for (var pii = 0; pii < activeProperties.length; pii++) {
-              const propRec2 = activeProperties[pii]
-              const pTitle = (propRec2.getString('title') || '').toLowerCase()
-              let matchedTerm = false
-              for (var ki = 0; ki < keyTerms.length; ki++) {
-                const kw = keyTerms[ki]
-                if (pTitle.indexOf(kw) !== -1 && combinedInspection.indexOf(kw) !== -1) {
-                  matchedTerm = true
-                  break
+            let termMatches = []
+            for (var ed = 0; ed < enterpriseDictionary.length; ed++) {
+              const entry = enterpriseDictionary[ed]
+              const kw = entry.term
+              // Termo deve aparecer no nome do arquivo ou nos primeiros 800 caracteres do documento
+              if (
+                nameInspection.indexOf(kw) !== -1 ||
+                textInspection.substring(0, 800).indexOf(kw) !== -1
+              ) {
+                // Localizar o imóvel ativo correspondente ao termo
+                for (var pii = 0; pii < activeProperties.length; pii++) {
+                  const propRec2 = activeProperties[pii]
+                  const pTitle = (propRec2.getString('title') || '').toLowerCase()
+                  const pCode = (propRec2.getString('code') || '').toLowerCase()
+                  if (
+                    (entry.code && pCode === entry.code.toLowerCase()) ||
+                    (pTitle.indexOf(kw) !== -1 && !pTitle.includes('vistage')) ||
+                    (kw === 'vistage' && pTitle.includes('vistage'))
+                  ) {
+                    if (
+                      !termMatches.some(function (tm) {
+                        return tm.prop.id === propRec2.id
+                      })
+                    ) {
+                      termMatches.push({ prop: propRec2, entry: entry })
+                    }
+                    break
+                  }
                 }
               }
-              if (matchedTerm) {
-                detectedPropertyId = propRec2.id
-                if (!detectedEnterprise) {
-                  detectedEnterprise = propRec2.getString('title') || propRec2.getString('code')
-                }
-                break
+            }
+
+            if (termMatches.length === 1) {
+              detectedPropertyId = termMatches[0].prop.id
+              if (!detectedEnterprise) {
+                detectedEnterprise =
+                  termMatches[0].entry.defaultName || termMatches[0].prop.getString('title')
               }
+              console.log(
+                '[AI_KNOWLEDGE_FILES] vínculo: doc "' +
+                  originalName +
+                  '" → property ' +
+                  termMatches[0].prop.getString('code') +
+                  ' (' +
+                  termMatches[0].prop.id +
+                  ') por nome claro do empreendimento ("' +
+                  termMatches[0].entry.term +
+                  '").',
+              )
+            } else if (termMatches.length > 1) {
+              console.warn(
+                '[AI_KNOWLEDGE_FILES] sem vínculo por ambiguidade: múltiplos empreendimentos detectados no doc "' +
+                  originalName +
+                  '". Mantido sem vínculo (Geral / Institucional).',
+              )
+            } else {
+              console.log(
+                '[AI_KNOWLEDGE_FILES] sem vínculo por ambiguidade / documento institucional ou sem imóvel correspondente: "' +
+                  originalName +
+                  '".',
+              )
             }
           }
         }
@@ -446,8 +512,9 @@ onRecordAfterUpdateSuccess((e) => {
     // Auto-classificação caso property_id ou enterprise estejam em branco
     let detectedPropertyId = (record.getString('property_id') || '').trim()
     let detectedEnterprise = (record.getString('enterprise') || '').trim()
-    const combinedInspection = (originalName + ' ' + extractedMarkdown).toLowerCase()
-    const combinedAlphanum = combinedInspection.replace(/[^a-z0-9]/g, '')
+    const nameInspectionU = (originalName || '').toLowerCase()
+    const textInspectionU = (extractedMarkdown || '').substring(0, 5000).toLowerCase()
+    const combinedInspection = (nameInspectionU + ' ' + textInspectionU).toLowerCase()
 
     if (!detectedPropertyId) {
       try {
@@ -459,66 +526,128 @@ onRecordAfterUpdateSuccess((e) => {
           0,
         )
         if (activeProperties && activeProperties.length > 0) {
+          // Passo 1: correspondência exata de código no nome do arquivo ou cabeçalho
+          let codeMatchesU = []
           for (var piU = 0; piU < activeProperties.length; piU++) {
             const propRec = activeProperties[piU]
             const rawCode = (propRec.getString('code') || '').toLowerCase().trim()
             if (!rawCode || rawCode.length < 3) continue
 
-            const codeClean = rawCode.replace(/[^a-z0-9]/g, '')
-            if (codeClean.length >= 3) {
-              if (
-                combinedAlphanum.indexOf(codeClean) !== -1 ||
-                combinedInspection.indexOf(rawCode) !== -1
-              ) {
-                detectedPropertyId = propRec.id
-                if (!detectedEnterprise) {
-                  detectedEnterprise = propRec.getString('title') || propRec.getString('code')
-                }
-                break
-              }
+            const escapedCode = rawCode.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&')
+            const codePattern = new RegExp('(?:^|[^a-z0-9])' + escapedCode + '(?:[^a-z0-9]|$)', 'i')
+
+            if (codePattern.test(nameInspectionU)) {
+              codeMatchesU.push({ prop: propRec, priority: 1 })
+            } else if (codePattern.test(textInspectionU.substring(0, 600))) {
+              codeMatchesU.push({ prop: propRec, priority: 2 })
             }
           }
 
+          if (codeMatchesU.length === 1) {
+            detectedPropertyId = codeMatchesU[0].prop.id
+            if (!detectedEnterprise) {
+              detectedEnterprise =
+                codeMatchesU[0].prop.getString('title') || codeMatchesU[0].prop.getString('code')
+            }
+            console.log(
+              '[AI_KNOWLEDGE_FILES] vínculo em update: doc "' +
+                originalName +
+                '" → property ' +
+                codeMatchesU[0].prop.getString('code') +
+                ' (' +
+                codeMatchesU[0].prop.id +
+                ') por código exato.',
+            )
+          } else if (codeMatchesU.length > 1) {
+            console.warn(
+              '[AI_KNOWLEDGE_FILES] sem vínculo em update por ambiguidade: múltiplos códigos no doc "' +
+                originalName +
+                '".',
+            )
+          }
+
+          // Passo 2: correspondência clara de nome de empreendimento
           if (!detectedPropertyId) {
-            const keyTerms = [
-              'vistage',
-              'viva balneário',
-              'viva balneario',
-              'neo continente',
-              'colinas de são pedro',
-              'colinas de sao pedro',
-              'solar di plaza',
-              'solar plaza',
-              'villa dos açores',
-              'villa dos acores',
-              'viva trindade',
-              'opus agronômica',
-              'opus agronomica',
-              'essenzia canasvieiras',
-              'condomínio fly ville',
-              'fly ville',
-              'luminare residence',
-              'luminare',
+            const enterpriseDictionaryU = [
+              { term: 'vistage', code: 'VISTAGE', defaultName: 'Vistage Residence' },
+              { term: 'viva balneário', code: 'LM342', defaultName: 'Viva Balneário Estreito' },
+              { term: 'viva balneario', code: 'LM342', defaultName: 'Viva Balneário Estreito' },
+              { term: 'villa dos açores', code: 'LM330', defaultName: 'Villa dos Açores' },
+              { term: 'villa dos acores', code: 'LM330', defaultName: 'Villa dos Açores' },
+              { term: 'viva trindade', code: 'LM328', defaultName: 'Viva Trindade' },
+              { term: 'neo continente', code: '', defaultName: 'Neo Continente' },
+              { term: 'colinas de são pedro', code: '', defaultName: 'Colinas de São Pedro' },
+              { term: 'colinas de sao pedro', code: '', defaultName: 'Colinas de São Pedro' },
+              { term: 'solar di plaza', code: '', defaultName: 'Solar Plaza' },
+              { term: 'solar plaza', code: '', defaultName: 'Solar Plaza' },
+              { term: 'opus agronômica', code: '', defaultName: 'Opus Agronômica' },
+              { term: 'opus agronomica', code: '', defaultName: 'Opus Agronômica' },
+              { term: 'essenzia canasvieiras', code: '', defaultName: 'Essenzia Canasvieiras' },
+              { term: 'condomínio fly ville', code: '', defaultName: 'Condomínio Fly Ville' },
+              { term: 'fly ville', code: '', defaultName: 'Condomínio Fly Ville' },
+              { term: 'luminare residence', code: '', defaultName: 'Luminare Residence' },
+              { term: 'luminare', code: '', defaultName: 'Luminare Residence' },
             ]
 
-            for (var piiU = 0; piiU < activeProperties.length; piiU++) {
-              const propRec2 = activeProperties[piiU]
-              const pTitle = (propRec2.getString('title') || '').toLowerCase()
-              let matchedTerm = false
-              for (var kiU = 0; kiU < keyTerms.length; kiU++) {
-                const kw = keyTerms[kiU]
-                if (pTitle.indexOf(kw) !== -1 && combinedInspection.indexOf(kw) !== -1) {
-                  matchedTerm = true
-                  break
+            let termMatchesU = []
+            for (var edU = 0; edU < enterpriseDictionaryU.length; edU++) {
+              const entryU = enterpriseDictionaryU[edU]
+              const kwU = entryU.term
+              if (
+                nameInspectionU.indexOf(kwU) !== -1 ||
+                textInspectionU.substring(0, 800).indexOf(kwU) !== -1
+              ) {
+                for (var piiU = 0; piiU < activeProperties.length; piiU++) {
+                  const propRec2 = activeProperties[piiU]
+                  const pTitle = (propRec2.getString('title') || '').toLowerCase()
+                  const pCode = (propRec2.getString('code') || '').toLowerCase()
+                  if (
+                    (entryU.code && pCode === entryU.code.toLowerCase()) ||
+                    (pTitle.indexOf(kwU) !== -1 && !pTitle.includes('vistage')) ||
+                    (kwU === 'vistage' && pTitle.includes('vistage'))
+                  ) {
+                    if (
+                      !termMatchesU.some(function (tm) {
+                        return tm.prop.id === propRec2.id
+                      })
+                    ) {
+                      termMatchesU.push({ prop: propRec2, entry: entryU })
+                    }
+                    break
+                  }
                 }
               }
-              if (matchedTerm) {
-                detectedPropertyId = propRec2.id
-                if (!detectedEnterprise) {
-                  detectedEnterprise = propRec2.getString('title') || propRec2.getString('code')
-                }
-                break
+            }
+
+            if (termMatchesU.length === 1) {
+              detectedPropertyId = termMatchesU[0].prop.id
+              if (!detectedEnterprise) {
+                detectedEnterprise =
+                  termMatchesU[0].entry.defaultName || termMatchesU[0].prop.getString('title')
               }
+              console.log(
+                '[AI_KNOWLEDGE_FILES] vínculo em update: doc "' +
+                  originalName +
+                  '" → property ' +
+                  termMatchesU[0].prop.getString('code') +
+                  ' (' +
+                  termMatchesU[0].prop.id +
+                  ') por nome claro do empreendimento ("' +
+                  termMatchesU[0].entry.term +
+                  '").',
+              )
+            } else if (termMatchesU.length > 1) {
+              console.warn(
+                '[AI_KNOWLEDGE_FILES] sem vínculo em update por ambiguidade: múltiplos empreendimentos no doc "' +
+                  originalName +
+                  '". Mantido sem vínculo.',
+              )
+            } else {
+              console.log(
+                '[AI_KNOWLEDGE_FILES] sem vínculo por ambiguidade em update: "' +
+                  originalName +
+                  '".',
+              )
             }
           }
         }
