@@ -4412,120 +4412,222 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       const lowerResp = (responseText || '').toLowerCase()
       let currentCreditStatus = customer.getString('credit_analysis_status') || 'nao_oferecido'
 
-      // Detectar se a Bia acabou de oferecer a análise para a Neuci nesta resposta
-      if (
-        lowerResp.includes('neuci') ||
-        lowerResp.includes('posso encaminhar você para a minha agente neuci') ||
-        lowerResp.includes('encaminhar você para a minha agente neuci') ||
-        (lowerResp.includes('análise de crédito') && lowerResp.includes('agente'))
-      ) {
-        if (currentCreditStatus === 'nao_oferecido' || !currentCreditStatus) {
+      // Idempotência estrita: se já foi enviado, NUNCA disparar novamente nem regredir status
+      if (currentCreditStatus === 'enviado') {
+        console.log(
+          `[CREDIT_FLOW] Cliente ${customerId} já possui status 'enviado'. Idempotência mantida, nenhum reenvio.`,
+        )
+      } else {
+        // 1. Detectar se a Bia acabou de oferecer a análise para a Neuci nesta resposta
+        const respOffersCredit =
+          lowerResp.includes('neuci') ||
+          lowerResp.includes('posso encaminhar você para a minha agente neuci') ||
+          lowerResp.includes('encaminhar você para a minha agente neuci') ||
+          lowerResp.includes('encaminhar para a neuci') ||
+          (lowerResp.includes('análise de crédito') &&
+            (lowerResp.includes('neuci') ||
+              lowerResp.includes('agente') ||
+              lowerResp.includes('posso encaminhar') ||
+              lowerResp.includes('posso te encaminhar')))
+
+        if (respOffersCredit && currentCreditStatus !== 'oferecido') {
           customer.set('credit_analysis_status', 'oferecido')
           customer.set('credit_analysis_offered_at', new Date().toISOString())
           $app.saveNoValidate(customer)
           currentCreditStatus = 'oferecido'
-          console.log(`[CREDIT_FLOW] Análise de crédito oferecida ao cliente ${customerId}`)
+          console.log(
+            `[CREDIT_FLOW] Análise de crédito oferecida ao cliente ${customerId} (status -> oferecido)`,
+          )
         }
-      }
 
-      // Se já estava oferecido, verificar se a mensagem do cliente CONCORDA expressamente
-      if (currentCreditStatus === 'oferecido') {
-        const isConsent =
-          /\b(sim|com certeza|pode|pode sim|claro|por favor|quero|aceito|concordo|encaminha|manda|pode mandar|pode encaminhar|ok|perfeito)\b/i.test(
-            lowerCust,
-          )
-        const isRefusal =
-          /\b(n[aã]o|depois|agora n[aã]o|ainda n[aã]o|n[aã]o precisa|deixa|prefiro n[aã]o)\b/i.test(
-            lowerCust,
-          )
+        // 2. Se o status é oferecido, verificar consentimento ou recusa expressa do cliente
+        if (currentCreditStatus === 'oferecido') {
+          // Consentimento explícito: sim, pode encaminhar, claro, por favor, quero, pode sim, etc.
+          const isConsent =
+            /\b(sim|com certeza|pode|pode sim|claro|por favor|quero|aceito|concordo|encaminha|manda|pode mandar|pode encaminhar|ok|perfeito|pode ser|gostaria|autorizo|faz favor)\b/i.test(
+              lowerCust,
+            )
+          // Recusa explícita: não, deixa pra lá, agora não, prefiro não, etc.
+          const isRefusal =
+            /\b(n[aã]o|depois|agora n[aã]o|ainda n[aã]o|n[aã]o precisa|deixa|deixa pra l[aá]|prefiro n[aã]o|dispens|n[aã]o quero)\b/i.test(
+              lowerCust,
+            )
 
-        if (isConsent && !isRefusal) {
-          console.log(
-            `[CREDIT_FLOW] Consentimento CONFIRMADO pelo cliente ${customerId}! Disparando Neuci + Mauro...`,
-          )
+          if (isConsent && !isRefusal) {
+            console.log(
+              `[CREDIT_FLOW] Consentimento CONFIRMADO pelo cliente ${customerId}! Iniciando disparo SIMULTÂNEO Neuci + Mauro...`,
+            )
 
-          // Identificar imóvel e link
-          let propCode = ''
-          let propUrl = ''
-          if (targetSpecificProp) {
-            propCode = targetSpecificProp.getString('code') || ''
-            propUrl = targetSpecificProp.getString('url') || ''
-          } else if (matchedLaunch) {
-            propCode =
-              matchedLaunch.getString('enterprise_name') || matchedLaunch.getString('name') || ''
-            propUrl = matchedLaunch.getString('url') || 'https://brfimoveis.com.br'
-          }
-
-          if (!propUrl && propCode) {
-            propUrl = `https://brfimoveis.com.br/imovel/${propCode.toLowerCase()}`
-          }
-          if (!propUrl) {
-            propUrl = 'https://brfimoveis.com.br'
-          }
-
-          const clientCustName =
-            customer.getString('name') ||
-            customer.getString('first_name') ||
-            displayName ||
-            'Cliente'
-          const clientPhoneRaw = customer.getString('phone') || ''
-
-          const msgNeuci = `cliente ${clientCustName} pretende uma análise de crédito para comprar o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
-          const msgMauro = `cliente ${clientCustName} foi solicitado análise de crédito para o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
-
-          // Número da Neuci (48) 99902-0349 -> 5548999020349
-          const phoneNeuci = '5548999020349'
-          // Número do Mauro (48) 99972-8050 -> 5548999728050
-          const phoneMauro = '5548999728050'
-
-          if (metaToken && metaPhoneId) {
-            // Disparo para Neuci
-            try {
-              callMetaWithRetry(
-                `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
-                'POST',
-                { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-                JSON.stringify({
-                  messaging_product: 'whatsapp',
-                  to: phoneNeuci,
-                  type: 'text',
-                  text: { body: msgNeuci },
-                }),
-              )
-              console.log(`[CREDIT_FLOW] Notificação enviada à Neuci com sucesso (${phoneNeuci}).`)
-            } catch (neuciErr) {
-              console.warn(`[CREDIT_FLOW] Erro ao notificar Neuci: ${String(neuciErr)}`)
+            // Resolução de dados do imóvel em foco
+            let propCode = ''
+            let propUrl = ''
+            if (targetSpecificProp) {
+              propCode = (targetSpecificProp.getString('code') || '').trim()
+              propUrl = (targetSpecificProp.getString('url') || '').trim()
+            } else if (matchedLaunch) {
+              propCode = (
+                matchedLaunch.getString('enterprise_name') ||
+                matchedLaunch.getString('name') ||
+                ''
+              ).trim()
+              propUrl = (
+                matchedLaunch.getString('website_url') ||
+                matchedLaunch.getString('url') ||
+                ''
+              ).trim()
+            } else if (matchedProps && matchedProps.length > 0) {
+              propCode = (matchedProps[0].getString('code') || '').trim()
+              propUrl = (matchedProps[0].getString('url') || '').trim()
             }
 
-            // Disparo simultâneo para Mauro
+            // Fallback de URL canônica do imóvel no portal oficial brfimoveis.com.br
+            if (!propUrl && propCode) {
+              const cleanCode = propCode.replace(/\s+/g, '').toLowerCase()
+              propUrl = `https://brfimoveis.com.br/imovel/${cleanCode}`
+            }
+            if (!propUrl) {
+              propUrl = 'https://brfimoveis.com.br'
+            }
+
+            // Resolução do nome do cliente
+            const clientCustName =
+              customer.getString('name') ||
+              customer.getString('first_name') ||
+              displayName ||
+              'Cliente'
+
+            // Resolução do telefone do cliente (formatado para fácil contato direto)
+            const clientPhoneRaw = customer.getString('phone') || ''
+
+            const msgNeuci = `cliente ${clientCustName} pretende uma análise de crédito para comprar o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
+            const msgMauro = `cliente ${clientCustName} foi solicitado análise de crédito para o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
+
+            // Números oficiais: Neuci (48) 99902-0349 -> 5548999020349 / Mauro (48) 99972-8050 -> 5548999728050
+            const phoneNeuci = '5548999020349'
+            const phoneMauro = '5548999728050'
+
+            let neuciSuccess = false
+            let mauroSuccess = false
+            let dispatchErrorDetails = []
+
+            if (metaToken && metaPhoneId) {
+              // 1. WhatsApp para Neuci
+              try {
+                const resNeuci = callMetaWithRetry(
+                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                  'POST',
+                  { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                  JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: phoneNeuci,
+                    type: 'text',
+                    text: { body: msgNeuci },
+                  }),
+                )
+                if (resNeuci && resNeuci.statusCode >= 200 && resNeuci.statusCode < 300) {
+                  neuciSuccess = true
+                  console.log(
+                    `[CREDIT_FLOW] WhatsApp enviado com sucesso para Neuci (${phoneNeuci}).`,
+                  )
+                } else {
+                  const bStr = resNeuci ? String.fromCharCode.apply(null, resNeuci.body || []) : ''
+                  dispatchErrorDetails.push(
+                    `Neuci status ${resNeuci ? resNeuci.statusCode : 'null'}: ${bStr}`,
+                  )
+                }
+              } catch (neuciErr) {
+                console.warn(`[CREDIT_FLOW] Exceção ao notificar Neuci: ${String(neuciErr)}`)
+                dispatchErrorDetails.push(`Neuci err: ${String(neuciErr)}`)
+              }
+
+              // 2. WhatsApp simultâneo para Mauro
+              try {
+                const resMauro = callMetaWithRetry(
+                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                  'POST',
+                  { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                  JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: phoneMauro,
+                    type: 'text',
+                    text: { body: msgMauro },
+                  }),
+                )
+                if (resMauro && resMauro.statusCode >= 200 && resMauro.statusCode < 300) {
+                  mauroSuccess = true
+                  console.log(
+                    `[CREDIT_FLOW] WhatsApp enviado com sucesso para Mauro (${phoneMauro}).`,
+                  )
+                } else {
+                  const bStr = resMauro ? String.fromCharCode.apply(null, resMauro.body || []) : ''
+                  dispatchErrorDetails.push(
+                    `Mauro status ${resMauro ? resMauro.statusCode : 'null'}: ${bStr}`,
+                  )
+                }
+              } catch (mauroErr) {
+                console.warn(`[CREDIT_FLOW] Exceção ao notificar Mauro: ${String(mauroErr)}`)
+                dispatchErrorDetails.push(`Mauro err: ${String(mauroErr)}`)
+              }
+            } else {
+              dispatchErrorDetails.push('Meta credentials ausentes no momento do envio.')
+            }
+
+            // Registrar tentativa / log do fluxo de análise de crédito
             try {
-              callMetaWithRetry(
-                `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
-                'POST',
-                { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const creditLog = new Record(logsCol)
+              creditLog.set('user_id', userId || '')
+              creditLog.set(
+                'type',
+                neuciSuccess && mauroSuccess
+                  ? 'credit_analysis_sent'
+                  : 'credit_analysis_dispatch_attempt',
+              )
+              creditLog.set(
+                'message',
+                neuciSuccess && mauroSuccess
+                  ? `Consentimento confirmado: Análise de crédito encaminhada simultaneamente à Neuci (${phoneNeuci}) e Mauro (${phoneMauro}) para imóvel ${propCode || 'em foco'}`
+                  : `Consentimento confirmado para cliente ${clientCustName}, mas envio degradado/parcial: ${dispatchErrorDetails.join(' | ')}`,
+              )
+              creditLog.set(
+                'payload',
                 JSON.stringify({
-                  messaging_product: 'whatsapp',
-                  to: phoneMauro,
-                  type: 'text',
-                  text: { body: msgMauro },
+                  customer_id: customerId,
+                  customer_name: clientCustName,
+                  customer_phone: clientPhoneRaw,
+                  property_code: propCode,
+                  property_url: propUrl,
+                  neuci_success: neuciSuccess,
+                  mauro_success: mauroSuccess,
+                  errors: dispatchErrorDetails,
                 }),
               )
-              console.log(`[CREDIT_FLOW] Notificação enviada ao Mauro com sucesso (${phoneMauro}).`)
-            } catch (mauroErr) {
-              console.warn(`[CREDIT_FLOW] Erro ao notificar Mauro: ${String(mauroErr)}`)
+              $app.saveNoValidate(creditLog)
+            } catch (logErr) {
+              console.warn(
+                `[CREDIT_FLOW] Falha ao registrar system_log de análise: ${String(logErr)}`,
+              )
             }
-          }
 
-          // Atualizar status do customer para consentido/enviado
-          customer.set('credit_analysis_status', 'enviado')
-          customer.set('credit_analysis_consented_at', new Date().toISOString())
-          $app.saveNoValidate(customer)
-        } else if (isRefusal) {
-          customer.set('credit_analysis_status', 'recusado')
-          $app.saveNoValidate(customer)
-          console.log(
-            `[CREDIT_FLOW] Cliente ${customerId} recusou a análise de crédito. Nada foi enviado.`,
-          )
+            // Atualização coerente do status do cliente:
+            // O consentimento foi dado e registrado com timestamp
+            customer.set('credit_analysis_consented_at', new Date().toISOString())
+            customer.set('credit_analysis_status', 'enviado')
+            $app.saveNoValidate(customer)
+            console.log(
+              `[CREDIT_FLOW] Cliente ${customerId} atualizado com status='enviado' e credit_analysis_consented_at gravado.`,
+            )
+          } else if (isRefusal) {
+            customer.set('credit_analysis_status', 'recusado')
+            $app.saveNoValidate(customer)
+            console.log(
+              `[CREDIT_FLOW] Cliente ${customerId} recusou a análise de crédito expressamente. Nenhum disparo executado.`,
+            )
+          } else {
+            console.log(
+              `[CREDIT_FLOW] Cliente ${customerId} com análise oferecida não expressou consentimento explícito. Nenhum disparo efetuado.`,
+            )
+          }
         }
       }
     } catch (creditFlowErr) {

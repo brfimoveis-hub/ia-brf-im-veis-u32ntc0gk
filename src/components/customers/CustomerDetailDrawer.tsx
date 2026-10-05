@@ -248,6 +248,25 @@ export function CustomerDetailDrawer({
                       <Badge variant="secondary" className="font-medium">
                         {customer.status || 'Lead Novo'}
                       </Badge>
+                      {customer.credit_analysis_status &&
+                        customer.credit_analysis_status !== 'nao_oferecido' && (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'text-xs font-semibold',
+                              customer.credit_analysis_status === 'enviado' &&
+                                'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30',
+                              customer.credit_analysis_status === 'consentido' &&
+                                'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
+                              customer.credit_analysis_status === 'oferecido' &&
+                                'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30',
+                              customer.credit_analysis_status === 'recusado' &&
+                                'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30',
+                            )}
+                          >
+                            Crédito: {customer.credit_analysis_status}
+                          </Badge>
+                        )}
                       {customer.is_blocked && (
                         <Badge variant="destructive" className="gap-1">
                           <Ban className="h-3 w-3" /> Bloqueado
@@ -354,6 +373,48 @@ export function CustomerDetailDrawer({
                       <p className="text-sm font-medium">
                         {new Date(customer.created).toLocaleDateString()}
                       </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Fluxo de Análise de Crédito (Art. 6)
+                      </Label>
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          'text-xs font-medium',
+                          customer.credit_analysis_status === 'enviado' &&
+                            'bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300',
+                          customer.credit_analysis_status === 'oferecido' &&
+                            'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300',
+                          customer.credit_analysis_status === 'recusado' &&
+                            'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
+                        )}
+                      >
+                        {customer.credit_analysis_status || 'nao_oferecido'}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs bg-muted/30 p-3 rounded-lg border border-border/50">
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">Oferecido em</span>
+                        <span className="font-medium">
+                          {customer.credit_analysis_offered_at
+                            ? new Date(customer.credit_analysis_offered_at).toLocaleString('pt-BR')
+                            : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block mb-0.5">Consentido em</span>
+                        <span className="font-medium">
+                          {customer.credit_analysis_consented_at
+                            ? new Date(customer.credit_analysis_consented_at).toLocaleString(
+                                'pt-BR',
+                              )
+                            : '—'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
