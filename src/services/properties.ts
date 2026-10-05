@@ -34,7 +34,7 @@ export async function getActiveProperties(): Promise<Property[]> {
       filter: 'is_active = true',
       sort: 'code',
       fields:
-        'id,code,title,property_type,transaction_type,price,price_formatted,city,neighborhood,bedrooms,suites,bathrooms,parking_spaces,area_privativa,url,image_url,is_active,created,updated',
+        'id,code,title,property_type,transaction_type,price,price_formatted,city,neighborhood,bedrooms,suites,bathrooms,parking_spaces,area_privativa,description,features,url,image_url,is_active,created,updated',
     })
     return records
   } catch (err) {

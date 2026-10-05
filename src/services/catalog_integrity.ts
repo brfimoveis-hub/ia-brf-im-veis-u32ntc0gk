@@ -139,13 +139,13 @@ export async function getCatalogIntegrityReport(userId?: string): Promise<Catalo
       })
     }
 
-    // 4. Checagem de Descrição >= 20 caracteres
-    const hasValidDescription = Boolean(prop.description && prop.description.trim().length >= 20)
+    // 4. Checagem de Descrição preenchida (mínimo 10 caracteres significativos)
+    const hasValidDescription = Boolean(prop.description && prop.description.trim().length >= 10)
     if (!hasValidDescription) {
       missing.push({
         key: 'description',
-        label: 'Descrição insuficiente (< 20 caracteres)',
-        description: 'A descrição precisa conter no mínimo 20 caracteres de texto',
+        label: 'Sem descrição cadastrada',
+        description: 'A descrição do imóvel está ausente ou insuficiente no cadastro',
         severity: 'high',
       })
     }

@@ -137,9 +137,52 @@ function runCatalogSyncProcess(triggerSource) {
       [/espa\u7bb0/gi, 'espaço'],
       [/頡\s*oportunidade/gi, 'é a oportunidade'],
       [/頡/gi, 'é a '],
+      [/Jurer\uA809nternacional/gi, 'Jurerê Internacional'],
+      [/Jurer\uA809/gi, 'Jurerê'],
+      [/Jurer\u02a0/gi, 'Jurerê'],
+      [/Jurer\uA822/gi, 'Jurerê'],
+      [/seguran\u7861total/gi, 'segurança total'],
+      [/seguran\u786ctotal/gi, 'segurança total'],
+      [/segurançatotal/gi, 'segurança total'],
       [/seguran硠/gi, 'segurança'],
+      [/seguran\u7861de/gi, 'segurança de'],
+      [/seguran\u786cde/gi, 'segurança de'],
+      [/seguran\u7861/gi, 'segurança'],
+      [/seguran\u786c/gi, 'segurança'],
+      [/voc\uA822usca/gi, 'você busca'],
+      [/voc\uA822/gi, 'você'],
+      [/vocꠢ/gi, 'você '],
+      [/voc꠳onha/gi, 'você sonha'],
+      [/voc꠳/gi, 'você '],
       [/voc꠰/gi, 'você'],
+      [/voc꠰rocura/gi, 'você procura'],
+      [/vocêrocura/gi, 'você procura'],
+      [/voc\uA8A0/gi, 'você'],
       [/㯬/gi, 'ão'],
+      [/ࠖenda/gi, 'à venda'],
+      [/࠶enda/gi, 'à venda'],
+      [/ࠖ/gi, 'à '],
+      [/࠶/gi, 'à '],
+      [/j\u1CA1lugadas/gi, 'já alugadas'],
+      [/j\u1CA1/gi, 'já'],
+      [/im\u03F6\u00ADel/gi, 'imóvel'],
+      [/im\u03F6el/gi, 'imóvel'],
+      [/im\u03F6\u00ADeis/gi, 'imóveis'],
+      [/im\u03F6eis/gi, 'imóveis'],
+      [/im󶥬/gi, 'imóvel'],
+      [/neg\u03E9\u00ADos/gi, 'negócios'],
+      [/neg\u03E9os/gi, 'negócios'],
+      [/neg󣩯s/gi, 'negócios'],
+      [/resid\uABA3ia/gi, 'residência'],
+      [/residꮣia/gi, 'residência'],
+      [/São José\u9821\u00A0/gi, 'São José/SC '],
+      [/São José\u9821/gi, 'São José'],
+      [/São José顠/gi, 'São José '],
+      [/São José頿/gi, 'São José '],
+      [/São José顠/gi, 'São José '],
+      [/São José頿\?+/gi, 'São José'],
+      [/resuíteltados/gi, 'resultados'],
+      [/resuilte/gi, 'result'],
       [/su\u00edte\u00edte\u0356ES/gi, 'suítes'],
       [/su\u00edte\u00edte\u0356E/gi, 'suíte'],
       [/su\u00edte\u00edte\u0356/gi, 'suíte'],
@@ -155,9 +198,12 @@ function runCatalogSyncProcess(triggerSource) {
       [/demi-su\u00edte\u00edte/gi, 'demi-suíte'],
       [/demi-su\uFFFD/gi, 'demi-suíte'],
       [/demi-su\b/gi, 'demi-suíte'],
-      [/su\u00edte\u00edtea\s+em/gi, 'sua em'],
+      [/su\u00edte\u00edtea\s+empresa/gi, 'sua empresa'],
+      [/suítea\s+empresa/gi, 'sua empresa'],
       [/su\u00edte\u00edtea/gi, 'sua'],
+      [/suítea/gi, 'sua'],
       [/su\u00edte\u00edtel/gi, 'Sul'],
+      [/suítel/gi, 'Sul'],
       [/su\u00edte\u00edtebsolo/gi, 'subsolo'],
       [/su\u00edte\u00edte\u00ad/gi, 'suíte'],
       [/su\uFFFDs/gi, 'suítes'],
@@ -309,10 +355,12 @@ function runCatalogSyncProcess(triggerSource) {
       cleaned = cleaned.replace(pattern, replacement)
     }
 
+    // Colapsar repetições artificiais idênticas de letras acentuadas (ex: "ÁÁÁÁÁÁÁÁ...")
+    cleaned = cleaned.replace(/([A-Za-zÀ-ÖØ-öø-ÿ])\1{3,}/g, '$1')
     cleaned = cleaned
       .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/g, '')
       .replace(
-        /[\u068e\u04d0\u0260\u06a0\u00cf\u026c\u01c1\u01c3\u04d2\u03f6\u0416\u068d\u0252\u9cb2\u07dd\ua8a0\u7861\u786f\u78ef\u786d\u7864\u7bb0\u7d65\u99e9\u982c\u987f\u980d\u9803\u3be0\u18e9\u0342\u0247\u0356\u0340\u03f3\u05b4\u2bb1]/g,
+        /[\u068e\u04d0\u0260\u06a0\u00cf\u026c\u01c1\u01c3\u04d2\u03f6\u0416\u068d\u0252\u9cb2\u07dd\ua8a0\ua809\ua822\u7861\u786f\u78ef\u786d\u7864\u7bb0\u7d65\u99e9\u982c\u987f\u980d\u9803\u9821\u3be0\u18e9\u0342\u0247\u0356\u0340\u03f3\u05b4\u2bb1\u0816\u0836\uaba3]/g,
         '',
       )
       .replace(/\s{2,}/g, ' ')
@@ -324,19 +372,29 @@ function runCatalogSyncProcess(triggerSource) {
     if (!code && !url) return ''
     let c = (code || '').trim()
     c = c.replace(/^(?:c[oó]digo|c[oó]d\.?|#|igo)\s*:?\s*/i, '').trim()
-    // Normalizar espaçamento de prefixos como "AP 334" -> "AP334", "TR 325" -> "TR325", "LM 326" -> "LM326"
-    c = c.replace(/^([A-Za-z]+)\s+(\d+)/, '$1$2')
+    // Remove todos os espaços e traços intermediários para garantir normalização universal (ex: "AP 334" -> "AP334", "AP-320" -> "AP320")
+    c = c
+      .replace(/\s+/g, '')
+      .replace(/^([A-Za-z]+)-+(\d+)/, '$1$2')
+      .toUpperCase()
     if (!c && url) {
       const m = url.match(/\/(\d{2,4})\/imoveis\//)
-      if (m) c = 'BRF-' + m[1]
+      if (m) c = 'BRF' + m[1]
     }
     return c
   }
 
   function cleanCity(city, textToInferFrom) {
+    const text = ((city || '') + ' ' + (textToInferFrom || '')).toLowerCase()
+    if (
+      text.includes('governador celso ramos') ||
+      text.includes('gov celso ramos') ||
+      text.includes('nova governador')
+    ) {
+      return 'Governador Celso Ramos'
+    }
     let c = normalizeMojibake(city || '')
     if (!c || c === '×' || c === '&times;' || c.toLowerCase().includes('times') || c.length < 3) {
-      const text = (textToInferFrom || '').toLowerCase()
       if (text.includes('florianopolis') || text.includes('florianópolis')) return 'Florianópolis'
       if (
         text.includes('sao-jose') ||
@@ -347,12 +405,18 @@ function runCatalogSyncProcess(triggerSource) {
         return 'São José'
       if (text.includes('biguacu') || text.includes('biguaçu')) return 'Biguaçu'
       if (text.includes('palhoca') || text.includes('palhoça')) return 'Palhoça'
+      if (text.includes('bombinhas')) return 'Bombinhas'
+      if (text.includes('balneario camboriu') || text.includes('balneário camboriú'))
+        return 'Balneário Camboriú'
       return ''
     }
+    if (/governador\s+celso\s+ramos/i.test(c)) return 'Governador Celso Ramos'
     if (/florian/i.test(c)) return 'Florianópolis'
     if (/s[aã]o\s*jos[eé]/i.test(c)) return 'São José'
     if (/bigua[cç]u/i.test(c)) return 'Biguaçu'
     if (/palho[cç]a/i.test(c)) return 'Palhoça'
+    if (/bombinhas/i.test(c)) return 'Bombinhas'
+    if (/balne[aá]rio\s+cambori[uú]/i.test(c)) return 'Balneário Camboriú'
     return c.replace(/\s*-\s*SC$/i, '').trim()
   }
 
