@@ -256,7 +256,7 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
     )
   } catch (_) {}
 
-  // Tenta obter páginas via /me/accounts
+  // Tenta obter páginas via /me/accounts e auto-detectar o Instagram Business Account
   let targetPageToken = ''
   let targetPageId = ''
   let igBusinessId = ''
@@ -265,7 +265,7 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
   try {
     const pagesRes = $http.send({
       url:
-        'https://graph.facebook.com/v22.0/me/accounts?access_token=' +
+        'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&access_token=' +
         encodeURIComponent(longLivedToken),
       method: 'GET',
       timeout: 15,
@@ -282,63 +282,96 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
         '[INSTAGRAM_OAUTH_EXCHANGE] /me/accounts retornou ' + allPages.length + ' página(s).',
       )
 
+      // Prioriza a página "BRF Imóveis" (ou aquela com nome que combine com BRF)
+      let primaryPage = null
+      for (let i = 0; i < allPages.length; i++) {
+        const p = allPages[i]
+        const pName = (p.name || '').toLowerCase()
+        if (pName.indexOf('brf') !== -1) {
+          primaryPage = p
+          break
+        }
+      }
+      if (!primaryPage) primaryPage = allPages[0]
+
+      targetPageToken = primaryPage.access_token || ''
+      targetPageId = primaryPage.id || ''
+
+      // Varre páginas procurando instagram_business_account
       for (let i = 0; i < allPages.length; i++) {
         const p = allPages[i]
         const pTok = p.access_token || ''
         const pId = p.id || ''
         const pName = p.name || ''
 
-        try {
-          const chkRes = $http.send({
-            url:
-              'https://graph.facebook.com/v22.0/' +
-              encodeURIComponent(pId) +
-              '?fields=instagram_business_account{id,username,name}&access_token=' +
-              encodeURIComponent(pTok || longLivedToken),
-            method: 'GET',
-            timeout: 10,
-          })
+        let igObj = p.instagram_business_account || null
 
-          if (
-            chkRes.statusCode === 200 &&
-            chkRes.json &&
-            chkRes.json.instagram_business_account &&
-            chkRes.json.instagram_business_account.id
-          ) {
-            const igObj = chkRes.json.instagram_business_account
-            igBusinessId = igObj.id
-            targetPageToken = pTok
-            targetPageId = pId
-            foundUsername = igObj.username || igObj.name || ''
+        if (!igObj && (pTok || longLivedToken)) {
+          try {
+            const chkRes = $http.send({
+              url:
+                'https://graph.facebook.com/v22.0/' +
+                encodeURIComponent(pId) +
+                '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&access_token=' +
+                encodeURIComponent(pTok || longLivedToken),
+              method: 'GET',
+              timeout: 10,
+            })
+
+            if (chkRes.statusCode === 200 && chkRes.json) {
+              if (
+                chkRes.json.instagram_business_account &&
+                chkRes.json.instagram_business_account.id
+              ) {
+                igObj = chkRes.json.instagram_business_account
+              } else if (
+                chkRes.json.connected_instagram_account &&
+                chkRes.json.connected_instagram_account.id
+              ) {
+                igObj = chkRes.json.connected_instagram_account
+              } else if (
+                chkRes.json.page_backed_instagram_accounts &&
+                chkRes.json.page_backed_instagram_accounts.data &&
+                chkRes.json.page_backed_instagram_accounts.data.length > 0
+              ) {
+                const pbItem = chkRes.json.page_backed_instagram_accounts.data[0]
+                if (pbItem && pbItem.id) {
+                  igObj = { id: pbItem.id, username: pbItem.username || '' }
+                }
+              }
+            }
+          } catch (chkErr) {
             console.log(
-              '[INSTAGRAM_OAUTH_EXCHANGE] Encontrado Instagram na página ' +
-                pName +
-                ' (' +
+              '[INSTAGRAM_OAUTH_EXCHANGE] Erro ao checar IG na página ' +
                 pId +
-                '): IG ID=' +
-                igBusinessId +
-                ' @' +
-                foundUsername,
+                ': ' +
+                String(chkErr),
             )
-            break
           }
-        } catch (chkErr) {
-          console.log(
-            '[INSTAGRAM_OAUTH_EXCHANGE] Erro ao checar IG na página ' + pId + ': ' + String(chkErr),
-          )
         }
-      }
 
-      // Se nenhuma página retornou instagram_business_account vinculado, pega a primeira página
-      if (!targetPageToken && allPages.length > 0) {
-        targetPageToken = allPages[0].access_token || ''
-        targetPageId = allPages[0].id || ''
+        if (igObj && igObj.id) {
+          igBusinessId = igObj.id
+          targetPageToken = pTok || targetPageToken
+          targetPageId = pId
+          foundUsername = igObj.username || igObj.name || ''
+          console.log(
+            '[INSTAGRAM_OAUTH_EXCHANGE] Auto-detectado Instagram na página ' +
+              pName +
+              ' (' +
+              pId +
+              '): IG ID=' +
+              igBusinessId +
+              ' @' +
+              foundUsername,
+          )
+          break
+        }
       }
     }
   } catch (pagesErr) {
     console.log('[INSTAGRAM_OAUTH_EXCHANGE] Erro ao consultar /me/accounts: ' + String(pagesErr))
   }
-
   // Se ainda não temos igBusinessId, mantém o que já estava configurado no user
   if (!igBusinessId) {
     igBusinessId = user.getString('meta_instagram_business_id') || ''

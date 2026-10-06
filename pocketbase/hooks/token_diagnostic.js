@@ -52,7 +52,7 @@ routerAdd(
     try {
       const accountsRes = $http.send({
         url:
-          'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&limit=50&access_token=' +
+          'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&limit=50&access_token=' +
           encodeURIComponent(token),
         method: 'GET',
         timeout: 15,
@@ -64,6 +64,34 @@ routerAdd(
         Array.isArray(accountsRes.json.data)
       ) {
         results.pages = accountsRes.json.data
+
+        // Auto-detecta se houver instagram_business_account
+        for (let i = 0; i < accountsRes.json.data.length; i++) {
+          const pg = accountsRes.json.data[i]
+          let igObj = pg.instagram_business_account || pg.connected_instagram_account || null
+          if (
+            !igObj &&
+            pg.page_backed_instagram_accounts &&
+            pg.page_backed_instagram_accounts.data &&
+            pg.page_backed_instagram_accounts.data.length > 0
+          ) {
+            const pbItem = pg.page_backed_instagram_accounts.data[0]
+            if (pbItem && pbItem.id) {
+              igObj = { id: pbItem.id, username: pbItem.username || '' }
+            }
+          }
+          if (igObj && igObj.id && !crmUser.getString('meta_instagram_business_id')) {
+            crmUser.set('meta_instagram_business_id', igObj.id)
+            if (igObj.username) {
+              crmUser.set('instagram_username', igObj.username)
+            }
+            try {
+              $app.saveNoValidate(crmUser)
+              results.auto_detected_ig_id = igObj.id
+            } catch (_) {}
+            break
+          }
+        }
       } else {
         results.errors.push({
           step: 'accounts',

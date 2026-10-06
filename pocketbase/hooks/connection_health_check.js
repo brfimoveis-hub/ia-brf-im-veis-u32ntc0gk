@@ -348,13 +348,28 @@ routerAdd(
                 url:
                   'https://graph.facebook.com/v22.0/' +
                   encodeURIComponent(pageCandidateId) +
-                  '?fields=instagram_business_account{id,username,name}',
+                  '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}',
                 method: 'GET',
                 headers: { Authorization: 'Bearer ' + igToken },
                 timeout: 10,
               })
               if (pIgRes.statusCode >= 200 && pIgRes.statusCode < 300 && pIgRes.json) {
-                const igObj = pIgRes.json.instagram_business_account || null
+                let igObj =
+                  pIgRes.json.instagram_business_account ||
+                  pIgRes.json.connected_instagram_account ||
+                  null
+                if (
+                  !igObj &&
+                  pIgRes.json.page_backed_instagram_accounts &&
+                  pIgRes.json.page_backed_instagram_accounts.data &&
+                  pIgRes.json.page_backed_instagram_accounts.data.length > 0
+                ) {
+                  const pbItem = pIgRes.json.page_backed_instagram_accounts.data[0]
+                  if (pbItem && pbItem.id) {
+                    igObj = { id: pbItem.id, username: pbItem.username || '' }
+                  }
+                }
+
                 if (igObj && igObj.id) {
                   pageLinkedIg = {
                     linked: true,

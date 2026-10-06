@@ -167,17 +167,32 @@ routerAdd(
                     url:
                       'https://graph.facebook.com/v22.0/' +
                       encodeURIComponent(pId) +
-                      '?fields=instagram_business_account{id,username,name}&access_token=' +
+                      '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&access_token=' +
                       encodeURIComponent(pTok || scanToken),
                     method: 'GET',
                     timeout: 8,
                   })
-                  if (
-                    pDirectRes.statusCode === 200 &&
-                    pDirectRes.json &&
-                    pDirectRes.json.instagram_business_account
-                  ) {
-                    igAcc = pDirectRes.json.instagram_business_account
+                  if (pDirectRes.statusCode === 200 && pDirectRes.json) {
+                    if (
+                      pDirectRes.json.instagram_business_account &&
+                      pDirectRes.json.instagram_business_account.id
+                    ) {
+                      igAcc = pDirectRes.json.instagram_business_account
+                    } else if (
+                      pDirectRes.json.connected_instagram_account &&
+                      pDirectRes.json.connected_instagram_account.id
+                    ) {
+                      igAcc = pDirectRes.json.connected_instagram_account
+                    } else if (
+                      pDirectRes.json.page_backed_instagram_accounts &&
+                      pDirectRes.json.page_backed_instagram_accounts.data &&
+                      pDirectRes.json.page_backed_instagram_accounts.data.length > 0
+                    ) {
+                      var pbItemScan = pDirectRes.json.page_backed_instagram_accounts.data[0]
+                      if (pbItemScan && pbItemScan.id) {
+                        igAcc = { id: pbItemScan.id, username: pbItemScan.username || '' }
+                      }
+                    }
                   }
                 } catch (_) {}
               }
@@ -428,17 +443,32 @@ routerAdd(
                   url:
                     'https://graph.facebook.com/v22.0/' +
                     encodeURIComponent(rPageId) +
-                    '?fields=instagram_business_account{id,username,name}&access_token=' +
+                    '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&access_token=' +
                     encodeURIComponent(rPageTok || igToken),
                   method: 'GET',
                   timeout: 8,
                 })
-                if (
-                  directPgIg.statusCode === 200 &&
-                  directPgIg.json &&
-                  directPgIg.json.instagram_business_account
-                ) {
-                  rIg = directPgIg.json.instagram_business_account
+                if (directPgIg.statusCode === 200 && directPgIg.json) {
+                  if (
+                    directPgIg.json.instagram_business_account &&
+                    directPgIg.json.instagram_business_account.id
+                  ) {
+                    rIg = directPgIg.json.instagram_business_account
+                  } else if (
+                    directPgIg.json.connected_instagram_account &&
+                    directPgIg.json.connected_instagram_account.id
+                  ) {
+                    rIg = directPgIg.json.connected_instagram_account
+                  } else if (
+                    directPgIg.json.page_backed_instagram_accounts &&
+                    directPgIg.json.page_backed_instagram_accounts.data &&
+                    directPgIg.json.page_backed_instagram_accounts.data.length > 0
+                  ) {
+                    var pbDirect = directPgIg.json.page_backed_instagram_accounts.data[0]
+                    if (pbDirect && pbDirect.id) {
+                      rIg = { id: pbDirect.id, username: pbDirect.username || '' }
+                    }
+                  }
                 }
               } catch (_) {}
             }
@@ -563,14 +593,28 @@ routerAdd(
             url:
               'https://graph.facebook.com/v22.0/' +
               encodeURIComponent(pageIdCandidate) +
-              '?fields=instagram_business_account{id,username,name}',
+              '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}',
             method: 'GET',
             headers: { Authorization: 'Bearer ' + igToken },
             timeout: 12,
           })
 
           if (pageIgRes.statusCode >= 200 && pageIgRes.statusCode < 300 && pageIgRes.json) {
-            var igBizObj = pageIgRes.json.instagram_business_account || null
+            var igBizObj =
+              pageIgRes.json.instagram_business_account ||
+              pageIgRes.json.connected_instagram_account ||
+              null
+            if (
+              !igBizObj &&
+              pageIgRes.json.page_backed_instagram_accounts &&
+              pageIgRes.json.page_backed_instagram_accounts.data &&
+              pageIgRes.json.page_backed_instagram_accounts.data.length > 0
+            ) {
+              var pbCand = pageIgRes.json.page_backed_instagram_accounts.data[0]
+              if (pbCand && pbCand.id) {
+                igBizObj = { id: pbCand.id, username: pbCand.username || '' }
+              }
+            }
             if (igBizObj && igBizObj.id) {
               var foundIgId = String(igBizObj.id).trim()
               var foundIgUsername = (igBizObj.username || igBizObj.name || '').trim()
@@ -697,10 +741,12 @@ routerAdd(
     if (pageLinkedInstagram && pageLinkedInstagram.linked === false && !matchedFromScan) {
       var noIgMsg =
         "A Página '" +
-        (tokenIdentity.name || 'BRF Imóveis') +
-        "' NÃO tem nenhuma conta do Instagram vinculada. Vínculo necessário: no app do Instagram (@mauro.brfimoveis) → Configurações → Empresa/Ferramentas profissionais → 'Conectar uma Página do Facebook' → escolher a Página " +
-        (tokenIdentity.name || 'BRF Imóveis') +
-        '. Aguarde ~5 minutos e clique Verificar Agora.'
+        ((tokenIdentity && tokenIdentity.name) || 'BRF Imóveis') +
+        "' está conectada via OAuth com sucesso, porém a Meta retornou que o campo instagram_business_account ainda não está ativo para a Página (resposta da Meta: id='" +
+        ((tokenIdentity && tokenIdentity.id) || '1343797128806374') +
+        "', instagram_business_account=null). Vínculo necessário: no app do Instagram (@mauro.brfimoveis) → Configurações → Ferramentas profissionais / Empresa → 'Conectar uma Página do Facebook' → vincular à Página oficial " +
+        ((tokenIdentity && tokenIdentity.name) || 'BRF Imóveis') +
+        '. Em seguida, clique em Verificar Agora para auto-detectar o Instagram Business ID.'
 
       console.log(
         '[INSTAGRAM_TEST] Página sem Instagram vinculado e nenhuma outra encontrada no scan. Retornando diagnóstico.',

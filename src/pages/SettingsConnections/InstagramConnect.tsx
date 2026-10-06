@@ -314,11 +314,12 @@ export function InstagramConnect() {
       } else if (res?.status === 'page_has_no_instagram') {
         const msg = res?.message || 'A Página não possui conta do Instagram vinculada.'
         setInlineError(msg)
+        setMsgConnected(true)
         toast({
           variant: 'destructive',
-          title: 'Vínculo do Instagram Necessário',
+          title: 'Vínculo do Instagram Necessário na Meta',
           description:
-            'A Página do Facebook está ativa, mas nenhuma conta do Instagram está vinculada a ela.',
+            'Página BRF Imóveis conectada com sucesso (Messenger Ativo), aguardando ativação do vínculo com o Instagram no app.',
         })
       } else {
         const msg = res?.message || 'Aguardando Page Token para ativar a conexão.'
