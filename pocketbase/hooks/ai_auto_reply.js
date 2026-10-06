@@ -714,7 +714,7 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     const defaultBiaPersonaFallback = `Você é a Bia, consultora da BRF Imóveis (www.brfimoveis.com.br).
-Sua missão e conduta são regidas EXCLUSIVAMENTE pelo TEXTO ÚNICO DA BIA — v2.0 gravado no Caderno de Aprendizados (bia_learnings prioridade máxima).`
+Sua missão e conduta são regidas EXCLUSIVAMENTE pelo TEXTO ÚNICO DA BIA — v3.0 gravado no Caderno de Aprendizados (bia_learnings prioridade máxima).`
 
     const personaInstructions = cleanInstructionText(
       biaInstructions.trim() ? biaInstructions : defaultBiaPersonaFallback,
@@ -725,7 +725,7 @@ Sua missão e conduta são regidas EXCLUSIVAMENTE pelo TEXTO ÚNICO DA BIA — v
       customerMessage = (e.record.getString('content') || '').trim()
     }
 
-    // O contextText e as instruções de comportamento vêm exclusivamente do bia_learnings ativo (TEXTO ÚNICO DA BIA - v2.0)
+    // O contextText e as instruções de comportamento vêm exclusivamente do bia_learnings ativo (TEXTO ÚNICO DA BIA - v3.0)
     let contextText = ''
 
     let historyRecords = []
@@ -2587,7 +2587,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         ? (propertyContext || '').substring(0, 1200) + '\n... [catálogo truncado a 1200 caracteres]'
         : propertyContext || ''
 
-    // O comportamento da Bia é regido EXCLUSIVAMENTE pela diretriz soberana ativa (TEXTO ÚNICO DA BIA - v2.0)
+    // O comportamento da Bia é regido EXCLUSIVAMENTE pela diretriz soberana ativa (TEXTO ÚNICO DA BIA - v3.0)
     // Mantém no systemPrompt apenas: dados dos imóveis (propertyContext), resumo de dados coletados (collectedDataSummary),
     // índices de mercado/memos (indicesContextText) e a persona soberana ativa (biaLearningsText).
     const systemPrompt = `Você é ${aiName}, da BRF Imóveis (www.brfimoveis.com.br).
