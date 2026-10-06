@@ -1890,6 +1890,13 @@ ${
             indicesContextText += `• ${bName}: Entrada mínima de ${minEntrada} (financia até ${maxFin}). Taxa anual: ${taxaStr}. Comprometimento máximo de renda: até ${compRenda} da renda bruta. Prazo máximo: ${prazo}.${fgtsStr}${regras}\n`
           }
           indicesContextText += `• REGRA PRÁTICA DE RENDA BRUTA EXIGIDA (30% da renda): Renda bruta familiar recomendada = Parcela pretendida ÷ 0,30 (exemplo: parcela de R$ 3.000 exige renda bruta aproximada de R$ 10.000).\n`
+
+          // Injeta o bloco do Minha Casa Minha Vida e demais seções presentes no summary_text
+          const sumText = finRec.getString('summary_text')
+          if (sumText && sumText.includes('MINHA CASA MINHA VIDA')) {
+            const mcmvStartIndex = sumText.indexOf('MINHA CASA MINHA VIDA')
+            indicesContextText += `\n${sumText.substring(mcmvStartIndex)}\n`
+          }
         } else {
           // Fallback para summary_text caso banks_data não esteja em formato de array
           const sumText = finRec.getString('summary_text')
