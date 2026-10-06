@@ -202,8 +202,8 @@ export function Launches() {
             </Badge>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Dossiês de empreendimentos, cadências específicas de vendas e páginas de captura
-            integradas à Bia no WhatsApp.
+            Dossiês de empreendimentos + páginas de captura integradas à Bia, roteiro de atendimento
+            definido pela Constituição v3.1.
           </p>
         </div>
 
@@ -243,10 +243,11 @@ export function Launches() {
             </h3>
             <p className="text-xs text-muted-foreground max-w-3xl leading-relaxed">
               Você cola tabelas, PDFs e folhetos crus para a <strong>Bia Mãe</strong>. Ela organiza
-              as unidades, valores, diferenciais e escreve a <strong>cadência em 10 passos</strong>.
-              Quando você aprova e clica em <em>Publicar</em>, a Bia atendente carrega este dossiê
-              para responder leads que vierem daquele lançamento no WhatsApp! O espaço total suporta
-              todos os dossiês dos seus ~50 lançamentos.
+              as unidades, valores e diferenciais no dossiê oficial, com o roteiro de atendimento
+              definido pela <strong>Constituição v3.1</strong>. Quando você aprova e clica em{' '}
+              <em>Publicar</em>, a Bia atendente carrega este dossiê para responder leads que vierem
+              daquele lançamento no WhatsApp! O espaço total suporta todos os dossiês dos seus ~50
+              lançamentos.
             </p>
           </div>
         </div>

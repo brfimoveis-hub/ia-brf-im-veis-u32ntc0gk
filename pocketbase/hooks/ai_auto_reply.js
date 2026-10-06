@@ -2587,7 +2587,13 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         ? (propertyContext || '').substring(0, 1200) + '\n... [catálogo truncado a 1200 caracteres]'
         : propertyContext || ''
 
-    // O comportamento da Bia é regido EXCLUSIVAMENTE pela diretriz soberana ativa (TEXTO ÚNICO DA BIA - v3.0)
+    // REGRA DE CADÊNCIA UNIVERSAL: As cadências de movimentação são ÚNICAS para todo e qualquer atendimento,
+    // sem separar lançamento e clientes de terceiros. A trilha afeta o conteúdo da conversa, mas o mapa de estágios é um só.
+    const universalCadenceInstruction = `[REGRA DE CADÊNCIA ÚNICA E UNIVERSAL]:
+A progressão de estágios é rigorosamente ÚNICA e idêntica para todo e qualquer lead (lançamentos na planta ou imóveis de terceiros).
+Emita sempre as tags canônicas de estágio [STATUS: 1. Acolhimento .. 10. Pós-venda e Indicação] conforme a evolução do contato, sem bifurcar ou criar trilhas alternativas de funil.`
+
+    // O comportamento da Bia é regido EXCLUSIVAMENTE pela diretriz soberana ativa (TEXTO ÚNICO DA BIA - v3.0/v3.1)
     // Mantém no systemPrompt apenas: dados dos imóveis (propertyContext), resumo de dados coletados (collectedDataSummary),
     // índices de mercado/memos (indicesContextText) e a persona soberana ativa (biaLearningsText).
     const systemPrompt = `Você é ${aiName}, da BRF Imóveis (www.brfimoveis.com.br).
@@ -2595,6 +2601,8 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
 DIRETRIZ MESTRA E SOBERANA DE ATENDIMENTO:
 ${biaLearningsText}
 ${personaInstructions}
+
+${universalCadenceInstruction}
 
 ${safePropertyContext}
 
@@ -2844,6 +2852,54 @@ ${safePropertyContext}`
       }
     }
 
+    // Helper neutro para extrair link oficial do lançamento em foco
+    function resolveLaunchOfficialLink(launchRec) {
+      if (!launchRec) return 'https://www.brfimoveis.com.br'
+      const webUrl = (launchRec.getString('website_url') || '').trim()
+      if (webUrl) return webUrl
+      const slug = (launchRec.getString('slug') || '').trim()
+      return slug ? `https://crm.brfimoveis.com.br/l/${slug}` : 'https://www.brfimoveis.com.br'
+    }
+
+    // Helper neutro para gerar apresentação baseada no dossiê do lançamento em foco (sem hardcode)
+    function generateFocusLaunchConsultativeMessage(launchRec) {
+      if (!launchRec) return ''
+      const lName =
+        launchRec.getString('enterprise_name') || launchRec.getString('name') || 'Lançamento'
+      const lLoc = launchRec.getString('location') || ''
+      const lLink = resolveLaunchOfficialLink(launchRec)
+      const lHeadline = launchRec.getString('headline') || ''
+
+      let lUnits = launchRec.get('units') || []
+      if (typeof lUnits === 'string') {
+        try {
+          lUnits = JSON.parse(lUnits)
+        } catch (_) {
+          lUnits = []
+        }
+      }
+
+      let priceSnippet = ''
+      if (Array.isArray(lUnits) && lUnits.length > 0) {
+        const availableUnits = lUnits.filter((u) => u && u.available !== false)
+        const sampleUnits = (availableUnits.length > 0 ? availableUnits : lUnits).slice(0, 2)
+        const parts = sampleUnits.map((u) => {
+          const typ = u.typology || u.tipo || 'Unidade'
+          const pr = u.price || u.valor || ''
+          return pr ? `${typ} a partir de ${pr}` : typ
+        })
+        if (parts.length > 0) {
+          priceSnippet = ` Temos opções de ${parts.join(' e ')}.`
+        }
+      }
+
+      let msg = `Com certeza! O ${lName} é uma excelente oportunidade`
+      if (lLoc) msg += ` em ${lLoc}`
+      if (lHeadline) msg += ` (${lHeadline})`
+      msg += `.${priceSnippet} Você pode conferir todas as plantas, fotos e detalhes oficiais na página: ${lLink}. Gostaria de conhecer mais detalhes de alguma planta específica?`
+      return msg.trim()
+    }
+
     // Intercept false negative if model says requested launches/properties are not in catalog when matchedProps actually has them!
     const claimsCatalogUnavailable =
       /não estão disponíveis no (?:nosso )?cat[aá]logo|n[aã]o constam? no cat[aá]logo|n[aã]o temos ess(?:es|e|a) (?:empreendimentos?|im[oó]ve(?:l|is)|opç[aã]o|opçõ?es)? no cat[aá]logo|ainda n[aã]o est[aã]o? dispon[ií]ve(?:l|is)|nenhum desses empreendimentos constam|infelizmente n[aã]o (?:temos|possu[ií]mos|encontrei|consta)|n[aã]o trabalhamos com esse|trabalhamos apenas com/i.test(
@@ -2851,17 +2907,13 @@ ${safePropertyContext}`
       )
     if (
       claimsCatalogUnavailable &&
-      ((Array.isArray(matchedProps) && matchedProps.length > 0) || matchedLaunch || isVistageLaunch)
+      ((Array.isArray(matchedProps) && matchedProps.length > 0) || matchedLaunch)
     ) {
       console.warn(
         '[AI_REPLY] Model falsely claimed properties are not in catalog even though matchedProps/launch found! Triggering consultative presentation fallback.',
       )
-      if (
-        isVistageLaunch ||
-        (matchedLaunch && (matchedLaunch.getString('name') || '').toLowerCase().includes('vistage'))
-      ) {
-        const lOfficialLink = 'https://www.brfimoveis.com.br/vistage'
-        responseText = `Com certeza! O Vistage Residence é o nosso lançamento de alto padrão no Córrego Grande, ao lado do Parque Linear. Temos plantas de 2 dormitórios a partir de R$ 596 mil e 3 dormitórios a partir de R$ 890 mil, além de opções Garden e Coberturas. O material completo com todas as plantas, fotos e detalhes do projeto está disponível na página oficial: ${lOfficialLink}. Gostaria de conhecer as plantas de 2 ou 3 dormitórios?`
+      if (matchedLaunch) {
+        responseText = generateFocusLaunchConsultativeMessage(matchedLaunch)
       } else if (Array.isArray(matchedProps) && matchedProps.length > 0) {
         const primaryProp = matchedProps[0]
         const pTitle = (primaryProp.getString('title') || '').trim()
@@ -2893,18 +2945,8 @@ ${safePropertyContext}`
       console.warn(
         '[AI_REPLY] Model denied ebook/table requested by customer. Overriding with official launch/property delivery...',
       )
-      if (
-        isVistageLaunch ||
-        (matchedLaunch && (matchedLaunch.getString('name') || '').toLowerCase().includes('vistage'))
-      ) {
-        const lOfficialLink = 'https://www.brfimoveis.com.br/vistage'
-        responseText = `Com certeza! Preparei os dados do Vistage Residence para você: no empreendimento temos unidades de 2 dormitórios a partir de R$ 596 mil e 3 dormitórios a partir de R$ 890 mil (além de unidades Garden e coberturas). O material de apresentação completo com plantas, fotos e diferenciais está disponível na página oficial: ${lOfficialLink}. Gostaria de ver mais detalhes sobre as opções de 2 ou 3 dormitórios?`
-      } else if (matchedLaunch) {
-        const lOfficialLink =
-          (matchedLaunch.getString('website_url') || '').trim() ||
-          `https://crm.brfimoveis.com.br/l/${matchedLaunch.getString('slug')}`
-        const lName = matchedLaunch.getString('name') || 'Lançamento'
-        responseText = `Com certeza! O material e as condições do ${lName} estão disponíveis com todas as plantas e detalhes na página oficial: ${lOfficialLink}. Você busca uma opção para moradia ou investimento?`
+      if (matchedLaunch) {
+        responseText = generateFocusLaunchConsultativeMessage(matchedLaunch)
       } else if (targetSpecificProp) {
         const pCode = (targetSpecificProp.getString('code') || '').trim()
         const pUrl = (targetSpecificProp.getString('url') || '').trim()
@@ -3050,11 +3092,15 @@ Motivos: <descreva sucintamente em 1 a 2 linhas o que corrigir>`
             !isApproved &&
             isEbookOrTableRequested &&
             (responseText.includes('brfimoveis.com.br') ||
-              responseText.includes('R$ 596 mil') ||
-              responseText.includes('Vistage'))
+              (matchedLaunch &&
+                responseText.includes(
+                  matchedLaunch.getString('enterprise_name') ||
+                    matchedLaunch.getString('name') ||
+                    '',
+                )))
           ) {
             console.log(
-              '[AI_REPLY] [MÃE IA] Anulando reprovação: resposta entrega dados/link oficial do lançamento/ebook solicitado pelo cliente.',
+              '[AI_REPLY] [MÃE IA] Anulando reprovação: resposta entrega dados/link oficial do imóvel/lançamento em foco solicitado pelo cliente.',
             )
             isApproved = true
           }
@@ -4129,73 +4175,210 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       console.error(`[AI_REPLY] Failed to save conversation record: ${String(saveConvErr)}`)
     }
 
-    // Update customer CRM status / stage
+    // Update customer CRM status / stage — 10 Estágios Canônicos da Constituição v3.1
     try {
       const custToUpdate = $app.findRecordById('customers', customerId)
-      const custStatusLower = (custToUpdate.getString('status') || '').toLowerCase()
+      const currentCustStatus = custToUpdate.getString('status') || ''
+
+      // Função canônica bidirecional para normalizar qualquer status / tag [STATUS: ...] emitida pela Bia ou legada
+      function normalizeCanonicalStatus(rawStatus) {
+        if (!rawStatus) return ''
+        const s = String(rawStatus).trim().toLowerCase()
+
+        // 1. Acolhimento
+        if (
+          s === '1. acolhimento' ||
+          s === 'acolhimento' ||
+          s === '1' ||
+          s.startsWith('1.') ||
+          s === 'captura + identificação' ||
+          s === 'captura + identificacao' ||
+          s === 'novo' ||
+          s === 'lead' ||
+          s === 'lead novo' ||
+          s === 'base de clientes/novo lyd' ||
+          s === 'd0 - contato imediato' ||
+          s === 'contato inicial' ||
+          s === 'contact'
+        ) {
+          return '1. Acolhimento'
+        }
+
+        // 2. Qualificação
+        if (
+          s === '2. qualificação' ||
+          s === '2. qualificacao' ||
+          s === 'qualificação' ||
+          s === 'qualificacao' ||
+          s === '2' ||
+          s.startsWith('2.') ||
+          s === 'validação no crm' ||
+          s === 'validacao no crm'
+        ) {
+          return '2. Qualificação'
+        }
+
+        // 3. Apresentação Consultiva
+        if (
+          s === '3. apresentação consultiva' ||
+          s === '3. apresentacao consultiva' ||
+          s === 'apresentação consultiva' ||
+          s === 'apresentacao consultiva' ||
+          s === '3' ||
+          s.startsWith('3.') ||
+          s === 'contato personalizado'
+        ) {
+          return '3. Apresentação Consultiva'
+        }
+
+        // 4. Sondagem Financeira
+        if (
+          s === '4. sondagem financeira' ||
+          s === 'sondagem financeira' ||
+          s === '4' ||
+          s.startsWith('4.') ||
+          s === 'mapeamento de perfil'
+        ) {
+          return '4. Sondagem Financeira'
+        }
+
+        // 5. Nutrição de Interesse
+        if (
+          s === '5. nutrição de interesse' ||
+          s === '5. nutricao de interesse' ||
+          s === 'nutrição de interesse' ||
+          s === 'nutricao de interesse' ||
+          s === '5' ||
+          s.startsWith('5.') ||
+          s === 'nutrição automática' ||
+          s === 'nutricao automatica' ||
+          s === 'engajamento' ||
+          /^d[1-4]\b/i.test(s)
+        ) {
+          return '5. Nutrição de Interesse'
+        }
+
+        // 6. Convite de Visita
+        if (
+          s === '6. convite de visita' ||
+          s === 'convite de visita' ||
+          s === '6' ||
+          s.startsWith('6.') ||
+          s === 'agendamento de visita' ||
+          s === 'demo realiz.' ||
+          /^d[5-9]\b/i.test(s)
+        ) {
+          return '6. Convite de Visita'
+        }
+
+        // 7. Confirmação e Rota
+        if (
+          s === '7. confirmação e rota' ||
+          s === '7. confirmacao e rota' ||
+          s === 'confirmação e rota' ||
+          s === 'confirmacao e rota' ||
+          s === '7' ||
+          s.startsWith('7.') ||
+          s === 'pré-visita' ||
+          s === 'pre-visita'
+        ) {
+          return '7. Confirmação e Rota'
+        }
+
+        // 8. Feedback da Visita
+        if (
+          s === '8. feedback da visita' ||
+          s === 'feedback da visita' ||
+          s === '8' ||
+          s.startsWith('8.') ||
+          s === 'pós-visita' ||
+          s === 'pos-visita' ||
+          s === 'visita'
+        ) {
+          return '8. Feedback da Visita'
+        }
+
+        // 9. Proposta e Condições
+        if (
+          s === '9. proposta e condições' ||
+          s === '9. proposta e condicoes' ||
+          s === 'proposta e condições' ||
+          s === 'proposta e condicoes' ||
+          s === '9' ||
+          s.startsWith('9.') ||
+          s === 'proposta e negociação' ||
+          s === 'proposta e negociacao' ||
+          s === 'proposta'
+        ) {
+          return '9. Proposta e Condições'
+        }
+
+        // 10. Pós-venda e Indicação
+        if (
+          s === '10. pós-venda e indicação' ||
+          s === '10. pos-venda e indicacao' ||
+          s === 'pós-venda e indicação' ||
+          s === 'pos-venda e indicacao' ||
+          s === '10' ||
+          s.startsWith('10.') ||
+          s === 'fechamento e pós-venda' ||
+          s === 'fechamento e pos-venda' ||
+          s === 'fechamento' ||
+          s === 'closed'
+        ) {
+          return '10. Pós-venda e Indicação'
+        }
+
+        return ''
+      }
 
       let targetStatus = ''
-      const validStatuses = [
-        'Captura + Identificação',
-        'Validação no CRM',
-        'Contato Personalizado',
-        'Mapeamento de Perfil',
-        'Nutrição Automática',
-        'Agendamento de Visita',
-        'Pré-Visita',
-        'Pós-Visita',
-        'Proposta e Negociação',
-        'Fechamento e Pós-Venda',
-        'Novo',
-        'lead',
-        'contact',
-        'Qualificação',
-        'Engajamento',
-        'Demo Realiz.',
-        'Visita',
-        'Proposta',
-        'Fechamento',
-        'closed',
-      ]
+      if (detectedStatus) {
+        targetStatus = normalizeCanonicalStatus(detectedStatus)
+      }
 
-      if (detectedStatus && validStatuses.includes(detectedStatus)) {
-        targetStatus = detectedStatus
-      } else if (
-        custStatusLower === 'novo' ||
-        custStatusLower === 'lead novo' ||
-        custStatusLower === 'base de clientes/novo lyd' ||
-        custStatusLower === ''
+      // Se o cliente não tem status ou veio sem estágio definido, inicializa no canônico "1. Acolhimento"
+      if (
+        !targetStatus &&
+        (!currentCustStatus || normalizeCanonicalStatus(currentCustStatus) === '1. Acolhimento')
       ) {
-        targetStatus = 'Captura + Identificação'
+        if (!currentCustStatus) {
+          targetStatus = '1. Acolhimento'
+        }
       }
 
       let crmUpdated = false
-      if (targetStatus && targetStatus !== custStatusLower) {
+      if (targetStatus && targetStatus !== currentCustStatus) {
         custToUpdate.set('status', targetStatus)
         crmUpdated = true
       }
 
+      // Mapeamento canônico do status para as fases clássicas do pipeline ('Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento')
+      const effectiveStatus =
+        targetStatus || normalizeCanonicalStatus(currentCustStatus) || currentCustStatus
       const validPhases = ['Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento']
       let targetPhase = ''
+
       if (detectedPhase && validPhases.includes(detectedPhase)) {
         targetPhase = detectedPhase
-      } else if (targetStatus === 'Fechamento' || targetStatus === 'Fechamento e Pós-Venda') {
+      } else if (effectiveStatus === '10. Pós-venda e Indicação') {
         targetPhase = 'Fechamento'
-      } else if (targetStatus === 'Proposta' || targetStatus === 'Proposta e Negociação') {
+      } else if (effectiveStatus === '9. Proposta e Condições') {
         targetPhase = 'Proposta'
       } else if (
-        targetStatus === 'Visita' ||
-        targetStatus === 'Agendamento de Visita' ||
-        targetStatus === 'Pré-Visita' ||
-        targetStatus === 'Pós-Visita'
+        effectiveStatus === '6. Convite de Visita' ||
+        effectiveStatus === '7. Confirmação e Rota' ||
+        effectiveStatus === '8. Feedback da Visita'
       ) {
         targetPhase = 'Visita'
       } else if (
-        targetStatus === 'Contato Personalizado' ||
-        targetStatus === 'Mapeamento de Perfil' ||
-        targetStatus === 'Nutrição Automática'
+        effectiveStatus === '3. Apresentação Consultiva' ||
+        effectiveStatus === '4. Sondagem Financeira' ||
+        effectiveStatus === '5. Nutrição de Interesse'
       ) {
         targetPhase = 'Atendimento'
+      } else if (effectiveStatus === '1. Acolhimento' || effectiveStatus === '2. Qualificação') {
+        targetPhase = 'Lead'
       }
 
       if (targetPhase && custToUpdate.getString('phase') !== targetPhase) {
