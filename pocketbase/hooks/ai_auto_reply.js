@@ -2647,6 +2647,9 @@ ${safeCombinedContextText || '(Nenhum contexto adicional na base)'}`
     let responseText = ''
     let detectedStatus = ''
     let detectedPhase = ''
+    let detectedFollowUpStep = ''
+    let detectedPromiseContext = ''
+    let detectedPromisePending = false
     let detectedHandover = ''
     let detectedProfile = ''
 
@@ -2968,7 +2971,7 @@ ${safePropertyContext}`
     }
 
     // REGRAS DE MÁQUINA 3 & 6:
-    // Higienizar tags internas ([HANDOVER], [STATUS], etc.) ANTES da avaliação da Mãe IA
+    // Higienizar tags internas ([HANDOVER], [STATUS], [PHASE], [FOLLOW_UP_STEP], [PROMISE], etc.) ANTES da avaliação da Mãe IA
     const earlyHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
     if (earlyHandoverMatch && earlyHandoverMatch[1]) {
       detectedHandover = earlyHandoverMatch[1].trim()
@@ -2976,6 +2979,9 @@ ${safePropertyContext}`
     responseText = responseText.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
     responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
     responseText = responseText.replace(/\[PHASE:\s*.*?\]/gi, '').trim()
+    responseText = responseText.replace(/\[FOLLOW_UP_STEP:\s*.*?\]/gi, '').trim()
+    responseText = responseText.replace(/\[PROMISE_CONTEXT:\s*.*?\]/gi, '').trim()
+    responseText = responseText.replace(/\[PROMISE_PENDING:\s*.*?\]/gi, '').trim()
     responseText = responseText.replace(/\[PERMUTA\]/gi, '').trim()
     responseText = sanitizeAiResponse(responseText)
 
@@ -3516,6 +3522,28 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     if (phaseMatch && phaseMatch[1]) {
       detectedPhase = phaseMatch[1].trim()
       responseText = responseText.replace(/\[PHASE:\s*.*?\]/gi, '').trim()
+    }
+
+    const followUpStepMatch = responseText.match(/\[FOLLOW_UP_STEP:\s*(.*?)\]/i)
+    if (followUpStepMatch && followUpStepMatch[1]) {
+      detectedFollowUpStep = followUpStepMatch[1].trim()
+      responseText = responseText.replace(/\[FOLLOW_UP_STEP:\s*.*?\]/gi, '').trim()
+    }
+
+    const promiseCtxMatch = responseText.match(/\[PROMISE_CONTEXT:\s*(.*?)\]/i)
+    if (promiseCtxMatch && promiseCtxMatch[1]) {
+      detectedPromiseContext = promiseCtxMatch[1].trim()
+      detectedPromisePending = true
+      responseText = responseText.replace(/\[PROMISE_CONTEXT:\s*.*?\]/gi, '').trim()
+    }
+
+    const promisePendingMatch = responseText.match(
+      /\[PROMISE_PENDING:\s*(true|false|sim|não|nao)\]/i,
+    )
+    if (promisePendingMatch && promisePendingMatch[1]) {
+      const pVal = promisePendingMatch[1].toLowerCase()
+      detectedPromisePending = pVal === 'true' || pVal === 'sim'
+      responseText = responseText.replace(/\[PROMISE_PENDING:\s*.*?\]/gi, '').trim()
     }
 
     const handoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
@@ -4151,12 +4179,45 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       let targetPhase = ''
       if (detectedPhase && validPhases.includes(detectedPhase)) {
         targetPhase = detectedPhase
-      } else if (targetStatus === 'Fechamento') {
+      } else if (targetStatus === 'Fechamento' || targetStatus === 'Fechamento e Pós-Venda') {
         targetPhase = 'Fechamento'
+      } else if (targetStatus === 'Proposta' || targetStatus === 'Proposta e Negociação') {
+        targetPhase = 'Proposta'
+      } else if (
+        targetStatus === 'Visita' ||
+        targetStatus === 'Agendamento de Visita' ||
+        targetStatus === 'Pré-Visita' ||
+        targetStatus === 'Pós-Visita'
+      ) {
+        targetPhase = 'Visita'
+      } else if (
+        targetStatus === 'Contato Personalizado' ||
+        targetStatus === 'Mapeamento de Perfil' ||
+        targetStatus === 'Nutrição Automática'
+      ) {
+        targetPhase = 'Atendimento'
       }
 
       if (targetPhase && custToUpdate.getString('phase') !== targetPhase) {
         custToUpdate.set('phase', targetPhase)
+        crmUpdated = true
+      }
+
+      if (detectedFollowUpStep) {
+        custToUpdate.set('follow_up_step', detectedFollowUpStep)
+        const curCount = custToUpdate.getInt('follow_up_count') || 0
+        custToUpdate.set('follow_up_count', curCount + 1)
+        crmUpdated = true
+      }
+
+      if (detectedPromisePending) {
+        custToUpdate.set('promise_pending', true)
+        if (detectedPromiseContext) {
+          custToUpdate.set('promise_context', detectedPromiseContext)
+        }
+        crmUpdated = true
+      } else if (promisePendingMatch && !detectedPromisePending) {
+        custToUpdate.set('promise_pending', false)
         crmUpdated = true
       }
 
