@@ -74,7 +74,7 @@ export function CustomerKanban({
                 {phase.title}
               </h3>
               <div className="flex items-center gap-2">
-                {phase.id === 'Novo' && (
+                {phase.id === '1. Acolhimento' && (
                   <>
                     <Button
                       variant="ghost"
@@ -112,7 +112,8 @@ export function CustomerKanban({
                   className="p-3.5 cursor-grab active:cursor-grabbing hover:border-primary/50 transition-all hover:shadow-md bg-background group"
                 >
                   <div className="flex items-start gap-3 relative">
-                    {(lead.status === 'Lead Novo' ||
+                    {(lead.status === '1. Acolhimento' ||
+                      lead.status === 'Lead Novo' ||
                       lead.status === 'Novo' ||
                       lead.status === 'lead' ||
                       lead.status === '') && (

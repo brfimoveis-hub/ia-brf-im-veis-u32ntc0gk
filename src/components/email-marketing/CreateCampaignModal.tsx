@@ -24,22 +24,16 @@ import { toast } from 'sonner'
 import { Loader2, Send } from 'lucide-react'
 
 const STATUS_OPTIONS = [
-  'Novo',
-  'D0 - Contato Imediato',
-  'D1 - Follow up 1',
-  'D2 - Follow up 2',
-  'D3 - Follow up 3',
-  'D4 - Follow up 4',
-  'D5 - Follow up 5',
-  'D6 - Follow up 6',
-  'D7 - Follow up 7',
-  'D8 - Follow up 8',
-  'D9 - Despedida/Nutrição',
-  'Fechamento',
-  'Qualificação',
-  'Engajamento',
-  'Visita',
-  'Proposta',
+  '1. Acolhimento',
+  '2. Qualificação',
+  '3. Apresentação Consultiva',
+  '4. Sondagem Financeira',
+  '5. Nutrição de Interesse',
+  '6. Convite de Visita',
+  '7. Confirmação e Rota',
+  '8. Feedback da Visita',
+  '9. Proposta e Condições',
+  '10. Pós-venda e Indicação',
 ]
 
 const PROFILE_OPTIONS = ['Investidor', 'Morador', 'Primeiro Imóvel', 'Veranista']

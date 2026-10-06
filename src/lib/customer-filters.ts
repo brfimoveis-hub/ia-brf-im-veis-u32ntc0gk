@@ -8,17 +8,16 @@
 // 'Novo' is the entry bucket (it also groups `lead` and empty status via
 // buildStageFilter); the remaining stages are the 10-step funnel.
 export const CUSTOMER_STAGES = [
-  'Novo',
-  'Captura + Identificação',
-  'Validação no CRM',
-  'Contato Personalizado',
-  'Mapeamento de Perfil',
-  'Nutrição Automática',
-  'Agendamento de Visita',
-  'Pré-Visita',
-  'Pós-Visita',
-  'Proposta e Negociação',
-  'Fechamento e Pós-Venda',
+  '1. Acolhimento',
+  '2. Qualificação',
+  '3. Apresentação Consultiva',
+  '4. Sondagem Financeira',
+  '5. Nutrição de Interesse',
+  '6. Convite de Visita',
+  '7. Confirmação e Rota',
+  '8. Feedback da Visita',
+  '9. Proposta e Condições',
+  '10. Pós-venda e Indicação',
 ]
 
 export const SOURCE_OPTIONS = ['Villa dos Açores', 'Google Ads', 'Meta Ads', 'Instagram', 'Website']
@@ -81,25 +80,59 @@ export function buildBaseFilter(filters: CustomerFilterState): string {
   return parts.join(' && ')
 }
 
-// The 10 real pipeline stages (excludes the 'Novo' entry bucket). Used by
-// buildStageFilter to express "Novo = everything that is not a pipeline stage".
-const PIPELINE_STAGE_VALUES = CUSTOMER_STAGES.filter((s) => s !== 'Novo')
+// Mapeamento retrocompatível para garantir que filtros por etapa encontrem tanto
+// o estágio novo quanto eventuais valores legados na busca
+const LEGACY_STAGE_ALIASES: Record<string, string[]> = {
+  '1. Acolhimento': [
+    '1. Acolhimento',
+    'Novo',
+    'lead',
+    'Lead Novo',
+    'Base de Clientes/Novo LYD',
+    'Captura + Identificação',
+    'D0 - Contato Imediato',
+    'Contato Inicial',
+    'contact',
+  ],
+  '2. Qualificação': ['2. Qualificação', 'Validação no CRM', 'Qualificação'],
+  '3. Apresentação Consultiva': ['3. Apresentação Consultiva', 'Contato Personalizado'],
+  '4. Sondagem Financeira': ['4. Sondagem Financeira', 'Mapeamento de Perfil'],
+  '5. Nutrição de Interesse': [
+    '5. Nutrição de Interesse',
+    'Nutrição Automática',
+    'Engajamento',
+    'D1 - Follow up 1',
+    'D2 - Follow up 2',
+    'D3 - Follow up 3',
+    'D4 - Follow up 4',
+  ],
+  '6. Convite de Visita': [
+    '6. Convite de Visita',
+    'Agendamento de Visita',
+    'Demo Realiz.',
+    'D5 - Follow up 5',
+    'D6 - Follow up 6',
+    'D7 - Follow up 7',
+    'D8 - Follow up 8',
+    'D9 - Despedida/Nutrição',
+  ],
+  '7. Confirmação e Rota': ['7. Confirmação e Rota', 'Pré-Visita'],
+  '8. Feedback da Visita': ['8. Feedback da Visita', 'Pós-Visita', 'Visita'],
+  '9. Proposta e Condições': ['9. Proposta e Condições', 'Proposta e Negociação', 'Proposta'],
+  '10. Pós-venda e Indicação': [
+    '10. Pós-venda e Indicação',
+    'Fechamento e Pós-Venda',
+    'Fechamento',
+    'closed',
+  ],
+}
 
 export function buildStageFilter(stage: string): string {
-  if (stage === 'Novo') {
-    // The entry bucket catches every status that is NOT one of the 10 pipeline
-    // stages — i.e. genuine new leads ('Novo', 'lead', '', 'Lead Novo',
-    // 'Base de Clientes/Novo LYD') AND any legacy status value (D0–D9 follow
-    // ups, 'Qualificação', 'closed', …) that has no dedicated column. This
-    // guarantees no customer is orphaned and every customer can be dragged
-    // into the correct pipeline stage. (A migration normalizes the common
-    // legacy values to their pipeline equivalent so the bucket stays small.)
-    const notPipeline = PIPELINE_STAGE_VALUES.map(
-      (s) => `status != "${escapeFilterValue(s)}"`,
-    ).join(' && ')
-    return `(${notPipeline})`
-  }
-  return `status = "${escapeFilterValue(stage)}"`
+  const clean = stage.trim()
+  if (!clean) return ''
+  const aliases = LEGACY_STAGE_ALIASES[clean] || [clean]
+  const statusConditions = aliases.map((val) => `status = "${escapeFilterValue(val)}"`).join(' || ')
+  return `(${statusConditions})`
 }
 
 export function combineFilters(...parts: (string | undefined | null)[]): string {

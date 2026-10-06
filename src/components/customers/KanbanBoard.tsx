@@ -4,11 +4,11 @@ import { KanbanCard } from './KanbanCard'
 
 interface Props {
   customers: Customer[]
-  cadences: any[]
+  cadences?: any[]
   onStatusChange: (id: string, status: string) => void
 }
 
-export function KanbanBoard({ customers, cadences, onStatusChange }: Props) {
+export function KanbanBoard({ customers, onStatusChange }: Props) {
   const kanbanRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -45,12 +45,6 @@ export function KanbanBoard({ customers, cadences, onStatusChange }: Props) {
     if (id) onStatusChange(id, statusId)
   }
 
-  const getStageDesc = (stageId: string, defaultDesc: string) => {
-    const prefix = stageId.split(' - ')[0]
-    const match = cadences.find((c) => c.title?.includes(prefix))
-    return match?.description || defaultDesc
-  }
-
   return (
     <div className="flex-1 overflow-x-auto overflow-y-hidden bg-muted/20" ref={kanbanRef}>
       <div className="flex flex-col h-full w-max min-w-full">
@@ -61,12 +55,14 @@ export function KanbanBoard({ customers, cadences, onStatusChange }: Props) {
               key={`header-${stage.id}`}
               className="w-[300px] flex-shrink-0 p-3 rounded-md border bg-muted/30"
             >
-              <h3 className={`font-semibold text-sm ${stage.text}`}>{stage.title}</h3>
-              <p
-                className="text-xs text-muted-foreground mt-1 line-clamp-2"
-                title={getStageDesc(stage.id, stage.desc)}
-              >
-                {getStageDesc(stage.id, stage.desc)}
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-xs">
+                  {stage.stepNumber}
+                </span>
+                <h3 className={`font-semibold text-sm ${stage.text}`}>{stage.title}</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2" title={stage.desc}>
+                {stage.desc}
               </p>
             </div>
           ))}
@@ -84,7 +80,12 @@ export function KanbanBoard({ customers, cadences, onStatusChange }: Props) {
                 onDrop={(e) => handleDrop(e, stage.id)}
               >
                 <div className="p-3 border-b bg-background/50 flex items-center justify-between font-semibold text-sm">
-                  <span>{stage.title.split(' - ')[0]}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-xs">
+                      {stage.stepNumber}
+                    </span>
+                    <span>{stage.title}</span>
+                  </div>
                   <span className="text-muted-foreground font-normal bg-background px-2 py-0.5 rounded-full border text-xs">
                     {columnCustomers.length}
                   </span>

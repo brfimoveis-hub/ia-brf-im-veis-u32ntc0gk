@@ -34,12 +34,20 @@ import {
   Trash2,
   Ban,
   Save,
-  BookOpen,
+  Compass,
   Mail,
 } from 'lucide-react'
 import { cn, formatPhone } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
+import { STAGES } from './types'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export function CustomerDetailDrawer({
   customerId,
@@ -59,20 +67,9 @@ export function CustomerDetailDrawer({
   const [inputValue, setInputValue] = useState('')
   const [notes, setNotes] = useState('')
   const [isSavingNotes, setIsSavingNotes] = useState(false)
-  const [currentCadence, setCurrentCadence] = useState<any | null>(null)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (customer?.status && user?.id) {
-      pb.collection('cadences')
-        .getFirstListItem(
-          `user_id = "${user.id}" && is_active = true && title = "${customer.status}"`,
-        )
-        .then((res) => setCurrentCadence(res))
-        .catch(() => setCurrentCadence(null))
-    }
-  }, [customer?.status, user?.id])
 
   const loadData = () => {
     if (!customerId) return
@@ -146,6 +143,23 @@ export function CustomerDetailDrawer({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [conversations])
+
+  const currentStage = STAGES.find((s) => s.id === customer?.status)
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!customer || customer.status === newStatus) return
+    setIsUpdatingStatus(true)
+    try {
+      await updateCustomer(customer.id, { status: newStatus })
+      setCustomer((prev) => (prev ? { ...prev, status: newStatus } : prev))
+      toast({ title: `Etapa atualizada para "${newStatus}"` })
+    } catch (err) {
+      console.error('Erro ao atualizar status:', err)
+      toast({ title: 'Erro ao atualizar etapa', variant: 'destructive' })
+    } finally {
+      setIsUpdatingStatus(false)
+    }
+  }
 
   const handleToggleBlock = async (checked: boolean) => {
     if (!customer) return
@@ -246,7 +260,7 @@ export function CustomerDetailDrawer({
                     </p>
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant="secondary" className="font-medium">
-                        {customer.status || 'Lead Novo'}
+                        {customer.status || '1. Acolhimento'}
                       </Badge>
                       {customer.credit_analysis_status &&
                         customer.credit_analysis_status !== 'nao_oferecido' && (
@@ -433,26 +447,35 @@ export function CustomerDetailDrawer({
                     </div>
                   </div>
 
-                  {currentCadence && (
-                    <div className="space-y-3 pt-4 border-t">
-                      <Label className="flex items-center gap-2">
-                        <BookOpen className="h-4 w-4 text-primary" /> Playbook Sugerido (Fase:{' '}
-                        {customer.status})
-                      </Label>
-                      <div className="bg-primary/5 p-4 rounded-lg border border-primary/10">
-                        <p className="font-medium text-primary text-sm mb-2">Script/Mensagem:</p>
-                        <p className="text-sm text-foreground italic">"{currentCadence.content}"</p>
-                        {currentCadence.ai_instructions && (
-                          <div className="mt-3 pt-3 border-t border-primary/10">
-                            <p className="font-medium text-primary text-xs mb-1">Diretriz da IA:</p>
-                            <p className="text-xs text-muted-foreground">
-                              {currentCadence.ai_instructions}
-                            </p>
-                          </div>
-                        )}
-                      </div>
+                  <div className="space-y-3 pt-4 border-t">
+                    <Label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      <Compass className="h-4 w-4 text-primary" /> Etapa do Funil (Constituição
+                      v3.1)
+                    </Label>
+                    <div className="space-y-2 bg-muted/30 p-3 rounded-lg border border-border/50">
+                      <Select
+                        value={customer.status || '1. Acolhimento'}
+                        onValueChange={handleStatusChange}
+                        disabled={isUpdatingStatus}
+                      >
+                        <SelectTrigger className="w-full bg-background font-medium">
+                          <SelectValue placeholder="Selecione a etapa" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STAGES.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.title} ({s.phase})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {currentStage && (
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {currentStage.desc}
+                        </p>
+                      )}
                     </div>
-                  )}
+                  </div>
 
                   <div className="space-y-2 pt-4 border-t">
                     <div className="flex items-center justify-between">
