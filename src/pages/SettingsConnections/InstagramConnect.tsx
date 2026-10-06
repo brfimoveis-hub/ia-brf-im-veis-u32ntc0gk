@@ -530,7 +530,7 @@ export function InstagramConnect() {
                 id="meta_instagram_app_id"
                 value={form.meta_instagram_app_id}
                 onChange={(e) => set('meta_instagram_app_id', e.target.value.replace(/\D/g, ''))}
-                placeholder="Ex: 987654321098765"
+                placeholder="2442476629610638"
                 inputMode="numeric"
                 className={`font-mono text-xs ${
                   appFieldErrors.meta_instagram_app_id ? 'border-red-500' : ''

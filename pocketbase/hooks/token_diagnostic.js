@@ -10,7 +10,7 @@ routerAdd(
     }
     const crmUser = userRecords[0]
     const token = crmUser.getString('meta_instagram_user_token') || ''
-    const igAppId = crmUser.getString('meta_instagram_app_id') || '1121822660295492'
+    const igAppId = crmUser.getString('meta_instagram_app_id') || '2442476629610638'
 
     if (!token) {
       return e.json(200, {

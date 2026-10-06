@@ -209,7 +209,7 @@ routerAdd(
       ).trim()
       // Prioridade de token: novo token de usuário OAuth se disponível, senão token de página
       let igToken = oauthUserToken || pageTokenCandidate
-      const igAppId = (userRecord.getString('meta_instagram_app_id') || '1121822660295492').trim()
+      const igAppId = (userRecord.getString('meta_instagram_app_id') || '2442476629610638').trim()
       const sysUserToken = (userRecord.getString('meta_whatsapp_access_token') || '').trim()
       const capiToken = (userRecord.getString('meta_capi_token') || '').trim()
 
