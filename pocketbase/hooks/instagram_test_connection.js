@@ -30,6 +30,7 @@ routerAdd(
         : 'nenhum'
 
     const igAppId = (user.getString('meta_instagram_app_id') || '2442476629610638').trim()
+
     const sysUserToken = (user.getString('meta_whatsapp_access_token') || '').trim()
     const capiToken = (user.getString('meta_capi_token') || '').trim()
 
