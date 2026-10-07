@@ -96,19 +96,19 @@ export function CustomerTable({
     try {
       const filters: string[] = []
       if (searchTerm) {
-        const safeSearch = searchTerm.replace(/"/g, '\\"')
+        const safeSearch = searchTerm.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
         filters.push(
-          `(name ~ "${safeSearch}" || email ~ "${safeSearch}" || phone ~ "${safeSearch}" || first_name ~ "${safeSearch}" || email_1_value ~ "${safeSearch}" || phone_1_value ~ "${safeSearch}")`,
+          `(name ~ '${safeSearch}' || email ~ '${safeSearch}' || phone ~ '${safeSearch}' || first_name ~ '${safeSearch}' || email_1_value ~ '${safeSearch}' || phone_1_value ~ '${safeSearch}')`,
         )
       }
       if (phaseFilter && phaseFilter !== 'all') {
-        const safePhase = phaseFilter.replace(/"/g, '\\"')
-        filters.push(`status = "${safePhase}"`)
+        const safePhase = phaseFilter.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        filters.push(`status = '${safePhase}'`)
       }
       const sourceFilterVal = searchParams.get('source') || ''
       if (sourceFilterVal) {
-        const safeSource = sourceFilterVal.replace(/"/g, '\\"')
-        filters.push(`source ~ "${safeSource}"`)
+        const safeSource = sourceFilterVal.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        filters.push(`source ~ '${safeSource}'`)
       }
       const filterString = filters.join(' && ')
       const allRecords = await pb.collection('customers').getFullList({ filter: filterString })

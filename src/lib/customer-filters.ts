@@ -34,7 +34,8 @@ export interface CustomerFilterState {
 }
 
 export function escapeFilterValue(v: string): string {
-  return v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  // PocketBase filter strings: escape backslashes, single quotes and double quotes
+  return String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"')
 }
 
 export function buildBaseFilter(filters: CustomerFilterState): string {
@@ -43,17 +44,17 @@ export function buildBaseFilter(filters: CustomerFilterState): string {
   if (q) {
     const safe = escapeFilterValue(q)
     parts.push(
-      `(name ~ "${safe}" || first_name ~ "${safe}" || phone ~ "${safe}" || phone_1_value ~ "${safe}" || email ~ "${safe}" || email_1_value ~ "${safe}" || notes ~ "${safe}")`,
+      `(name ~ '${safe}' || first_name ~ '${safe}' || phone ~ '${safe}' || phone_1_value ~ '${safe}' || email ~ '${safe}' || email_1_value ~ '${safe}' || notes ~ '${safe}')`,
     )
   }
   if (filters.source && filters.source !== 'all') {
-    parts.push(`source ~ "${escapeFilterValue(filters.source)}"`)
+    parts.push(`source ~ '${escapeFilterValue(filters.source)}'`)
   }
   if (filters.neighborhood && filters.neighborhood.trim()) {
-    parts.push(`neighborhood ~ "${escapeFilterValue(filters.neighborhood.trim())}"`)
+    parts.push(`neighborhood ~ '${escapeFilterValue(filters.neighborhood.trim())}'`)
   }
   if (filters.leadProfile && filters.leadProfile !== 'all') {
-    parts.push(`lead_profile = "${escapeFilterValue(filters.leadProfile)}"`)
+    parts.push(`lead_profile = '${escapeFilterValue(filters.leadProfile)}'`)
   }
   if (filters.urgency && filters.urgency !== 'all') {
     switch (filters.urgency) {
@@ -72,10 +73,10 @@ export function buildBaseFilter(filters: CustomerFilterState): string {
     }
   }
   if (filters.noSend) {
-    parts.push(`(last_sent_at = null || last_sent_at = "")`)
+    parts.push(`(last_sent_at = null || last_sent_at = '')`)
   }
   if (filters.tags && filters.tags.trim()) {
-    parts.push(`tags ~ "${escapeFilterValue(filters.tags.trim())}"`)
+    parts.push(`tags ~ '${escapeFilterValue(filters.tags.trim())}'`)
   }
   return parts.join(' && ')
 }
@@ -131,7 +132,7 @@ export function buildStageFilter(stage: string): string {
   const clean = stage.trim()
   if (!clean) return ''
   const aliases = LEGACY_STAGE_ALIASES[clean] || [clean]
-  const statusConditions = aliases.map((val) => `status = "${escapeFilterValue(val)}"`).join(' || ')
+  const statusConditions = aliases.map((val) => `status = '${escapeFilterValue(val)}'`).join(' || ')
   return `(${statusConditions})`
 }
 

@@ -111,18 +111,18 @@ export function RemarketingSyncModal({
 
         const filters: string[] = []
         if (searchTerm) {
-          const safeSearch = searchTerm.replace(/"/g, '\\"')
+          const safeSearch = searchTerm.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
           filters.push(
-            `(name ~ "${safeSearch}" || email ~ "${safeSearch}" || phone ~ "${safeSearch}" || first_name ~ "${safeSearch}" || email_1_value ~ "${safeSearch}" || phone_1_value ~ "${safeSearch}")`,
+            `(name ~ '${safeSearch}' || email ~ '${safeSearch}' || phone ~ '${safeSearch}' || first_name ~ '${safeSearch}' || email_1_value ~ '${safeSearch}' || phone_1_value ~ '${safeSearch}')`,
           )
         }
         if (phaseFilter && phaseFilter !== 'all') {
-          const safePhase = phaseFilter.replace(/"/g, '\\"')
-          filters.push(`status = "${safePhase}"`)
+          const safePhase = phaseFilter.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          filters.push(`status = '${safePhase}'`)
         }
         if (sourceFilter) {
-          const safeSource = sourceFilter.replace(/"/g, '\\"')
-          filters.push(`source ~ "${safeSource}"`)
+          const safeSource = sourceFilter.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+          filters.push(`source ~ '${safeSource}'`)
         }
 
         const filterString = filters.join(' && ')

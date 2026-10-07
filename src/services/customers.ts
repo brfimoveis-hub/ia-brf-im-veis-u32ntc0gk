@@ -51,16 +51,16 @@ export const getPaginatedCustomers = async (
 ): Promise<PaginatedCustomersResult> => {
   const parts: string[] = []
   if (search.trim()) {
-    const safe = search.trim().replace(/"/g, '\\"')
+    const safe = search.trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     parts.push(
-      `(name ~ "${safe}" || phone ~ "${safe}" || first_name ~ "${safe}" || email ~ "${safe}" || phone_1_value ~ "${safe}" || email_1_value ~ "${safe}")`,
+      `(name ~ '${safe}' || phone ~ '${safe}' || first_name ~ '${safe}' || email ~ '${safe}' || phone_1_value ~ '${safe}' || email_1_value ~ '${safe}')`,
     )
   }
   if (phaseFilter && phaseFilter !== 'all') {
-    parts.push(`status = "${phaseFilter.replace(/"/g, '\\"')}"`)
+    parts.push(`status = '${phaseFilter.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`)
   }
   if (sourceFilter) {
-    parts.push(`source = "${sourceFilter.replace(/"/g, '\\"')}"`)
+    parts.push(`source = '${sourceFilter.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`)
   }
   const filter = parts.join(' && ')
   return pb.collection('customers').getList<Customer>(page, perPage, {
@@ -137,7 +137,7 @@ export const fetchCustomersByIds = async (ids: string[]): Promise<Customer[]> =>
   const all: Customer[] = []
   for (let i = 0; i < ids.length; i += 50) {
     const chunk = ids.slice(i, i + 50)
-    const f = chunk.map((id) => `id = "${id}"`).join(' || ')
+    const f = chunk.map((id) => `id = '${id.replace(/'/g, "\\'")}'`).join(' || ')
     try {
       const res = await pb.collection('customers').getList<Customer>(1, 50, { filter: f })
       all.push(...res.items)

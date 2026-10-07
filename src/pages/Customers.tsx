@@ -73,7 +73,7 @@ export default function Customers() {
   const baseFilter = buildBaseFilter(filters)
   const listFilter = combineFilters(
     baseFilter,
-    statusFilter !== 'all' ? `status = "${escapeFilterValue(statusFilter)}"` : '',
+    statusFilter !== 'all' ? `status = '${escapeFilterValue(statusFilter)}'` : '',
   )
 
   const hasActiveFilters =

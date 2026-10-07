@@ -469,272 +469,302 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
           const value = change.value
           if (value && value.messages && value.messages.length > 0) {
             for (const msg of value.messages) {
+              const phone = (msg.from || '').replace(/\D/g, '')
+              if (!phone) continue
+
+              const referral = msg.referral || value.referral || null
+
+              // Extrai conteúdo da mensagem suportando QUALQUER tipo
+              // (text, image, audio, interactive, button, location, contact, sticker, etc.)
+              let text = ''
               if (msg.type === 'text' && msg.text && msg.text.body) {
-                const phone = msg.from
-                const text = msg.text.body
+                text = msg.text.body
+              } else if (msg.type === 'image') {
+                if (msg.image && msg.image.caption) {
+                  text = msg.image.caption
+                } else if (referral && (referral.headline || referral.body)) {
+                  text = referral.headline || referral.body
+                } else {
+                  text = '[Imagem/anúncio recebido]'
+                }
+              } else if (msg.type === 'interactive' && msg.interactive) {
+                const it = msg.interactive
+                text =
+                  (it.button_reply && it.button_reply.title) ||
+                  (it.list_reply && it.list_reply.title) ||
+                  (it.header && it.header.text) ||
+                  '[Interação recebida]'
+              } else if (msg.type === 'button' && msg.button && msg.button.text) {
+                text = msg.button.text
+              } else if (msg.type === 'audio' || msg.type === 'voice') {
+                text = '[Áudio recebido]'
+              } else if (msg.type === 'video') {
+                text = (msg.video && msg.video.caption) || '[Vídeo recebido]'
+              } else if (msg.type === 'document') {
+                text =
+                  (msg.document && (msg.document.caption || msg.document.filename)) ||
+                  '[Documento recebido]'
+              } else if (referral && (referral.headline || referral.body)) {
+                text = referral.headline || referral.body
+              } else {
+                text = '[' + (msg.type || 'Mensagem') + ' recebida]'
+              }
 
-                let receiverPhone = ''
-                if (value.metadata && value.metadata.display_phone_number) {
-                  receiverPhone = value.metadata.display_phone_number.replace(/\D/g, '')
+              let receiverPhone = ''
+              if (value.metadata && value.metadata.display_phone_number) {
+                receiverPhone = value.metadata.display_phone_number.replace(/\D/g, '')
+              }
+
+              let targetUserId = globalUserId
+              try {
+                const allUsers = $app.findRecordsByFilter(
+                  'users',
+                  "meta_pixel_id != ''",
+                  '',
+                  100,
+                  0,
+                )
+                if (receiverPhone) {
+                  for (const u of allUsers) {
+                    const wpid = u.getString('meta_whatsapp_phone_number_id') || ''
+                    if (wpid && receiverPhone.includes(wpid)) {
+                      targetUserId = u.id
+                      break
+                    }
+                  }
+                }
+              } catch (_) {}
+
+              let contactName = 'Lead-Meta-' + phone
+              if (value.contacts && value.contacts.length > 0) {
+                const contact =
+                  value.contacts.find(function (c) {
+                    return c.wa_id === msg.from || (c.wa_id && c.wa_id.replace(/\D/g, '') === phone)
+                  }) || value.contacts[0]
+                if (contact && contact.profile && contact.profile.name) {
+                  contactName = contact.profile.name
+                }
+              }
+
+              let referralLabel = ''
+              let referralNotesEntry = ''
+
+              if (referral) {
+                const campaignName = (referral.campaign_name || referral.campaign || '').trim()
+                const adName = (
+                  referral.ad_name ||
+                  referral.headline ||
+                  referral.source_id ||
+                  ''
+                ).trim()
+                let mediaRaw = (referral.media || referral.media_type || '').toLowerCase()
+                if (
+                  !mediaRaw &&
+                  referral.source_type &&
+                  referral.source_type.toLowerCase() !== 'ad'
+                ) {
+                  mediaRaw = referral.source_type.toLowerCase()
+                }
+                let mediaLabel = ''
+                if (mediaRaw.indexOf('insta') !== -1) {
+                  mediaLabel = 'Instagram'
+                } else if (mediaRaw.indexOf('face') !== -1) {
+                  mediaLabel = 'Facebook'
+                } else if (mediaRaw) {
+                  mediaLabel = mediaRaw.charAt(0).toUpperCase() + mediaRaw.slice(1)
                 }
 
-                let targetUserId = globalUserId
+                const labelParts = ['Anúncio Meta']
+                if (mediaLabel) {
+                  labelParts[0] = 'Anúncio Meta (' + mediaLabel + ')'
+                }
+                if (campaignName) labelParts.push(campaignName)
+                if (adName && adName !== campaignName) labelParts.push(adName)
+                referralLabel = labelParts.join(' — ')
+
+                const nowStr = new Date().toLocaleString('pt-BR', {
+                  timeZone: 'America/Sao_Paulo',
+                })
+                const notesCampaign = campaignName || 'Campanha Meta'
+                const notesAd = adName || referral.source_id || 'Anúncio'
+                referralNotesEntry =
+                  '[Origem: Anúncio Meta — ' + notesCampaign + ' — ' + notesAd + ', ' + nowStr + ']'
+                if (referral.headline && referral.headline !== adName) {
+                  referralNotesEntry += ' (Headline: ' + referral.headline + ')'
+                }
+                if (referral.source_id) {
+                  referralNotesEntry += ' (Ad ID: ' + referral.source_id + ')'
+                }
+
+                // Registrar em system_logs (type "ad_referral")
                 try {
-                  const allUsers = $app.findRecordsByFilter(
-                    'users',
-                    "meta_pixel_id != ''",
-                    '',
-                    100,
-                    0,
+                  const logsCol = $app.findCollectionByNameOrId('system_logs')
+                  const adLog = new Record(logsCol)
+                  adLog.set('user_id', targetUserId || '')
+                  adLog.set('type', 'ad_referral')
+                  adLog.set('message', 'Referral de anúncio Meta capturado: ' + referralLabel)
+                  adLog.set(
+                    'details',
+                    'Campanha: ' +
+                      (campaignName || 'N/A') +
+                      ' | Anúncio: ' +
+                      (adName || 'N/A') +
+                      ' | Phone: ' +
+                      phone,
                   )
-                  if (receiverPhone) {
-                    for (const u of allUsers) {
-                      const wpid = u.getString('meta_whatsapp_phone_number_id') || ''
-                      if (wpid && receiverPhone.includes(wpid)) {
-                        targetUserId = u.id
-                        break
-                      }
-                    }
-                  }
-                } catch (_) {}
-
-                let contactName = 'Lead-Meta-' + phone
-                if (value.contacts && value.contacts.length > 0) {
-                  const contact = value.contacts.find(function (c) {
-                    return c.wa_id === phone
+                  adLog.set('payload', {
+                    phone: phone,
+                    contact_name: contactName,
+                    referral: referral,
+                    label: referralLabel,
                   })
-                  if (contact && contact.profile && contact.profile.name) {
-                    contactName = contact.profile.name
-                  }
+                  $app.saveNoValidate(adLog)
+                } catch (logErr) {
+                  $app.logger().error('Failed to log ad_referral', 'error', String(logErr))
                 }
+              }
 
-                const referral = msg.referral || value.referral || null
-                let referralLabel = ''
-                let referralNotesEntry = ''
+              let customer = null
+              try {
+                const phoneNorm = phone.replace(/\D/g, '')
+                customer = $app.findFirstRecordByFilter(
+                  'customers',
+                  "phone ~ '" + phoneNorm + "' || phone_1_value ~ '" + phoneNorm + "'",
+                )
+              } catch (_) {}
 
-                if (referral) {
-                  const campaignName = (referral.campaign_name || referral.campaign || '').trim()
-                  const adName = (
-                    referral.ad_name ||
-                    referral.headline ||
-                    referral.source_id ||
-                    ''
-                  ).trim()
-                  let mediaRaw = (referral.media || referral.media_type || '').toLowerCase()
-                  if (
-                    !mediaRaw &&
-                    referral.source_type &&
-                    referral.source_type.toLowerCase() !== 'ad'
-                  ) {
-                    mediaRaw = referral.source_type.toLowerCase()
-                  }
-                  let mediaLabel = ''
-                  if (mediaRaw.indexOf('insta') !== -1) {
-                    mediaLabel = 'Instagram'
-                  } else if (mediaRaw.indexOf('face') !== -1) {
-                    mediaLabel = 'Facebook'
-                  } else if (mediaRaw) {
-                    mediaLabel = mediaRaw.charAt(0).toUpperCase() + mediaRaw.slice(1)
-                  }
-
-                  const labelParts = ['Anúncio Meta']
-                  if (mediaLabel) {
-                    labelParts[0] = 'Anúncio Meta (' + mediaLabel + ')'
-                  }
-                  if (campaignName) labelParts.push(campaignName)
-                  if (adName && adName !== campaignName) labelParts.push(adName)
-                  referralLabel = labelParts.join(' — ')
-
-                  const nowStr = new Date().toLocaleString('pt-BR', {
-                    timeZone: 'America/Sao_Paulo',
-                  })
-                  const notesCampaign = campaignName || 'Campanha Meta'
-                  const notesAd = adName || referral.source_id || 'Anúncio'
-                  referralNotesEntry =
-                    '[Origem: Anúncio Meta — ' +
-                    notesCampaign +
-                    ' — ' +
-                    notesAd +
-                    ', ' +
-                    nowStr +
-                    ']'
-                  if (referral.headline && referral.headline !== adName) {
-                    referralNotesEntry += ' (Headline: ' + referral.headline + ')'
-                  }
-                  if (referral.source_id) {
-                    referralNotesEntry += ' (Ad ID: ' + referral.source_id + ')'
-                  }
-
-                  // Registrar em system_logs (type "ad_referral")
-                  try {
-                    const logsCol = $app.findCollectionByNameOrId('system_logs')
-                    const adLog = new Record(logsCol)
-                    adLog.set('user_id', targetUserId || '')
-                    adLog.set('type', 'ad_referral')
-                    adLog.set('message', 'Referral de anúncio Meta capturado: ' + referralLabel)
-                    adLog.set(
-                      'details',
-                      'Campanha: ' +
-                        (campaignName || 'N/A') +
-                        ' | Anúncio: ' +
-                        (adName || 'N/A') +
-                        ' | Phone: ' +
-                        phone,
-                    )
-                    adLog.set('payload', {
-                      phone: phone,
-                      contact_name: contactName,
-                      referral: referral,
-                      label: referralLabel,
-                    })
-                    $app.saveNoValidate(adLog)
-                  } catch (logErr) {
-                    $app.logger().error('Failed to log ad_referral', 'error', String(logErr))
-                  }
-                }
-
-                let customer = null
+              if (!customer && targetUserId) {
                 try {
-                  const phoneNorm = phone.replace(/\D/g, '')
-                  customer = $app.findFirstRecordByFilter(
-                    'customers',
-                    "phone ~ '" + phoneNorm + "' || phone_1_value ~ '" + phoneNorm + "'",
-                  )
-                } catch (_) {}
+                  const customersCol = $app.findCollectionByNameOrId('customers')
+                  customer = new Record(customersCol)
+                  customer.set('user_id', targetUserId)
+                  customer.set('name', contactName)
+                  customer.set('phone', phone.replace(/\D/g, ''))
 
-                if (!customer && targetUserId) {
+                  let initialStatus = 'Novo'
                   try {
-                    const customersCol = $app.findCollectionByNameOrId('customers')
-                    customer = new Record(customersCol)
-                    customer.set('user_id', targetUserId)
-                    customer.set('name', contactName)
-                    customer.set('phone', phone.replace(/\D/g, ''))
-
-                    let initialStatus = 'Novo'
-                    try {
-                      const activeCadences = $app.findRecordsByFilter(
-                        'cadences',
-                        "user_id = '" + targetUserId + "' && is_active = true",
-                        'order',
-                        1,
-                        0,
-                      )
-                      if (activeCadences.length > 0) {
-                        initialStatus = activeCadences[0].getString('title') || 'Novo'
-                      }
-                    } catch (_) {}
-                    customer.set('status', initialStatus)
-
-                    let source = referralLabel || 'Meta'
-                    customer.set('source', source)
-                    if (referralNotesEntry) customer.set('notes', referralNotesEntry)
-                    $app.save(customer)
-
-                    saveLog(
-                      targetUserId,
-                      'diagnostic',
-                      'Novo lead capturado via Webhook: ' + contactName,
-                      'Lead originado do telefone ' + phone + '. Origem: ' + source,
-                      {
-                        customer_id: customer.id,
-                        phone: phone,
-                        source: source,
-                        referral: referral,
-                      },
-                    )
-                  } catch (err) {
-                    saveLog(
-                      targetUserId,
-                      'meta_error',
-                      'Falha ao criar lead do telefone ' + phone,
-                      String(err),
-                      { error: String(err), raw_body: body, phone: phone },
-                    )
-                  }
-                } else if (customer) {
-                  try {
-                    let updatedCust = false
-                    if (referralLabel) {
-                      customer.set('source', referralLabel)
-                      updatedCust = true
-                    }
-                    if (referralNotesEntry) {
-                      const currentNotes = (customer.getString('notes') || '').trim()
-                      if (!currentNotes) {
-                        customer.set('notes', referralNotesEntry)
-                        updatedCust = true
-                      } else if (currentNotes.indexOf(referralNotesEntry) === -1) {
-                        customer.set('notes', currentNotes + '\n' + referralNotesEntry)
-                        updatedCust = true
-                      }
-                    }
-                    if (updatedCust) {
-                      $app.save(customer)
-                    }
-                  } catch (uErr) {
-                    $app
-                      .logger()
-                      .error('Failed to update existing customer referral', 'error', String(uErr))
-                  }
-                }
-
-                if (customer) {
-                  let isDuplicate = false
-                  try {
-                    const recentMsgs = $app.findRecordsByFilter(
-                      'conversations',
-                      "customer_id = '" +
-                        customer.id +
-                        "' && sender = 'customer' && content = {:text}",
-                      '-created',
+                    const activeCadences = $app.findRecordsByFilter(
+                      'cadences',
+                      "user_id = '" + targetUserId + "' && is_active = true",
+                      'order',
                       1,
                       0,
-                      { text: text },
                     )
-                    if (recentMsgs.length > 0) {
-                      const lastMsg = recentMsgs[0]
-                      const diffMins =
-                        (new Date().getTime() - new Date(lastMsg.getString('created')).getTime()) /
-                        60000
-                      if (diffMins < 5) isDuplicate = true
+                    if (activeCadences.length > 0) {
+                      initialStatus = activeCadences[0].getString('title') || 'Novo'
                     }
                   } catch (_) {}
+                  customer.set('status', initialStatus)
 
-                  if (!isDuplicate) {
-                    const userId = customer.getString('user_id')
-                    const conversation = new Record($app.findCollectionByNameOrId('conversations'))
-                    conversation.set('customer_id', customer.id)
-                    conversation.set('user_id', userId)
-                    conversation.set('content', text)
+                  let source = referralLabel || 'Meta'
+                  customer.set('source', source)
+                  if (referralNotesEntry) customer.set('notes', referralNotesEntry)
+                  $app.save(customer)
 
-                    const isSystemVerification =
-                      phone.replace(/\D/g, '') === '447710173736' ||
-                      /\b(?:\d{4,8})\s+[ée]\s+o\s+teu\s+c[oó]digo/i.test(text) ||
-                      /(?:n[aã]o\s+o\s+partilhe|n[aã]o\s+compartilhe|don'?t\s+share)/i.test(text) ||
-                      /c[oó]digo\s+(?:do\s+instagram|do\s+whatsapp|do\s+facebook|da\s+meta)/i.test(
-                        text,
-                      )
-
-                    conversation.set('sender', isSystemVerification ? 'system' : 'customer')
-                    conversation.set('channel', 'whatsapp')
-                    $app.save(conversation)
-
-                    saveLog(
-                      userId,
-                      'WEBHOOK',
-                      'Mensagem recebida via Webhook do WhatsApp',
-                      'Nova mensagem de cliente processada com sucesso.',
-                      { customer_id: customer.id, phone: phone },
-                    )
-                  }
-                } else {
+                  saveLog(
+                    targetUserId,
+                    'diagnostic',
+                    'Novo lead capturado via Webhook: ' + contactName,
+                    'Lead originado do telefone ' + phone + '. Origem: ' + source,
+                    {
+                      customer_id: customer.id,
+                      phone: phone,
+                      source: source,
+                      referral: referral,
+                    },
+                  )
+                } catch (err) {
                   saveLog(
                     targetUserId,
                     'meta_error',
-                    'Lead ignorado: cliente nao pôde ser criado.',
-                    'Telefone: ' + phone,
+                    'Falha ao criar lead do telefone ' + phone,
+                    String(err),
+                    { error: String(err), raw_body: body, phone: phone },
                   )
                 }
+              } else if (customer) {
+                try {
+                  let updatedCust = false
+                  if (referralLabel) {
+                    customer.set('source', referralLabel)
+                    updatedCust = true
+                  }
+                  if (referralNotesEntry) {
+                    const currentNotes = (customer.getString('notes') || '').trim()
+                    if (!currentNotes) {
+                      customer.set('notes', referralNotesEntry)
+                      updatedCust = true
+                    } else if (currentNotes.indexOf(referralNotesEntry) === -1) {
+                      customer.set('notes', currentNotes + '\n' + referralNotesEntry)
+                      updatedCust = true
+                    }
+                  }
+                  if (updatedCust) {
+                    $app.save(customer)
+                  }
+                } catch (uErr) {
+                  $app
+                    .logger()
+                    .error('Failed to update existing customer referral', 'error', String(uErr))
+                }
+              }
+
+              if (customer) {
+                let isDuplicate = false
+                try {
+                  const recentMsgs = $app.findRecordsByFilter(
+                    'conversations',
+                    "customer_id = '" +
+                      customer.id +
+                      "' && sender = 'customer' && content = {:text}",
+                    '-created',
+                    1,
+                    0,
+                    { text: text },
+                  )
+                  if (recentMsgs.length > 0) {
+                    const lastMsg = recentMsgs[0]
+                    const diffMins =
+                      (new Date().getTime() - new Date(lastMsg.getString('created')).getTime()) /
+                      60000
+                    if (diffMins < 5) isDuplicate = true
+                  }
+                } catch (_) {}
+
+                if (!isDuplicate) {
+                  const userId = customer.getString('user_id')
+                  const conversation = new Record($app.findCollectionByNameOrId('conversations'))
+                  conversation.set('customer_id', customer.id)
+                  conversation.set('user_id', userId)
+                  conversation.set('content', text)
+
+                  const isSystemVerification =
+                    phone.replace(/\D/g, '') === '447710173736' ||
+                    /\b(?:\d{4,8})\s+[ée]\s+o\s+teu\s+c[oó]digo/i.test(text) ||
+                    /(?:n[aã]o\s+o\s+partilhe|n[aã]o\s+compartilhe|don'?t\s+share)/i.test(text) ||
+                    /c[oó]digo\s+(?:do\s+instagram|do\s+whatsapp|do\s+facebook|da\s+meta)/i.test(
+                      text,
+                    )
+
+                  conversation.set('sender', isSystemVerification ? 'system' : 'customer')
+                  conversation.set('channel', 'whatsapp')
+                  $app.save(conversation)
+
+                  saveLog(
+                    userId,
+                    'WEBHOOK',
+                    'Mensagem recebida via Webhook do WhatsApp',
+                    'Nova mensagem de cliente processada com sucesso.',
+                    { customer_id: customer.id, phone: phone },
+                  )
+                }
+              } else {
+                saveLog(
+                  targetUserId,
+                  'meta_error',
+                  'Lead ignorado: cliente nao pôde ser criado.',
+                  'Telefone: ' + phone,
+                )
               }
             }
           }

@@ -58,8 +58,8 @@ export function usePaginatedList<T = any>(options: UsePaginatedListOptions) {
     const parts: string[] = []
     const q = search.trim()
     if (q) {
-      const safeQ = q.replace(/"/g, '\\"')
-      const searchParts = searchFieldsRef.current.map((f) => `${f} ~ "${safeQ}"`)
+      const safeQ = q.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const searchParts = searchFieldsRef.current.map((f) => `${f} ~ '${safeQ}'`)
       parts.push(`(${searchParts.join(' || ')})`)
     }
     for (const expr of Object.values(filters)) {

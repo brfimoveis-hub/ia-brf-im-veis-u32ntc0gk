@@ -60,16 +60,18 @@ export function RemarketingCustomerTable({
   const buildFilter = useCallback(() => {
     const parts: string[] = []
     if (search.trim()) {
-      const safe = search.trim().replace(/"/g, '\\"')
+      const safe = search.trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       parts.push(
-        `(name ~ "${safe}" || phone ~ "${safe}" || first_name ~ "${safe}" || email ~ "${safe}" || phone_1_value ~ "${safe}" || email_1_value ~ "${safe}")`,
+        `(name ~ '${safe}' || phone ~ '${safe}' || first_name ~ '${safe}' || email ~ '${safe}' || phone_1_value ~ '${safe}' || email_1_value ~ '${safe}')`,
       )
     }
     if (statusFilter !== 'all') {
-      parts.push(`status = "${statusFilter.replace(/"/g, '\\"')}"`)
+      const safeStatus = statusFilter.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      parts.push(`status = '${safeStatus}'`)
     }
     if (leadProfileFilter !== 'all') {
-      parts.push(`lead_profile = "${leadProfileFilter.replace(/"/g, '\\"')}"`)
+      const safeProfile = leadProfileFilter.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      parts.push(`lead_profile = '${safeProfile}'`)
     }
     return parts.join(' && ')
   }, [search, statusFilter, leadProfileFilter])
