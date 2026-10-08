@@ -297,7 +297,31 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
       targetPageToken = primaryPage.access_token || ''
       targetPageId = primaryPage.id || ''
 
+      // Helper para resolver nó de IG diretamente se o username faltar
+      function resolveIgUser(igId, token) {
+        if (!igId || !token) return ''
+        try {
+          const directRes = $http.send({
+            url:
+              'https://graph.facebook.com/v22.0/' +
+              encodeURIComponent(igId) +
+              '?fields=id,username,name&access_token=' +
+              encodeURIComponent(token),
+            method: 'GET',
+            timeout: 8,
+          })
+          if (directRes.statusCode === 200 && directRes.json) {
+            return (directRes.json.username || directRes.json.name || '').trim()
+          }
+        } catch (_) {}
+        return ''
+      }
+
       // Varre páginas procurando instagram_business_account
+      // Prioridade absoluta: Página que tiver o Instagram @brf_imoveis_
+      let candidateMatchTarget = null
+      let candidateAnyIg = null
+
       for (let i = 0; i < allPages.length; i++) {
         const p = allPages[i]
         const pTok = p.access_token || ''
@@ -351,22 +375,44 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
         }
 
         if (igObj && igObj.id) {
-          igBusinessId = igObj.id
-          targetPageToken = pTok || targetPageToken
-          targetPageId = pId
-          foundUsername = igObj.username || igObj.name || ''
-          console.log(
-            '[INSTAGRAM_OAUTH_EXCHANGE] Auto-detectado Instagram na página ' +
-              pName +
-              ' (' +
-              pId +
-              '): IG ID=' +
-              igBusinessId +
-              ' @' +
-              foundUsername,
-          )
-          break
+          let currUser = (igObj.username || igObj.name || '').trim()
+          if (!currUser) {
+            currUser = resolveIgUser(igObj.id, pTok || longLivedToken)
+          }
+          const candItem = {
+            id: String(igObj.id).trim(),
+            username: currUser,
+            pageToken: pTok,
+            pageId: pId,
+            pageName: pName,
+          }
+
+          if (currUser && currUser.toLowerCase().replace(/^@/, '').trim() === 'brf_imoveis_') {
+            candidateMatchTarget = candItem
+            break
+          }
+          if (!candidateAnyIg) {
+            candidateAnyIg = candItem
+          }
         }
+      }
+
+      const chosen = candidateMatchTarget || candidateAnyIg
+      if (chosen) {
+        igBusinessId = chosen.id
+        targetPageToken = chosen.pageToken || targetPageToken
+        targetPageId = chosen.pageId
+        foundUsername = chosen.username || (chosen === candidateMatchTarget ? 'brf_imoveis_' : '')
+        console.log(
+          '[INSTAGRAM_OAUTH_EXCHANGE] Instagram selecionado na página ' +
+            chosen.pageName +
+            ' (' +
+            chosen.pageId +
+            '): IG ID=' +
+            igBusinessId +
+            ' @' +
+            foundUsername,
+        )
       }
     }
   } catch (pagesErr) {

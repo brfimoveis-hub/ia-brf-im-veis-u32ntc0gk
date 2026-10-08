@@ -225,7 +225,7 @@ export function VerifiableConnectionCard({
                   </div>
                   {!localPageLinkedIg.linked && (
                     <p className="text-[10px] text-amber-800">
-                      Vincule no app Instagram (@mauro.brfimoveis) → Configurações → Empresa →
+                      Vincule no app Instagram (conta @brf_imoveis_) → Configurações → Empresa →
                       Conectar Página &apos;{localPageLinkedIg.page_name || 'BRF Imóveis'}&apos;.
                     </p>
                   )}
@@ -272,7 +272,7 @@ export function VerifiableConnectionCard({
             <InstagramPortfolioScan
               scan={localPortfolioScan || []}
               error={localPortfolioScanError}
-              targetUsername="mauro.brfimoveis"
+              targetUsername="brf_imoveis_"
             />
           )}
 

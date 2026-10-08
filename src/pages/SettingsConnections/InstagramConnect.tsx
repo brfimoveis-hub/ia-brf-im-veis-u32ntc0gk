@@ -992,8 +992,8 @@ export function InstagramConnect() {
                           </p>
                           <p>
                             <strong>Como vincular no seu celular:</strong> No aplicativo do
-                            Instagram (logado na conta <strong>@mauro.brfimoveis</strong>) → Acesse
-                            o Perfil → Configurações e privacidade →{' '}
+                            Instagram (logado na conta oficial <strong>@brf_imoveis_</strong>) →
+                            Acesse o Perfil → Configurações e privacidade →{' '}
                             <strong>Empresa / Ferramentas profissionais</strong> →{' '}
                             <strong>Conectar uma Página do Facebook</strong> → Selecione a Página{' '}
                             <strong>
@@ -1094,7 +1094,7 @@ export function InstagramConnect() {
                   <InstagramPortfolioScan
                     scan={diagnosticResult.portfolio_scan || []}
                     error={diagnosticResult.portfolio_scan_error}
-                    targetUsername={user?.instagram_username || 'mauro.brfimoveis'}
+                    targetUsername="brf_imoveis_"
                   />
                 )}
               </div>

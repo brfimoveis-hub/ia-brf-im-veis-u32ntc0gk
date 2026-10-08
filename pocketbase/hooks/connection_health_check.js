@@ -419,7 +419,7 @@ routerAdd(
             const noIgMessage =
               "A Página '" +
               (tokenIdentity.name || 'BRF Imóveis') +
-              "' NÃO tem nenhuma conta do Instagram vinculada. Vínculo necessário: no app do Instagram (@mauro.brfimoveis) → Configurações → Empresa/Ferramentas profissionais → 'Conectar uma Página do Facebook' → escolher a Página " +
+              "' NÃO tem nenhuma conta do Instagram vinculada. Vínculo necessário: no app do Instagram (logado na conta oficial @brf_imoveis_) → Configurações → Empresa/Ferramentas profissionais → 'Conectar uma Página do Facebook' → escolher a Página " +
               (tokenIdentity.name || 'BRF Imóveis') +
               '. Aguarde ~5 minutos e clique Verificar Agora.'
             results.push({

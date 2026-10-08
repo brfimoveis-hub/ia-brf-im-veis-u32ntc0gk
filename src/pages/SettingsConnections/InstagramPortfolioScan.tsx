@@ -11,7 +11,7 @@ interface InstagramPortfolioScanProps {
 export function InstagramPortfolioScan({
   scan,
   error,
-  targetUsername = 'mauro.brfimoveis',
+  targetUsername = 'brf_imoveis_',
 }: InstagramPortfolioScanProps) {
   const cleanTarget = targetUsername.toLowerCase().replace(/^@/, '')
 
@@ -161,12 +161,20 @@ export function InstagramPortfolioScan({
       )}
 
       {scan.length > 0 && !matchedPage && (
-        <div className="p-2 rounded bg-muted/60 border text-[11px] text-muted-foreground flex items-center gap-1.5">
-          <Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span>
-            Nenhuma das {scan.length} páginas acima possui o Instagram @{targetUsername} vinculado.
-            O vínculo precisa ser feito pelo app do Instagram.
-          </span>
+        <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-900 flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-950">
+              Nenhuma das {scan.length} páginas acima possui o Instagram oficial @{targetUsername}{' '}
+              vinculado.
+            </p>
+            <p className="text-amber-800 leading-relaxed">
+              O vínculo precisa ser feito pelo app do Instagram logando na conta oficial{' '}
+              <strong>@{targetUsername}</strong> → Acesse o Perfil → Configurações e ferramentas
+              profissionais → <strong>Conectar uma Página do Facebook</strong> → vincule à Página
+              oficial da BRF Imóveis. Em seguida, clique em <strong>Verificar Agora</strong>.
+            </p>
+          </div>
         </div>
       )}
     </div>
