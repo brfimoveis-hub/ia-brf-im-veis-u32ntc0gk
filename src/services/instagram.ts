@@ -45,6 +45,7 @@ export interface InstagramAccessiblePage {
   has_instagram: boolean
   ig_account_id?: string | null
   ig_username?: string | null
+  ig_error?: string | null
   matches_target_id?: boolean
 }
 
@@ -62,6 +63,7 @@ export interface InstagramPortfolioPage {
   page_name: string
   ig_account_id?: string | null
   ig_username?: string | null
+  ig_error?: string | null
   has_ig: boolean
 }
 

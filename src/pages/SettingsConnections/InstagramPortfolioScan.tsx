@@ -127,17 +127,30 @@ export function InstagramPortfolioScan({
                     </td>
                     <td className="py-2 px-2.5">
                       {page.has_ig && page.ig_account_id ? (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span
-                            className={
-                              isMatch ? 'text-green-900 font-bold' : 'text-purple-700 font-semibold'
-                            }
-                          >
-                            @{page.ig_username || 'desconhecido'}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground font-mono">
-                            (ID: {page.ig_account_id})
-                          </span>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={
+                                isMatch
+                                  ? 'text-green-900 font-bold'
+                                  : 'text-purple-700 font-semibold'
+                              }
+                            >
+                              {page.ig_username
+                                ? `@${page.ig_username}`
+                                : 'ID: ' + page.ig_account_id}
+                            </span>
+                            {page.ig_username && (
+                              <span className="text-[10px] text-muted-foreground font-mono">
+                                (ID: {page.ig_account_id})
+                              </span>
+                            )}
+                          </div>
+                          {!page.ig_username && (
+                            <span className="text-[10px] text-amber-700 break-words font-mono bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/20">
+                              {page.ig_error || 'Meta não retornou o @ da conta.'}
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <span className="text-muted-foreground italic">Nenhum</span>

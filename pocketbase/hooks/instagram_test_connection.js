@@ -91,55 +91,207 @@ routerAdd(
     const crmIgUsername = TARGET_CRM_USERNAME
 
     // Helper para tentar resolver o username de uma conta IG a partir de vários tokens candidatos
-    function resolveInstagramAccountDetails(igId, tokenList) {
-      if (!igId) return { id: igId, username: null, name: null }
+    // Tenta primeiro GET /{ig_account_id}?fields=username com page token, depois user token etc.
+    // Loga a resposta bruta da Graph API e erros com prefixo [INSTAGRAM_TEST]
+    function resolveInstagramAccountDetails(igId, tokenList, pageContext) {
+      if (!igId) return { id: igId, username: null, name: null, last_error: null }
       var candidates = tokenList || []
+      var lastErr = null
+
       for (var k = 0; k < candidates.length; k++) {
-        var t = candidates[k]
-        if (!t) continue
+        var item = candidates[k]
+        var tok = typeof item === 'object' && item !== null ? item.token : item
+        var tokType = typeof item === 'object' && item !== null ? item.type : 'token_' + k
+        if (!tok) continue
+        var tokSuffix = maskToken(tok)
+
+        // Tentativa A: fields=username,name
         try {
+          var directUrl =
+            'https://graph.facebook.com/v22.0/' +
+            encodeURIComponent(igId) +
+            '?fields=username,name,profile_picture_url&access_token=' +
+            encodeURIComponent(tok)
+
           var res = $http.send({
-            url:
-              'https://graph.facebook.com/v22.0/' +
-              encodeURIComponent(igId) +
-              '?fields=id,username,name,profile_picture_url&access_token=' +
-              encodeURIComponent(t),
+            url: directUrl,
             method: 'GET',
-            timeout: 8,
+            timeout: 10,
           })
+
+          var rawBodyA = ''
+          try {
+            rawBodyA = typeof res.body === 'string' ? res.body : JSON.stringify(res.json || {})
+          } catch (_) {}
+
+          console.log(
+            '[INSTAGRAM_TEST] direct IG node GET /' +
+              igId +
+              ' (' +
+              tokType +
+              ' ' +
+              tokSuffix +
+              (pageContext ? ' | ' + pageContext : '') +
+              ') status=' +
+              res.statusCode +
+              ' body=' +
+              rawBodyA,
+          )
+
           if (res.statusCode >= 200 && res.statusCode < 300 && res.json) {
-            var uName = (res.json.username || res.json.name || '').trim()
+            var uName = (res.json.username || '').trim()
+            var dName = (res.json.name || '').trim()
             if (uName) {
               return {
                 id: String(res.json.id || igId).trim(),
                 username: uName,
-                name: res.json.name || uName,
+                name: dName || uName,
+                last_error: null,
               }
             }
+            if (dName && !uName) {
+              // Algumas contas retornam apenas name (ou o name é o handle)
+              console.log(
+                '[INSTAGRAM_TEST] direct IG node retornou name="' +
+                  dName +
+                  '" sem campo username explícito',
+              )
+            }
+          } else {
+            var gErrA = extractGraphError(res.json, res.statusCode)
+            lastErr = gErrA.message + ' (code ' + gErrA.code + ')'
+            console.log(
+              '[INSTAGRAM_TEST] direct IG node falhou: HTTP ' +
+                res.statusCode +
+                ' code=' +
+                gErrA.code +
+                ' subcode=' +
+                gErrA.subcode +
+                ' msg=' +
+                gErrA.message,
+            )
+          }
+        } catch (netErrA) {
+          lastErr = String(netErrA && netErrA.message ? netErrA.message : netErrA)
+          console.log(
+            '[INSTAGRAM_TEST] direct IG node erro de rede (' +
+              tokType +
+              ' ' +
+              tokSuffix +
+              '): ' +
+              lastErr,
+          )
+        }
+
+        // Tentativa B: fields=username exclusivamente (às vezes a Graph API rejeita fields compostos)
+        try {
+          var simpleUrl =
+            'https://graph.facebook.com/v22.0/' +
+            encodeURIComponent(igId) +
+            '?fields=username&access_token=' +
+            encodeURIComponent(tok)
+
+          var sRes = $http.send({
+            url: simpleUrl,
+            method: 'GET',
+            timeout: 8,
+          })
+
+          var rawBodyB = ''
+          try {
+            rawBodyB = typeof sRes.body === 'string' ? sRes.body : JSON.stringify(sRes.json || {})
+          } catch (_) {}
+
+          if (sRes.statusCode >= 200 && sRes.statusCode < 300 && sRes.json && sRes.json.username) {
+            var sUser = String(sRes.json.username).trim()
+            if (sUser) {
+              console.log(
+                '[INSTAGRAM_TEST] direct IG node simples (fields=username) RESOLVEU: @' +
+                  sUser +
+                  ' com ' +
+                  tokType,
+              )
+              return {
+                id: String(sRes.json.id || igId).trim(),
+                username: sUser,
+                name: sUser,
+                last_error: null,
+              }
+            }
+          } else if (sRes.statusCode !== 200) {
+            console.log(
+              '[INSTAGRAM_TEST] direct IG node simples fields=username falhou: HTTP ' +
+                sRes.statusCode +
+                ' body=' +
+                rawBodyB,
+            )
           }
         } catch (_) {}
       }
-      return { id: igId, username: null, name: null }
+
+      return { id: igId, username: null, name: null, last_error: lastErr }
     }
 
     // Helper para resolver o IG de uma Página via GET /{page_id}?fields=instagram_business_account{id,username}
-    function resolvePageInstagram(pageId, pageAccessToken, fallbackToken) {
+    // Faz a chamada prioritariamente com o PAGE ACCESS TOKEN da página (não user token).
+    function resolvePageInstagram(pageId, pageAccessToken, fallbackToken, pageName) {
       var tokens = []
-      if (pageAccessToken) tokens.push(pageAccessToken)
-      if (fallbackToken && fallbackToken !== pageAccessToken) tokens.push(fallbackToken)
+      if (pageAccessToken) {
+        tokens.push({ token: pageAccessToken, type: 'page_access_token' })
+      }
+      if (fallbackToken && fallbackToken !== pageAccessToken) {
+        tokens.push({ token: fallbackToken, type: 'fallback_token' })
+      }
+      if (
+        oauthUserToken &&
+        oauthUserToken !== pageAccessToken &&
+        oauthUserToken !== fallbackToken
+      ) {
+        tokens.push({ token: oauthUserToken, type: 'oauth_user_token' })
+      }
+
+      var lastErr = null
 
       for (var tIdx = 0; tIdx < tokens.length; tIdx++) {
-        var actToken = tokens[tIdx]
+        var tItem = tokens[tIdx]
+        var actToken = tItem.token
+        var actType = tItem.type
+        var actSuffix = maskToken(actToken)
+
         try {
+          var pUrl =
+            'https://graph.facebook.com/v22.0/' +
+            encodeURIComponent(pageId) +
+            '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&access_token=' +
+            encodeURIComponent(actToken)
+
           var pRes = $http.send({
-            url:
-              'https://graph.facebook.com/v22.0/' +
-              encodeURIComponent(pageId) +
-              '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&access_token=' +
-              encodeURIComponent(actToken),
+            url: pUrl,
             method: 'GET',
             timeout: 10,
           })
+
+          var rawPageBody = ''
+          try {
+            rawPageBody =
+              typeof pRes.body === 'string' ? pRes.body : JSON.stringify(pRes.json || {})
+          } catch (_) {}
+
+          console.log(
+            '[INSTAGRAM_TEST] resolvePageInstagram page_id=' +
+              pageId +
+              ' "' +
+              (pageName || '') +
+              '" (' +
+              actType +
+              ' ' +
+              actSuffix +
+              ') status=' +
+              pRes.statusCode +
+              ' body=' +
+              rawPageBody,
+          )
+
           if (pRes.statusCode >= 200 && pRes.statusCode < 300 && pRes.json) {
             var igObj =
               pRes.json.instagram_business_account || pRes.json.connected_instagram_account || null
@@ -154,29 +306,69 @@ routerAdd(
                 igObj = { id: pb0.id, username: pb0.username || '' }
               }
             }
+
             if (igObj && igObj.id) {
               var retId = String(igObj.id).trim()
-              var retUser = (igObj.username || igObj.name || '').trim()
-              // Se não trouxe username, tenta resolver no nó do IG
+              var retUser = (igObj.username || '').trim()
+
+              // Se não trouxe username direto na página, tenta resolver com GET /{ig_account_id}?fields=username
+              // usando page token e também user token
+              var directErr = null
               if (!retUser) {
-                var igResolved = resolveInstagramAccountDetails(retId, [
-                  pageAccessToken,
-                  fallbackToken,
-                  oauthUserToken,
-                ])
+                var tokenCandidates = []
+                if (pageAccessToken) {
+                  tokenCandidates.push({ token: pageAccessToken, type: 'page_token' })
+                }
+                if (oauthUserToken && oauthUserToken !== pageAccessToken) {
+                  tokenCandidates.push({ token: oauthUserToken, type: 'oauth_user_token' })
+                }
+                if (
+                  fallbackToken &&
+                  fallbackToken !== pageAccessToken &&
+                  fallbackToken !== oauthUserToken
+                ) {
+                  tokenCandidates.push({ token: fallbackToken, type: 'fallback_token' })
+                }
+
+                var igResolved = resolveInstagramAccountDetails(
+                  retId,
+                  tokenCandidates,
+                  'page=' + (pageName || pageId),
+                )
                 if (igResolved.username) {
                   retUser = igResolved.username
+                } else if (igResolved.last_error) {
+                  directErr = igResolved.last_error
                 }
               }
+
               return {
                 id: retId,
                 username: retUser || null,
                 name: igObj.name || retUser || null,
+                error: directErr,
               }
             }
+          } else {
+            var pErr = extractGraphError(pRes.json, pRes.statusCode)
+            lastErr = pErr.message + ' (code ' + pErr.code + ')'
+            console.log(
+              '[INSTAGRAM_TEST] resolvePageInstagram falhou: HTTP ' +
+                pRes.statusCode +
+                ' code=' +
+                pErr.code +
+                ' msg=' +
+                pErr.message,
+            )
           }
-        } catch (_) {}
+        } catch (netPErr) {
+          lastErr = String(netPErr && netPErr.message ? netPErr.message : netPErr)
+          console.log(
+            '[INSTAGRAM_TEST] resolvePageInstagram erro de rede page_id=' + pageId + ': ' + lastErr,
+          )
+        }
       }
+
       return null
     }
 
@@ -246,25 +438,37 @@ routerAdd(
                   ? String(igAcc.username || igAcc.name).trim()
                   : null
 
+              var pageIgError = null
               // Se não veio instagram_business_account ou faltou username,
-              // consulta /{page_id}?fields=instagram_business_account{id,username}
+              // consulta /{page_id}?fields=instagram_business_account{id,username} usando page token
               if (!igId || !igUser) {
-                var resolved = resolvePageInstagram(pId, pTok, scanToken)
+                var resolved = resolvePageInstagram(pId, pTok, scanToken, pName)
                 if (resolved) {
                   igId = resolved.id
                   if (resolved.username) igUser = resolved.username
+                  if (resolved.error) pageIgError = resolved.error
                 }
               }
 
               // Se mesmo assim tem igId mas não tem igUser, tenta no próprio nó do IG
               if (igId && !igUser) {
-                var directIg = resolveInstagramAccountDetails(igId, [
-                  pTok,
-                  scanToken,
-                  oauthUserToken,
-                ])
+                var directCandidates = []
+                if (pTok) directCandidates.push({ token: pTok, type: 'page_token' })
+                if (scanToken && scanToken !== pTok)
+                  directCandidates.push({ token: scanToken, type: 'scan_token' })
+                if (oauthUserToken && oauthUserToken !== pTok && oauthUserToken !== scanToken) {
+                  directCandidates.push({ token: oauthUserToken, type: 'oauth_user_token' })
+                }
+                var directIg = resolveInstagramAccountDetails(
+                  igId,
+                  directCandidates,
+                  'scan page="' + pName + '"',
+                )
                 if (directIg && directIg.username) {
                   igUser = directIg.username
+                  pageIgError = null
+                } else if (directIg && directIg.last_error) {
+                  pageIgError = directIg.last_error
                 }
               }
 
@@ -272,11 +476,7 @@ routerAdd(
               var isTargetUser = false
               if (igUser) {
                 var cleanFound = igUser.toLowerCase().replace(/^@/, '').trim()
-                if (
-                  cleanFound === TARGET_CRM_USERNAME ||
-                  cleanFound.indexOf(TARGET_CRM_USERNAME) !== -1 ||
-                  TARGET_CRM_USERNAME.indexOf(cleanFound) !== -1
-                ) {
+                if (cleanFound === TARGET_CRM_USERNAME) {
                   isTargetUser = true
                 }
               }
@@ -292,6 +492,7 @@ routerAdd(
                   (igId || 'nenhuma') +
                   ' ig_username=' +
                   (igUser ? '@' + igUser : 'nenhuma') +
+                  (pageIgError ? ' ig_error="' + pageIgError + '"' : '') +
                   (isTargetUser ? ' [MATCH USUÁRIO ALVO @' + TARGET_CRM_USERNAME + '!]' : ''),
               )
 
@@ -301,6 +502,7 @@ routerAdd(
                 page_token: pTok,
                 ig_account_id: igId,
                 ig_username: igUser,
+                ig_error: pageIgError,
                 has_ig: hasIg,
               })
             }
@@ -403,6 +605,7 @@ routerAdd(
                     page_name: p.page_name,
                     ig_account_id: p.ig_account_id,
                     ig_username: p.ig_username,
+                    ig_error: p.ig_error || null,
                     has_ig: p.has_ig,
                   }
                 }),
@@ -447,6 +650,7 @@ routerAdd(
             page_name: p.page_name,
             ig_account_id: p.ig_account_id,
             ig_username: p.ig_username,
+            ig_error: p.ig_error || null,
             has_ig: p.has_ig,
           }
         }),
@@ -582,26 +786,45 @@ routerAdd(
             var resolvedIgId = (rIg && rIg.id) || null
             var resolvedIgUser = (rIg && (rIg.username || rIg.name)) || null
 
-            // Se não veio instagram_business_account ou faltou username, consulta diretamente a página
+            var pageStep0Error = null
+            // Se não veio instagram_business_account ou faltou username, consulta diretamente a página com page token
             if (!resolvedIgId || !resolvedIgUser) {
-              var rCheck = resolvePageInstagram(rPageId, rPageTok, igToken)
+              var rCheck = resolvePageInstagram(rPageId, rPageTok, igToken, rPg.name)
               if (rCheck) {
                 resolvedIgId = rCheck.id
                 if (rCheck.username) resolvedIgUser = rCheck.username
+                if (rCheck.error) pageStep0Error = rCheck.error
               }
             }
 
             // Se ainda não tem username, tenta no próprio nó do IG
             if (resolvedIgId && !resolvedIgUser) {
-              var rDirectIg = resolveInstagramAccountDetails(resolvedIgId, [
-                rPageTok,
-                igToken,
-                oauthUserToken,
-              ])
+              var directStep0Candidates = []
+              if (rPageTok) directStep0Candidates.push({ token: rPageTok, type: 'page_token' })
+              if (igToken && igToken !== rPageTok)
+                directStep0Candidates.push({ token: igToken, type: 'saved_token' })
+              if (oauthUserToken && oauthUserToken !== rPageTok && oauthUserToken !== igToken) {
+                directStep0Candidates.push({ token: oauthUserToken, type: 'oauth_user_token' })
+              }
+              var rDirectIg = resolveInstagramAccountDetails(
+                resolvedIgId,
+                directStep0Candidates,
+                'passo0 page="' + (rPg.name || rPageId) + '"',
+              )
               if (rDirectIg && rDirectIg.username) {
                 resolvedIgUser = rDirectIg.username
+                pageStep0Error = null
+              } else if (rDirectIg && rDirectIg.last_error) {
+                pageStep0Error = rDirectIg.last_error
               }
             }
+
+            var cleanStep0User = (resolvedIgUser || '').toLowerCase().replace(/^@/, '').trim()
+            var matchesTargetAccount = !!(
+              resolvedIgId &&
+              resolvedIgUser &&
+              cleanStep0User === TARGET_CRM_USERNAME
+            )
 
             var parsedPage = {
               page_id: rPageId,
@@ -609,7 +832,8 @@ routerAdd(
               has_instagram: !!resolvedIgId,
               ig_account_id: resolvedIgId,
               ig_username: resolvedIgUser,
-              matches_target_id: !!(resolvedIgId && resolvedIgId === currentIgBizId),
+              ig_error: pageStep0Error,
+              matches_target_id: matchesTargetAccount,
             }
             accessiblePages.push(parsedPage)
 
@@ -624,6 +848,7 @@ routerAdd(
                 (parsedPage.ig_account_id || 'NENHUMA') +
                 ' ig_username=' +
                 (parsedPage.ig_username ? '@' + parsedPage.ig_username : 'NENHUM') +
+                (pageStep0Error ? ' ig_error="' + pageStep0Error + '"' : '') +
                 (parsedPage.matches_target_id ? ' [MATCH ALVO!]' : ''),
             )
 
@@ -677,7 +902,7 @@ routerAdd(
       // 0.5 Consulta à própria página (se for Page Token)
       var pageIdCandidate = (tokenIdentity && tokenIdentity.id) || ''
       if (pageIdCandidate && !tokenIdentity.error && !pageLinkedInstagram) {
-        var pSelf = resolvePageInstagram(pageIdCandidate, igToken, igToken)
+        var pSelf = resolvePageInstagram(pageIdCandidate, igToken, igToken, tokenIdentity.name)
         if (pSelf && pSelf.id) {
           pageLinkedInstagram = {
             linked: true,
@@ -686,6 +911,7 @@ routerAdd(
             name: pSelf.name || pSelf.username,
             page_id: pageIdCandidate,
             page_name: tokenIdentity.name || '',
+            error: pSelf.error || null,
           }
         }
       }

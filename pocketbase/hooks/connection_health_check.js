@@ -322,13 +322,37 @@ routerAdd(
               for (let pi = 0; pi < accRes.json.data.length; pi++) {
                 const rPg = accRes.json.data[pi]
                 const rIg = rPg.instagram_business_account || null
+                const rPageTok = rPg.access_token || ''
+                let rIgId = (rIg && rIg.id) || null
+                let rIgUser = (rIg && (rIg.username || rIg.name)) || null
+
+                if (rIgId && !rIgUser) {
+                  try {
+                    const dIgRes = $http.send({
+                      url:
+                        'https://graph.facebook.com/v22.0/' +
+                        encodeURIComponent(rIgId) +
+                        '?fields=username,name&access_token=' +
+                        encodeURIComponent(rPageTok || igToken),
+                      method: 'GET',
+                      timeout: 8,
+                    })
+                    if (dIgRes.statusCode >= 200 && dIgRes.statusCode < 300 && dIgRes.json) {
+                      rIgUser = (dIgRes.json.username || dIgRes.json.name || '').trim() || null
+                    }
+                  } catch (_) {}
+                }
+
+                const cleanU = (rIgUser || '').toLowerCase().replace(/^@/, '').trim()
+                const isTargetMatch = !!(rIgId && rIgUser && cleanU === 'brf_imoveis_')
+
                 accessiblePages.push({
                   page_id: rPg.id || '',
                   page_name: rPg.name || '',
-                  has_instagram: !!rIg,
-                  ig_account_id: (rIg && rIg.id) || null,
-                  ig_username: (rIg && (rIg.username || rIg.name)) || null,
-                  matches_target_id: !!(rIg && rIg.id === igBizId),
+                  has_instagram: !!rIgId,
+                  ig_account_id: rIgId,
+                  ig_username: rIgUser,
+                  matches_target_id: isTargetMatch,
                 })
               }
               console.log(
@@ -371,18 +395,40 @@ routerAdd(
                 }
 
                 if (igObj && igObj.id) {
+                  let lUser = (igObj.username || igObj.name || '').trim()
+                  if (!lUser) {
+                    try {
+                      const dLRes = $http.send({
+                        url:
+                          'https://graph.facebook.com/v22.0/' +
+                          encodeURIComponent(igObj.id) +
+                          '?fields=username,name&access_token=' +
+                          encodeURIComponent(igToken),
+                        method: 'GET',
+                        timeout: 8,
+                      })
+                      if (dLRes.statusCode >= 200 && dLRes.statusCode < 300 && dLRes.json) {
+                        lUser = (dLRes.json.username || dLRes.json.name || '').trim()
+                      }
+                    } catch (_) {}
+                  }
+
                   pageLinkedIg = {
                     linked: true,
                     id: String(igObj.id).trim(),
-                    username: (igObj.username || igObj.name || '').trim(),
+                    username: lUser,
                   }
+                  const cleanLU = (pageLinkedIg.username || '')
+                    .toLowerCase()
+                    .replace(/^@/, '')
+                    .trim()
                   accessiblePages.push({
                     page_id: pageCandidateId,
                     page_name: tokenIdentity.name || 'Página do Token',
                     has_instagram: true,
                     ig_account_id: pageLinkedIg.id,
                     ig_username: pageLinkedIg.username,
-                    matches_target_id: pageLinkedIg.id === currentIgTarget,
+                    matches_target_id: cleanLU === 'brf_imoveis_',
                   })
                   if (pageLinkedIg.id !== currentIgTarget) {
                     console.log(

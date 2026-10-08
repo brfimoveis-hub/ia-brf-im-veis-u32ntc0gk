@@ -1044,17 +1044,29 @@ export function InstagramConnect() {
 
                           <div className="flex items-center gap-2 flex-wrap text-[11px]">
                             {pg.has_instagram && pg.ig_account_id ? (
-                              <Badge
-                                variant={pg.matches_target_id ? 'default' : 'secondary'}
-                                className={
-                                  pg.matches_target_id
-                                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                                    : 'bg-purple-500/15 text-purple-700 border-purple-500/30'
-                                }
-                              >
-                                IG vinculada: @{pg.ig_username || 'desconhecido'} (ID:{' '}
-                                {pg.ig_account_id})
-                              </Badge>
+                              <div className="flex flex-col items-end gap-0.5">
+                                <Badge
+                                  variant={pg.matches_target_id ? 'default' : 'secondary'}
+                                  className={
+                                    pg.matches_target_id
+                                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                                      : 'bg-purple-500/15 text-purple-700 border-purple-500/30'
+                                  }
+                                >
+                                  IG vinculada:{' '}
+                                  {pg.ig_username
+                                    ? `@${pg.ig_username}`
+                                    : `ID: ${pg.ig_account_id}`}
+                                </Badge>
+                                {!pg.ig_username && pg.ig_error && (
+                                  <span
+                                    className="text-[9px] text-amber-700 font-mono bg-amber-500/10 px-1 py-0.2 rounded border border-amber-500/20 max-w-xs truncate"
+                                    title={pg.ig_error}
+                                  >
+                                    {pg.ig_error}
+                                  </span>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-amber-600 font-medium">
                                 IG vinculada: NENHUMA
