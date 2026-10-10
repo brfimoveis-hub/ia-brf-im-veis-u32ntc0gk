@@ -971,8 +971,8 @@ function runCatalogSyncProcess(triggerSource) {
       title:
         'Villa dos Açores / Villa dos Acordes - Empreendimento Residencial na Grande Florianópolis',
       url: 'https://www.brfimoveis.com.br/280/imoveis/venda-lancamento-apartamento-florianopolis-sc',
-      city: 'Florianópolis',
-      neighborhood: 'Balneário',
+      city: 'Biguaçu',
+      neighborhood: 'Rio Caveiras',
       property_type: 'Lançamento',
       transaction_type: 'Venda',
       price: 489000.0,
@@ -984,7 +984,7 @@ function runCatalogSyncProcess(triggerSource) {
       area_privativa: 64.0,
       area_total: 90.0,
       description:
-        'Residencial Villa dos Açores (Villa dos Acordes): excelente lançamento na Grande Florianópolis com plantas inteligentes de 2 dormitórios com suíte, sacada gourmet, infraestrutura moderna e condições especiais de lançamento.',
+        'Residencial Villa dos Açores (Villa dos Acordes): excelente lançamento localizado no bairro Rio Caveiras, Biguaçu/SC (Grande Florianópolis), com plantas inteligentes de 2 dormitórios com suíte, sacada gourmet, infraestrutura moderna e condições especiais de lançamento.',
       features: [
         'Villa dos Açores',
         'Villa dos Acordes',
@@ -992,6 +992,8 @@ function runCatalogSyncProcess(triggerSource) {
         '2 dormitórios',
         'Suíte',
         'Sacada gourmet',
+        'Biguaçu',
+        'Rio Caveiras',
       ],
       image_url:
         'https://www.brfimoveis.com.br/admin/imovel/mini/20240729T2128580300-373737934.jpg',
@@ -1482,7 +1484,7 @@ cronAdd('sync_properties_dispatcher', '* * * * *', () => {
 // Endpoint interno invocado pelos crons (sem necessidade de auth bearer externa)
 routerAdd('POST', '/backend/v1/sync-properties-cron', (c) => {
   try {
-    const source = c.request().url.query().get('source') || 'cron'
+    const source = c.request.url.query().get('source') || 'cron'
     runCatalogSyncProcess(source)
     return c.json(200, { success: true, source: source })
   } catch (err) {

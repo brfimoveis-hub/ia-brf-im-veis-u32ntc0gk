@@ -1361,7 +1361,8 @@ ${
           },
           {
             regex: /biguacu\s*rio\s*caveiras|rio\s*caveiras/i,
-            filter: "is_active = true && (features ~ 'Rio Caveiras' || code ~ '310')",
+            filter:
+              "is_active = true && (features ~ 'Rio Caveiras' || neighborhood ~ 'Rio Caveiras' || code ~ '310' || code ~ '280')",
           },
           {
             regex: /opus|agron[oô]mica\s*opus/i,
