@@ -7,11 +7,11 @@ function escapeCell(val: unknown): string {
   return `"${s}"`
 }
 
-function downloadCSV(filename: string, headers: string[], rows: string[][]): void {
+function downloadCSV(filename: string, headers: string[], rows: string[][], delimiter = ';'): void {
   const csv = [
-    headers.map(escapeCell).join(','),
-    ...rows.map((r) => r.map(escapeCell).join(',')),
-  ].join('\n')
+    headers.map(escapeCell).join(delimiter),
+    ...rows.map((r) => r.map(escapeCell).join(delimiter)),
+  ].join('\r\n')
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -23,32 +23,34 @@ function downloadCSV(filename: string, headers: string[], rows: string[][]): voi
   URL.revokeObjectURL(url)
 }
 
-export function exportCustomersToCSV(customers: Customer[]): void {
+export function exportCustomersToCSV(customers: Customer[] | any[]): void {
   const headers = [
     'Nome',
     'Telefone',
     'Email',
     'Status',
-    'Urgência',
     'Origem',
+    'Tags',
+    'Criado em',
+    'Urgência',
     'Bairro',
     'Último Envio',
-    'Tags',
   ]
 
-  const rows = customers.map((c) => [
+  const rows = customers.map((c: any) => [
     c.name || c.first_name || '',
     c.phone || c.phone_1_value || '',
     c.email || c.email_1_value || '',
     c.status || '',
-    String(c.urgency ?? ''),
     c.source || '',
+    Array.isArray(c.tags) ? c.tags.join(', ') : typeof c.tags === 'string' ? c.tags : '',
+    c.created || '',
+    c.urgency !== undefined && c.urgency !== null ? String(c.urgency) : '',
     c.neighborhood || '',
     c.last_sent_at || '',
-    Array.isArray(c.tags) ? c.tags.join('; ') : '',
   ])
 
-  downloadCSV(`clientes-${new Date().toISOString().split('T')[0]}.csv`, headers, rows)
+  downloadCSV(`clientes-${new Date().toISOString().split('T')[0]}.csv`, headers, rows, ';')
 }
 
 export function exportCadencesToCSV(cadences: Cadence[]): void {

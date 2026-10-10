@@ -98,7 +98,7 @@ export function UnifiedKanban({ filters, refreshKey, onUpdateStatus }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-1 custom-scrollbar">
+      <div className="flex flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-1 kanban-horizontal-scroll">
         {CUSTOMER_STAGES.map((stage, index) => {
           const instruction = getStageInstruction(biaStages, index + 1)
           return (

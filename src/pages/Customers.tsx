@@ -52,6 +52,9 @@ export default function Customers() {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false)
   const [modalCustomers, setModalCustomers] = useState<any[]>([])
   const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(
+    null,
+  )
 
   const selectedIds = useCustomerSelection()
   const kanbanLazy = useLazyMount('200px')
@@ -134,19 +137,44 @@ export default function Customers() {
 
   const handleExportCSV = useCallback(async () => {
     setExporting(true)
+    setExportProgress(null)
+    const BATCH_SIZE = 500
     try {
-      const records = await pb.collection('customers').getFullList({
+      // 1. Primeira página para saber totalItems e totalPages
+      const firstPage = await pb.collection('customers').getList(1, BATCH_SIZE, {
         filter: listFilter || undefined,
         sort: '-created',
         fields:
-          'id,name,first_name,phone,phone_1_value,email,email_1_value,status,urgency,source,neighborhood,last_sent_at,tags',
+          'id,name,first_name,phone,phone_1_value,email,email_1_value,status,urgency,source,neighborhood,last_sent_at,tags,created',
       })
-      exportCustomersToCSV(records as any)
-      toast.success(`${records.length} clientes exportados`)
-    } catch {
-      toast.error('Erro ao exportar CSV')
+
+      const allRecords: any[] = [...firstPage.items]
+      const total = firstPage.totalItems
+      const totalPages = firstPage.totalPages
+      setExportProgress({ current: allRecords.length, total })
+
+      // 2. Iterar páginas restantes em lotes de 500 sem travar a interface
+      for (let p = 2; p <= totalPages; p++) {
+        // Pausa breve para manter a UI responsiva
+        await new Promise((resolve) => setTimeout(resolve, 40))
+        const res = await pb.collection('customers').getList(p, BATCH_SIZE, {
+          filter: listFilter || undefined,
+          sort: '-created',
+          fields:
+            'id,name,first_name,phone,phone_1_value,email,email_1_value,status,urgency,source,neighborhood,last_sent_at,tags,created',
+        })
+        allRecords.push(...res.items)
+        setExportProgress({ current: allRecords.length, total })
+      }
+
+      exportCustomersToCSV(allRecords)
+      toast.success(`${allRecords.length} clientes exportados com sucesso em CSV`)
+    } catch (err) {
+      console.error('Erro ao exportar CSV:', err)
+      toast.error('Erro ao exportar CSV de clientes')
     } finally {
       setExporting(false)
+      setExportProgress(null)
     }
   }, [listFilter])
 
@@ -195,13 +223,27 @@ export default function Customers() {
           <Button variant="outline" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
           </Button>
-          <Button variant="outline" onClick={handleExportCSV} disabled={exporting}>
+          <Button
+            variant="outline"
+            onClick={handleExportCSV}
+            disabled={exporting}
+            title="Exportar todos os clientes da base para arquivo CSV (compatível com Excel)"
+          >
             {exporting ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin text-primary" />
+                <span>
+                  {exportProgress
+                    ? `${exportProgress.current}/${exportProgress.total}`
+                    : 'Exportando...'}
+                </span>
+              </>
             ) : (
-              <Download className="h-4 w-4 mr-2" />
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                <span>Exportar CSV</span>
+              </>
             )}
-            Exportar CSV
           </Button>
           <Button variant="outline" onClick={handleSelectFirst50}>
             <Users className="h-4 w-4 mr-2" /> Selecionar 50
