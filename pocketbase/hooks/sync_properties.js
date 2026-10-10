@@ -422,10 +422,15 @@ function runCatalogSyncProcess(triggerSource) {
 
   function cleanNeighborhood(neigh, url, title) {
     let n = normalizeMojibake(neigh || '')
+    // Sanitização específica para duplicações corrompidas conhecidas
+    if (/Saco dos Lim[oõ]es[oõ]es/i.test(n)) {
+      return 'Saco dos Limões'
+    }
+
     if (!n || /agende\s+sua\s+visita|\?{2,}|&times;|times/i.test(n) || n.length < 2) {
       if (url) {
         const m = url.match(
-          /imoveis\/venda-[a-z0-9-]+-([a-z0-9-]+)-(?:florianopolis|sao-jose|biguacu|palhoca)-sc/i,
+          /imoveis\/venda-[a-z0-9-]+-([a-z0-9-]+)-(?:florianopolis|sao-jose|biguacu|palhoca|balneario-camboriu|governador-celso-ramos|bombinhas|sao-joaquim)-sc/i,
         )
         if (m && m[1]) {
           const slug = m[1].replace(/-/g, ' ')
@@ -450,6 +455,7 @@ function runCatalogSyncProcess(triggerSource) {
         'Praia Comprida',
         'Centro',
         'Saco dos Limões',
+        'Ingleses do Rio Vermelho',
         'Rio Caveiras',
         'Bom Viver',
         'Pantanal',
