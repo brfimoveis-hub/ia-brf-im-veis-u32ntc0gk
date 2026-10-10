@@ -25,7 +25,6 @@ import LaunchLanding from './pages/LaunchLanding'
 import FaxinaAtivosMeta from './pages/FaxinaAtivosMeta'
 import ScheduledPosts from './pages/ScheduledPosts'
 
-import Cadences from './pages/Cadences'
 import EmailMarketing from './pages/EmailMarketing'
 import EmailCampaignDetail from './pages/EmailCampaignDetail'
 import SettingsRemarketing from './pages/SettingsRemarketing'
@@ -146,7 +145,7 @@ const RouteTracker = () => {
         } else if (lowerPath.startsWith('/customer-list')) {
           component = 'Customers'
         } else if (lowerPath.startsWith('/cadences')) {
-          component = 'Cadences'
+          component = 'Customers'
         } else if (lowerPath.startsWith('/email-marketing/') && lowerPath !== '/email-marketing') {
           component = 'EmailCampaignDetail'
         } else if (lowerPath.startsWith('/email-marketing')) {
@@ -360,11 +359,7 @@ const router = createBrowserRouter([
               },
               {
                 path: 'cadences',
-                element: (
-                  <ErrorBoundary>
-                    <Cadences />
-                  </ErrorBoundary>
-                ),
+                element: <Navigate to="/customers" replace />,
               },
               {
                 path: 'email-marketing',

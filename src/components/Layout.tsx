@@ -58,7 +58,6 @@ export default function Layout() {
     { name: 'Estatísticas', path: '/estatisticas', icon: BarChart3 },
     { name: 'Anúncios', path: '/anuncios', icon: Megaphone },
     { name: 'Clientes', path: '/customers', icon: Users },
-    { name: 'Cadências', path: '/cadences', icon: Settings },
     { name: 'Email Marketing', path: '/email-marketing', icon: Mail },
     { name: 'Remarketing', path: '/settings/remarketing', icon: Target },
     { name: 'Faxina de Ativos Meta', path: '/faxina-meta', icon: Trash2 },

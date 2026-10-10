@@ -29,7 +29,6 @@ export default function Dashboard() {
   const { user } = useAuth()
 
   const [customerCount, setCustomerCount] = useState<number | null>(null)
-  const [cadenceCount, setCadenceCount] = useState<number | null>(null)
   const [iaInteractions, setIaInteractions] = useState<number | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(user || null)
 
@@ -62,19 +61,7 @@ export default function Dashboard() {
       }
       await wait(FETCH_DELAY_MS)
 
-      // 3) Cadences count
-      try {
-        const res = await pb
-          .collection('cadences')
-          .getList(1, 1, { filter: 'is_active = true', fields: 'id' })
-        setCadenceCount(res.totalItems)
-      } catch (err) {
-        console.error('dashboard cadences fetch failed', err)
-        setCadenceCount(null)
-      }
-      await wait(FETCH_DELAY_MS)
-
-      // 4) Leads / IA interactions count
+      // 3) Leads / IA interactions count
       try {
         const res = await pb.collection('leads').getList(1, 1, { fields: 'id' })
         setIaInteractions(res.totalItems)
@@ -196,7 +183,7 @@ export default function Dashboard() {
       </div>
 
       {/* Grid de Cards principais */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {/* Clientes */}
         <Card
           onClick={() => {
@@ -214,26 +201,6 @@ export default function Dashboard() {
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
             <div className="text-xl sm:text-2xl font-bold">{renderValue(customerCount)}</div>
             <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">Na base de dados</p>
-          </CardContent>
-        </Card>
-
-        {/* Cadências */}
-        <Card
-          onClick={() => {
-            if (!loaded && !loading) loadDashboard()
-          }}
-          className={cn(
-            'transition-all cursor-pointer hover:border-primary/50',
-            !loaded && 'bg-slate-50/70 dark:bg-slate-900/40',
-          )}
-        >
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 p-3 sm:p-6">
-            <CardTitle className="text-xs sm:text-sm font-medium">Cadências</CardTitle>
-            <MessageSquare className="h-4 w-4 text-primary shrink-0" />
-          </CardHeader>
-          <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-            <div className="text-xl sm:text-2xl font-bold">{renderValue(cadenceCount)}</div>
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">Ativas no funil</p>
           </CardContent>
         </Card>
 
@@ -258,7 +225,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Status Integrações */}
-        <Card className="col-span-2 sm:col-span-1">
+        <Card className="col-span-1 sm:col-span-2 lg:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 p-3 sm:p-6">
             <CardTitle className="text-xs sm:text-sm font-medium">Integrações</CardTitle>
             <Activity className="h-4 w-4 text-primary shrink-0" />
