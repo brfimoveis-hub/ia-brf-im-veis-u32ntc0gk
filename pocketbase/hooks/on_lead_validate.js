@@ -7,41 +7,8 @@ onRecordCreateRequest((e) => {
 
   if (!assignedTo) return e.next()
 
-  try {
-    let cadences = $app.findRecordsByFilter(
-      'cadences',
-      `user_id = '${assignedTo}' && is_active = true && title = '${status.replace(/'/g, "''")}'`,
-      '-created',
-      1,
-      0,
-    )
-
-    if (
-      cadences.length === 0 &&
-      (status === 'Novo' || status === 'lead' || status === 'Base de Clientes/Novo LYD')
-    ) {
-      cadences = $app.findRecordsByFilter(
-        'cadences',
-        `user_id = '${assignedTo}' && is_active = true`,
-        'order',
-        1,
-        0,
-      )
-    }
-
-    if (cadences.length === 0) {
-      throw new BadRequestError('Falha na distribuição do lead', {
-        status: new ValidationError(
-          'cadence_missing',
-          'Nenhuma cadência ativa encontrada para o vendedor.',
-        ),
-      })
-    }
-  } catch (err) {
-    if (err && err.name === 'BadRequestError') {
-      throw err
-    }
-  }
-
+  // Desde a Constituição v3.1, a coleção 'cadences' foi aposentada (is_active = false)
+  // e o atendimento da Bia é guiado pelo Mapa de Movimento em bia_learnings (tYVJIdIFb5rW4iq).
+  // A validação legada de cadência ativa foi neutralizada para permitir entrada de novos leads.
   return e.next()
 }, 'leads')

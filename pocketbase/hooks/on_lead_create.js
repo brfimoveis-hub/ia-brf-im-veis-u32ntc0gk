@@ -56,49 +56,13 @@ onRecordAfterCreateSuccess((e) => {
       newCustomer.set('email', email)
       newCustomer.set('email_1_value', email)
     }
-    newCustomer.set('status', status === 'lead' ? 'lead' : 'Novo')
+    newCustomer.set('status', status === 'lead' ? 'lead' : status || 'Novo')
     newCustomer.set('source', source)
     newCustomer.set('notes', notes)
 
-    // Verify cadence existence before saving to prevent orphaned customers
-    try {
-      let cadences = $app.findRecordsByFilter(
-        'cadences',
-        `user_id = '${assignedTo || e.auth?.id}' && is_active = true && title = '${newCustomer.getString('status').replace(/'/g, "''")}'`,
-        '-created',
-        1,
-        0,
-      )
-      if (
-        cadences.length === 0 &&
-        (newCustomer.getString('status') === 'Novo' || newCustomer.getString('status') === 'lead')
-      ) {
-        cadences = $app.findRecordsByFilter(
-          'cadences',
-          `user_id = '${assignedTo || e.auth?.id}' && is_active = true`,
-          'order',
-          1,
-          0,
-        )
-      }
-
-      if (cadences.length === 0) {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRecord = new Record(logsCol)
-        logRecord.set('user_id', assignedTo || e.auth?.id)
-        logRecord.set('type', 'api_failure')
-        logRecord.set('message', 'Erro ao transferir lead: Cadência ausente')
-        logRecord.set(
-          'details',
-          'O lead foi criado, mas não pôde ser movido para clientes porque não há cadência ativa correspondente.',
-        )
-        logRecord.set('payload', { lead_id: lead.id })
-        $app.saveNoValidate(logRecord)
-
-        return e.next()
-      }
-    } catch (_) {}
-
+    // Desde a Constituição v3.1, a coleção 'cadences' foi aposentada (is_active = false)
+    // e o atendimento da Bia é conduzido pela Constituição em bia_learnings.
+    // O customer é criado diretamente sem dependência de cadências ativas.
     $app.save(newCustomer)
   }
 

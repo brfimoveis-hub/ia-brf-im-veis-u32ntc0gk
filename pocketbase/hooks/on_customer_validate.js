@@ -61,42 +61,8 @@ onRecordCreateRequest((e) => {
     throw new BadRequestError('Cliente duplicado', errors)
   }
 
-  // 2. Cadence Integration Check
-  try {
-    let cadences = $app.findRecordsByFilter(
-      'cadences',
-      `user_id = '${userId}' && is_active = true && title = '${status.replace(/'/g, "''")}'`,
-      '-created',
-      1,
-      0,
-    )
-
-    if (
-      cadences.length === 0 &&
-      (status === 'Novo' || status === 'lead' || status === 'Base de Clientes/Novo LYD')
-    ) {
-      cadences = $app.findRecordsByFilter(
-        'cadences',
-        `user_id = '${userId}' && is_active = true`,
-        'order',
-        1,
-        0,
-      )
-    }
-
-    if (cadences.length === 0) {
-      throw new BadRequestError('Falha na distribuição do lead', {
-        status: new ValidationError(
-          'cadence_missing',
-          'Nenhuma cadência ativa encontrada para distribuir este lead. Crie ou ative uma cadência.',
-        ),
-      })
-    }
-  } catch (err) {
-    if (err && err.name === 'BadRequestError') {
-      throw err
-    }
-  }
-
+  // 2. Cadence Integration Check — Neutralizada desde a Constituição v3.1
+  // A coleção 'cadences' legada está inativa (todas is_active = false).
+  // O motor da Bia é guiado pela Constituição Soberana (bia_learnings).
   return e.next()
 }, 'customers')
