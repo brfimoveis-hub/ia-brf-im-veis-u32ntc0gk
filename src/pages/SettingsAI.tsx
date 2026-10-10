@@ -38,6 +38,7 @@ import {
   Database,
   Search,
   Tag,
+  Edit,
   Edit2,
   Layers,
   BookOpen,
@@ -78,6 +79,7 @@ import {
   type BiaLearningCategory,
   getBiaLearnings,
   createBiaLearning,
+  updateBiaLearning,
   toggleBiaLearningActive,
   markBiaLearningReviewed,
 } from '@/services/bia_learnings'
@@ -263,6 +265,15 @@ export default function SettingsAI() {
   const [newLearningPriority, setNewLearningPriority] = useState<number>(80)
   const [creatingLearning, setCreatingLearning] = useState(false)
 
+  // Edição de aprendizado (Mauro editar Texto Único ou qualquer regra)
+  const [editingLearning, setEditingLearning] = useState<BiaLearning | null>(null)
+  const [openEditLearningDialog, setOpenEditLearningDialog] = useState(false)
+  const [editLearningTitle, setEditLearningTitle] = useState('')
+  const [editLearningRuleText, setEditLearningRuleText] = useState('')
+  const [editLearningCategory, setEditLearningCategory] = useState<BiaLearningCategory>('geral')
+  const [editLearningPriority, setEditLearningPriority] = useState<number>(80)
+  const [savingLearningEdit, setSavingLearningEdit] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadUserData = useCallback(async () => {
@@ -432,12 +443,50 @@ export default function SettingsAI() {
       setLearnings((prev) => prev.map((l) => (l.id === item.id ? updated : l)))
       toast.success(`Regra "${item.title}" revisada e confirmada por Mauro!`)
     } catch (err: any) {
-      toast.error('Erro ao carimbar revisão', { description: err.message })
+      toast.error('Erro ao carregar revisão', { description: err.message })
     } finally {
       setLearningActionId(null)
     }
   }
 
+  const handleOpenEditLearning = (item: BiaLearning) => {
+    setEditingLearning(item)
+    setEditLearningTitle(item.title)
+    setEditLearningRuleText(item.rule_text)
+    setEditLearningCategory(item.category)
+    setEditLearningPriority(item.priority)
+    setOpenEditLearningDialog(true)
+  }
+
+  const handleSaveLearningEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingLearning) return
+    if (!editLearningTitle.trim() || !editLearningRuleText.trim()) {
+      toast.error('Preencha o título e a instrução da regra.')
+      return
+    }
+
+    setSavingLearningEdit(true)
+    try {
+      const updated = await updateBiaLearning(editingLearning.id, {
+        title: editLearningTitle.trim(),
+        rule_text: editLearningRuleText.trim(),
+        category: editLearningCategory,
+        priority: Number(editLearningPriority) || 80,
+        author: 'Mauro',
+        last_reviewed_at: new Date().toISOString(),
+        reviewed_by: 'Mauro',
+      })
+      setLearnings((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
+      toast.success('Orientação atualizada com sucesso no Caderno de Aprendizados!')
+      setOpenEditLearningDialog(false)
+      setEditingLearning(null)
+    } catch (err: any) {
+      toast.error('Erro ao salvar alteração da regra', { description: err.message })
+    } finally {
+      setSavingLearningEdit(false)
+    }
+  }
   const handleCreateLearning = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newLearningTitle.trim() || !newLearningRuleText.trim()) {
@@ -938,6 +987,19 @@ export default function SettingsAI() {
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-center pt-2 sm:pt-0">
                       <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isWorking}
+                        onClick={() => handleOpenEditLearning(item)}
+                        className="h-8 text-xs gap-1.5"
+                        title="Editar instrução da Bia"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        Editar
+                      </Button>
+
+                      <Button
+                        type="button"
                         variant={item.is_active ? 'outline' : 'default'}
                         size="sm"
                         disabled={isWorking}
@@ -977,6 +1039,128 @@ export default function SettingsAI() {
           )}
         </CardContent>
       </Card>
+
+      {/* MODAL: EDITAR ORIENTAÇÃO DO CADERNO (MAURO) */}
+      <Dialog open={openEditLearningDialog} onOpenChange={setOpenEditLearningDialog}>
+        <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Edit className="w-5 h-5 text-amber-600" />
+              Editar Orientação do Caderno (Mauro)
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Ao alterar esta orientação, a Bia absorve as novas diretrizes imediatamente e as
+              caixinhas do Pipeline Kanban refletem a alteração de forma sincronizada.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveLearningEdit} className="space-y-3.5 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="editRuleTitle" className="text-xs font-semibold">
+                Título da Regra
+              </Label>
+              <Input
+                id="editRuleTitle"
+                value={editLearningTitle}
+                onChange={(e) => setEditLearningTitle(e.target.value)}
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="editRuleCategory" className="text-xs font-semibold">
+                  Categoria
+                </Label>
+                <Select
+                  value={editLearningCategory}
+                  onValueChange={(val) => setEditLearningCategory(val as BiaLearningCategory)}
+                >
+                  <SelectTrigger id="editRuleCategory" className="h-9 text-xs">
+                    <SelectValue placeholder="Selecione a categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="catalogo">Catálogo de Imóveis</SelectItem>
+                    <SelectItem value="comportamento">Comportamento & Tom</SelectItem>
+                    <SelectItem value="qualificacao">Qualificação de Leads</SelectItem>
+                    <SelectItem value="apresentacao">Apresentação Comercial</SelectItem>
+                    <SelectItem value="geral">Geral</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label
+                  htmlFor="editRulePriority"
+                  className="text-xs font-semibold flex items-center justify-between"
+                >
+                  <span>Prioridade (0 a 1000)</span>
+                  <span className="text-[11px] font-mono text-muted-foreground">
+                    {editLearningPriority}
+                  </span>
+                </Label>
+                <Input
+                  id="editRulePriority"
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={editLearningPriority}
+                  onChange={(e) => setEditLearningPriority(Number(e.target.value))}
+                  className="h-9 text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="editRuleText" className="text-xs font-semibold">
+                Instrução Completa da Regra / Texto Soberano
+              </Label>
+              <Textarea
+                id="editRuleText"
+                value={editLearningRuleText}
+                onChange={(e) => setEditLearningRuleText(e.target.value)}
+                className="min-h-[220px] text-xs font-sans leading-relaxed"
+                required
+              />
+              <p className="text-[11px] text-muted-foreground">
+                As alterações são salvas na coleção <code>bia_learnings</code> e sincronizadas em
+                tempo real com o Kanban.
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setOpenEditLearningDialog(false)}
+                disabled={savingLearningEdit}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={savingLearningEdit}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {savingLearningEdit ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    Salvando no Cérebro...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                    Salvar Alterações
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* MODAL: CRIAR NOVA ORIENTAÇÃO DO CADERNO */}
       <Dialog open={openNewLearningDialog} onOpenChange={setOpenNewLearningDialog}>
