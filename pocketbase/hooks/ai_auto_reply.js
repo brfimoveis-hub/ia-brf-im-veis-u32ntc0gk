@@ -3013,19 +3013,92 @@ ${safePropertyContext}`
       return false
     }
 
-    // REGRAS DE MÁQUINA 3 & 6:
-    // Higienizar tags internas ([HANDOVER], [STATUS], [PHASE], [FOLLOW_UP_STEP], [PROMISE], etc.) ANTES da avaliação da Mãe IA
+    // REGRAS DE MÁQUINA 3 & 6 (EXTRAÇÃO PRECOCE DAS TAGS DO CRM ANTES DE QUALQUER EXPURGO):
+    // Extrai TODAS as tags emitidas pelo modelo ([STATUS], [PHASE], [FOLLOW_UP_STEP], [PROMISE], [PERMUTA], [HANDOVER], perfil/faixa/bairro/urgência)
+    // As variáveis são preservadas em memória para persistência no CRM e log estruturado.
+    const earlyStatusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
+    if (earlyStatusMatch && earlyStatusMatch[1]) {
+      detectedStatus = earlyStatusMatch[1].trim()
+    }
+
+    const earlyPhaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
+    if (earlyPhaseMatch && earlyPhaseMatch[1]) {
+      detectedPhase = earlyPhaseMatch[1].trim()
+    }
+
+    const earlyFollowUpStepMatch = responseText.match(/\[FOLLOW_UP_STEP:\s*(.*?)\]/i)
+    if (earlyFollowUpStepMatch && earlyFollowUpStepMatch[1]) {
+      detectedFollowUpStep = earlyFollowUpStepMatch[1].trim()
+    }
+
+    const earlyPromiseCtxMatch = responseText.match(/\[PROMISE_CONTEXT:\s*(.*?)\]/i)
+    if (earlyPromiseCtxMatch && earlyPromiseCtxMatch[1]) {
+      detectedPromiseContext = earlyPromiseCtxMatch[1].trim()
+      detectedPromisePending = true
+    }
+
+    const earlyPromisePendingMatch = responseText.match(
+      /\[PROMISE_PENDING:\s*(true|false|sim|não|nao)\]/i,
+    )
+    if (earlyPromisePendingMatch && earlyPromisePendingMatch[1]) {
+      const pVal = earlyPromisePendingMatch[1].toLowerCase()
+      detectedPromisePending = pVal === 'true' || pVal === 'sim'
+    }
+
     const earlyHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
     if (earlyHandoverMatch && earlyHandoverMatch[1]) {
       detectedHandover = earlyHandoverMatch[1].trim()
     }
-    responseText = responseText.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
-    responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
-    responseText = responseText.replace(/\[PHASE:\s*.*?\]/gi, '').trim()
-    responseText = responseText.replace(/\[FOLLOW_UP_STEP:\s*.*?\]/gi, '').trim()
-    responseText = responseText.replace(/\[PROMISE_CONTEXT:\s*.*?\]/gi, '').trim()
-    responseText = responseText.replace(/\[PROMISE_PENDING:\s*.*?\]/gi, '').trim()
-    responseText = responseText.replace(/\[PERMUTA\]/gi, '').trim()
+
+    const earlyProfileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
+    if (earlyProfileMatch && earlyProfileMatch[1]) {
+      detectedProfile = earlyProfileMatch[1].trim()
+    }
+
+    const earlyPriceRangeMatch = responseText.match(/\[PRICE_RANGE:\s*(.*?)\]/i)
+    if (earlyPriceRangeMatch && earlyPriceRangeMatch[1]) {
+      detectedPriceRange = earlyPriceRangeMatch[1].trim()
+    }
+
+    const earlyNeighborhoodMatch = responseText.match(/\[NEIGHBORHOOD:\s*(.*?)\]/i)
+    if (earlyNeighborhoodMatch && earlyNeighborhoodMatch[1]) {
+      detectedNeighborhood = earlyNeighborhoodMatch[1].trim()
+    }
+
+    const earlyUrgencyMatch = responseText.match(/\[URGENCY:\s*(\d+)\]/i)
+    if (earlyUrgencyMatch && earlyUrgencyMatch[1]) {
+      const uNum = parseInt(earlyUrgencyMatch[1], 10)
+      if (!isNaN(uNum) && uNum >= 1 && uNum <= 5) {
+        detectedUrgency = uNum
+      }
+    }
+
+    if (responseText.includes('[PERMUTA]')) {
+      detectedPermuta = true
+    }
+
+    // Função centralizada para remoção completa das tags de máquina do texto
+    function stripAllMachineTags(rawText) {
+      if (!rawText) return ''
+      let out = String(rawText)
+      out = out.replace(/\[HANDOVER:[^\]]*\]/gi, '')
+      out = out.replace(/\[STATUS:\s*.*?\]/gi, '')
+      out = out.replace(/\[PHASE:\s*.*?\]/gi, '')
+      out = out.replace(/\[FOLLOW_UP_STEP:\s*.*?\]/gi, '')
+      out = out.replace(/\[PROMISE_CONTEXT:\s*.*?\]/gi, '')
+      out = out.replace(/\[PROMISE_PENDING:\s*.*?\]/gi, '')
+      out = out.replace(/\[PROFILE:\s*.*?\]/gi, '')
+      out = out.replace(/\[PRICE_RANGE:\s*.*?\]/gi, '')
+      out = out.replace(/\[NEIGHBORHOOD:\s*.*?\]/gi, '')
+      out = out.replace(/\[URGENCY:\s*.*?\]/gi, '')
+      out = out.replace(/\[PERMUTA\]/gi, '')
+      out = out.replace(/\[AUDIO\]/gi, '')
+      out = out.replace(/\[VIDEO\]/gi, '')
+      return out.trim()
+    }
+
+    // Remove tags da cópia que vai para validação da Mãe IA / RAG
+    responseText = stripAllMachineTags(responseText)
     responseText = sanitizeAiResponse(responseText)
 
     // Optional Mother AI supervisor validation & Regeneration Flow
@@ -3554,82 +3627,71 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       }
     }
 
-    // Extract business tags from response
-    let detectedPriceRange = ''
-    let detectedNeighborhood = ''
-    let detectedUrgency = 0
-
-    const statusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
-    if (statusMatch && statusMatch[1]) {
-      detectedStatus = statusMatch[1].trim()
-      responseText = responseText.replace(/\[STATUS:\s*.*?\]/gi, '').trim()
+    // Secondary check: caso o modelo tenha sido regenerado pela Mãe IA ou fallback e inserido tags novas
+    const lateStatusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
+    if (lateStatusMatch && lateStatusMatch[1]) {
+      detectedStatus = lateStatusMatch[1].trim()
     }
 
-    const phaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
-    if (phaseMatch && phaseMatch[1]) {
-      detectedPhase = phaseMatch[1].trim()
-      responseText = responseText.replace(/\[PHASE:\s*.*?\]/gi, '').trim()
+    const latePhaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
+    if (latePhaseMatch && latePhaseMatch[1]) {
+      detectedPhase = latePhaseMatch[1].trim()
     }
 
-    const followUpStepMatch = responseText.match(/\[FOLLOW_UP_STEP:\s*(.*?)\]/i)
-    if (followUpStepMatch && followUpStepMatch[1]) {
-      detectedFollowUpStep = followUpStepMatch[1].trim()
-      responseText = responseText.replace(/\[FOLLOW_UP_STEP:\s*.*?\]/gi, '').trim()
+    const lateFollowUpStepMatch = responseText.match(/\[FOLLOW_UP_STEP:\s*(.*?)\]/i)
+    if (lateFollowUpStepMatch && lateFollowUpStepMatch[1]) {
+      detectedFollowUpStep = lateFollowUpStepMatch[1].trim()
     }
 
-    const promiseCtxMatch = responseText.match(/\[PROMISE_CONTEXT:\s*(.*?)\]/i)
-    if (promiseCtxMatch && promiseCtxMatch[1]) {
-      detectedPromiseContext = promiseCtxMatch[1].trim()
+    const latePromiseCtxMatch = responseText.match(/\[PROMISE_CONTEXT:\s*(.*?)\]/i)
+    if (latePromiseCtxMatch && latePromiseCtxMatch[1]) {
+      detectedPromiseContext = latePromiseCtxMatch[1].trim()
       detectedPromisePending = true
-      responseText = responseText.replace(/\[PROMISE_CONTEXT:\s*.*?\]/gi, '').trim()
     }
 
-    const promisePendingMatch = responseText.match(
+    const latePromisePendingMatch = responseText.match(
       /\[PROMISE_PENDING:\s*(true|false|sim|não|nao)\]/i,
     )
-    if (promisePendingMatch && promisePendingMatch[1]) {
-      const pVal = promisePendingMatch[1].toLowerCase()
+    if (latePromisePendingMatch && latePromisePendingMatch[1]) {
+      const pVal = latePromisePendingMatch[1].toLowerCase()
       detectedPromisePending = pVal === 'true' || pVal === 'sim'
-      responseText = responseText.replace(/\[PROMISE_PENDING:\s*.*?\]/gi, '').trim()
     }
 
-    const handoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
-    if (handoverMatch && handoverMatch[1]) {
-      detectedHandover = handoverMatch[1].trim()
-      responseText = responseText.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
+    const lateHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
+    if (lateHandoverMatch && lateHandoverMatch[1]) {
+      detectedHandover = lateHandoverMatch[1].trim()
     }
 
-    const profileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
-    if (profileMatch && profileMatch[1]) {
-      detectedProfile = profileMatch[1].trim()
-      responseText = responseText.replace(/\[PROFILE:\s*.*?\]/gi, '').trim()
+    const lateProfileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
+    if (lateProfileMatch && lateProfileMatch[1]) {
+      detectedProfile = lateProfileMatch[1].trim()
     }
 
-    const priceRangeMatch = responseText.match(/\[PRICE_RANGE:\s*(.*?)\]/i)
-    if (priceRangeMatch && priceRangeMatch[1]) {
-      detectedPriceRange = priceRangeMatch[1].trim()
-      responseText = responseText.replace(/\[PRICE_RANGE:\s*.*?\]/gi, '').trim()
+    const latePriceRangeMatch = responseText.match(/\[PRICE_RANGE:\s*(.*?)\]/i)
+    if (latePriceRangeMatch && latePriceRangeMatch[1]) {
+      detectedPriceRange = latePriceRangeMatch[1].trim()
     }
 
-    const neighborhoodMatch = responseText.match(/\[NEIGHBORHOOD:\s*(.*?)\]/i)
-    if (neighborhoodMatch && neighborhoodMatch[1]) {
-      detectedNeighborhood = neighborhoodMatch[1].trim()
-      responseText = responseText.replace(/\[NEIGHBORHOOD:\s*.*?\]/gi, '').trim()
+    const lateNeighborhoodMatch = responseText.match(/\[NEIGHBORHOOD:\s*(.*?)\]/i)
+    if (lateNeighborhoodMatch && lateNeighborhoodMatch[1]) {
+      detectedNeighborhood = lateNeighborhoodMatch[1].trim()
     }
 
-    const urgencyMatch = responseText.match(/\[URGENCY:\s*(\d+)\]/i)
-    if (urgencyMatch && urgencyMatch[1]) {
-      const uNum = parseInt(urgencyMatch[1], 10)
+    const lateUrgencyMatch = responseText.match(/\[URGENCY:\s*(\d+)\]/i)
+    if (lateUrgencyMatch && lateUrgencyMatch[1]) {
+      const uNum = parseInt(lateUrgencyMatch[1], 10)
       if (!isNaN(uNum) && uNum >= 1 && uNum <= 5) {
         detectedUrgency = uNum
       }
-      responseText = responseText.replace(/\[URGENCY:\s*.*?\]/gi, '').trim()
     }
 
-    let detectedPermuta = false
     if (responseText.includes('[PERMUTA]')) {
       detectedPermuta = true
-      responseText = responseText.replace(/\[PERMUTA\]/gi, '').trim()
+    }
+
+    // Higieniza completamente qualquer resquício de tags
+    if (typeof stripAllMachineTags === 'function') {
+      responseText = stripAllMachineTags(responseText)
     }
 
     responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
@@ -4349,9 +4411,13 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       }
 
       let crmUpdated = false
+      let stageMoved = false
+      const oldStatusBeforeMove = currentCustStatus
+
       if (targetStatus && targetStatus !== currentCustStatus) {
         custToUpdate.set('status', targetStatus)
         crmUpdated = true
+        stageMoved = true
       }
 
       // Mapeamento canônico do status para as fases clássicas do pipeline ('Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento')
@@ -4452,6 +4518,51 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         console.log(
           `[AI_REPLY] CRM updated for customer=${customerId} (status=${targetStatus || 'unchanged'})`,
         )
+      }
+
+      // Registro obrigatório de movimentação de estágio em system_logs (tipo lead_stage_movement)
+      if (stageMoved && targetStatus) {
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const moveLog = new Record(logsCol)
+          moveLog.set('user_id', userId || '')
+          moveLog.set('type', 'lead_stage_movement')
+          moveLog.set(
+            'message',
+            `Lead movimentado pela Bia: "${oldStatusBeforeMove || 'Sem estágio'}" -> "${targetStatus}"`,
+          )
+          moveLog.set(
+            'details',
+            JSON.stringify({
+              moved_by: 'Bia',
+              from_status: oldStatusBeforeMove || '',
+              to_status: targetStatus,
+              phase: targetPhase || custToUpdate.getString('phase') || '',
+              follow_up_step:
+                detectedFollowUpStep || custToUpdate.getString('follow_up_step') || '',
+              customer_id: customerId,
+              customer_name: displayName || custToUpdate.getString('name') || '',
+              customer_phone: customerPhone || custToUpdate.getString('phone') || '',
+            }),
+          )
+          moveLog.set(
+            'payload',
+            JSON.stringify({
+              moved_by: 'Bia',
+              from_status: oldStatusBeforeMove || '',
+              to_status: targetStatus,
+              customer_id: customerId,
+            }),
+          )
+          $app.saveNoValidate(moveLog)
+          console.log(
+            `[AI_REPLY] [LEAD_STAGE_MOVEMENT] Log gravado: "${oldStatusBeforeMove}" -> "${targetStatus}" (customer=${customerId})`,
+          )
+        } catch (logMoveErr) {
+          console.warn(
+            `[AI_REPLY] Falha ao registrar log lead_stage_movement: ${String(logMoveErr)}`,
+          )
+        }
       }
     } catch (crmErr) {
       console.warn(`[AI_REPLY] CRM status update non-fatal error: ${String(crmErr)}`)
@@ -4556,6 +4667,10 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     }
 
     // Send WhatsApp reply via Meta Cloud API v21.0
+    // GARANTIA ABSOLUTA: O cliente NUNCA vê colchetes nem tags de máquina no texto final enviado
+    const finalCleanBody =
+      typeof stripAllMachineTags === 'function' ? stripAllMachineTags(responseText) : responseText
+
     if ((conversationChannel === 'whatsapp' || !conversationChannel) && metaToken && metaPhoneId) {
       console.log(
         `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
@@ -4569,7 +4684,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           messaging_product: 'whatsapp',
           to: cleanPhone,
           type: 'text',
-          text: { body: responseText },
+          text: { body: finalCleanBody },
         }),
       )
 
@@ -4601,8 +4716,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         logRec.set(
           'payload',
           JSON.stringify({
-            preview: responseText.substring(0, 120),
-            full_text: responseText,
+            preview: finalCleanBody.substring(0, 120),
+            full_text: finalCleanBody,
             customer_id: customerId,
           }),
         )
@@ -4622,7 +4737,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
               { Authorization: `Bearer ${openAiKey}`, 'Content-Type': 'application/json' },
               JSON.stringify({
                 model: 'tts-1',
-                input: responseText || 'Olá',
+                input: finalCleanBody || 'Olá',
                 voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
               }),
             )

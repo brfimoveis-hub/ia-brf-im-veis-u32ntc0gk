@@ -1,160 +1,22 @@
-// @ts-nocheck
-/// <reference path="../pb_data/types.d.ts" />
-
 /**
- * Motor de Persistência da Bia — Job Agendado de Retomadas (Pilares A e B)
- * Executa a cada 15 minutos na janela das 08h às 20h:
- * cronAdd('bia_persistence_followup', '*\/15 8-20 * * *')
+ * CRON: Automação da Régua de Persistência Comercial da Bia (D+1, D+3, D+7, D+14)
+ * Condução ativa contra o silêncio do cliente — Texto Único v3.1 (bia_learnings id tYVJIdIFb5rW4iq).
  *
- * A cada execução:
- * 1. Respeita horário comercial (janela do cron 8-20h + validação UTC-3 horário de Brasília).
- * 2. Trava ai_processing com liberação estrita no finally (TTL 3 min).
- * 3. Busca conversas elegíveis:
- *    - next_follow_up_at vencido (ou sem próximo follow-up mas elegível por tempo)
- *    - persistence_status = 'ativo' ou 'aguardando_momento'
- *    - promise_pending = true cumprir antes de tudo (Pilar B - Promessa feita)
- * 4. Dispara a mensagem de retomada da escala D+1 / D+3 / D+7 / D+14:
- *    - Cada toque com conteúdo diferente:
- *      * D+1: Pergunta consultiva leve sobre o imóvel em pauta ou dúvida pendente.
- *      * D+3: Novo ângulo / diferencial do imóvel em foco (localização, lazer, vaga, rentabilidade).
- *      * D+7: Condição / forma de pagamento / verificação de timing para o mês.
- *      * D+14: Validação de fechamento de ciclo / despedida elegante mantendo canal aberto.
- * 5. Avança follow_up_step, follow_up_count, last_follow_up_at, next_follow_up_at.
- * 6. Após D+14 migra para 'nurturing_monthly' (1 toque por mês, 30 dias de intervalo, nunca spam).
- * 7. Deduplicação por conteúdo normalizado (evita mensagens idênticas).
- * 8. Formatação WhatsApp rigorosa (*negrito simples*, sem tabelas markdown, sem cabeçalhos ###).
- * 9. Envio real via WhatsApp Cloud API idêntico ao ai_auto_reply.js (type: 'whatsapp_ai_send' em system_logs).
- * 10. Logs claros por execução: quantas retomadas disparadas, para quem e qual etapa.
+ * PONTO ÚNICO DE ENVIO DE RETOMADAS/MARKETING — migrar para a API de Mensagens de Marketing (MM) da Meta até 13/10/2027; descontinuação do envio de marketing via Cloud API nessa data.
  *
- * RESTRIÇÕES GOJA: Sem matchAll, sem for..of em Set/Map, sem spreads de objeto, sem optional chaining.
+ * Periodicidade: 'STAR/15 8-20 STAR STAR STAR' (A cada 15 min, das 08h às 20h horário de Brasília, seg a sáb)
  */
 
-// Desativado a pedido do Mauro — nenhuma retomada automática D+1/D+3/D+7/D+14 deve ser disparada pelo sistema.
-// O ritmo é da conversa viva e do cliente, sem robô disparando retomadas de persistence em lote.
-// Linha original: cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
-function runBiaPersistenceFollowupDisabled() {
+cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
   var app = $app
 
-  // 1. Função inline de formatação e guarda WhatsApp na saída
-  function cleanWhatsAppFormat(text) {
-    if (!text) return ''
-    var out = String(text)
-    out = out.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
-    out = out.replace(/\btransbordo\b/gi, 'atendimento especializado')
-    out = out.replace(/\btrasbordo\b/gi, 'atendimento especializado')
-    out = out.replace(/^[ \t]*#{1,6}[ \t]*/gm, '')
-    out = out.replace(/#{1,6}/g, '')
-    out = out.replace(/\*\*([^*\n]+)\*\*/g, '*$1*')
-
-    var lines = out.split('\n')
-    var cleanedLines = []
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i].trim()
-      if (line.indexOf('|') !== -1) {
-        if (/^\|?[-:\s|]+\|?$/.test(line)) {
-          continue
-        }
-        var cells = line.split('|')
-        var validCells = []
-        for (var c = 0; c < cells.length; c++) {
-          var cell = cells[c].trim()
-          if (cell.length > 0) validCells.push(cell)
-        }
-        if (validCells.length >= 2) {
-          cleanedLines.push('• ' + validCells[0] + ': ' + validCells.slice(1).join(' — '))
-        } else if (validCells.length === 1) {
-          cleanedLines.push('• ' + validCells[0])
-        }
-      } else {
-        cleanedLines.push(lines[i])
-      }
-    }
-    out = cleanedLines.join('\n')
-    out = out.replace(/\n{3,}/g, '\n\n')
-
-    if (out.length > 950) {
-      var truncated = out.substring(0, 950)
-      var lastPeriod = Math.max(
-        truncated.lastIndexOf('. '),
-        truncated.lastIndexOf('!\n'),
-        truncated.lastIndexOf('?\n'),
-        truncated.lastIndexOf('\n\n'),
-        truncated.lastIndexOf('.'),
-      )
-      if (lastPeriod > 500) {
-        out = truncated.substring(0, lastPeriod + 1).trim()
-      } else {
-        out = truncated.trim() + '...'
-      }
-    }
-    return out.trim()
-  }
-
-  // 2. Normalização para dedup
-  function normalizeTextForDedup(txt) {
-    if (!txt) return ''
-    return String(txt).replace(/\s+/g, ' ').trim().toLowerCase()
-  }
-
-  // 3. Janela de horário de Brasília (UTC-3: 08h00 às 20h00, seg a sáb)
-  function isBrasiliaBusinessHours() {
-    var now = new Date()
-    var utcTime = now.getTime() + now.getTimezoneOffset() * 60000
-    var brTime = new Date(utcTime - 3 * 3600000)
-    var dayOfWeek = brTime.getDay()
-    if (dayOfWeek === 0) return false // Domingo pausado por gentileza comercial
-
-    var hours = brTime.getHours()
-    return hours >= 8 && hours < 20
-  }
-
-  if (!isBrasiliaBusinessHours()) {
-    console.log(
-      '[BIA_PERSISTENCE] Fora da janela de atendimento de Brasília (08h-20h seg-sáb). Pausando execução.',
-    )
-    return
-  }
-
-  // 4. Resolver credenciais Meta do usuário do sistema
-  function resolveMetaCredentials(appInstance) {
-    var token = ''
-    var phoneId = ''
-    var userId = ''
-
-    try {
-      var usersWithMeta = appInstance.findRecordsByFilter(
-        'users',
-        "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
-        '-created',
-        1,
-        0,
-      )
-      if (usersWithMeta.length > 0) {
-        token = usersWithMeta[0].getString('meta_whatsapp_access_token')
-        phoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
-        userId = usersWithMeta[0].id
-      }
-    } catch (_) {}
-
-    if (!token)
-      token = $os.getenv('WHATSAPP_TOKEN') || $os.getenv('META_WHATSAPP_ACCESS_TOKEN') || ''
-    if (!phoneId)
-      phoneId = $os.getenv('WHATSAPP_PHONE_ID') || $os.getenv('META_WHATSAPP_PHONE_NUMBER_ID') || ''
-
-    return { token: token, phoneId: phoneId, userId: userId }
-  }
-
-  var metaCreds = resolveMetaCredentials(app)
-  if (!metaCreds.token || !metaCreds.phoneId) {
-    console.warn(
-      '[BIA_PERSISTENCE] Credenciais Meta WhatsApp ausentes. Não é possível disparar follow-ups.',
-    )
-    return
-  }
-
-  // 5. Envio real via Meta Graph API v21.0 com gravação em system_logs (type='whatsapp_ai_send')
-  function sendWhatsAppReal(appInstance, customer, rawMessage, creds, stepName) {
-    var cleaned = cleanWhatsAppFormat(rawMessage)
+  // ============================================================================
+  // 1. PONTO ÚNICO DE ENVIO DE RETOMADAS / MARKETING
+  // ============================================================================
+  // PONTO ÚNICO DE ENVIO DE RETOMADAS/MARKETING — migrar para a API de Mensagens de Marketing (MM) da Meta até 13/10/2027; descontinuação do envio de marketing via Cloud API nessa data
+  function sendPersistenceMarketingMessage(customer, text, userRecord, stepName) {
+    if (!text || typeof text !== 'string') return false
+    var cleaned = cleanWhatsAppFormat(text)
     if (!cleaned || cleaned.length < 5) return false
 
     var customerId = customer.id
@@ -165,11 +27,31 @@ function runBiaPersistenceFollowupDisabled() {
       toPhone = '55' + toPhone
     }
 
+    var token = ''
+    var phoneId = ''
+    var userId = ''
+
+    if (userRecord) {
+      token = userRecord.getString('meta_whatsapp_access_token') || ''
+      phoneId = userRecord.getString('meta_whatsapp_phone_number_id') || ''
+      userId = userRecord.id || ''
+    }
+
+    if (!token)
+      token = $os.getenv('WHATSAPP_TOKEN') || $os.getenv('META_WHATSAPP_ACCESS_TOKEN') || ''
+    if (!phoneId)
+      phoneId = $os.getenv('WHATSAPP_PHONE_ID') || $os.getenv('META_WHATSAPP_PHONE_NUMBER_ID') || ''
+
+    if (!token || !phoneId) {
+      console.warn('[BIA_PERSISTENCE] [sendPersistenceMarketingMessage] Credenciais Meta ausentes.')
+      return false
+    }
+
     var normalizedCurrent = normalizeTextForDedup(cleaned)
 
-    // Deduplicação contra system_logs recentes de whatsapp_ai_send
+    // Deduplicação estrita contra system_logs recentes de whatsapp_ai_send
     try {
-      var recentLogs = appInstance.findRecordsByFilter(
+      var recentLogs = app.findRecordsByFilter(
         'system_logs',
         "type = 'whatsapp_ai_send' && payload ~ '" + customerId + "'",
         '-created',
@@ -202,22 +84,22 @@ function runBiaPersistenceFollowupDisabled() {
       console.warn('[BIA_PERSISTENCE] Aviso dedup: ' + dedupErr.message)
     }
 
-    // Salvar conversa na tabela conversations
+    // Registrar conversa na tabela conversations
     try {
-      var convCol = appInstance.findCollectionByNameOrId('conversations')
+      var convCol = app.findCollectionByNameOrId('conversations')
       var conv = new Record(convCol)
-      conv.set('user_id', creds.userId || customer.getString('user_id') || '')
+      conv.set('user_id', userId || customer.getString('user_id') || '')
       conv.set('customer_id', customerId)
       conv.set('sender', 'ai')
       conv.set('content', cleaned)
       conv.set('channel', 'whatsapp')
-      appInstance.save(conv)
+      app.save(conv)
     } catch (cErr) {
       console.warn('[BIA_PERSISTENCE] Aviso ao registrar conversa: ' + cErr.message)
     }
 
     // Disparo HTTP para a Meta Graph API v21.0
-    var url = 'https://graph.facebook.com/v21.0/' + creds.phoneId + '/messages'
+    var url = 'https://graph.facebook.com/v21.0/' + phoneId + '/messages'
     var isOk = false
     var sendRes = null
 
@@ -226,7 +108,7 @@ function runBiaPersistenceFollowupDisabled() {
         url: url,
         method: 'POST',
         headers: {
-          Authorization: 'Bearer ' + creds.token,
+          Authorization: 'Bearer ' + token,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -246,26 +128,32 @@ function runBiaPersistenceFollowupDisabled() {
       console.error('[BIA_PERSISTENCE] Erro HTTP Meta: ' + httpErr.message)
     }
 
-    // Registrar system_logs com type = 'whatsapp_ai_send'
+    // Registrar system_logs (type='whatsapp_ai_send')
     try {
-      var logsCol = appInstance.findCollectionByNameOrId('system_logs')
+      var logsCol = app.findCollectionByNameOrId('system_logs')
       var logRec = new Record(logsCol)
-      logRec.set('user_id', creds.userId || '')
+      logRec.set('user_id', userId || '')
       logRec.set('type', 'whatsapp_ai_send')
       logRec.set(
         'message',
         isOk
-          ? 'Retomada de persistência (' + stepName + ') enviada com sucesso para ' + toPhone
-          : 'Falha ao enviar retomada de persistência (' + stepName + ') para ' + toPhone,
+          ? 'Retomada de persistência (' +
+              (stepName || 'followup') +
+              ') enviada com sucesso para ' +
+              toPhone
+          : 'Falha ao enviar retomada de persistência (' +
+              (stepName || 'followup') +
+              ') para ' +
+              toPhone,
       )
       logRec.set(
         'details',
         JSON.stringify({
           statusCode: sendRes ? sendRes.statusCode : 0,
           response: sendRes ? sendRes.json || sendRes.body : null,
-          phone_id: creds.phoneId,
+          phone_id: phoneId,
           to: toPhone,
-          step: stepName,
+          step: stepName || '',
           customer_id: customerId,
         }),
       )
@@ -275,10 +163,10 @@ function runBiaPersistenceFollowupDisabled() {
           preview: cleaned.substring(0, 120),
           full_text: cleaned,
           customer_id: customerId,
-          follow_up_step: stepName,
+          follow_up_step: stepName || '',
         }),
       )
-      appInstance.saveNoValidate(logRec)
+      app.saveNoValidate(logRec)
     } catch (logErr) {
       console.warn('[BIA_PERSISTENCE] Falha ao gravar log whatsapp_ai_send: ' + logErr.message)
     }
@@ -286,13 +174,132 @@ function runBiaPersistenceFollowupDisabled() {
     return isOk
   }
 
-  // 6. Aquisição e liberação da trava ai_processing (com TTL de 3 min = 180000ms)
+  // ============================================================================
+  // 2. FORMATAÇÃO E SANITIZAÇÃO DE TEXTO DO WHATSAPP
+  // ============================================================================
+  function cleanWhatsAppFormat(text) {
+    if (!text || typeof text !== 'string') return ''
+    var out = text
+
+    // Remove tags de máquina internas e colchetes
+    out = out.replace(/\[STATUS:[^\]]*\]/gi, '')
+    out = out.replace(/\[PHASE:[^\]]*\]/gi, '')
+    out = out.replace(/\[FOLLOW_UP_STEP:[^\]]*\]/gi, '')
+    out = out.replace(/\[PROMISE_CONTEXT:[^\]]*\]/gi, '')
+    out = out.replace(/\[PROMISE_PENDING:[^\]]*\]/gi, '')
+    out = out.replace(/\[HANDOVER:[^\]]*\]/gi, '')
+    out = out.replace(/\[PERMUTA\]/gi, '')
+    out = out.replace(/\[PROFILE:[^\]]*\]/gi, '')
+    out = out.replace(/\[PRICE_RANGE:[^\]]*\]/gi, '')
+    out = out.replace(/\[NEIGHBORHOOD:[^\]]*\]/gi, '')
+    out = out.replace(/\[URGENCY:[^\]]*\]/gi, '')
+    out = out.replace(/\[AUDIO\]/gi, '')
+    out = out.replace(/\[VIDEO\]/gi, '')
+
+    // Remove markdown inválido no WhatsApp
+    out = out.replace(/^#{1,6}\s+/gm, '')
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '$1: $2')
+
+    // Normaliza quebras triplas
+    out = out.replace(/\n{3,}/g, '\n\n')
+
+    // Limite de 800 caracteres para follow-up consultivo
+    if (out.length > 800) {
+      var truncated = out.substring(0, 800)
+      var lastPeriod = Math.max(
+        truncated.lastIndexOf('.\n'),
+        truncated.lastIndexOf('!\n'),
+        truncated.lastIndexOf('?\n'),
+        truncated.lastIndexOf('\n\n'),
+        truncated.lastIndexOf('.'),
+      )
+      if (lastPeriod > 500) {
+        out = truncated.substring(0, lastPeriod + 1).trim()
+      } else {
+        out = truncated.trim() + '...'
+      }
+    }
+    return out.trim()
+  }
+
+  function normalizeTextForDedup(txt) {
+    if (!txt) return ''
+    return String(txt).replace(/\s+/g, ' ').trim().toLowerCase()
+  }
+
+  // ============================================================================
+  // 3. JANELA DE HORÁRIO COMERCIAL (UTC-3: 08h00 às 20h00, seg a sáb)
+  // ============================================================================
+  function isBrasiliaBusinessHours() {
+    var now = new Date()
+    var utcTime = now.getTime() + now.getTimezoneOffset() * 60000
+    var brTime = new Date(utcTime - 3 * 3600000)
+    var dayOfWeek = brTime.getDay()
+    if (dayOfWeek === 0) return false // Domingo pausado por respeito comercial
+
+    var hours = brTime.getHours()
+    return hours >= 8 && hours < 20
+  }
+
+  if (!isBrasiliaBusinessHours()) {
+    console.log(
+      '[BIA_PERSISTENCE] Fora da janela de atendimento de Brasília (08h-20h seg-sáb). Pausando execução.',
+    )
+    return
+  }
+
+  // ============================================================================
+  // 4. CARREGAR TEXTO ÚNICO DA BIA (bia_learnings id tYVJIdIFb5rW4iq, prioridade 1000)
+  // ============================================================================
+  var sovereignRuleText = ''
+  try {
+    var sovereignRec = app.findRecordById('bia_learnings', 'tYVJIdIFb5rW4iq')
+    if (sovereignRec && sovereignRec.getBool('is_active')) {
+      sovereignRuleText = sovereignRec.getString('rule_text') || ''
+    }
+  } catch (_) {}
+
+  if (!sovereignRuleText) {
+    try {
+      var activeLearnings = app.findRecordsByFilter(
+        'bia_learnings',
+        'is_active = true',
+        '-priority,-created',
+        1,
+        0,
+      )
+      if (activeLearnings && activeLearnings.length > 0) {
+        sovereignRuleText = activeLearnings[0].getString('rule_text') || ''
+      }
+    } catch (_) {}
+  }
+
+  // ============================================================================
+  // 5. RESOLVER USUÁRIO E CREDENCIAIS META DO SISTEMA
+  // ============================================================================
+  var activeUserRecord = null
+  try {
+    var usersWithMeta = app.findRecordsByFilter(
+      'users',
+      "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+      '-created',
+      1,
+      0,
+    )
+    if (usersWithMeta.length > 0) {
+      activeUserRecord = usersWithMeta[0]
+    }
+  } catch (_) {}
+
+  // ============================================================================
+  // 6. AQUISIÇÃO E LIBERAÇÃO DA TRAVA ai_processing COM TTL 3 MIN (180000ms)
+  // ============================================================================
   var lockTtlMs = 180000
 
-  function acquireLock(appInstance, customerId) {
+  function acquireLock(customerId) {
     var acquired = false
     try {
-      appInstance.runInTransaction(function (txApp) {
+      app.runInTransaction(function (txApp) {
         var cust = txApp.findRecordById('customers', customerId)
         var rawTags = cust.get('tags')
         var tags = []
@@ -348,9 +355,9 @@ function runBiaPersistenceFollowupDisabled() {
     return acquired
   }
 
-  function releaseLock(appInstance, customerId) {
+  function releaseLock(customerId) {
     try {
-      var cust = appInstance.findRecordById('customers', customerId)
+      var cust = app.findRecordById('customers', customerId)
       var rawTags = cust.get('tags')
       var tags = []
       if (Array.isArray(rawTags)) {
@@ -371,10 +378,10 @@ function runBiaPersistenceFollowupDisabled() {
         return t !== 'ai_processing' && t.indexOf('ai_processing:') !== 0
       })
       cust.set('tags', cleanedTags)
-      appInstance.saveNoValidate(cust)
+      app.saveNoValidate(cust)
     } catch (_) {
       try {
-        appInstance
+        app
           .db()
           .newQuery(
             "UPDATE customers SET tags = (SELECT json_group_array(value) FROM json_each(customers.tags) WHERE value NOT LIKE 'ai_processing%') WHERE id = {:id}",
@@ -385,7 +392,53 @@ function runBiaPersistenceFollowupDisabled() {
     }
   }
 
-  // 7. Textos das 4 etapas de persistência temporal (D+1, D+3, D+7, D+14) e Nurturing Mensal
+  // ============================================================================
+  // 7. DETECÇÃO DE THREAD AUTOMATIZADA / BOT (ANTI-BOT SYSTEM MESSAGES)
+  // ============================================================================
+  function isAutomatedThreadOrBot(customerRecord, lastConv) {
+    var custName = customerRecord.getString('name') || ''
+    var custPhone = customerRecord.getString('phone') || ''
+    var lastContent = lastConv ? lastConv.getString('content') || '' : ''
+
+    // 1. Telefone/Nome com indicativo de robô/sistema
+    var lowerName = custName.toLowerCase()
+    if (
+      lowerName.includes('bot') ||
+      lowerName.includes('auto reply') ||
+      lowerName.includes('resposta automática') ||
+      lowerName.includes('atendimento virtual') ||
+      lowerName.includes('meta business')
+    ) {
+      return true
+    }
+
+    // 2. Mensagem com termos inequívocos de auto-resposta/bot
+    var lowerMsg = lastContent.toLowerCase()
+    if (
+      lowerMsg.includes('esta é uma mensagem automática') ||
+      lowerMsg.includes('esta e uma mensagem automatica') ||
+      lowerMsg.includes('mensagem gravada automaticamente') ||
+      (lowerMsg.includes('horário de atendimento') && lowerMsg.includes('retornaremos')) ||
+      lowerMsg.includes('não responda a este número') ||
+      lowerMsg.includes('nao responda a este numero') ||
+      lowerMsg.includes('digite 1 para') ||
+      lowerMsg.includes('escolha uma das opções') ||
+      lowerMsg.includes('protocolo de atendimento:')
+    ) {
+      return true
+    }
+
+    return false
+  }
+
+  // ============================================================================
+  // 8. CONSTRUÇÃO DO TEXTO DAS RETOMADAS CONFORME SEÇÃO 2 DO TEXTO ÚNICO v3.1
+  // ============================================================================
+  // "retome com toque leve no dia seguinte com uma pergunta consultiva (D+1);
+  // após 3 dias com um diferencial marcante do imóvel em foco (D+3);
+  // após 1 semana com uma condição facilitada de pagamento (D+7);
+  // após 2 semanas checando se a busca continua ativa (D+14);
+  // Ao esgotar D+14 sem resposta: tag frio no cliente, persistence_status pausado, follow_up_step finalizado e cessar envios."
   function buildPersistenceMessage(step, customer, lastPropertyTitle) {
     var rawName = (customer.getString('name') || customer.getString('first_name') || '').trim()
     var custName = ''
@@ -395,7 +448,7 @@ function runBiaPersistenceFollowupDisabled() {
     var greeting = custName ? 'Olá, ' + custName + '!' : 'Olá! Tudo bem?'
     var propContext = lastPropertyTitle
       ? ' em relação ao *' + lastPropertyTitle + '*'
-      : ' sobre o imóvel que conversamos'
+      : ' sobre a sua busca imobiliária'
 
     if (step === 'promised_followup') {
       var promiseContext =
@@ -409,57 +462,46 @@ function runBiaPersistenceFollowupDisabled() {
     }
 
     if (step === 'd1') {
-      // D+1: Pergunta consultiva leve sobre o imóvel em pauta
+      // D+1: Toque leve no dia seguinte com pergunta consultiva sobre o imóvel em pauta
       return (
         greeting +
         ' Passando para saber se você conseguiu dar uma olhada na opção' +
         propContext +
-        ' ou se ficou alguma dúvida sobre a metragem, localização e fluxo inicial.'
+        ' ou se ficou alguma dúvida sobre a localização, planta ou fluxo inicial.'
       )
     }
 
     if (step === 'd3') {
-      // D+3: Diferencial do imóvel em foco (lazer, localização, rentabilidade)
+      // D+3: Diferencial marcante do imóvel em foco (lazer, localização, rentabilidade)
       return (
         greeting +
-        ' Separei um detalhe importante' +
+        ' Separei um diferencial marcante' +
         propContext +
-        ': a valorização projetada para a região e as áreas de lazer completas têm sido um dos maiores atrativos. Quer que eu te envie a planta detalhada ou o espelho de unidades disponíveis?'
+        ': a valorização projetada na região e as áreas de lazer completas têm chamado bastante atenção. Gostaria de dar uma olhada na planta detalhada ou nas opções de unidades disponíveis?'
       )
     }
 
     if (step === 'd7') {
-      // D+7: Condição / forma de pagamento / verificação de timing para o mês
+      // D+7: Condição facilitada de pagamento / parcelamento / verificação de timing
       return (
         greeting +
-        ' Gostaria de verificar se o projeto do novo imóvel ainda está no seu radar para este mês. Conseguimos condições facilitadas de entrada e fluxo direto de parcelamento' +
+        ' Gostaria de verificar se a compra do imóvel ainda está no seu radar para este mês. Conseguimos condições bem facilitadas de entrada e parcelamento' +
         propContext +
         '. Como estão os seus planos por aí?'
       )
     }
 
     if (step === 'd14') {
-      // D+14: Validação de fechamento de ciclo / despedida elegante
+      // D+14: Checando se a busca continua ativa / despedida elegante de ciclo
       return (
         greeting +
-        ' Espero que esteja tudo ótimo! Como não tivemos retorno recente, vou deixar você totalmente à vontade para focar nas suas prioridades agora. Se em algum momento fizer sentido retomar sobre' +
-        propContext +
-        ' ou avaliar novas opções, estarei por aqui com o corretor Mauro. Um grande abraço!'
-      )
-    }
-
-    if (step === 'nurturing_monthly') {
-      // Nurturing mensal (1x/mês, nunca spam)
-      return (
-        greeting +
-        ' Passando apenas para compartilhar uma atualização rápida do mercado imobiliário: tivemos novos lançamentos e oportunidades selecionadas na região. Quando estiver pronto para retomar sua busca com calma, é só me chamar por aqui!'
+        ' Espero que esteja tudo ótimo! Como não tivemos retorno recente, passo para checar se a sua busca por imóvel ainda continua ativa ou se prefere pausar por enquanto. Vou deixar você à vontade, e quando quiser retomar, o corretor Mauro e eu estamos por aqui!'
       )
     }
 
     return ''
   }
 
-  // 8. Calcular próxima data de follow-up
   function calculateNextFollowUp(step) {
     var nowMs = Date.now()
     if (step === 'd1') {
@@ -474,27 +516,22 @@ function runBiaPersistenceFollowupDisabled() {
       // De D7 para D14: +7 dias (~168h)
       return new Date(nowMs + 7 * 24 * 3600 * 1000).toISOString()
     }
-    if (step === 'd14') {
-      // De D14 vai para nurturing mensal: +30 dias
-      return new Date(nowMs + 30 * 24 * 3600 * 1000).toISOString()
-    }
-    if (step === 'nurturing_monthly') {
-      // Próximo toque mensal: +30 dias
-      return new Date(nowMs + 30 * 24 * 3600 * 1000).toISOString()
-    }
     return ''
   }
 
-  // 9. Buscar conversas/clientes elegíveis
+  // ============================================================================
+  // 9. EXECUÇÃO DAS RETOMADAS COM GUARDAS COMPLETAS
+  // ============================================================================
   var executedCount = 0
   var nowIso = new Date().toISOString()
+  var nowMsGlobal = Date.now()
   var oneDayMs = 24 * 60 * 60 * 1000
 
-  // 9.1 Prioridade MÁXIMA: Promessas pendentes (Pilar B)
+  // 9.1 PRIORIDADE A: Promessas pendentes com prazo vencido
   try {
     var promiseCustomers = app.findRecordsByFilter(
       'customers',
-      "promise_pending = true && (persistence_status = 'ativo' || persistence_status = 'aguardando_momento' || persistence_status = '')",
+      "promise_pending = true && is_blocked = false && (persistence_status = 'ativo' || persistence_status = 'aguardando_momento' || persistence_status = '')",
       '-promise_made_at',
       10,
       0,
@@ -504,11 +541,42 @@ function runBiaPersistenceFollowupDisabled() {
       var pCust = promiseCustomers[pIdx]
       var pCustId = pCust.id
 
-      if (!acquireLock(app, pCustId)) continue
+      // Guarda 1: ai_paused nas tags
+      var pTagsRaw = pCust.get('tags') || []
+      var pTagsStr = JSON.stringify(pTagsRaw)
+      if (pTagsStr.includes('ai_paused') || pCust.getBool('is_blocked')) continue
+
+      // Guarda 2: Verificar conversas do cliente
+      var pConvs = []
+      try {
+        pConvs = app.findRecordsByFilter(
+          'conversations',
+          "customer_id = '" + pCustId + "'",
+          '-created',
+          2,
+          0,
+        )
+      } catch (_) {}
+
+      if (pConvs.length > 0) {
+        var pLatest = pConvs[0]
+        var pLatestTime = new Date(pLatest.getString('created') || pLatest.get('created')).getTime()
+        // Não disparar se última mensagem < 24h
+        if (nowMsGlobal - pLatestTime < oneDayMs) continue
+        // Não disparar em bots/auto-respostas
+        if (isAutomatedThreadOrBot(pCust, pLatest)) continue
+      }
+
+      if (!acquireLock(pCustId)) continue
 
       try {
         var msgText = buildPersistenceMessage('promised_followup', pCust, '')
-        var sent = sendWhatsAppReal(app, pCust, msgText, metaCreds, 'promised_followup')
+        var sent = sendPersistenceMarketingMessage(
+          pCust,
+          msgText,
+          activeUserRecord,
+          'promised_followup',
+        )
         if (sent) {
           pCust.set('promise_pending', false)
           pCust.set('last_follow_up_at', nowIso)
@@ -518,29 +586,23 @@ function runBiaPersistenceFollowupDisabled() {
           pCust.set('persistence_status', 'ativo')
           app.saveNoValidate(pCust)
           executedCount++
-          console.log(
-            '[BIA_PERSISTENCE] [PILAR B] Promessa cumprida para cliente ' +
-              pCustId +
-              ' (' +
-              (pCust.getString('name') || '') +
-              ')',
-          )
+          console.log('[BIA_PERSISTENCE] Promessa cumprida para cliente ' + pCustId)
         }
       } finally {
-        releaseLock(app, pCustId)
+        releaseLock(pCustId)
       }
     }
   } catch (pErr) {
     console.warn('[BIA_PERSISTENCE] Erro no bloco de promessas pendentes: ' + pErr.message)
   }
 
-  // 9.2 Cadência Temporal: Clientes com next_follow_up_at vencido
+  // 9.2 AGENDADOS: Clientes com next_follow_up_at vencido
   try {
     var scheduledCustomers = app.findRecordsByFilter(
       'customers',
       "next_follow_up_at != '' && next_follow_up_at <= '" +
         nowIso +
-        "' && (persistence_status = 'ativo' || persistence_status = 'aguardando_momento') && is_blocked = false",
+        "' && (persistence_status = 'ativo' || persistence_status = 'aguardando_momento' || persistence_status = '') && is_blocked = false",
       'next_follow_up_at',
       20,
       0,
@@ -550,42 +612,128 @@ function runBiaPersistenceFollowupDisabled() {
       var sCust = scheduledCustomers[sIdx]
       var sCustId = sCust.id
 
-      if (!acquireLock(app, sCustId)) continue
+      // Guarda: ai_paused nas tags
+      var sTagsRaw = sCust.get('tags') || []
+      var sTagsStr = JSON.stringify(sTagsRaw)
+      if (sTagsStr.includes('ai_paused') || sCust.getBool('is_blocked')) continue
+
+      // Verificar conversas do cliente
+      var sConvs = []
+      try {
+        sConvs = app.findRecordsByFilter(
+          'conversations',
+          "customer_id = '" + sCustId + "'",
+          '-created',
+          2,
+          0,
+        )
+      } catch (_) {}
+
+      if (sConvs.length === 0) continue
+
+      var sLatest = sConvs[0]
+      var sLatestTime = new Date(sLatest.getString('created') || sLatest.get('created')).getTime()
+
+      // Guarda: Não disparar se última mensagem < 24h
+      if (nowMsGlobal - sLatestTime < oneDayMs) continue
+
+      // Guarda: Não disparar se o cliente respondeu depois da última retomada (se a última foi do cliente, o ai_auto_reply deve responder)
+      if (sLatest.getString('sender') === 'customer') {
+        continue
+      }
+
+      // Guarda: Anti-bot
+      if (isAutomatedThreadOrBot(sCust, sLatest)) continue
+
+      var currentStep = sCust.getString('follow_up_step') || 'd1'
+
+      // CASO ESPECIAL D+14: Se já executou D+14 e venceu sem resposta, esgotou a régua!
+      // "Ao esgotar D+14 sem resposta: tag frio no cliente, persistence_status pausado, follow_up_step finalizado, log, e cessar envios."
+      if (currentStep === 'd14' || currentStep === 'finalizado') {
+        if (!acquireLock(sCustId)) continue
+        try {
+          // Adiciona tag "frio"
+          var finalTags = []
+          if (Array.isArray(sTagsRaw)) {
+            finalTags = sTagsRaw.filter(function (t) {
+              return typeof t === 'string'
+            })
+          }
+          if (!finalTags.includes('frio')) {
+            finalTags.push('frio')
+          }
+          sCust.set('tags', finalTags)
+          sCust.set('persistence_status', 'pausado')
+          sCust.set('follow_up_step', 'finalizado')
+          sCust.set('next_follow_up_at', '')
+          app.saveNoValidate(sCust)
+
+          // Registrar log de encerramento de persistência
+          try {
+            var logsCol = app.findCollectionByNameOrId('system_logs')
+            var logEnd = new Record(logsCol)
+            logEnd.set('user_id', activeUserRecord ? activeUserRecord.id : '')
+            logEnd.set('type', 'persistence_cycle_finished')
+            logEnd.set(
+              'message',
+              'Régua de persistência D+14 esgotada sem resposta. Lead marcado como frio e persistência pausada.',
+            )
+            logEnd.set(
+              'details',
+              JSON.stringify({
+                customer_id: sCustId,
+                customer_name: sCust.getString('name') || '',
+                customer_phone: sCust.getString('phone') || '',
+                final_step: 'd14',
+              }),
+            )
+            app.saveNoValidate(logEnd)
+          } catch (_) {}
+
+          console.log(
+            '[BIA_PERSISTENCE] Régua esgotada para cliente ' +
+              sCustId +
+              ' (status->pausado, tag->frio)',
+          )
+        } finally {
+          releaseLock(sCustId)
+        }
+        continue
+      }
+
+      // Próximo passo da régua
+      var nextStep = 'd3'
+      if (currentStep === 'd1') nextStep = 'd3'
+      else if (currentStep === 'd3') nextStep = 'd7'
+      else if (currentStep === 'd7') nextStep = 'd14'
+
+      // Guarda: Não reenviar retomada do mesmo estágio
+      if (nextStep === currentStep) continue
+
+      if (!acquireLock(sCustId)) continue
 
       try {
-        var currentStep = sCust.getString('follow_up_step') || 'd1'
-        var nextStep = currentStep
-        if (currentStep === 'd1') nextStep = 'd3'
-        else if (currentStep === 'd3') nextStep = 'd7'
-        else if (currentStep === 'd7') nextStep = 'd14'
-        else if (currentStep === 'd14') nextStep = 'nurturing_monthly'
-        else if (currentStep === 'nurturing_monthly') nextStep = 'nurturing_monthly'
-
         var msgTextScheduled = buildPersistenceMessage(nextStep, sCust, '')
-        var ok = sendWhatsAppReal(app, sCust, msgTextScheduled, metaCreds, nextStep)
+        var ok = sendPersistenceMarketingMessage(
+          sCust,
+          msgTextScheduled,
+          activeUserRecord,
+          nextStep,
+        )
 
         if (ok) {
           sCust.set('follow_up_step', nextStep)
           sCust.set('follow_up_count', (sCust.getInt('follow_up_count') || 0) + 1)
           sCust.set('last_follow_up_at', nowIso)
           sCust.set('next_follow_up_at', calculateNextFollowUp(nextStep))
-          if (nextStep === 'd14') {
-            sCust.set('persistence_status', 'aguardando_momento')
-          }
           app.saveNoValidate(sCust)
           executedCount++
           console.log(
-            '[BIA_PERSISTENCE] Retomada agendada (' +
-              nextStep +
-              ') enviada para ' +
-              sCustId +
-              ' (' +
-              (sCust.getString('name') || '') +
-              ')',
+            '[BIA_PERSISTENCE] Retomada agendada (' + nextStep + ') enviada para ' + sCustId,
           )
         }
       } finally {
-        releaseLock(app, sCustId)
+        releaseLock(sCustId)
       }
     }
   } catch (schErr) {
@@ -594,22 +742,25 @@ function runBiaPersistenceFollowupDisabled() {
     )
   }
 
-  // 9.3 Retomadas em caso de silêncio recente sem next_follow_up_at preenchido (D+1 pós-proposta/silêncio)
+  // 9.3 ENTRADA NA RÉGUA (D+1): Clientes em silêncio > 24h sem next_follow_up_at ou com follow_up_step vazio
   try {
     var idleCustomers = app.findRecordsByFilter(
       'customers',
-      "(persistence_status = 'ativo' || persistence_status = '') && is_blocked = false && (next_follow_up_at = '' || next_follow_up_at = null)",
+      "(persistence_status = 'ativo' || persistence_status = '') && is_blocked = false && (next_follow_up_at = '' || next_follow_up_at = null) && (follow_up_step = '' || follow_up_step = null)",
       '-updated',
       25,
       0,
     )
 
-    var nowMs2 = Date.now()
     for (var idIdx = 0; idIdx < idleCustomers.length; idIdx++) {
       var iCust = idleCustomers[idIdx]
       var iCustId = iCust.id
 
-      // Checar última mensagem do cliente
+      // Guarda: ai_paused
+      var iTagsRaw = iCust.get('tags') || []
+      var iTagsStr = JSON.stringify(iTagsRaw)
+      if (iTagsStr.includes('ai_paused') || iCust.getBool('is_blocked')) continue
+
       var lastConvs = []
       try {
         lastConvs = app.findRecordsByFilter(
@@ -627,23 +778,26 @@ function runBiaPersistenceFollowupDisabled() {
       var latestCreated = new Date(
         latestMsg.getString('created') || latestMsg.get('created'),
       ).getTime()
-      var elapsedMs = nowMs2 - latestCreated
+      var elapsedMs = nowMsGlobal - latestCreated
 
-      // Só ativa follow-up se já se passaram pelo menos 22 horas de silêncio e menos de 48 horas (janela D+1)
-      if (elapsedMs < 22 * 3600 * 1000 || elapsedMs > 48 * 3600 * 1000) {
+      // Guarda: só ativa follow-up se já se passaram pelo menos 24 horas de silêncio e menos de 72 horas
+      if (elapsedMs < 24 * 3600 * 1000 || elapsedMs > 72 * 3600 * 1000) {
         continue
       }
 
-      // Se a última mensagem partiu do cliente há menos de 24h, a Bia deve responder no ai_auto_reply, não no cron
+      // Guarda: Se a última mensagem partiu do cliente há menos de 24h, não é o cron que trata
       if (latestMsg.getString('sender') === 'customer' && elapsedMs < 24 * 3600 * 1000) {
         continue
       }
 
-      if (!acquireLock(app, iCustId)) continue
+      // Guarda: anti-bot
+      if (isAutomatedThreadOrBot(iCust, latestMsg)) continue
+
+      if (!acquireLock(iCustId)) continue
 
       try {
         var d1Text = buildPersistenceMessage('d1', iCust, '')
-        var d1Sent = sendWhatsAppReal(app, iCust, d1Text, metaCreds, 'd1')
+        var d1Sent = sendPersistenceMarketingMessage(iCust, d1Text, activeUserRecord, 'd1')
         if (d1Sent) {
           iCust.set('follow_up_step', 'd1')
           iCust.set('follow_up_count', (iCust.getInt('follow_up_count') || 0) + 1)
@@ -652,16 +806,10 @@ function runBiaPersistenceFollowupDisabled() {
           iCust.set('persistence_status', 'ativo')
           app.saveNoValidate(iCust)
           executedCount++
-          console.log(
-            '[BIA_PERSISTENCE] Follow-up D+1 iniciado para cliente em silêncio: ' +
-              iCustId +
-              ' (' +
-              (iCust.getString('name') || '') +
-              ')',
-          )
+          console.log('[BIA_PERSISTENCE] Retomada D+1 iniciada para ' + iCustId)
         }
       } finally {
-        releaseLock(app, iCustId)
+        releaseLock(iCustId)
       }
     }
   } catch (idleErr) {
@@ -671,4 +819,4 @@ function runBiaPersistenceFollowupDisabled() {
   console.log(
     '[BIA_PERSISTENCE] Execução concluída. Total de retomadas disparadas: ' + executedCount,
   )
-}
+})
