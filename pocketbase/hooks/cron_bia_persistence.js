@@ -492,10 +492,23 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
     }
 
     if (step === 'd14') {
-      // D+14: Checando se a busca continua ativa / despedida elegante de ciclo
+      // D+14: Checando se a busca continua ativa / pergunta leve de continuidade
       return (
         greeting +
-        ' Espero que esteja tudo ótimo! Como não tivemos retorno recente, passo para checar se a sua busca por imóvel ainda continua ativa ou se prefere pausar por enquanto. Vou deixar você à vontade, e quando quiser retomar, o corretor Mauro e eu estamos por aqui!'
+        ' Espero que esteja tudo ótimo! Como não tivemos retorno recente, passo para checar se a sua busca por imóvel ainda continua ativa' +
+        propContext +
+        ' ou se prefere pausar por enquanto. O corretor Mauro e eu estamos sempre à disposição por aqui!'
+      )
+    }
+
+    if (step === 'nurturing_monthly') {
+      // Pós-D+14: Aquecimento espaçado (~30 dias) baseado no padrão consultivo D+7 do Texto Único
+      // (pergunta leve, sem tabela, sem empurrar, checando radar e planos)
+      return (
+        greeting +
+        ' Gostaria de verificar se a compra do imóvel ainda está no seu radar' +
+        propContext +
+        '. Tivemos atualizações recentes nas condições e no mercado da região. Como estão os seus planos por aí no momento?'
       )
     }
 
@@ -515,6 +528,10 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
     if (step === 'd7') {
       // De D7 para D14: +7 dias (~168h)
       return new Date(nowMs + 7 * 24 * 3600 * 1000).toISOString()
+    }
+    if (step === 'd14' || step === 'nurturing_monthly') {
+      // De D14 para primeiro aquecimento espaçado (~30 dias) e ciclos seguintes a cada ~30 dias
+      return new Date(nowMs + 30 * 24 * 3600 * 1000).toISOString()
     }
     return ''
   }
@@ -647,68 +664,19 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
 
       var currentStep = sCust.getString('follow_up_step') || 'd1'
 
-      // CASO ESPECIAL D+14: Se já executou D+14 e venceu sem resposta, esgotou a régua!
-      // "Ao esgotar D+14 sem resposta: tag frio no cliente, persistence_status pausado, follow_up_step finalizado, log, e cessar envios."
-      if (currentStep === 'd14' || currentStep === 'finalizado') {
-        if (!acquireLock(sCustId)) continue
-        try {
-          // Adiciona tag "frio"
-          var finalTags = []
-          if (Array.isArray(sTagsRaw)) {
-            finalTags = sTagsRaw.filter(function (t) {
-              return typeof t === 'string'
-            })
-          }
-          if (!finalTags.includes('frio')) {
-            finalTags.push('frio')
-          }
-          sCust.set('tags', finalTags)
-          sCust.set('persistence_status', 'pausado')
-          sCust.set('follow_up_step', 'finalizado')
-          sCust.set('next_follow_up_at', '')
-          app.saveNoValidate(sCust)
-
-          // Registrar log de encerramento de persistência
-          try {
-            var logsCol = app.findCollectionByNameOrId('system_logs')
-            var logEnd = new Record(logsCol)
-            logEnd.set('user_id', activeUserRecord ? activeUserRecord.id : '')
-            logEnd.set('type', 'persistence_cycle_finished')
-            logEnd.set(
-              'message',
-              'Régua de persistência D+14 esgotada sem resposta. Lead marcado como frio e persistência pausada.',
-            )
-            logEnd.set(
-              'details',
-              JSON.stringify({
-                customer_id: sCustId,
-                customer_name: sCust.getString('name') || '',
-                customer_phone: sCust.getString('phone') || '',
-                final_step: 'd14',
-              }),
-            )
-            app.saveNoValidate(logEnd)
-          } catch (_) {}
-
-          console.log(
-            '[BIA_PERSISTENCE] Régua esgotada para cliente ' +
-              sCustId +
-              ' (status->pausado, tag->frio)',
-          )
-        } finally {
-          releaseLock(sCustId)
-        }
+      // Se o cliente já foi finalizado explicitamente (recusa confirmada), não processar
+      if (currentStep === 'finalizado') {
         continue
       }
 
-      // Próximo passo da régua
+      // Próximo passo da régua (Decisão do Mauro: silêncio sozinho NÃO encerra; pós-D+14 continua aquecimento espaçado a cada ~30 dias)
       var nextStep = 'd3'
       if (currentStep === 'd1') nextStep = 'd3'
       else if (currentStep === 'd3') nextStep = 'd7'
       else if (currentStep === 'd7') nextStep = 'd14'
-
-      // Guarda: Não reenviar retomada do mesmo estágio
-      if (nextStep === currentStep) continue
+      else if (currentStep === 'd14' || currentStep === 'nurturing_monthly') {
+        nextStep = 'nurturing_monthly'
+      }
 
       if (!acquireLock(sCustId)) continue
 

@@ -2548,28 +2548,88 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
       }
     }
 
-    // (c) Guarda de recusa:
-    // "não obrigada" / "já sei" / "vou pensar"
-    const isPoliteRefusal =
-      /\b(?:n[aã]o\s+obrigad[ao]|n[aã]o\,\s*obrigad[ao]|j[aá]\s+sei|vou\s+pensar|deixa\s+pra\s+depois|depois\s+eu\s+vejo|qualquer\s+coisa\s+te\s+chamo|no\s+momento\s+n[aã]o)\b/i.test(
+    // (c.1) Guarda de RECUSA CLARA (Decisão do Mauro):
+    // "não é o momento", "não tenho interesse", "para de me chamar", "não quero", "favor não mandar mais mensagem", etc.
+    // Para a régua de persistência IMEDIATAMENTE: tag "não é o momento" + "frio", persistence_status 'pausado', follow_up_step 'finalizado', next_follow_up_at vazio.
+    const isClearDisinterestOrRefusal =
+      /\b(?:n[aã]o\s+[eé]\s+o\s+momento|n[aã]o\s+tenho\s+interesse|sem\s+interesse|n[aã]o\s+quero(?:\s+mais)?|n[aã]o\s+estou\s+interessad[ao]|pare\s+de\s+me\s+chamar|para\s+de\s+me\s+chamar|n[aã]o\s+me\s+chame(?:\s+mais)?|n[aã]o\s+me\s+mande(?:\s+mais)?|n[aã]o\s+precisa\s+(?:mais\s+)?chamar|favor\s+n[aã]o\s+(?:mandar|chamar|enviar)|tira\s+(?:meu\s+)?(?:nome|n[uú]mero|contato)|retire\s+(?:meu\s+)?(?:nome|n[uú]mero|contato)|n[aã]o\s+entrar\s+em\s+contato|j[aá]\s+comprei|j[aá]\s+fechei(?:\s+outro)?|j[aá]\s+adquiri|desisti(?:\s+da\s+compra)?)\b/i.test(
         lowerCustIncoming,
       )
 
-    if (isPoliteRefusal) {
+    if (isClearDisinterestOrRefusal) {
       try {
-        const tomorrowIso = new Date(now.getTime() + 24 * 3600 * 1000)
-          .toISOString()
-          .replace('T', ' ')
-          .substring(0, 19)
-        customer.set('persistence_status', 'aguardando_momento')
-        customer.set('follow_up_step', 'd1')
-        customer.set('next_follow_up_at', tomorrowIso)
+        let currentCustTags = []
+        const rawCustTags = customer.get('tags')
+        if (Array.isArray(rawCustTags)) {
+          currentCustTags = rawCustTags.filter((t) => typeof t === 'string')
+        }
+        if (!currentCustTags.includes('não é o momento')) {
+          currentCustTags.push('não é o momento')
+        }
+        if (!currentCustTags.includes('frio')) {
+          currentCustTags.push('frio')
+        }
+        customer.set('tags', currentCustTags)
+        customer.set('persistence_status', 'pausado')
+        customer.set('follow_up_step', 'finalizado')
+        customer.set('next_follow_up_at', '')
         $app.saveNoValidate(customer)
+
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRefusal = new Record(logsCol)
+          logRefusal.set('user_id', userId || '')
+          logRefusal.set('type', 'persistence_stopped_by_customer')
+          logRefusal.set(
+            'message',
+            'Cliente expressou recusa clara / não é o momento. Régua de persistência parada definitivamente.',
+          )
+          logRefusal.set(
+            'details',
+            JSON.stringify({
+              customer_id: customerId,
+              customer_name: customer.getString('name') || '',
+              customer_phone: customer.getString('phone') || '',
+              incoming_message: custIncomingMsg.substring(0, 250),
+            }),
+          )
+          $app.saveNoValidate(logRefusal)
+        } catch (_) {}
+
         console.log(
-          `[AI_REPLY] [PILAR_C] Guarda de recusa gravada: persistence_status='aguardando_momento', follow_up_step='d1', next_follow_up_at=${tomorrowIso}`,
+          `[AI_REPLY] [PERSISTENCE_STOP] Recusa clara detectada para customer=${customerId}. tags=['não é o momento', 'frio'], persistence_status='pausado', follow_up_step='finalizado'`,
         )
-      } catch (refErr) {
-        console.warn(`[AI_REPLY] [PILAR_C] Erro ao gravar guarda de recusa: ${String(refErr)}`)
+      } catch (refClearErr) {
+        console.warn(
+          `[AI_REPLY] [PERSISTENCE_STOP] Erro ao gravar recusa clara: ${String(refClearErr)}`,
+        )
+      }
+    } else {
+      // (c.2) Guarda de recusa polida temporária ("não obrigada" / "já sei" / "vou pensar" / "no momento não"):
+      // Mantém espaçamento curto para checagem futura sem pausar definitivamente
+      const isPoliteRefusal =
+        /\b(?:n[aã]o\s+obrigad[ao]|n[aã]o\,\s*obrigad[ao]|j[aá]\s+sei|vou\s+pensar|deixa\s+pra\s+depois|depois\s+eu\s+vejo|qualquer\s+coisa\s+te\s+chamo|no\s+momento\s+n[aã]o)\b/i.test(
+          lowerCustIncoming,
+        )
+
+      if (isPoliteRefusal) {
+        try {
+          const tomorrowIso = new Date(now.getTime() + 24 * 3600 * 1000)
+            .toISOString()
+            .replace('T', ' ')
+            .substring(0, 19)
+          customer.set('persistence_status', 'aguardando_momento')
+          customer.set('follow_up_step', 'd1')
+          customer.set('next_follow_up_at', tomorrowIso)
+          $app.saveNoValidate(customer)
+          console.log(
+            `[AI_REPLY] [PILAR_C] Guarda de recusa polida gravada: persistence_status='aguardando_momento', follow_up_step='d1', next_follow_up_at=${tomorrowIso}`,
+          )
+        } catch (refErr) {
+          console.warn(
+            `[AI_REPLY] [PILAR_C] Erro ao gravar guarda de recusa polida: ${String(refErr)}`,
+          )
+        }
       }
     }
 
