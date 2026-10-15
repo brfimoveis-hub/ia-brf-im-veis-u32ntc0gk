@@ -574,7 +574,194 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
   // ============================================================================
   // 9. RESOLUÇÃO DINÂMICA DO LANÇAMENTO, LOCALIZAÇÃO E MATERIAL NA BASE
   // ============================================================================
-  function resolveLaunchAndKnowledgeData(customer) {
+  //
+  // REGRA DE OURO (Mauro):
+  // 1. NUNCA afirmar ou pressupor que um material foi enviado se ele não foi.
+  // 2. O fallback para o lançamento vigente principal SÓ é permitido para o texto
+  //    de REMARKETING ("Um tempo atrás você entrou em contato... tomei a liberdade
+  //    de enviar esta oportunidade da [LANÇAMENTO] em [BAIRRO/CIDADE]").
+  // 3. Nos degraus consultivos de follow-up (D+1, D+3, D+7, D+14), que dizem
+  //    "passando para saber se você conseguiu dar uma olhada na opção em relação ao X",
+  //    o imóvel SÓ pode ser citado se houver foco real E apresentação prévia
+  //    comprovada no histórico de conversas do cliente.
+  // 4. O e-book/book SÓ pode ser prometido no texto "(envio junto o e-book)" se o
+  //    arquivo físico/link existir de fato na Base de Conhecimento (ai_knowledge_files).
+  // ============================================================================
+
+  /**
+   * Detecta se o cliente já recebeu de fato uma apresentação de imóvel no histórico.
+   * Retorna objeto com:
+   * - hasPresentation: boolean
+   * - propertyId: string (ID da property se identificada)
+   * - propertyTitle: string (Título da property)
+   * - code: string (Código da property se identificado)
+   */
+  function checkCustomerPresentationHistory(customer, conversationsList) {
+    var hist = {
+      hasPresentation: false,
+      propertyId: '',
+      propertyTitle: '',
+      code: '',
+    }
+
+    var customerId = customer.id
+
+    // 1. Detectar imóvel em foco no próprio registro do cliente (notes, origin_history, tags)
+    var cNotes = customer.getString('notes') || ''
+    var cOriginHist = customer.getString('origin_history') || ''
+    var combinedCustText = cNotes + ' ' + cOriginHist
+
+    var codeMatch = combinedCustText.match(/(?:#|\b)(AP|LM|TR|SO|CA|ARU)\s*(\d+)\b/i)
+    if (codeMatch) {
+      hist.code = (codeMatch[1] + codeMatch[2]).toUpperCase()
+      try {
+        var foundProps = app.findRecordsByFilter(
+          'properties',
+          "is_active = true && (code = '" +
+            hist.code +
+            "' || code = '" +
+            codeMatch[1].toUpperCase() +
+            ' ' +
+            codeMatch[2] +
+            "')",
+          '-updated',
+          1,
+          0,
+        )
+        if (foundProps && foundProps.length > 0) {
+          hist.propertyId = foundProps[0].id
+          hist.propertyTitle =
+            foundProps[0].getString('title') || foundProps[0].getString('code') || ''
+        }
+      } catch (_) {}
+    }
+
+    // 2. Analisar histórico real de conversas da Bia / AI com este cliente
+    var convs = conversationsList || []
+    if (convs.length === 0) {
+      try {
+        convs = app.findRecordsByFilter(
+          'conversations',
+          "customer_id = '" + customerId + "'",
+          '-created',
+          20,
+          0,
+        )
+      } catch (_) {}
+    }
+
+    if (!convs || convs.length === 0) {
+      // Cliente NUNCA teve conversas registradas (ex.: recém-importado do Google Contacts)
+      return hist
+    }
+
+    // Palavras/padrões inequívocos de apresentação/envio de material pela IA ou corretor:
+    // "a partir de R$", "plantas de", "unidades de", links de imóveis, envio de book, fotos,
+    // menções a código #LM/#AP, ou descrição de tipologias.
+    var presentationPatterns = [
+      /a partir de r\$\s*[\d\.]+/i,
+      /valor a partir de/i,
+      /plantas? de \d+/i,
+      /dormit[óo]rios c\//i,
+      /apresento o /i,
+      /apresento a /i,
+      /conhecer o lan[çc]amento/i,
+      /dossi[êe]/i,
+      /brfimoveis\.com\.br\//i,
+      /envio (o |o e-|o pdf|as fotos|a apresenta)/i,
+      /enviando (o |o e-|o pdf|as fotos|a apresenta)/i,
+      /segue o (material|book|e-book|link|dossi[êe])/i,
+      /d[êe] uma olhada no lan[çc]amento/i,
+      /rooftop com piscina/i,
+      /residence barreiros/i,
+      /vistage residence/i,
+    ]
+
+    for (var i = 0; i < convs.length; i++) {
+      var convRec = convs[i]
+      var content = convRec.getString('content') || ''
+      var sender = convRec.getString('sender') || ''
+
+      // A apresentação deve ter partido da IA ou de corretor humano para o cliente
+      if (sender === 'ai' || sender === 'agent' || sender === 'system') {
+        // Ignora mensagens que são a própria retomada D+1 que disparou errada hoje
+        if (
+          content.indexOf('Passando para saber se você conseguiu dar uma olhada na opção') !== -1 ||
+          content.indexOf('Conseguiu avaliar com calma o que conversamos em relação ao') !== -1
+        ) {
+          continue
+        }
+
+        for (var p = 0; p < presentationPatterns.length; p++) {
+          if (presentationPatterns[p].test(content)) {
+            hist.hasPresentation = true
+            break
+          }
+        }
+
+        // Tentar identificar menção a código de imóvel na mensagem de apresentação
+        if (!hist.propertyId) {
+          var matchInMsg = content.match(/(?:#|\b)(AP|LM|TR|SO|CA|ARU)\s*(\d+)\b/i)
+          if (matchInMsg) {
+            hist.code = (matchInMsg[1] + matchInMsg[2]).toUpperCase()
+            try {
+              var pByMsg = app.findRecordsByFilter(
+                'properties',
+                "is_active = true && (code = '" +
+                  hist.code +
+                  "' || code = '" +
+                  matchInMsg[1].toUpperCase() +
+                  ' ' +
+                  matchInMsg[2] +
+                  "')",
+                '-updated',
+                1,
+                0,
+              )
+              if (pByMsg && pByMsg.length > 0) {
+                hist.propertyId = pByMsg[0].id
+                hist.propertyTitle =
+                  pByMsg[0].getString('title') || pByMsg[0].getString('code') || ''
+              }
+            } catch (_) {}
+          }
+        }
+
+        // Se citou Vistage Residence especificamente na apresentação
+        if (!hist.propertyId && /vistage/i.test(content)) {
+          try {
+            var vProps = app.findRecordsByFilter(
+              'properties',
+              "is_active = true && title ~ 'Vistage'",
+              '-updated',
+              1,
+              0,
+            )
+            if (vProps && vProps.length > 0) {
+              hist.propertyId = vProps[0].id
+              hist.propertyTitle = vProps[0].getString('title') || vProps[0].getString('code') || ''
+            }
+          } catch (_) {}
+        }
+
+        if (hist.hasPresentation && hist.propertyId) {
+          break
+        }
+      }
+    }
+
+    return hist
+  }
+
+  /**
+   * Resolução de dados do imóvel/lançamento e material de apoio.
+   *
+   * @param {Record} customer - Registro do cliente
+   * @param {string} step - Degrau pretendido ('remarketing', 'd1', 'd3', 'd7', 'd14')
+   * @param {Array} conversationsList - Histórico recente de conversas do cliente
+   * @param {Object} presentationHistory - Resultado de checkCustomerPresentationHistory
+   */
+  function resolveLaunchAndKnowledgeData(customer, step, conversationsList, presentationHistory) {
     var result = {
       launchName: '',
       location: '',
@@ -582,40 +769,46 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       documentMedia: null,
       propertyId: '',
       propertyTitle: '',
+      hasPriorPresentation: false,
+      allowPropertyMention: false,
     }
+
+    var presHist =
+      presentationHistory || checkCustomerPresentationHistory(customer, conversationsList)
+    result.hasPriorPresentation = presHist.hasPresentation
+
+    var isRemarketingStep = step === 'remarketing' || step === 'nurturing_monthly'
 
     var focusProperty = null
 
-    // 1. Tentar detectar imóvel a partir de tags, notas ou histórico de origem
-    try {
-      var cNotes = customer.getString('notes') || ''
-      var cOriginHist = customer.getString('origin_history') || ''
-      var combinedContext = cNotes + ' ' + cOriginHist
+    // 1. Se há imóvel identificado na apresentação prévia OU no cadastro do cliente
+    if (presHist.propertyId) {
+      try {
+        focusProperty = app.findRecordById('properties', presHist.propertyId)
+      } catch (_) {}
+    }
 
-      var matchCode = combinedContext.match(/(?:#|\b)(AP|LM|TR|SO|CA|ARU)\s*(\d+)\b/i)
-      if (matchCode) {
-        var pCode = (matchCode[1] + matchCode[2]).toUpperCase()
-        var foundProps = app.findRecordsByFilter(
-          'properties',
-          "is_active = true && (code = '" +
-            pCode +
-            "' || code = '" +
-            matchCode[1].toUpperCase() +
-            ' ' +
-            matchCode[2] +
-            "')",
-          '-updated',
-          1,
-          0,
-        )
-        if (foundProps && foundProps.length > 0) {
-          focusProperty = foundProps[0]
-        }
+    if (focusProperty) {
+      result.propertyId = focusProperty.id
+      result.propertyTitle =
+        focusProperty.getString('title') || focusProperty.getString('code') || ''
+      result.launchName = focusProperty.getString('title') || 'Lançamento'
+      var neighF = focusProperty.getString('neighborhood') || ''
+      var cityF = focusProperty.getString('city') || ''
+      if (neighF && cityF) {
+        result.location = neighF + ' / ' + cityF
+      } else {
+        result.location = neighF || cityF || 'na Grande Florianópolis'
       }
-    } catch (_) {}
+      // Nos degraus D+1/D+3/D+7/D+14, só permite citar o imóvel se realmente houve apresentação prévia
+      if (result.hasPriorPresentation) {
+        result.allowPropertyMention = true
+      }
+    }
 
-    // 2. Se não encontrou imóvel específico, buscar o lançamento vigente principal dinamicamente
-    if (!focusProperty) {
+    // 2. Se for REMARKETING (e apenas no REMARKETING), podemos recorrer ao lançamento vigente
+    //    principal como oportunidade ativa a ser apresentada
+    if (isRemarketingStep && (!focusProperty || !result.launchName)) {
       try {
         var pubLaunches = app.findRecordsByFilter(
           'launches',
@@ -631,7 +824,6 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           result.launchName = lName
           result.location = lLoc
 
-          // Tentar encontrar property correspondente
           var matchedProps = app.findRecordsByFilter(
             'properties',
             "is_active = true && title ~ '" + (pLaunch.getString('name') || 'Lançamento') + "'",
@@ -641,42 +833,37 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           )
           if (matchedProps && matchedProps.length > 0) {
             focusProperty = matchedProps[0]
+            result.propertyId = focusProperty.id
+            result.propertyTitle =
+              focusProperty.getString('title') || focusProperty.getString('code') || ''
           }
         }
       } catch (_) {}
-    }
 
-    // 3. Fallback adicional dinâmico nos properties do tipo lançamento se ainda não houver
-    if (!focusProperty && !result.launchName) {
-      try {
-        var activeLms = app.findRecordsByFilter(
-          'properties',
-          "is_active = true && (code ~ 'LM' || property_type ~ 'lancamento')",
-          '-updated',
-          1,
-          0,
-        )
-        if (activeLms && activeLms.length > 0) {
-          focusProperty = activeLms[0]
-        }
-      } catch (_) {}
-    }
-
-    if (focusProperty) {
-      result.propertyId = focusProperty.id
-      result.propertyTitle =
-        focusProperty.getString('title') || focusProperty.getString('code') || ''
-      if (!result.launchName) {
-        result.launchName = focusProperty.getString('title') || 'Lançamento'
-      }
-      if (!result.location) {
-        var neigh = focusProperty.getString('neighborhood') || ''
-        var city = focusProperty.getString('city') || ''
-        if (neigh && city) {
-          result.location = neigh + ' / ' + city
-        } else {
-          result.location = neigh || city || 'na Grande Florianópolis'
-        }
+      // Fallback adicional para properties de lançamento ativo
+      if (!focusProperty && !result.launchName) {
+        try {
+          var activeLms = app.findRecordsByFilter(
+            'properties',
+            "is_active = true && (code ~ 'LM' || property_type ~ 'lancamento')",
+            '-updated',
+            1,
+            0,
+          )
+          if (activeLms && activeLms.length > 0) {
+            focusProperty = activeLms[0]
+            result.propertyId = focusProperty.id
+            result.propertyTitle =
+              focusProperty.getString('title') || focusProperty.getString('code') || ''
+            result.launchName = focusProperty.getString('title') || 'Lançamento'
+            var neighLm = focusProperty.getString('neighborhood') || ''
+            var cityLm = focusProperty.getString('city') || ''
+            result.location =
+              neighLm && cityLm
+                ? neighLm + ' / ' + cityLm
+                : neighLm || cityLm || 'na Grande Florianópolis'
+          }
+        } catch (_) {}
       }
     }
 
@@ -684,7 +871,8 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       result.location = 'na Grande Florianópolis'
     }
 
-    // 4. Buscar material (e-book / book) na Base de Conhecimento (ai_knowledge_files)
+    // 3. Buscar material físico (e-book / book / PDF) na Base de Conhecimento (ai_knowledge_files)
+    //    REGRA: SÓ preenche documentMedia e materialText se houver arquivo REAL na base.
     var pbBaseUrl =
       $os.getenv('POCKETBASE_URL') ||
       $os.getenv('VITE_POCKETBASE_URL') ||
@@ -701,7 +889,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           0,
         )
       }
-      if (!kFiles || kFiles.length === 0) {
+      if ((!kFiles || kFiles.length === 0) && result.launchName) {
         var searchName = result.launchName
           .replace(/residence|residencial|edifício|lançamento/gi, '')
           .trim()
@@ -721,7 +909,6 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       }
 
       if (kFiles && kFiles.length > 0) {
-        // Priorizar arquivo que contenha book, ebook ou pdf de apresentação
         var pickedFile = null
         for (var kIdx = 0; kIdx < kFiles.length; kIdx++) {
           var kf = kFiles[kIdx]
@@ -737,7 +924,6 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           }
         }
         if (!pickedFile) {
-          // Se não encontrou 'book' no nome, mas é PDF daquele lançamento, usar o primeiro PDF
           for (var pIdx = 0; pIdx < kFiles.length; pIdx++) {
             var candKf = kFiles[pIdx]
             var cMime = candKf.getString('mime_type') || ''
@@ -827,8 +1013,10 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       )
     }
 
+    // REGRA ESTRITA: só preenche contexto com o nome do imóvel se allowPropertyMention for verdadeiro
+    // (isto é: se comprovadamente houve apresentação prévia desse imóvel para o cliente)
     var propContext = ''
-    if (launchInfo.propertyTitle) {
+    if (launchInfo.allowPropertyMention && launchInfo.propertyTitle) {
       propContext = ' em relação ao *' + launchInfo.propertyTitle + '*'
     } else {
       propContext = ''
@@ -839,6 +1027,8 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       var textRem = remTemplate
       var lName = launchInfo.launchName || 'nossas novidades imobiliárias'
       var lLoc = launchInfo.location || 'na região'
+
+      // Anexo de material: SÓ adiciona a menção se o arquivo físico existir de fato
       var matPart = ''
       if (launchInfo.documentMedia && launchInfo.materialText) {
         matPart = ' (envio junto ' + launchInfo.materialText + ')'
@@ -858,8 +1048,8 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       if (propContext) {
         textD1 = textD1.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
       } else {
-        // Pergunta consultiva natural sem menção torta
-        textD1 = textD1.replace(/\{CONTEXTO_IMOVEL\}/g, ' sobre a sua busca')
+        // Pergunta consultiva genérica e elegante sobre a busca (sem citar imóvel que nunca foi enviado)
+        textD1 = textD1.replace(/\{CONTEXTO_IMOVEL\}/g, ' sobre a sua busca imobiliária')
       }
       return textD1
     }
@@ -867,21 +1057,33 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
     if (step === 'd3') {
       var d3Template = pickVariant(parsedTemplates.d3)
       var textD3 = d3Template.replace(/\{SAUDACAO\}/g, greeting)
-      textD3 = textD3.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      if (propContext) {
+        textD3 = textD3.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      } else {
+        textD3 = textD3.replace(/\{CONTEXTO_IMOVEL\}/g, ' nas opções que temos na região')
+      }
       return textD3
     }
 
     if (step === 'd7') {
       var d7Template = pickVariant(parsedTemplates.d7)
       var textD7 = d7Template.replace(/\{SAUDACAO\}/g, greeting)
-      textD7 = textD7.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      if (propContext) {
+        textD7 = textD7.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      } else {
+        textD7 = textD7.replace(/\{CONTEXTO_IMOVEL\}/g, ' para os imóveis disponíveis')
+      }
       return textD7
     }
 
     if (step === 'd14') {
       var d1Template14 = pickVariant(parsedTemplates.d14)
       var textD14 = d1Template14.replace(/\{SAUDACAO\}/g, greeting)
-      textD14 = textD14.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      if (propContext) {
+        textD14 = textD14.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      } else {
+        textD14 = textD14.replace(/\{CONTEXTO_IMOVEL\}/g, '')
+      }
       return textD14
     }
 
@@ -948,7 +1150,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           'conversations',
           "customer_id = '" + pCustId + "'",
           '-created',
-          2,
+          15,
           0,
         )
       } catch (_) {}
@@ -963,7 +1165,8 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       if (!acquireLock(pCustId)) continue
 
       try {
-        var lInfoProm = resolveLaunchAndKnowledgeData(pCust)
+        var pPresHist = checkCustomerPresentationHistory(pCust, pConvs)
+        var lInfoProm = resolveLaunchAndKnowledgeData(pCust, 'promised_followup', pConvs, pPresHist)
         var msgText = buildPersistenceMessageWithVariance('promised_followup', pCust, lInfoProm)
         var sent = sendPersistenceMarketingMessage(
           pCust,
@@ -1040,7 +1243,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           'conversations',
           "customer_id = '" + sCustId + "'",
           '-created',
-          2,
+          20,
           0,
         )
       } catch (_) {}
@@ -1084,12 +1287,19 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       if (isAutomatedThreadOrBot(sCust, sLatest)) continue
 
       // ======================================================================
-      // CRITÉRIO DE ENTRADA E DETERMINAÇÃO DO DEGRAU (REMARKETING vs D+1):
-      // - Se o cliente nunca recebeu follow-up recente E a última conversa/interação
-      //   é mais antiga que 7 dias (ex: clientes do backfill ou contato antigo),
-      //   o primeiro toque é OBRIGATORIAMENTE o REMARKETING (apresentação de oportunidade)
-      //   e NUNCA o D+1 de seguimento ("passando para saber se deu uma olhada").
+      // GATE DE APRESENTAÇÃO PRÉVIA E DETERMINAÇÃO DO DEGRAU:
+      //
+      // REGRA:
+      // Se o cliente NUNCA recebeu apresentação prévia de imóvel (caso típico do
+      // backfill de Google Contacts ou leads sem histórico de produto enviado),
+      // o cliente NÃO PODE receber degraus de seguimento (D+1, D+3, D+7) que afirmam
+      // "passando para saber se você conseguiu dar uma olhada na opção/imóvel".
+      // Nesses casos, o toque DEVE ser obrigatoriamente o REMARKETING de oportunidade.
+      //
+      // Só avança para D+3/D+7/D+14 se o cliente já tiver recebido apresentação prévia.
+      // Se não tiver apresentação prévia e já recebeu remarketing, vai para nutrição mensal.
       // ======================================================================
+      var presHistScheduled = checkCustomerPresentationHistory(sCust, sConvs)
       var followUpCount = sCust.getInt('follow_up_count') || 0
       var lastFollowUpAt = sCust.getString('last_follow_up_at') || ''
       var stepToExecute = currentStep
@@ -1097,42 +1307,60 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
 
       var elapsedSinceInteraction = sLatestTime ? nowMsGlobal - sLatestTime : sevenDaysMs + 1000
 
-      if (!lastFollowUpAt || followUpCount === 0) {
-        if (elapsedSinceInteraction >= sevenDaysMs) {
-          // Cliente antigo sem apresentação recente -> Primeiro toque é REMARKETING
+      if (!presHistScheduled.hasPresentation) {
+        // CLIENTE NUNCA RECEBEU APRESENTAÇÃO PRÉVIA:
+        // Se ainda não recebeu follow-up ou se foi agendado D+1 indevidamente pelo backfill:
+        // Primeiro toque DEVE ser REMARKETING
+        if (!lastFollowUpAt || followUpCount === 0 || currentStep === 'd1') {
           stepToExecute = 'remarketing'
           nextStepAfterSend = 'nurturing_monthly'
         } else {
-          // Conversa recente nos últimos dias -> D+1 normal
-          stepToExecute = 'd1'
-          nextStepAfterSend = 'd3'
+          // Já recebeu remarketing inicial: segue na nutrição mensal leve
+          stepToExecute = 'nurturing_monthly'
+          nextStepAfterSend = 'nurturing_monthly'
         }
       } else {
-        if (currentStep === 'remarketing') {
-          stepToExecute = 'nurturing_monthly'
-          nextStepAfterSend = 'nurturing_monthly'
-        } else if (currentStep === 'd1') {
-          stepToExecute = 'd3'
-          nextStepAfterSend = 'd7'
-        } else if (currentStep === 'd3') {
-          stepToExecute = 'd7'
-          nextStepAfterSend = 'd14'
-        } else if (currentStep === 'd7') {
-          stepToExecute = 'd14'
-          nextStepAfterSend = 'nurturing_monthly'
+        // CLIENTE JÁ RECEBEU APRESENTAÇÃO PRÉVIA COMPROVADA:
+        if (!lastFollowUpAt || followUpCount === 0) {
+          if (elapsedSinceInteraction >= sevenDaysMs) {
+            stepToExecute = 'remarketing'
+            nextStepAfterSend = 'nurturing_monthly'
+          } else {
+            stepToExecute = 'd1'
+            nextStepAfterSend = 'd3'
+          }
         } else {
-          stepToExecute = 'nurturing_monthly'
-          nextStepAfterSend = 'nurturing_monthly'
+          if (currentStep === 'remarketing') {
+            stepToExecute = 'nurturing_monthly'
+            nextStepAfterSend = 'nurturing_monthly'
+          } else if (currentStep === 'd1') {
+            stepToExecute = 'd3'
+            nextStepAfterSend = 'd7'
+          } else if (currentStep === 'd3') {
+            stepToExecute = 'd7'
+            nextStepAfterSend = 'd14'
+          } else if (currentStep === 'd7') {
+            stepToExecute = 'd14'
+            nextStepAfterSend = 'nurturing_monthly'
+          } else {
+            stepToExecute = 'nurturing_monthly'
+            nextStepAfterSend = 'nurturing_monthly'
+          }
         }
       }
 
       if (!acquireLock(sCustId)) continue
 
       try {
-        var launchInfo = resolveLaunchAndKnowledgeData(sCust)
+        var launchInfo = resolveLaunchAndKnowledgeData(
+          sCust,
+          stepToExecute,
+          sConvs,
+          presHistScheduled,
+        )
         var msgTextScheduled = buildPersistenceMessageWithVariance(stepToExecute, sCust, launchInfo)
 
-        // Se for degrau de remarketing ou nutrição mensal, envia o documento se existir
+        // Se for degrau de remarketing ou nutrição mensal, envia o documento se existir de fato
         var docToSend = null
         if (stepToExecute === 'remarketing' || stepToExecute === 'nurturing_monthly') {
           docToSend = launchInfo.documentMedia
@@ -1207,7 +1435,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           'conversations',
           "customer_id = '" + iCustId + "'",
           '-created',
-          2,
+          15,
           0,
         )
       } catch (_) {}
@@ -1244,13 +1472,24 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       // Guarda: anti-bot
       if (isAutomatedThreadOrBot(iCust, latestMsg)) continue
 
-      // Se interação > 7 dias: entra como REMARKETING; se recente (entre 24h e 7 dias): entra como D+1
-      var entryStep = elapsedMs >= sevenDaysMs ? 'remarketing' : 'd1'
+      // ======================================================================
+      // GATE DE APRESENTAÇÃO PRÉVIA PARA NOVOS ENTRANTES NA RÉGUA:
+      // Se não tem apresentação prévia registrada -> REMARKETING.
+      // Se tem apresentação prévia E interação recente (24h - 7d) -> D+1.
+      // Se tem apresentação prévia E interação antiga (> 7d) -> REMARKETING.
+      // ======================================================================
+      var presHistIdle = checkCustomerPresentationHistory(iCust, lastConvs)
+      var entryStep = 'remarketing'
+      if (presHistIdle.hasPresentation && elapsedMs < sevenDaysMs) {
+        entryStep = 'd1'
+      } else {
+        entryStep = 'remarketing'
+      }
 
       if (!acquireLock(iCustId)) continue
 
       try {
-        var lInfoIdle = resolveLaunchAndKnowledgeData(iCust)
+        var lInfoIdle = resolveLaunchAndKnowledgeData(iCust, entryStep, lastConvs, presHistIdle)
         var entryText = buildPersistenceMessageWithVariance(entryStep, iCust, lInfoIdle)
         var docEntry = entryStep === 'remarketing' ? lInfoIdle.documentMedia : null
 
