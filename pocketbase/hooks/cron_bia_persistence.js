@@ -1005,6 +1005,12 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
 
             var driveUrl = extractDriveLinkFromText(extText)
             if (driveUrl) {
+              // Somente documentos/arquivos de apresentação de verdade (PDF, vídeo, galeria/pasta).
+              // Ignorar arquivos markdown (.md) como mídia anexável via WhatsApp.
+              if (rNameD.toLowerCase().endsWith('.md')) {
+                continue
+              }
+
               var isLegit =
                 isLegitimatePresentationName(rNameD) ||
                 rNameD.toLowerCase().includes('vídeo') ||
