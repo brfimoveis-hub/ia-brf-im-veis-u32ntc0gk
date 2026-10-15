@@ -223,10 +223,15 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
         tabelaRec.set('is_active', true)
         tabelaRec.set('property_id', VISTAGE_PROP_ID)
         tabelaRec.set('enterprise', 'Vistage Residence')
-        tabelaRec.set('summary', 'Tabela oficial de valores unit-level do Vistage Residence válida a partir de Setembro/2026 (AJ Coelho). Contém preços individuais de todas as unidades dos blocos 101 a 1306 e cobertura 1401, condições de pagamento (15% ato, 60x mensais, 4x reforços, 60% Caixa) e indicação de unidades vendidas (201, 301, 202, 203, 505, 705).')
+        tabelaRec.set(
+          'summary',
+          'Tabela oficial de valores unit-level do Vistage Residence válida a partir de Setembro/2026 (AJ Coelho). Contém preços individuais de todas as unidades dos blocos 101 a 1306 e cobertura 1401, condições de pagamento (15% ato, 60x mensais, 4x reforços, 60% Caixa) e indicação de unidades vendidas (201, 301, 202, 203, 505, 705).',
+        )
         tabelaRec.set('updated', now)
         app.saveNoValidate(tabelaRec)
-        console.log('[MIG_1760000065] Registro 1p354c83ug3jn8l atualizado com a tabela Set/2026 unit-level completa.')
+        console.log(
+          '[MIG_1760000065] Registro 1p354c83ug3jn8l atualizado com a tabela Set/2026 unit-level completa.',
+        )
       }
     } catch (e1) {
       console.warn('[MIG_1760000065] Registro 1p354c83ug3jn8l não encontrado por id:', String(e1))
@@ -241,10 +246,15 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
         polRec1.set('is_active', true)
         polRec1.set('property_id', VISTAGE_PROP_ID)
         polRec1.set('enterprise', 'Vistage Residence')
-        polRec1.set('summary', 'Política Comercial oficial do Vistage Residence Barreiros (AJ Coelho Construtora). Regras de negociação, 10% desconto à vista, validade de proposta 48h, 15% ato, financiamento exclusivo Caixa até 60% e uso de FGTS.')
+        polRec1.set(
+          'summary',
+          'Política Comercial oficial do Vistage Residence Barreiros (AJ Coelho Construtora). Regras de negociação, 10% desconto à vista, validade de proposta 48h, 15% ato, financiamento exclusivo Caixa até 60% e uso de FGTS.',
+        )
         polRec1.set('updated', now)
         app.saveNoValidate(polRec1)
-        console.log('[MIG_1760000065] Registro 9g3yoz32wdqhek6 (POLITICA VENDAS) atualizado com sucesso.')
+        console.log(
+          '[MIG_1760000065] Registro 9g3yoz32wdqhek6 (POLITICA VENDAS) atualizado com sucesso.',
+        )
       }
     } catch (e2) {
       console.warn('[MIG_1760000065] Registro 9g3yoz32wdqhek6 não encontrado:', String(e2))
@@ -257,10 +267,15 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
         polRec2.set('is_active', true)
         polRec2.set('property_id', VISTAGE_PROP_ID)
         polRec2.set('enterprise', 'Vistage Residence')
-        polRec2.set('summary', 'Política Comercial oficial do Vistage Residence Barreiros (AJ Coelho Construtora). Regras de negociação, 10% desconto à vista, validade de proposta 48h, 15% ato, financiamento exclusivo Caixa até 60% e uso de FGTS.')
+        polRec2.set(
+          'summary',
+          'Política Comercial oficial do Vistage Residence Barreiros (AJ Coelho Construtora). Regras de negociação, 10% desconto à vista, validade de proposta 48h, 15% ato, financiamento exclusivo Caixa até 60% e uso de FGTS.',
+        )
         polRec2.set('updated', now)
         app.saveNoValidate(polRec2)
-        console.log('[MIG_1760000065] Registro eqolmuk9ko328ez (POLITICA VENDAS) sincronizado com sucesso.')
+        console.log(
+          '[MIG_1760000065] Registro eqolmuk9ko328ez (POLITICA VENDAS) sincronizado com sucesso.',
+        )
       }
     } catch (e3) {
       console.warn('[MIG_1760000065] Registro eqolmuk9ko328ez não encontrado:', String(e3))
@@ -271,10 +286,15 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
       const oldTab = app.findRecordById('ai_knowledge_files', 'cnbqist3pc112xw')
       if (oldTab) {
         oldTab.set('is_active', false)
-        oldTab.set('summary', 'Tabela antiga desativada — substituída pela Tabela Oficial Setembro/2026 (1p354c83ug3jn8l).')
+        oldTab.set(
+          'summary',
+          'Tabela antiga desativada — substituída pela Tabela Oficial Setembro/2026 (1p354c83ug3jn8l).',
+        )
         oldTab.set('updated', now)
         app.saveNoValidate(oldTab)
-        console.log('[MIG_1760000065] Tabela antiga cnbqist3pc112xw mantida desativada com aviso de substituição.')
+        console.log(
+          '[MIG_1760000065] Tabela antiga cnbqist3pc112xw mantida desativada com aviso de substituição.',
+        )
       }
     } catch (_) {}
 
@@ -287,11 +307,18 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
         // Preço dinâmico da menor unidade DISPONÍVEL da tabela: 2 dorm AP 303 = R$ 607.880,00
         propRec.set('price', 607880)
         propRec.set('price_formatted', 'A partir de R$ 607.880,00')
-        propRec.set('description', 'Vistage Residence em Barreiros, São José - SC. Lançamento de alto padrão AJ Coelho com plantas de 2 e 3 dormitórios (1 suíte + 2 demi-suítes ou 2 suítes) e cobertura exclusiva linear de 296m². Rooftop completo com piscina de borda infinita, academia panorâmica com vista mar, marketplace 24h na garagem e sacada com churrasqueira a carvão. Tabela oficial de valores por unidade Setembro/2026.')
-        
+        propRec.set(
+          'description',
+          'Vistage Residence em Barreiros, São José - SC. Lançamento de alto padrão AJ Coelho com plantas de 2 e 3 dormitórios (1 suíte + 2 demi-suítes ou 2 suítes) e cobertura exclusiva linear de 296m². Rooftop completo com piscina de borda infinita, academia panorâmica com vista mar, marketplace 24h na garagem e sacada com churrasqueira a carvão. Tabela oficial de valores por unidade Setembro/2026.',
+        )
+
         let feat = propRec.get('features') || []
         if (typeof feat === 'string') {
-          try { feat = JSON.parse(feat) } catch (_) { feat = [] }
+          try {
+            feat = JSON.parse(feat)
+          } catch (_) {
+            feat = []
+          }
         }
         // Limpar menção a Garden se houver
         feat = feat.filter((f) => !/garden/i.test(String(f)))
@@ -301,7 +328,9 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
         propRec.set('features', feat)
         propRec.set('updated', now)
         app.saveNoValidate(propRec)
-        console.log('[MIG_1760000065] Imóvel properties VISTAGE atualizado para R$ 607.880,00 e menções a Garden removidas.')
+        console.log(
+          '[MIG_1760000065] Imóvel properties VISTAGE atualizado para R$ 607.880,00 e menções a Garden removidas.',
+        )
       }
     } catch (pErr) {
       console.warn('[MIG_1760000065] Erro ao atualizar properties Vistage:', String(pErr))
@@ -316,105 +345,747 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
         // Gerar array completo de 79 unidades com disponibilidade precisa
         const unitsArray = [
           // Bloco 101-1301 (3 quartos: 1 suíte + 2 demi-suítes, sol tarde)
-          { unit: '101', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '110,09m²', price: 'R$ 1.183.725,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 142.047,00' },
-          { unit: '201', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.011.465,00', available: false, status: 'VENDIDO', sun: 'Sol da Tarde' },
-          { unit: '301', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.032.759,00', available: false, status: 'VENDIDO', sun: 'Sol da Tarde' },
-          { unit: '401', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.054.053,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 158.107,95' },
-          { unit: '501', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.075.347,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 161.302,05' },
-          { unit: '601', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.096.641,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 164.496,15' },
-          { unit: '701', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.128.582,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 169.287,30' },
-          { unit: '801', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.160.523,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 174.078,45' },
-          { unit: '901', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.192.464,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 178.869,60' },
-          { unit: '1001', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.224.405,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 183.660,75' },
-          { unit: '1101', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.256.346,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 188.451,90' },
-          { unit: '1201', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.288.287,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 193.243,05' },
-          { unit: '1301', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '106,47m²', price: 'R$ 1.320.228,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 198.034,20' },
+          {
+            unit: '101',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '110,09m²',
+            price: 'R$ 1.183.725,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 142.047,00',
+          },
+          {
+            unit: '201',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.011.465,00',
+            available: false,
+            status: 'VENDIDO',
+            sun: 'Sol da Tarde',
+          },
+          {
+            unit: '301',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.032.759,00',
+            available: false,
+            status: 'VENDIDO',
+            sun: 'Sol da Tarde',
+          },
+          {
+            unit: '401',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.054.053,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 158.107,95',
+          },
+          {
+            unit: '501',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.075.347,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 161.302,05',
+          },
+          {
+            unit: '601',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.096.641,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 164.496,15',
+          },
+          {
+            unit: '701',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.128.582,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 169.287,30',
+          },
+          {
+            unit: '801',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.160.523,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 174.078,45',
+          },
+          {
+            unit: '901',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.192.464,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 178.869,60',
+          },
+          {
+            unit: '1001',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.224.405,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 183.660,75',
+          },
+          {
+            unit: '1101',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.256.346,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 188.451,90',
+          },
+          {
+            unit: '1201',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.288.287,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 193.243,05',
+          },
+          {
+            unit: '1301',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '106,47m²',
+            price: 'R$ 1.320.228,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 198.034,20',
+          },
 
           // Bloco 102-1302 (3 quartos: 1 suíte + 2 demi-suítes, sol manhã/tarde)
-          { unit: '102', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '103,87m²', price: 'R$ 965.615,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 144.842,25' },
-          { unit: '202', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 909.630,00', available: false, status: 'VENDIDO', sun: 'Sol da Manhã e Tarde' },
-          { unit: '302', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 929.844,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 139.476,60', notes: 'Menor valor de 3 dorm disponível' },
-          { unit: '402', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 950.058,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 142.508,70' },
-          { unit: '502', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 970.272,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 145.540,80' },
-          { unit: '602', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 990.486,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 148.572,90' },
-          { unit: '702', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 1.020.807,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 153.121,05' },
-          { unit: '802', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 1.051.128,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 157.669,20' },
-          { unit: '902', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 1.081.449,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 162.217,35' },
-          { unit: '1002', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 1.111.770,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 166.765,50' },
-          { unit: '1102', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 1.142.091,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 171.313,65' },
-          { unit: '1202', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 1.172.412,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 175.861,80' },
-          { unit: '1302', typology: '3 Quartos (1 suíte + 2 demi-suítes)', area: '101,07m²', price: 'R$ 1.202.733,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 180.409,95' },
+          {
+            unit: '102',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '103,87m²',
+            price: 'R$ 965.615,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 144.842,25',
+          },
+          {
+            unit: '202',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 909.630,00',
+            available: false,
+            status: 'VENDIDO',
+            sun: 'Sol da Manhã e Tarde',
+          },
+          {
+            unit: '302',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 929.844,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 139.476,60',
+            notes: 'Menor valor de 3 dorm disponível',
+          },
+          {
+            unit: '402',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 950.058,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 142.508,70',
+          },
+          {
+            unit: '502',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 970.272,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 145.540,80',
+          },
+          {
+            unit: '602',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 990.486,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 148.572,90',
+          },
+          {
+            unit: '702',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 1.020.807,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 153.121,05',
+          },
+          {
+            unit: '802',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 1.051.128,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 157.669,20',
+          },
+          {
+            unit: '902',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 1.081.449,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 162.217,35',
+          },
+          {
+            unit: '1002',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 1.111.770,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 166.765,50',
+          },
+          {
+            unit: '1102',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 1.142.091,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 171.313,65',
+          },
+          {
+            unit: '1202',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 1.172.412,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 175.861,80',
+          },
+          {
+            unit: '1302',
+            typology: '3 Quartos (1 suíte + 2 demi-suítes)',
+            area: '101,07m²',
+            price: 'R$ 1.202.733,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 180.409,95',
+          },
 
           // Bloco 103-1303 (2 quartos: 1 suíte + 1 banheiro, sol manhã)
-          { unit: '103', typology: '2 Quartos (1 suíte)', area: '68,54m²', price: 'R$ 623.110,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 93.466,50' },
-          { unit: '203', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 594.520,00', available: false, status: 'VENDIDO', sun: 'Sol da Manhã' },
-          { unit: '303', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 607.880,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 91.182,00', notes: 'Menor valor de 2 dorm disponível' },
-          { unit: '403', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 621.240,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 93.186,00' },
-          { unit: '503', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 634.600,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 95.190,00' },
-          { unit: '603', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 647.960,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 97.194,00' },
-          { unit: '703', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 661.320,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 99.198,00' },
-          { unit: '803', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 674.680,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 101.202,00' },
-          { unit: '903', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 688.040,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 103.206,00' },
-          { unit: '1003', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 701.400,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 105.210,00' },
-          { unit: '1103', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 714.760,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 107.214,00' },
-          { unit: '1203', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 728.120,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 109.218,00' },
-          { unit: '1303', typology: '2 Quartos (1 suíte)', area: '66,80m²', price: 'R$ 741.480,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 111.222,00' },
+          {
+            unit: '103',
+            typology: '2 Quartos (1 suíte)',
+            area: '68,54m²',
+            price: 'R$ 623.110,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 93.466,50',
+          },
+          {
+            unit: '203',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 594.520,00',
+            available: false,
+            status: 'VENDIDO',
+            sun: 'Sol da Manhã',
+          },
+          {
+            unit: '303',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 607.880,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 91.182,00',
+            notes: 'Menor valor de 2 dorm disponível',
+          },
+          {
+            unit: '403',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 621.240,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 93.186,00',
+          },
+          {
+            unit: '503',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 634.600,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 95.190,00',
+          },
+          {
+            unit: '603',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 647.960,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 97.194,00',
+          },
+          {
+            unit: '703',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 661.320,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 99.198,00',
+          },
+          {
+            unit: '803',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 674.680,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 101.202,00',
+          },
+          {
+            unit: '903',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 688.040,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 103.206,00',
+          },
+          {
+            unit: '1003',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 701.400,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 105.210,00',
+          },
+          {
+            unit: '1103',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 714.760,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 107.214,00',
+          },
+          {
+            unit: '1203',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 728.120,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 109.218,00',
+          },
+          {
+            unit: '1303',
+            typology: '2 Quartos (1 suíte)',
+            area: '66,80m²',
+            price: 'R$ 741.480,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 111.222,00',
+          },
 
           // Bloco 104-1304 (2 quartos: 2 suítes, sol tarde)
-          { unit: '104', typology: '2 Quartos (2 suítes)', area: '85,62m²', price: 'R$ 935.324,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 140.298,60' },
-          { unit: '204', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 701.760,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 105.264,00' },
-          { unit: '304', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 718.080,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 107.712,00' },
-          { unit: '404', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 734.400,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 110.160,00' },
-          { unit: '504', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 750.720,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 112.608,00' },
-          { unit: '604', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 767.040,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 115.056,00' },
-          { unit: '704', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 783.360,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 117.504,00' },
-          { unit: '804', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 799.680,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 119.952,00' },
-          { unit: '904', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 816.000,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 122.400,00' },
-          { unit: '1004', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 848.640,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 127.296,00' },
-          { unit: '1104', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 864.960,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 129.744,00' },
-          { unit: '1204', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 881.280,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 132.192,00' },
-          { unit: '1304', typology: '2 Quartos (2 suítes)', area: '81,60m²', price: 'R$ 897.600,00', available: true, sun: 'Sol da Tarde', downPayment: 'R$ 134.640,00' },
+          {
+            unit: '104',
+            typology: '2 Quartos (2 suítes)',
+            area: '85,62m²',
+            price: 'R$ 935.324,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 140.298,60',
+          },
+          {
+            unit: '204',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 701.760,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 105.264,00',
+          },
+          {
+            unit: '304',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 718.080,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 107.712,00',
+          },
+          {
+            unit: '404',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 734.400,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 110.160,00',
+          },
+          {
+            unit: '504',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 750.720,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 112.608,00',
+          },
+          {
+            unit: '604',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 767.040,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 115.056,00',
+          },
+          {
+            unit: '704',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 783.360,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 117.504,00',
+          },
+          {
+            unit: '804',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 799.680,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 119.952,00',
+          },
+          {
+            unit: '904',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 816.000,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 122.400,00',
+          },
+          {
+            unit: '1004',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 848.640,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 127.296,00',
+          },
+          {
+            unit: '1104',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 864.960,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 129.744,00',
+          },
+          {
+            unit: '1204',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 881.280,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 132.192,00',
+          },
+          {
+            unit: '1304',
+            typology: '2 Quartos (2 suítes)',
+            area: '81,60m²',
+            price: 'R$ 897.600,00',
+            available: true,
+            sun: 'Sol da Tarde',
+            downPayment: 'R$ 134.640,00',
+          },
 
           // Bloco 105-1305 (2 quartos: 2 suítes, sol manhã)
-          { unit: '105', typology: '2 Quartos (2 suítes)', area: '75,15m²', price: 'R$ 858.070,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 128.710,50' },
-          { unit: '205', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 671.232,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 100.684,80' },
-          { unit: '305', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 685.824,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 102.873,60' },
-          { unit: '405', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 700.416,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 105.062,40' },
-          { unit: '505', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 729.600,00', available: false, status: 'VENDIDO', sun: 'Sol da Manhã' },
-          { unit: '605', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 751.488,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 112.723,20' },
-          { unit: '705', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 773.376,00', available: false, status: 'VENDIDO', sun: 'Sol da Manhã' },
-          { unit: '805', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 795.264,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 119.289,60' },
-          { unit: '905', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 817.152,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 122.572,80' },
-          { unit: '1005', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 839.040,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 125.856,00' },
-          { unit: '1105', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 860.928,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 129.139,20' },
-          { unit: '1205', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 882.816,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 132.422,40' },
-          { unit: '1305', typology: '2 Quartos (2 suítes)', area: '72,96m²', price: 'R$ 904.704,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 135.705,60' },
+          {
+            unit: '105',
+            typology: '2 Quartos (2 suítes)',
+            area: '75,15m²',
+            price: 'R$ 858.070,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 128.710,50',
+          },
+          {
+            unit: '205',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 671.232,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 100.684,80',
+          },
+          {
+            unit: '305',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 685.824,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 102.873,60',
+          },
+          {
+            unit: '405',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 700.416,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 105.062,40',
+          },
+          {
+            unit: '505',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 729.600,00',
+            available: false,
+            status: 'VENDIDO',
+            sun: 'Sol da Manhã',
+          },
+          {
+            unit: '605',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 751.488,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 112.723,20',
+          },
+          {
+            unit: '705',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 773.376,00',
+            available: false,
+            status: 'VENDIDO',
+            sun: 'Sol da Manhã',
+          },
+          {
+            unit: '805',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 795.264,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 119.289,60',
+          },
+          {
+            unit: '905',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 817.152,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 122.572,80',
+          },
+          {
+            unit: '1005',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 839.040,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 125.856,00',
+          },
+          {
+            unit: '1105',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 860.928,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 129.139,20',
+          },
+          {
+            unit: '1205',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 882.816,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 132.422,40',
+          },
+          {
+            unit: '1305',
+            typology: '2 Quartos (2 suítes)',
+            area: '72,96m²',
+            price: 'R$ 904.704,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 135.705,60',
+          },
 
           // Bloco 106-1306 (2 quartos: 2 suítes, sol manhã)
-          { unit: '106', typology: '2 Quartos (2 suítes)', area: '92,02m²', price: 'R$ 1.178.604,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 176.790,60' },
-          { unit: '206', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 804.264,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 120.639,60' },
-          { unit: '306', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 821.748,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 123.262,20' },
-          { unit: '406', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 839.232,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 125.884,80' },
-          { unit: '506', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 874.200,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 131.130,00' },
-          { unit: '606', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 900.426,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 135.063,90' },
-          { unit: '706', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 926.652,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 138.997,80' },
-          { unit: '806', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 952.878,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 142.931,70' },
-          { unit: '906', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 979.104,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 146.865,60' },
-          { unit: '1006', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 1.005.330,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 150.799,50' },
-          { unit: '1106', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 1.031.556,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 154.733,40' },
-          { unit: '1206', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 1.057.782,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 158.667,30' },
-          { unit: '1306', typology: '2 Quartos (2 suítes)', area: '87,42m²', price: 'R$ 1.084.008,00', available: true, sun: 'Sol da Manhã', downPayment: 'R$ 162.601,20' },
+          {
+            unit: '106',
+            typology: '2 Quartos (2 suítes)',
+            area: '92,02m²',
+            price: 'R$ 1.178.604,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 176.790,60',
+          },
+          {
+            unit: '206',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 804.264,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 120.639,60',
+          },
+          {
+            unit: '306',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 821.748,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 123.262,20',
+          },
+          {
+            unit: '406',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 839.232,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 125.884,80',
+          },
+          {
+            unit: '506',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 874.200,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 131.130,00',
+          },
+          {
+            unit: '606',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 900.426,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 135.063,90',
+          },
+          {
+            unit: '706',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 926.652,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 138.997,80',
+          },
+          {
+            unit: '806',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 952.878,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 142.931,70',
+          },
+          {
+            unit: '906',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 979.104,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 146.865,60',
+          },
+          {
+            unit: '1006',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 1.005.330,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 150.799,50',
+          },
+          {
+            unit: '1106',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 1.031.556,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 154.733,40',
+          },
+          {
+            unit: '1206',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 1.057.782,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 158.667,30',
+          },
+          {
+            unit: '1306',
+            typology: '2 Quartos (2 suítes)',
+            area: '87,42m²',
+            price: 'R$ 1.084.008,00',
+            available: true,
+            sun: 'Sol da Manhã',
+            downPayment: 'R$ 162.601,20',
+          },
 
           // Cobertura 1401 (3 quartos: 3 suítes + 1 lavabo, sol manhã/tarde)
-          { unit: '1401', typology: 'Cobertura 3 Suítes', area: '296,20m²', price: 'R$ 3.258.200,00', available: true, sun: 'Sol da Manhã e Tarde', downPayment: 'R$ 488.730,00' },
+          {
+            unit: '1401',
+            typology: 'Cobertura 3 Suítes',
+            area: '296,20m²',
+            price: 'R$ 3.258.200,00',
+            available: true,
+            sun: 'Sol da Manhã e Tarde',
+            downPayment: 'R$ 488.730,00',
+          },
         ]
 
         launchRec.set('units', unitsArray)
-        launchRec.set('payment_terms', 'Tabela Setembro/2026: Entrada de 15% (Ato), 60 parcelas mensais, 4 reforços balões e financiamento de 60% exclusivo Caixa durante a obra. Desconto de 10% exclusivo para pagamento 100% à vista. Propostas garantidas por 48h.')
-        launchRec.set('description', 'O Vistage Residence chega para transformar a forma de viver em Barreiros, São José. Com entrega e padrão AJ Coelho, reúne arquitetura contemporânea, piscina de borda infinita no rooftop, academia com vista panorâmica para o mar, dois salões sociais e conveniência de marketplace 24h. Tabela oficial unit-level válida a partir de Setembro/2026.')
+        launchRec.set(
+          'payment_terms',
+          'Tabela Setembro/2026: Entrada de 15% (Ato), 60 parcelas mensais, 4 reforços balões e financiamento de 60% exclusivo Caixa durante a obra. Desconto de 10% exclusivo para pagamento 100% à vista. Propostas garantidas por 48h.',
+        )
+        launchRec.set(
+          'description',
+          'O Vistage Residence chega para transformar a forma de viver em Barreiros, São José. Com entrega e padrão AJ Coelho, reúne arquitetura contemporânea, piscina de borda infinita no rooftop, academia com vista panorâmica para o mar, dois salões sociais e conveniência de marketplace 24h. Tabela oficial unit-level válida a partir de Setembro/2026.',
+        )
         launchRec.set('updated', now)
         app.saveNoValidate(launchRec)
-        console.log('[MIG_1760000065] Dossiê de lançamentos launches Vistage atualizado com as 79 unidades e regras de pagamento.')
+        console.log(
+          '[MIG_1760000065] Dossiê de lançamentos launches Vistage atualizado com as 79 unidades e regras de pagamento.',
+        )
       }
     } catch (lErr) {
       console.warn('[MIG_1760000065] Erro ao atualizar launches Vistage:', String(lErr))
@@ -432,7 +1103,13 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
       }
 
       if (!biaRec) {
-        const activeRecs = app.findRecordsByFilter('bia_learnings', 'is_active = true', '-priority,-created', 1, 0)
+        const activeRecs = app.findRecordsByFilter(
+          'bia_learnings',
+          'is_active = true',
+          '-priority,-created',
+          1,
+          0,
+        )
         if (activeRecs && activeRecs.length > 0) {
           biaRec = activeRecs[0]
         }
@@ -496,7 +1173,8 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
     * E-mails de correspondente bancário (Azul Cred).`
 
         // Substituição do Artigo 10 no Texto Único
-        const art10Regex = /10\.\s*REGRAS GERAIS DE FINANCIAMENTO.*?(?=\n11\.\s*PROGRAMA MINHA CASA MINHA VIDA|\n##\s*11|$)/s
+        const art10Regex =
+          /10\.\s*REGRAS GERAIS DE FINANCIAMENTO.*?(?=\n11\.\s*PROGRAMA MINHA CASA MINHA VIDA|\n##\s*11|$)/s
         if (art10Regex.test(currentText)) {
           currentText = currentText.replace(art10Regex, novoArtigo10 + '\n\n')
         } else {
@@ -510,7 +1188,10 @@ INFORMAÇÕES DE USO ESTRITAMENTE INTERNO DA IMOBILIÁRIA E CONSTRUTORA:
         }
 
         // Também substitui qualquer ocorrência residual de menção a Córrego Grande no Vistage no item 7
-        currentText = currentText.replace(/onde localiza-se o Vistage Residence, ao lado do Parque Linear do Córrego Grande/gi, 'onde localizam-se empreendimentos universitários da Ilha')
+        currentText = currentText.replace(
+          /onde localiza-se o Vistage Residence, ao lado do Parque Linear do Córrego Grande/gi,
+          'onde localizam-se empreendimentos universitários da Ilha',
+        )
 
         // Atualiza a diretriz de interpretação de unidades inserida na migração 63 para contemplar a tabela unit-level do Vistage
         const diretrizUnidadesAntiga = `[INTERPRETAÇÃO DE UNIDADES E PLANTAS ESPECÍFICAS]:
@@ -541,10 +1222,16 @@ Quando o cliente perguntar o preço de uma unidade específica (ex.: "quanto cus
 
         // Sincronizar na coleção users
         try {
-          app.db().newQuery('UPDATE users SET bia_instructions = {:rule_text}, ai_instructions = {:rule_text} WHERE 1=1')
+          app
+            .db()
+            .newQuery(
+              'UPDATE users SET bia_instructions = {:rule_text}, ai_instructions = {:rule_text} WHERE 1=1',
+            )
             .bind({ rule_text: currentText })
             .execute()
-          console.log('[MIG_1760000065] users.bia_instructions e users.ai_instructions sincronizados.')
+          console.log(
+            '[MIG_1760000065] users.bia_instructions e users.ai_instructions sincronizados.',
+          )
         } catch (uErr) {
           console.warn('[MIG_1760000065] Erro ao sincronizar users:', String(uErr))
         }
@@ -556,5 +1243,5 @@ Quando o cliente perguntar o preço de uma unidade específica (ex.: "quanto cus
   (app) => {
     // Reversão
     console.log('[MIG_1760000065] Reversão executada.')
-  }
+  },
 )

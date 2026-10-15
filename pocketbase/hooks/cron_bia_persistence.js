@@ -871,95 +871,193 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       result.location = 'na Grande Florianópolis'
     }
 
-    // 3. Buscar material físico (e-book / book / PDF) na Base de Conhecimento (ai_knowledge_files)
-    //    REGRA: SÓ preenche documentMedia e materialText se houver arquivo REAL na base.
+    // 3. Buscar material de apresentação legítimo na Base de Conhecimento (ai_knowledge_files)
+    //
+    // REGRAS RIGOROSAS DO PROPRIETÁRIO (Mauro):
+    // (1) NUNCA prometer material que não é o material.
+    // (2) 1ª apresentação SEM preço cheio — tabelas e políticas de vendas NUNCA podem ser enviadas
+    //     como anexo ao cliente; são exclusivas para raciocínio interno da Bia.
+    // (3) BLACKLIST estrita por nome: arquivos que comecem por ou contenham "TABELA",
+    //     "POLITICA"/"POLÍTICA", "preço"/"preco", "valores" NUNCA podem ser selecionados
+    //     como documentMedia / materialText.
+    // (4) WHITELIST de material de apresentação: o material só é legítimo se o nome contiver
+    //     "book", "ebook"/"e-book", "apresentaç"/"apresentac", "folder", ou for vídeo/pasta oficial
+    //     de imagens com link público de Drive no extracted_text.
+    // (5) Se não houver arquivo físico real nem link público de apresentação legítimo:
+    //     documentMedia = null E materialText = '' (a mensagem sai sem "(envio junto o e-book)").
+    //     Log: "[BIA_PERSISTENCE] Material de apresentação legítimo indisponível para <propertyId> — remarketing sai sem anexo"
     var pbBaseUrl =
       $os.getenv('POCKETBASE_URL') ||
       $os.getenv('VITE_POCKETBASE_URL') ||
       'https://ia-uazapi-6d79e.shrd00.internal.goskip.dev'
 
     try {
-      var kFiles = []
+      function isBlacklistedAttachment(nameStr) {
+        if (!nameStr) return false
+        var s = String(nameStr).toLowerCase().trim()
+        if (
+          s.includes('tabela') ||
+          s.includes('politica') ||
+          s.includes('política') ||
+          s.includes('preco') ||
+          s.includes('preço') ||
+          s.includes('valores')
+        ) {
+          return true
+        }
+        return false
+      }
+
+      function isLegitimatePresentationName(nameStr) {
+        if (!nameStr) return false
+        var s = String(nameStr).toLowerCase().trim()
+        if (
+          s.includes('book') ||
+          s.includes('ebook') ||
+          s.includes('e-book') ||
+          s.includes('apresentaç') ||
+          s.includes('apresentac') ||
+          s.includes('folder')
+        ) {
+          return true
+        }
+        return false
+      }
+
+      function extractDriveLinkFromText(txt) {
+        if (!txt) return ''
+        var m = String(txt).match(/https:\/\/drive\.google\.com\/[^\s\)"'\]]+/i)
+        return m ? m[0] : ''
+      }
+
+      // Buscar candidatos em ai_knowledge_files (tanto com arquivo físico quanto registros com link de Drive)
+      var candidateRecords = []
       if (result.propertyId) {
-        kFiles = app.findRecordsByFilter(
+        candidateRecords = app.findRecordsByFilter(
           'ai_knowledge_files',
-          "is_active = true && property_id = '" + result.propertyId + "' && file != ''",
+          "is_active = true && property_id = '" + result.propertyId + "'",
           '-updated',
-          5,
+          20,
           0,
         )
       }
-      if ((!kFiles || kFiles.length === 0) && result.launchName) {
+      if ((!candidateRecords || candidateRecords.length === 0) && result.launchName) {
         var searchName = result.launchName
           .replace(/residence|residencial|edifício|lançamento/gi, '')
           .trim()
         if (searchName.length >= 3) {
-          kFiles = app.findRecordsByFilter(
+          candidateRecords = app.findRecordsByFilter(
             'ai_knowledge_files',
             "is_active = true && (name ~ '" +
               searchName +
               "' || enterprise ~ '" +
               searchName +
-              "') && file != ''",
+              "')",
             '-updated',
-            5,
+            20,
             0,
           )
         }
       }
 
-      if (kFiles && kFiles.length > 0) {
-        var pickedFile = null
-        for (var kIdx = 0; kIdx < kFiles.length; kIdx++) {
-          var kf = kFiles[kIdx]
-          var fName = (kf.getString('name') || kf.getString('file') || '').toLowerCase()
-          if (
-            fName.includes('book') ||
-            fName.includes('ebook') ||
-            fName.includes('apresentacao') ||
-            fName.includes('apresentação')
-          ) {
-            pickedFile = kf
-            break
+      var legitimateDocMedia = null
+      var legitimateMaterialText = ''
+
+      if (candidateRecords && candidateRecords.length > 0) {
+        // Passo 3.1: Prioridade 1 — Arquivo físico no PocketBase (file != '') com nome de apresentação legítimo
+        for (var fIdx = 0; fIdx < candidateRecords.length; fIdx++) {
+          var recF = candidateRecords[fIdx]
+          var rNameF = recF.getString('name') || ''
+          var physFile = recF.getString('file') || ''
+          var fSize = recF.getInt('file_size') || 0
+
+          if (isBlacklistedAttachment(rNameF)) {
+            continue
           }
-        }
-        if (!pickedFile) {
-          for (var pIdx = 0; pIdx < kFiles.length; pIdx++) {
-            var candKf = kFiles[pIdx]
-            var cMime = candKf.getString('mime_type') || ''
-            var cFileName = candKf.getString('file') || ''
-            if (cMime === 'application/pdf' || cFileName.endsWith('.pdf')) {
-              pickedFile = candKf
+
+          if (physFile && (fSize > 0 || physFile.length > 0)) {
+            if (isLegitimatePresentationName(rNameF)) {
+              var physUrl =
+                pbBaseUrl + '/api/files/' + recF.collectionId + '/' + recF.id + '/' + physFile
+              legitimateDocMedia = {
+                link: physUrl,
+                filename: rNameF.endsWith('.pdf') ? rNameF : rNameF + '.pdf',
+                caption: 'Material oficial: ' + (result.launchName || 'Lançamento'),
+              }
+              legitimateMaterialText = 'o e-book do lançamento'
               break
             }
           }
         }
-        if (!pickedFile) {
-          pickedFile = kFiles[0]
-        }
 
-        var rawUploadedFile = pickedFile.getString('file') || ''
-        if (rawUploadedFile) {
-          var fileUrl =
-            pbBaseUrl +
-            '/api/files/' +
-            pickedFile.collectionId +
-            '/' +
-            pickedFile.id +
-            '/' +
-            rawUploadedFile
-          result.documentMedia = {
-            link: fileUrl,
-            filename: pickedFile.getString('name') || 'Apresentacao.pdf',
-            caption: 'Material oficial: ' + (result.launchName || 'Lançamento'),
+        // Passo 3.2: Prioridade 2 — Registro com link público do Google Drive no extracted_text
+        // (folder, galeria, vídeo ou book com link público de compartilhamento)
+        if (!legitimateDocMedia) {
+          for (var dIdx = 0; dIdx < candidateRecords.length; dIdx++) {
+            var recD = candidateRecords[dIdx]
+            var rNameD = recD.getString('name') || ''
+            var extText = recD.getString('extracted_text') || ''
+            var mimeD = recD.getString('mime_type') || ''
+
+            if (isBlacklistedAttachment(rNameD)) {
+              continue
+            }
+
+            var driveUrl = extractDriveLinkFromText(extText)
+            if (driveUrl) {
+              var isLegit =
+                isLegitimatePresentationName(rNameD) ||
+                rNameD.toLowerCase().includes('vídeo') ||
+                rNameD.toLowerCase().includes('video') ||
+                rNameD.toLowerCase().includes('pasta pública') ||
+                rNameD.toLowerCase().includes('pasta publica') ||
+                rNameD.toLowerCase().includes('imagens e vídeos') ||
+                rNameD.toLowerCase().includes('galeria') ||
+                mimeD.indexOf('video') === 0 ||
+                mimeD.indexOf('google-apps.folder') !== -1
+
+              if (isLegit) {
+                // Link de drive para envio via WhatsApp document ou link direto
+                legitimateDocMedia = {
+                  link: driveUrl,
+                  filename: rNameD.indexOf('.') !== -1 ? rNameD : rNameD + '.pdf',
+                  caption: 'Material oficial: ' + (result.launchName || 'Lançamento'),
+                }
+                if (
+                  rNameD.toLowerCase().includes('vídeo') ||
+                  rNameD.toLowerCase().includes('video')
+                ) {
+                  legitimateMaterialText = 'o vídeo do lançamento'
+                } else if (isLegitimatePresentationName(rNameD)) {
+                  legitimateMaterialText = 'o e-book do lançamento'
+                } else {
+                  legitimateMaterialText = 'o material oficial do lançamento'
+                }
+                break
+              }
+            }
           }
-          result.materialText = 'o e-book do lançamento'
         }
+      }
+
+      if (legitimateDocMedia) {
+        result.documentMedia = legitimateDocMedia
+        result.materialText = legitimateMaterialText
+      } else {
+        result.documentMedia = null
+        result.materialText = ''
+        console.log(
+          '[BIA_PERSISTENCE] Material de apresentação legítimo indisponível para ' +
+            (result.propertyId || result.launchName || 'propriedade') +
+            ' — remarketing sai sem anexo',
+        )
       }
     } catch (kErr) {
       console.warn(
         '[BIA_PERSISTENCE] Erro ao buscar material na Base de Conhecimento: ' + kErr.message,
       )
+      result.documentMedia = null
+      result.materialText = ''
     }
 
     return result
