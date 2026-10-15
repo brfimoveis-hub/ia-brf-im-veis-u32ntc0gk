@@ -22,6 +22,14 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
     var customerId = customer.id
     var toPhone = customer.getString('phone') || customer.get('phone') || ''
     toPhone = String(toPhone).replace(/\D/g, '')
+    // Remove zero inicial de DDD (ex: 048984360590 -> 48984360590)
+    if (toPhone.startsWith('0') && toPhone.length >= 11) {
+      toPhone = toPhone.substring(1)
+    }
+    // Números com 8 ou 9 dígitos locais (sem DDD explícito): assumir DDD 48 de Florianópolis/BRF
+    if (toPhone.length === 8 || toPhone.length === 9) {
+      toPhone = '48' + toPhone
+    }
     if (toPhone.length < 10) return false
     if (!toPhone.startsWith('55') && toPhone.length <= 11) {
       toPhone = '55' + toPhone
@@ -422,8 +430,14 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       lowerMsg.includes('não responda a este número') ||
       lowerMsg.includes('nao responda a este numero') ||
       lowerMsg.includes('digite 1 para') ||
+      lowerMsg.includes('digite uma opção') ||
+      lowerMsg.includes('digite uma opcao') ||
       lowerMsg.includes('escolha uma das opções') ||
-      lowerMsg.includes('protocolo de atendimento:')
+      lowerMsg.includes('protocolo de atendimento:') ||
+      lowerMsg.includes('responda a pesquisa do meu atendimento') ||
+      lowerMsg.includes('sua opinião é muito importante para nós') ||
+      lowerMsg.includes('como você classifica nosso atendimento') ||
+      lowerMsg.includes('continue setting up your account')
     ) {
       return true
     }
@@ -442,10 +456,38 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
   function buildPersistenceMessage(step, customer, lastPropertyTitle) {
     var rawName = (customer.getString('name') || customer.getString('first_name') || '').trim()
     var custName = ''
-    if (rawName && !rawName.includes('+') && !/^\d+$/.test(rawName)) {
-      custName = rawName.split(' ')[0]
+    // Validação estrita do nome: não usar número cru, telefone formatado, "Sem nome" ou texto inválido
+    var cleanDigitsOnly = rawName.replace(/\D/g, '')
+    var isGenericPlaceholder =
+      !rawName ||
+      rawName.toLowerCase() === 'sem nome' ||
+      rawName.toLowerCase().startsWith('sem nome') ||
+      rawName.toLowerCase() === 'whatsapp' ||
+      rawName.toLowerCase().includes('whatsapp business') ||
+      rawName.startsWith('+') ||
+      cleanDigitsOnly.length >= 8 || // Telefone ou número cru
+      /^\d+$/.test(rawName)
+    if (!isGenericPlaceholder) {
+      var candidate = rawName.split(' ')[0].replace(/[^\p{L}]/gu, '')
+      if (candidate.length >= 2) {
+        custName = candidate
+      }
     }
     var greeting = custName ? 'Olá, ' + custName + '!' : 'Olá! Tudo bem?'
+    // Tenta detectar o imóvel em foco se não foi passado explicitamente
+    if (!lastPropertyTitle) {
+      try {
+        var cNotes = customer.getString('notes') || ''
+        var cOriginHist = customer.getString('origin_history') || ''
+        var match =
+          cNotes.match(/#(?:AP|LM|TR|SO|CA|ARU)\s*\d+/i) ||
+          cOriginHist.match(/#(?:AP|LM|TR|SO|CA|ARU)\s*\d+/i)
+        if (match) {
+          lastPropertyTitle = match[0].toUpperCase()
+        }
+      } catch (_) {}
+    }
+
     var propContext = lastPropertyTitle
       ? ' em relação ao *' + lastPropertyTitle + '*'
       : ' sobre a sua busca imobiliária'
@@ -614,27 +656,48 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
   }
 
   // 9.2 AGENDADOS: Clientes com next_follow_up_at vencido
+  // Processa em lote seguro por execução (15 por execução a cada 15 min), respeitando anti-flood e mantendo todas as guardas
   try {
+    var scheduledBatchLimit = 15
     var scheduledCustomers = app.findRecordsByFilter(
       'customers',
       "next_follow_up_at != '' && next_follow_up_at <= '" +
         nowIso +
         "' && (persistence_status = 'ativo' || persistence_status = 'aguardando_momento' || persistence_status = '') && is_blocked = false",
       'next_follow_up_at',
-      20,
+      50,
       0,
     )
 
     for (var sIdx = 0; sIdx < scheduledCustomers.length; sIdx++) {
+      if (executedCount >= scheduledBatchLimit) {
+        console.log(
+          '[BIA_PERSISTENCE] Limite de lote seguro por execução alcançado (' +
+            scheduledBatchLimit +
+            '). Fila continua na próxima execução.',
+        )
+        break
+      }
+
       var sCust = scheduledCustomers[sIdx]
       var sCustId = sCust.id
 
-      // Guarda: ai_paused nas tags
+      // Guarda 1: ai_paused ou cliente bloqueado
       var sTagsRaw = sCust.get('tags') || []
-      var sTagsStr = JSON.stringify(sTagsRaw)
+      var sTagsStr = JSON.stringify(sTagsRaw).toLowerCase()
       if (sTagsStr.includes('ai_paused') || sCust.getBool('is_blocked')) continue
 
-      // Verificar conversas do cliente
+      // Guarda 2: Não disparar se marcado como frio ou recusa ("não é o momento")
+      if (sTagsStr.includes('frio') || sTagsStr.includes('não é o momento')) continue
+
+      var currentStep = sCust.getString('follow_up_step') || 'd1'
+
+      // Guarda 3: Se o cliente já foi finalizado explicitamente, não processar
+      if (currentStep === 'finalizado') {
+        continue
+      }
+
+      // Guarda 4: Verificar conversas e última interação para assegurar silêncio real > 24h
       var sConvs = []
       try {
         sConvs = app.findRecordsByFilter(
@@ -646,58 +709,106 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
         )
       } catch (_) {}
 
-      if (sConvs.length === 0) continue
+      var sLatestTime = 0
+      var sLatest = null
+      if (sConvs.length > 0) {
+        sLatest = sConvs[0]
+        var sDateStr = sLatest.getString('created') || sLatest.get('created')
+        if (sDateStr) sLatestTime = new Date(sDateStr).getTime()
+      }
 
-      var sLatest = sConvs[0]
-      var sLatestTime = new Date(sLatest.getString('created') || sLatest.get('created')).getTime()
+      // Se não há mensagens na tabela conversations (ex.: importados do Google Contacts ou antes do registro unificado),
+      // consulta last_follow_up_at, last_sent_at, updated ou created do cliente
+      if (!sLatestTime) {
+        var lastFuStr = sCust.getString('last_follow_up_at')
+        if (lastFuStr) sLatestTime = new Date(lastFuStr).getTime()
+      }
+      if (!sLatestTime) {
+        var lastSentStr = sCust.getString('last_sent_at')
+        if (lastSentStr) sLatestTime = new Date(lastSentStr).getTime()
+      }
+      if (!sLatestTime) {
+        var updStr = sCust.getString('updated') || sCust.get('updated')
+        if (updStr) sLatestTime = new Date(updStr).getTime()
+      }
 
-      // Guarda: Não disparar se última mensagem < 24h
-      if (nowMsGlobal - sLatestTime < oneDayMs) continue
-
-      // Guarda: Não disparar se o cliente respondeu depois da última retomada (se a última foi do cliente, o ai_auto_reply deve responder)
-      if (sLatest.getString('sender') === 'customer') {
+      // Guarda estrita de silêncio: não disparar se houve qualquer interação/envio nas últimas 24h
+      if (sLatestTime && nowMsGlobal - sLatestTime < oneDayMs) {
         continue
       }
 
-      // Guarda: Anti-bot
+      // Guarda de resposta recente do cliente: se a última mensagem foi do cliente e tem menos de 24h,
+      // a IA de resposta imediata (ai_auto_reply) deve tratar, não o cron de persistência.
+      // Porém, se o cliente falou há dias/semanas e ninguém respondeu ou o lead esfriou, a retomada deve resgatá-lo.
+      if (
+        sLatest &&
+        sLatest.getString('sender') === 'customer' &&
+        nowMsGlobal - sLatestTime < oneDayMs
+      ) {
+        continue
+      }
+
+      // Guarda 5: Anti-bot
       if (isAutomatedThreadOrBot(sCust, sLatest)) continue
 
-      var currentStep = sCust.getString('follow_up_step') || 'd1'
+      // Determinar o degrau a disparar e o próximo agendamento:
+      // Se o cliente nunca recebeu um follow_up (follow_up_count === 0 ou last_follow_up_at vazio) e está com 'd1',
+      // o primeiro disparo agendado é o D+1, e o próximo será D+3!
+      // Se ele já recebeu D+1, avança para D+3; de D+3 para D+7; de D+7 para D+14; de D+14 para aquecimento mensal.
+      var followUpCount = sCust.getInt('follow_up_count') || 0
+      var lastFollowUpAt = sCust.getString('last_follow_up_at') || ''
+      var stepToExecute = currentStep
+      var nextStepAfterSend = 'd3'
 
-      // Se o cliente já foi finalizado explicitamente (recusa confirmada), não processar
-      if (currentStep === 'finalizado') {
-        continue
-      }
-
-      // Próximo passo da régua (Decisão do Mauro: silêncio sozinho NÃO encerra; pós-D+14 continua aquecimento espaçado a cada ~30 dias)
-      var nextStep = 'd3'
-      if (currentStep === 'd1') nextStep = 'd3'
-      else if (currentStep === 'd3') nextStep = 'd7'
-      else if (currentStep === 'd7') nextStep = 'd14'
-      else if (currentStep === 'd14' || currentStep === 'nurturing_monthly') {
-        nextStep = 'nurturing_monthly'
+      if (!lastFollowUpAt || followUpCount === 0) {
+        stepToExecute = currentStep || 'd1'
+        if (stepToExecute === 'd1') nextStepAfterSend = 'd3'
+        else if (stepToExecute === 'd3') nextStepAfterSend = 'd7'
+        else if (stepToExecute === 'd7') nextStepAfterSend = 'd14'
+        else nextStepAfterSend = 'nurturing_monthly'
+      } else {
+        if (currentStep === 'd1') {
+          stepToExecute = 'd3'
+          nextStepAfterSend = 'd7'
+        } else if (currentStep === 'd3') {
+          stepToExecute = 'd7'
+          nextStepAfterSend = 'd14'
+        } else if (currentStep === 'd7') {
+          stepToExecute = 'd14'
+          nextStepAfterSend = 'nurturing_monthly'
+        } else {
+          stepToExecute = 'nurturing_monthly'
+          nextStepAfterSend = 'nurturing_monthly'
+        }
       }
 
       if (!acquireLock(sCustId)) continue
 
       try {
-        var msgTextScheduled = buildPersistenceMessage(nextStep, sCust, '')
+        var msgTextScheduled = buildPersistenceMessage(stepToExecute, sCust, '')
         var ok = sendPersistenceMarketingMessage(
           sCust,
           msgTextScheduled,
           activeUserRecord,
-          nextStep,
+          stepToExecute,
         )
 
         if (ok) {
-          sCust.set('follow_up_step', nextStep)
-          sCust.set('follow_up_count', (sCust.getInt('follow_up_count') || 0) + 1)
+          sCust.set('follow_up_step', stepToExecute)
+          sCust.set('follow_up_count', followUpCount + 1)
           sCust.set('last_follow_up_at', nowIso)
-          sCust.set('next_follow_up_at', calculateNextFollowUp(nextStep))
+          sCust.set('next_follow_up_at', calculateNextFollowUp(stepToExecute))
+          sCust.set('persistence_status', 'ativo')
           app.saveNoValidate(sCust)
           executedCount++
           console.log(
-            '[BIA_PERSISTENCE] Retomada agendada (' + nextStep + ') enviada para ' + sCustId,
+            '[BIA_PERSISTENCE] Retomada agendada (' +
+              stepToExecute +
+              ') enviada para ' +
+              sCustId +
+              '. Próximo degrau (' +
+              nextStepAfterSend +
+              ') agendado.',
           )
         }
       } finally {
@@ -712,22 +823,30 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
 
   // 9.3 ENTRADA NA RÉGUA (D+1): Clientes em silêncio > 24h sem next_follow_up_at ou com follow_up_step vazio
   try {
+    var idleBatchLimit = 15
     var idleCustomers = app.findRecordsByFilter(
       'customers',
-      "(persistence_status = 'ativo' || persistence_status = '') && is_blocked = false && (next_follow_up_at = '' || next_follow_up_at = null) && (follow_up_step = '' || follow_up_step = null)",
+      "(persistence_status = 'ativo' || persistence_status = '' || persistence_status = null) && is_blocked = false && (next_follow_up_at = '' || next_follow_up_at = null) && (follow_up_step = '' || follow_up_step = null)",
       '-updated',
       25,
       0,
     )
 
     for (var idIdx = 0; idIdx < idleCustomers.length; idIdx++) {
+      if (executedCount >= idleBatchLimit) {
+        break
+      }
+
       var iCust = idleCustomers[idIdx]
       var iCustId = iCust.id
 
-      // Guarda: ai_paused
+      // Guarda 1: ai_paused ou cliente bloqueado
       var iTagsRaw = iCust.get('tags') || []
-      var iTagsStr = JSON.stringify(iTagsRaw)
+      var iTagsStr = JSON.stringify(iTagsRaw).toLowerCase()
       if (iTagsStr.includes('ai_paused') || iCust.getBool('is_blocked')) continue
+
+      // Guarda 2: Não disparar se frio ou recusa
+      if (iTagsStr.includes('frio') || iTagsStr.includes('não é o momento')) continue
 
       var lastConvs = []
       try {
@@ -740,21 +859,32 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
         )
       } catch (_) {}
 
-      if (lastConvs.length === 0) continue
+      var latestCreated = 0
+      var latestMsg = null
+      if (lastConvs.length > 0) {
+        latestMsg = lastConvs[0]
+        var lDateStr = latestMsg.getString('created') || latestMsg.get('created')
+        if (lDateStr) latestCreated = new Date(lDateStr).getTime()
+      }
 
-      var latestMsg = lastConvs[0]
-      var latestCreated = new Date(
-        latestMsg.getString('created') || latestMsg.get('created'),
-      ).getTime()
-      var elapsedMs = nowMsGlobal - latestCreated
+      if (!latestCreated) {
+        var iLastSent = iCust.getString('last_sent_at')
+        if (iLastSent) latestCreated = new Date(iLastSent).getTime()
+      }
+      if (!latestCreated) {
+        var iUpd = iCust.getString('updated') || iCust.get('updated')
+        if (iUpd) latestCreated = new Date(iUpd).getTime()
+      }
 
-      // Guarda: só ativa follow-up se já se passaram pelo menos 24 horas de silêncio e menos de 72 horas
-      if (elapsedMs < 24 * 3600 * 1000 || elapsedMs > 72 * 3600 * 1000) {
+      var elapsedMs = latestCreated ? nowMsGlobal - latestCreated : oneDayMs + 1000
+
+      // Guarda: só ativa follow-up se já se passaram pelo menos 24 horas de silêncio
+      if (elapsedMs < oneDayMs) {
         continue
       }
 
-      // Guarda: Se a última mensagem partiu do cliente há menos de 24h, não é o cron que trata
-      if (latestMsg.getString('sender') === 'customer' && elapsedMs < 24 * 3600 * 1000) {
+      // Guarda: Se a última mensagem partiu do cliente há menos de 24h, ai_auto_reply deve responder
+      if (latestMsg && latestMsg.getString('sender') === 'customer' && elapsedMs < oneDayMs) {
         continue
       }
 
