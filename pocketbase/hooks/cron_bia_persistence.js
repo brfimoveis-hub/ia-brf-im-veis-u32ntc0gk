@@ -6,10 +6,10 @@
  * PONTO ÚNICO DE ENVIO DE RETOMADAS/MARKETING — migrar para a API de Mensagens de Marketing (MM) da Meta até 13/10/2027;
  * descontinuação do envio de marketing via Cloud API nessa data.
  *
- * Periodicidade: 'STAR/15 8-20 STAR STAR STAR' (A cada 15 min, das 08h às 20h horário de Brasília, seg a sáb)
+ * Periodicidade: 'STAR/15 8-17 STAR STAR STAR' (A cada 15 min, das 08h às 18h horário de Brasília, seg a sáb)
  */
 
-cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
+cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   var app = $app
 
   // ============================================================================
@@ -285,7 +285,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
   }
 
   // ============================================================================
-  // 3. JANELA DE HORÁRIO COMERCIAL (UTC-3: 08h00 às 20h00, seg a sáb)
+  // 3. JANELA DE HORÁRIO COMERCIAL (America/Sao_Paulo UTC-3: 08h00 às 18h00, seg a sáb)
   // ============================================================================
   function isBrasiliaBusinessHours() {
     var now = new Date()
@@ -295,12 +295,12 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
     if (dayOfWeek === 0) return false // Domingo pausado por respeito comercial
 
     var hours = brTime.getHours()
-    return hours >= 8 && hours < 20
+    return hours >= 8 && hours < 18
   }
 
   if (!isBrasiliaBusinessHours()) {
     console.log(
-      '[BIA_PERSISTENCE] Fora da janela de atendimento de Brasília (08h-20h seg-sáb). Pausando execução.',
+      '[BIA_PERSISTENCE] Fora da janela de atendimento de Brasília (08h-18h seg-sáb). Pausando execução.',
     )
     return
   }
