@@ -2633,6 +2633,160 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
       }
     }
 
+    // ======================================================================
+    // RESOLUÇÃO GENÉRICA DE PREÇOS: TIPOLOGIAS E UNIDADES ESPECÍFICAS
+    // (Frente 2: Regra permanente do usuário — genérico para qualquer lançamento com dossiê)
+    // ======================================================================
+    let unitTypologyPriceResolution = ''
+    try {
+      if (matchedLaunch) {
+        let launchUnitsList = matchedLaunch.get('units') || []
+        if (typeof launchUnitsList === 'string') {
+          try {
+            launchUnitsList = JSON.parse(launchUnitsList)
+          } catch (_) {
+            launchUnitsList = []
+          }
+        }
+        if (Array.isArray(launchUnitsList) && launchUnitsList.length > 0) {
+          // Detecta perguntas de valor/preço na mensagem do cliente
+          const isAskingPriceOrValue =
+            /\b(?:qual|quanto|valor|pre[cç]o|custa|sai|tabela|investimento|condi[cç][aã]o|entrada)\b/i.test(
+              custIncomingMsg,
+            )
+
+          // Detecta se perguntou por unidade específica (ex: "AP 302", "apto 101", "unidade 501", "302", etc.)
+          const unitMatch =
+            custIncomingMsg.match(
+              /\b(?:ap|apto|apartamento|unidade|bloco\s*[a-z0-9]+\s*ap|unid)\s*#?\s*(\d{2,4}[a-z]?)\b/i,
+            ) || custIncomingMsg.match(/\b#(\d{2,4})\b/)
+
+          // Detecta se perguntou por tipologia direta (ex: "2 dorm", "3 dorm", "garden", "cobertura", "2 quartos")
+          const isAsking2Dorm = /\b2\s*(?:dorm|quartos?|dormit[oó]rios?|suite)\b/i.test(
+            custIncomingMsg,
+          )
+          const isAsking3Dorm = /\b3\s*(?:dorm|quartos?|dormit[oó]rios?|suites?)\b/i.test(
+            custIncomingMsg,
+          )
+          const isAskingGarden = /\bgarden\b/i.test(custIncomingMsg)
+          const isAskingCobertura = /\bcobertura\b/i.test(custIncomingMsg)
+
+          if (isAskingPriceOrValue) {
+            const lEnterpriseName =
+              matchedLaunch.getString('enterprise_name') ||
+              matchedLaunch.getString('name') ||
+              'Lançamento em foco'
+
+            // Mapa de tipologias do dossiê (com valores "a partir de")
+            const typologiesMap = {}
+            for (let uIdx = 0; uIdx < launchUnitsList.length; uIdx++) {
+              const uObj = launchUnitsList[uIdx]
+              if (!uObj) continue
+              const tName = (uObj.typology || uObj.tipo || 'Unidade').trim()
+              const uPrice = (uObj.price || uObj.valor || '').trim()
+              const uCode = (uObj.code || uObj.unit || uObj.numero || uObj.unidade || '')
+                .toString()
+                .trim()
+              if (!typologiesMap[tName]) {
+                typologiesMap[tName] = { minPrice: uPrice, units: [] }
+              }
+              if (uCode) {
+                typologiesMap[tName].units.push({ code: uCode, price: uPrice })
+              }
+            }
+
+            const typologiesSummaryLines = Object.keys(typologiesMap).map((tKey) => {
+              const info = typologiesMap[tKey]
+              return `  - ${tKey}: a partir de ${info.minPrice || 'sob consulta'}`
+            })
+
+            if (unitMatch && unitMatch[1]) {
+              const queriedUnitNum = unitMatch[1].toUpperCase()
+              // Procura correspondência precisa de numeração no dossiê
+              let exactMatchedUnit = null
+              let exactMatchedTypology = ''
+
+              for (let uIdx = 0; uIdx < launchUnitsList.length; uIdx++) {
+                const uObj = launchUnitsList[uIdx]
+                if (!uObj) continue
+                const uCode = (uObj.code || uObj.unit || uObj.numero || uObj.unidade || '')
+                  .toString()
+                  .trim()
+                  .toUpperCase()
+                if (uCode && (uCode === queriedUnitNum || uCode.endsWith(queriedUnitNum))) {
+                  exactMatchedUnit = uObj
+                  exactMatchedTypology = (uObj.typology || uObj.tipo || '').trim()
+                  break
+                }
+              }
+
+              if (exactMatchedUnit) {
+                const uPr = exactMatchedUnit.price || exactMatchedUnit.valor || ''
+                unitTypologyPriceResolution = `\n[RESOLUÇÃO DE UNIDADE ESPECÍFICA — ${lEnterpriseName}]:
+O cliente perguntou sobre a unidade "${queriedUnitNum}".
+Correspondência encontrada no dossiê: Tipologia "${exactMatchedTypology}", Valor: "${uPr}".
+DIRETRIZ OBRIGATÓRIA: Responda informando a tipologia da unidade (${exactMatchedTypology}) e seu valor oficial (${uPr}) conforme o dossiê vigente. NUNCA cite valor incompatível.`
+              } else {
+                unitTypologyPriceResolution = `\n[RESOLUÇÃO DE UNIDADE ESPECÍFICA — ${lEnterpriseName}]:
+O cliente perguntou sobre a unidade "${queriedUnitNum}", cuja tipologia exata não está discriminada individualmente pelo número no dossiê.
+TABELA OFICIAL DE VALORES POR TIPOLOGIA DO DOSSIÊ:
+${typologiesSummaryLines.join('\n')}
+DIRETRIZ OBRIGATÓRIA:
+1. Apresente os valores-base das tipologias disponíveis acima (ex.: 2 dormitórios a partir de R$ 596 mil, 3 dormitórios a partir de R$ 890 mil, Garden R$ 980 mil).
+2. Pergunte com naturalidade ao lead se a unidade de interesse dele (${queriedUnitNum}) é de 2 ou de 3 dormitórios (ou garden), para passar a condição exata.
+3. NUNCA invente valor nem chute preço!`
+              }
+            } else if (isAsking2Dorm || isAsking3Dorm || isAskingGarden || isAskingCobertura) {
+              let matchedTargetTypology = ''
+              let matchedTargetPrice = ''
+              if (isAsking2Dorm) {
+                for (const tKey of Object.keys(typologiesMap)) {
+                  if (/2\s*dorm|2\s*quarto/i.test(tKey)) {
+                    matchedTargetTypology = tKey
+                    matchedTargetPrice = typologiesMap[tKey].minPrice
+                    break
+                  }
+                }
+              } else if (isAsking3Dorm) {
+                for (const tKey of Object.keys(typologiesMap)) {
+                  if (/3\s*dorm|3\s*quarto/i.test(tKey)) {
+                    matchedTargetTypology = tKey
+                    matchedTargetPrice = typologiesMap[tKey].minPrice
+                    break
+                  }
+                }
+              } else if (isAskingGarden) {
+                for (const tKey of Object.keys(typologiesMap)) {
+                  if (/garden/i.test(tKey)) {
+                    matchedTargetTypology = tKey
+                    matchedTargetPrice = typologiesMap[tKey].minPrice
+                    break
+                  }
+                }
+              } else if (isAskingCobertura) {
+                for (const tKey of Object.keys(typologiesMap)) {
+                  if (/cobertura/i.test(tKey)) {
+                    matchedTargetTypology = tKey
+                    matchedTargetPrice = typologiesMap[tKey].minPrice
+                    break
+                  }
+                }
+              }
+
+              if (matchedTargetTypology && matchedTargetPrice) {
+                unitTypologyPriceResolution = `\n[RESOLUÇÃO DE TIPOLOGIA ESPECÍFICA — ${lEnterpriseName}]:
+O cliente perguntou pelo valor da tipologia "${matchedTargetTypology}".
+Valor oficial na tabela vigente do dossiê: a partir de "${matchedTargetPrice}".
+DIRETRIZ OBRIGATÓRIA: Responda informando o valor "a partir de ${matchedTargetPrice}" para ${matchedTargetTypology} e faça UMA pergunta engajadora (ex.: se prefere detalhes da planta ou se gostaria de conhecer as opções de fluxo de pagamento). NUNCA utilize valores de kits de anúncio desatualizados.`
+              }
+            }
+          }
+        }
+      }
+    } catch (resErr) {
+      console.warn(`[AI_REPLY] Aviso na resolução de tipologias/unidades: ${String(resErr)}`)
+    }
+
     // (1.b) Limitação de blocos de contexto para evitar erro 413
     const safeIndicesContextText =
       (indicesContextText || '').length > 1200
@@ -2670,7 +2824,7 @@ ${safePropertyContext}
 ${collectedDataSummary}
 
 ${clientContext}
-
+${unitTypologyPriceResolution ? `\n${unitTypologyPriceResolution}\n` : ''}
 ${safeIndicesContextText ? `DADOS DE MERCADO E VALORIZAÇÃO:\n${safeIndicesContextText}\n` : ''}
 
 CONTEXTO RECUPERADO:
