@@ -1,8 +1,10 @@
 /**
- * CRON: Automação da Régua de Persistência Comercial da Bia (D+1, D+3, D+7, D+14)
+ * CRON: Automação da Régua de Persistência Comercial e Remarketing da Bia
+ * (D+1, D+3, D+7, D+14, Remarketing / Nutrição Mensal)
  * Condução ativa contra o silêncio do cliente — Texto Único v3.1 (bia_learnings id tYVJIdIFb5rW4iq).
  *
- * PONTO ÚNICO DE ENVIO DE RETOMADAS/MARKETING — migrar para a API de Mensagens de Marketing (MM) da Meta até 13/10/2027; descontinuação do envio de marketing via Cloud API nessa data.
+ * PONTO ÚNICO DE ENVIO DE RETOMADAS/MARKETING — migrar para a API de Mensagens de Marketing (MM) da Meta até 13/10/2027;
+ * descontinuação do envio de marketing via Cloud API nessa data.
  *
  * Periodicidade: 'STAR/15 8-20 STAR STAR STAR' (A cada 15 min, das 08h às 20h horário de Brasília, seg a sáb)
  */
@@ -11,10 +13,9 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
   var app = $app
 
   // ============================================================================
-  // 1. PONTO ÚNICO DE ENVIO DE RETOMADAS / MARKETING
+  // 1. PONTO ÚNICO DE ENVIO DE RETOMADAS / MARKETING (TEXTO E DOCUMENTOS)
   // ============================================================================
-  // PONTO ÚNICO DE ENVIO DE RETOMADAS/MARKETING — migrar para a API de Mensagens de Marketing (MM) da Meta até 13/10/2027; descontinuação do envio de marketing via Cloud API nessa data
-  function sendPersistenceMarketingMessage(customer, text, userRecord, stepName) {
+  function sendPersistenceMarketingMessage(customer, text, userRecord, stepName, documentMedia) {
     if (!text || typeof text !== 'string') return false
     var cleaned = cleanWhatsAppFormat(text)
     if (!cleaned || cleaned.length < 5) return false
@@ -106,7 +107,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       console.warn('[BIA_PERSISTENCE] Aviso ao registrar conversa: ' + cErr.message)
     }
 
-    // Disparo HTTP para a Meta Graph API v21.0
+    // Disparo HTTP de texto para a Meta Graph API v21.0
     var url = 'https://graph.facebook.com/v21.0/' + phoneId + '/messages'
     var isOk = false
     var sendRes = null
@@ -136,6 +137,48 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       console.error('[BIA_PERSISTENCE] Erro HTTP Meta: ' + httpErr.message)
     }
 
+    // Se o envio do texto teve sucesso e há documento a anexar (ex: PDF do lançamento)
+    var docSent = false
+    if (isOk && documentMedia && documentMedia.link) {
+      try {
+        var docPayload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: toPhone,
+          type: 'document',
+          document: {
+            link: documentMedia.link,
+            filename: documentMedia.filename || 'Material.pdf',
+          },
+        }
+        if (documentMedia.caption) {
+          docPayload.document.caption = documentMedia.caption
+        }
+
+        var docRes = $http.send({
+          url: url,
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(docPayload),
+          timeout: 25,
+        })
+        if (docRes && docRes.statusCode >= 200 && docRes.statusCode < 300) {
+          docSent = true
+          console.log('[BIA_PERSISTENCE] Documento WhatsApp enviado com sucesso para ' + toPhone)
+        } else {
+          console.warn(
+            '[BIA_PERSISTENCE] Envio do documento retornou status ' +
+              (docRes ? docRes.statusCode : 'null'),
+          )
+        }
+      } catch (docErr) {
+        console.warn('[BIA_PERSISTENCE] Falha ao enviar anexo de documento: ' + docErr.message)
+      }
+    }
+
     // Registrar system_logs (type='whatsapp_ai_send')
     try {
       var logsCol = app.findCollectionByNameOrId('system_logs')
@@ -148,7 +191,8 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           ? 'Retomada de persistência (' +
               (stepName || 'followup') +
               ') enviada com sucesso para ' +
-              toPhone
+              toPhone +
+              (docSent ? ' [com documento anexo]' : '')
           : 'Falha ao enviar retomada de persistência (' +
               (stepName || 'followup') +
               ') para ' +
@@ -163,6 +207,10 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           to: toPhone,
           step: stepName || '',
           customer_id: customerId,
+          document_sent: docSent,
+          document_info: documentMedia
+            ? { filename: documentMedia.filename, link: documentMedia.link }
+            : null,
         }),
       )
       logRec.set(
@@ -172,6 +220,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
           full_text: cleaned,
           customer_id: customerId,
           follow_up_step: stepName || '',
+          document_sent: docSent,
         }),
       )
       app.saveNoValidate(logRec)
@@ -405,7 +454,6 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
   // ============================================================================
   function isAutomatedThreadOrBot(customerRecord, lastConv) {
     var custName = customerRecord.getString('name') || ''
-    var custPhone = customerRecord.getString('phone') || ''
     var lastContent = lastConv ? lastConv.getString('content') || '' : ''
 
     // 1. Telefone/Nome com indicativo de robô/sistema
@@ -446,17 +494,297 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
   }
 
   // ============================================================================
-  // 8. CONSTRUÇÃO DO TEXTO DAS RETOMADAS CONFORME SEÇÃO 2 DO TEXTO ÚNICO v3.1
+  // 8. PARSER DE VARIANTES DA RÉGUA EXTRAÍDO DINAMICAMENTE DO TEXTO ÚNICO
   // ============================================================================
-  // "retome com toque leve no dia seguinte com uma pergunta consultiva (D+1);
-  // após 3 dias com um diferencial marcante do imóvel em foco (D+3);
-  // após 1 semana com uma condição facilitada de pagamento (D+7);
-  // após 2 semanas checando se a busca continua ativa (D+14);
-  // Ao esgotar D+14 sem resposta: tag frio no cliente, persistence_status pausado, follow_up_step finalizado e cessar envios."
-  function buildPersistenceMessage(step, customer, lastPropertyTitle) {
+  function extractTemplatesFromConstitution(ruleText) {
+    var defaultTemplates = {
+      remarketing: [
+        'Um tempo atrás você entrou em contato procurando imóvel/lançamento. Lembrei de você, e tomei a liberdade de enviar esta oportunidade da [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}.',
+        'Lembrei do seu contato anterior sobre busca de imóveis e separei esta oportunidade excelente da [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}. Achei que faria sentido compartilhar com você.',
+        'Tudo bem? Como você já havia demonstrado interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade da [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}.',
+      ],
+      d1: [
+        '{SAUDACAO} Passando para saber se você conseguiu dar uma olhada na opção{CONTEXTO_IMOVEL} ou se ficou alguma dúvida sobre a localização, planta ou fluxo inicial.',
+        '{SAUDACAO} Lembrei da sua busca imobiliária e separei novidades na região que você procurou — quer que eu te conte o que encontrei?',
+        '{SAUDACAO} Conseguiu avaliar com calma o que conversamos{CONTEXTO_IMOVEL}? Se quiser que eu te mostre algum detalhe da planta ou da região, me avise por aqui!',
+      ],
+      d3: [
+        '{SAUDACAO} Separei um diferencial marcante{CONTEXTO_IMOVEL}: a valorização projetada na região e as áreas de lazer completas têm chamado bastante atenção. Gostaria de dar uma olhada na planta detalhada ou nas opções de unidades disponíveis?',
+        '{SAUDACAO} Um ponto muito elogiado{CONTEXTO_IMOVEL} é o aproveitamento dos espaços e o lazer pensado para a rotina da família. Quer que eu te envie a disposição das áreas de lazer?',
+        '{SAUDACAO} Pensando no seu interesse{CONTEXTO_IMOVEL}, vale destacar a infraestrutura do entorno e o potencial de valorização do endereço. Faz sentido para o seu momento conhecer mais desse ponto?',
+      ],
+      d7: [
+        '{SAUDACAO} Gostaria de verificar se a compra do imóvel ainda está no seu radar para este mês. Conseguimos condições bem facilitadas de entrada e parcelamento{CONTEXTO_IMOVEL}. Como estão os seus planos por aí?',
+        '{SAUDACAO} Surgiram condições bem diferenciadas de fluxo e entrada flexível{CONTEXTO_IMOVEL}. Como está o seu planejamento para dar esse passo nas próximas semanas?',
+        '{SAUDACAO} Passando para checar como estão seus planos imobiliários este mês. Temos formatos de pagamento bem acessíveis{CONTEXTO_IMOVEL}. Posso te mostrar como fica a estimativa de entrada?',
+      ],
+      d14: [
+        '{SAUDACAO} Espero que esteja tudo ótimo! Como não tivemos retorno recente, passo para checar se a sua busca por imóvel ainda continua ativa{CONTEXTO_IMOVEL} ou se prefere pausar por enquanto. O corretor Mauro e eu estamos sempre à disposição por aqui!',
+        '{SAUDACAO} Tudo bem? Só passando para confirmar se seus planos para compra de imóvel continuam firmes{CONTEXTO_IMOVEL} ou se você prefere retomar mais adiante. Sem compromisso, conte sempre com a gente!',
+        '{SAUDACAO} Sei que a rotina é corrida! Passo apenas para saber se faz sentido mantermos o contato sobre sua busca imobiliária{CONTEXTO_IMOVEL} ou se você prefere um tempo. Estamos à sua disposição por aqui.',
+      ],
+    }
+
+    if (!ruleText || typeof ruleText !== 'string') {
+      return defaultTemplates
+    }
+
+    function extractVariantsForSection(sectionHeaderRegex) {
+      var lines = ruleText.split('\n')
+      var inSection = false
+      var list = []
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i]
+        if (sectionHeaderRegex.test(line)) {
+          inSection = true
+          continue
+        }
+        if (inSection) {
+          if (line.match(/^(\s*-\s*Degrau|\s*•|\s*\d+\.)/i) && !line.match(/VARIANTE/i)) {
+            break
+          }
+          var vMatch = line.match(/\[VARIANTE\s*\d+\]\s*:\s*["“]?([^"”\n]+)["”]?/i)
+          if (vMatch && vMatch[1]) {
+            var rawT = vMatch[1].trim()
+            if (rawT.length > 10) list.push(rawT)
+          }
+        }
+      }
+      return list.length > 0 ? list : null
+    }
+
+    try {
+      var rem = extractVariantsForSection(/Degrau\s*Remarketing/i)
+      if (rem) defaultTemplates.remarketing = rem
+      var d1s = extractVariantsForSection(/Degrau\s*D\+1/i)
+      if (d1s) defaultTemplates.d1 = d1s
+      var d3s = extractVariantsForSection(/Degrau\s*D\+3/i)
+      if (d3s) defaultTemplates.d3 = d3s
+      var d7s = extractVariantsForSection(/Degrau\s*D\+7/i)
+      if (d7s) defaultTemplates.d7 = d7s
+      var d14s = extractVariantsForSection(/Degrau\s*D\+14/i)
+      if (d14s) defaultTemplates.d14 = d14s
+    } catch (_) {}
+
+    return defaultTemplates
+  }
+
+  var parsedTemplates = extractTemplatesFromConstitution(sovereignRuleText)
+
+  // ============================================================================
+  // 9. RESOLUÇÃO DINÂMICA DO LANÇAMENTO, LOCALIZAÇÃO E MATERIAL NA BASE
+  // ============================================================================
+  function resolveLaunchAndKnowledgeData(customer) {
+    var result = {
+      launchName: '',
+      location: '',
+      materialText: '',
+      documentMedia: null,
+      propertyId: '',
+      propertyTitle: '',
+    }
+
+    var focusProperty = null
+
+    // 1. Tentar detectar imóvel a partir de tags, notas ou histórico de origem
+    try {
+      var cNotes = customer.getString('notes') || ''
+      var cOriginHist = customer.getString('origin_history') || ''
+      var combinedContext = cNotes + ' ' + cOriginHist
+
+      var matchCode = combinedContext.match(/(?:#|\b)(AP|LM|TR|SO|CA|ARU)\s*(\d+)\b/i)
+      if (matchCode) {
+        var pCode = (matchCode[1] + matchCode[2]).toUpperCase()
+        var foundProps = app.findRecordsByFilter(
+          'properties',
+          "is_active = true && (code = '" +
+            pCode +
+            "' || code = '" +
+            matchCode[1].toUpperCase() +
+            ' ' +
+            matchCode[2] +
+            "')",
+          '-updated',
+          1,
+          0,
+        )
+        if (foundProps && foundProps.length > 0) {
+          focusProperty = foundProps[0]
+        }
+      }
+    } catch (_) {}
+
+    // 2. Se não encontrou imóvel específico, buscar o lançamento vigente principal dinamicamente
+    if (!focusProperty) {
+      try {
+        var pubLaunches = app.findRecordsByFilter(
+          'launches',
+          "status = 'publicado'",
+          '-updated',
+          1,
+          0,
+        )
+        if (pubLaunches && pubLaunches.length > 0) {
+          var pLaunch = pubLaunches[0]
+          var lName = pLaunch.getString('enterprise_name') || pLaunch.getString('name') || ''
+          var lLoc = pLaunch.getString('location') || ''
+          result.launchName = lName
+          result.location = lLoc
+
+          // Tentar encontrar property correspondente
+          var matchedProps = app.findRecordsByFilter(
+            'properties',
+            "is_active = true && title ~ '" + (pLaunch.getString('name') || 'Lançamento') + "'",
+            '-updated',
+            1,
+            0,
+          )
+          if (matchedProps && matchedProps.length > 0) {
+            focusProperty = matchedProps[0]
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. Fallback adicional dinâmico nos properties do tipo lançamento se ainda não houver
+    if (!focusProperty && !result.launchName) {
+      try {
+        var activeLms = app.findRecordsByFilter(
+          'properties',
+          "is_active = true && (code ~ 'LM' || property_type ~ 'lancamento')",
+          '-updated',
+          1,
+          0,
+        )
+        if (activeLms && activeLms.length > 0) {
+          focusProperty = activeLms[0]
+        }
+      } catch (_) {}
+    }
+
+    if (focusProperty) {
+      result.propertyId = focusProperty.id
+      result.propertyTitle =
+        focusProperty.getString('title') || focusProperty.getString('code') || ''
+      if (!result.launchName) {
+        result.launchName = focusProperty.getString('title') || 'Lançamento'
+      }
+      if (!result.location) {
+        var neigh = focusProperty.getString('neighborhood') || ''
+        var city = focusProperty.getString('city') || ''
+        if (neigh && city) {
+          result.location = neigh + ' / ' + city
+        } else {
+          result.location = neigh || city || 'na Grande Florianópolis'
+        }
+      }
+    }
+
+    if (!result.location) {
+      result.location = 'na Grande Florianópolis'
+    }
+
+    // 4. Buscar material (e-book / book) na Base de Conhecimento (ai_knowledge_files)
+    var pbBaseUrl =
+      $os.getenv('POCKETBASE_URL') ||
+      $os.getenv('VITE_POCKETBASE_URL') ||
+      'https://ia-uazapi-6d79e.shrd00.internal.goskip.dev'
+
+    try {
+      var kFiles = []
+      if (result.propertyId) {
+        kFiles = app.findRecordsByFilter(
+          'ai_knowledge_files',
+          "is_active = true && property_id = '" + result.propertyId + "' && file != ''",
+          '-updated',
+          5,
+          0,
+        )
+      }
+      if (!kFiles || kFiles.length === 0) {
+        var searchName = result.launchName
+          .replace(/residence|residencial|edifício|lançamento/gi, '')
+          .trim()
+        if (searchName.length >= 3) {
+          kFiles = app.findRecordsByFilter(
+            'ai_knowledge_files',
+            "is_active = true && (name ~ '" +
+              searchName +
+              "' || enterprise ~ '" +
+              searchName +
+              "') && file != ''",
+            '-updated',
+            5,
+            0,
+          )
+        }
+      }
+
+      if (kFiles && kFiles.length > 0) {
+        // Priorizar arquivo que contenha book, ebook ou pdf de apresentação
+        var pickedFile = null
+        for (var kIdx = 0; kIdx < kFiles.length; kIdx++) {
+          var kf = kFiles[kIdx]
+          var fName = (kf.getString('name') || kf.getString('file') || '').toLowerCase()
+          if (
+            fName.includes('book') ||
+            fName.includes('ebook') ||
+            fName.includes('apresentacao') ||
+            fName.includes('apresentação')
+          ) {
+            pickedFile = kf
+            break
+          }
+        }
+        if (!pickedFile) {
+          // Se não encontrou 'book' no nome, mas é PDF daquele lançamento, usar o primeiro PDF
+          for (var pIdx = 0; pIdx < kFiles.length; pIdx++) {
+            var candKf = kFiles[pIdx]
+            var cMime = candKf.getString('mime_type') || ''
+            var cFileName = candKf.getString('file') || ''
+            if (cMime === 'application/pdf' || cFileName.endsWith('.pdf')) {
+              pickedFile = candKf
+              break
+            }
+          }
+        }
+        if (!pickedFile) {
+          pickedFile = kFiles[0]
+        }
+
+        var rawUploadedFile = pickedFile.getString('file') || ''
+        if (rawUploadedFile) {
+          var fileUrl =
+            pbBaseUrl +
+            '/api/files/' +
+            pickedFile.collectionId +
+            '/' +
+            pickedFile.id +
+            '/' +
+            rawUploadedFile
+          result.documentMedia = {
+            link: fileUrl,
+            filename: pickedFile.getString('name') || 'Apresentacao.pdf',
+            caption: 'Material oficial: ' + (result.launchName || 'Lançamento'),
+          }
+          result.materialText = 'o e-book do lançamento'
+        }
+      }
+    } catch (kErr) {
+      console.warn(
+        '[BIA_PERSISTENCE] Erro ao buscar material na Base de Conhecimento: ' + kErr.message,
+      )
+    }
+
+    return result
+  }
+
+  // ============================================================================
+  // 10. CONSTRUÇÃO DO TEXTO DAS RETOMADAS COM VARIÂNCIA E SORTEIO POR CLIENTE
+  // ============================================================================
+  function buildPersistenceMessageWithVariance(step, customer, launchInfo) {
     var rawName = (customer.getString('name') || customer.getString('first_name') || '').trim()
     var custName = ''
-    // Validação estrita do nome: não usar número cru, telefone formatado, "Sem nome" ou texto inválido
     var cleanDigitsOnly = rawName.replace(/\D/g, '')
     var isGenericPlaceholder =
       !rawName ||
@@ -465,7 +793,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       rawName.toLowerCase() === 'whatsapp' ||
       rawName.toLowerCase().includes('whatsapp business') ||
       rawName.startsWith('+') ||
-      cleanDigitsOnly.length >= 8 || // Telefone ou número cru
+      cleanDigitsOnly.length >= 8 ||
       /^\d+$/.test(rawName)
     if (!isGenericPlaceholder) {
       var candidate = rawName.split(' ')[0].replace(/[^\p{L}]/gu, '')
@@ -474,23 +802,19 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       }
     }
     var greeting = custName ? 'Olá, ' + custName + '!' : 'Olá! Tudo bem?'
-    // Tenta detectar o imóvel em foco se não foi passado explicitamente
-    if (!lastPropertyTitle) {
-      try {
-        var cNotes = customer.getString('notes') || ''
-        var cOriginHist = customer.getString('origin_history') || ''
-        var match =
-          cNotes.match(/#(?:AP|LM|TR|SO|CA|ARU)\s*\d+/i) ||
-          cOriginHist.match(/#(?:AP|LM|TR|SO|CA|ARU)\s*\d+/i)
-        if (match) {
-          lastPropertyTitle = match[0].toUpperCase()
-        }
-      } catch (_) {}
-    }
 
-    var propContext = lastPropertyTitle
-      ? ' em relação ao *' + lastPropertyTitle + '*'
-      : ' sobre a sua busca imobiliária'
+    // Sorteio determinístico/variado por cliente
+    function pickVariant(variantsList) {
+      if (!variantsList || variantsList.length === 0) return ''
+      var seed = 0
+      var cId = customer.id || ''
+      for (var i = 0; i < cId.length; i++) {
+        seed = (seed * 31 + cId.charCodeAt(i)) % 1000007
+      }
+      var count = customer.getInt('follow_up_count') || 0
+      var idx = (seed + count) % variantsList.length
+      return variantsList[idx]
+    }
 
     if (step === 'promised_followup') {
       var promiseContext =
@@ -503,55 +827,62 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       )
     }
 
+    var propContext = ''
+    if (launchInfo.propertyTitle) {
+      propContext = ' em relação ao *' + launchInfo.propertyTitle + '*'
+    } else {
+      propContext = ''
+    }
+
+    if (step === 'remarketing' || step === 'nurturing_monthly') {
+      var remTemplate = pickVariant(parsedTemplates.remarketing)
+      var textRem = remTemplate
+      var lName = launchInfo.launchName || 'nossas novidades imobiliárias'
+      var lLoc = launchInfo.location || 'na região'
+      var matPart = ''
+      if (launchInfo.documentMedia && launchInfo.materialText) {
+        matPart = ' (envio junto ' + launchInfo.materialText + ')'
+      }
+
+      textRem = textRem.replace(/\[LANÇAMENTO\]/g, lName)
+      textRem = textRem.replace(/\[BAIRRO\/CIDADE\]/g, lLoc)
+      textRem = textRem.replace(/\{MATERIAL_ANEXO\}/g, matPart)
+      textRem = textRem.replace(/\[MATERIAL\]/g, launchInfo.materialText || 'o material')
+      textRem = textRem.replace(/\{SAUDACAO\}/g, greeting)
+      return textRem
+    }
+
     if (step === 'd1') {
-      // D+1: Toque leve no dia seguinte com pergunta consultiva sobre o imóvel em pauta
-      return (
-        greeting +
-        ' Passando para saber se você conseguiu dar uma olhada na opção' +
-        propContext +
-        ' ou se ficou alguma dúvida sobre a localização, planta ou fluxo inicial.'
-      )
+      var d1Template = pickVariant(parsedTemplates.d1)
+      var textD1 = d1Template.replace(/\{SAUDACAO\}/g, greeting)
+      if (propContext) {
+        textD1 = textD1.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      } else {
+        // Pergunta consultiva natural sem menção torta
+        textD1 = textD1.replace(/\{CONTEXTO_IMOVEL\}/g, ' sobre a sua busca')
+      }
+      return textD1
     }
 
     if (step === 'd3') {
-      // D+3: Diferencial marcante do imóvel em foco (lazer, localização, rentabilidade)
-      return (
-        greeting +
-        ' Separei um diferencial marcante' +
-        propContext +
-        ': a valorização projetada na região e as áreas de lazer completas têm chamado bastante atenção. Gostaria de dar uma olhada na planta detalhada ou nas opções de unidades disponíveis?'
-      )
+      var d3Template = pickVariant(parsedTemplates.d3)
+      var textD3 = d3Template.replace(/\{SAUDACAO\}/g, greeting)
+      textD3 = textD3.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      return textD3
     }
 
     if (step === 'd7') {
-      // D+7: Condição facilitada de pagamento / parcelamento / verificação de timing
-      return (
-        greeting +
-        ' Gostaria de verificar se a compra do imóvel ainda está no seu radar para este mês. Conseguimos condições bem facilitadas de entrada e parcelamento' +
-        propContext +
-        '. Como estão os seus planos por aí?'
-      )
+      var d7Template = pickVariant(parsedTemplates.d7)
+      var textD7 = d7Template.replace(/\{SAUDACAO\}/g, greeting)
+      textD7 = textD7.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      return textD7
     }
 
     if (step === 'd14') {
-      // D+14: Checando se a busca continua ativa / pergunta leve de continuidade
-      return (
-        greeting +
-        ' Espero que esteja tudo ótimo! Como não tivemos retorno recente, passo para checar se a sua busca por imóvel ainda continua ativa' +
-        propContext +
-        ' ou se prefere pausar por enquanto. O corretor Mauro e eu estamos sempre à disposição por aqui!'
-      )
-    }
-
-    if (step === 'nurturing_monthly') {
-      // Pós-D+14: Aquecimento espaçado (~30 dias) baseado no padrão consultivo D+7 do Texto Único
-      // (pergunta leve, sem tabela, sem empurrar, checando radar e planos)
-      return (
-        greeting +
-        ' Gostaria de verificar se a compra do imóvel ainda está no seu radar' +
-        propContext +
-        '. Tivemos atualizações recentes nas condições e no mercado da região. Como estão os seus planos por aí no momento?'
-      )
+      var d1Template14 = pickVariant(parsedTemplates.d14)
+      var textD14 = d1Template14.replace(/\{SAUDACAO\}/g, greeting)
+      textD14 = textD14.replace(/\{CONTEXTO_IMOVEL\}/g, propContext)
+      return textD14
     }
 
     return ''
@@ -559,6 +890,10 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
 
   function calculateNextFollowUp(step) {
     var nowMs = Date.now()
+    if (step === 'remarketing') {
+      // Após remarketing inicial, aguardar ~30 dias para o próximo toque mensal
+      return new Date(nowMs + 30 * 24 * 3600 * 1000).toISOString()
+    }
     if (step === 'd1') {
       // De D1 para D3: +2 dias (~48h)
       return new Date(nowMs + 2 * 24 * 3600 * 1000).toISOString()
@@ -572,21 +907,22 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       return new Date(nowMs + 7 * 24 * 3600 * 1000).toISOString()
     }
     if (step === 'd14' || step === 'nurturing_monthly') {
-      // De D14 para primeiro aquecimento espaçado (~30 dias) e ciclos seguintes a cada ~30 dias
+      // Ciclo mensal: ~30 dias
       return new Date(nowMs + 30 * 24 * 3600 * 1000).toISOString()
     }
     return ''
   }
 
   // ============================================================================
-  // 9. EXECUÇÃO DAS RETOMADAS COM GUARDAS COMPLETAS
+  // 11. EXECUÇÃO DAS RETOMADAS COM GUARDAS COMPLETAS E ANTI-FLOOD
   // ============================================================================
   var executedCount = 0
   var nowIso = new Date().toISOString()
   var nowMsGlobal = Date.now()
   var oneDayMs = 24 * 60 * 60 * 1000
+  var sevenDaysMs = 7 * 24 * 60 * 60 * 1000
 
-  // 9.1 PRIORIDADE A: Promessas pendentes com prazo vencido
+  // 11.1 PRIORIDADE A: Promessas pendentes com prazo vencido
   try {
     var promiseCustomers = app.findRecordsByFilter(
       'customers',
@@ -620,21 +956,21 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       if (pConvs.length > 0) {
         var pLatest = pConvs[0]
         var pLatestTime = new Date(pLatest.getString('created') || pLatest.get('created')).getTime()
-        // Não disparar se última mensagem < 24h
         if (nowMsGlobal - pLatestTime < oneDayMs) continue
-        // Não disparar em bots/auto-respostas
         if (isAutomatedThreadOrBot(pCust, pLatest)) continue
       }
 
       if (!acquireLock(pCustId)) continue
 
       try {
-        var msgText = buildPersistenceMessage('promised_followup', pCust, '')
+        var lInfoProm = resolveLaunchAndKnowledgeData(pCust)
+        var msgText = buildPersistenceMessageWithVariance('promised_followup', pCust, lInfoProm)
         var sent = sendPersistenceMarketingMessage(
           pCust,
           msgText,
           activeUserRecord,
           'promised_followup',
+          null,
         )
         if (sent) {
           pCust.set('promise_pending', false)
@@ -655,8 +991,8 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
     console.warn('[BIA_PERSISTENCE] Erro no bloco de promessas pendentes: ' + pErr.message)
   }
 
-  // 9.2 AGENDADOS: Clientes com next_follow_up_at vencido
-  // Processa em lote seguro por execução (15 por execução a cada 15 min), respeitando anti-flood e mantendo todas as guardas
+  // 11.2 AGENDADOS: Clientes com next_follow_up_at vencido
+  // Processa em lote seguro por execução (máx 15 por ciclo de 15 min), respeitando anti-flood
   try {
     var scheduledBatchLimit = 15
     var scheduledCustomers = app.findRecordsByFilter(
@@ -717,8 +1053,6 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
         if (sDateStr) sLatestTime = new Date(sDateStr).getTime()
       }
 
-      // Se não há mensagens na tabela conversations (ex.: importados do Google Contacts ou antes do registro unificado),
-      // consulta last_follow_up_at, last_sent_at, updated ou created do cliente
       if (!sLatestTime) {
         var lastFuStr = sCust.getString('last_follow_up_at')
         if (lastFuStr) sLatestTime = new Date(lastFuStr).getTime()
@@ -737,9 +1071,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
         continue
       }
 
-      // Guarda de resposta recente do cliente: se a última mensagem foi do cliente e tem menos de 24h,
-      // a IA de resposta imediata (ai_auto_reply) deve tratar, não o cron de persistência.
-      // Porém, se o cliente falou há dias/semanas e ninguém respondeu ou o lead esfriou, a retomada deve resgatá-lo.
+      // Guarda de resposta recente do cliente
       if (
         sLatest &&
         sLatest.getString('sender') === 'customer' &&
@@ -751,23 +1083,35 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       // Guarda 5: Anti-bot
       if (isAutomatedThreadOrBot(sCust, sLatest)) continue
 
-      // Determinar o degrau a disparar e o próximo agendamento:
-      // Se o cliente nunca recebeu um follow_up (follow_up_count === 0 ou last_follow_up_at vazio) e está com 'd1',
-      // o primeiro disparo agendado é o D+1, e o próximo será D+3!
-      // Se ele já recebeu D+1, avança para D+3; de D+3 para D+7; de D+7 para D+14; de D+14 para aquecimento mensal.
+      // ======================================================================
+      // CRITÉRIO DE ENTRADA E DETERMINAÇÃO DO DEGRAU (REMARKETING vs D+1):
+      // - Se o cliente nunca recebeu follow-up recente E a última conversa/interação
+      //   é mais antiga que 7 dias (ex: clientes do backfill ou contato antigo),
+      //   o primeiro toque é OBRIGATORIAMENTE o REMARKETING (apresentação de oportunidade)
+      //   e NUNCA o D+1 de seguimento ("passando para saber se deu uma olhada").
+      // ======================================================================
       var followUpCount = sCust.getInt('follow_up_count') || 0
       var lastFollowUpAt = sCust.getString('last_follow_up_at') || ''
       var stepToExecute = currentStep
       var nextStepAfterSend = 'd3'
 
+      var elapsedSinceInteraction = sLatestTime ? nowMsGlobal - sLatestTime : sevenDaysMs + 1000
+
       if (!lastFollowUpAt || followUpCount === 0) {
-        stepToExecute = currentStep || 'd1'
-        if (stepToExecute === 'd1') nextStepAfterSend = 'd3'
-        else if (stepToExecute === 'd3') nextStepAfterSend = 'd7'
-        else if (stepToExecute === 'd7') nextStepAfterSend = 'd14'
-        else nextStepAfterSend = 'nurturing_monthly'
+        if (elapsedSinceInteraction >= sevenDaysMs) {
+          // Cliente antigo sem apresentação recente -> Primeiro toque é REMARKETING
+          stepToExecute = 'remarketing'
+          nextStepAfterSend = 'nurturing_monthly'
+        } else {
+          // Conversa recente nos últimos dias -> D+1 normal
+          stepToExecute = 'd1'
+          nextStepAfterSend = 'd3'
+        }
       } else {
-        if (currentStep === 'd1') {
+        if (currentStep === 'remarketing') {
+          stepToExecute = 'nurturing_monthly'
+          nextStepAfterSend = 'nurturing_monthly'
+        } else if (currentStep === 'd1') {
           stepToExecute = 'd3'
           nextStepAfterSend = 'd7'
         } else if (currentStep === 'd3') {
@@ -785,12 +1129,21 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       if (!acquireLock(sCustId)) continue
 
       try {
-        var msgTextScheduled = buildPersistenceMessage(stepToExecute, sCust, '')
+        var launchInfo = resolveLaunchAndKnowledgeData(sCust)
+        var msgTextScheduled = buildPersistenceMessageWithVariance(stepToExecute, sCust, launchInfo)
+
+        // Se for degrau de remarketing ou nutrição mensal, envia o documento se existir
+        var docToSend = null
+        if (stepToExecute === 'remarketing' || stepToExecute === 'nurturing_monthly') {
+          docToSend = launchInfo.documentMedia
+        }
+
         var ok = sendPersistenceMarketingMessage(
           sCust,
           msgTextScheduled,
           activeUserRecord,
           stepToExecute,
+          docToSend,
         )
 
         if (ok) {
@@ -821,7 +1174,7 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
     )
   }
 
-  // 9.3 ENTRADA NA RÉGUA (D+1): Clientes em silêncio > 24h sem next_follow_up_at ou com follow_up_step vazio
+  // 11.3 ENTRADA NA RÉGUA: Clientes em silêncio > 24h sem next_follow_up_at ou com follow_up_step vazio
   try {
     var idleBatchLimit = 15
     var idleCustomers = app.findRecordsByFilter(
@@ -891,20 +1244,32 @@ cronAdd('bia_persistence_followup', '*/15 8-20 * * *', function () {
       // Guarda: anti-bot
       if (isAutomatedThreadOrBot(iCust, latestMsg)) continue
 
+      // Se interação > 7 dias: entra como REMARKETING; se recente (entre 24h e 7 dias): entra como D+1
+      var entryStep = elapsedMs >= sevenDaysMs ? 'remarketing' : 'd1'
+
       if (!acquireLock(iCustId)) continue
 
       try {
-        var d1Text = buildPersistenceMessage('d1', iCust, '')
-        var d1Sent = sendPersistenceMarketingMessage(iCust, d1Text, activeUserRecord, 'd1')
-        if (d1Sent) {
-          iCust.set('follow_up_step', 'd1')
+        var lInfoIdle = resolveLaunchAndKnowledgeData(iCust)
+        var entryText = buildPersistenceMessageWithVariance(entryStep, iCust, lInfoIdle)
+        var docEntry = entryStep === 'remarketing' ? lInfoIdle.documentMedia : null
+
+        var entrySent = sendPersistenceMarketingMessage(
+          iCust,
+          entryText,
+          activeUserRecord,
+          entryStep,
+          docEntry,
+        )
+        if (entrySent) {
+          iCust.set('follow_up_step', entryStep)
           iCust.set('follow_up_count', (iCust.getInt('follow_up_count') || 0) + 1)
           iCust.set('last_follow_up_at', nowIso)
-          iCust.set('next_follow_up_at', calculateNextFollowUp('d1'))
+          iCust.set('next_follow_up_at', calculateNextFollowUp(entryStep))
           iCust.set('persistence_status', 'ativo')
           app.saveNoValidate(iCust)
           executedCount++
-          console.log('[BIA_PERSISTENCE] Retomada D+1 iniciada para ' + iCustId)
+          console.log('[BIA_PERSISTENCE] Retomada (' + entryStep + ') iniciada para ' + iCustId)
         }
       } finally {
         releaseLock(iCustId)
