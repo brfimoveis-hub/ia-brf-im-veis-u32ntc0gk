@@ -95,11 +95,60 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
     return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
   }
 
-  function resolveOfficialVistageBookLink() {
-    return 'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'
+  function isBlacklistedAttachment(nameStr) {
+    if (!nameStr) return false
+    const s = String(nameStr).toLowerCase().trim()
+    return (
+      s.includes('tabela') ||
+      s.includes('politica') ||
+      s.includes('política') ||
+      s.includes('preco') ||
+      s.includes('preço') ||
+      s.includes('valores')
+    )
   }
 
-  function hasCustomerReceivedOfficialEbook(cust, convs, bookLink) {
+  function resolveVistageLocalDocument(app) {
+    const pbBaseUrl =
+      $os.getenv('POCKETBASE_URL') ||
+      $os.getenv('VITE_POCKETBASE_URL') ||
+      'https://ia-uazapi-6d79e.shrd00.internal.goskip.dev'
+
+    try {
+      const bookRec = app.findRecordById('ai_knowledge_files', 'fcvyoatlxt56do2')
+      if (bookRec && bookRec.getBool('is_active')) {
+        const rName = (bookRec.getString('name') || '').trim()
+        const physFile = (bookRec.getString('file') || '').trim()
+        const fSize = bookRec.getInt('file_size') || 0
+
+        if (!isBlacklistedAttachment(rName) && physFile && fSize > 0) {
+          const publicUrl =
+            pbBaseUrl + '/api/files/' + bookRec.collectionId + '/' + bookRec.id + '/' + physFile
+          return {
+            valid: true,
+            record_id: bookRec.id,
+            filename: rName.endsWith('.pdf') ? rName : rName + '.pdf',
+            stored_file: physFile,
+            file_size: fSize,
+            public_url: publicUrl,
+            caption: 'Material oficial: Vistage Residence',
+          }
+        }
+      }
+    } catch (_) {}
+
+    return {
+      valid: false,
+      record_id: '',
+      filename: '',
+      stored_file: '',
+      file_size: 0,
+      public_url: '',
+      caption: '',
+    }
+  }
+
+  function hasCustomerReceivedOfficialEbook(cust, convs, docInfo) {
     if (cust) {
       const rawTags = cust.get('tags') || []
       let tags = []
@@ -113,20 +162,25 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
           }
         } catch (_) {}
       }
-      if (tags.indexOf('ebook_vistage_entregue') !== -1) {
+      if (
+        tags.indexOf('ebook_vistage_entregue') !== -1 ||
+        tags.indexOf('ebook_vistage_documento_entregue') !== -1
+      ) {
         return true
       }
     }
 
     if (!convs || convs.length === 0) return false
-    const normLink = (bookLink || '').trim()
+    const pubUrl = (docInfo && docInfo.public_url ? docInfo.public_url : '').trim()
 
     for (let i = 0; i < convs.length; i++) {
       const c = convs[i]
       const content = c.getString('content') || ''
       if (
         content.indexOf('1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG') !== -1 ||
-        (normLink && content.indexOf(normLink) !== -1)
+        (pubUrl && content.indexOf(pubUrl) !== -1) ||
+        content.indexOf('Material oficial: Vistage Residence') !== -1 ||
+        content.indexOf('book_vistage_residence') !== -1
       ) {
         return true
       }
@@ -194,16 +248,28 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
   }
 
   const windowInfo = getBrasiliaHourAndWindow()
-  const bookLink = resolveOfficialVistageBookLink()
+  const localDoc = resolveVistageLocalDocument(app)
   const now = new Date()
   const nowMs = now.getTime()
 
-  let allCustomers = []
+  // Buscar clientes abordados elegíveis de forma rápida e otimizada (sem carregar 1000 registros pesados)
+  // Um cliente abordado tem last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != ''
+  let approachedCustomers = []
   try {
-    allCustomers = app.findRecordsByFilter('customers', "phone != ''", '-updated', 1000, 0)
+    approachedCustomers = app.findRecordsByFilter(
+      'customers',
+      "phone != '' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
+      '-updated',
+      800,
+      0,
+    )
   } catch (err) {
-    console.error('[EBOOK_RESEND] Erro ao buscar clientes: ' + err.message)
-    return c.json(500, { success: false, error: err.message })
+    console.error('[EBOOK_RESEND] Erro ao buscar clientes por filtro otimizado: ' + err.message)
+    try {
+      approachedCustomers = app.findRecordsByFilter('customers', "phone != ''", '-updated', 500, 0)
+    } catch (e2) {
+      return c.json(500, { success: false, error: e2.message })
+    }
   }
 
   const approachedList = []
@@ -211,34 +277,16 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
   const excludedList = []
   const eligiblePendingList = []
 
-  for (let i = 0; i < allCustomers.length; i++) {
-    const cust = allCustomers[i]
+  for (let i = 0; i < approachedCustomers.length; i++) {
+    const cust = approachedCustomers[i]
     const custId = cust.id
     const phone = resolveCustomerCleanPhone(cust.getString('phone'))
     if (!phone || phone.length < 10) continue
-
-    let convs = []
-    try {
-      convs = app.findRecordsByFilter(
-        'conversations',
-        "customer_id = '" + custId + "'",
-        '-created',
-        30,
-        0,
-      )
-    } catch (_) {}
 
     const lastSentAt = cust.getString('last_sent_at') || ''
     const lastFollowUpAt = cust.getString('last_follow_up_at') || ''
     const followUpCount = cust.getInt('follow_up_count') || 0
     const followUpStep = cust.getString('follow_up_step') || ''
-
-    const hasPriorApproach =
-      convs.length > 0 || !!lastSentAt || !!lastFollowUpAt || followUpCount > 0 || !!followUpStep
-
-    if (!hasPriorApproach) {
-      continue
-    }
 
     const greetingName = resolveCustomerFirstName(cust)
     const clientSummary = {
@@ -249,13 +297,49 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
       status: cust.getString('status') || '',
       follow_up_step: followUpStep,
       follow_up_count: followUpCount,
-      last_conv_date: convs.length > 0 ? convs[0].getString('created') : null,
+      last_conv_date: null,
     }
 
     approachedList.push(clientSummary)
 
-    // Checar se já recebeu o e-book legítimo (link oficial do Drive na conversa ou tag 'ebook_vistage_entregue')
-    if (hasCustomerReceivedOfficialEbook(cust, convs, bookLink)) {
+    // Checagem rápida de tags antes de carregar conversas
+    const rawTags = cust.get('tags') || []
+    let tagsList = []
+    if (Array.isArray(rawTags)) {
+      tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
+    } else if (typeof rawTags === 'string') {
+      try {
+        const parsed = JSON.parse(rawTags)
+        if (Array.isArray(parsed)) {
+          tagsList = parsed.map((t) => String(t).toLowerCase())
+        }
+      } catch (_) {}
+    }
+
+    if (
+      tagsList.includes('ebook_vistage_entregue') ||
+      tagsList.includes('ebook_vistage_documento_entregue')
+    ) {
+      alreadyDeliveredList.push(clientSummary)
+      continue
+    }
+
+    let convs = []
+    try {
+      convs = app.findRecordsByFilter(
+        'conversations',
+        "customer_id = '" + custId + "'",
+        '-created',
+        15,
+        0,
+      )
+      if (convs.length > 0) {
+        clientSummary.last_conv_date = convs[0].getString('created')
+      }
+    } catch (_) {}
+
+    // Checar se já recebeu o e-book legítimo (por conversa ou tag)
+    if (hasCustomerReceivedOfficialEbook(cust, convs, localDoc)) {
       alreadyDeliveredList.push(clientSummary)
       continue
     }
@@ -274,7 +358,10 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
   return c.json(200, {
     success: true,
     commercial_window: windowInfo,
-    book_link: bookLink,
+    local_document: localDoc,
+    book_link: localDoc.public_url || '',
+    storage_source: 'ai_knowledge_files:fcvyoatlxt56do2',
+    delivery_mechanism: localDoc.valid ? 'whatsapp_document_attached' : 'none_corrupted_storage',
     summary: {
       total_approached: approachedList.length,
       already_delivered: alreadyDeliveredList.length,
@@ -511,24 +598,60 @@ routerAdd(
       })
     }
 
-    // 3. Auditoria para lista dos pendentes
-    const bookLink = resolveOfficialVistageBookLink()
+    // 3. Resolução do documento local e auditoria para lista dos pendentes
+    const localDoc = resolveVistageLocalDocument(app)
+    const hasValidLocalFile = localDoc.valid && localDoc.file_size > 0
     const now = new Date()
     const nowMs = now.getTime()
 
-    let allCustomers = []
+    let approachedCustomers = []
     try {
-      allCustomers = app.findRecordsByFilter('customers', "phone != ''", '-updated', 1000, 0)
+      approachedCustomers = app.findRecordsByFilter(
+        'customers',
+        "phone != '' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
+        '-updated',
+        800,
+        0,
+      )
     } catch (fetchErr) {
-      return c.json(500, { success: false, error: fetchErr.message })
+      try {
+        approachedCustomers = app.findRecordsByFilter(
+          'customers',
+          "phone != ''",
+          '-updated',
+          500,
+          0,
+        )
+      } catch (e2) {
+        return c.json(500, { success: false, error: e2.message })
+      }
     }
 
     const pendingList = []
-    for (let i = 0; i < allCustomers.length; i++) {
-      const cust = allCustomers[i]
+    for (let i = 0; i < approachedCustomers.length; i++) {
+      const cust = approachedCustomers[i]
       const custId = cust.id
       const phone = resolveCustomerCleanPhone(cust.getString('phone'))
       if (!phone || phone.length < 10) continue
+
+      // Checagem rápida de tags
+      const rawTags = cust.get('tags') || []
+      let tagsList = []
+      if (Array.isArray(rawTags)) {
+        tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
+      } else if (typeof rawTags === 'string') {
+        try {
+          const parsed = JSON.parse(rawTags)
+          if (Array.isArray(parsed)) tagsList = parsed.map((t) => String(t).toLowerCase())
+        } catch (_) {}
+      }
+
+      if (
+        tagsList.includes('ebook_vistage_entregue') ||
+        tagsList.includes('ebook_vistage_documento_entregue')
+      ) {
+        continue
+      }
 
       let convs = []
       try {
@@ -536,22 +659,12 @@ routerAdd(
           'conversations',
           "customer_id = '" + custId + "'",
           '-created',
-          30,
+          15,
           0,
         )
       } catch (_) {}
 
-      const lastSentAt = cust.getString('last_sent_at') || ''
-      const lastFollowUpAt = cust.getString('last_follow_up_at') || ''
-      const followUpCount = cust.getInt('follow_up_count') || 0
-      const followUpStep = cust.getString('follow_up_step') || ''
-
-      const hasPriorApproach =
-        convs.length > 0 || !!lastSentAt || !!lastFollowUpAt || followUpCount > 0 || !!followUpStep
-
-      if (!hasPriorApproach) continue
-
-      if (hasCustomerReceivedOfficialEbook(cust, convs, bookLink)) continue
+      if (hasCustomerReceivedOfficialEbook(cust, convs, localDoc)) continue
 
       const exclusionCheck = checkCustomerExclusions(cust, convs, nowMs)
       if (exclusionCheck.excluded) continue
@@ -628,25 +741,38 @@ routerAdd(
 
       // Montagem do texto consertado conforme especificação:
       // Identificação oficial Bia ("Bia da BRF Imóveis — bom dia/boa tarde, [primeiro nome], tudo bem?"),
-      // Apresentação da oportunidade (Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC),
-      // Link oficial do material NO CORPO da mensagem,
-      // Legenda "Material oficial: Vistage Residence",
-      // Pergunta leve no final. SEM link de site, SEM preço cheio, SEM tabelas.
+      // Apresentação da oportunidade (Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC).
+      // REGRA QUE PERMANECE:
+      // Se NÃO houver arquivo físico íntegro (tamanho > 0), a mensagem sai SEM promessa de e-book e SEM link.
+      // Se houver arquivo físico íntegro:
+      // PRIORIDADE 1: enviar como DOCUMENTO via WhatsApp Cloud API usando a URL pública do binário do nosso storage.
+      // E no corpo, texto limpo de apresentação e convite para ver o documento anexo.
+      // O link do Google Drive NUNCA mais aparece no corpo das mensagens de reenvio.
       const greetingPart = gName
         ? 'Bia da BRF Imóveis — ' + salutationWord + ', ' + gName + ', tudo bem?'
         : 'Bia da BRF Imóveis — ' + salutationWord + ', tudo bem?'
 
-      const fullMessageText =
-        greetingPart +
-        '\n\nComo você já demonstrou interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade do Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC (Grande Florianópolis):' +
-        '\n\n📄 *Material oficial: Vistage Residence*' +
-        '\n' +
-        bookLink +
-        '\n\nFaz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitórios?'
+      let fullMessageText = ''
+      if (hasValidLocalFile) {
+        fullMessageText =
+          greetingPart +
+          '\n\nComo você já demonstrou interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade do Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC (Grande Florianópolis).' +
+          '\n\nEnvio em anexo o Book oficial completo em alta definição para você conhecer os detalhes do projeto.' +
+          '\n\nFaz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitórios?'
+      } else {
+        // Sem arquivo físico íntegro: NUNCA prometer o que não vai e SEM link
+        fullMessageText =
+          greetingPart +
+          '\n\nComo você já demonstrou interesse em oportunidades imobiliárias por aqui, passei para te apresentar novidades da região de Barreiros, São José/SC.' +
+          '\n\nFaz sentido para você conhecer as opções disponíveis de 2 ou 3 dormitórios?'
+      }
 
       let sendSuccess = false
       let sendError = ''
+      let documentSent = false
+      let documentError = ''
 
+      // 1. Envio da mensagem de texto
       try {
         const sendRes = $http.send({
           url: metaUrl,
@@ -660,7 +786,7 @@ routerAdd(
             recipient_type: 'individual',
             to: phoneNum,
             type: 'text',
-            text: { preview_url: true, body: fullMessageText },
+            text: { preview_url: false, body: fullMessageText },
           }),
           timeout: 25,
         })
@@ -675,7 +801,90 @@ routerAdd(
           sendError = 'HTTP ' + (sendRes ? sendRes.statusCode : 0) + ': ' + errBody
         }
       } catch (httpErr) {
-        sendError = 'Exceção HTTP: ' + httpErr.message
+        sendError = 'Exceção HTTP Texto: ' + httpErr.message
+      }
+
+      // 2. Prioridade 1: Enviar como DOCUMENTO via WhatsApp Cloud API usando a URL pública do binário do storage local
+      if (sendSuccess && hasValidLocalFile) {
+        try {
+          const docPayload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: phoneNum,
+            type: 'document',
+            document: {
+              link: localDoc.public_url,
+              filename: localDoc.filename || 'BOOK VISTAGE RESIDENCE.pdf',
+              caption: localDoc.caption || 'Material oficial: Vistage Residence',
+            },
+          }
+
+          const docRes = $http.send({
+            url: metaUrl,
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer ' + metaToken,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(docPayload),
+            timeout: 30,
+          })
+
+          if (docRes && docRes.statusCode >= 200 && docRes.statusCode < 300) {
+            documentSent = true
+            console.log('[EBOOK_RESEND] Documento WhatsApp enviado com sucesso para ' + phoneNum)
+          } else {
+            let dErrBody = ''
+            try {
+              dErrBody = JSON.stringify(docRes ? docRes.json || docRes.body : '')
+            } catch (_) {}
+            documentError = 'HTTP ' + (docRes ? docRes.statusCode : 0) + ': ' + dErrBody
+            console.warn(
+              '[EBOOK_RESEND] Envio de documento WhatsApp falhou para ' +
+                phoneNum +
+                ': ' +
+                documentError +
+                '. Acionando Prioridade 2 (URL pública própria no corpo)...',
+            )
+
+            // PRIORIDADE 2: Se documento anexado falhar, envia mensagem com a URL pública do storage próprio
+            try {
+              const fallbackMsg =
+                '📄 *Material oficial: Vistage Residence*\n' +
+                'Acesse o book completo em alta definição no link seguro do nosso storage:\n' +
+                localDoc.public_url
+
+              const fallbackRes = $http.send({
+                url: metaUrl,
+                method: 'POST',
+                headers: {
+                  Authorization: 'Bearer ' + metaToken,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  recipient_type: 'individual',
+                  to: phoneNum,
+                  type: 'text',
+                  text: { preview_url: true, body: fallbackMsg },
+                }),
+                timeout: 25,
+              })
+
+              if (fallbackRes && fallbackRes.statusCode >= 200 && fallbackRes.statusCode < 300) {
+                documentSent = true // Entregue via URL própria
+                fullMessageText += '\n\n' + fallbackMsg
+              }
+            } catch (fallbackErr) {
+              console.warn(
+                '[EBOOK_RESEND] Falha no fallback de URL própria: ' + fallbackErr.message,
+              )
+            }
+          }
+        } catch (docErr) {
+          documentError = 'Exceção HTTP Doc: ' + docErr.message
+          console.warn('[EBOOK_RESEND] Exceção no envio de documento: ' + docErr.message)
+        }
       }
 
       // Liberação do lock, tag de entrega e gravação
@@ -690,6 +899,9 @@ routerAdd(
         if (sendSuccess) {
           if (cTags.indexOf('ebook_vistage_entregue') === -1) {
             cTags.push('ebook_vistage_entregue')
+          }
+          if (documentSent && cTags.indexOf('ebook_vistage_documento_entregue') === -1) {
+            cTags.push('ebook_vistage_documento_entregue')
           }
           cUpdate.set('tags', cTags)
           cUpdate.set('last_follow_up_at', new Date().toISOString())
@@ -709,7 +921,11 @@ routerAdd(
             convRec.set('user_id', activeUserId || cUpdate.getString('user_id') || '')
             convRec.set('customer_id', custId)
             convRec.set('sender', 'ai')
-            convRec.set('content', fullMessageText)
+            convRec.set(
+              'content',
+              fullMessageText +
+                (documentSent ? '\n\n[Documento WhatsApp Anexado: ' + localDoc.filename + ']' : ''),
+            )
             convRec.set('channel', 'whatsapp')
             app.saveNoValidate(convRec)
           } catch (_) {}
@@ -726,7 +942,8 @@ routerAdd(
                 phoneNum +
                 ' [' +
                 (gName || 'Sem nome') +
-                ']',
+                ']' +
+                (documentSent ? ' [com documento anexo]' : ''),
             )
             logRec.set(
               'details',
@@ -734,7 +951,13 @@ routerAdd(
                 customer_id: custId,
                 phone: phoneNum,
                 name: item.name,
-                book_link: bookLink,
+                document_sent: documentSent,
+                document_file: localDoc.stored_file,
+                document_size: localDoc.file_size,
+                storage_url: localDoc.public_url,
+                delivery_mechanism: documentSent
+                  ? 'whatsapp_document_attached'
+                  : 'text_only_fallback',
                 status: 'sucesso',
               }),
             )
@@ -742,7 +965,12 @@ routerAdd(
             app.saveNoValidate(logRec)
           } catch (_) {}
 
-          dispatched.push({ id: custId, phone: phoneNum, name: item.name })
+          dispatched.push({
+            id: custId,
+            phone: phoneNum,
+            name: item.name,
+            document_sent: documentSent,
+          })
         } else {
           cUpdate.set('tags', cTags)
           app.saveNoValidate(cUpdate)
