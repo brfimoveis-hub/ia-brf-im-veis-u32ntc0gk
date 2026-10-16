@@ -53,6 +53,33 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
     }
 
     let digits = str.replace(/\D/g, '')
+
+    // Trata duplicatas espelhadas (ex: 20 a 28 dígitos repetidos)
+    if (digits.length >= 20 && digits.length <= 28 && digits.length % 2 === 0) {
+      const half = digits.length / 2
+      const firstHalf = digits.substring(0, half)
+      const secondHalf = digits.substring(half)
+      if (firstHalf === secondHalf) {
+        digits = firstHalf
+      }
+    }
+
+    // Se começar com 55041 (15 ou 16 dígitos), raspa 55041 (prefixo de operadora 041 após DDI 55)
+    if (digits.startsWith('55041') && (digits.length === 15 || digits.length === 16)) {
+      const ddd = parseInt(digits.substring(5, 7), 10)
+      if (ddd >= 11 && ddd <= 99) {
+        digits = digits.substring(5)
+      }
+    }
+
+    // Se começar com 041 e tiver 13 ou 14 dígitos (041 + DDD + 8 ou 9 dígitos), raspa 041
+    if (digits.startsWith('041') && (digits.length === 13 || digits.length === 14)) {
+      const ddd = parseInt(digits.substring(3, 5), 10)
+      if (ddd >= 11 && ddd <= 99) {
+        digits = digits.substring(3)
+      }
+    }
+
     if (digits.startsWith('0') && digits.length >= 11) {
       digits = digits.substring(1)
     }
@@ -61,17 +88,6 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
     }
     if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
       digits = '55' + digits
-    }
-
-    // Duplicações coladas (ex: 55489998103785548999810378)
-    if (digits.length >= 20 && digits.length <= 26 && digits.length % 2 === 0) {
-      const half = digits.length / 2
-      const firstHalf = digits.substring(0, half)
-      const secondHalf = digits.substring(half)
-      if (firstHalf === secondHalf) {
-        const subRes = validateAndCleanBrazilianPhone(firstHalf)
-        if (subRes.valid) return subRes
-      }
     }
 
     if (digits.length < 12) {
@@ -297,11 +313,24 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
     return { excluded: false, reason: null }
   }
 
+  function parseMetadataSafeAudit(ctrlRecord) {
+    if (!ctrlRecord) return {}
+    try {
+      const raw = ctrlRecord.get('metadata')
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw
+      if (typeof raw === 'string' && raw.trim()) {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+      }
+    } catch (_) {}
+    return {}
+  }
+
   function getContinuousModeState() {
     try {
       const ctrl = app.findFirstRecordByFilter('app_controls', "key = 'ebook_continuous_mode'")
       if (ctrl) {
-        const meta = ctrl.get('metadata') || {}
+        const meta = parseMetadataSafeAudit(ctrl)
         return {
           is_active: !!ctrl.getBool('is_active'),
           next_batch_at: meta.next_batch_at || null,
@@ -1281,11 +1310,16 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
   try {
     const ctrl = app.findFirstRecordByFilter('app_controls', "key = 'ebook_continuous_mode'")
     if (ctrl && ctrl.getBool('is_active')) {
-      const prevMeta = ctrl.get('metadata') || {}
+      let prevMeta = {}
+      try {
+        const rawM = ctrl.get('metadata')
+        if (rawM && typeof rawM === 'object' && !Array.isArray(rawM)) prevMeta = rawM
+        else if (typeof rawM === 'string' && rawM.trim()) prevMeta = JSON.parse(rawM) || {}
+      } catch (_) {}
       prevMeta.remaining_pending = remaining
       prevMeta.last_dispatched_at = new Date().toISOString()
       prevMeta.last_dispatched_count = dispatched.length
-      ctrl.set('metadata', prevMeta)
+      ctrl.set('metadata', JSON.stringify(prevMeta))
       app.saveNoValidate(ctrl)
     }
   } catch (_) {}
@@ -1325,6 +1359,23 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
     }
   }
 
+  function parseMetadataSafe(ctrlRecord) {
+    if (!ctrlRecord) return {}
+    try {
+      const raw = ctrlRecord.get('metadata')
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        return raw
+      }
+      if (typeof raw === 'string' && raw.trim()) {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed
+        }
+      }
+    } catch (_) {}
+    return {}
+  }
+
   function computeNextBatchScheduleDate(fromMs) {
     const baseMs = fromMs || Date.now()
     const candidateUtcMs = baseMs + 15 * 60 * 1000
@@ -1342,11 +1393,16 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
       // Domingo -> Segunda-feira às 08h BRT
       daysToAdd = 1
     } else if (brComp.day === 6 && brComp.hour >= 18) {
-      // Sábado a partir das 18h -> Segunda-feira às 08h BRT
+      // Sábado a partir das 18h -> Segunda-feira às 08h BRT (pula domingo)
       daysToAdd = 2
     } else if (brComp.hour >= 18) {
-      // Seg-Sex a partir das 18h -> Próximo dia às 08h BRT (se sexta, vai pra sábado)
-      daysToAdd = 1
+      // De Seg-Qui 18h: se sexta 18h vai p/ sábado? Mauro solicitou segunda 08h
+      // Se for sexta (5) após 18h ou sábado (6): pula para segunda-feira
+      if (brComp.day === 5) {
+        daysToAdd = 3 // Sexta após 18h -> Segunda 08h
+      } else {
+        daysToAdd = 1
+      }
     } else if (brComp.hour < 8) {
       // Seg-Sáb antes das 8h da manhã -> mesmo dia às 08h BRT
       daysToAdd = 0
@@ -1397,11 +1453,11 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
 
   // Se for PARAR
   if (!targetActive) {
-    const meta = ctrl.get('metadata') || {}
+    const meta = parseMetadataSafe(ctrl)
     meta.next_batch_at = null
     meta.stop_reason = body.reason || 'Parado manualmente pelo operador'
     ctrl.set('is_active', false)
-    ctrl.set('metadata', meta)
+    ctrl.set('metadata', JSON.stringify(meta))
     ctrl.set('paused_at', new Date().toISOString())
     ctrl.set('paused_by', activeUserId || 'Mauro')
     app.saveNoValidate(ctrl)
@@ -1648,11 +1704,11 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
   const startWindowInfo = getBrasiliaHourAndWindowForStart()
   const forceOutsideWindow = !!body.force_outside_window
   const nextIso = computeNextBatchScheduleDate(Date.now())
-  const meta = ctrl.get('metadata') || {}
+  const meta = parseMetadataSafe(ctrl)
   meta.next_batch_at = nextIso
   meta.stop_reason = null
   ctrl.set('is_active', true)
-  ctrl.set('metadata', meta)
+  ctrl.set('metadata', JSON.stringify(meta))
   ctrl.set('resumed_at', new Date().toISOString())
   ctrl.set('resumed_by', activeUserId || 'Mauro')
   app.saveNoValidate(ctrl)
@@ -1807,7 +1863,7 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
         meta.remaining_pending = 0
         meta.stop_reason = 'Concluído: 0 pendentes restantes'
         ctrl.set('is_active', false)
-        ctrl.set('metadata', meta)
+        ctrl.set('metadata', JSON.stringify(meta))
         app.saveNoValidate(ctrl)
       } else {
         const batch = pending.slice(0, 15)
@@ -2029,7 +2085,7 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
         } else {
           meta.next_batch_at = nextIso
         }
-        ctrl.set('metadata', meta)
+        ctrl.set('metadata', JSON.stringify(meta))
         app.saveNoValidate(ctrl)
 
         try {
@@ -2178,17 +2234,37 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
       str = parts[0] || str
     }
     let digits = str.replace(/\D/g, '')
+
+    // Trata duplicatas espelhadas (ex: 20 a 28 dígitos repetidos)
+    if (digits.length >= 20 && digits.length <= 28 && digits.length % 2 === 0) {
+      const half = digits.length / 2
+      const firstHalf = digits.substring(0, half)
+      const secondHalf = digits.substring(half)
+      if (firstHalf === secondHalf) {
+        digits = firstHalf
+      }
+    }
+
+    // Se começar com 55041 (15 ou 16 dígitos), raspa 55041
+    if (digits.startsWith('55041') && (digits.length === 15 || digits.length === 16)) {
+      const ddd = parseInt(digits.substring(5, 7), 10)
+      if (ddd >= 11 && ddd <= 99) {
+        digits = digits.substring(5)
+      }
+    }
+
+    // Se começar com 041 e tiver 13 ou 14 dígitos (041 + DDD + 8 ou 9 dígitos), raspa 041
+    if (digits.startsWith('041') && (digits.length === 13 || digits.length === 14)) {
+      const ddd = parseInt(digits.substring(3, 5), 10)
+      if (ddd >= 11 && ddd <= 99) {
+        digits = digits.substring(3)
+      }
+    }
+
     if (digits.startsWith('0') && digits.length >= 11) digits = digits.substring(1)
     if (digits.length === 8 || digits.length === 9) digits = '48' + digits
     if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
       digits = '55' + digits
-    }
-    if (digits.length >= 20 && digits.length <= 26 && digits.length % 2 === 0) {
-      const half = digits.length / 2
-      if (digits.substring(0, half) === digits.substring(half)) {
-        const subRes = validateAndCleanBrazilianPhone(digits.substring(0, half))
-        if (subRes.valid) return subRes
-      }
     }
     if (digits.length < 12 || digits.length > 13 || !digits.startsWith('55')) {
       return { valid: false, phone: digits, errorReason: 'Inválido' }
@@ -2343,8 +2419,25 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
   // A pausa da régua geral (regua_automations_active = false) congela retomadas da Bia e remarketing,
   // mas NUNCA suspende o Modo Contínuo de reenvio de e-book ativado explicitamente pelo operador.
 
+  function parseMetadataSafeCron(ctrlRecord) {
+    if (!ctrlRecord) return {}
+    try {
+      const raw = ctrlRecord.get('metadata')
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        return raw
+      }
+      if (typeof raw === 'string' && raw.trim()) {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed
+        }
+      }
+    } catch (_) {}
+    return {}
+  }
+
   // 3. Checa agendamento next_batch_at
-  const meta = ctrl.get('metadata') || {}
+  const meta = parseMetadataSafeCron(ctrl)
   const nextBatchStr = meta.next_batch_at
   if (!nextBatchStr) return
 
@@ -2363,7 +2456,7 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
       '[EBOOK_CONTINUOUS_CRON] Fora da janela de Brasília. Reagendando para ' + adjustedNext,
     )
     meta.next_batch_at = adjustedNext
-    ctrl.set('metadata', meta)
+    ctrl.set('metadata', JSON.stringify(meta))
     app.saveNoValidate(ctrl)
     return
   }
@@ -2433,7 +2526,7 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
     // Não desativa o modo contínuo; adia para tentar novamente no próximo ciclo de 15 minutos
     meta.next_batch_at = computeNextBatchScheduleDate(nowMs)
     meta.stop_reason = 'Aviso: Credenciais WhatsApp ausentes temporariamente; tentando novamente'
-    ctrl.set('metadata', meta)
+    ctrl.set('metadata', JSON.stringify(meta))
     app.saveNoValidate(ctrl)
     return
   }
@@ -2521,7 +2614,7 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
     meta.remaining_pending = 0
     meta.stop_reason = 'Concluído: 0 pendentes restantes'
     ctrl.set('is_active', false)
-    ctrl.set('metadata', meta)
+    ctrl.set('metadata', JSON.stringify(meta))
     app.saveNoValidate(ctrl)
     return
   }
@@ -2729,7 +2822,7 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
     meta.remaining_pending = 0
     meta.stop_reason = 'Concluído: 0 pendentes restantes'
     ctrl.set('is_active', false)
-    ctrl.set('metadata', meta)
+    ctrl.set('metadata', JSON.stringify(meta))
     app.saveNoValidate(ctrl)
   } else {
     const nextSchedule = computeNextBatchScheduleDate(Date.now())
@@ -2738,7 +2831,7 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
     meta.last_dispatched_count = dispatched.length
     meta.remaining_pending = remainingAfter
     meta.stop_reason = null
-    ctrl.set('metadata', meta)
+    ctrl.set('metadata', JSON.stringify(meta))
     app.saveNoValidate(ctrl)
     console.log('[EBOOK_CONTINUOUS_CRON] Próximo lote agendado para ' + nextSchedule)
   }

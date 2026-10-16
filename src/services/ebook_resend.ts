@@ -170,6 +170,32 @@ export function validateBrazilianPhoneLocal(rawPhone: string): {
 
   let digits = str.replace(/\D/g, '')
 
+  // Trata duplicatas espelhadas (ex: 20 a 28 dígitos repetidos)
+  if (digits.length >= 20 && digits.length <= 28 && digits.length % 2 === 0) {
+    const half = digits.length / 2
+    const firstHalf = digits.substring(0, half)
+    const secondHalf = digits.substring(half)
+    if (firstHalf === secondHalf) {
+      digits = firstHalf
+    }
+  }
+
+  // Se começar com 55041 (15 ou 16 dígitos), raspa 55041 (prefixo operadora 041 após DDI)
+  if (digits.startsWith('55041') && (digits.length === 15 || digits.length === 16)) {
+    const ddd = parseInt(digits.substring(5, 7), 10)
+    if (ddd >= 11 && ddd <= 99) {
+      digits = digits.substring(5)
+    }
+  }
+
+  // Se começar com 041 e tiver 13 ou 14 dígitos (041 + DDD + 8 ou 9 dígitos), raspa 041
+  if (digits.startsWith('041') && (digits.length === 13 || digits.length === 14)) {
+    const ddd = parseInt(digits.substring(3, 5), 10)
+    if (ddd >= 11 && ddd <= 99) {
+      digits = digits.substring(3)
+    }
+  }
+
   if (digits.startsWith('0') && digits.length >= 11) {
     digits = digits.substring(1)
   }
@@ -180,16 +206,6 @@ export function validateBrazilianPhoneLocal(rawPhone: string): {
 
   if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
     digits = '55' + digits
-  }
-
-  if (digits.length >= 20 && digits.length <= 26 && digits.length % 2 === 0) {
-    const half = digits.length / 2
-    const firstHalf = digits.substring(0, half)
-    const secondHalf = digits.substring(half)
-    if (firstHalf === secondHalf) {
-      const subRes = validateBrazilianPhoneLocal(firstHalf)
-      if (subRes.valid) return subRes
-    }
   }
 
   if (digits.length < 12) {
