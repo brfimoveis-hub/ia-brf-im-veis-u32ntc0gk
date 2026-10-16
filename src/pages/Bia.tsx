@@ -71,11 +71,12 @@ export default function Bia() {
       try {
         await assertCanUploadFiles([file], undefined, user.id)
       } catch (validationErr: any) {
+        const errorMsg =
+          validationErr?.message ||
+          'Verifique se o arquivo tem até 500 MB e se há espaço disponível na cota da Bia.'
         toast({
-          title: 'Não foi possível enviar para a Bia',
-          description:
-            validationErr.message ||
-            'Verifique se o arquivo tem até 500 MB e se há espaço disponível na cota da Bia.',
+          title: 'Arquivo não aceito',
+          description: errorMsg,
           variant: 'destructive',
         })
         e.target.value = ''
@@ -119,6 +120,7 @@ export default function Bia() {
       })
     } finally {
       setLoading(false)
+      e.target.value = ''
     }
   }
 
@@ -268,6 +270,9 @@ export default function Bia() {
                   type="file"
                   accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp"
                   className="hidden"
+                  onClick={(e) => {
+                    ;(e.target as HTMLInputElement).value = ''
+                  }}
                   onChange={(e) => handleFileUpload(e, 'ai_knowledge_files')}
                   disabled={loading}
                 />

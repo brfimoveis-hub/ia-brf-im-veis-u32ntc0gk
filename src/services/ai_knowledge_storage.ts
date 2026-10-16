@@ -146,11 +146,24 @@ export async function assertCanUploadFiles(
       )
     }
 
-    // 2. Verificação de limite individual por arquivo (200 MB)
+    // 1.1 Verificação explícita de arquivos compactados (.zip / .rar) com mensagem educativa (Mauro)
+    const isCompressed =
+      lowerName.endsWith('.zip') ||
+      lowerName.endsWith('.rar') ||
+      lowerName.endsWith('.7z') ||
+      lowerName.endsWith('.tar') ||
+      lowerName.endsWith('.gz')
+    if (isCompressed) {
+      throw new Error(
+        `Arquivos compactados (.zip/.rar) não são aceitos. Envie o PDF descompactado (até 500 MB) — materiais grandes já podem ser registrados por link do Drive.`,
+      )
+    }
+
+    // 2. Verificação de limite individual por arquivo (500 MB)
     if (file.size > MAX_SINGLE_FILE_SIZE) {
       const fileMb = (file.size / (1024 * 1024)).toFixed(1)
       throw new Error(
-        `O arquivo "${file.name}" tem ${fileMb} MB e ultrapassa o limite individual de ${MAX_SINGLE_FILE_SIZE_LABEL}. Reduza o tamanho ou divida o documento.`,
+        `O arquivo "${file.name}" tem ${fileMb} MB e ultrapassa o limite individual de ${MAX_SINGLE_FILE_SIZE_LABEL}. Envie arquivos de até 500 MB ou registre materiais grandes por link do Drive.`,
       )
     }
 

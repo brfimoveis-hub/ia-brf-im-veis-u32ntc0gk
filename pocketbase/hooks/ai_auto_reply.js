@@ -80,12 +80,19 @@ onRecordAfterCreateSuccess((e) => {
     return 'Boa noite'
   }
 
-  function buildTemporalGreeting(name, hour) {
-    const salutation = getTemporalGreetingWord(hour)
-    if (name && name.trim()) {
-      return `${salutation}, ${name.trim()}!`
+  function buildTemporalGreeting(name, hour, withIdentity) {
+    const salutation = getTemporalGreetingWord(hour).toLowerCase()
+    if (withIdentity) {
+      if (name && name.trim()) {
+        return `Bia da BRF Imóveis — ${salutation}, ${name.trim()}, tudo bem?`
+      }
+      return `Bia da BRF Imóveis — ${salutation}, tudo bem?`
     }
-    return `${salutation}!`
+    const capSalutation = getTemporalGreetingWord(hour)
+    if (name && name.trim()) {
+      return `${capSalutation}, ${name.trim()}!`
+    }
+    return `${capSalutation}!`
   }
 
   console.log(
@@ -2389,16 +2396,17 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
     }
 
     const isFirstAiMessageOrAfter24h = hoursSinceLastAiMsg === null || hoursSinceLastAiMsg >= 24
-    const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour)
+    const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour, true)
     const timeGreetingRule = isFirstAiMessageOrAfter24h
-      ? `REGRA DE SAUDAÇÃO TEMPORAL (PRIMEIRO CONTATO OU APÓS 24H DE SILÊNCIO):
+      ? `REGRA DE SAUDAÇÃO COM IDENTIFICAÇÃO (PRIMEIRA MENSAGEM OU APÓS 24H DE SILÊNCIO):
 - Horário local oficial de envio (America/Sao_Paulo): ${currentTimeStr} (${getTemporalGreetingWord(brHour)}).
-- Como este é o primeiro contato da Bia ou se passaram mais de 24h desde a última mensagem, inicie com a saudação temporal: "${temporalGreetingSuggestion}".
-- Se o lead não tiver nome confiável no cadastro, use apenas "${getTemporalGreetingWord(brHour)}!" sem inventar nome.
+- Como este é o primeiro contato da Bia, uma retomada ou nova conversa após janela de 24h, a Bia DEVE se identificar com clareza: "${temporalGreetingSuggestion}".
+- Se o lead não tiver nome confiável no cadastro, use apenas "Bia da BRF Imóveis — ${getTemporalGreetingWord(brHour).toLowerCase()}, tudo bem?" sem inventar nome.
+- Em diálogo contínuo (janela de 24h em andamento), NÃO repita a identificação nem a saudação.
 - Nunca repita perguntas já respondidas.`
       : `REGRA DE CONTINUIDADE DO DIÁLOGO (CONVERSA EM ANDAMENTO):
 - O diálogo com o cliente já está em andamento (última interação há menos de 24h).
-- NÃO use saudações formais nem temporais ("Bom dia/Boa tarde/Boa noite/Olá/Oi"). Vá direto ao ponto, respondendo ou avançando com foco na demanda do cliente de forma consultiva e acolhedora.`
+- NÃO repita a identificação ("Bia da BRF Imóveis") nem saudações temporais/formais ("Bom dia/Boa tarde/Boa noite/Olá/Oi"). Vá direto ao ponto, respondendo ou avançando com foco na demanda do cliente de forma consultiva e acolhedora.`
 
     // ======================================================================
     // PILAR C: DETECÇÃO DE PERFIL, PIVÔ NA REJEIÇÃO E GUARDA DE RECUSA
@@ -4374,21 +4382,26 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       responseText = responseText.replace(/\[VIDEO\]/gi, '').trim()
     }
 
-    // Garantir saudação condicional: apenas na 1ª mensagem da IA ou quando hoursSinceLastAiMsg >= 24
+    // Garantir saudação condicional com identificação: apenas na 1ª mensagem da IA ou quando hoursSinceLastAiMsg >= 24
     function ensureGreetingAtBeginning(txt, name, hour) {
-      if (!txt) return buildTemporalGreeting(name, hour)
+      if (!txt) return buildTemporalGreeting(name, hour, true)
       var trimmed = txt.trim()
-      var targetGreeting = buildTemporalGreeting(name, hour)
+      var targetGreeting = buildTemporalGreeting(name, hour, true)
       var salutationWord = getTemporalGreetingWord(hour)
 
-      // Regex para identificar se já começa com saudação temporal (com ou sem nome/pontuação)
+      // Se já começa exatamente ou de forma equivalente com a identificação da Bia
+      if (/^(?:Bia\s+da\s+BRF\s+Im[oó]veis\s*[-—–]\s*)/i.test(trimmed)) {
+        return trimmed
+      }
+
+      // Regex para identificar se já começa com saudação temporal comum ou genérica (com ou sem nome/pontuação)
       var greetingStartRegex = new RegExp(
         '^(?:\\*\\*)?(?:' + salutationWord + '|Olá|Ola|Oi)\\b[^\\n.!?]*[.!?,]?\\s*',
         'i',
       )
 
       if (greetingStartRegex.test(trimmed)) {
-        // Já tem alguma saudação no início: substituir pela saudação padrão temporal + nome
+        // Já tem alguma saudação no início: substituir pela saudação padrão com identificação
         var rest = trimmed.replace(greetingStartRegex, '').trim()
         return rest ? targetGreeting + ' ' + rest : targetGreeting
       }
@@ -4400,6 +4413,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     function removeLeadingGreeting(txt) {
       if (!txt) return ''
       var trimmed = txt.trim()
+      // Remove identificação repetida se houver no meio de diálogo contínuo
+      trimmed = trimmed.replace(/^(?:Bia\s+da\s+BRF\s+Im[oó]veis\s*[-—–]\s*)/i, '').trim()
       var greetingRegex =
         /^(?:\*\*)?(?:Bom dia|Boa tarde|Boa noite|Olá|Ola|Oi)\b[^\\n.!?]*[.!?,]?\s*/i
       return trimmed.replace(greetingRegex, '').trim()
@@ -4420,7 +4435,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       incomingText.includes('[Áudio Recebido - não foi possível transcrever]')
     ) {
       const audioFallbackGreeting = isFirstAiMessageOrAfter24h
-        ? buildTemporalGreeting(displayName, brHour) + ' '
+        ? buildTemporalGreeting(displayName, brHour, true) + ' '
         : ''
       responseText = `${audioFallbackGreeting}Não consegui ouvir o seu áudio com clareza por aqui. Você poderia escrever por mensagem de texto ou mandar novamente? Assim consigo te atender perfeitamente!`
     } else if (isFirstAiMessageOrAfter24h) {

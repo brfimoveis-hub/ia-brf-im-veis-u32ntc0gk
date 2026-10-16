@@ -529,13 +529,12 @@ export default function SettingsAI() {
     try {
       await assertCanUploadFiles(fileList, storageUsage?.totalUsedBytes, user.id)
     } catch (validationErr: any) {
-      toast.error(
-        validationErr.message ||
-          'Não foi possível enviar o arquivo. Verifique o tamanho (até 500 MB) e a cota total de 2 GB.',
-        {
-          duration: 7000,
-        },
-      )
+      const errorMsg =
+        validationErr?.message ||
+        'Não foi possível enviar o arquivo. Verifique o formato, o tamanho (até 500 MB) e a cota total da Bia.'
+      toast.error(errorMsg, {
+        duration: 8000,
+      })
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
@@ -1354,6 +1353,10 @@ export default function SettingsAI() {
                 accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.webp"
                 className="hidden"
                 ref={fileInputRef}
+                onClick={(e) => {
+                  // Limpa o valor para permitir selecionar o mesmo arquivo novamente após rejeição/erro
+                  ;(e.target as HTMLInputElement).value = ''
+                }}
                 onChange={handleFileSelect}
                 disabled={isUploading}
               />

@@ -499,9 +499,9 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   function extractTemplatesFromConstitution(ruleText) {
     var defaultTemplates = {
       remarketing: [
-        'Um tempo atrás você entrou em contato procurando imóvel/lançamento. Lembrei de você, e tomei a liberdade de enviar esta oportunidade da [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}.',
-        'Lembrei do seu contato anterior sobre busca de imóveis e separei esta oportunidade excelente da [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}. Achei que faria sentido compartilhar com você.',
-        'Tudo bem? Como você já havia demonstrado interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade da [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}.',
+        '{SAUDACAO} Lembrei de você e separei esta oportunidade do [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}. Como estão os seus planos imobiliários por aí?',
+        '{SAUDACAO} Como você já havia demonstrado interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade do [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}.',
+        '{SAUDACAO} Lembrei da sua busca por imóvel e separei esta oportunidade especial do [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}. Faz sentido para você conhecer mais detalhes?',
       ],
       d1: [
         '{SAUDACAO} Passando para saber se você conseguiu dar uma olhada na opção{CONTEXTO_IMOVEL} ou se ficou alguma dúvida sobre a localização, planta ou fluxo inicial.',
@@ -1091,7 +1091,14 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
         custName = candidate
       }
     }
-    var greeting = custName ? 'Olá, ' + custName + '!' : 'Olá! Tudo bem?'
+    // Saudação com identificação oficial da Bia (Mauro):
+    // Na 1ª mensagem / retomada / remarketing: "Bia da BRF Imóveis — bom dia/boa tarde/boa noite, tudo bem?" (com nome quando confiável)
+    var brTimePersistence = new Date(Date.now() - 3 * 3600 * 1000)
+    var pBrHour = brTimePersistence.getUTCHours()
+    var pTimeWord = pBrHour < 12 ? 'bom dia' : pBrHour < 18 ? 'boa tarde' : 'boa noite'
+    var greeting = custName
+      ? 'Bia da BRF Imóveis — ' + pTimeWord + ', ' + custName + ', tudo bem?'
+      : 'Bia da BRF Imóveis — ' + pTimeWord + ', tudo bem?'
 
     // Sorteio determinístico/variado por cliente
     function pickVariant(variantsList) {
