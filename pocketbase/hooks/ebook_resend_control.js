@@ -17,13 +17,12 @@
 routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
   const app = $app
 
-  function getBrasiliaHourAndWindow() {
-    const now = new Date()
-    const utcTime = now.getTime() + now.getTimezoneOffset() * 60000
-    const brTime = new Date(utcTime - 3 * 3600000)
-    const brHour = brTime.getHours()
-    const brMinute = brTime.getMinutes()
-    const brDay = brTime.getDay() // 0 = Domingo
+  function getBrasiliaHourAndWindow(dateObj) {
+    const now = dateObj || new Date()
+    const brTime = new Date(now.getTime() - 3 * 3600000)
+    const brHour = brTime.getUTCHours()
+    const brMinute = brTime.getUTCMinutes()
+    const brDay = brTime.getUTCDay() // 0 = Domingo, 6 = Sábado
     const isWindow = brDay !== 0 && brHour >= 8 && brHour < 18
     return {
       hour: brHour,
@@ -542,13 +541,12 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
 routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
   const app = $app
 
-  function getBrasiliaHourAndWindow() {
-    const now = new Date()
-    const utcTime = now.getTime() + now.getTimezoneOffset() * 60000
-    const brTime = new Date(utcTime - 3 * 3600000)
-    const brHour = brTime.getHours()
-    const brMinute = brTime.getMinutes()
-    const brDay = brTime.getDay()
+  function getBrasiliaHourAndWindow(dateObj) {
+    const now = dateObj || new Date()
+    const brTime = new Date(now.getTime() - 3 * 3600000)
+    const brHour = brTime.getUTCHours()
+    const brMinute = brTime.getUTCMinutes()
+    const brDay = brTime.getUTCDay()
     const isWindow = brDay !== 0 && brHour >= 8 && brHour < 18
     return {
       hour: brHour,
@@ -839,44 +837,61 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
   const isReguaActive = isReguaAutomationsActive()
 
   // 2. Credenciais Meta WhatsApp
-  let metaToken = ''
-  let metaPhoneId = ''
-  let activeUserId = ''
+  function resolveMetaWhatsAppCredentials(authRec) {
+    let metaToken = ''
+    let metaPhoneId = ''
+    let activeUserId = ''
 
-  try {
-    const authRec = c.requestInfo().auth
     if (authRec) {
-      activeUserId = authRec.id
-      metaToken = (authRec.getString('meta_whatsapp_access_token') || '').trim()
-      metaPhoneId = (authRec.getString('meta_whatsapp_phone_number_id') || '').trim()
+      try {
+        activeUserId = authRec.id || ''
+        metaToken = (authRec.getString('meta_whatsapp_access_token') || '').trim()
+        metaPhoneId = (authRec.getString('meta_whatsapp_phone_number_id') || '').trim()
+      } catch (_) {}
     }
+
+    if (!metaToken || !metaPhoneId) {
+      try {
+        const usersWithMeta = app.findRecordsByFilter(
+          'users',
+          "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+          '-created',
+          1,
+          0,
+        )
+        if (usersWithMeta && usersWithMeta.length > 0) {
+          metaToken = (usersWithMeta[0].getString('meta_whatsapp_access_token') || '').trim()
+          metaPhoneId = (usersWithMeta[0].getString('meta_whatsapp_phone_number_id') || '').trim()
+          if (!activeUserId) activeUserId = usersWithMeta[0].id
+        }
+      } catch (_) {}
+    }
+
+    if (!activeUserId) {
+      try {
+        const uRec = app.findFirstRecordByFilter('users', "email != ''")
+        if (uRec) activeUserId = uRec.id
+      } catch (_) {}
+    }
+
+    return {
+      valid: !!(metaToken && metaPhoneId),
+      token: metaToken,
+      phoneId: metaPhoneId,
+      userId: activeUserId,
+    }
+  }
+
+  let authRecord = null
+  try {
+    authRecord = c.requestInfo().auth
   } catch (_) {}
+  const metaCreds = resolveMetaWhatsAppCredentials(authRecord)
+  const metaToken = metaCreds.token
+  const metaPhoneId = metaCreds.phoneId
+  const activeUserId = metaCreds.userId
 
-  if (!activeUserId) {
-    try {
-      const uRec = app.findFirstRecordByFilter('users', "email != ''")
-      if (uRec) activeUserId = uRec.id
-    } catch (_) {}
-  }
-
-  if (!metaToken || !metaPhoneId) {
-    try {
-      const usersWithMeta = app.findRecordsByFilter(
-        'users',
-        "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
-        '-created',
-        1,
-        0,
-      )
-      if (usersWithMeta && usersWithMeta.length > 0) {
-        metaToken = (usersWithMeta[0].getString('meta_whatsapp_access_token') || '').trim()
-        metaPhoneId = (usersWithMeta[0].getString('meta_whatsapp_phone_number_id') || '').trim()
-        if (!activeUserId) activeUserId = usersWithMeta[0].id
-      }
-    } catch (_) {}
-  }
-
-  if (!metaToken || !metaPhoneId) {
+  if (!metaCreds.valid) {
     return c.json(400, {
       success: false,
       error: 'Credenciais do Meta WhatsApp Cloud API não configuradas no sistema.',
@@ -904,31 +919,33 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
     })
   }
 
-  // 4. Auditoria para lista dos clientes pendentes
-  let approachedCustomers = []
+  // 4. Seleção enxuta e eficiente dos clientes pendentes elegíveis
+  // Usamos filtro direto no banco para evitar loops pesados em centenas de clientes
+  const baseFilter =
+    "phone != '' && is_blocked = false && persistence_status != 'pausado' && " +
+    "status !~ 'bloqueado' && tags !~ 'bloqueado' && tags !~ 'ai_paused' && " +
+    "status !~ 'perdido' && phase !~ 'perdido' && tags !~ 'frio' && " +
+    "tags !~ 'não é o momento' && tags !~ 'nao e o momento' && follow_up_step != 'finalizado' && " +
+    "tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && " +
+    "tags !~ 'ebook_vistage_entregue' && tags !~ 'ebook_vistage_documento_entregue' && " +
+    "(last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')"
+
+  let approachedCandidates = []
   try {
-    approachedCustomers = app.findRecordsByFilter(
-      'customers',
-      "phone != '' && tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
-      '-updated',
-      800,
-      0,
-    )
+    approachedCandidates = app.findRecordsByFilter('customers', baseFilter, '-updated', 80, 0)
   } catch (err) {
     console.error('[EBOOK_RESEND] Erro ao buscar customers: ' + err.message)
     return c.json(500, { success: false, error: err.message })
   }
 
   const pendingList = []
-  for (let i = 0; i < approachedCustomers.length; i++) {
-    const cust = approachedCustomers[i]
+  for (let i = 0; i < approachedCandidates.length; i++) {
+    const cust = approachedCandidates[i]
     const custId = cust.id
     const rawPhone = cust.getString('phone') || cust.getString('phone_1_value') || ''
 
-    // Validação estrita do telefone brasileiro
     const phoneCheck = validateAndCleanBrazilianPhone(rawPhone)
     if (!phoneCheck.valid) {
-      // Ignora número corrompido, nunca tenta enviar
       try {
         const rawTags = cust.get('tags') || []
         let tagsList = []
@@ -942,49 +959,30 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
       continue
     }
 
-    const cleanPhone = phoneCheck.phone
-
-    // Checagem rápida de tags
-    const rawTags = cust.get('tags') || []
-    let tagsList = []
-    if (Array.isArray(rawTags)) {
-      tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
-    } else if (typeof rawTags === 'string') {
-      try {
-        const parsed = JSON.parse(rawTags)
-        if (Array.isArray(parsed)) tagsList = parsed.map((t) => String(t).toLowerCase())
-      } catch (_) {}
-    }
-
-    if (
-      tagsList.includes('ebook_vistage_entregue') ||
-      tagsList.includes('ebook_vistage_documento_entregue')
-    ) {
-      continue
-    }
-
     let convs = []
     try {
       convs = app.findRecordsByFilter(
         'conversations',
         "customer_id = '" + custId + "'",
         '-created',
-        15,
+        5,
         0,
       )
     } catch (_) {}
 
     if (hasCustomerReceivedOfficialEbook(cust, convs, localDoc)) continue
-
-    const exclusionCheck = checkCustomerExclusions(cust, convs, nowMs)
-    if (exclusionCheck.excluded) continue
+    if (checkCustomerExclusions(cust, convs, nowMs).excluded) continue
 
     pendingList.push({
       id: custId,
       name: cust.getString('name') || 'Sem nome',
       greeting_name: resolveCustomerFirstName(cust),
-      phone: cleanPhone,
+      phone: phoneCheck.phone,
     })
+
+    if (pendingList.length >= maxBatchSize) {
+      break
+    }
   }
 
   if (pendingList.length === 0) {
@@ -1242,8 +1240,14 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
     }
   }
 
-  const remaining = Math.max(0, pendingList.length - dispatched.length)
-
+  // Contar pendentes restantes usando count rápido
+  let remaining = 0
+  try {
+    const remRecs = app.findRecordsByFilter('customers', baseFilter, '', 1000, 0)
+    remaining = remRecs.length
+  } catch (_) {
+    remaining = Math.max(0, pendingList.length - dispatched.length)
+  }
   // Gravar resumo do lote em system_logs
   try {
     const sLogsCol = app.findCollectionByNameOrId('system_logs')
@@ -1306,31 +1310,54 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
 routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
   const app = $app
 
+  function getBrasiliaComponents(dateObj) {
+    const d = dateObj || new Date()
+    const brDate = new Date(d.getTime() - 3 * 3600000)
+    return {
+      year: brDate.getUTCFullYear(),
+      month: brDate.getUTCMonth(),
+      date: brDate.getUTCDate(),
+      day: brDate.getUTCDay(), // 0 = Domingo, 6 = Sábado
+      hour: brDate.getUTCHours(),
+      minute: brDate.getUTCMinutes(),
+      second: brDate.getUTCSeconds(),
+      isWindow: brDate.getUTCDay() !== 0 && brDate.getUTCHours() >= 8 && brDate.getUTCHours() < 18,
+    }
+  }
+
   function computeNextBatchScheduleDate(fromMs) {
     const baseMs = fromMs || Date.now()
-    let candidateUtc = new Date(baseMs + 15 * 60 * 1000)
+    const candidateUtcMs = baseMs + 15 * 60 * 1000
+    const brComp = getBrasiliaComponents(new Date(candidateUtcMs))
 
-    let utcTime = candidateUtc.getTime() + candidateUtc.getTimezoneOffset() * 60000
-    let brTime = new Date(utcTime - 3 * 3600000)
-
-    let brHour = brTime.getHours()
-    let brDay = brTime.getDay() // 0 = Domingo
-
-    if (brDay === 0 || brHour >= 18 || brHour < 8) {
-      let daysToAdd = 0
-      if (brDay === 0) {
-        daysToAdd = 1
-      } else if (brDay === 6 && brHour >= 18) {
-        daysToAdd = 2
-      } else if (brHour >= 18) {
-        daysToAdd = 1
-      }
-      brTime.setDate(brTime.getDate() + daysToAdd)
-      brTime.setHours(8, 0, 0, 0)
-      const targetUtcMs = brTime.getTime() + 3 * 3600000
-      candidateUtc = new Date(targetUtcMs)
+    // Se a data candidate já cai dentro do horário comercial (seg-sáb 8h-18h), agenda exatamente para daqui a 15 min!
+    if (brComp.day !== 0 && brComp.hour >= 8 && brComp.hour < 18) {
+      return new Date(candidateUtcMs).toISOString()
     }
-    return candidateUtc.toISOString()
+
+    // Se caiu fora da janela (domingo, antes das 8h ou a partir das 18h):
+    // Calcular o próximo dia útil às 08:00:00 BRT (= 11:00:00 UTC)
+    let daysToAdd = 0
+    if (brComp.day === 0) {
+      // Domingo -> Segunda-feira às 08h BRT
+      daysToAdd = 1
+    } else if (brComp.day === 6 && brComp.hour >= 18) {
+      // Sábado a partir das 18h -> Segunda-feira às 08h BRT
+      daysToAdd = 2
+    } else if (brComp.hour >= 18) {
+      // Seg-Sex a partir das 18h -> Próximo dia às 08h BRT (se sexta, vai pra sábado)
+      daysToAdd = 1
+    } else if (brComp.hour < 8) {
+      // Seg-Sáb antes das 8h da manhã -> mesmo dia às 08h BRT
+      daysToAdd = 0
+    } else {
+      daysToAdd = 1
+    }
+
+    const nextBrDateMs = Date.UTC(brComp.year, brComp.month, brComp.date + daysToAdd, 8, 0, 0, 0)
+    // 08:00 BRT equivale a 11:00 UTC (+3h)
+    const targetUtcMs = nextBrDateMs + 3 * 3600000
+    return new Date(targetUtcMs).toISOString()
   }
 
   let body = {}
@@ -1413,13 +1440,12 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
   // Se for INICIAR
   // A pausa da régua automática (regua_automations_active = false) bloqueia apenas retomadas da Bia (D+3, D+7 etc.)
   // e remarketing — NUNCA o Disparo Contínuo do E-book, que é ativado explicitamente pelo dono e tem seu próprio controle.
-  function getBrasiliaHourAndWindowForStart() {
-    const now = new Date()
-    const utcTime = now.getTime() + now.getTimezoneOffset() * 60000
-    const brTime = new Date(utcTime - 3 * 3600000)
-    const brHour = brTime.getHours()
-    const brMinute = brTime.getMinutes()
-    const brDay = brTime.getDay()
+  function getBrasiliaHourAndWindowForStart(dateObj) {
+    const now = dateObj || new Date()
+    const brTime = new Date(now.getTime() - 3 * 3600000)
+    const brHour = brTime.getUTCHours()
+    const brMinute = brTime.getUTCMinutes()
+    const brDay = brTime.getUTCDay()
     const isWindow = brDay !== 0 && brHour >= 8 && brHour < 18
     return {
       hour: brHour,
@@ -1637,32 +1663,93 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
   let remainingAfterFirst = 0
 
   if (startWindowInfo.isCommercialWindow || forceOutsideWindow) {
-    let metaToken = ''
-    let metaPhoneId = ''
-    try {
-      const usersWithMeta = app.findRecordsByFilter(
-        'users',
-        "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
-        '-created',
-        1,
-        0,
-      )
-      if (usersWithMeta && usersWithMeta.length > 0) {
-        metaToken = (usersWithMeta[0].getString('meta_whatsapp_access_token') || '').trim()
-        metaPhoneId = (usersWithMeta[0].getString('meta_whatsapp_phone_number_id') || '').trim()
-      }
-    } catch (_) {}
+    function resolveMetaWhatsAppCredentialsForStart(authRec) {
+      let metaToken = ''
+      let metaPhoneId = ''
+      let resolvedUserId = ''
 
-    if (metaToken && metaPhoneId) {
-      let approached = []
+      if (authRec) {
+        try {
+          resolvedUserId = authRec.id || ''
+          metaToken = (authRec.getString('meta_whatsapp_access_token') || '').trim()
+          metaPhoneId = (authRec.getString('meta_whatsapp_phone_number_id') || '').trim()
+        } catch (_) {}
+      }
+
+      if (!metaToken || !metaPhoneId) {
+        try {
+          const usersWithMeta = app.findRecordsByFilter(
+            'users',
+            "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+            '-created',
+            1,
+            0,
+          )
+          if (usersWithMeta && usersWithMeta.length > 0) {
+            metaToken = (usersWithMeta[0].getString('meta_whatsapp_access_token') || '').trim()
+            metaPhoneId = (usersWithMeta[0].getString('meta_whatsapp_phone_number_id') || '').trim()
+            if (!resolvedUserId) resolvedUserId = usersWithMeta[0].id
+          }
+        } catch (_) {}
+      }
+
+      if (!resolvedUserId) {
+        try {
+          const uRec = app.findFirstRecordByFilter('users', "email != ''")
+          if (uRec) resolvedUserId = uRec.id
+        } catch (_) {}
+      }
+
+      return {
+        valid: !!(metaToken && metaPhoneId),
+        token: metaToken,
+        phoneId: metaPhoneId,
+        userId: resolvedUserId,
+      }
+    }
+
+    let authRecStart = null
+    try {
+      authRecStart = c.requestInfo().auth
+    } catch (_) {}
+    const startCreds = resolveMetaWhatsAppCredentialsForStart(authRecStart)
+    const metaToken = startCreds.token
+    const metaPhoneId = startCreds.phoneId
+    if (!activeUserId && startCreds.userId) activeUserId = startCreds.userId
+
+    if (!startCreds.valid) {
       try {
-        approached = app.findRecordsByFilter(
-          'customers',
-          "phone != '' && tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
-          '-updated',
-          800,
-          0,
+        const sLogsCol = app.findCollectionByNameOrId('system_logs')
+        const errLog = new Record(sLogsCol)
+        errLog.set('user_id', activeUserId)
+        errLog.set('type', 'ebook_continuous_credentials_missing')
+        errLog.set(
+          'message',
+          'Credenciais Meta WhatsApp Cloud API não encontradas ao disparar 1º lote do Modo Contínuo.',
         )
+        errLog.set(
+          'details',
+          JSON.stringify({
+            mode: 'continuous_start',
+            error: 'meta_whatsapp_access_token ou meta_whatsapp_phone_number_id ausente',
+            timestamp: new Date().toISOString(),
+          }),
+        )
+        app.saveNoValidate(errLog)
+      } catch (_) {}
+    } else {
+      const baseFilter =
+        "phone != '' && is_blocked = false && persistence_status != 'pausado' && " +
+        "status !~ 'bloqueado' && tags !~ 'bloqueado' && tags !~ 'ai_paused' && " +
+        "status !~ 'perdido' && phase !~ 'perdido' && tags !~ 'frio' && " +
+        "tags !~ 'não é o momento' && tags !~ 'nao e o momento' && follow_up_step != 'finalizado' && " +
+        "tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && " +
+        "tags !~ 'ebook_vistage_entregue' && tags !~ 'ebook_vistage_documento_entregue' && " +
+        "(last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')"
+
+      let approachedCandidates = []
+      try {
+        approachedCandidates = app.findRecordsByFilter('customers', baseFilter, '-updated', 80, 0)
       } catch (_) {}
 
       const localDoc = resolveVistageLocalDocumentForStart()
@@ -1671,8 +1758,8 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
       const startNowMs = Date.now()
       const pending = []
 
-      for (let i = 0; i < approached.length; i++) {
-        const cust = approached[i]
+      for (let i = 0; i < approachedCandidates.length; i++) {
+        const cust = approachedCandidates[i]
         const rawPhone = cust.getString('phone') || cust.getString('phone_1_value') || ''
         const pCheck = validateAndCleanBrazilianPhoneForStart(rawPhone)
         if (!pCheck.valid) {
@@ -1689,25 +1776,13 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
         }
 
         const cleanPhone = pCheck.phone
-        const rawTags = cust.get('tags') || []
-        let tagsList = []
-        if (Array.isArray(rawTags)) {
-          tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
-        }
-        if (
-          tagsList.includes('ebook_vistage_entregue') ||
-          tagsList.includes('ebook_vistage_documento_entregue')
-        ) {
-          continue
-        }
-
         let convs = []
         try {
           convs = app.findRecordsByFilter(
             'conversations',
             "customer_id = '" + cust.id + "'",
             '-created',
-            15,
+            5,
             0,
           )
         } catch (_) {}
@@ -1721,6 +1796,10 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
           greeting_name: resolveCustomerFirstNameForStart(cust),
           phone: cleanPhone,
         })
+
+        if (pending.length >= 15) {
+          break
+        }
       }
 
       if (pending.length === 0) {
@@ -1931,8 +2010,15 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
 
         firstBatchDispatchedCount = dispatched.length
         firstBatchFailedCount = failed.length
-        remainingAfterFirst = Math.max(0, pending.length - dispatched.length)
 
+        let countRemaining = 0
+        try {
+          const remRecs = app.findRecordsByFilter('customers', baseFilter, '', 1000, 0)
+          countRemaining = remRecs.length
+        } catch (_) {
+          countRemaining = Math.max(0, pending.length - dispatched.length)
+        }
+        remainingAfterFirst = countRemaining
         meta.last_dispatched_at = new Date().toISOString()
         meta.last_dispatched_count = dispatched.length
         meta.remaining_pending = remainingAfterFirst
@@ -2020,43 +2106,61 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
 cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
   const app = $app
 
-  function getBrasiliaHourAndWindow() {
-    const now = new Date()
-    const utcTime = now.getTime() + now.getTimezoneOffset() * 60000
-    const brTime = new Date(utcTime - 3 * 3600000)
-    const brHour = brTime.getHours()
-    const brMinute = brTime.getMinutes()
-    const brDay = brTime.getDay()
-    const isWindow = brDay !== 0 && brHour >= 8 && brHour < 18
+  function getBrasiliaComponents(dateObj) {
+    const d = dateObj || new Date()
+    const brDate = new Date(d.getTime() - 3 * 3600000)
     return {
-      hour: brHour,
-      minute: brMinute,
-      dayOfWeek: brDay,
-      isCommercialWindow: isWindow,
-      iso: now.toISOString(),
+      year: brDate.getUTCFullYear(),
+      month: brDate.getUTCMonth(),
+      date: brDate.getUTCDate(),
+      day: brDate.getUTCDay(), // 0 = Domingo, 6 = Sábado
+      hour: brDate.getUTCHours(),
+      minute: brDate.getUTCMinutes(),
+      second: brDate.getUTCSeconds(),
+      isWindow: brDate.getUTCDay() !== 0 && brDate.getUTCHours() >= 8 && brDate.getUTCHours() < 18,
+    }
+  }
+
+  function getBrasiliaHourAndWindow(dateObj) {
+    const comp = getBrasiliaComponents(dateObj)
+    return {
+      hour: comp.hour,
+      minute: comp.minute,
+      dayOfWeek: comp.day,
+      isCommercialWindow: comp.isWindow,
+      iso: (dateObj || new Date()).toISOString(),
+      brTimeString: String(comp.hour).padStart(2, '0') + ':' + String(comp.minute).padStart(2, '0'),
     }
   }
 
   function computeNextBatchScheduleDate(fromMs) {
     const baseMs = fromMs || Date.now()
-    let candidateUtc = new Date(baseMs + 15 * 60 * 1000)
-    let utcTime = candidateUtc.getTime() + candidateUtc.getTimezoneOffset() * 60000
-    let brTime = new Date(utcTime - 3 * 3600000)
-    let brHour = brTime.getHours()
-    let brDay = brTime.getDay()
+    const candidateUtcMs = baseMs + 15 * 60 * 1000
+    const brComp = getBrasiliaComponents(new Date(candidateUtcMs))
 
-    if (brDay === 0 || brHour >= 18 || brHour < 8) {
-      let daysToAdd = 0
-      if (brDay === 0) daysToAdd = 1
-      else if (brDay === 6 && brHour >= 18) daysToAdd = 2
-      else if (brHour >= 18) daysToAdd = 1
-
-      brTime.setDate(brTime.getDate() + daysToAdd)
-      brTime.setHours(8, 0, 0, 0)
-      const targetUtcMs = brTime.getTime() + 3 * 3600000
-      candidateUtc = new Date(targetUtcMs)
+    // Se o próximo lote cai dentro do horário comercial (seg-sáb 8h-18h), agenda exatamente para daqui a 15 min!
+    if (brComp.day !== 0 && brComp.hour >= 8 && brComp.hour < 18) {
+      return new Date(candidateUtcMs).toISOString()
     }
-    return candidateUtc.toISOString()
+
+    // Se caiu fora da janela (domingo, antes das 8h ou a partir das 18h):
+    // Calcular o próximo dia útil às 08:00:00 BRT (= 11:00:00 UTC)
+    let daysToAdd = 0
+    if (brComp.day === 0) {
+      daysToAdd = 1
+    } else if (brComp.day === 6 && brComp.hour >= 18) {
+      daysToAdd = 2
+    } else if (brComp.hour >= 18) {
+      daysToAdd = 1
+    } else if (brComp.hour < 8) {
+      daysToAdd = 0
+    } else {
+      daysToAdd = 1
+    }
+
+    const nextBrDateMs = Date.UTC(brComp.year, brComp.month, brComp.date + daysToAdd, 8, 0, 0, 0)
+    const targetUtcMs = nextBrDateMs + 3 * 3600000
+    return new Date(targetUtcMs).toISOString()
   }
 
   function validateAndCleanBrazilianPhone(rawPhone) {
@@ -2264,42 +2368,100 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
     return
   }
 
-  // 5. Credenciais Meta
-  let metaToken = ''
-  let metaPhoneId = ''
-  let activeUserId = ''
-  try {
-    const usersWithMeta = app.findRecordsByFilter(
-      'users',
-      "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
-      '-created',
-      1,
-      0,
-    )
-    if (usersWithMeta && usersWithMeta.length > 0) {
-      metaToken = (usersWithMeta[0].getString('meta_whatsapp_access_token') || '').trim()
-      metaPhoneId = (usersWithMeta[0].getString('meta_whatsapp_phone_number_id') || '').trim()
-      activeUserId = usersWithMeta[0].id
-    }
-  } catch (_) {}
+  // 5. Resolução robusta de Credenciais Meta (compartilhada e à prova de falha silenciosa)
+  function resolveMetaWhatsAppCredentials() {
+    let metaToken = ''
+    let metaPhoneId = ''
+    let activeUserId = ''
 
-  if (!metaToken || !metaPhoneId) {
-    console.warn('[EBOOK_CONTINUOUS_CRON] Credenciais Meta não encontradas. Abortando ciclo.')
+    try {
+      const usersWithMeta = app.findRecordsByFilter(
+        'users',
+        "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+        '-created',
+        1,
+        0,
+      )
+      if (usersWithMeta && usersWithMeta.length > 0) {
+        metaToken = (usersWithMeta[0].getString('meta_whatsapp_access_token') || '').trim()
+        metaPhoneId = (usersWithMeta[0].getString('meta_whatsapp_phone_number_id') || '').trim()
+        activeUserId = usersWithMeta[0].id
+      }
+    } catch (_) {}
+
+    if (!activeUserId) {
+      try {
+        const uRec = app.findFirstRecordByFilter('users', "email != ''")
+        if (uRec) activeUserId = uRec.id
+      } catch (_) {}
+    }
+
+    return {
+      valid: !!(metaToken && metaPhoneId),
+      token: metaToken,
+      phoneId: metaPhoneId,
+      userId: activeUserId,
+    }
+  }
+
+  const metaCreds = resolveMetaWhatsAppCredentials()
+  const metaToken = metaCreds.token
+  const metaPhoneId = metaCreds.phoneId
+  const activeUserId = metaCreds.userId
+
+  if (!metaCreds.valid) {
+    console.error('[EBOOK_CONTINUOUS_CRON] Credenciais Meta não encontradas no cron!')
+    try {
+      const sLogsCol = app.findCollectionByNameOrId('system_logs')
+      const errLog = new Record(sLogsCol)
+      errLog.set('user_id', activeUserId)
+      errLog.set('type', 'ebook_continuous_credentials_missing')
+      errLog.set(
+        'message',
+        'Credenciais Meta WhatsApp Cloud API não encontradas no cron do Modo Contínuo. Ciclo adiado por 15 min.',
+      )
+      errLog.set(
+        'details',
+        JSON.stringify({
+          error: 'meta_whatsapp_access_token ou meta_whatsapp_phone_number_id ausente',
+          timestamp: new Date().toISOString(),
+        }),
+      )
+      app.saveNoValidate(errLog)
+    } catch (_) {}
+
+    // Não desativa o modo contínuo; adia para tentar novamente no próximo ciclo de 15 minutos
+    meta.next_batch_at = computeNextBatchScheduleDate(nowMs)
+    meta.stop_reason = 'Aviso: Credenciais WhatsApp ausentes temporariamente; tentando novamente'
+    ctrl.set('metadata', meta)
+    app.saveNoValidate(ctrl)
     return
   }
 
-  // 6. Varredura e seleção do lote de 15
-  let approached = []
+  // 6. Varredura ultra-eficiente dos próximos 15 pendentes
+  // Usa filtro indexado direto no banco — NUNCA carrega toda a base cliente por cliente
+  const baseFilter =
+    "phone != '' && is_blocked = false && persistence_status != 'pausado' && " +
+    "status !~ 'bloqueado' && tags !~ 'bloqueado' && tags !~ 'ai_paused' && " +
+    "status !~ 'perdido' && phase !~ 'perdido' && tags !~ 'frio' && " +
+    "tags !~ 'não é o momento' && tags !~ 'nao e o momento' && follow_up_step != 'finalizado' && " +
+    "tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && " +
+    "tags !~ 'ebook_vistage_entregue' && tags !~ 'ebook_vistage_documento_entregue' && " +
+    "(last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')"
+
+  let approachedCandidates = []
   try {
-    approached = app.findRecordsByFilter(
-      'customers',
-      "phone != '' && tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
-      '-updated',
-      800,
-      0,
-    )
+    approachedCandidates = app.findRecordsByFilter('customers', baseFilter, '-updated', 80, 0)
   } catch (err) {
     console.error('[EBOOK_CONTINUOUS_CRON] Erro ao buscar customers: ' + err.message)
+    try {
+      const sLogsCol = app.findCollectionByNameOrId('system_logs')
+      const errLog = new Record(sLogsCol)
+      errLog.set('user_id', activeUserId)
+      errLog.set('type', 'ebook_continuous_query_error')
+      errLog.set('message', 'Erro ao consultar clientes no cron: ' + err.message)
+      app.saveNoValidate(errLog)
+    } catch (_) {}
     return
   }
 
@@ -2308,33 +2470,31 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
   const driveBookLink = resolveOfficialVistageBookDriveLink()
   const pending = []
 
-  for (let i = 0; i < approached.length; i++) {
-    const cust = approached[i]
+  for (let i = 0; i < approachedCandidates.length; i++) {
+    const cust = approachedCandidates[i]
     const rawPhone = cust.getString('phone') || cust.getString('phone_1_value') || ''
     const pCheck = validateAndCleanBrazilianPhone(rawPhone)
-    if (!pCheck.valid) continue
-
-    const cleanPhone = pCheck.phone
-    const rawTags = cust.get('tags') || []
-    let tagsList = []
-    if (Array.isArray(rawTags)) {
-      tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
-    }
-
-    if (
-      tagsList.includes('ebook_vistage_entregue') ||
-      tagsList.includes('ebook_vistage_documento_entregue')
-    ) {
+    if (!pCheck.valid) {
+      try {
+        const rawTags = cust.get('tags') || []
+        let tList = Array.isArray(rawTags) ? rawTags.filter((t) => typeof t === 'string') : []
+        if (!tList.includes('telefone_invalido')) {
+          tList.push('telefone_invalido')
+          cust.set('tags', tList)
+          app.saveNoValidate(cust)
+        }
+      } catch (_) {}
       continue
     }
 
+    const cleanPhone = pCheck.phone
     let convs = []
     try {
       convs = app.findRecordsByFilter(
         'conversations',
         "customer_id = '" + cust.id + "'",
         '-created',
-        15,
+        5,
         0,
       )
     } catch (_) {}
@@ -2348,6 +2508,10 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
       greeting_name: resolveCustomerFirstName(cust),
       phone: cleanPhone,
     })
+
+    if (pending.length >= 15) {
+      break
+    }
   }
 
   // Condição de parada (a): 0 pendentes
@@ -2511,7 +2675,43 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
     } catch (_) {}
   }
 
-  const remainingAfter = Math.max(0, pending.length - dispatched.length)
+  // Gravar resumo do lote em system_logs
+  try {
+    const sLogsCol = app.findCollectionByNameOrId('system_logs')
+    const bLog = new Record(sLogsCol)
+    bLog.set('user_id', activeUserId)
+    bLog.set('type', 'ebook_continuous_batch')
+    bLog.set(
+      'message',
+      'Lote automático do Modo Contínuo concluído: ' +
+        dispatched.length +
+        ' enviados com sucesso, ' +
+        failed.length +
+        ' falhas.',
+    )
+    bLog.set(
+      'details',
+      JSON.stringify({
+        dispatched_count: dispatched.length,
+        failed_count: failed.length,
+        total_attempted: batch.length,
+        dispatched: dispatched,
+        failed: failed,
+        mode: 'continuous_cron',
+      }),
+    )
+    app.saveNoValidate(bLog)
+  } catch (_) {}
+
+  // Contagem real dos pendentes restantes
+  let remainingAfter = 0
+  try {
+    const remRecs = app.findRecordsByFilter('customers', baseFilter, '', 1000, 0)
+    remainingAfter = remRecs.length
+  } catch (_) {
+    remainingAfter = Math.max(0, pending.length - dispatched.length)
+  }
+
   console.log(
     '[EBOOK_CONTINUOUS_CRON] Lote finalizado. Enviados: ' +
       dispatched.length +
@@ -2537,6 +2737,7 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
     meta.last_dispatched_at = new Date().toISOString()
     meta.last_dispatched_count = dispatched.length
     meta.remaining_pending = remainingAfter
+    meta.stop_reason = null
     ctrl.set('metadata', meta)
     app.saveNoValidate(ctrl)
     console.log('[EBOOK_CONTINUOUS_CRON] Próximo lote agendado para ' + nextSchedule)
