@@ -248,17 +248,8 @@ export function EbookResendModalControl() {
     }
   }
 
-  // Ações do Modo Contínuo
+  // Ações do Modo Contínuo (independente da régua automática de retomadas)
   const handleStartContinuousClick = () => {
-    if (!reguaIsActive) {
-      toast({
-        title: 'Régua de automações pausada',
-        description:
-          'A régua geral está pausada manualmente em app_controls. Reative a régua para poder iniciar o Modo Contínuo.',
-        variant: 'destructive',
-      })
-      return
-    }
     setConfirmContinuousOpen(true)
   }
 
@@ -333,7 +324,7 @@ export function EbookResendModalControl() {
         className={cn(
           'h-8 text-xs px-2.5 gap-1.5 border shadow-xs transition-colors',
           isContinuousActive
-            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-400 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700 animate-pulse'
+            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-400 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700'
             : pendingCount > 0
               ? 'bg-blue-50/80 hover:bg-blue-100/80 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200 border-blue-300 dark:border-blue-800'
               : 'bg-slate-50 hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300',
@@ -348,7 +339,7 @@ export function EbookResendModalControl() {
             variant="secondary"
             className="text-[10px] px-1.5 py-0 h-4 font-bold ml-0.5 bg-emerald-600 text-white dark:bg-emerald-500 gap-1"
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-white animate-ping" />
+            <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
             <span>Contínuo ATIVO</span>
           </Badge>
         ) : (
@@ -365,7 +356,6 @@ export function EbookResendModalControl() {
           </Badge>
         )}
       </Button>
-
       {/* Modal Principal de Auditoria e Reenvio Dirigido */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -440,9 +430,7 @@ export function EbookResendModalControl() {
                   size="sm"
                   variant="default"
                   onClick={handleStartContinuousClick}
-                  disabled={
-                    togglingContinuous || pendingCount === 0 || !reguaIsActive || sendingBatch
-                  }
+                  disabled={togglingContinuous || pendingCount === 0 || sendingBatch}
                   className="h-7 text-xs px-3 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                 >
                   {togglingContinuous ? (
@@ -457,13 +445,13 @@ export function EbookResendModalControl() {
           </div>
 
           {!reguaIsActive && (
-            <div className="p-2.5 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+            <div className="p-2.5 rounded border border-blue-200 bg-blue-50/60 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 text-xs flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
               <div className="space-y-0.5">
                 <span className="block">
-                  <strong>Aviso:</strong> A régua geral automática está pausada manualmente via{' '}
-                  <code>app_controls</code>. O <strong>disparo manual funciona normalmente</strong>{' '}
-                  por sua ordem, mas o Modo Contínuo automático aguarda a régua ser retomada.
+                  <strong>Régua de retomadas da Bia pausada:</strong> O envio de e-book (tanto
+                  manual quanto Contínuo) funciona de forma independente e liberada pela sua
+                  ativação.
                 </span>
               </div>
             </div>
@@ -823,7 +811,7 @@ Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitório
                   size="sm"
                   variant="outline"
                   onClick={handleStartContinuousClick}
-                  disabled={togglingContinuous || pendingCount === 0 || !reguaIsActive}
+                  disabled={togglingContinuous || pendingCount === 0 || sendingBatch}
                   className="text-xs gap-1 border-emerald-400 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
                 >
                   <Play className="h-3 w-3 fill-current text-emerald-600" />
@@ -896,7 +884,9 @@ Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitório
                     útil.
                   </li>
                   <li>Para automaticamente quando os pendentes chegarem a 0.</li>
-                  <li>Para se a régua for pausada ou se você clicar no botão &quot;Parar&quot;.</li>
+                  <li>
+                    Para quando você clicar no botão &quot;Parar&quot; ou se atingir 0 pendentes.
+                  </li>
                   <li>
                     Anti-flood rigoroso mantido (máx 15 por lote com &gt;= 15 min de intervalo).
                   </li>

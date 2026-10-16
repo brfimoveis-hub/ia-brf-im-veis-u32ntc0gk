@@ -1411,28 +1411,216 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
   }
 
   // Se for INICIAR
-  // Verifica se a régua não está pausada
-  let isReguaActive = false
-  try {
-    const reguaCtrl = app.findFirstRecordByFilter(
-      'app_controls',
-      "key = 'regua_automations_active'",
-    )
-    if (reguaCtrl) {
-      isReguaActive = !!reguaCtrl.getBool('is_active')
+  // A pausa da régua automática (regua_automations_active = false) bloqueia apenas retomadas da Bia (D+3, D+7 etc.)
+  // e remarketing — NUNCA o Disparo Contínuo do E-book, que é ativado explicitamente pelo dono e tem seu próprio controle.
+  function getBrasiliaHourAndWindowForStart() {
+    const now = new Date()
+    const utcTime = now.getTime() + now.getTimezoneOffset() * 60000
+    const brTime = new Date(utcTime - 3 * 3600000)
+    const brHour = brTime.getHours()
+    const brMinute = brTime.getMinutes()
+    const brDay = brTime.getDay()
+    const isWindow = brDay !== 0 && brHour >= 8 && brHour < 18
+    return {
+      hour: brHour,
+      minute: brMinute,
+      dayOfWeek: brDay,
+      isCommercialWindow: isWindow,
+      iso: now.toISOString(),
     }
-  } catch (_) {}
-
-  if (!isReguaActive) {
-    return c.json(400, {
-      success: false,
-      is_active: false,
-      error:
-        'Não é possível ativar o Modo Contínuo enquanto a régua geral estiver pausada manualmente via app_controls. Retome a régua antes de iniciar.',
-    })
   }
 
-  // Define próximo lote agendado para agora (ou daqui a 15 min se acabou de disparar)
+  function validateAndCleanBrazilianPhoneForStart(rawPhone) {
+    if (!rawPhone) return { valid: false, phone: '', errorReason: 'Vazio' }
+    let str = String(rawPhone).trim()
+    if (str.includes(':::')) {
+      const parts = str
+        .split(':::')
+        .map((p) => p.trim())
+        .filter(Boolean)
+      for (let i = 0; i < parts.length; i++) {
+        const pRes = validateAndCleanBrazilianPhoneForStart(parts[i])
+        if (pRes.valid) return pRes
+      }
+      str = parts[0] || str
+    }
+    let digits = str.replace(/\D/g, '')
+    if (digits.startsWith('0') && digits.length >= 11) digits = digits.substring(1)
+    if (digits.length === 8 || digits.length === 9) digits = '48' + digits
+    if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
+      digits = '55' + digits
+    }
+    if (digits.length >= 20 && digits.length <= 26 && digits.length % 2 === 0) {
+      const half = digits.length / 2
+      if (digits.substring(0, half) === digits.substring(half)) {
+        const subRes = validateAndCleanBrazilianPhoneForStart(digits.substring(0, half))
+        if (subRes.valid) return subRes
+      }
+    }
+    if (digits.length < 12 || digits.length > 13 || !digits.startsWith('55')) {
+      return { valid: false, phone: digits, errorReason: 'Inválido' }
+    }
+    const ddd = parseInt(digits.substring(2, 4), 10)
+    if (isNaN(ddd) || ddd < 11 || ddd > 99) {
+      return { valid: false, phone: digits, errorReason: 'DDD inválido' }
+    }
+    return { valid: true, phone: digits, errorReason: null }
+  }
+
+  function resolveCustomerFirstNameForStart(cust) {
+    if (!cust) return ''
+    const candidate = (cust.getString('first_name') || cust.getString('name') || '').trim()
+    if (!candidate || candidate.includes('+') || candidate.includes('@')) return ''
+    if (
+      /^(lead|cliente|contato|teste|whatsapp|meta|novo|usuario|usuário|imóvel|imovel|sem nome)\b/i.test(
+        candidate,
+      )
+    )
+      return ''
+    const parts = candidate.split(/\s+/).filter(Boolean)
+    const first = parts[0]
+    if (!first || first.length < 2 || /[0-9_#\*\/\\]/.test(first)) return ''
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
+  }
+
+  function resolveOfficialVistageBookDriveLinkForStart() {
+    return 'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'
+  }
+
+  function resolveVistageLocalDocumentForStart() {
+    const pbBaseUrl =
+      $os.getenv('POCKETBASE_URL') ||
+      $os.getenv('VITE_POCKETBASE_URL') ||
+      'https://ia-uazapi-6d79e.shrd00.internal.goskip.dev'
+
+    try {
+      const bookRec = app.findRecordById('ai_knowledge_files', 'fcvyoatlxt56do2')
+      if (bookRec && bookRec.getBool('is_active')) {
+        const rName = (bookRec.getString('name') || '').trim()
+        const physFile = (bookRec.getString('file') || '').trim()
+        const fSize = bookRec.getInt('file_size') || 0
+        const s = rName.toLowerCase()
+        const isBlacklisted =
+          s.includes('tabela') ||
+          s.includes('politica') ||
+          s.includes('política') ||
+          s.includes('preco') ||
+          s.includes('preço') ||
+          s.includes('valores')
+
+        if (!isBlacklisted && physFile && fSize > 0) {
+          const publicUrl =
+            pbBaseUrl + '/api/files/' + bookRec.collectionId + '/' + bookRec.id + '/' + physFile
+          return {
+            valid: true,
+            record_id: bookRec.id,
+            filename: rName.endsWith('.pdf') ? rName : rName + '.pdf',
+            stored_file: physFile,
+            file_size: fSize,
+            public_url: publicUrl,
+            caption: 'Material oficial: Vistage Residence',
+          }
+        }
+      }
+    } catch (_) {}
+
+    return { valid: false, public_url: '', file_size: 0 }
+  }
+
+  function hasCustomerReceivedOfficialEbookForStart(cust, convs, docInfo) {
+    if (cust) {
+      const rawTags = cust.get('tags') || []
+      let tags = []
+      if (Array.isArray(rawTags)) {
+        tags = rawTags.map((t) => String(t).toLowerCase())
+      } else if (typeof rawTags === 'string') {
+        try {
+          const parsed = JSON.parse(rawTags)
+          if (Array.isArray(parsed)) {
+            tags = parsed.map((t) => String(t).toLowerCase())
+          }
+        } catch (_) {}
+      }
+      if (
+        tags.indexOf('ebook_vistage_entregue') !== -1 ||
+        tags.indexOf('ebook_vistage_documento_entregue') !== -1
+      ) {
+        return true
+      }
+    }
+    if (!convs || convs.length === 0) return false
+    const pubUrl = (docInfo && docInfo.public_url ? docInfo.public_url : '').trim()
+    for (let i = 0; i < convs.length; i++) {
+      const content = convs[i].getString('content') || ''
+      if (
+        content.indexOf('1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG') !== -1 ||
+        (pubUrl && content.indexOf(pubUrl) !== -1) ||
+        content.indexOf('Material oficial: Vistage Residence') !== -1 ||
+        content.indexOf('book_vistage_residence') !== -1
+      ) {
+        return true
+      }
+    }
+    return false
+  }
+
+  function checkCustomerExclusionsForStart(cust, convs, nowMs) {
+    const status = (cust.getString('status') || '').toLowerCase()
+    const phase = (cust.getString('phase') || '').toLowerCase()
+    const pStatus = (cust.getString('persistence_status') || '').toLowerCase()
+    const followUpStep = (cust.getString('follow_up_step') || '').toLowerCase()
+    const isBlocked = !!cust.getBool('is_blocked')
+
+    const rawTags = cust.get('tags') || []
+    let tagsList = []
+    if (Array.isArray(rawTags)) {
+      tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
+    } else if (typeof rawTags === 'string') {
+      try {
+        const parsed = JSON.parse(rawTags)
+        if (Array.isArray(parsed)) tagsList = parsed.map((t) => String(t).toLowerCase())
+      } catch (_) {}
+    }
+
+    if (tagsList.includes('telefone_invalido') || tagsList.includes('erro_numero_whatsapp')) {
+      return { excluded: true, reason: 'telefone_invalido' }
+    }
+    if (isBlocked || status.includes('bloqueado') || tagsList.includes('bloqueado')) {
+      return { excluded: true, reason: 'bloqueado' }
+    }
+    if (pStatus === 'pausado' || tagsList.includes('ai_paused')) {
+      return { excluded: true, reason: 'pausado' }
+    }
+    if (
+      status.includes('perdido') ||
+      phase.includes('perdido') ||
+      tagsList.includes('frio') ||
+      tagsList.includes('não é o momento') ||
+      tagsList.includes('nao e o momento')
+    ) {
+      return { excluded: true, reason: 'frio_ou_perdido' }
+    }
+    if (followUpStep === 'finalizado') {
+      return { excluded: true, reason: 'finalizado' }
+    }
+
+    const oneDayMs = 24 * 60 * 60 * 1000
+    if (convs && convs.length > 0) {
+      for (let cIdx = 0; cIdx < convs.length; cIdx++) {
+        const convItem = convs[cIdx]
+        const sender = convItem.getString('sender') || ''
+        const cTime = new Date(convItem.getString('created')).getTime()
+        if (nowMs - cTime < oneDayMs && sender === 'customer') {
+          return { excluded: true, reason: 'conversa_viva_24h' }
+        }
+      }
+    }
+    return { excluded: false, reason: null }
+  }
+
+  // 1. Ativa imediatamente o registro em app_controls
+  const startWindowInfo = getBrasiliaHourAndWindowForStart()
+  const forceOutsideWindow = !!body.force_outside_window
   const nextIso = computeNextBatchScheduleDate(Date.now())
   const meta = ctrl.get('metadata') || {}
   meta.next_batch_at = nextIso
@@ -1442,6 +1630,354 @@ routerAdd('POST', '/backend/v1/ebook-resend/continuous-toggle', (c) => {
   ctrl.set('resumed_at', new Date().toISOString())
   ctrl.set('resumed_by', activeUserId || 'Mauro')
   app.saveNoValidate(ctrl)
+
+  // 2. DISPARO IMEDIATO DO 1º LOTE ao ativar (se na janela ou se forceOutsideWindow)
+  let firstBatchDispatchedCount = 0
+  let firstBatchFailedCount = 0
+  let remainingAfterFirst = 0
+
+  if (startWindowInfo.isCommercialWindow || forceOutsideWindow) {
+    let metaToken = ''
+    let metaPhoneId = ''
+    try {
+      const usersWithMeta = app.findRecordsByFilter(
+        'users',
+        "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+        '-created',
+        1,
+        0,
+      )
+      if (usersWithMeta && usersWithMeta.length > 0) {
+        metaToken = (usersWithMeta[0].getString('meta_whatsapp_access_token') || '').trim()
+        metaPhoneId = (usersWithMeta[0].getString('meta_whatsapp_phone_number_id') || '').trim()
+      }
+    } catch (_) {}
+
+    if (metaToken && metaPhoneId) {
+      let approached = []
+      try {
+        approached = app.findRecordsByFilter(
+          'customers',
+          "phone != '' && tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
+          '-updated',
+          800,
+          0,
+        )
+      } catch (_) {}
+
+      const localDoc = resolveVistageLocalDocumentForStart()
+      const hasValidLocalFile = localDoc.valid && localDoc.file_size > 0
+      const driveBookLink = resolveOfficialVistageBookDriveLinkForStart()
+      const startNowMs = Date.now()
+      const pending = []
+
+      for (let i = 0; i < approached.length; i++) {
+        const cust = approached[i]
+        const rawPhone = cust.getString('phone') || cust.getString('phone_1_value') || ''
+        const pCheck = validateAndCleanBrazilianPhoneForStart(rawPhone)
+        if (!pCheck.valid) {
+          try {
+            const rawTags = cust.get('tags') || []
+            let tList = Array.isArray(rawTags) ? rawTags.filter((t) => typeof t === 'string') : []
+            if (!tList.includes('telefone_invalido')) {
+              tList.push('telefone_invalido')
+              cust.set('tags', tList)
+              app.saveNoValidate(cust)
+            }
+          } catch (_) {}
+          continue
+        }
+
+        const cleanPhone = pCheck.phone
+        const rawTags = cust.get('tags') || []
+        let tagsList = []
+        if (Array.isArray(rawTags)) {
+          tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
+        }
+        if (
+          tagsList.includes('ebook_vistage_entregue') ||
+          tagsList.includes('ebook_vistage_documento_entregue')
+        ) {
+          continue
+        }
+
+        let convs = []
+        try {
+          convs = app.findRecordsByFilter(
+            'conversations',
+            "customer_id = '" + cust.id + "'",
+            '-created',
+            15,
+            0,
+          )
+        } catch (_) {}
+
+        if (hasCustomerReceivedOfficialEbookForStart(cust, convs, localDoc)) continue
+        if (checkCustomerExclusionsForStart(cust, convs, startNowMs).excluded) continue
+
+        pending.push({
+          id: cust.id,
+          name: cust.getString('name') || 'Sem nome',
+          greeting_name: resolveCustomerFirstNameForStart(cust),
+          phone: cleanPhone,
+        })
+      }
+
+      if (pending.length === 0) {
+        meta.next_batch_at = null
+        meta.remaining_pending = 0
+        meta.stop_reason = 'Concluído: 0 pendentes restantes'
+        ctrl.set('is_active', false)
+        ctrl.set('metadata', meta)
+        app.saveNoValidate(ctrl)
+      } else {
+        const batch = pending.slice(0, 15)
+        const salutationWord =
+          startWindowInfo.hour < 12
+            ? 'bom dia'
+            : startWindowInfo.hour < 18
+              ? 'boa tarde'
+              : 'boa noite'
+        const metaUrl = 'https://graph.facebook.com/v21.0/' + metaPhoneId + '/messages'
+        const dispatched = []
+        const failed = []
+
+        for (let b = 0; b < batch.length; b++) {
+          const item = batch[b]
+          const custId = item.id
+          const phoneNum = item.phone
+          const gName = item.greeting_name
+
+          try {
+            const custRec = app.findRecordById('customers', custId)
+            const rawTags = custRec.get('tags') || []
+            let tags = Array.isArray(rawTags) ? rawTags.filter((t) => typeof t === 'string') : []
+            const lockNow = Date.now()
+            let isLocked = false
+            for (let t = 0; t < tags.length; t++) {
+              if (tags[t].indexOf('ai_processing:') === 0) {
+                const lTime = parseInt(tags[t].substring(14), 10)
+                if (!isNaN(lTime) && lockNow - lTime < 180000) {
+                  isLocked = true
+                  break
+                }
+              }
+            }
+            if (isLocked) {
+              failed.push({ id: custId, phone: phoneNum, error: 'Locked' })
+              continue
+            }
+            const newTags = tags.filter(
+              (t) => t !== 'ai_processing' && t.indexOf('ai_processing:') !== 0,
+            )
+            newTags.push('ai_processing:' + lockNow)
+            custRec.set('tags', newTags)
+            app.saveNoValidate(custRec)
+          } catch (_) {
+            continue
+          }
+
+          const greetingPart = gName
+            ? 'Bia da BRF Imóveis — ' + salutationWord + ', ' + gName + ', tudo bem?'
+            : 'Bia da BRF Imóveis — ' + salutationWord + ', tudo bem?'
+
+          const fullMessageText =
+            greetingPart +
+            '\n\nComo você já demonstrou interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade do Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC (Grande Florianópolis):' +
+            '\n\n📄 *Material oficial: Vistage Residence*' +
+            '\n' +
+            driveBookLink +
+            '\n\nFaz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitórios?'
+
+          let sendSuccess = false
+          let sendError = ''
+          let documentSent = false
+
+          try {
+            const sendRes = $http.send({
+              url: metaUrl,
+              method: 'POST',
+              headers: {
+                Authorization: 'Bearer ' + metaToken,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: phoneNum,
+                type: 'text',
+                text: { preview_url: true, body: fullMessageText },
+              }),
+              timeout: 25,
+            })
+            if (sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300) {
+              sendSuccess = true
+            } else {
+              sendError = 'HTTP ' + (sendRes ? sendRes.statusCode : 0)
+            }
+          } catch (httpErr) {
+            sendError = 'Exceção HTTP: ' + httpErr.message
+          }
+
+          if (sendSuccess && hasValidLocalFile) {
+            try {
+              const docRes = $http.send({
+                url: metaUrl,
+                method: 'POST',
+                headers: {
+                  Authorization: 'Bearer ' + metaToken,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  recipient_type: 'individual',
+                  to: phoneNum,
+                  type: 'document',
+                  document: {
+                    link: localDoc.public_url,
+                    filename: localDoc.filename || 'BOOK VISTAGE RESIDENCE.pdf',
+                    caption: localDoc.caption || 'Material oficial: Vistage Residence',
+                  },
+                }),
+                timeout: 25,
+              })
+              if (docRes && docRes.statusCode >= 200 && docRes.statusCode < 300) {
+                documentSent = true
+                console.log(
+                  '[EBOOK_RESEND] Documento WhatsApp anexado com sucesso para ' + phoneNum,
+                )
+              }
+            } catch (_) {}
+          }
+
+          try {
+            const cUp = app.findRecordById('customers', custId)
+            const rawT = cUp.get('tags') || []
+            let cT = Array.isArray(rawT)
+              ? rawT.filter((t) => typeof t === 'string' && t.indexOf('ai_processing') !== 0)
+              : []
+            if (sendSuccess) {
+              if (cT.indexOf('ebook_vistage_entregue') === -1) cT.push('ebook_vistage_entregue')
+              if (documentSent && cT.indexOf('ebook_vistage_documento_entregue') === -1) {
+                cT.push('ebook_vistage_documento_entregue')
+              }
+              cUp.set('tags', cT)
+              cUp.set('last_sent_at', new Date().toISOString())
+              cUp.set('last_follow_up_at', new Date().toISOString())
+              cUp.set(
+                'next_follow_up_at',
+                new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString(),
+              )
+              cUp.set('follow_up_step', 'd3')
+              cUp.set('follow_up_count', (cUp.getInt('follow_up_count') || 0) + 1)
+              cUp.set('persistence_status', 'ativo')
+              app.saveNoValidate(cUp)
+
+              try {
+                const convCol = app.findCollectionByNameOrId('conversations')
+                const cRec = new Record(convCol)
+                cRec.set('user_id', activeUserId || '')
+                cRec.set('customer_id', custId)
+                cRec.set('sender', 'ai')
+                cRec.set(
+                  'content',
+                  fullMessageText +
+                    (documentSent
+                      ? '\n\n[Documento WhatsApp Anexado: ' + localDoc.filename + ']'
+                      : ''),
+                )
+                cRec.set('channel', 'whatsapp')
+                app.saveNoValidate(cRec)
+              } catch (_) {}
+
+              try {
+                const logsCol = app.findCollectionByNameOrId('system_logs')
+                const logRec = new Record(logsCol)
+                logRec.set('user_id', activeUserId)
+                logRec.set('type', 'ebook_resend_item')
+                logRec.set(
+                  'message',
+                  'E-book Vistage reenviado com sucesso para ' +
+                    phoneNum +
+                    ' [' +
+                    (gName || 'Sem nome') +
+                    ']' +
+                    (documentSent ? ' [com documento anexo]' : ''),
+                )
+                logRec.set(
+                  'details',
+                  JSON.stringify({
+                    customer_id: custId,
+                    phone: phoneNum,
+                    name: item.name,
+                    book_link: driveBookLink,
+                    document_sent: documentSent,
+                    status: 'sucesso',
+                    mode: 'continuous_first_batch',
+                  }),
+                )
+                logRec.set('payload', JSON.stringify({ message: fullMessageText }))
+                app.saveNoValidate(logRec)
+              } catch (_) {}
+
+              dispatched.push({ id: custId, phone: phoneNum })
+            } else {
+              cUp.set('tags', cT)
+              app.saveNoValidate(cUp)
+              failed.push({ id: custId, phone: phoneNum, error: sendError })
+            }
+          } catch (_) {}
+        }
+
+        firstBatchDispatchedCount = dispatched.length
+        firstBatchFailedCount = failed.length
+        remainingAfterFirst = Math.max(0, pending.length - dispatched.length)
+
+        meta.last_dispatched_at = new Date().toISOString()
+        meta.last_dispatched_count = dispatched.length
+        meta.remaining_pending = remainingAfterFirst
+        if (remainingAfterFirst === 0) {
+          meta.next_batch_at = null
+          meta.stop_reason = 'Concluído: 0 pendentes restantes'
+          ctrl.set('is_active', false)
+        } else {
+          meta.next_batch_at = nextIso
+        }
+        ctrl.set('metadata', meta)
+        app.saveNoValidate(ctrl)
+
+        try {
+          const sLogsCol = app.findCollectionByNameOrId('system_logs')
+          const batchLog = new Record(sLogsCol)
+          batchLog.set('user_id', activeUserId)
+          batchLog.set('type', 'ebook_resend_batch')
+          batchLog.set(
+            'message',
+            'Modo Contínuo iniciado: 1º lote concluído com ' +
+              dispatched.length +
+              ' enviados com sucesso, ' +
+              failed.length +
+              ' falhas. Restam ' +
+              remainingAfterFirst +
+              ' pendentes.',
+          )
+          batchLog.set(
+            'details',
+            JSON.stringify({
+              dispatched_count: dispatched.length,
+              failed_count: failed.length,
+              total_attempted: batch.length,
+              remaining_pending: remainingAfterFirst,
+              mode: 'continuous_start',
+              next_batch_at: meta.next_batch_at,
+              operator: activeUserId,
+            }),
+          )
+          app.saveNoValidate(batchLog)
+        } catch (_) {}
+      }
+    }
+  }
 
   // Auditoria em system_logs
   try {
@@ -1699,30 +2235,9 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
     return
   }
 
-  // 2. Checa se a régua geral foi pausada manualmente (se pausada, interrompe o contínuo)
-  let isReguaActive = false
-  try {
-    const reguaCtrl = app.findFirstRecordByFilter(
-      'app_controls',
-      "key = 'regua_automations_active'",
-    )
-    if (reguaCtrl) {
-      isReguaActive = !!reguaCtrl.getBool('is_active')
-    }
-  } catch (_) {}
-
-  if (!isReguaActive) {
-    console.log(
-      '[EBOOK_CONTINUOUS_CRON] Régua geral pausada manualmente. Suspendendo modo contínuo.',
-    )
-    const meta = ctrl.get('metadata') || {}
-    meta.next_batch_at = null
-    meta.stop_reason = 'Régua de automações foi pausada manualmente'
-    ctrl.set('is_active', false)
-    ctrl.set('metadata', meta)
-    app.saveNoValidate(ctrl)
-    return
-  }
+  // 2. O Modo Contínuo de Reenvio de E-book é INDEPENDENTE da régua de automações.
+  // A pausa da régua geral (regua_automations_active = false) congela retomadas da Bia e remarketing,
+  // mas NUNCA suspende o Modo Contínuo de reenvio de e-book ativado explicitamente pelo operador.
 
   // 3. Checa agendamento next_batch_at
   const meta = ctrl.get('metadata') || {}
