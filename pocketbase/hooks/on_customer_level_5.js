@@ -21,5 +21,5 @@ onRecordAfterUpdateSuccess((e) => {
     }
   }
 
-  if (e.next) e.next()
+  return e.next()
 }, 'customers')

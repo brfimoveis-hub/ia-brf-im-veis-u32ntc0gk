@@ -67,28 +67,36 @@ export function EbookResendModalControl() {
   }
 
   const handleTriggerSendClick = () => {
+    console.log(
+      '[EbookResendModalControl] Clique em Disparar Reenvio. Abrindo diálogo de confirmação.',
+    )
     setConfirmSendOpen(true)
   }
 
   const handleConfirmDispatch = async () => {
+    console.log(
+      '[EbookResendModalControl] Confirmou envio do lote. Chamando POST /backend/v1/ebook-resend/batch...',
+    )
     setSendingBatch(true)
     try {
       const res = await dispatchEbookResendBatch({
         batch_size: 15,
         force_outside_window: forceOutsideWindow,
       })
+      console.log('[EbookResendModalControl] Resposta do batch:', res)
 
       if (res && res.success) {
         toast({
           title: '🚀 Lote de E-book Despachado!',
-          description: `${res.dispatched_count} clientes receberam o material oficial Vistage com o link no corpo. Faltam ${res.remaining_pending}.`,
+          description: `${res.dispatched_count} clientes receberam o material oficial Vistage. ${res.failed_count > 0 ? `${res.failed_count} falha(s). ` : ''}Faltam ${res.remaining_pending} pendentes.`,
         })
         setConfirmSendOpen(false)
         await loadAudit(false)
       } else {
-        throw new Error(res?.error || 'Erro no envio do lote')
+        throw new Error(res?.error || (res as any)?.message || 'Erro no envio do lote')
       }
     } catch (err: unknown) {
+      console.error('[EbookResendModalControl] Erro ao disparar lote:', err)
       const msg = err instanceof Error ? err.message : String(err)
       toast({
         title: 'Falha no disparo do lote',
@@ -333,11 +341,19 @@ Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitório
             <Button
               size="sm"
               onClick={handleTriggerSendClick}
-              disabled={pendingCount === 0 || loadingAudit}
+              disabled={pendingCount === 0 || loadingAudit || sendingBatch}
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5 font-medium shadow-xs"
             >
-              <Send className="h-3.5 w-3.5" />
-              <span>Disparar Reenvio ({Math.min(pendingCount, 15)} clientes no lote de agora)</span>
+              {sendingBatch ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {sendingBatch
+                  ? 'Enviando Lote...'
+                  : `Disparar Reenvio (${Math.min(pendingCount, 15)} clientes no lote de agora)`}
+              </span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -409,6 +425,19 @@ Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitório
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Indicador de envio fixo global enquanto o lote está sendo processado */}
+      {sendingBatch && (
+        <div className="fixed bottom-4 right-4 z-50 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
+          <RefreshCw className="h-4 w-4 animate-spin shrink-0" />
+          <div className="text-xs">
+            <p className="font-semibold">Disparando lote de e-book...</p>
+            <p className="text-blue-100 text-[11px]">
+              Enviando mensagens via WhatsApp Cloud API...
+            </p>
+          </div>
+        </div>
+      )}
     </>
   )
 }
