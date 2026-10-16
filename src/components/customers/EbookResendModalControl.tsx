@@ -311,7 +311,7 @@ export function EbookResendModalControl() {
             <div className="p-2 bg-white dark:bg-slate-950 border rounded text-[11px] leading-relaxed whitespace-pre-wrap font-sans">
               {`Bia da BRF Imóveis — bom dia, [Nome], tudo bem?
 
-Lembrei de você e separei o material oficial do Vistage Residence em Barreiros, São José/SC:
+Como você já demonstrou interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade do Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC (Grande Florianópolis):
 
 📄 *Material oficial: Vistage Residence*
 ${auditData?.book_link || 'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'}

@@ -11,14 +11,15 @@
  *      - Não pausados (persistence_status != 'pausado')
  *      - Não frios / desinteressados (sem 'frio'/'não é o momento' nas tags/status)
  *      - Sem diálogo vivo nas últimas 24h
- *      - Sem e-book já entregue (dedup estrito)
+ *      - Sem e-book já entregue (dedup estrito: link do Drive na conversa ou tag 'ebook_vistage_entregue')
  *   Retorna contagem total de abordados, quantos já têm e-book, quantos estão pendentes elegíveis,
  *   quantos foram desqualificados (bloqueados, pausados, 24h viva) e a lista detalhada para conferência.
  *
  * - POST /backend/v1/ebook-resend/batch
  *   Dispara um lote controlado (máximo 15 por ciclo, anti-flood) para os clientes pendentes:
  *   - Formato padronizado e consertado:
- *     Identificação oficial Bia ("Bia da BRF Imóveis — bom dia/boa tarde, tudo bem?"),
+ *     Identificação oficial Bia ("Bia da BRF Imóveis — bom dia/boa tarde, [primeiro nome], tudo bem?"),
+ *     apresentação da oportunidade (Vistage Residence Barreiros - AJ Coelho, Barreiros, São José/SC),
  *     link do book NO CORPO da mensagem,
  *     legenda "Material oficial: Vistage Residence",
  *     pergunta leve no final ("Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitórios?").
@@ -26,208 +27,197 @@
  *   - Validação da janela comercial de Brasília (8h às 18h seg a sáb).
  *   - Respeita trava de 3 min (ai_processing).
  *   - Registra em conversations (channel: 'whatsapp', sender: 'ai').
+ *   - Marca o cliente com a tag 'ebook_vistage_entregue' após envio bem-sucedido.
  *   - Registra auditoria completa em system_logs (type: 'ebook_resend_item' e 'ebook_resend_batch').
  */
 
-function getBrasiliaHourAndWindow() {
-  var now = new Date()
-  var utcTime = now.getTime() + now.getTimezoneOffset() * 60000
-  var brTime = new Date(utcTime - 3 * 3600000)
-  var brHour = brTime.getHours()
-  var brDay = brTime.getDay() // 0 = Domingo
-  var isWindow = brDay !== 0 && brHour >= 8 && brHour < 18
-  return {
-    hour: brHour,
-    minute: brTime.getMinutes(),
-    dayOfWeek: brDay,
-    isCommercialWindow: isWindow,
-    iso: now.toISOString(),
-  }
-}
+// ============================================================================
+// ENDPOINT: GET /backend/v1/ebook-resend/audit
+// ============================================================================
+routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
+  const app = $app
 
-function resolveCustomerCleanPhone(rawPhone) {
-  if (!rawPhone) return ''
-  var toPhone = String(rawPhone).replace(/\D/g, '')
-  if (toPhone.startsWith('0') && toPhone.length >= 11) {
-    toPhone = toPhone.substring(1)
-  }
-  if (toPhone.length === 8 || toPhone.length === 9) {
-    toPhone = '48' + toPhone
-  }
-  if (toPhone.length < 10) return ''
-  if (!toPhone.startsWith('55') && toPhone.length <= 11) {
-    toPhone = '55' + toPhone
-  }
-  return toPhone
-}
-
-function resolveCustomerFirstName(cust) {
-  if (!cust) return ''
-  var fName = (cust.getString('first_name') || '').trim()
-  var fullName = (cust.getString('name') || '').trim()
-  var candidate = fName || fullName
-  if (!candidate) return ''
-  if (
-    candidate.includes('+') ||
-    candidate.includes('@') ||
-    /^\d+$/.test(candidate.replace(/[\s\(\)\-\.]/g, ''))
-  ) {
-    return ''
-  }
-  if (
-    /^(lead|cliente|contato|teste|whatsapp|meta|novo|usuario|usuário|imóvel|imovel|sem nome)\b/i.test(
-      candidate,
-    )
-  ) {
-    return ''
-  }
-  var parts = candidate.split(/\s+/).filter(Boolean)
-  var first = parts[0]
-  if (!first || first.length < 2 || /[0-9_#\*\/\\]/.test(first)) return ''
-  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
-}
-
-function resolveOfficialVistageBookLink(app) {
-  var defaultDriveLink =
-    'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'
-  try {
-    var recs = app.findRecordsByFilter(
-      'ai_knowledge_files',
-      "id = 'fcvyoatlxt56do2' || (is_active = true && (name ~ 'Vistage' || name ~ 'BOOK') && extracted_text ~ 'drive.google.com')",
-      '-updated',
-      1,
-      0,
-    )
-    if (recs && recs.length > 0) {
-      var ext = recs[0].getString('extracted_text') || ''
-      var m = ext.match(/https:\/\/drive\.google\.com\/[^\s\)"'\]]+/i)
-      if (m && m[0]) {
-        return m[0]
-      }
+  function getBrasiliaHourAndWindow() {
+    const now = new Date()
+    const utcTime = now.getTime() + now.getTimezoneOffset() * 60000
+    const brTime = new Date(utcTime - 3 * 3600000)
+    const brHour = brTime.getHours()
+    const brDay = brTime.getDay() // 0 = Domingo
+    const isWindow = brDay !== 0 && brHour >= 8 && brHour < 18
+    return {
+      hour: brHour,
+      minute: brTime.getMinutes(),
+      dayOfWeek: brDay,
+      isCommercialWindow: isWindow,
+      iso: now.toISOString(),
     }
-  } catch (_) {}
-  return defaultDriveLink
-}
+  }
 
-function hasReceivedOfficialEbook(convs, bookLink) {
-  if (!convs || convs.length === 0) return false
-  var normLink = (bookLink || '').trim()
+  function resolveCustomerCleanPhone(rawPhone) {
+    if (!rawPhone) return ''
+    let toPhone = String(rawPhone).replace(/\D/g, '')
+    if (toPhone.startsWith('0') && toPhone.length >= 11) {
+      toPhone = toPhone.substring(1)
+    }
+    if (toPhone.length === 8 || toPhone.length === 9) {
+      toPhone = '48' + toPhone
+    }
+    if (toPhone.length < 10) return ''
+    if (!toPhone.startsWith('55') && toPhone.length <= 11) {
+      toPhone = '55' + toPhone
+    }
+    return toPhone
+  }
 
-  for (var i = 0; i < convs.length; i++) {
-    var c = convs[i]
-    var content = c.getString('content') || ''
-    var channel = c.getString('channel') || ''
-
+  function resolveCustomerFirstName(cust) {
+    if (!cust) return ''
+    const fName = (cust.getString('first_name') || '').trim()
+    const fullName = (cust.getString('name') || '').trim()
+    const candidate = fName || fullName
+    if (!candidate) return ''
     if (
-      (normLink && content.indexOf(normLink) !== -1) ||
-      content.indexOf('1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG') !== -1 ||
-      content.indexOf('Apresentacao_Vistage_Residence') !== -1 ||
-      (content.indexOf('Material oficial: Vistage Residence') !== -1 &&
-        content.indexOf('drive.google.com') !== -1) ||
-      channel === 'acao_matinal_ebook' ||
-      content.indexOf('[acao_matinal_ebook]') !== -1 ||
-      content.indexOf('[reenvio_ebook_vistage]') !== -1
+      candidate.includes('+') ||
+      candidate.includes('@') ||
+      /^\d+$/.test(candidate.replace(/[\s\(\)\-\.]/g, ''))
     ) {
-      return true
+      return ''
     }
+    if (
+      /^(lead|cliente|contato|teste|whatsapp|meta|novo|usuario|usuário|imóvel|imovel|sem nome)\b/i.test(
+        candidate,
+      )
+    ) {
+      return ''
+    }
+    const parts = candidate.split(/\s+/).filter(Boolean)
+    const first = parts[0]
+    if (!first || first.length < 2 || /[0-9_#\*\/\\]/.test(first)) return ''
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
   }
-  return false
-}
 
-function checkCustomerExclusions(cust, convs, nowMs) {
-  var status = (cust.getString('status') || '').toLowerCase()
-  var phase = (cust.getString('phase') || '').toLowerCase()
-  var pStatus = (cust.getString('persistence_status') || '').toLowerCase()
-  var followUpStep = (cust.getString('follow_up_step') || '').toLowerCase()
-  var isBlocked = !!cust.getBool('is_blocked')
+  function resolveOfficialVistageBookLink() {
+    return 'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'
+  }
 
-  var rawTags = cust.get('tags') || []
-  var tagsList = []
-  if (Array.isArray(rawTags)) {
-    tagsList = rawTags
-      .filter(function (t) {
-        return typeof t === 'string'
-      })
-      .map(function (t) {
-        return t.toLowerCase()
-      })
-  } else if (typeof rawTags === 'string') {
-    try {
-      var parsed = JSON.parse(rawTags)
-      if (Array.isArray(parsed)) {
-        tagsList = parsed.map(function (t) {
-          return String(t).toLowerCase()
-        })
+  function hasCustomerReceivedOfficialEbook(cust, convs, bookLink) {
+    if (cust) {
+      const rawTags = cust.get('tags') || []
+      let tags = []
+      if (Array.isArray(rawTags)) {
+        tags = rawTags.map((t) => String(t).toLowerCase())
+      } else if (typeof rawTags === 'string') {
+        try {
+          const parsed = JSON.parse(rawTags)
+          if (Array.isArray(parsed)) {
+            tags = parsed.map((t) => String(t).toLowerCase())
+          }
+        } catch (_) {}
       }
-    } catch (_) {}
-  }
-
-  if (isBlocked || status.includes('bloqueado') || tagsList.includes('bloqueado')) {
-    return { excluded: true, reason: 'bloqueado' }
-  }
-  if (pStatus === 'pausado' || tagsList.includes('ai_paused')) {
-    return { excluded: true, reason: 'pausado' }
-  }
-  if (
-    status.includes('perdido') ||
-    phase.includes('perdido') ||
-    tagsList.includes('frio') ||
-    tagsList.includes('não é o momento') ||
-    tagsList.includes('nao e o momento')
-  ) {
-    return { excluded: true, reason: 'frio_ou_perdido' }
-  }
-  if (followUpStep === 'finalizado') {
-    return { excluded: true, reason: 'finalizado' }
-  }
-
-  // Diálogo vivo / interação nas últimas 24h
-  var oneDayMs = 24 * 60 * 60 * 1000
-  if (convs && convs.length > 0) {
-    var latestConv = convs[0]
-    var cTime = new Date(latestConv.getString('created')).getTime()
-    if (nowMs - cTime < oneDayMs) {
-      return {
-        excluded: true,
-        reason: 'conversa_viva_24h',
-        last_sender: latestConv.getString('sender') || 'unknown',
+      if (tags.indexOf('ebook_vistage_entregue') !== -1) {
+        return true
       }
     }
+
+    if (!convs || convs.length === 0) return false
+    const normLink = (bookLink || '').trim()
+
+    for (let i = 0; i < convs.length; i++) {
+      const c = convs[i]
+      const content = c.getString('content') || ''
+      if (
+        content.indexOf('1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG') !== -1 ||
+        (normLink && content.indexOf(normLink) !== -1)
+      ) {
+        return true
+      }
+    }
+    return false
   }
 
-  return { excluded: false, reason: null }
-}
+  function checkCustomerExclusions(cust, convs, nowMs) {
+    const status = (cust.getString('status') || '').toLowerCase()
+    const phase = (cust.getString('phase') || '').toLowerCase()
+    const pStatus = (cust.getString('persistence_status') || '').toLowerCase()
+    const followUpStep = (cust.getString('follow_up_step') || '').toLowerCase()
+    const isBlocked = !!cust.getBool('is_blocked')
 
-/**
- * Auditoria completa de clientes
- */
-function auditEbookResendCandidates(app) {
-  var bookLink = resolveOfficialVistageBookLink(app)
-  var now = new Date()
-  var nowMs = now.getTime()
+    const rawTags = cust.get('tags') || []
+    let tagsList = []
+    if (Array.isArray(rawTags)) {
+      tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
+    } else if (typeof rawTags === 'string') {
+      try {
+        const parsed = JSON.parse(rawTags)
+        if (Array.isArray(parsed)) {
+          tagsList = parsed.map((t) => String(t).toLowerCase())
+        }
+      } catch (_) {}
+    }
 
-  // Buscar todos os clientes que já receberam mensagem ou foram abordados pela Bia/régua/remarketing
-  var allCustomers = []
+    if (isBlocked || status.includes('bloqueado') || tagsList.includes('bloqueado')) {
+      return { excluded: true, reason: 'bloqueado' }
+    }
+    if (pStatus === 'pausado' || tagsList.includes('ai_paused')) {
+      return { excluded: true, reason: 'pausado' }
+    }
+    if (
+      status.includes('perdido') ||
+      phase.includes('perdido') ||
+      tagsList.includes('frio') ||
+      tagsList.includes('não é o momento') ||
+      tagsList.includes('nao e o momento')
+    ) {
+      return { excluded: true, reason: 'frio_ou_perdido' }
+    }
+    if (followUpStep === 'finalizado') {
+      return { excluded: true, reason: 'finalizado' }
+    }
+
+    // Guarda 24h: não atropelar atendimento humano recente se o CLIENTE respondeu nas últimas 24h
+    const oneDayMs = 24 * 60 * 60 * 1000
+    if (convs && convs.length > 0) {
+      for (let cIdx = 0; cIdx < convs.length; cIdx++) {
+        const convItem = convs[cIdx]
+        const sender = convItem.getString('sender') || ''
+        const cTime = new Date(convItem.getString('created')).getTime()
+        if (nowMs - cTime < oneDayMs && sender === 'customer') {
+          return {
+            excluded: true,
+            reason: 'conversa_viva_24h',
+            last_sender: 'customer',
+          }
+        }
+      }
+    }
+
+    return { excluded: false, reason: null }
+  }
+
+  const windowInfo = getBrasiliaHourAndWindow()
+  const bookLink = resolveOfficialVistageBookLink()
+  const now = new Date()
+  const nowMs = now.getTime()
+
+  let allCustomers = []
   try {
     allCustomers = app.findRecordsByFilter('customers', "phone != ''", '-updated', 1000, 0)
   } catch (err) {
     console.error('[EBOOK_RESEND] Erro ao buscar clientes: ' + err.message)
-    return { error: err.message }
+    return c.json(500, { success: false, error: err.message })
   }
 
-  var approachedList = []
-  var alreadyDeliveredList = []
-  var excludedList = []
-  var eligiblePendingList = []
+  const approachedList = []
+  const alreadyDeliveredList = []
+  const excludedList = []
+  const eligiblePendingList = []
 
-  for (var i = 0; i < allCustomers.length; i++) {
-    var cust = allCustomers[i]
-    var custId = cust.id
-    var phone = resolveCustomerCleanPhone(cust.getString('phone'))
+  for (let i = 0; i < allCustomers.length; i++) {
+    const cust = allCustomers[i]
+    const custId = cust.id
+    const phone = resolveCustomerCleanPhone(cust.getString('phone'))
     if (!phone || phone.length < 10) continue
 
-    // Buscar conversas deste cliente
-    var convs = []
+    let convs = []
     try {
       convs = app.findRecordsByFilter(
         'conversations',
@@ -238,23 +228,20 @@ function auditEbookResendCandidates(app) {
       )
     } catch (_) {}
 
-    // Critério: já recebeu mensagem da régua/remarketing/Bia OU possui histórico de follow-up
-    var hasPriorApproach = false
-    var lastSentAt = cust.getString('last_sent_at') || ''
-    var lastFollowUpAt = cust.getString('last_follow_up_at') || ''
-    var followUpCount = cust.getInt('follow_up_count') || 0
-    var followUpStep = cust.getString('follow_up_step') || ''
+    const lastSentAt = cust.getString('last_sent_at') || ''
+    const lastFollowUpAt = cust.getString('last_follow_up_at') || ''
+    const followUpCount = cust.getInt('follow_up_count') || 0
+    const followUpStep = cust.getString('follow_up_step') || ''
 
-    if (convs.length > 0 || lastSentAt || lastFollowUpAt || followUpCount > 0 || followUpStep) {
-      hasPriorApproach = true
-    }
+    const hasPriorApproach =
+      convs.length > 0 || !!lastSentAt || !!lastFollowUpAt || followUpCount > 0 || !!followUpStep
 
     if (!hasPriorApproach) {
       continue
     }
 
-    var greetingName = resolveCustomerFirstName(cust)
-    var clientSummary = {
+    const greetingName = resolveCustomerFirstName(cust)
+    const clientSummary = {
       id: custId,
       name: cust.getString('name') || 'Sem nome',
       greeting_name: greetingName,
@@ -267,59 +254,35 @@ function auditEbookResendCandidates(app) {
 
     approachedList.push(clientSummary)
 
-    // Checar se já recebeu o e-book legítimo
-    if (hasReceivedOfficialEbook(convs, bookLink)) {
+    // Checar se já recebeu o e-book legítimo (link oficial do Drive na conversa ou tag 'ebook_vistage_entregue')
+    if (hasCustomerReceivedOfficialEbook(cust, convs, bookLink)) {
       alreadyDeliveredList.push(clientSummary)
       continue
     }
 
-    // Checar exclusões obrigatórias (bloqueado, pausado, frio, 24h viva)
-    var exclusionCheck = checkCustomerExclusions(cust, convs, nowMs)
+    // Checar exclusões (bloqueado, pausado, frio, conversa viva 24h com cliente)
+    const exclusionCheck = checkCustomerExclusions(cust, convs, nowMs)
     if (exclusionCheck.excluded) {
       clientSummary.exclusion_reason = exclusionCheck.reason
       excludedList.push(clientSummary)
       continue
     }
 
-    // Cliente é ELEGÍVEL e PENDENTE
     eligiblePendingList.push(clientSummary)
-  }
-
-  return {
-    book_link: bookLink,
-    total_approached: approachedList.length,
-    already_delivered: alreadyDeliveredList.length,
-    excluded_count: excludedList.length,
-    eligible_pending_count: eligiblePendingList.length,
-    eligible_pending: eligiblePendingList,
-    excluded_breakdown: excludedList,
-  }
-}
-
-// ============================================================================
-// ENDPOINT: GET /backend/v1/ebook-resend/audit
-// ============================================================================
-routerAdd('GET', '/backend/v1/ebook-resend/audit', function (c) {
-  var app = $app
-  var windowInfo = getBrasiliaHourAndWindow()
-  var audit = auditEbookResendCandidates(app)
-
-  if (audit.error) {
-    return c.json(500, { success: false, error: audit.error })
   }
 
   return c.json(200, {
     success: true,
     commercial_window: windowInfo,
-    book_link: audit.book_link,
+    book_link: bookLink,
     summary: {
-      total_approached: audit.total_approached,
-      already_delivered: audit.already_delivered,
-      excluded_count: audit.excluded_count,
-      eligible_pending_count: audit.eligible_pending_count,
+      total_approached: approachedList.length,
+      already_delivered: alreadyDeliveredList.length,
+      excluded_count: excludedList.length,
+      eligible_pending_count: eligiblePendingList.length,
     },
-    eligible_pending: audit.eligible_pending,
-    excluded_sample: audit.excluded_breakdown.slice(0, 10),
+    eligible_pending: eligiblePendingList,
+    excluded_sample: excludedList.slice(0, 10),
     checked_at: new Date().toISOString(),
   })
 })
@@ -330,17 +293,173 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', function (c) {
 routerAdd(
   'POST',
   '/backend/v1/ebook-resend/batch',
-  function (c) {
-    var app = $app
-    var windowInfo = getBrasiliaHourAndWindow()
+  (c) => {
+    const app = $app
 
-    // 1. Verificar credenciais Meta WhatsApp do usuário logado ou sistema
-    var metaToken = ''
-    var metaPhoneId = ''
-    var activeUserId = ''
+    function getBrasiliaHourAndWindow() {
+      const now = new Date()
+      const utcTime = now.getTime() + now.getTimezoneOffset() * 60000
+      const brTime = new Date(utcTime - 3 * 3600000)
+      const brHour = brTime.getHours()
+      const brDay = brTime.getDay()
+      const isWindow = brDay !== 0 && brHour >= 8 && brHour < 18
+      return {
+        hour: brHour,
+        minute: brTime.getMinutes(),
+        dayOfWeek: brDay,
+        isCommercialWindow: isWindow,
+        iso: now.toISOString(),
+      }
+    }
+
+    function resolveCustomerCleanPhone(rawPhone) {
+      if (!rawPhone) return ''
+      let toPhone = String(rawPhone).replace(/\D/g, '')
+      if (toPhone.startsWith('0') && toPhone.length >= 11) {
+        toPhone = toPhone.substring(1)
+      }
+      if (toPhone.length === 8 || toPhone.length === 9) {
+        toPhone = '48' + toPhone
+      }
+      if (toPhone.length < 10) return ''
+      if (!toPhone.startsWith('55') && toPhone.length <= 11) {
+        toPhone = '55' + toPhone
+      }
+      return toPhone
+    }
+
+    function resolveCustomerFirstName(cust) {
+      if (!cust) return ''
+      const fName = (cust.getString('first_name') || '').trim()
+      const fullName = (cust.getString('name') || '').trim()
+      const candidate = fName || fullName
+      if (!candidate) return ''
+      if (
+        candidate.includes('+') ||
+        candidate.includes('@') ||
+        /^\d+$/.test(candidate.replace(/[\s\(\)\-\.]/g, ''))
+      ) {
+        return ''
+      }
+      if (
+        /^(lead|cliente|contato|teste|whatsapp|meta|novo|usuario|usuário|imóvel|imovel|sem nome)\b/i.test(
+          candidate,
+        )
+      ) {
+        return ''
+      }
+      const parts = candidate.split(/\s+/).filter(Boolean)
+      const first = parts[0]
+      if (!first || first.length < 2 || /[0-9_#\*\/\\]/.test(first)) return ''
+      return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
+    }
+
+    function resolveOfficialVistageBookLink() {
+      return 'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'
+    }
+
+    function hasCustomerReceivedOfficialEbook(cust, convs, bookLink) {
+      if (cust) {
+        const rawTags = cust.get('tags') || []
+        let tags = []
+        if (Array.isArray(rawTags)) {
+          tags = rawTags.map((t) => String(t).toLowerCase())
+        } else if (typeof rawTags === 'string') {
+          try {
+            const parsed = JSON.parse(rawTags)
+            if (Array.isArray(parsed)) {
+              tags = parsed.map((t) => String(t).toLowerCase())
+            }
+          } catch (_) {}
+        }
+        if (tags.indexOf('ebook_vistage_entregue') !== -1) {
+          return true
+        }
+      }
+
+      if (!convs || convs.length === 0) return false
+      const normLink = (bookLink || '').trim()
+
+      for (let i = 0; i < convs.length; i++) {
+        const c = convs[i]
+        const content = c.getString('content') || ''
+        if (
+          content.indexOf('1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG') !== -1 ||
+          (normLink && content.indexOf(normLink) !== -1)
+        ) {
+          return true
+        }
+      }
+      return false
+    }
+
+    function checkCustomerExclusions(cust, convs, nowMs) {
+      const status = (cust.getString('status') || '').toLowerCase()
+      const phase = (cust.getString('phase') || '').toLowerCase()
+      const pStatus = (cust.getString('persistence_status') || '').toLowerCase()
+      const followUpStep = (cust.getString('follow_up_step') || '').toLowerCase()
+      const isBlocked = !!cust.getBool('is_blocked')
+
+      const rawTags = cust.get('tags') || []
+      let tagsList = []
+      if (Array.isArray(rawTags)) {
+        tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
+      } else if (typeof rawTags === 'string') {
+        try {
+          const parsed = JSON.parse(rawTags)
+          if (Array.isArray(parsed)) {
+            tagsList = parsed.map((t) => String(t).toLowerCase())
+          }
+        } catch (_) {}
+      }
+
+      if (isBlocked || status.includes('bloqueado') || tagsList.includes('bloqueado')) {
+        return { excluded: true, reason: 'bloqueado' }
+      }
+      if (pStatus === 'pausado' || tagsList.includes('ai_paused')) {
+        return { excluded: true, reason: 'pausado' }
+      }
+      if (
+        status.includes('perdido') ||
+        phase.includes('perdido') ||
+        tagsList.includes('frio') ||
+        tagsList.includes('não é o momento') ||
+        tagsList.includes('nao e o momento')
+      ) {
+        return { excluded: true, reason: 'frio_ou_perdido' }
+      }
+      if (followUpStep === 'finalizado') {
+        return { excluded: true, reason: 'finalizado' }
+      }
+
+      const oneDayMs = 24 * 60 * 60 * 1000
+      if (convs && convs.length > 0) {
+        for (let cIdx = 0; cIdx < convs.length; cIdx++) {
+          const convItem = convs[cIdx]
+          const sender = convItem.getString('sender') || ''
+          const cTime = new Date(convItem.getString('created')).getTime()
+          if (nowMs - cTime < oneDayMs && sender === 'customer') {
+            return {
+              excluded: true,
+              reason: 'conversa_viva_24h',
+              last_sender: 'customer',
+            }
+          }
+        }
+      }
+
+      return { excluded: false, reason: null }
+    }
+
+    const windowInfo = getBrasiliaHourAndWindow()
+
+    // 1. Verificar credenciais Meta WhatsApp
+    let metaToken = ''
+    let metaPhoneId = ''
+    let activeUserId = ''
 
     try {
-      var authRec = c.requestInfo().auth
+      const authRec = c.requestInfo().auth
       if (authRec) {
         activeUserId = authRec.id
         metaToken = (authRec.getString('meta_whatsapp_access_token') || '').trim()
@@ -350,7 +469,7 @@ routerAdd(
 
     if (!metaToken || !metaPhoneId) {
       try {
-        var usersWithMeta = app.findRecordsByFilter(
+        const usersWithMeta = app.findRecordsByFilter(
           'users',
           "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
           '-created',
@@ -373,13 +492,13 @@ routerAdd(
     }
 
     // 2. Parâmetros da requisição
-    var body = {}
+    let body = {}
     try {
       body = c.requestInfo().body || {}
     } catch (_) {}
 
-    var forceOutsideWindow = !!body.force_outside_window
-    var maxBatchSize = parseInt(body.batch_size || 15, 10)
+    const forceOutsideWindow = !!body.force_outside_window
+    let maxBatchSize = parseInt(body.batch_size || 15, 10)
     if (isNaN(maxBatchSize) || maxBatchSize < 1) maxBatchSize = 15
     if (maxBatchSize > 15) maxBatchSize = 15 // Teto rígido anti-flood: 15 por ciclo
 
@@ -392,13 +511,59 @@ routerAdd(
       })
     }
 
-    // 3. Executar auditoria para obter a lista estrita dos pendentes
-    var audit = auditEbookResendCandidates(app)
-    if (audit.error) {
-      return c.json(500, { success: false, error: audit.error })
+    // 3. Auditoria para lista dos pendentes
+    const bookLink = resolveOfficialVistageBookLink()
+    const now = new Date()
+    const nowMs = now.getTime()
+
+    let allCustomers = []
+    try {
+      allCustomers = app.findRecordsByFilter('customers', "phone != ''", '-updated', 1000, 0)
+    } catch (fetchErr) {
+      return c.json(500, { success: false, error: fetchErr.message })
     }
 
-    var pendingList = audit.eligible_pending || []
+    const pendingList = []
+    for (let i = 0; i < allCustomers.length; i++) {
+      const cust = allCustomers[i]
+      const custId = cust.id
+      const phone = resolveCustomerCleanPhone(cust.getString('phone'))
+      if (!phone || phone.length < 10) continue
+
+      let convs = []
+      try {
+        convs = app.findRecordsByFilter(
+          'conversations',
+          "customer_id = '" + custId + "'",
+          '-created',
+          30,
+          0,
+        )
+      } catch (_) {}
+
+      const lastSentAt = cust.getString('last_sent_at') || ''
+      const lastFollowUpAt = cust.getString('last_follow_up_at') || ''
+      const followUpCount = cust.getInt('follow_up_count') || 0
+      const followUpStep = cust.getString('follow_up_step') || ''
+
+      const hasPriorApproach =
+        convs.length > 0 || !!lastSentAt || !!lastFollowUpAt || followUpCount > 0 || !!followUpStep
+
+      if (!hasPriorApproach) continue
+
+      if (hasCustomerReceivedOfficialEbook(cust, convs, bookLink)) continue
+
+      const exclusionCheck = checkCustomerExclusions(cust, convs, nowMs)
+      if (exclusionCheck.excluded) continue
+
+      pendingList.push({
+        id: custId,
+        name: cust.getString('name') || 'Sem nome',
+        greeting_name: resolveCustomerFirstName(cust),
+        phone: phone,
+      })
+    }
+
     if (pendingList.length === 0) {
       return c.json(200, {
         success: true,
@@ -408,42 +573,37 @@ routerAdd(
       })
     }
 
-    // Pegar até maxBatchSize
-    var batch = pendingList.slice(0, maxBatchSize)
-    var bookLink = audit.book_link
-
-    var salutationWord =
+    const batch = pendingList.slice(0, maxBatchSize)
+    const salutationWord =
       windowInfo.hour < 12 ? 'bom dia' : windowInfo.hour < 18 ? 'boa tarde' : 'boa noite'
-    var metaUrl = 'https://graph.facebook.com/v21.0/' + metaPhoneId + '/messages'
+    const metaUrl = 'https://graph.facebook.com/v21.0/' + metaPhoneId + '/messages'
 
-    var dispatched = []
-    var failed = []
+    const dispatched = []
+    const failed = []
 
-    for (var bIdx = 0; bIdx < batch.length; bIdx++) {
-      var item = batch[bIdx]
-      var custId = item.id
-      var phoneNum = item.phone
-      var gName = item.greeting_name
+    for (let bIdx = 0; bIdx < batch.length; bIdx++) {
+      const item = batch[bIdx]
+      const custId = item.id
+      const phoneNum = item.phone
+      const gName = item.greeting_name
 
-      // Trava blindada ai_processing
-      var lockAcquired = false
+      // Trava blindada ai_processing (3 min)
+      let lockAcquired = false
       try {
-        var custRec = app.findRecordById('customers', custId)
-        var rawTags = custRec.get('tags') || []
-        var tags = []
+        const custRec = app.findRecordById('customers', custId)
+        const rawTags = custRec.get('tags') || []
+        let tags = []
         if (Array.isArray(rawTags)) {
-          tags = rawTags.filter(function (t) {
-            return typeof t === 'string'
-          })
+          tags = rawTags.filter((t) => typeof t === 'string')
         }
-        var nowMs = Date.now()
-        var lockPrefix = 'ai_processing:'
-        var isLocked = false
-        for (var tIdx = 0; tIdx < tags.length; tIdx++) {
-          var t = tags[tIdx]
+        const lockNowMs = Date.now()
+        const lockPrefix = 'ai_processing:'
+        let isLocked = false
+        for (let tIdx = 0; tIdx < tags.length; tIdx++) {
+          const t = tags[tIdx]
           if (t.indexOf(lockPrefix) === 0) {
-            var lockTime = parseInt(t.substring(lockPrefix.length), 10)
-            if (!isNaN(lockTime) && nowMs - lockTime < 180000) {
+            const lockTime = parseInt(t.substring(lockPrefix.length), 10)
+            if (!isNaN(lockTime) && lockNowMs - lockTime < 180000) {
               isLocked = true
               break
             }
@@ -454,10 +614,10 @@ routerAdd(
           continue
         }
 
-        var newTags = tags.filter(function (t) {
-          return t !== 'ai_processing' && t.indexOf('ai_processing:') !== 0
-        })
-        newTags.push('ai_processing:' + nowMs)
+        const newTags = tags.filter(
+          (t) => t !== 'ai_processing' && t.indexOf('ai_processing:') !== 0,
+        )
+        newTags.push('ai_processing:' + lockNowMs)
         custRec.set('tags', newTags)
         app.saveNoValidate(custRec)
         lockAcquired = true
@@ -467,28 +627,28 @@ routerAdd(
       }
 
       // Montagem do texto consertado conforme especificação:
-      // Identificação oficial Bia ("Bia da BRF Imóveis — bom dia/boa tarde, tudo bem?"),
-      // Contextualização com o link oficial no corpo,
+      // Identificação oficial Bia ("Bia da BRF Imóveis — bom dia/boa tarde, [primeiro nome], tudo bem?"),
+      // Apresentação da oportunidade (Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC),
+      // Link oficial do material NO CORPO da mensagem,
       // Legenda "Material oficial: Vistage Residence",
-      // Pergunta leve final,
-      // SEM link de site, SEM preço cheio.
-      var greetingPart = gName
+      // Pergunta leve no final. SEM link de site, SEM preço cheio, SEM tabelas.
+      const greetingPart = gName
         ? 'Bia da BRF Imóveis — ' + salutationWord + ', ' + gName + ', tudo bem?'
         : 'Bia da BRF Imóveis — ' + salutationWord + ', tudo bem?'
 
-      var fullMessageText =
+      const fullMessageText =
         greetingPart +
-        '\n\nLembrei de você e separei o material oficial do Vistage Residence em Barreiros, São José/SC:' +
+        '\n\nComo você já demonstrou interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade do Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC (Grande Florianópolis):' +
         '\n\n📄 *Material oficial: Vistage Residence*' +
         '\n' +
         bookLink +
         '\n\nFaz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitórios?'
 
-      var sendSuccess = false
-      var sendError = ''
+      let sendSuccess = false
+      let sendError = ''
 
       try {
-        var sendRes = $http.send({
+        const sendRes = $http.send({
           url: metaUrl,
           method: 'POST',
           headers: {
@@ -508,7 +668,7 @@ routerAdd(
         if (sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300) {
           sendSuccess = true
         } else {
-          var errBody = ''
+          let errBody = ''
           try {
             errBody = JSON.stringify(sendRes ? sendRes.json || sendRes.body : '')
           } catch (_) {}
@@ -518,19 +678,19 @@ routerAdd(
         sendError = 'Exceção HTTP: ' + httpErr.message
       }
 
-      // Liberação de lock e gravação de histórico
+      // Liberação do lock, tag de entrega e gravação
       try {
-        var cUpdate = app.findRecordById('customers', custId)
-        var cRawTags = cUpdate.get('tags') || []
-        var cTags = []
+        const cUpdate = app.findRecordById('customers', custId)
+        const cRawTags = cUpdate.get('tags') || []
+        let cTags = []
         if (Array.isArray(cRawTags)) {
-          cTags = cRawTags.filter(function (t) {
-            return typeof t === 'string' && t.indexOf('ai_processing') !== 0
-          })
+          cTags = cRawTags.filter((t) => typeof t === 'string' && t.indexOf('ai_processing') !== 0)
         }
 
         if (sendSuccess) {
-          cTags.push('ebook_vistage_entregue')
+          if (cTags.indexOf('ebook_vistage_entregue') === -1) {
+            cTags.push('ebook_vistage_entregue')
+          }
           cUpdate.set('tags', cTags)
           cUpdate.set('last_follow_up_at', new Date().toISOString())
           cUpdate.set(
@@ -544,8 +704,8 @@ routerAdd(
 
           // Gravar conversa
           try {
-            var convCol = app.findCollectionByNameOrId('conversations')
-            var convRec = new Record(convCol)
+            const convCol = app.findCollectionByNameOrId('conversations')
+            const convRec = new Record(convCol)
             convRec.set('user_id', activeUserId || cUpdate.getString('user_id') || '')
             convRec.set('customer_id', custId)
             convRec.set('sender', 'ai')
@@ -554,10 +714,10 @@ routerAdd(
             app.saveNoValidate(convRec)
           } catch (_) {}
 
-          // Gravar system_logs individual
+          // Gravar log estruturado de auditoria individual em system_logs
           try {
-            var logsCol = app.findCollectionByNameOrId('system_logs')
-            var logRec = new Record(logsCol)
+            const logsCol = app.findCollectionByNameOrId('system_logs')
+            const logRec = new Record(logsCol)
             logRec.set('user_id', activeUserId)
             logRec.set('type', 'ebook_resend_item')
             logRec.set(
@@ -595,8 +755,8 @@ routerAdd(
 
     // Gravar log de resumo do lote em system_logs
     try {
-      var sLogsCol = app.findCollectionByNameOrId('system_logs')
-      var batchLog = new Record(sLogsCol)
+      const sLogsCol = app.findCollectionByNameOrId('system_logs')
+      const batchLog = new Record(sLogsCol)
       batchLog.set('user_id', activeUserId)
       batchLog.set('type', 'ebook_resend_batch')
       batchLog.set(
