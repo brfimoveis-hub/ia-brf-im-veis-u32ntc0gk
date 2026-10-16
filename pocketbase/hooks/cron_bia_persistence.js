@@ -1311,7 +1311,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   try {
     var promiseCustomers = app.findRecordsByFilter(
       'customers',
-      "promise_pending = true && is_blocked = false && (persistence_status = 'ativo' || persistence_status = 'aguardando_momento' || persistence_status = '')",
+      "promise_pending = true && is_blocked = false && tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (persistence_status = 'ativo' || persistence_status = 'aguardando_momento' || persistence_status = '')",
       '-promise_made_at',
       10,
       0,
@@ -1391,7 +1391,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       'customers',
       "next_follow_up_at != '' && next_follow_up_at <= '" +
         nowIso +
-        "' && (persistence_status = 'ativo' || persistence_status = 'aguardando_momento' || persistence_status = '') && is_blocked = false",
+        "' && tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (persistence_status = 'ativo' || persistence_status = 'aguardando_momento' || persistence_status = '') && is_blocked = false",
       'next_follow_up_at',
       50,
       0,
@@ -1602,7 +1602,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     var idleBatchLimit = 15
     var idleCustomers = app.findRecordsByFilter(
       'customers',
-      "(persistence_status = 'ativo' || persistence_status = '' || persistence_status = null) && is_blocked = false && (next_follow_up_at = '' || next_follow_up_at = null) && (follow_up_step = '' || follow_up_step = null)",
+      "tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (persistence_status = 'ativo' || persistence_status = '' || persistence_status = null) && is_blocked = false && (next_follow_up_at = '' || next_follow_up_at = null) && (follow_up_step = '' || follow_up_step = null)",
       '-updated',
       25,
       0,

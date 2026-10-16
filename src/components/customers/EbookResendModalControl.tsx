@@ -26,11 +26,16 @@ import {
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
 import {
   getEbookResendAudit,
   dispatchEbookResendBatch,
   toggleEbookContinuousMode,
+  getFullPhoneAudit,
+  fixCustomerPhoneInline,
   type EbookAuditResponse,
+  type PhoneAuditResponse,
+  type EbookInvalidPhoneClient,
 } from '@/services/ebook_resend'
 
 export function EbookResendModalControl() {
@@ -43,6 +48,12 @@ export function EbookResendModalControl() {
   const [togglingContinuous, setTogglingContinuous] = useState(false)
   const [forceOutsideWindow, setForceOutsideWindow] = useState(false)
   const [showInvalidList, setShowInvalidList] = useState(false)
+  const [fullAuditData, setFullAuditData] = useState<PhoneAuditResponse | null>(null)
+  const [loadingFullAudit, setLoadingFullAudit] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editPhoneValue, setEditPhoneValue] = useState('')
+  const [savingEditId, setSavingEditId] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(Date.now())
 
   // Atualiza relógio local a cada 10s para contagem regressiva de minutos
@@ -51,12 +62,32 @@ export function EbookResendModalControl() {
     return () => clearInterval(t)
   }, [])
 
+  const loadFullAudit = useCallback(async () => {
+    setLoadingFullAudit(true)
+    try {
+      const res = await getFullPhoneAudit(false)
+      if (res && res.success) {
+        setFullAuditData(res)
+      }
+    } catch (err: unknown) {
+      console.warn('[EbookResendModalControl] Erro ao buscar auditoria completa:', err)
+    } finally {
+      setLoadingFullAudit(false)
+    }
+  }, [])
+
   const loadAudit = useCallback(async (quiet = false) => {
     if (!quiet) setLoadingAudit(true)
     try {
-      const res = await getEbookResendAudit()
+      const [res, fullRes] = await Promise.all([
+        getEbookResendAudit(),
+        getFullPhoneAudit(false).catch(() => null),
+      ])
       if (res && res.success) {
         setAuditData(res)
+      }
+      if (fullRes && fullRes.success) {
+        setFullAuditData(fullRes)
       }
     } catch (err: unknown) {
       console.warn('[EbookResendModalControl] Erro ao carregar auditoria:', err)
@@ -73,7 +104,64 @@ export function EbookResendModalControl() {
   }, [loadAudit])
 
   const pendingCount = auditData?.summary?.eligible_pending_count ?? 0
-  const invalidCount = auditData?.summary?.invalid_phones_count ?? 0
+  const invalidListCombined: EbookInvalidPhoneClient[] = useMemo(() => {
+    const listA = fullAuditData?.audit?.invalid_phones || []
+    const listB = auditData?.invalid_phones || []
+    const map = new Map<string, EbookInvalidPhoneClient>()
+    for (const item of listA) {
+      map.set(item.id, item)
+    }
+    for (const item of listB) {
+      if (!map.has(item.id)) {
+        map.set(item.id, item)
+      }
+    }
+    return Array.from(map.values())
+  }, [fullAuditData, auditData])
+
+  const invalidCount = invalidListCombined.length || (auditData?.summary?.invalid_phones_count ?? 0)
+
+  const handleStartEdit = (inv: EbookInvalidPhoneClient) => {
+    setEditingId(inv.id)
+    setEditPhoneValue(inv.raw_phone || '')
+    setEditError(null)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setEditPhoneValue('')
+    setEditError(null)
+  }
+
+  const handleSavePhone = async (customerId: string) => {
+    setSavingEditId(customerId)
+    setEditError(null)
+    try {
+      const res = await fixCustomerPhoneInline(customerId, editPhoneValue)
+      if (res.success) {
+        toast({
+          title: '✅ Telefone Corrigido!',
+          description: `Número atualizado para ${res.cleanPhone}. Tags de erro removidas e cliente reabilitado para a fila.`,
+        })
+        setEditingId(null)
+        setEditPhoneValue('')
+        // Recarregar dados
+        await loadAudit(false)
+      } else {
+        setEditError(res.error || 'Número inválido')
+        toast({
+          title: 'Telefone inválido',
+          description: res.error || 'Verifique o DDD e os dígitos (12-13 com DDI 55).',
+          variant: 'destructive',
+        })
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setEditError(msg)
+    } finally {
+      setSavingEditId(null)
+    }
+  }
   const isCommercialWindow = auditData?.commercial_window?.isCommercialWindow ?? false
   const continuousMode = auditData?.continuous_mode
   const isContinuousActive = !!continuousMode?.is_active
@@ -399,53 +487,148 @@ export function EbookResendModalControl() {
             </div>
           </div>
 
-          {/* Aviso dedicado de NÚMEROS INVÁLIDOS / CORROMPIDOS (Item 2) */}
+          {/* Aviso dedicado de NÚMEROS INVÁLIDOS / CORROMPIDOS com EDIÇÃO INLINE */}
           {invalidCount > 0 && (
-            <div className="border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 rounded-lg p-2.5 text-xs text-rose-900 dark:text-rose-200">
+            <div className="border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 rounded-lg p-2.5 text-xs text-rose-900 dark:text-rose-200 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <PhoneOff className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0" />
-                  <span>
-                    <strong>Números inválidos: {invalidCount}</strong> — excluídos dos pendentes
-                    para proteger a Meta API e não falhar envios.
-                  </span>
+                  <div>
+                    <span className="font-semibold">Números inválidos na base: {invalidCount}</span>
+                    <span className="text-[11px] text-muted-foreground block">
+                      Marcados com <code>telefone_invalido</code> e retirados das filas para
+                      proteger a Meta API.
+                    </span>
+                  </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowInvalidList(!showInvalidList)}
-                  className="h-6 text-[11px] px-2 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40 gap-1"
-                >
-                  <span>{showInvalidList ? 'Ocultar' : 'Ver motivos'}</span>
-                  {showInvalidList ? (
-                    <ChevronUp className="h-3 w-3" />
-                  ) : (
-                    <ChevronDown className="h-3 w-3" />
-                  )}
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={loadFullAudit}
+                    disabled={loadingFullAudit}
+                    className="h-6 text-[10px] px-1.5 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40 gap-1"
+                    title="Recarregar varredura completa"
+                  >
+                    <RefreshCw className={cn('h-2.5 w-2.5', loadingFullAudit && 'animate-spin')} />
+                    <span>Atualizar</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowInvalidList(!showInvalidList)}
+                    className="h-6 text-[11px] px-2 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40 gap-1 font-medium"
+                  >
+                    <span>{showInvalidList ? 'Ocultar' : 'Ver e corrigir'}</span>
+                    {showInvalidList ? (
+                      <ChevronUp className="h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {showInvalidList && (
-                <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-900/40 max-h-36 overflow-y-auto space-y-1 divide-y divide-rose-100 dark:divide-rose-900/30">
-                  {auditData?.invalid_phones?.map((inv) => (
-                    <div
-                      key={inv.id}
-                      className="pt-1 first:pt-0 flex items-center justify-between gap-2"
-                    >
-                      <div className="truncate">
-                        <span className="font-semibold">{inv.name}</span>{' '}
-                        <code className="text-[10px] bg-rose-100 dark:bg-rose-900/60 px-1 py-0.2 rounded text-rose-800 dark:text-rose-300">
-                          {inv.raw_phone}
-                        </code>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="text-[9px] px-1 py-0 border-rose-300 text-rose-700 shrink-0"
-                      >
-                        {inv.reason}
-                      </Badge>
+                <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-900/40 max-h-56 overflow-y-auto space-y-2">
+                  {invalidListCombined.length === 0 ? (
+                    <div className="p-2 text-center text-muted-foreground">
+                      Nenhum telefone inválido restante.
                     </div>
-                  ))}
+                  ) : (
+                    invalidListCombined.map((inv) => {
+                      const isEditing = editingId === inv.id
+                      const isSaving = savingEditId === inv.id
+
+                      return (
+                        <div
+                          key={inv.id}
+                          className="p-2 bg-white/80 dark:bg-slate-900/80 rounded border border-rose-200/80 dark:border-rose-900/40 space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="font-semibold text-slate-900 dark:text-slate-100 truncate block">
+                                {inv.name || 'Sem nome'}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                Motivo:{' '}
+                                <strong className="text-rose-700 dark:text-rose-300">
+                                  {inv.reason}
+                                </strong>
+                              </span>
+                            </div>
+
+                            {!isEditing && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleStartEdit(inv)}
+                                className="h-6 text-[10px] px-2 border-slate-300 dark:border-slate-700 shrink-0"
+                              >
+                                Corrigir número
+                              </Button>
+                            )}
+                          </div>
+
+                          {isEditing ? (
+                            <div className="space-y-1 pt-1">
+                              <div className="flex items-center gap-1.5">
+                                <Input
+                                  value={editPhoneValue}
+                                  onChange={(e) => {
+                                    setEditPhoneValue(e.target.value)
+                                    setEditError(null)
+                                  }}
+                                  placeholder="Ex: 48999998888 ou 5548999998888"
+                                  className="h-7 text-xs font-mono"
+                                  autoFocus
+                                  disabled={isSaving}
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSavePhone(inv.id)}
+                                  disabled={isSaving || !editPhoneValue.trim()}
+                                  className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 shrink-0"
+                                >
+                                  {isSaving ? (
+                                    <RefreshCw className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    'Salvar'
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={handleCancelEdit}
+                                  disabled={isSaving}
+                                  className="h-7 text-xs px-2 shrink-0"
+                                >
+                                  Cancelar
+                                </Button>
+                              </div>
+                              {editError && (
+                                <p className="text-[10px] text-rose-600 font-medium">
+                                  ⚠️ {editError}
+                                </p>
+                              )}
+                              <p className="text-[10px] text-muted-foreground">
+                                Aceita DDD 11–99 + 8 ou 9 dígitos. O DDI 55 é inserido
+                                automaticamente se faltar. Ao salvar, as tags de erro são removidas
+                                e o cliente volta à fila.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                              <span className="text-muted-foreground">Original:</span>
+                              <code className="bg-rose-100 dark:bg-rose-900/60 px-1 py-0.5 rounded text-rose-800 dark:text-rose-200">
+                                {inv.raw_phone || '(em branco)'}
+                              </code>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
                 </div>
               )}
             </div>

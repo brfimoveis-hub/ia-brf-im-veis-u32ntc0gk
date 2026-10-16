@@ -26,6 +26,23 @@ export interface EbookInvalidPhoneClient {
   name: string
   raw_phone: string
   reason: string
+  normalized_digits?: string
+  status?: string
+}
+
+export interface PhoneAuditResponse {
+  success: boolean
+  auto_tag?: boolean
+  audit: {
+    total_customers: number
+    valid_phones_count: number
+    invalid_phones_count: number
+    tagged_now_count?: number
+    reason_breakdown: Record<string, number>
+    invalid_phones: EbookInvalidPhoneClient[]
+    sample_invalid?: EbookInvalidPhoneClient[]
+  }
+  timestamp: string
 }
 
 export interface EbookContinuousModeState {
@@ -91,6 +108,161 @@ export async function getEbookResendAudit(): Promise<EbookAuditResponse> {
   return pb.send<EbookAuditResponse>('/backend/v1/ebook-resend/audit', {
     method: 'GET',
   })
+}
+
+/**
+ * Consulta a auditoria completa de telefones da base inteira (customers)
+ */
+export async function getFullPhoneAudit(autoTag = false): Promise<PhoneAuditResponse> {
+  return pb.send<PhoneAuditResponse>(
+    `/backend/v1/phone-audit?auto_tag=${autoTag ? 'true' : 'false'}`,
+    {
+      method: 'GET',
+    },
+  )
+}
+
+/**
+ * Executa uma varredura completa da base gravando tags nos números inválidos
+ */
+export async function runFullPhoneScan(): Promise<{
+  success: boolean
+  summary: {
+    total_customers: number
+    valid_phones_count: number
+    invalid_phones_count: number
+    newly_tagged_count: number
+    already_tagged_count: number
+    reason_breakdown: Record<string, number>
+  }
+  sample_invalid: EbookInvalidPhoneClient[]
+  message: string
+}> {
+  return pb.send('/backend/v1/phone-audit/scan', {
+    method: 'POST',
+  })
+}
+
+/**
+ * Validação de telefone brasileiro idêntica à regra de backend
+ */
+export function validateBrazilianPhoneLocal(rawPhone: string): {
+  valid: boolean
+  phone: string
+  errorReason: string | null
+} {
+  if (!rawPhone) {
+    return { valid: false, phone: '', errorReason: 'Telefone vazio ou ausente' }
+  }
+  let str = String(rawPhone).trim()
+
+  if (str.includes(':::')) {
+    const parts = str
+      .split(':::')
+      .map((p) => p.trim())
+      .filter(Boolean)
+    for (let i = 0; i < parts.length; i++) {
+      const partRes = validateBrazilianPhoneLocal(parts[i])
+      if (partRes.valid) return partRes
+    }
+    str = parts[0] || str
+  }
+
+  let digits = str.replace(/\D/g, '')
+
+  if (digits.startsWith('0') && digits.length >= 11) {
+    digits = digits.substring(1)
+  }
+
+  if (digits.length === 8 || digits.length === 9) {
+    digits = '48' + digits
+  }
+
+  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
+    digits = '55' + digits
+  }
+
+  if (digits.length >= 20 && digits.length <= 26 && digits.length % 2 === 0) {
+    const half = digits.length / 2
+    const firstHalf = digits.substring(0, half)
+    const secondHalf = digits.substring(half)
+    if (firstHalf === secondHalf) {
+      const subRes = validateBrazilianPhoneLocal(firstHalf)
+      if (subRes.valid) return subRes
+    }
+  }
+
+  if (digits.length < 12) {
+    return {
+      valid: false,
+      phone: digits,
+      errorReason: `Número incompleto (${digits.length} dígitos, mín 12 com 55+DDD)`,
+    }
+  }
+  if (digits.length > 13) {
+    return {
+      valid: false,
+      phone: digits,
+      errorReason: `Número corrompido / duplicado (${digits.length} dígitos, máx 13)`,
+    }
+  }
+  if (!digits.startsWith('55')) {
+    return {
+      valid: false,
+      phone: digits,
+      errorReason: 'DDI inválido (esperado 55 Brasil)',
+    }
+  }
+
+  const ddd = parseInt(digits.substring(2, 4), 10)
+  if (isNaN(ddd) || ddd < 11 || ddd > 99) {
+    return {
+      valid: false,
+      phone: digits,
+      errorReason: `DDD brasileiro inválido: ${digits.substring(2, 4)}`,
+    }
+  }
+
+  return {
+    valid: true,
+    phone: digits,
+    errorReason: null,
+  }
+}
+
+/**
+ * Corrige inline o telefone de um cliente no banco.
+ * Se passar na validação, remove automaticamente as tags telefone_invalido e erro_numero_whatsapp
+ * para que o cliente volte a ser elegível à fila de reenvio / régua.
+ */
+export async function fixCustomerPhoneInline(
+  customerId: string,
+  newPhone: string,
+): Promise<{ success: boolean; error?: string; cleanPhone?: string }> {
+  const check = validateBrazilianPhoneLocal(newPhone)
+  if (!check.valid) {
+    return { success: false, error: check.errorReason || 'Número inválido' }
+  }
+
+  try {
+    const cust = await pb.collection('customers').getOne(customerId)
+    const rawTags = (cust as { tags?: string[] }).tags || []
+    let tagsList = Array.isArray(rawTags) ? [...rawTags] : []
+
+    // Remove as tags de erro para reabilitar o cliente na régua e reenvio
+    tagsList = tagsList.filter((t) => t !== 'telefone_invalido' && t !== 'erro_numero_whatsapp')
+
+    await pb.collection('customers').update(customerId, {
+      phone: check.phone,
+      phone_1_value: check.phone,
+      tags: tagsList,
+    })
+
+    return { success: true, cleanPhone: check.phone }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, error: msg }
+  }
 }
 
 /**

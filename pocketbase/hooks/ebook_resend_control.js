@@ -257,6 +257,9 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
       } catch (_) {}
     }
 
+    if (tagsList.includes('telefone_invalido') || tagsList.includes('erro_numero_whatsapp')) {
+      return { excluded: true, reason: 'telefone_invalido' }
+    }
     if (isBlocked || status.includes('bloqueado') || tagsList.includes('bloqueado')) {
       return { excluded: true, reason: 'bloqueado' }
     }
@@ -358,6 +361,36 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
   const eligiblePendingList = []
   const invalidPhonesList = []
 
+  // Carregar todos os clientes da base que estão marcados como telefone inválido
+  // ou cujo número não passa na validação brasileira
+  try {
+    const invalidTagged = app.findRecordsByFilter(
+      'customers',
+      "tags ~ 'telefone_invalido' || tags ~ 'erro_numero_whatsapp'",
+      '-updated',
+      1000,
+      0,
+    )
+    for (let invIdx = 0; invIdx < invalidTagged.length; invIdx++) {
+      const invCust = invalidTagged[invIdx]
+      const rPhone = invCust.getString('phone') || invCust.getString('phone_1_value') || ''
+      const chk = validateAndCleanBrazilianPhone(rPhone)
+      invalidPhonesList.push({
+        id: invCust.id,
+        name: invCust.getString('name') || 'Sem nome',
+        raw_phone: rPhone,
+        reason: chk.valid
+          ? 'Marcado como inválido anteriormente'
+          : chk.errorReason || 'Telefone inválido',
+      })
+    }
+  } catch (_) {}
+
+  const seenInvalidIds = {}
+  for (let sIdx = 0; sIdx < invalidPhonesList.length; sIdx++) {
+    seenInvalidIds[invalidPhonesList[sIdx].id] = true
+  }
+
   for (let i = 0; i < approachedCustomers.length; i++) {
     const cust = approachedCustomers[i]
     const custId = cust.id
@@ -366,12 +399,15 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
     // 1. Validação estrita do telefone brasileiro
     const phoneCheck = validateAndCleanBrazilianPhone(rawPhone)
     if (!phoneCheck.valid) {
-      invalidPhonesList.push({
-        id: custId,
-        name: cust.getString('name') || 'Sem nome',
-        raw_phone: rawPhone,
-        reason: phoneCheck.errorReason || 'Telefone inválido',
-      })
+      if (!seenInvalidIds[custId]) {
+        invalidPhonesList.push({
+          id: custId,
+          name: cust.getString('name') || 'Sem nome',
+          raw_phone: rawPhone,
+          reason: phoneCheck.errorReason || 'Telefone inválido',
+        })
+        seenInvalidIds[custId] = true
+      }
 
       // Marcar tag no cliente de forma idempotente
       try {
@@ -881,7 +917,7 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
   try {
     approachedCustomers = app.findRecordsByFilter(
       'customers',
-      "phone != '' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
+      "phone != '' && tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
       '-updated',
       800,
       0,
@@ -1631,6 +1667,9 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
       tagsList = rawTags.filter((t) => typeof t === 'string').map((t) => t.toLowerCase())
     }
 
+    if (tagsList.includes('telefone_invalido') || tagsList.includes('erro_numero_whatsapp')) {
+      return { excluded: true, reason: 'telefone_invalido' }
+    }
     if (isBlocked || status.includes('bloqueado') || tagsList.includes('bloqueado')) {
       return { excluded: true, reason: 'bloqueado' }
     }
@@ -1747,7 +1786,7 @@ cronAdd('ebook_continuous_dispatcher', '* * * * *', () => {
   try {
     approached = app.findRecordsByFilter(
       'customers',
-      "phone != '' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
+      "phone != '' && tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
       '-updated',
       800,
       0,
