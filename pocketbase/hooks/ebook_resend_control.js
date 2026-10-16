@@ -108,7 +108,11 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
     )
   }
 
-  function resolveVistageLocalDocument(app) {
+  function resolveOfficialVistageBookDriveLink() {
+    return 'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'
+  }
+
+  function resolveVistageLocalDocument() {
     const pbBaseUrl =
       $os.getenv('POCKETBASE_URL') ||
       $os.getenv('VITE_POCKETBASE_URL') ||
@@ -248,43 +252,23 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
   }
 
   const windowInfo = getBrasiliaHourAndWindow()
-  const localDoc = resolveVistageLocalDocument(app)
+  const localDoc = resolveVistageLocalDocument()
+  const driveBookLink = resolveOfficialVistageBookDriveLink()
   const now = new Date()
   const nowMs = now.getTime()
 
-  // Buscar clientes abordados elegíveis de forma rápida e otimizada (sem carregar 1000 registros pesados)
-  // Um cliente abordado tem last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != ''
   let approachedCustomers = []
   try {
-    const rows = app
-      .db()
-      .newQuery(
-        "SELECT id, name, first_name, phone, status, phase, persistence_status, follow_up_step, follow_up_count, is_blocked, tags, last_sent_at, last_follow_up_at FROM customers WHERE phone IS NOT NULL AND phone != '' AND (last_sent_at != '' OR last_follow_up_at != '' OR follow_up_count > 0 OR follow_up_step != '') ORDER BY updated DESC LIMIT 1000",
-      )
-      .all()
-    for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-      const r = rows[rIdx]
-      approachedCustomers.push({
-        id: r.id,
-        getString: (field) => (r[field] != null ? String(r[field]) : ''),
-        getInt: (field) => parseInt(r[field] || 0, 10),
-        getBool: (field) => !!r[field],
-        get: (field) => r[field],
-      })
-    }
+    approachedCustomers = app.findRecordsByFilter(
+      'customers',
+      "phone != '' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
+      '-updated',
+      800,
+      0,
+    )
   } catch (err) {
-    console.error('[EBOOK_RESEND] Erro ao buscar clientes por SQL otimizado: ' + err.message)
-    try {
-      approachedCustomers = app.findRecordsByFilter(
-        'customers',
-        "phone != '' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
-        '-updated',
-        600,
-        0,
-      )
-    } catch (e2) {
-      return c.json(500, { success: false, error: e2.message })
-    }
+    console.error('[EBOOK_RESEND] Erro ao buscar customers: ' + err.message)
+    return c.json(500, { success: false, error: err.message })
   }
 
   const approachedList = []
@@ -298,8 +282,6 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
     const phone = resolveCustomerCleanPhone(cust.getString('phone'))
     if (!phone || phone.length < 10) continue
 
-    const lastSentAt = cust.getString('last_sent_at') || ''
-    const lastFollowUpAt = cust.getString('last_follow_up_at') || ''
     const followUpCount = cust.getInt('follow_up_count') || 0
     const followUpStep = cust.getString('follow_up_step') || ''
 
@@ -374,9 +356,10 @@ routerAdd('GET', '/backend/v1/ebook-resend/audit', (c) => {
     success: true,
     commercial_window: windowInfo,
     local_document: localDoc,
-    book_link: localDoc.public_url || '',
+    book_link: driveBookLink,
+    storage_url: localDoc.public_url || '',
     storage_source: 'ai_knowledge_files:fcvyoatlxt56do2',
-    delivery_mechanism: localDoc.valid ? 'whatsapp_document_attached' : 'none_corrupted_storage',
+    delivery_mechanism: 'text_with_drive_link_and_doc_attachment',
     summary: {
       total_approached: approachedList.length,
       already_delivered: alreadyDeliveredList.length,
@@ -453,8 +436,61 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
     return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
   }
 
-  function resolveOfficialVistageBookLink() {
+  function isBlacklistedAttachment(nameStr) {
+    if (!nameStr) return false
+    const s = String(nameStr).toLowerCase().trim()
+    return (
+      s.includes('tabela') ||
+      s.includes('politica') ||
+      s.includes('política') ||
+      s.includes('preco') ||
+      s.includes('preço') ||
+      s.includes('valores')
+    )
+  }
+
+  function resolveOfficialVistageBookDriveLink() {
     return 'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'
+  }
+
+  function resolveVistageLocalDocument() {
+    const pbBaseUrl =
+      $os.getenv('POCKETBASE_URL') ||
+      $os.getenv('VITE_POCKETBASE_URL') ||
+      'https://ia-uazapi-6d79e.shrd00.internal.goskip.dev'
+
+    try {
+      const bookRec = app.findRecordById('ai_knowledge_files', 'fcvyoatlxt56do2')
+      if (bookRec && bookRec.getBool('is_active')) {
+        const rName = (bookRec.getString('name') || '').trim()
+        const physFile = (bookRec.getString('file') || '').trim()
+        const fSize = bookRec.getInt('file_size') || 0
+
+        if (!isBlacklistedAttachment(rName) && physFile && fSize > 0) {
+          const publicUrl =
+            pbBaseUrl + '/api/files/' + bookRec.collectionId + '/' + bookRec.id + '/' + physFile
+          return {
+            valid: true,
+            record_id: bookRec.id,
+            filename: rName.endsWith('.pdf') ? rName : rName + '.pdf',
+            stored_file: physFile,
+            file_size: fSize,
+            public_url: publicUrl,
+            caption: 'Material oficial: Vistage Residence',
+          }
+        }
+      }
+    } catch (_) {}
+
+    return {
+      valid: false,
+      record_id: '',
+      filename: '',
+      stored_file: '',
+      file_size: 0,
+      public_url: '',
+      caption: '',
+    }
   }
 
   function hasCustomerReceivedOfficialEbook(cust, convs, docInfo) {
@@ -556,6 +592,11 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
   }
 
   const windowInfo = getBrasiliaHourAndWindow()
+  const driveBookLink = resolveOfficialVistageBookDriveLink()
+  const localDoc = resolveVistageLocalDocument()
+  const hasValidLocalFile = localDoc.valid && localDoc.file_size > 0
+  const now = new Date()
+  const nowMs = now.getTime()
 
   // 1. Verificar credenciais Meta WhatsApp
   let metaToken = ''
@@ -623,44 +664,19 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
     })
   }
 
-  // 3. Resolução do documento local e auditoria para lista dos pendentes
-  const localDoc = resolveVistageLocalDocument(app)
-  const hasValidLocalFile = localDoc.valid && localDoc.file_size > 0
-  const now = new Date()
-  const nowMs = now.getTime()
-
+  // 3. Auditoria para lista dos clientes pendentes
   let approachedCustomers = []
   try {
-    // Usar db().newQuery para selecionar apenas as colunas necessárias e evitar timeout com tabela grande
-    const rows = app
-      .db()
-      .newQuery(
-        "SELECT id, name, first_name, phone, status, phase, persistence_status, follow_up_step, follow_up_count, is_blocked, tags, last_sent_at, last_follow_up_at FROM customers WHERE phone IS NOT NULL AND phone != '' AND (last_sent_at != '' OR last_follow_up_at != '' OR follow_up_count > 0 OR follow_up_step != '') ORDER BY updated DESC LIMIT 1000",
-      )
-      .all()
-    for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-      const r = rows[rIdx]
-      approachedCustomers.push({
-        id: r.id,
-        getString: (field) => (r[field] != null ? String(r[field]) : ''),
-        getInt: (field) => parseInt(r[field] || 0, 10),
-        getBool: (field) => !!r[field],
-        get: (field) => r[field],
-      })
-    }
-  } catch (fetchErr) {
-    console.warn('[EBOOK_RESEND] Erro ao buscar customers via SQL otimizado: ' + fetchErr.message)
-    try {
-      approachedCustomers = app.findRecordsByFilter(
-        'customers',
-        "phone != '' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
-        '-updated',
-        600,
-        0,
-      )
-    } catch (e2) {
-      return c.json(500, { success: false, error: e2.message })
-    }
+    approachedCustomers = app.findRecordsByFilter(
+      'customers',
+      "phone != '' && (last_sent_at != '' || last_follow_up_at != '' || follow_up_count > 0 || follow_up_step != '')",
+      '-updated',
+      800,
+      0,
+    )
+  } catch (err) {
+    console.error('[EBOOK_RESEND] Erro ao buscar customers: ' + err.message)
+    return c.json(500, { success: false, error: err.message })
   }
 
   const pendingList = []
@@ -717,8 +733,11 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
     return c.json(200, {
       success: true,
       dispatched_count: 0,
+      failed_count: 0,
       remaining_pending: 0,
       message: 'Nenhum cliente elegível pendente de e-book no momento!',
+      dispatched: [],
+      failed: [],
     })
   }
 
@@ -776,37 +795,27 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
     // Montagem do texto consertado conforme especificação:
     // Identificação oficial Bia ("Bia da BRF Imóveis — bom dia/boa tarde, [primeiro nome], tudo bem?"),
     // Apresentação da oportunidade (Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC).
-    // REGRA QUE PERMANECE:
-    // Se NÃO houver arquivo físico íntegro (tamanho > 0), a mensagem sai SEM promessa de e-book e SEM link.
-    // Se houver arquivo físico íntegro:
-    // PRIORIDADE 1: enviar como DOCUMENTO via WhatsApp Cloud API usando a URL pública do binário do nosso storage.
-    // E no corpo, texto limpo de apresentação e convite para ver o documento anexo.
-    // O link do Google Drive NUNCA mais aparece no corpo das mensagens de reenvio.
+    // Link seguro do Drive NO CORPO da mensagem com legenda "Material oficial: Vistage Residence".
+    // Pergunta leve no final ("Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitórios?").
+    // SEM preço cheio, SEM tabelas, SEM políticas (preservada a integridade do briefing).
     const greetingPart = gName
       ? 'Bia da BRF Imóveis — ' + salutationWord + ', ' + gName + ', tudo bem?'
       : 'Bia da BRF Imóveis — ' + salutationWord + ', tudo bem?'
 
-    let fullMessageText = ''
-    if (hasValidLocalFile) {
-      fullMessageText =
-        greetingPart +
-        '\n\nComo você já demonstrou interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade do Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC (Grande Florianópolis).' +
-        '\n\nEnvio em anexo o Book oficial completo em alta definição para você conhecer os detalhes do projeto.' +
-        '\n\nFaz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitórios?'
-    } else {
-      // Sem arquivo físico íntegro: NUNCA prometer o que não vai e SEM link
-      fullMessageText =
-        greetingPart +
-        '\n\nComo você já demonstrou interesse em oportunidades imobiliárias por aqui, passei para te apresentar novidades da região de Barreiros, São José/SC.' +
-        '\n\nFaz sentido para você conhecer as opções disponíveis de 2 ou 3 dormitórios?'
-    }
+    const fullMessageText =
+      greetingPart +
+      '\n\nComo você já demonstrou interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade do Vistage Residence Barreiros - AJ Coelho em Barreiros, São José/SC (Grande Florianópolis):' +
+      '\n\n📄 *Material oficial: Vistage Residence*' +
+      '\n' +
+      driveBookLink +
+      '\n\nFaz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitórios?'
 
     let sendSuccess = false
     let sendError = ''
     let documentSent = false
     let documentError = ''
 
-    // 1. Envio da mensagem de texto
+    // 1. Envio da mensagem de texto com o link oficial no corpo (garante 100% que o lead recebe o e-book)
     try {
       const sendRes = $http.send({
         url: metaUrl,
@@ -820,7 +829,7 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
           recipient_type: 'individual',
           to: phoneNum,
           type: 'text',
-          text: { preview_url: false, body: fullMessageText },
+          text: { preview_url: true, body: fullMessageText },
         }),
         timeout: 25,
       })
@@ -833,12 +842,15 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
           errBody = JSON.stringify(sendRes ? sendRes.json || sendRes.body : '')
         } catch (_) {}
         sendError = 'HTTP ' + (sendRes ? sendRes.statusCode : 0) + ': ' + errBody
+        console.warn('[EBOOK_RESEND] Envio de texto falhou para ' + phoneNum + ': ' + sendError)
       }
     } catch (httpErr) {
       sendError = 'Exceção HTTP Texto: ' + httpErr.message
+      console.warn('[EBOOK_RESEND] Exceção no envio de texto: ' + httpErr.message)
     }
 
-    // 2. Prioridade 1: Enviar como DOCUMENTO via WhatsApp Cloud API usando a URL pública do binário do storage local
+    // 2. Anexo adicional do arquivo PDF físico se disponível no storage local
+    // Se a Meta recusar o documento (ex: timeout de 32MB ou política de URL), não invalida o envio!
     if (sendSuccess && hasValidLocalFile) {
       try {
         const docPayload = {
@@ -861,61 +873,33 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(docPayload),
-          timeout: 30,
+          timeout: 25,
         })
 
         if (docRes && docRes.statusCode >= 200 && docRes.statusCode < 300) {
           documentSent = true
-          console.log('[EBOOK_RESEND] Documento WhatsApp enviado com sucesso para ' + phoneNum)
+          console.log('[EBOOK_RESEND] Documento WhatsApp anexado com sucesso para ' + phoneNum)
         } else {
           let dErrBody = ''
           try {
             dErrBody = JSON.stringify(docRes ? docRes.json || docRes.body : '')
           } catch (_) {}
           documentError = 'HTTP ' + (docRes ? docRes.statusCode : 0) + ': ' + dErrBody
-          console.warn(
-            '[EBOOK_RESEND] Envio de documento WhatsApp falhou para ' +
+          console.info(
+            '[EBOOK_RESEND] Documento anexado não enviado para ' +
               phoneNum +
-              ': ' +
+              ' (' +
               documentError +
-              '. Acionando Prioridade 2 (URL pública própria no corpo)...',
+              ') — link oficial já entregue no corpo do texto com sucesso.',
           )
-
-          // PRIORIDADE 2: Se documento anexado falhar, envia mensagem com a URL pública do storage próprio
-          try {
-            const fallbackMsg =
-              '📄 *Material oficial: Vistage Residence*\n' +
-              'Acesse o book completo em alta definição no link seguro do nosso storage:\n' +
-              localDoc.public_url
-
-            const fallbackRes = $http.send({
-              url: metaUrl,
-              method: 'POST',
-              headers: {
-                Authorization: 'Bearer ' + metaToken,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                messaging_product: 'whatsapp',
-                recipient_type: 'individual',
-                to: phoneNum,
-                type: 'text',
-                text: { preview_url: true, body: fallbackMsg },
-              }),
-              timeout: 25,
-            })
-
-            if (fallbackRes && fallbackRes.statusCode >= 200 && fallbackRes.statusCode < 300) {
-              documentSent = true // Entregue via URL própria
-              fullMessageText += '\n\n' + fallbackMsg
-            }
-          } catch (fallbackErr) {
-            console.warn('[EBOOK_RESEND] Falha no fallback de URL própria: ' + fallbackErr.message)
-          }
         }
       } catch (docErr) {
         documentError = 'Exceção HTTP Doc: ' + docErr.message
-        console.warn('[EBOOK_RESEND] Exceção no envio de documento: ' + docErr.message)
+        console.info(
+          '[EBOOK_RESEND] Exceção no anexo de documento: ' +
+            docErr.message +
+            ' — link oficial entregue no corpo.',
+        )
       }
     }
 
@@ -980,13 +964,14 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
               customer_id: custId,
               phone: phoneNum,
               name: item.name,
+              book_link: driveBookLink,
               document_sent: documentSent,
               document_file: localDoc.stored_file,
               document_size: localDoc.file_size,
               storage_url: localDoc.public_url,
               delivery_mechanism: documentSent
-                ? 'whatsapp_document_attached'
-                : 'text_only_fallback',
+                ? 'text_with_drive_link_and_doc_attachment'
+                : 'text_with_drive_link',
               status: 'sucesso',
             }),
           )
@@ -1048,6 +1033,7 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
     failed: failed,
     message:
       dispatched.length +
-      ' clientes receberam o material oficial Vistage com o link no corpo com sucesso!',
+      ' clientes receberam o material oficial Vistage com o link no corpo com sucesso!' +
+      (failed.length > 0 ? ' (' + failed.length + ' falhas registradas).' : ''),
   })
 })
