@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -17,15 +17,19 @@ import {
   CheckCircle2,
   Clock,
   ShieldCheck,
-  Users,
-  ChevronRight,
-  ExternalLink,
+  Play,
+  Square,
+  AlertCircle,
+  PhoneOff,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import {
   getEbookResendAudit,
   dispatchEbookResendBatch,
+  toggleEbookContinuousMode,
   type EbookAuditResponse,
 } from '@/services/ebook_resend'
 
@@ -34,8 +38,18 @@ export function EbookResendModalControl() {
   const [loadingAudit, setLoadingAudit] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [confirmSendOpen, setConfirmSendOpen] = useState(false)
+  const [confirmContinuousOpen, setConfirmContinuousOpen] = useState(false)
   const [sendingBatch, setSendingBatch] = useState(false)
+  const [togglingContinuous, setTogglingContinuous] = useState(false)
   const [forceOutsideWindow, setForceOutsideWindow] = useState(false)
+  const [showInvalidList, setShowInvalidList] = useState(false)
+  const [nowMs, setNowMs] = useState(Date.now())
+
+  // Atualiza relógio local a cada 10s para contagem regressiva de minutos
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 10000)
+    return () => clearInterval(t)
+  }, [])
 
   const loadAudit = useCallback(async (quiet = false) => {
     if (!quiet) setLoadingAudit(true)
@@ -53,13 +67,25 @@ export function EbookResendModalControl() {
 
   useEffect(() => {
     loadAudit(true)
-    // Atualiza a cada 30s
-    const timer = setInterval(() => loadAudit(true), 30000)
+    // Atualiza a cada 20s
+    const timer = setInterval(() => loadAudit(true), 20000)
     return () => clearInterval(timer)
   }, [loadAudit])
 
   const pendingCount = auditData?.summary?.eligible_pending_count ?? 0
+  const invalidCount = auditData?.summary?.invalid_phones_count ?? 0
   const isCommercialWindow = auditData?.commercial_window?.isCommercialWindow ?? false
+  const continuousMode = auditData?.continuous_mode
+  const isContinuousActive = !!continuousMode?.is_active
+  const reguaIsActive = continuousMode?.regua_is_active !== false
+
+  // Cálculo dos minutos restantes até o próximo lote
+  const minutesUntilNext = useMemo(() => {
+    if (!isContinuousActive || !continuousMode?.next_batch_at) return null
+    const diffMs = new Date(continuousMode.next_batch_at).getTime() - nowMs
+    if (diffMs <= 0) return 0
+    return Math.max(1, Math.ceil(diffMs / 60000))
+  }, [isContinuousActive, continuousMode?.next_batch_at, nowMs])
 
   const handleOpenModal = () => {
     setModalOpen(true)
@@ -67,33 +93,28 @@ export function EbookResendModalControl() {
   }
 
   const handleTriggerSendClick = () => {
-    console.log(
-      '[EbookResendModalControl] Clique em Disparar Reenvio. Abrindo diálogo de confirmação.',
-    )
     setConfirmSendOpen(true)
   }
 
   const handleConfirmDispatch = async () => {
-    console.log(
-      '[EbookResendModalControl] Confirmou envio do lote. Chamando POST /backend/v1/ebook-resend/batch...',
-    )
     setSendingBatch(true)
     try {
       const res = await dispatchEbookResendBatch({
         batch_size: 15,
         force_outside_window: forceOutsideWindow,
       })
-      console.log('[EbookResendModalControl] Resposta do batch:', res)
 
       if (res && res.success) {
         toast({
           title: '🚀 Lote de E-book Despachado!',
-          description: `${res.dispatched_count} clientes receberam o material oficial Vistage. ${res.failed_count > 0 ? `${res.failed_count} falha(s). ` : ''}Faltam ${res.remaining_pending} pendentes.`,
+          description: `${res.dispatched_count} clientes receberam o material oficial Vistage. ${
+            res.failed_count > 0 ? `${res.failed_count} falha(s). ` : ''
+          }Faltam ${res.remaining_pending} pendentes.`,
         })
         setConfirmSendOpen(false)
         await loadAudit(false)
       } else {
-        throw new Error(res?.error || (res as any)?.message || 'Erro no envio do lote')
+        throw new Error(res?.error || res?.message || 'Erro no envio do lote')
       }
     } catch (err: unknown) {
       console.error('[EbookResendModalControl] Erro ao disparar lote:', err)
@@ -108,6 +129,81 @@ export function EbookResendModalControl() {
     }
   }
 
+  // Ações do Modo Contínuo
+  const handleStartContinuousClick = () => {
+    if (!reguaIsActive) {
+      toast({
+        title: 'Régua de automações pausada',
+        description:
+          'A régua geral está pausada manualmente em app_controls. Reative a régua para poder iniciar o Modo Contínuo.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setConfirmContinuousOpen(true)
+  }
+
+  const handleConfirmStartContinuous = async () => {
+    setTogglingContinuous(true)
+    try {
+      const res = await toggleEbookContinuousMode({
+        action: 'start',
+        force_outside_window: forceOutsideWindow,
+      })
+
+      if (res && res.success) {
+        toast({
+          title: '⚡ Modo Contínuo ATIVADO!',
+          description:
+            res.message ||
+            'Primeiro lote disparado. Os próximos serão enviados a cada 15 min na janela 8h-18h.',
+        })
+        setConfirmContinuousOpen(false)
+        await loadAudit(false)
+      } else {
+        throw new Error(res?.error || res?.message || 'Falha ao ativar Modo Contínuo')
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Erro ao ativar Modo Contínuo',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setTogglingContinuous(false)
+    }
+  }
+
+  const handleStopContinuous = async () => {
+    setTogglingContinuous(true)
+    try {
+      const res = await toggleEbookContinuousMode({
+        action: 'stop',
+        reason: 'Parado pelo usuário na tela de Atendimentos',
+      })
+
+      if (res && res.success) {
+        toast({
+          title: '⏹️ Modo Contínuo PARADO',
+          description: 'O agendamento automático foi suspenso.',
+        })
+        await loadAudit(false)
+      } else {
+        throw new Error(res?.error || 'Falha ao parar Modo Contínuo')
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({
+        title: 'Erro ao parar Modo Contínuo',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setTogglingContinuous(false)
+    }
+  }
+
   return (
     <>
       {/* Botão de Disparo / Indicador no Cabeçalho */}
@@ -117,25 +213,38 @@ export function EbookResendModalControl() {
         onClick={handleOpenModal}
         className={cn(
           'h-8 text-xs px-2.5 gap-1.5 border shadow-xs transition-colors',
-          pendingCount > 0
-            ? 'bg-blue-50/80 hover:bg-blue-100/80 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200 border-blue-300 dark:border-blue-800'
-            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300',
+          isContinuousActive
+            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-400 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700 animate-pulse'
+            : pendingCount > 0
+              ? 'bg-blue-50/80 hover:bg-blue-100/80 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200 border-blue-300 dark:border-blue-800'
+              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300',
         )}
-        title="Auditoria e reenvio dirigido do e-book oficial aos clientes abordados"
+        title="Auditoria, reenvio dirigido e Modo Contínuo do e-book oficial aos clientes abordados"
       >
         <BookOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
         <span className="font-semibold">Reenviar E-book</span>
-        <Badge
-          variant="secondary"
-          className={cn(
-            'text-[10px] px-1.5 py-0 h-4 font-bold ml-0.5',
-            pendingCount > 0
-              ? 'bg-blue-600 text-white dark:bg-blue-500'
-              : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-          )}
-        >
-          {loadingAudit && !auditData ? '...' : `${pendingCount} pendentes`}
-        </Badge>
+
+        {isContinuousActive ? (
+          <Badge
+            variant="secondary"
+            className="text-[10px] px-1.5 py-0 h-4 font-bold ml-0.5 bg-emerald-600 text-white dark:bg-emerald-500 gap-1"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-white animate-ping" />
+            <span>Contínuo ATIVO</span>
+          </Badge>
+        ) : (
+          <Badge
+            variant="secondary"
+            className={cn(
+              'text-[10px] px-1.5 py-0 h-4 font-bold ml-0.5',
+              pendingCount > 0
+                ? 'bg-blue-600 text-white dark:bg-blue-500'
+                : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+            )}
+          >
+            {loadingAudit && !auditData ? '...' : `${pendingCount} pendentes`}
+          </Badge>
+        )}
       </Button>
 
       {/* Modal Principal de Auditoria e Reenvio Dirigido */}
@@ -152,8 +261,95 @@ export function EbookResendModalControl() {
             </DialogDescription>
           </DialogHeader>
 
+          {/* Banner do MODO CONTÍNUO (ativo ou pronto) */}
+          <div
+            className={cn(
+              'p-3 rounded-lg border text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 transition-all',
+              isContinuousActive
+                ? 'bg-emerald-50/90 border-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-800'
+                : 'bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-800',
+            )}
+          >
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'h-2 w-2 rounded-full',
+                    isContinuousActive ? 'bg-emerald-500 animate-ping' : 'bg-slate-400',
+                  )}
+                />
+                <strong
+                  className={cn(
+                    'text-xs font-semibold',
+                    isContinuousActive
+                      ? 'text-emerald-900 dark:text-emerald-200'
+                      : 'text-slate-900 dark:text-slate-100',
+                  )}
+                >
+                  {isContinuousActive
+                    ? `Contínuo ATIVO — próximo lote em ${
+                        minutesUntilNext !== null ? `${minutesUntilNext} min` : 'breve'
+                      } (restam ${pendingCount})`
+                    : 'Modo Contínuo Disponível'}
+                </strong>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-tight">
+                {isContinuousActive
+                  ? 'Disparando automaticamente 15 mensagens a cada 15 min na janela 8h-18h (seg a sáb). Para quando zerar pendentes, pausar régua ou clicar em Parar.'
+                  : 'Automatiza o envio de 15 em 15 minutos sem precisar clicar manualmente a cada lote.'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {isContinuousActive ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleStopContinuous}
+                  disabled={togglingContinuous}
+                  className="h-7 text-xs px-3 gap-1 shadow-xs"
+                >
+                  {togglingContinuous ? (
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Square className="h-3 w-3 fill-current" />
+                  )}
+                  <span>Parar</span>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={handleStartContinuousClick}
+                  disabled={
+                    togglingContinuous || pendingCount === 0 || !reguaIsActive || sendingBatch
+                  }
+                  className="h-7 text-xs px-3 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                >
+                  {togglingContinuous ? (
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Play className="h-3 w-3 fill-current" />
+                  )}
+                  <span>Disparo Contínuo</span>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {!reguaIsActive && (
+            <div className="p-2.5 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              <span>
+                <strong>Atenção:</strong> A régua geral de automações está pausada manualmente via{' '}
+                <code>app_controls</code>. Os disparos (manuais ou contínuos) respeitam essa trava e
+                permanecem suspensos até que a régua seja retomada.
+              </span>
+            </div>
+          )}
+
           {/* Cards com Métricas da Auditoria Exata */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-1">
             <div className="bg-slate-50 dark:bg-slate-900 border rounded-lg p-2.5 text-center">
               <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
                 Total Abordados
@@ -203,6 +399,58 @@ export function EbookResendModalControl() {
             </div>
           </div>
 
+          {/* Aviso dedicado de NÚMEROS INVÁLIDOS / CORROMPIDOS (Item 2) */}
+          {invalidCount > 0 && (
+            <div className="border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/30 rounded-lg p-2.5 text-xs text-rose-900 dark:text-rose-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <PhoneOff className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                  <span>
+                    <strong>Números inválidos: {invalidCount}</strong> — excluídos dos pendentes
+                    para proteger a Meta API e não falhar envios.
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowInvalidList(!showInvalidList)}
+                  className="h-6 text-[11px] px-2 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40 gap-1"
+                >
+                  <span>{showInvalidList ? 'Ocultar' : 'Ver motivos'}</span>
+                  {showInvalidList ? (
+                    <ChevronUp className="h-3 w-3" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+
+              {showInvalidList && (
+                <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-900/40 max-h-36 overflow-y-auto space-y-1 divide-y divide-rose-100 dark:divide-rose-900/30">
+                  {auditData?.invalid_phones?.map((inv) => (
+                    <div
+                      key={inv.id}
+                      className="pt-1 first:pt-0 flex items-center justify-between gap-2"
+                    >
+                      <div className="truncate">
+                        <span className="font-semibold">{inv.name}</span>{' '}
+                        <code className="text-[10px] bg-rose-100 dark:bg-rose-900/60 px-1 py-0.2 rounded text-rose-800 dark:text-rose-300">
+                          {inv.raw_phone}
+                        </code>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] px-1 py-0 border-rose-300 text-rose-700 shrink-0"
+                      >
+                        {inv.reason}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Avisos de Segurança e Regras Aplicadas */}
           <div className="space-y-2 text-xs bg-slate-50 dark:bg-slate-900 border rounded-lg p-3">
             <div className="flex items-start gap-2">
@@ -220,8 +468,11 @@ export function EbookResendModalControl() {
                     não são atropelados.
                   </li>
                   <li>
-                    <strong>Anti-flood:</strong> envia até 15 por ciclo, respeitando limites da Meta
-                    Graph API.
+                    <strong>Anti-flood:</strong> envia até 15 por ciclo, com intervalo &gt;= 15 min.
+                  </li>
+                  <li>
+                    <strong>Validação estrita de telefone:</strong> descarta duplicações e números
+                    compridos (&gt; 13 dígitos) para nunca tomar erro #131009 da Meta.
                   </li>
                   <li>
                     <strong>Formato consertado:</strong> link público legítimo do Google Drive no
@@ -278,7 +529,7 @@ export function EbookResendModalControl() {
               </Button>
             </div>
 
-            <div className="border rounded-lg max-h-44 overflow-y-auto divide-y text-xs bg-white dark:bg-slate-950">
+            <div className="border rounded-lg max-h-40 overflow-y-auto divide-y text-xs bg-white dark:bg-slate-950">
               {auditData?.eligible_pending?.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground">
                   <CheckCircle2 className="h-6 w-6 mx-auto text-emerald-600 mb-1" />
@@ -328,21 +579,60 @@ Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitório
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setModalOpen(false)}
-              className="text-xs"
-            >
-              Fechar
-            </Button>
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t flex flex-col sm:flex-row sm:justify-between items-center">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setModalOpen(false)}
+                className="text-xs"
+              >
+                Fechar
+              </Button>
 
+              {/* Botão de Disparo Contínuo no Footer */}
+              {isContinuousActive ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleStopContinuous}
+                  disabled={togglingContinuous}
+                  className="text-xs gap-1"
+                >
+                  <Square className="h-3 w-3 fill-current" />
+                  <span>Parar Modo Contínuo</span>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleStartContinuousClick}
+                  disabled={togglingContinuous || pendingCount === 0 || !reguaIsActive}
+                  className="text-xs gap-1 border-emerald-400 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
+                >
+                  <Play className="h-3 w-3 fill-current text-emerald-600" />
+                  <span>Iniciar Contínuo</span>
+                </Button>
+              )}
+            </div>
+
+            {/* Botão de Disparo Manual de 1 Lote */}
             <Button
               size="sm"
               onClick={handleTriggerSendClick}
-              disabled={pendingCount === 0 || loadingAudit || sendingBatch}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5 font-medium shadow-xs"
+              disabled={
+                pendingCount === 0 ||
+                loadingAudit ||
+                sendingBatch ||
+                isContinuousActive ||
+                !reguaIsActive
+              }
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5 font-medium shadow-xs w-full sm:w-auto"
+              title={
+                isContinuousActive
+                  ? 'Modo Contínuo está ativo (disparos ocorrem automaticamente)'
+                  : undefined
+              }
             >
               {sendingBatch ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -352,20 +642,101 @@ Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitório
               <span>
                 {sendingBatch
                   ? 'Enviando Lote...'
-                  : `Disparar Reenvio (${Math.min(pendingCount, 15)} clientes no lote de agora)`}
+                  : `Disparar Reenvio Manual (${Math.min(pendingCount, 15)} clientes)`}
               </span>
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Confirmação Final do Disparo */}
+      {/* Modal de Confirmação do MODO CONTÍNUO */}
+      <Dialog open={confirmContinuousOpen} onOpenChange={setConfirmContinuousOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Play className="h-5 w-5 text-emerald-600" />
+              <span>Ativar Disparo Contínuo</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs pt-1.5 space-y-2">
+              <p>
+                O Modo Contínuo irá disparar{' '}
+                <strong className="text-slate-900 dark:text-slate-100">
+                  1 lote de 15 clientes imediatamente
+                </strong>{' '}
+                e automaticamente programará os próximos lotes de 15 a cada{' '}
+                <strong className="text-slate-900 dark:text-slate-100">15 minutos</strong>.
+              </p>
+              <div className="bg-slate-50 dark:bg-slate-900 border rounded p-2 space-y-1 text-[11px]">
+                <p>
+                  <strong>Regras do Modo Contínuo:</strong>
+                </p>
+                <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                  <li>Envia na janela comercial das 8h às 18h horário de Brasília (seg a sáb).</li>
+                  <li>
+                    Fora da janela ou aos domingos, aguarda automaticamente as 8h do próximo dia
+                    útil.
+                  </li>
+                  <li>Para automaticamente quando os pendentes chegarem a 0.</li>
+                  <li>Para se a régua for pausada ou se você clicar no botão &quot;Parar&quot;.</li>
+                  <li>
+                    Anti-flood rigoroso mantido (máx 15 por lote com &gt;= 15 min de intervalo).
+                  </li>
+                </ul>
+              </div>
+
+              {!isCommercialWindow && (
+                <div className="p-2.5 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs mt-2">
+                  <span className="font-semibold block mb-1">
+                    ⚠️ Atenção: Fora da Janela Comercial (8h-18h Brasília)
+                  </span>
+                  <label className="flex items-center gap-2 cursor-pointer mt-1">
+                    <input
+                      type="checkbox"
+                      checked={forceOutsideWindow}
+                      onChange={(e) => setForceOutsideWindow(e.target.checked)}
+                      className="rounded border-amber-400"
+                    />
+                    <span>Desejo disparar o 1º lote mesmo fora do horário comercial</span>
+                  </label>
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmContinuousOpen(false)}
+              disabled={togglingContinuous}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleConfirmStartContinuous}
+              disabled={togglingContinuous || (!isCommercialWindow && !forceOutsideWindow)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 font-medium"
+            >
+              {togglingContinuous ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : (
+                <Play className="h-3.5 w-3.5 fill-current mr-1" />
+              )}
+              <span>{togglingContinuous ? 'Ativando...' : 'Iniciar Modo Contínuo'}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação Final do Disparo Manual */}
       <Dialog open={confirmSendOpen} onOpenChange={setConfirmSendOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <AlertTriangle className="h-5 w-5 text-amber-500" />
-              <span>Confirmar Disparo de Reenvio de E-book</span>
+              <span>Confirmar Disparo Manual do Lote</span>
             </DialogTitle>
             <DialogDescription className="text-xs pt-1.5 space-y-2">
               <p>
@@ -426,7 +797,7 @@ Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitório
         </DialogContent>
       </Dialog>
 
-      {/* Indicador de envio fixo global enquanto o lote está sendo processado */}
+      {/* Indicador de envio fixo global enquanto lote manual está sendo processado */}
       {sendingBatch && (
         <div className="fixed bottom-4 right-4 z-50 bg-blue-600 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
           <RefreshCw className="h-4 w-4 animate-spin shrink-0" />
