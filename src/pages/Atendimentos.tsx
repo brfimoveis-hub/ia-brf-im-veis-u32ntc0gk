@@ -33,6 +33,7 @@ import {
 } from 'lucide-react'
 import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
 import { BiaAvatar } from '@/components/common/BiaAvatar'
+import { ReguaPauseControl } from '@/components/customers/ReguaPauseControl'
 import { sendManualReply } from '@/services/conversations'
 import { sendWhatsAppMessages } from '@/services/meta_whatsapp'
 import { toast } from '@/hooks/use-toast'
@@ -530,9 +531,12 @@ export default function Atendimentos() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center flex-wrap gap-2 self-start sm:self-auto">
+          {/* Controle Manual URGENTE de Parar/Retomar Régua */}
+          <ReguaPauseControl />
+
           {/* Contadores */}
-          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border px-3 py-1.5 rounded-lg text-xs shadow-sm">
+          <div className="hidden lg:flex items-center gap-1.5 bg-white dark:bg-slate-900 border px-3 py-1.5 rounded-lg text-xs shadow-sm">
             <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-medium text-slate-700 dark:text-slate-300">
               <strong className="text-slate-900 dark:text-white">{totalActive24h}</strong> ativas

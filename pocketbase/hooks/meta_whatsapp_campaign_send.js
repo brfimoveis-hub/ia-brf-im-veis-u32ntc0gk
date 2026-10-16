@@ -1022,6 +1022,15 @@ routerAdd(
 
 // 4. CRON AGENDADOR: A cada 1 minuto, checa se há campanhas 'sending' cujo next_batch_at já passou
 cronAdd('process_remarketing_batches_cron', '* * * * *', () => {
+  // TRAVA GLOBAL DE PAUSA MANUAL (app_controls: regua_automations_active)
+  try {
+    const ctrl = $app.findFirstRecordByFilter('app_controls', "key = 'regua_automations_active'")
+    if (ctrl && !ctrl.getBool('is_active')) {
+      // Régua pausada: não processa lotes de campanhas de remarketing
+      return
+    }
+  } catch (_) {}
+
   const nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
   let activeCampaigns = []

@@ -13,9 +13,52 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   var app = $app
 
   // ============================================================================
+  // 0. TRAVA GLOBAL DE PAUSA MANUAL (app_controls: regua_automations_active)
+  // Checada antes de qualquer processamento e a cada cliente do lote.
+  // ============================================================================
+  function isReguaActiveNow() {
+    try {
+      var ctrl = app.findFirstRecordByFilter('app_controls', "key = 'regua_automations_active'")
+      if (ctrl) {
+        return !!ctrl.getBool('is_active')
+      }
+    } catch (_) {
+      try {
+        var row = app
+          .db()
+          .newQuery(
+            "SELECT is_active FROM app_controls WHERE key = 'regua_automations_active' LIMIT 1",
+          )
+          .one()
+        if (row) {
+          return row.is_active === 1 || row.is_active === true || row.is_active === '1'
+        }
+      } catch (_) {}
+    }
+    // Por segurança máxima, se não configurado ou erro, pausado
+    return false
+  }
+
+  if (!isReguaActiveNow()) {
+    console.log(
+      '[BIA_PERSISTENCE] Régua de automações está PAUSADA MANUALMENTE (app_controls). Ciclo ignorado sem envios e sem alterar agendamentos.',
+    )
+    return
+  }
+
+  // ============================================================================
   // 1. PONTO ÚNICO DE ENVIO DE RETOMADAS / MARKETING (TEXTO E DOCUMENTOS)
   // ============================================================================
   function sendPersistenceMarketingMessage(customer, text, userRecord, stepName, documentMedia) {
+    // Checagem inline de pausa: se o usuário pausar durante o processamento do lote,
+    // interrompe envios pendentes imediatamente!
+    if (!isReguaActiveNow()) {
+      console.log(
+        '[BIA_PERSISTENCE] [sendPersistenceMarketingMessage] Régua pausada durante o lote! Cancelando envio.',
+      )
+      return false
+    }
+
     if (!text || typeof text !== 'string') return false
     var cleaned = cleanWhatsAppFormat(text)
     if (!cleaned || cleaned.length < 5) return false
@@ -93,6 +136,19 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       console.warn('[BIA_PERSISTENCE] Aviso dedup: ' + dedupErr.message)
     }
 
+    // Se houver documento/link legítimo de Drive/PDF, asseguramos que o link esteja também
+    // presente de forma explícita no texto da mensagem caso ainda não esteja.
+    // Desta forma, mesmo se a Meta recusar o tipo 'document' (ex.: link externo do Drive bloqueado),
+    // o cliente RECEBE o e-book clicável e acessível imediatamente no WhatsApp!
+    var textToSend = cleaned
+    if (documentMedia && documentMedia.link) {
+      var directLink = documentMedia.link
+      if (textToSend.indexOf(directLink) === -1) {
+        var docLabel = documentMedia.caption || 'Material oficial'
+        textToSend = textToSend + '\n\n📄 *' + docLabel + ':*\n' + directLink
+      }
+    }
+
     // Registrar conversa na tabela conversations
     try {
       var convCol = app.findCollectionByNameOrId('conversations')
@@ -100,7 +156,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       conv.set('user_id', userId || customer.getString('user_id') || '')
       conv.set('customer_id', customerId)
       conv.set('sender', 'ai')
-      conv.set('content', cleaned)
+      conv.set('content', textToSend)
       conv.set('channel', 'whatsapp')
       app.save(conv)
     } catch (cErr) {
@@ -125,7 +181,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
           recipient_type: 'individual',
           to: toPhone,
           type: 'text',
-          text: { preview_url: false, body: cleaned },
+          text: { preview_url: true, body: textToSend },
         }),
         timeout: 20,
       })
@@ -171,7 +227,8 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
         } else {
           console.warn(
             '[BIA_PERSISTENCE] Envio do documento retornou status ' +
-              (docRes ? docRes.statusCode : 'null'),
+              (docRes ? docRes.statusCode : 'null') +
+              ' (link já entregue no corpo do texto)',
           )
         }
       } catch (docErr) {
@@ -933,31 +990,46 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       // Buscar candidatos em ai_knowledge_files (tanto com arquivo físico quanto registros com link de Drive)
       var candidateRecords = []
       if (result.propertyId) {
-        candidateRecords = app.findRecordsByFilter(
-          'ai_knowledge_files',
-          "is_active = true && property_id = '" + result.propertyId + "'",
-          '-updated',
-          20,
-          0,
-        )
+        try {
+          candidateRecords = app.findRecordsByFilter(
+            'ai_knowledge_files',
+            "is_active = true && property_id = '" + result.propertyId + "'",
+            '-updated',
+            30,
+            0,
+          )
+        } catch (_) {}
       }
       if ((!candidateRecords || candidateRecords.length === 0) && result.launchName) {
         var searchName = result.launchName
           .replace(/residence|residencial|edifício|lançamento/gi, '')
           .trim()
         if (searchName.length >= 3) {
-          candidateRecords = app.findRecordsByFilter(
-            'ai_knowledge_files',
-            "is_active = true && (name ~ '" +
-              searchName +
-              "' || enterprise ~ '" +
-              searchName +
-              "')",
-            '-updated',
-            20,
-            0,
-          )
+          try {
+            candidateRecords = app.findRecordsByFilter(
+              'ai_knowledge_files',
+              "is_active = true && (name ~ '" +
+                searchName +
+                "' || enterprise ~ '" +
+                searchName +
+                "')",
+              '-updated',
+              30,
+              0,
+            )
+          } catch (_) {}
         }
+      }
+
+      // Fallback global de segurança para o lançamento oficial em foco (Vistage Residence):
+      // Garante que o registro BOOK VISTAGE RESIDENCE.pdf (ID fcvyoatlxt56do2) seja sempre incluído!
+      if (!candidateRecords || candidateRecords.length === 0) {
+        try {
+          var defaultBookRec = app.findRecordById('ai_knowledge_files', 'fcvyoatlxt56do2')
+          if (defaultBookRec && defaultBookRec.getBool('is_active')) {
+            candidateRecords = [defaultBookRec]
+          }
+        } catch (_) {}
       }
 
       var legitimateDocMedia = null
@@ -1246,6 +1318,12 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     )
 
     for (var pIdx = 0; pIdx < promiseCustomers.length; pIdx++) {
+      if (!isReguaActiveNow()) {
+        console.log(
+          '[BIA_PERSISTENCE] Régua pausada durante processamento de promessas. Abortando lote.',
+        )
+        break
+      }
       var pCust = promiseCustomers[pIdx]
       var pCustId = pCust.id
 
@@ -1320,6 +1398,12 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     )
 
     for (var sIdx = 0; sIdx < scheduledCustomers.length; sIdx++) {
+      if (!isReguaActiveNow()) {
+        console.log(
+          '[BIA_PERSISTENCE] Régua pausada durante processamento de agendados. Abortando lote.',
+        )
+        break
+      }
       if (executedCount >= scheduledBatchLimit) {
         console.log(
           '[BIA_PERSISTENCE] Limite de lote seguro por execução alcançado (' +
@@ -1525,6 +1609,12 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     )
 
     for (var idIdx = 0; idIdx < idleCustomers.length; idIdx++) {
+      if (!isReguaActiveNow()) {
+        console.log(
+          '[BIA_PERSISTENCE] Régua pausada durante processamento de novos entrantes. Abortando lote.',
+        )
+        break
+      }
       if (executedCount >= idleBatchLimit) {
         break
       }
