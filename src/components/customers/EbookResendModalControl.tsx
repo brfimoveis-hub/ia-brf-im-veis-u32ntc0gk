@@ -181,6 +181,32 @@ export function EbookResendModalControl() {
   }
 
   const handleTriggerSendClick = () => {
+    if (sendingBatch) {
+      toast({
+        title: 'Disparo em andamento',
+        description: 'Um lote já está sendo enviado no momento. Aguarde a conclusão.',
+      })
+      return
+    }
+
+    if (pendingCount === 0) {
+      toast({
+        title: 'Fila zerada',
+        description:
+          'Não há clientes elegíveis pendentes de e-book no momento. Todos já receberam ou foram excluídos por regras de segurança.',
+      })
+      return
+    }
+
+    if (isContinuousActive) {
+      toast({
+        title: 'Modo Contínuo está ativo',
+        description:
+          'Os envios estão ocorrendo automaticamente a cada 15 min. Se desejar disparar manualmente, pare o Modo Contínuo primeiro.',
+      })
+      return
+    }
+
     setConfirmSendOpen(true)
   }
 
@@ -193,16 +219,21 @@ export function EbookResendModalControl() {
       })
 
       if (res && res.success) {
+        const remaining = res.remaining_pending ?? 0
+        const dispatched = res.dispatched_count ?? 0
+        const failed = res.failed_count ?? 0
+
         toast({
           title: '🚀 Lote de E-book Despachado!',
-          description: `${res.dispatched_count} clientes receberam o material oficial Vistage. ${
-            res.failed_count > 0 ? `${res.failed_count} falha(s). ` : ''
-          }Faltam ${res.remaining_pending} pendentes.`,
+          description: `${dispatched} clientes receberam o material oficial Vistage.${
+            failed > 0 ? ` ${failed} falha(s).` : ''
+          } Faltam ${remaining} pendentes.`,
         })
         setConfirmSendOpen(false)
         await loadAudit(false)
       } else {
-        throw new Error(res?.error || res?.message || 'Erro no envio do lote')
+        const errorMsg = res?.error || res?.message || 'Erro no envio do lote'
+        throw new Error(errorMsg)
       }
     } catch (err: unknown) {
       console.error('[EbookResendModalControl] Erro ao disparar lote:', err)
@@ -428,11 +459,13 @@ export function EbookResendModalControl() {
           {!reguaIsActive && (
             <div className="p-2.5 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-              <span>
-                <strong>Atenção:</strong> A régua geral de automações está pausada manualmente via{' '}
-                <code>app_controls</code>. Os disparos (manuais ou contínuos) respeitam essa trava e
-                permanecem suspensos até que a régua seja retomada.
-              </span>
+              <div className="space-y-0.5">
+                <span className="block">
+                  <strong>Aviso:</strong> A régua geral automática está pausada manualmente via{' '}
+                  <code>app_controls</code>. O <strong>disparo manual funciona normalmente</strong>{' '}
+                  por sua ordem, mas o Modo Contínuo automático aguarda a régua ser retomada.
+                </span>
+              </div>
             </div>
           )}
 
@@ -803,18 +836,19 @@ Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitório
             <Button
               size="sm"
               onClick={handleTriggerSendClick}
-              disabled={
-                pendingCount === 0 ||
-                loadingAudit ||
-                sendingBatch ||
-                isContinuousActive ||
-                !reguaIsActive
-              }
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5 font-medium shadow-xs w-full sm:w-auto"
+              disabled={sendingBatch}
+              className={cn(
+                'text-white text-xs gap-1.5 font-medium shadow-xs w-full sm:w-auto transition-colors',
+                pendingCount === 0 || isContinuousActive
+                  ? 'bg-blue-600/70 hover:bg-blue-600/80 cursor-pointer'
+                  : 'bg-blue-600 hover:bg-blue-700',
+              )}
               title={
                 isContinuousActive
                   ? 'Modo Contínuo está ativo (disparos ocorrem automaticamente)'
-                  : undefined
+                  : pendingCount === 0
+                    ? 'Nenhum cliente pendente no momento'
+                    : 'Disparar lote manual de até 15 clientes'
               }
             >
               {sendingBatch ? (
@@ -825,7 +859,9 @@ Faz sentido para você conhecer mais detalhes das opções de 2 ou 3 dormitório
               <span>
                 {sendingBatch
                   ? 'Enviando Lote...'
-                  : `Disparar Reenvio Manual (${Math.min(pendingCount, 15)} clientes)`}
+                  : pendingCount === 0
+                    ? 'Sem Clientes Pendentes'
+                    : `Disparar Reenvio Manual (${Math.min(pendingCount, 15)} clientes)`}
               </span>
             </Button>
           </DialogFooter>

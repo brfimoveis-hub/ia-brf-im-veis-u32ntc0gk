@@ -835,16 +835,8 @@ routerAdd('POST', '/backend/v1/ebook-resend/batch', (c) => {
   const now = new Date()
   const nowMs = now.getTime()
 
-  // 1. Verificar régua geral
+  // 1. Checagem informativa da régua geral (disparo manual funciona mesmo com régua automática pausada)
   const isReguaActive = isReguaAutomationsActive()
-  if (!isReguaActive) {
-    return c.json(400, {
-      success: false,
-      regua_paused: true,
-      error:
-        'A régua de automações está pausada manualmente (app_controls). Disparo não autorizado.',
-    })
-  }
 
   // 2. Credenciais Meta WhatsApp
   let metaToken = ''
