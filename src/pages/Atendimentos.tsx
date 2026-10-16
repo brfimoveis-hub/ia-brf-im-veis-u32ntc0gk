@@ -34,6 +34,7 @@ import {
 import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
 import { BiaAvatar } from '@/components/common/BiaAvatar'
 import { ReguaPauseControl } from '@/components/customers/ReguaPauseControl'
+import { EbookResendModalControl } from '@/components/customers/EbookResendModalControl'
 import { sendManualReply } from '@/services/conversations'
 import { sendWhatsAppMessages } from '@/services/meta_whatsapp'
 import { toast } from '@/hooks/use-toast'
@@ -534,6 +535,9 @@ export default function Atendimentos() {
         <div className="flex items-center flex-wrap gap-2 self-start sm:self-auto">
           {/* Controle Manual URGENTE de Parar/Retomar Régua */}
           <ReguaPauseControl />
+
+          {/* Controle de Reenvio Dirigido de E-book */}
+          <EbookResendModalControl />
 
           {/* Contadores */}
           <div className="hidden lg:flex items-center gap-1.5 bg-white dark:bg-slate-900 border px-3 py-1.5 rounded-lg text-xs shadow-sm">
