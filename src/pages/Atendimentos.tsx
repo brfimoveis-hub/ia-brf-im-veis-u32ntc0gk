@@ -30,6 +30,7 @@ import {
   Mic,
   Smile,
   Paperclip,
+  Mail,
 } from 'lucide-react'
 import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
 import { BiaAvatar } from '@/components/common/BiaAvatar'
@@ -822,7 +823,7 @@ export default function Atendimentos() {
                         return null
                       })()}
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Phone className="h-3 w-3" />
                         {selectedCustomer?.phone
@@ -831,6 +832,18 @@ export default function Atendimentos() {
                             ? formatPhone(currentThread.customer_phone)
                             : 'Sem telefone'}
                       </span>
+                      {selectedCustomer?.email && (
+                        <>
+                          <span>•</span>
+                          <span
+                            className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/40"
+                            title="E-mail capturado pela Bia no atendimento"
+                          >
+                            <Mail className="h-3 w-3" />
+                            {selectedCustomer.email}
+                          </span>
+                        </>
+                      )}
                       <span>•</span>
                       <ChannelBadge channel={currentThread?.channel || 'whatsapp'} />
                     </div>

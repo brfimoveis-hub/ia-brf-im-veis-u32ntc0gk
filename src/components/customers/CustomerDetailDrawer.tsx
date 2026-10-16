@@ -36,6 +36,7 @@ import {
   Save,
   Compass,
   Mail,
+  Phone,
 } from 'lucide-react'
 import { cn, formatPhone } from '@/lib/utils'
 import { useAuth } from '@/hooks/use-auth'
@@ -255,9 +256,20 @@ export function CustomerDetailDrawer({
                     <h2 className="text-lg font-bold text-foreground leading-none mb-1">
                       {customer.name}
                     </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {customer.phone ? formatPhone(customer.phone) : customer.email}
-                    </p>
+                    <div className="flex flex-col gap-0.5 text-sm text-muted-foreground">
+                      {customer.phone && (
+                        <p className="flex items-center gap-1">
+                          <Phone className="h-3 w-3 text-muted-foreground/70" />
+                          {formatPhone(customer.phone)}
+                        </p>
+                      )}
+                      {(customer.email || customer.email_1_value) && (
+                        <p className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium text-xs">
+                          <Mail className="h-3 w-3" />
+                          {customer.email || customer.email_1_value}
+                        </p>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant="secondary" className="font-medium">
                         {customer.status || '1. Acolhimento'}

@@ -2883,6 +2883,7 @@ ${safeCombinedContextText || '(Nenhum contexto adicional na base)'}`
     let detectedPromisePending = false
     let detectedHandover = ''
     let detectedProfile = ''
+    let detectedEmail = ''
 
     try {
       const chatRes = $ai.chat({
@@ -3299,6 +3300,11 @@ ${safePropertyContext}`
       detectedPermuta = true
     }
 
+    const earlyEmailMatch = responseText.match(/\[EMAIL:\s*([^\s\]]+@[^\s\]]+)\]/i)
+    if (earlyEmailMatch && earlyEmailMatch[1]) {
+      detectedEmail = earlyEmailMatch[1].trim().toLowerCase()
+    }
+
     // Função centralizada para remoção completa das tags de máquina do texto
     function stripAllMachineTags(rawText) {
       if (!rawText) return ''
@@ -3313,6 +3319,7 @@ ${safePropertyContext}`
       out = out.replace(/\[PRICE_RANGE:\s*.*?\]/gi, '')
       out = out.replace(/\[NEIGHBORHOOD:\s*.*?\]/gi, '')
       out = out.replace(/\[URGENCY:\s*.*?\]/gi, '')
+      out = out.replace(/\[EMAIL:\s*.*?\]/gi, '')
       out = out.replace(/\[PERMUTA\]/gi, '')
       out = out.replace(/\[AUDIO\]/gi, '')
       out = out.replace(/\[VIDEO\]/gi, '')
@@ -3909,6 +3916,11 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
 
     if (responseText.includes('[PERMUTA]')) {
       detectedPermuta = true
+    }
+
+    const lateEmailMatch = responseText.match(/\[EMAIL:\s*([^\s\]]+@[^\s\]]+)\]/i)
+    if (lateEmailMatch && lateEmailMatch[1]) {
+      detectedEmail = lateEmailMatch[1].trim().toLowerCase()
     }
 
     // Higieniza completamente qualquer resquício de tags
@@ -4730,6 +4742,38 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       if (detectedUrgency > 0) {
         custToUpdate.set('urgency', detectedUrgency)
         crmUpdated = true
+      }
+
+      // CAPTURA E PERSISTÊNCIA DO E-MAIL DO CLIENTE (Pedido Mauro):
+      // Verifica tag [EMAIL: ...] da Bia ou extração direta por Regex da mensagem recebida do cliente
+      let capturedEmail = detectedEmail
+      if (!capturedEmail && custIncomingMsg) {
+        // Validação simples e robusta de formato de e-mail na mensagem do cliente
+        const directEmailMatch = custIncomingMsg.match(
+          /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/,
+        )
+        if (directEmailMatch) {
+          capturedEmail = directEmailMatch[0].trim().toLowerCase()
+        }
+      }
+
+      if (capturedEmail) {
+        // Sanitiza o formato
+        const cleanCapturedEmail = capturedEmail
+          .replace(/[,;]+$/, '')
+          .trim()
+          .toLowerCase()
+        const currentCustEmail = (custToUpdate.getString('email') || '').trim().toLowerCase()
+        if (cleanCapturedEmail && cleanCapturedEmail !== currentCustEmail) {
+          custToUpdate.set('email', cleanCapturedEmail)
+          if (!custToUpdate.getString('email_1_value')) {
+            custToUpdate.set('email_1_value', cleanCapturedEmail)
+          }
+          crmUpdated = true
+          console.log(
+            `[AI_REPLY] [EMAIL_CAPTURED] E-mail do cliente capturado e gravado no CRM: "${cleanCapturedEmail}" (customer=${customerId})`,
+          )
+        }
       }
 
       if (detectedHandover) {
