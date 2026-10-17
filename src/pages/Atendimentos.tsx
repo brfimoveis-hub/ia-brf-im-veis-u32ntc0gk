@@ -36,6 +36,7 @@ import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
 import { BiaAvatar } from '@/components/common/BiaAvatar'
 import { ReguaPauseControl } from '@/components/customers/ReguaPauseControl'
 import { EbookResendModalControl } from '@/components/customers/EbookResendModalControl'
+import { ImportPortalLeadModal } from '@/components/customers/ImportPortalLeadModal'
 import { sendManualReply } from '@/services/conversations'
 import { sendWhatsAppMessages } from '@/services/meta_whatsapp'
 import { toast } from '@/hooks/use-toast'
@@ -534,10 +535,20 @@ export default function Atendimentos() {
         </div>
 
         <div className="flex items-center flex-wrap gap-2 self-start sm:self-auto">
+          {/* Botão de Importação Rápida de Lead de Portais Externos */}
+          <ImportPortalLeadModal
+            onSuccess={(newCustId) => {
+              loadThreads(true)
+              if (newCustId) {
+                selectConversation(newCustId)
+              }
+            }}
+          />
+
           {/* Controle Manual URGENTE de Parar/Retomar Régua */}
           <ReguaPauseControl />
 
-          {/* Controle de Reenvio Dirigido de E-book */}
+          {/* Controle de Reenvio Dirigido de E-book (Modo Contínuo intocado) */}
           <EbookResendModalControl />
 
           {/* Contadores */}
