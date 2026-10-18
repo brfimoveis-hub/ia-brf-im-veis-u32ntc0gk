@@ -306,6 +306,14 @@ export function CustomerTable({
                           ? format(new Date(lead.last_sent_at), 'dd/MM/yyyy', { locale: ptBR })
                           : '—'
                       }
+                      const isSourceCol = col.key === 'source'
+                      const isIg =
+                        isSourceCol &&
+                        (String(val).toLowerCase().includes('instagram') ||
+                          String((lead as any).last_origin || '')
+                            .toLowerCase()
+                            .includes('instagram'))
+
                       return (
                         <TableCell
                           key={col.key}
@@ -315,7 +323,16 @@ export function CustomerTable({
                           )}
                           onClick={() => setSelectedCustomerId(lead.id)}
                         >
-                          {val}
+                          {isSourceCol && isIg ? (
+                            <Badge
+                              variant="outline"
+                              className="bg-gradient-to-r from-pink-500/10 to-purple-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20 text-[11px] gap-1 px-1.5 py-0 font-medium"
+                            >
+                              Instagram Direct
+                            </Badge>
+                          ) : (
+                            val
+                          )}
                         </TableCell>
                       )
                     })}

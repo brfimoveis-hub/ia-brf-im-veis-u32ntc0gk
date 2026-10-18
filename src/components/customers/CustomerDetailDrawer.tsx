@@ -270,10 +270,34 @@ export function CustomerDetailDrawer({
                         </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <Badge variant="secondary" className="font-medium">
                         {customer.status || '1. Acolhimento'}
                       </Badge>
+                      {(() => {
+                        const src = (customer.source || customer.last_origin || '').toLowerCase()
+                        const hasIg =
+                          src.includes('instagram') ||
+                          (customer.notes || '').includes('IG Sender ID')
+                        if (hasIg) {
+                          return (
+                            <Badge
+                              variant="outline"
+                              className="bg-gradient-to-r from-pink-500/10 to-purple-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20 text-xs gap-1"
+                            >
+                              Instagram Direct
+                            </Badge>
+                          )
+                        }
+                        return (
+                          <Badge
+                            variant="outline"
+                            className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs gap-1"
+                          >
+                            WhatsApp
+                          </Badge>
+                        )
+                      })()}
                       {customer.credit_analysis_status &&
                         customer.credit_analysis_status !== 'nao_oferecido' && (
                           <Badge
@@ -599,9 +623,15 @@ export function CustomerDetailDrawer({
                                     minute: '2-digit',
                                   })}
                                 </span>
-                                {!isClient && (
-                                  <CheckCircle2 className="h-3 w-3 text-primary/80 dark:text-green-400" />
-                                )}
+                                {msg.channel === 'instagram' ? (
+                                  <span className="text-[9px] font-semibold text-pink-600 dark:text-pink-400">
+                                    IG
+                                  </span>
+                                ) : (
+                                  !isClient && (
+                                    <CheckCircle2 className="h-3 w-3 text-primary/80 dark:text-green-400" />
+                                  )
+                                )}{' '}
                               </div>
                             </div>
                           </div>

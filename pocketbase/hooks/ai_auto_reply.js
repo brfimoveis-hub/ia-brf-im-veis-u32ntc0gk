@@ -5104,23 +5104,76 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     if (conversationChannel === 'instagram' && responseText) {
       try {
         const igNotes = customer.getString('notes') || ''
-        const igSenderIdMatch = igNotes.match(/IG Sender ID:\s*(\S+)/)
-        const igSenderId = igSenderIdMatch ? igSenderIdMatch[1] : ''
+        let igSenderIdMatch = igNotes.match(/IG Sender ID:\s*(\S+)/i)
+        let igSenderId = igSenderIdMatch ? igSenderIdMatch[1] : ''
+
+        if (!igSenderId) {
+          const lastOriginStr = customer.getString('last_origin') || ''
+          const lastOriginMatch = lastOriginStr.match(/(\d{10,25})/)
+          if (lastOriginMatch) igSenderId = lastOriginMatch[1]
+        }
+
+        // Janela de 24h da Meta para Instagram Messaging (regra oficial da Meta)
+        let isWithin24h = true
+        try {
+          const lastCustMsg = $app.findRecordsByFilter(
+            'conversations',
+            `customer_id = '${customerId}' && sender = 'customer'`,
+            '-created',
+            1,
+            0,
+          )
+          if (lastCustMsg.length > 0) {
+            const lastCustTime = new Date(lastCustMsg[0].getString('created')).getTime()
+            const diffHours = (new Date().getTime() - lastCustTime) / (1000 * 60 * 60)
+            if (diffHours > 24) {
+              isWithin24h = false
+              console.warn(
+                `[AI_REPLY] Instagram reply skipped: outside 24h standard messaging window (${diffHours.toFixed(1)}h ago) for customer=${customerId}`,
+              )
+            }
+          }
+        } catch (_) {}
+
         const igToken = userRecord
           ? userRecord.getString('meta_instagram_page_token') ||
+            userRecord.getString('meta_page_access_token') ||
             userRecord.getString('meta_capi_token') ||
             ''
           : ''
-        const igBusinessId = userRecord
-          ? userRecord.getString('meta_instagram_business_id') || ''
-          : ''
-        if (igSenderId && igToken) {
-          callMetaWithRetry(
-            'https://graph.facebook.com/v22.0/' + (igBusinessId || 'me') + '/messages',
+
+        if (igSenderId && igToken && isWithin24h) {
+          const igSendRes = callMetaWithRetry(
+            'https://graph.facebook.com/v22.0/me/messages',
             'POST',
             { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
-            JSON.stringify({ recipient: { id: igSenderId }, message: { text: responseText } }),
+            JSON.stringify({
+              recipient: { id: igSenderId },
+              message: { text: responseText },
+            }),
           )
+          if (igSendRes && igSendRes.statusCode >= 200 && igSendRes.statusCode < 300) {
+            console.log(
+              `[AI_REPLY] Instagram DM sent successfully to ${igSenderId} for customer=${customerId}`,
+            )
+          } else {
+            console.warn(
+              `[AI_REPLY] Instagram DM response status: ${igSendRes ? igSendRes.statusCode : 'null'}`,
+            )
+          }
+        } else if (!isWithin24h) {
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const igLog = new Record(logsCol)
+            igLog.set('user_id', userId || '')
+            igLog.set('type', 'instagram_window_expired')
+            igLog.set(
+              'message',
+              'Resposta da IA no Instagram não enviada: janela de 24 horas da Meta expirou para o lead.',
+            )
+            igLog.set('payload', JSON.stringify({ customer_id: customerId, sender_id: igSenderId }))
+            $app.saveNoValidate(igLog)
+          } catch (_) {}
         }
       } catch (igErr) {
         console.warn(`[AI_REPLY] Instagram send error (non-fatal): ${String(igErr)}`)

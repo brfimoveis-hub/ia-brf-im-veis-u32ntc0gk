@@ -95,10 +95,159 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
     return e.string(403, 'Forbidden: unable to resolve user for WhatsApp event')
   }
 
-  if (!body || body.object !== 'whatsapp_business_account') {
+  if (!body) {
     return e.string(404, 'Not Found')
   }
 
+  // Suporte a eventos de Instagram Direct no mesmo endpoint se o webhook da Meta enviar para esta URL
+  if (body.object === 'instagram' || body.object === 'page') {
+    try {
+      // Reusa o processador de Instagram
+      var nowIso = new Date().toISOString()
+      var nowBrStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      var pageToken =
+        user.getString('meta_instagram_page_token') ||
+        user.getString('meta_page_access_token') ||
+        user.getString('meta_capi_token') ||
+        ''
+
+      for (var entry of body.entry || []) {
+        var messagingList = entry.messaging || []
+        var recipientBusinessId = entry.id ? String(entry.id) : ''
+
+        for (var messaging of messagingList) {
+          if (messaging.message && messaging.message.is_echo) continue
+          if (messaging.delivery || messaging.read) continue
+
+          var senderId = messaging.sender ? String(messaging.sender.id) : ''
+          var recipientId = messaging.recipient
+            ? String(messaging.recipient.id)
+            : recipientBusinessId
+          if (!senderId) continue
+
+          var text = ''
+          if (messaging.message) {
+            if (messaging.message.text) {
+              text = messaging.message.text
+            } else if (messaging.message.attachments && messaging.message.attachments.length > 0) {
+              var attType = messaging.message.attachments[0].type || 'mídia'
+              text =
+                '[' +
+                (attType === 'audio' || attType === 'voice'
+                  ? 'Áudio'
+                  : attType.charAt(0).toUpperCase() + attType.slice(1)) +
+                ' Recebido do Instagram]'
+            } else if (messaging.message.quick_reply && messaging.message.quick_reply.payload) {
+              text = messaging.message.quick_reply.payload
+            }
+          } else if (messaging.postback && messaging.postback.title) {
+            text = messaging.postback.title
+          }
+
+          if (!text) text = '[Mensagem Recebida do Instagram]'
+
+          var igProfileName = ''
+          var igUsername = ''
+          if (pageToken && senderId) {
+            try {
+              var profRes = $http.send({
+                url: 'https://graph.facebook.com/v22.0/' + senderId + '?fields=name,username',
+                method: 'GET',
+                headers: { Authorization: 'Bearer ' + pageToken },
+                timeout: 10,
+              })
+              if (profRes && profRes.statusCode === 200 && profRes.json) {
+                igProfileName = profRes.json.name || ''
+                igUsername = profRes.json.username || ''
+              }
+            } catch (_) {}
+          }
+
+          var contactName =
+            igProfileName ||
+            (igUsername ? '@' + igUsername : '') ||
+            'Lead Instagram (' + senderId.substring(0, 6) + ')'
+
+          var customer = null
+          try {
+            customer = $app.findFirstRecordByFilter(
+              'customers',
+              'notes ~ {:sid} || last_origin ~ {:sid}',
+              { sid: senderId },
+            )
+          } catch (_) {}
+
+          var originLabel = 'Instagram Direct' + (igUsername ? ' (@' + igUsername + ')' : '')
+
+          if (!customer) {
+            try {
+              var customersCol = $app.findCollectionByNameOrId('customers')
+              customer = new Record(customersCol)
+              customer.set('user_id', userId)
+              customer.set('name', contactName)
+              if (igProfileName) customer.set('first_name', igProfileName.split(' ')[0])
+              customer.set('status', '1. Acolhimento')
+              customer.set('source', 'Instagram Direct')
+              customer.set('last_origin', originLabel)
+              customer.set('last_origin_at', nowIso)
+
+              var initialNotes =
+                '[Origem: ' +
+                originLabel +
+                ', ' +
+                nowBrStr +
+                ']\n' +
+                'IG Sender ID: ' +
+                senderId +
+                '\n' +
+                'IG Recipient ID: ' +
+                (recipientId || '') +
+                (igUsername ? '\nUsername: @' + igUsername : '')
+
+              customer.set('notes', initialNotes)
+              customer.set('origin_history', [
+                {
+                  source: originLabel,
+                  type: 'instagram_direct',
+                  date: nowIso,
+                  sender_id: senderId,
+                },
+              ])
+              $app.save(customer)
+            } catch (cErr) {
+              $app
+                .logger()
+                .error('Falha ao criar cliente IG no webhook unificado', 'error', String(cErr))
+              continue
+            }
+          }
+
+          try {
+            var convCol = $app.findCollectionByNameOrId('conversations')
+            var newMsg = new Record(convCol)
+            newMsg.set('customer_id', customer.id)
+            newMsg.set('user_id', userId)
+            newMsg.set('sender', 'customer')
+            newMsg.set('content', text)
+            newMsg.set('channel', 'instagram')
+            $app.save(newMsg)
+          } catch (mErr) {
+            $app
+              .logger()
+              .error('Falha ao salvar msg IG no webhook unificado', 'error', String(mErr))
+          }
+        }
+      }
+    } catch (uniIgErr) {
+      $app.logger().error('Erro no processamento IG unificado', 'error', String(uniIgErr))
+    }
+
+    return e.string(200, 'EVENT_RECEIVED')
+  }
+
+  if (body.object !== 'whatsapp_business_account') {
+    return e.string(404, 'Not Found')
+  }
   // Helper para normalizar e resolver a origem do lead a partir de qualquer entrada (referral Meta, texto com tag, etc.)
   function resolveLeadOrigin(contentStr, referralObj, displayPhoneStr) {
     var detected = {

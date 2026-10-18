@@ -1,99 +1,478 @@
-routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
-  const body = e.requestInfo().body || {}
-  const query = e.requestInfo().query || {}
-  const userId = query['user_id'] || query['uid'] || ''
+// Hook para POST /backend/v1/instagram/webhook e POST /backend/v1/instagram/webhook/{userId}
+// Trata mensagens recebidas pelo Instagram Direct via Webhooks da Meta
+// Normaliza para o mesmo formato interno (customers, leads, conversations channel='instagram')
+// Dispara o motor da Bia (via trigger em conversations) e permite resposta automática
 
-  if (!userId) return e.string(400, 'Missing user_id')
+function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
+  var userId = pathUserId || queryUserId || ''
 
-  let user = null
-  try {
-    user = $app.findRecordById('users', userId)
-  } catch (_) {}
-  if (!user) return e.string(403, 'Forbidden')
+  var user = null
+  if (userId) {
+    try {
+      user = $app.findRecordById('users', userId)
+    } catch (_) {}
+  }
 
-  if (!body || body.object !== 'instagram') return e.string(404, 'Not Found')
+  // Se não tem user pelo query/path, tenta encontrar pelo Instagram Business ID recebido no payload
+  if (!user && body && body.entry) {
+    try {
+      var entryId = body.entry[0] && body.entry[0].id ? String(body.entry[0].id) : ''
+      if (entryId) {
+        var usersByIg = $app.findRecordsByFilter(
+          'users',
+          'meta_instagram_business_id = {:bid}',
+          'created',
+          2,
+          0,
+          { bid: entryId },
+        )
+        if (usersByIg && usersByIg.length > 0) {
+          user = usersByIg[0]
+          userId = user.id
+        }
+      }
+    } catch (_) {}
+  }
 
-  try {
-    for (const entry of body.entry || []) {
-      for (const messaging of entry.messaging || []) {
-        const senderId = messaging.sender ? messaging.sender.id : ''
-        const recipientId = messaging.recipient ? messaging.recipient.id : ''
-        if (!senderId) continue
+  // Fallback: se há apenas 1 usuário no sistema, assume ele
+  if (!user) {
+    try {
+      var allUsers = $app.findRecordsByFilter('users', "email != ''", 'created', 2, 0)
+      if (allUsers && allUsers.length === 1) {
+        user = allUsers[0]
+        userId = user.id
+      }
+    } catch (_) {}
+  }
 
-        const text = messaging.message
-          ? messaging.message.text || '[Mensagem Recebida]'
-          : '[Mensagem Recebida]'
-        if (!text) continue
+  if (!user) {
+    $app.logger().error('Instagram Webhook: nenhum usuário encontrado para associar o lead')
+    return
+  }
 
-        let customer = null
-        try {
-          customer = $app.findFirstRecordByFilter(
-            'customers',
-            "notes ~ '" + senderId + "' && source = 'Meta'",
-          )
-        } catch (_) {}
+  var nowIso = new Date().toISOString()
+  var nowBrStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
-        if (!customer) {
-          try {
-            const customersCol = $app.findCollectionByNameOrId('customers')
-            customer = new Record(customersCol)
-            customer.set('user_id', userId)
-            customer.set('name', 'Lead-Instagram-' + senderId.substring(0, 8))
-            customer.set('status', 'Novo')
-            customer.set('source', 'Meta')
-            customer.set(
-              'notes',
-              'IG Sender ID: ' +
-                senderId +
-                '\nIG Recipient ID: ' +
-                (recipientId || '') +
-                '\nOrigin: Meta Instagram',
-            )
-            $app.save(customer)
-          } catch (err) {
-            $app
-              .logger()
-              .error('Failed to create customer from Instagram webhook', 'error', String(err))
-            continue
+  // Obter token do Instagram / Facebook Page para buscar perfil do remetente na Graph API
+  var pageToken =
+    user.getString('meta_instagram_page_token') ||
+    user.getString('meta_page_access_token') ||
+    user.getString('meta_capi_token') ||
+    ''
+
+  for (var entry of body.entry || []) {
+    // Eventos do tipo messaging (DMs do Instagram)
+    var messagingList = entry.messaging || []
+    var recipientBusinessId = entry.id ? String(entry.id) : ''
+
+    for (var messaging of messagingList) {
+      // Ignora echo da própria página/Bia ou entregas de mensagens (delivery / read)
+      if (messaging.message && messaging.message.is_echo) {
+        continue
+      }
+      if (messaging.delivery || messaging.read) {
+        continue
+      }
+
+      var senderId = messaging.sender ? String(messaging.sender.id) : ''
+      var recipientId = messaging.recipient ? String(messaging.recipient.id) : recipientBusinessId
+      if (!senderId) continue
+
+      // Extrai texto da mensagem
+      var text = ''
+      var isAudio = false
+      var mediaUrl = ''
+
+      if (messaging.message) {
+        if (messaging.message.text) {
+          text = messaging.message.text
+        } else if (messaging.message.attachments && messaging.message.attachments.length > 0) {
+          var att = messaging.message.attachments[0]
+          if (att.type === 'audio' || att.type === 'voice') {
+            text = '[Áudio Recebido do Instagram]'
+            isAudio = true
+            mediaUrl = (att.payload && att.payload.url) || ''
+          } else if (att.type === 'image') {
+            text = '[Imagem Recebida do Instagram]'
+          } else if (att.type === 'video') {
+            text = '[Vídeo Recebido do Instagram]'
+          } else if (att.type === 'story_mention') {
+            text = '[Menção nos Stories do Instagram]'
+          } else if (att.type === 'share') {
+            text = '[Compartilhamento do Instagram]'
+          } else {
+            text = '[' + (att.type || 'Anexo') + ' Recebido]'
           }
+        } else if (messaging.message.quick_reply && messaging.message.quick_reply.payload) {
+          text = messaging.message.quick_reply.payload
+        }
+      } else if (messaging.postback && messaging.postback.title) {
+        text = messaging.postback.title
+      }
+
+      if (!text) {
+        text = '[Mensagem Recebida do Instagram]'
+      }
+
+      // Tenta obter nome e username do usuário do Instagram via Graph API v22.0
+      var igProfileName = ''
+      var igUsername = ''
+      if (pageToken && senderId) {
+        try {
+          var profileRes = $http.send({
+            url:
+              'https://graph.facebook.com/v22.0/' + senderId + '?fields=name,username,profile_pic',
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + pageToken },
+            timeout: 10,
+          })
+          if (profileRes && profileRes.statusCode === 200 && profileRes.json) {
+            igProfileName = profileRes.json.name || ''
+            igUsername = profileRes.json.username || ''
+          }
+        } catch (_) {}
+      }
+
+      var contactName =
+        igProfileName ||
+        (igUsername ? '@' + igUsername : '') ||
+        'Lead Instagram (' + senderId.substring(0, 6) + ')'
+
+      // Transcrição de áudio via Whisper se houver mediaUrl e OpenAI key
+      if (isAudio && mediaUrl) {
+        var openAiKey = $os.getenv('OPENAI_API_KEY') || ''
+        if (
+          !openAiKey &&
+          typeof $secrets !== 'undefined' &&
+          $secrets.has &&
+          $secrets.has('OPENAI_API_KEY')
+        ) {
+          openAiKey = $secrets.get('OPENAI_API_KEY') || ''
         }
 
-        let isDuplicate = false
-        try {
-          const recentMsgs = $app.findRecordsByFilter(
-            'conversations',
-            "customer_id = '" + customer.id + "' && sender = 'customer' && content = {:text}",
-            '-created',
-            1,
-            0,
-            { text: text },
-          )
-          if (recentMsgs.length > 0) {
-            const diffMins =
-              (new Date().getTime() - new Date(recentMsgs[0].getString('created')).getTime()) /
-              60000
-            if (diffMins < 2) isDuplicate = true
-          }
-        } catch (_) {}
-
-        if (!isDuplicate) {
+        if (openAiKey) {
           try {
-            const convCol = $app.findCollectionByNameOrId('conversations')
-            const newMsg = new Record(convCol)
-            newMsg.set('customer_id', customer.id)
-            newMsg.set('user_id', userId)
-            newMsg.set('sender', 'customer')
-            newMsg.set('content', text)
-            newMsg.set('channel', 'instagram')
-            $app.save(newMsg)
-          } catch (err) {
-            $app
-              .logger()
-              .error('Failed to save conversation from Instagram webhook', 'error', String(err))
+            var audioBinRes = $http.send({
+              url: mediaUrl,
+              method: 'GET',
+              timeout: 25,
+            })
+            if (audioBinRes && audioBinRes.statusCode === 200 && audioBinRes.body) {
+              var whisperBoundary = '----BoundaryWhisper' + $security.randomString(16)
+              var partModel =
+                '--' +
+                whisperBoundary +
+                '\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n'
+              var partLang =
+                '--' +
+                whisperBoundary +
+                '\r\nContent-Disposition: form-data; name="language"\r\n\r\npt\r\n'
+              var partFormat =
+                '--' +
+                whisperBoundary +
+                '\r\nContent-Disposition: form-data; name="response_format"\r\n\r\ntext\r\n'
+              var fileHeader =
+                '--' +
+                whisperBoundary +
+                '\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n'
+              var whisperFooter = '\r\n--' + whisperBoundary + '--\r\n'
+
+              var partModelBytes = new Uint8Array(partModel.length)
+              for (var mi = 0; mi < partModel.length; mi++)
+                partModelBytes[mi] = partModel.charCodeAt(mi)
+              var partLangBytes = new Uint8Array(partLang.length)
+              for (var li = 0; li < partLang.length; li++)
+                partLangBytes[li] = partLang.charCodeAt(li)
+              var partFormatBytes = new Uint8Array(partFormat.length)
+              for (var fi = 0; fi < partFormat.length; fi++)
+                partFormatBytes[fi] = partFormat.charCodeAt(fi)
+              var fileHeaderBytes = new Uint8Array(fileHeader.length)
+              for (var hi = 0; hi < fileHeader.length; hi++)
+                fileHeaderBytes[hi] = fileHeader.charCodeAt(hi)
+              var footerBytes = new Uint8Array(whisperFooter.length)
+              for (var foi = 0; foi < whisperFooter.length; foi++)
+                footerBytes[foi] = whisperFooter.charCodeAt(foi)
+
+              var totalLen =
+                partModelBytes.length +
+                partLangBytes.length +
+                partFormatBytes.length +
+                fileHeaderBytes.length +
+                audioBinRes.body.length +
+                footerBytes.length
+
+              var whisperPayloadBytes = new Uint8Array(totalLen)
+              var curOffset = 0
+              whisperPayloadBytes.set(partModelBytes, curOffset)
+              curOffset += partModelBytes.length
+              whisperPayloadBytes.set(partLangBytes, curOffset)
+              curOffset += partLangBytes.length
+              whisperPayloadBytes.set(partFormatBytes, curOffset)
+              curOffset += partFormatBytes.length
+              whisperPayloadBytes.set(fileHeaderBytes, curOffset)
+              curOffset += fileHeaderBytes.length
+              whisperPayloadBytes.set(audioBinRes.body, curOffset)
+              curOffset += audioBinRes.body.length
+              whisperPayloadBytes.set(footerBytes, curOffset)
+
+              var whisperRes = $http.send({
+                url: 'https://api.openai.com/v1/audio/transcriptions',
+                method: 'POST',
+                headers: {
+                  Authorization: 'Bearer ' + openAiKey,
+                  'Content-Type': 'multipart/form-data; boundary=' + whisperBoundary,
+                },
+                body: whisperPayloadBytes.buffer,
+                timeout: 30,
+              })
+
+              if (
+                whisperRes &&
+                whisperRes.statusCode === 200 &&
+                whisperRes.json &&
+                whisperRes.json.text
+              ) {
+                var transcript = String(whisperRes.json.text).trim()
+                if (transcript) {
+                  text = '[Áudio do cliente]: "' + transcript + '"'
+                }
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Localiza cliente existente por IG Sender ID (salvo nas notes ou last_origin)
+      var customer = null
+      try {
+        customer = $app.findFirstRecordByFilter(
+          'customers',
+          'notes ~ {:sid} || last_origin ~ {:sid}',
+          { sid: senderId },
+        )
+      } catch (_) {}
+
+      var isNewCustomer = false
+      var originLabel = 'Instagram Direct' + (igUsername ? ' (@' + igUsername + ')' : '')
+
+      if (!customer) {
+        try {
+          var customersCol = $app.findCollectionByNameOrId('customers')
+          customer = new Record(customersCol)
+          customer.set('user_id', userId)
+          customer.set('name', contactName)
+          if (igProfileName) {
+            customer.set('first_name', igProfileName.split(' ')[0])
           }
+          customer.set('status', '1. Acolhimento')
+          customer.set('source', 'Instagram Direct')
+          customer.set('last_origin', originLabel)
+          customer.set('last_origin_at', nowIso)
+
+          var initialNotes =
+            '[Origem: ' +
+            originLabel +
+            ', ' +
+            nowBrStr +
+            ']\n' +
+            'IG Sender ID: ' +
+            senderId +
+            '\n' +
+            'IG Recipient ID: ' +
+            (recipientId || '') +
+            (igUsername ? '\nUsername: @' + igUsername : '')
+
+          customer.set('notes', initialNotes)
+          customer.set('origin_history', [
+            {
+              source: originLabel,
+              type: 'instagram_direct',
+              date: nowIso,
+              sender_id: senderId,
+            },
+          ])
+
+          $app.save(customer)
+          isNewCustomer = true
+        } catch (err) {
+          $app
+            .logger()
+            .error('Failed to create customer from Instagram webhook', 'error', String(err))
+          continue
+        }
+      } else {
+        // Atualiza notes/last_origin se necessário
+        try {
+          var custUp = $app.findRecordById('customers', customer.id)
+          if (!custUp.getString('user_id')) {
+            custUp.set('user_id', userId)
+          }
+          // Atualiza nome se descobriu agora
+          if ((custUp.getString('name') || '').startsWith('Lead Instagram') && igProfileName) {
+            custUp.set('name', igProfileName)
+            custUp.set('first_name', igProfileName.split(' ')[0])
+          }
+          custUp.set('last_origin', originLabel)
+          custUp.set('last_origin_at', nowIso)
+          $app.save(custUp)
+          customer = custUp
+        } catch (_) {}
+      }
+
+      // Garante criação em leads se for novo
+      if (isNewCustomer) {
+        try {
+          var leadsCol = $app.findCollectionByNameOrId('leads')
+          var lead = new Record(leadsCol)
+          lead.set('assigned_to', userId)
+          lead.set('name', contactName)
+          lead.set('source', 'Instagram Direct')
+          lead.set('status', 'Novo')
+          lead.set(
+            'notes',
+            'Capturado via Meta Instagram Direct API\n' +
+              'Sender ID: ' +
+              senderId +
+              (igUsername ? '\n@' + igUsername : '') +
+              '\nMensagem: ' +
+              text,
+          )
+          $app.save(lead)
+        } catch (leadErr) {
+          $app
+            .logger()
+            .error('Failed to create lead from Instagram webhook', 'error', String(leadErr))
+        }
+      }
+
+      // Deduplicação de mensagens idênticas em menos de 2 minutos
+      var isDuplicate = false
+      try {
+        var recentMsgs = $app.findRecordsByFilter(
+          'conversations',
+          "customer_id = {:cid} && sender = 'customer' && content = {:text}",
+          '-created',
+          1,
+          0,
+          { cid: customer.id, text: text },
+        )
+        if (recentMsgs.length > 0) {
+          var lastMsg = recentMsgs[0]
+          var diffMins =
+            (new Date().getTime() - new Date(lastMsg.getString('created')).getTime()) / 60000
+          if (diffMins < 2) isDuplicate = true
+        }
+      } catch (_) {}
+
+      if (!isDuplicate) {
+        try {
+          var convCol = $app.findCollectionByNameOrId('conversations')
+          var newMsg = new Record(convCol)
+          newMsg.set('customer_id', customer.id)
+          newMsg.set('user_id', userId)
+
+          // Detecção de mensagem de sistema/código
+          var isSystemMsg =
+            /\b(?:\d{4,8})\s+[ée]\s+o\s+teu\s+c[oó]digo/i.test(text) ||
+            /(?:n[aã]o\s+o\s+partilhe|n[aã]o\s+compartilhe|don'?t\s+share)/i.test(text) ||
+            /c[oó]digo\s+(?:do\s+instagram|do\s+whatsapp|do\s+facebook|da\s+meta)/i.test(text)
+
+          newMsg.set('sender', isSystemMsg ? 'system' : 'customer')
+          newMsg.set('content', text)
+          newMsg.set('channel', 'instagram')
+          $app.save(newMsg)
+
+          $app
+            .logger()
+            .info(
+              'Instagram message saved successfully',
+              'customer_id',
+              customer.id,
+              'sender_id',
+              senderId,
+            )
+        } catch (err) {
+          $app
+            .logger()
+            .error('Failed to save conversation from Instagram webhook', 'error', String(err))
         }
       }
     }
+  }
+}
+
+// Endpoint POST /backend/v1/instagram/webhook (padrão)
+routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
+  var body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  var query = {}
+  try {
+    query = e.requestInfo().query || {}
+  } catch (_) {}
+
+  var queryUserId = query['user_id'] || query['uid'] || ''
+
+  $app
+    .logger()
+    .info(
+      'Instagram Webhook received',
+      'object',
+      body ? body.object : '',
+      'entry_count',
+      body && body.entry ? body.entry.length : 0,
+    )
+
+  if (!body || (body.object !== 'instagram' && body.object !== 'page')) {
+    return e.string(404, 'Not Found')
+  }
+
+  try {
+    processInstagramWebhookPayload(body, queryUserId, '')
+  } catch (err) {
+    $app.logger().error('Error processing Instagram Webhook', 'error', String(err))
+  }
+
+  return e.string(200, 'EVENT_RECEIVED')
+})
+
+// Endpoint complementar com userId no path: POST /backend/v1/instagram/webhook/{userId}
+routerAdd('POST', '/backend/v1/instagram/webhook/{userId}', (e) => {
+  var pathUserId = ''
+  try {
+    pathUserId = e.request.pathValue('userId') || ''
+  } catch (_) {}
+
+  var body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  var query = {}
+  try {
+    query = e.requestInfo().query || {}
+  } catch (_) {}
+
+  var queryUserId = query['user_id'] || query['uid'] || ''
+
+  $app
+    .logger()
+    .info(
+      'Instagram Webhook received (path userId)',
+      'user_id',
+      pathUserId,
+      'object',
+      body ? body.object : '',
+    )
+
+  if (!body || (body.object !== 'instagram' && body.object !== 'page')) {
+    return e.string(404, 'Not Found')
+  }
+
+  try {
+    processInstagramWebhookPayload(body, queryUserId, pathUserId)
   } catch (err) {
     $app.logger().error('Error processing Instagram Webhook', 'error', String(err))
   }

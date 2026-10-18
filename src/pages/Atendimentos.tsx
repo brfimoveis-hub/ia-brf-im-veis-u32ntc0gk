@@ -478,7 +478,7 @@ export default function Atendimentos() {
       setMessages((prev) => [...prev, saved])
       setReplyText('')
 
-      // 2. Se for WhatsApp e o cliente tiver telefone, despacha via API oficial
+      // 2. Despacha via API oficial de acordo com o canal
       if (currentChannel === 'whatsapp' && targetPhone) {
         try {
           await sendWhatsAppMessages([{ phone: targetPhone, name: targetName }], textToSend)
@@ -493,6 +493,12 @@ export default function Atendimentos() {
             description: 'Mensagem salva no histórico do atendimento.',
           })
         }
+      } else if (currentChannel === 'instagram') {
+        toast({
+          title: 'Mensagem gravada no CRM',
+          description:
+            'Resposta do corretor gravada. No Instagram, mensagens automáticas da Bia respondem na janela de 24h da Meta.',
+        })
       } else {
         toast({
           title: 'Mensagem registrada',
@@ -1009,7 +1015,11 @@ export default function Atendimentos() {
                                   {!isCustomer && (
                                     <span
                                       className="inline-flex text-[#53bdeb] ml-0.5 font-bold text-xs"
-                                      title="Entregue via WhatsApp"
+                                      title={
+                                        (msg.channel || currentThread?.channel) === 'instagram'
+                                          ? 'Entregue via Instagram Direct'
+                                          : 'Entregue via WhatsApp'
+                                      }
                                     >
                                       ✓✓
                                     </span>

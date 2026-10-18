@@ -794,7 +794,7 @@ export function InstagramConnect() {
                 onChange={(e) =>
                   set('meta_instagram_business_id', e.target.value.replace(/\D/g, ''))
                 }
-                placeholder="17841400000000000"
+                placeholder="17841418953400936"
                 inputMode="numeric"
                 aria-invalid={!!fieldErrors.meta_instagram_business_id}
                 className={
@@ -807,8 +807,7 @@ export function InstagramConnect() {
                 <p className="text-xs text-red-500">{fieldErrors.meta_instagram_business_id}</p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Encontrado no Meta Business Suite &gt; Instagram &gt; Configurações &gt; ID da
-                  conta.
+                  Encontrado no Meta Business Suite (ex do @brf_imoveis_: 17841418953400936).
                 </p>
               )}
             </div>
@@ -829,6 +828,57 @@ export function InstagramConnect() {
               onChange={(v) => set('meta_instagram_page_token', v)}
               placeholder="EAAG... (opcional)"
             />
+          </div>
+
+          {/* Webhook do Instagram para receber DMs no CRM */}
+          <div className="rounded-md bg-background/90 border p-3.5 space-y-2.5 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-foreground flex items-center gap-1.5">
+                <Link2 className="h-4 w-4 text-primary" />
+                URL do Webhook do Instagram (Meta Webhooks)
+              </span>
+              <Badge
+                variant="outline"
+                className="text-[10px] bg-primary/10 text-primary border-primary/20"
+              >
+                Recebimento de DMs
+              </Badge>
+            </div>
+            <p className="text-muted-foreground leading-relaxed">
+              No Meta Developers &gt; seu App ({activeAppId || '2442476629610638'}) &gt;{' '}
+              <strong>Webhooks</strong> &gt; selecione <strong>Instagram</strong> &gt; Editar
+              assinatura de retorno de chamada:
+            </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Input
+                  readOnly
+                  value="https://brfiacrminteligente.goskip.app/backend/v1/instagram/webhook"
+                  className="font-mono text-xs bg-muted select-all"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0 gap-1"
+                  onClick={() =>
+                    copyToClipboard(
+                      'https://brfiacrminteligente.goskip.app/backend/v1/instagram/webhook',
+                    )
+                  }
+                >
+                  <Copy className="h-3.5 w-3.5" /> Copiar URL
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Token de verificação:{' '}
+                <code className="font-mono font-semibold text-foreground bg-muted px-1.5 py-0.5 rounded border">
+                  brf_meta_webhook_token_2024
+                </code>{' '}
+                (ou o token configurado na aba WhatsApp). Marque o campo <strong>messages</strong>.
+              </p>
+            </div>
           </div>
 
           {Object.values(fieldErrors).some(Boolean) && (
