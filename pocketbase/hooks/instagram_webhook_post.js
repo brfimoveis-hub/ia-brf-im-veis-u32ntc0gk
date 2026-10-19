@@ -3,7 +3,7 @@
 // Normaliza para o mesmo formato interno (customers, leads, conversations channel='instagram')
 // Dispara o motor da Bia (via trigger em conversations) e permite resposta automática
 
-function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
+function processInstagramPayloadCore(body, queryUserId, pathUserId) {
   var userId = pathUserId || queryUserId || ''
 
   // 1. Resolução dinâmica de usuário e IG Account IDs vinculados
@@ -37,7 +37,7 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
           'users',
           'meta_instagram_business_id = {:bid}',
           'created',
-          2,
+          1,
           0,
           { bid: candidateEid },
         )
@@ -64,9 +64,9 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
     try {
       var igUsers = $app.findRecordsByFilter(
         'users',
-        "meta_instagram_business_id != '' || instagram_username != '' || meta_instagram_page_token != ''",
+        "meta_instagram_business_id != '' || instagram_username != '' || meta_instagram_page_token != '' || meta_page_access_token != ''",
         'created',
-        2,
+        1,
         0,
       )
       if (igUsers && igUsers.length > 0) {
@@ -75,7 +75,7 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
         $app
           .logger()
           .info(
-            '[IG_POST_MATCH] Usuário com Instagram ativo resolvido por fallback',
+            '[IG_POST_MATCH] Usuário com Instagram ativo resolvido por fallback dinâmico',
             'user_id',
             userId,
           )
@@ -86,8 +86,8 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
   // Fallback final: se há apenas 1 usuário no sistema, assume ele
   if (!user) {
     try {
-      var allUsers = $app.findRecordsByFilter('users', "email != ''", 'created', 2, 0)
-      if (allUsers && allUsers.length === 1) {
+      var allUsers = $app.findRecordsByFilter('users', "email != ''", 'created', 1, 0)
+      if (allUsers && allUsers.length > 0) {
         user = allUsers[0]
         userId = user.id
         $app
@@ -109,16 +109,12 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
     return
   }
 
-  // Resolução de IDs de Instagram conhecidos para matching de destinatário (requisito 3)
-  // Aceita:
-  // - ID salvo em meta_instagram_business_id no registro do usuário (dinâmico)
-  // - ID comercial oficial @brf_imoveis_ (17841418593400936)
-  // - ID da Página oficial vinculada (1343797128806374) ou da Página clássica (1219427617930954)
-  // - Fallback de aliases históricos (17841414618266409, 17841418953400936)
+  // Resolução de IDs de Instagram conhecidos para matching de destinatário dinâmico
   var savedIgBizId = (user.getString('meta_instagram_business_id') || '').trim()
+  var officialIgId = '17841418593400936' // Conta oficial @brf_imoveis_
   var knownBusinessIds = {}
   if (savedIgBizId) knownBusinessIds[savedIgBizId] = 'user.meta_instagram_business_id'
-  knownBusinessIds['17841418593400936'] = 'brf_imoveis_official_ig_id'
+  knownBusinessIds[officialIgId] = 'brf_imoveis_official_ig_id'
   knownBusinessIds['1343797128806374'] = 'brf_imoveis_page_id'
   knownBusinessIds['1219427617930954'] = 'brf_imoveis_classic_page_id'
   knownBusinessIds['17841414618266409'] = 'bernadete_ig_alias'
@@ -138,7 +134,7 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
     var entry = entries[eIndex] || {}
     var entryId = entry.id ? String(entry.id).trim() : ''
 
-    // Se o evento trouxe entry.changes (ex.: comentários, menções, leadgen, feed changes)
+    // Se o evento trouxe entry.changes (comentários, menções, leadgen, feed changes)
     var changesList = entry.changes || []
     if (changesList.length > 0) {
       for (var ci = 0; ci < changesList.length; ci++) {
@@ -196,7 +192,7 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
         continue
       }
 
-      // Verificação de matching do destinatário (Requisito 3)
+      // Verificação de matching do destinatário
       var matchedPath = ''
       if (recipientId && knownBusinessIds[recipientId]) {
         matchedPath = 'recipient_id:' + recipientId + ' via ' + knownBusinessIds[recipientId]
@@ -229,6 +225,43 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
       console.log(
         '[IG_POST_MATCH_PATH] ' + matchedPath + ' sender=' + senderId + ' recipient=' + recipientId,
       )
+
+      // DEDUPLICAÇÃO POR ID DE MENSAGEM (MID) - Requisito 3
+      var messageMid = (messaging.message && messaging.message.mid) || messaging.mid || ''
+      if (messageMid) {
+        // 1. In-memory dedup
+        if (typeof globalThis !== 'undefined') {
+          if (!globalThis.__processedIgMids) globalThis.__processedIgMids = {}
+          if (globalThis.__processedIgMids[messageMid]) {
+            $app.logger().info('[IG_POST_DEDUP] Mensagem MID já processada em cache: ' + messageMid)
+            console.log('[IG_POST_DEDUP] Ignorando repetido (cache): ' + messageMid)
+            continue
+          }
+          globalThis.__processedIgMids[messageMid] = Date.now()
+        }
+
+        // 2. Persistent DB dedup
+        var isMidDup = false
+        try {
+          var existingMidLogs = $app.findRecordsByFilter(
+            'system_logs',
+            "type = 'instagram_processed_mid' && message = {:mid}",
+            '',
+            1,
+            0,
+            { mid: messageMid },
+          )
+          if (existingMidLogs && existingMidLogs.length > 0) {
+            isMidDup = true
+          }
+        } catch (_) {}
+
+        if (isMidDup) {
+          $app.logger().info('[IG_POST_DEDUP] Mensagem MID já persistida no banco: ' + messageMid)
+          console.log('[IG_POST_DEDUP] Ignorando repetido (banco): ' + messageMid)
+          continue
+        }
+      }
 
       // Extrai texto da mensagem
       var text = ''
@@ -462,6 +495,7 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
               'name',
               contactName,
             )
+          console.log('[IG_POST_CUSTOMER_CREATED] id=' + customer.id + ' name=' + contactName)
         } catch (err) {
           $app
             .logger()
@@ -476,7 +510,6 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
           if (!custUp.getString('user_id')) {
             custUp.set('user_id', userId)
           }
-          // Atualiza nome se descobriu agora
           if ((custUp.getString('name') || '').startsWith('Lead Instagram') && igProfileName) {
             custUp.set('name', igProfileName)
             custUp.set('first_name', igProfileName.split(' ')[0])
@@ -551,6 +584,27 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
           newMsg.set('channel', 'instagram')
           $app.save(newMsg)
 
+          // Registra MID processado no banco para dedup persistente
+          if (messageMid) {
+            try {
+              var sLogsCol = $app.findCollectionByNameOrId('system_logs')
+              var midLog = new Record(sLogsCol)
+              midLog.set('type', 'instagram_processed_mid')
+              midLog.set('message', messageMid)
+              midLog.set('user_id', userId)
+              midLog.set(
+                'details',
+                JSON.stringify({
+                  sender_id: senderId,
+                  recipient_id: recipientId,
+                  customer_id: customer.id,
+                  conv_id: newMsg.id,
+                }),
+              )
+              $app.saveNoValidate(midLog)
+            } catch (_) {}
+          }
+
           $app
             .logger()
             .info(
@@ -587,15 +641,15 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
   }
 }
 
-// Vincula processInstagramWebhookPayload a globalThis antes do registro das rotas
-// para visibilidade garantida no runtime Goja/ES5.1
+// Vincula a globalThis por precaução
 try {
   if (typeof globalThis !== 'undefined') {
-    globalThis.processInstagramWebhookPayload = processInstagramWebhookPayload
+    globalThis.processInstagramPayloadCore = processInstagramPayloadCore
   }
 } catch (_) {}
 
 // Endpoint POST /backend/v1/instagram/webhook (padrão)
+// A lógica é chamada diretamente de forma síncrona sem ReferenceError
 routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
   var body = {}
   try {
@@ -609,7 +663,6 @@ routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
 
   var queryUserId = query['user_id'] || query['uid'] || ''
 
-  // Coleta detalhada para depuração sem segredos (requisito 1)
   var entries = (body && body.entry) || []
   var entrySummaries = []
   for (var i = 0; i < entries.length; i++) {
@@ -654,11 +707,9 @@ routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
     ' ' +
     entrySummaries.join(' ')
 
-  // Log no PocketBase logger e no console
   $app.logger().info(debugSummary)
   console.log(debugSummary)
 
-  // Grava também em system_logs para visualização imediata no CRM (categoria "instagram_webhook_post")
   try {
     var sLogsCol = $app.findCollectionByNameOrId('system_logs')
     var sLogRec = new Record(sLogsCol)
@@ -682,25 +733,11 @@ routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
       '[IG_POST_HOOK_DISCARD] Objeto não reconhecido: ' + (body ? body.object : 'null')
     $app.logger().warn(rejectMsg)
     console.warn(rejectMsg)
-    // Resposta 200 rápida sempre mesmo para descarte, para a Meta não suspender o webhook
     return e.string(200, 'EVENT_RECEIVED')
   }
 
   try {
-    var procFn =
-      typeof processInstagramWebhookPayload === 'function'
-        ? processInstagramWebhookPayload
-        : typeof globalThis !== 'undefined' &&
-            typeof globalThis.processInstagramWebhookPayload === 'function'
-          ? globalThis.processInstagramWebhookPayload
-          : null
-
-    if (!procFn) {
-      throw new ReferenceError(
-        'processInstagramWebhookPayload is not defined in route callback scope or globalThis',
-      )
-    }
-    procFn(body, queryUserId, '')
+    processInstagramPayloadCore(body, queryUserId, '')
   } catch (err) {
     $app.logger().error('Error processing Instagram Webhook', 'error', String(err))
     console.error('[IG_POST_HOOK_ERROR] ' + String(err))
@@ -797,20 +834,7 @@ routerAdd('POST', '/backend/v1/instagram/webhook/{userId}', (e) => {
   }
 
   try {
-    var procFnPath =
-      typeof processInstagramWebhookPayload === 'function'
-        ? processInstagramWebhookPayload
-        : typeof globalThis !== 'undefined' &&
-            typeof globalThis.processInstagramWebhookPayload === 'function'
-          ? globalThis.processInstagramWebhookPayload
-          : null
-
-    if (!procFnPath) {
-      throw new ReferenceError(
-        'processInstagramWebhookPayload is not defined in route callback scope or globalThis',
-      )
-    }
-    procFnPath(body, queryUserId, pathUserId)
+    processInstagramPayloadCore(body, queryUserId, pathUserId)
   } catch (err) {
     $app.logger().error('Error processing Instagram Webhook', 'error', String(err))
     console.error('[IG_POST_HOOK_ERROR] ' + String(err))

@@ -345,124 +345,14 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
         }
       }
     } else if (body.object === 'instagram' && body.entry) {
-      for (const entry of body.entry) {
-        for (const change of entry.changes || []) {
-          if (change.field === 'comments') {
-            const value = change.value
-            if (!value) continue
-            const commentText = value.text || ''
-            const commenterName = (value.from && value.from.username) || 'Lead-IG-Comentario'
-            const commenterId = (value.from && value.from.id) || ''
-            if (!commentText) continue
-
-            try {
-              const customersCol = $app.findCollectionByNameOrId('customers')
-              const customer = new Record(customersCol)
-              customer.set('user_id', globalUserId)
-              customer.set('name', commenterName)
-              customer.set('status', 'Novo')
-              customer.set('source', 'Meta')
-              customer.set(
-                'notes',
-                'Comentario IG: "' +
-                  commentText +
-                  '"\nCommenter ID: ' +
-                  commenterId +
-                  '\nOrigin: Instagram Comment',
-              )
-              $app.save(customer)
-              saveLog(
-                globalUserId,
-                'diagnostic_log',
-                'Novo lead via comentario Instagram: ' + commenterName,
-                'Comentario: ' + commentText,
-                { customer_id: customer.id, commenter_id: commenterId },
-              )
-            } catch (err) {
-              saveLog(
-                globalUserId,
-                'meta_error',
-                'Falha ao criar lead de comentario IG',
-                String(err),
-                { error: String(err) },
-              )
-            }
-          }
-        }
-
-        for (const messaging of entry.messaging || []) {
-          const senderId = messaging.sender ? messaging.sender.id : ''
-          const recipientId = messaging.recipient ? messaging.recipient.id : ''
-          if (!senderId) continue
-
-          const text = messaging.message
-            ? messaging.message.text || 'Nova interacao no Instagram'
-            : 'Nova interacao no Instagram'
-          const contactName = 'Lead-Meta-' + senderId
-          let customer = null
-          try {
-            customer = $app.findFirstRecordByFilter(
-              'customers',
-              "notes ~ '" + senderId + "' && source = 'Meta'",
-            )
-          } catch (_) {}
-
-          if (!customer && globalUserId) {
-            try {
-              const customersCol = $app.findCollectionByNameOrId('customers')
-              customer = new Record(customersCol)
-              customer.set('user_id', globalUserId)
-              customer.set('name', contactName)
-              customer.set('status', 'Novo')
-              customer.set('source', 'Meta')
-              customer.set(
-                'notes',
-                'IG Sender ID: ' +
-                  senderId +
-                  '\nIG Recipient ID: ' +
-                  (recipientId || '') +
-                  '\nOrigin: Meta Instagram',
-              )
-              $app.save(customer)
-              saveLog(
-                globalUserId,
-                'diagnostic_log',
-                'Novo lead capturado via Webhook: ' + contactName,
-                'Lead originado do Instagram.',
-                { customer_id: customer.id, source: 'Instagram', senderId: senderId },
-              )
-            } catch (err) {
-              saveLog(
-                globalUserId,
-                'meta_error',
-                'Falha ao criar lead do Instagram ID ' + senderId,
-                String(err),
-                { error: String(err) },
-              )
-            }
-          }
-
-          if (customer) {
-            try {
-              const conversation = new Record($app.findCollectionByNameOrId('conversations'))
-              conversation.set('customer_id', customer.id)
-              conversation.set('user_id', globalUserId)
-              conversation.set('content', text)
-              conversation.set('sender', 'customer')
-              conversation.set('channel', 'instagram')
-              $app.save(conversation)
-            } catch (err) {
-              saveLog(
-                globalUserId,
-                'meta_error',
-                'Erro ao salvar conversa do Instagram',
-                String(err),
-                { error: String(err) },
-              )
-            }
-          }
-        }
-      }
+      // Neutralizado para evitar duplicação de processamento com instagram_webhook_post.js
+      // O endpoint oficial do Instagram Direct é /backend/v1/instagram/webhook (com dedup de MID e motor da Bia)
+      $app
+        .logger()
+        .info('[META_WEBHOOK_IG_DELEGATED] Evento de Instagram delegado ao instagram_webhook_post')
+      console.log(
+        '[META_WEBHOOK_IG_DELEGATED] Evento de Instagram recebido em /api/meta/webhook ignorado para evitar resposta duplicada.',
+      )
     } else if (body.object === 'whatsapp_business_account' && body.entry) {
       for (const entry of body.entry) {
         for (const change of entry.changes || []) {

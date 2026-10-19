@@ -181,12 +181,71 @@ onRecordAfterCreateSuccess((e) => {
   }
 
   try {
-    const customerInitialCheck = safeFindRecordById('customers', customerId)
+    let customerInitialCheck = safeFindRecordById('customers', customerId)
     if (!customerInitialCheck) {
-      console.log(
-        `[AI_REPLY_SKIP] Customer record ${customerId} not found in database. Aborting gracefully without throwing.`,
-      )
-      return e.next()
+      // Se não encontrou o cliente e o canal for instagram, tenta criar o cliente sob demanda
+      if (conversationChannel === 'instagram') {
+        try {
+          console.log(
+            `[AI_REPLY] Customer ${customerId} não encontrado. Criando cliente novo com origem 'Instagram Direct'...`,
+          )
+          let targetUid = userId
+          if (!targetUid) {
+            try {
+              var igUsersList = $app.findRecordsByFilter(
+                'users',
+                "meta_instagram_business_id != '' || instagram_username != '' || meta_instagram_page_token != ''",
+                'created',
+                1,
+                0,
+              )
+              if (igUsersList && igUsersList.length > 0) {
+                targetUid = igUsersList[0].id
+              }
+            } catch (_) {}
+          }
+          if (!targetUid) {
+            try {
+              var anyUser = $app.findRecordsByFilter('users', "email != ''", 'created', 1, 0)
+              if (anyUser && anyUser.length > 0) targetUid = anyUser[0].id
+            } catch (_) {}
+          }
+
+          var custCol = $app.findCollectionByNameOrId('customers')
+          var newCustRec = new Record(custCol)
+          if (customerId && customerId.length >= 10 && customerId.length <= 15) {
+            newCustRec.setId(customerId)
+          }
+          newCustRec.set('user_id', targetUid || '')
+          newCustRec.set('name', 'Lead Instagram (' + (customerId || 'Novo') + ')')
+          newCustRec.set('status', '1. Acolhimento')
+          newCustRec.set('source', 'Instagram Direct')
+          newCustRec.set('last_origin', 'Instagram Direct')
+          newCustRec.set('last_origin_at', new Date().toISOString())
+          newCustRec.set(
+            'notes',
+            '[Origem: Instagram Direct, ' +
+              new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) +
+              ']',
+          )
+          $app.save(newCustRec)
+          customerInitialCheck = newCustRec
+          console.log(
+            `[AI_REPLY] Cliente novo criado com sucesso no fluxo Instagram: ${newCustRec.id}`,
+          )
+        } catch (createCustErr) {
+          console.error(
+            `[AI_REPLY] Falha ao auto-criar cliente do Instagram: ${String(createCustErr)}`,
+          )
+        }
+      }
+
+      if (!customerInitialCheck) {
+        console.log(
+          `[AI_REPLY_SKIP] Customer record ${customerId} not found in database. Aborting gracefully without throwing.`,
+        )
+        return e.next()
+      }
     }
     if (!userId) {
       userId = customerInitialCheck.getString('user_id') || ''
@@ -367,7 +426,7 @@ onRecordAfterCreateSuccess((e) => {
       } catch (_) {}
     }
 
-    const customer = safeFindRecordById('customers', customerId)
+    let customer = safeFindRecordById('customers', customerId) || customerInitialCheck
     if (!customer) {
       console.log(`[AI_REPLY_SKIP] Customer ${customerId} disappeared before processing. Aborting.`)
       return e.next()
