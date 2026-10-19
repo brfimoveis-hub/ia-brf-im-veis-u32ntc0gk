@@ -127,6 +127,10 @@ export function InstagramConnect() {
   const [copiedRedirect, setCopiedRedirect] = useState(false)
   const redirectUri = getInstagramRedirectUri()
 
+  const PB_BASE = (import.meta.env.VITE_POCKETBASE_URL || '').replace(/\/+$/, '')
+  const igWebhookUrl = `${PB_BASE}/backend/v1/instagram/webhook`
+  const activeVerifyToken = (user?.meta_whatsapp_verify_token || 'BRF IA CRM').trim()
+
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
@@ -847,36 +851,66 @@ export function InstagramConnect() {
             <p className="text-muted-foreground leading-relaxed">
               No Meta Developers &gt; seu App ({activeAppId || '2442476629610638'}) &gt;{' '}
               <strong>Webhooks</strong> &gt; selecione <strong>Instagram</strong> &gt; Editar
-              assinatura de retorno de chamada:
+              assinatura de retorno de chamada (Callback URL):
             </p>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Input
-                  readOnly
-                  value="https://brfiacrminteligente.goskip.app/backend/v1/instagram/webhook"
-                  className="font-mono text-xs bg-muted select-all"
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                />
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <span className="text-[11px] font-medium text-foreground">
+                  URL de Retorno de Chamada Oficial do Backend (PocketBase):
+                </span>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={igWebhookUrl}
+                    className="font-mono text-xs bg-muted select-all"
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="shrink-0 gap-1"
+                    onClick={() => copyToClipboard(igWebhookUrl)}
+                  >
+                    <Copy className="h-3.5 w-3.5" /> Copiar URL Oficial
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded bg-blue-500/10 border border-blue-500/20 text-[11px] space-y-1.5 text-blue-900 dark:text-blue-200">
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <span>ℹ️ Regra de infraestrutura Skip Cloud:</span>
+                </div>
+                <p>
+                  As rotas de webhook do PocketBase rodam no host do backend (
+                  <code className="font-mono bg-background/70 px-1 py-0.5 rounded text-[10px]">
+                    {PB_BASE}
+                  </code>
+                  ). A URL do frontend (<code className="font-mono text-[10px]">goskip.app</code>) é
+                  estática (SPA React) e responde 404 em chamadas de API externas. Utilize sempre a
+                  URL oficial acima na Meta.
+                </p>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground">
+                Token de verificação oficial:{' '}
+                <code className="font-mono font-semibold text-foreground bg-muted px-1.5 py-0.5 rounded border">
+                  {activeVerifyToken}
+                </code>{' '}
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant="ghost"
                   size="sm"
-                  className="shrink-0 gap-1"
-                  onClick={() =>
-                    copyToClipboard(
-                      'https://brfiacrminteligente.goskip.app/backend/v1/instagram/webhook',
-                    )
-                  }
+                  className="h-5 px-1.5 text-[10px] ml-1"
+                  onClick={() => copyToClipboard(activeVerifyToken)}
                 >
-                  <Copy className="h-3.5 w-3.5" /> Copiar URL
+                  <Copy className="h-3 w-3 mr-1" /> Copiar Token
                 </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Token de verificação:{' '}
-                <code className="font-mono font-semibold text-foreground bg-muted px-1.5 py-0.5 rounded border">
-                  brf_meta_webhook_token_2024
-                </code>{' '}
-                (ou o token configurado na aba WhatsApp). Marque o campo <strong>messages</strong>.
+                <span className="block mt-1 text-[10px] text-muted-foreground">
+                  (O backend também aceita o alias alternativo:{' '}
+                  <code className="font-mono">brf_meta_webhook_token_2024</code>). Marque o campo{' '}
+                  <strong>messages</strong> na Meta.
+                </span>
               </p>
             </div>
           </div>
