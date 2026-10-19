@@ -99,8 +99,95 @@ onRecordAfterCreateSuccess((e) => {
     `[AI_REPLY] Triggered for customer=${customerId} sender=${sender} channel=${conversationChannel} msgId=${incomingMsgId}`,
   )
 
+  // Helper seguro para buscar registros sem estourar GoError quando a linha não existe
+  function safeFindRecordById(collectionName, recordId, appInstance) {
+    if (!collectionName || !recordId) return null
+    var app = appInstance || $app
+    try {
+      var records = app.findRecordsByFilter(collectionName, 'id = {:id}', '', 1, 0, {
+        id: recordId,
+      })
+      if (records && records.length > 0) {
+        return records[0]
+      }
+    } catch (_) {}
+    return null
+  }
+
+  // Release seguro e tolerante do lock de IA (idempotente)
+  function safeReleaseLock(targetCustomerId, appInstance) {
+    if (!targetCustomerId) return
+    var app = appInstance || $app
+
+    // 1. Liberação via coleção ai_locks se existir
+    try {
+      var lockRecords = app.findRecordsByFilter('ai_locks', 'customer_id = {:cid}', '', 1, 0, {
+        cid: targetCustomerId,
+      })
+      if (lockRecords && lockRecords.length > 0) {
+        for (var li = 0; li < lockRecords.length; li++) {
+          try {
+            app.delete(lockRecords[li])
+            console.log(`[AI_REPLY] ai_locks record deleted for customer=${targetCustomerId}`)
+          } catch (delErr) {
+            console.warn(`[AI_REPLY] Error deleting ai_locks record: ${String(delErr)}`)
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Liberação via tags do cliente (se o cliente existir)
+    try {
+      var targetCust = safeFindRecordById('customers', targetCustomerId, app)
+      if (targetCust) {
+        var rawTags = targetCust.get('tags')
+        var currentTags = []
+        if (Array.isArray(rawTags)) {
+          currentTags = rawTags.filter((t) => typeof t === 'string')
+        } else if (typeof rawTags === 'string') {
+          try {
+            var p = JSON.parse(rawTags)
+            if (Array.isArray(p)) currentTags = p.filter((t) => typeof t === 'string')
+          } catch (_) {}
+        }
+        var hasLockTag = currentTags.some(
+          (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
+        )
+        if (hasLockTag) {
+          targetCust.set(
+            'tags',
+            currentTags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
+          )
+          app.saveNoValidate(targetCust)
+          console.log(`[AI_REPLY] Lock tag released cleanly for customer=${targetCustomerId}`)
+        }
+      }
+    } catch (cleanLockErr) {
+      console.warn(
+        `[AI_REPLY] Error releasing lock tag for customer ${targetCustomerId}: ${String(cleanLockErr)}`,
+      )
+    }
+
+    // 3. Fallback SQL direto seguro (apenas se o customer existir no DB)
+    try {
+      app
+        .db()
+        .newQuery(
+          "UPDATE customers SET tags = (SELECT json_group_array(value) FROM json_each(customers.tags) WHERE value NOT LIKE 'ai_processing%') WHERE id = {:id}",
+        )
+        .bind({ id: targetCustomerId })
+        .execute()
+    } catch (_) {}
+  }
+
   try {
-    const customerInitialCheck = $app.findRecordById('customers', customerId)
+    const customerInitialCheck = safeFindRecordById('customers', customerId)
+    if (!customerInitialCheck) {
+      console.log(
+        `[AI_REPLY_SKIP] Customer record ${customerId} not found in database. Aborting gracefully without throwing.`,
+      )
+      return e.next()
+    }
     if (!userId) {
       userId = customerInitialCheck.getString('user_id') || ''
     }
@@ -159,7 +246,10 @@ onRecordAfterCreateSuccess((e) => {
     const lockTtlMs = 180000
     try {
       $app.runInTransaction((txApp) => {
-        const customer = txApp.findRecordById('customers', customerId)
+        const customer = safeFindRecordById('customers', customerId, txApp)
+        if (!customer) {
+          throw new Error('CUSTOMER_NOT_FOUND')
+        }
         let rawTags = customer.get('tags')
         let tags = []
         if (Array.isArray(rawTags)) {
@@ -206,6 +296,12 @@ onRecordAfterCreateSuccess((e) => {
         acquiredLock = true
       })
     } catch (err) {
+      if (err.message === 'CUSTOMER_NOT_FOUND') {
+        console.log(
+          `[AI_REPLY_SKIP] Customer ${customerId} not found during lock acquisition. Skipping.`,
+        )
+        return e.next()
+      }
       if (err.message === 'LOCKED') {
         console.log(
           `[AI_REPLY] Customer ${customerId} already has active ai_processing lock (<180s), skipping.`,
@@ -248,7 +344,7 @@ onRecordAfterCreateSuccess((e) => {
     let userRecord = null
     try {
       if (userId) {
-        userRecord = $app.findRecordById('users', userId)
+        userRecord = safeFindRecordById('users', userId)
       }
     } catch (err) {
       console.warn(`[AI_REPLY] Could not load user ${userId}: ${String(err)}`)
@@ -271,7 +367,11 @@ onRecordAfterCreateSuccess((e) => {
       } catch (_) {}
     }
 
-    const customer = $app.findRecordById('customers', customerId)
+    const customer = safeFindRecordById('customers', customerId)
+    if (!customer) {
+      console.log(`[AI_REPLY_SKIP] Customer ${customerId} disappeared before processing. Aborting.`)
+      return e.next()
+    }
     let rawCustomerTags = customer.get('tags')
     let tags = []
     if (Array.isArray(rawCustomerTags)) {
@@ -4481,7 +4581,11 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
 
     // Update customer CRM status / stage — 10 Estágios Canônicos da Constituição v3.1
     try {
-      const custToUpdate = $app.findRecordById('customers', customerId)
+      const custToUpdate = safeFindRecordById('customers', customerId)
+      if (!custToUpdate) {
+        console.warn(`[AI_REPLY] Customer ${customerId} not found for CRM update.`)
+        return e.next()
+      }
       const currentCustStatus = custToUpdate.getString('status') || ''
 
       // Função canônica bidirecional para normalizar qualquer status / tag [STATUS: ...] emitida pela Bia ou legada
@@ -5473,10 +5577,16 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
 
           var custDisplayName = ''
           try {
-            var custRec = $app.findRecordById('customers', customerId)
-            var cName = (custRec.getString('first_name') || custRec.getString('name') || '').trim()
-            if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
-              custDisplayName = cName.split(' ')[0]
+            var custRec = safeFindRecordById('customers', customerId)
+            if (custRec) {
+              var cName = (
+                custRec.getString('first_name') ||
+                custRec.getString('name') ||
+                ''
+              ).trim()
+              if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
+                custDisplayName = cName.split(' ')[0]
+              }
             }
           } catch (_) {}
 
@@ -5671,8 +5781,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
 
             var emCustomerPhone = ''
             try {
-              var cRec = $app.findRecordById('customers', customerId)
-              emCustomerPhone = cRec.getString('phone') || ''
+              var cRec = safeFindRecordById('customers', customerId)
+              emCustomerPhone = cRec ? cRec.getString('phone') || '' : ''
             } catch (_) {}
 
             var emCleanPhone = emCustomerPhone.replace(/\D/g, '')
@@ -5795,50 +5905,14 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       } catch (_) {}
     }
   } finally {
-    // Liberação INCONDICIONAL no finally (não depende apenas de acquiredLock por concorrência)
-    // com fallback SQL direto caso o update via API/Record falhe
+    // Liberação tolerante e idempotente no finally:
+    // utiliza safeReleaseLock que verifica antes de tentar atualizar e tolera clientes inexistentes
     try {
-      const cust = $app.findRecordById('customers', customerId)
-      let rawTags = cust.get('tags')
-      let currentTags = []
-      if (Array.isArray(rawTags)) {
-        currentTags = rawTags.filter((t) => typeof t === 'string')
-      } else if (typeof rawTags === 'string') {
-        try {
-          const p = JSON.parse(rawTags)
-          if (Array.isArray(p)) currentTags = p.filter((t) => typeof t === 'string')
-        } catch (_) {}
-      }
-      const hasLockTag = currentTags.some(
-        (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
+      safeReleaseLock(customerId, $app)
+    } catch (finalLockErr) {
+      console.warn(
+        `[AI_REPLY] Tolerant lock release completed with notice for customer ${customerId}: ${String(finalLockErr)}`,
       )
-      if (hasLockTag) {
-        cust.set(
-          'tags',
-          currentTags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
-        )
-        $app.saveNoValidate(cust)
-        console.log(`[AI_REPLY] Lock released cleanly for customer=${customerId}`)
-      }
-    } catch (cleanLockErr) {
-      console.error(
-        `[AI_REPLY] Error releasing lock for customer ${customerId}: ${String(cleanLockErr)}`,
-      )
-      // Fallback: direct SQL update to guarantee lock is released even if record model fails
-      try {
-        $app
-          .db()
-          .newQuery(
-            "UPDATE customers SET tags = (SELECT json_group_array(value) FROM json_each(customers.tags) WHERE value NOT LIKE 'ai_processing%') WHERE id = {:id}",
-          )
-          .bind({ id: customerId })
-          .execute()
-        console.log(`[AI_REPLY] Lock released via SQL fallback for customer=${customerId}`)
-      } catch (sqlErr) {
-        console.error(
-          `[AI_REPLY] SQL lock release fallback failed for ${customerId}: ${String(sqlErr)}`,
-        )
-      }
     }
   }
 

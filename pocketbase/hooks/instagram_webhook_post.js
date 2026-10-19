@@ -587,6 +587,14 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
   }
 }
 
+// Vincula processInstagramWebhookPayload a globalThis antes do registro das rotas
+// para visibilidade garantida no runtime Goja/ES5.1
+try {
+  if (typeof globalThis !== 'undefined') {
+    globalThis.processInstagramWebhookPayload = processInstagramWebhookPayload
+  }
+} catch (_) {}
+
 // Endpoint POST /backend/v1/instagram/webhook (padrão)
 routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
   var body = {}
@@ -679,7 +687,20 @@ routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
   }
 
   try {
-    processInstagramWebhookPayload(body, queryUserId, '')
+    var procFn =
+      typeof processInstagramWebhookPayload === 'function'
+        ? processInstagramWebhookPayload
+        : typeof globalThis !== 'undefined' &&
+            typeof globalThis.processInstagramWebhookPayload === 'function'
+          ? globalThis.processInstagramWebhookPayload
+          : null
+
+    if (!procFn) {
+      throw new ReferenceError(
+        'processInstagramWebhookPayload is not defined in route callback scope or globalThis',
+      )
+    }
+    procFn(body, queryUserId, '')
   } catch (err) {
     $app.logger().error('Error processing Instagram Webhook', 'error', String(err))
     console.error('[IG_POST_HOOK_ERROR] ' + String(err))
@@ -776,7 +797,20 @@ routerAdd('POST', '/backend/v1/instagram/webhook/{userId}', (e) => {
   }
 
   try {
-    processInstagramWebhookPayload(body, queryUserId, pathUserId)
+    var procFnPath =
+      typeof processInstagramWebhookPayload === 'function'
+        ? processInstagramWebhookPayload
+        : typeof globalThis !== 'undefined' &&
+            typeof globalThis.processInstagramWebhookPayload === 'function'
+          ? globalThis.processInstagramWebhookPayload
+          : null
+
+    if (!procFnPath) {
+      throw new ReferenceError(
+        'processInstagramWebhookPayload is not defined in route callback scope or globalThis',
+      )
+    }
+    procFnPath(body, queryUserId, pathUserId)
   } catch (err) {
     $app.logger().error('Error processing Instagram Webhook', 'error', String(err))
     console.error('[IG_POST_HOOK_ERROR] ' + String(err))
