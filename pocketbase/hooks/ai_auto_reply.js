@@ -3043,6 +3043,10 @@ ${safeCombinedContextText || '(Nenhum contexto adicional na base)'}`
     let detectedPromiseExplicitFalse = false
     let detectedHandover = ''
     let detectedProfile = ''
+    let detectedPriceRange = ''
+    let detectedNeighborhood = ''
+    let detectedUrgency = 0
+    let detectedPermuta = false
     let detectedEmail = ''
 
     try {
