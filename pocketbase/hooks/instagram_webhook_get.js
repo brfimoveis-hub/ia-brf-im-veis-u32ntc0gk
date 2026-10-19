@@ -1,6 +1,10 @@
 // Hook para GET /backend/v1/instagram/webhook e GET /backend/v1/instagram/webhook/{userId}
-// Validação do webhook da Meta (Instagram Messaging API / Webhooks)
-// Todas as funções e variáveis inline (regra de escopo do PocketBase JSVM)
+// Validação do handshake de Webhooks do Instagram / Meta Messenger
+//
+// Parâmetros enviados pela Meta no GET:
+// - hub.mode: sempre "subscribe"
+// - hub.verify_token: o token configurado no painel da Meta App
+// - hub.challenge: string aleatória que deve ser devolvida pura (status 200)
 
 routerAdd('GET', '/backend/v1/instagram/webhook', (e) => {
   var query = {}
@@ -11,87 +15,88 @@ routerAdd('GET', '/backend/v1/instagram/webhook', (e) => {
   var mode = query['hub.mode'] || ''
   var token = query['hub.verify_token'] || ''
   var challenge = query['hub.challenge'] || ''
-  var userId = query['user_id'] || query['uid'] || ''
+  var queryUserId = query['user_id'] || query['uid'] || ''
 
-  if (!mode) {
-    try {
-      var headerMode = e.request.header.get('hub.mode') || e.request.header.get('x-hub-mode') || ''
-      if (headerMode) mode = headerMode
-    } catch (_) {}
-  }
-  if (!token) {
-    try {
-      var headerToken =
-        e.request.header.get('hub.verify_token') || e.request.header.get('x-hub-verify-token') || ''
-      if (headerToken) token = headerToken
-    } catch (_) {}
-  }
-  if (!challenge) {
-    try {
-      var headerChallenge =
-        e.request.header.get('hub.challenge') || e.request.header.get('x-hub-challenge') || ''
-      if (headerChallenge) challenge = headerChallenge
-    } catch (_) {}
-  }
-
-  // Ping da Meta sem parâmetros
-  if (!mode && !token && !challenge) {
-    return e.string(200, 'OK')
-  }
+  $app
+    .logger()
+    .info(
+      'Instagram Webhook Handshake GET',
+      'mode',
+      mode,
+      'token_received',
+      token,
+      'user_id',
+      queryUserId,
+    )
 
   if (mode !== 'subscribe') {
-    return e.string(403, 'Forbidden: hub.mode must be "subscribe"')
+    return e.string(403, 'Forbidden: mode must be subscribe')
   }
 
-  if (!token) {
-    return e.string(403, 'Forbidden: missing hub.verify_token parameter')
-  }
+  // Tokens aceitos:
+  // 1. O salvo no usuário do CRM (meta_whatsapp_verify_token)
+  // 2. O padrão "BRF IA CRM"
+  // 3. Variações sem espaços/hífen ("BRFIACRM", "BRF_IA_CRM", "brf_ia_crm")
+  var acceptedTokens = ['BRF IA CRM', 'BRFIACRM', 'BRF_IA_CRM', 'brf_ia_crm', 'brf-ia-crm']
 
-  try {
-    var user = null
-
-    if (userId) {
-      try {
-        user = $app.findRecordById('users', userId)
-      } catch (_) {}
-    }
-
-    // Fallback: se há apenas 1 usuário cadastrado no sistema (Mauro)
-    if (!user) {
-      try {
-        var allUsers = $app.findRecordsByFilter('users', "email != ''", 'created', 2, 0)
-        if (allUsers && allUsers.length > 0) {
-          user = allUsers[0]
+  if (queryUserId) {
+    try {
+      var user = $app.findRecordById('users', queryUserId)
+      if (user) {
+        var userToken = user.getString('meta_whatsapp_verify_token')
+        if (userToken && acceptedTokens.indexOf(userToken) === -1) {
+          acceptedTokens.push(userToken)
         }
-      } catch (_) {}
-    }
-
-    if (!user) {
-      try {
-        user = $app.findRecordById('users', 'g5jto8bhulw01bz')
-      } catch (_) {}
-    }
-
-    var storedToken = user ? user.getString('meta_whatsapp_verify_token') || '' : ''
-
-    // Aceita tanto o token configurado no banco ("BRF IA CRM") quanto o alias divulgado na UI ("brf_meta_webhook_token_2024")
-    var isTokenValid =
-      (storedToken && storedToken === token) ||
-      token === 'BRF IA CRM' ||
-      token === 'brf_meta_webhook_token_2024' ||
-      token === 'brf_meta_webhook_token'
-
-    if (!isTokenValid) {
-      return e.string(403, 'Forbidden: user not found or verify token does not match')
-    }
-
-    return e.string(200, challenge || 'OK')
-  } catch (err) {
-    return e.string(403, 'Forbidden: error during verification')
+      }
+    } catch (_) {}
+  } else {
+    // Tenta carregar tokens configurados em todos os usuários
+    try {
+      var users = $app.findRecordsByFilter(
+        'users',
+        "meta_whatsapp_verify_token != ''",
+        'created',
+        5,
+        0,
+      )
+      for (var u of users) {
+        var ut = u.getString('meta_whatsapp_verify_token')
+        if (ut && acceptedTokens.indexOf(ut) === -1) {
+          acceptedTokens.push(ut)
+        }
+      }
+    } catch (_) {}
   }
+
+  // Compara ignorando caixa alta/baixa e espaços extras
+  var tokenNorm = (token || '').trim().toLowerCase()
+  var matchFound = false
+
+  for (var candidate of acceptedTokens) {
+    if (tokenNorm === candidate.trim().toLowerCase()) {
+      matchFound = true
+      break
+    }
+  }
+
+  if (!matchFound) {
+    $app
+      .logger()
+      .warn(
+        'Instagram Webhook Handshake Rejeitado: token incorreto',
+        'received',
+        token,
+        'accepted',
+        acceptedTokens.join(','),
+      )
+    return e.string(403, 'Forbidden: invalid verify_token')
+  }
+
+  $app.logger().info('Instagram Webhook Handshake Aprovado!', 'challenge_len', challenge.length)
+  return e.string(200, challenge)
 })
 
-// Rota com userId no path: GET /backend/v1/instagram/webhook/{userId}
+// Endpoint complementar com userId no path: GET /backend/v1/instagram/webhook/{userId}
 routerAdd('GET', '/backend/v1/instagram/webhook/{userId}', (e) => {
   var pathUserId = ''
   try {
@@ -106,74 +111,70 @@ routerAdd('GET', '/backend/v1/instagram/webhook/{userId}', (e) => {
   var mode = query['hub.mode'] || ''
   var token = query['hub.verify_token'] || ''
   var challenge = query['hub.challenge'] || ''
-  var userId = pathUserId || query['user_id'] || query['uid'] || ''
+  var queryUserId = query['user_id'] || query['uid'] || ''
+  var effectiveUserId = pathUserId || queryUserId || ''
 
-  if (!mode) {
-    try {
-      var headerMode = e.request.header.get('hub.mode') || e.request.header.get('x-hub-mode') || ''
-      if (headerMode) mode = headerMode
-    } catch (_) {}
-  }
-  if (!token) {
-    try {
-      var headerToken =
-        e.request.header.get('hub.verify_token') || e.request.header.get('x-hub-verify-token') || ''
-      if (headerToken) token = headerToken
-    } catch (_) {}
-  }
-  if (!challenge) {
-    try {
-      var headerChallenge =
-        e.request.header.get('hub.challenge') || e.request.header.get('x-hub-challenge') || ''
-      if (headerChallenge) challenge = headerChallenge
-    } catch (_) {}
-  }
-
-  if (!mode && !token && !challenge) {
-    return e.string(200, 'OK')
-  }
+  $app
+    .logger()
+    .info(
+      'Instagram Webhook Handshake GET (path userId)',
+      'mode',
+      mode,
+      'token_received',
+      token,
+      'user_id',
+      effectiveUserId,
+    )
 
   if (mode !== 'subscribe') {
-    return e.string(403, 'Forbidden: hub.mode must be "subscribe"')
+    return e.string(403, 'Forbidden: mode must be subscribe')
   }
 
-  try {
-    var user = null
-    if (userId) {
-      try {
-        user = $app.findRecordById('users', userId)
-      } catch (_) {}
-    }
+  var acceptedTokens = ['BRF IA CRM', 'BRFIACRM', 'BRF_IA_CRM', 'brf_ia_crm', 'brf-ia-crm']
 
-    if (!user) {
-      try {
-        var allUsers = $app.findRecordsByFilter('users', "email != ''", 'created', 2, 0)
-        if (allUsers && allUsers.length > 0) {
-          user = allUsers[0]
+  if (effectiveUserId) {
+    try {
+      var user = $app.findRecordById('users', effectiveUserId)
+      if (user) {
+        var userToken = user.getString('meta_whatsapp_verify_token')
+        if (userToken && acceptedTokens.indexOf(userToken) === -1) {
+          acceptedTokens.push(userToken)
         }
-      } catch (_) {}
-    }
-
-    if (!user) {
-      try {
-        user = $app.findRecordById('users', 'g5jto8bhulw01bz')
-      } catch (_) {}
-    }
-
-    var storedToken = user ? user.getString('meta_whatsapp_verify_token') || '' : ''
-
-    var isTokenValid =
-      (storedToken && storedToken === token) ||
-      token === 'BRF IA CRM' ||
-      token === 'brf_meta_webhook_token_2024' ||
-      token === 'brf_meta_webhook_token'
-
-    if (!isTokenValid) {
-      return e.string(403, 'Forbidden: user not found or verify token does not match')
-    }
-
-    return e.string(200, challenge || 'OK')
-  } catch (_) {
-    return e.string(403, 'Forbidden: error during verification')
+      }
+    } catch (_) {}
   }
+
+  var tokenNorm = (token || '').trim().toLowerCase()
+  var matchFound = false
+
+  for (var candidate of acceptedTokens) {
+    if (tokenNorm === candidate.trim().toLowerCase()) {
+      matchFound = true
+      break
+    }
+  }
+
+  if (!matchFound) {
+    $app
+      .logger()
+      .warn(
+        'Instagram Webhook Handshake Rejeitado (path userId)',
+        'received',
+        token,
+        'user_id',
+        effectiveUserId,
+      )
+    return e.string(403, 'Forbidden: invalid verify_token')
+  }
+
+  $app
+    .logger()
+    .info(
+      'Instagram Webhook Handshake Aprovado (path userId)!',
+      'challenge_len',
+      challenge.length,
+      'user_id',
+      effectiveUserId,
+    )
+  return e.string(200, challenge)
 })

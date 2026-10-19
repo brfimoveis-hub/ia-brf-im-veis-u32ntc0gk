@@ -6,6 +6,7 @@
 function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
   var userId = pathUserId || queryUserId || ''
 
+  // 1. Resolução dinâmica de usuário e IG Account IDs vinculados
   var user = null
   if (userId) {
     try {
@@ -13,42 +14,115 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
     } catch (_) {}
   }
 
-  // Se não tem user pelo query/path, tenta encontrar pelo Instagram Business ID recebido no payload
-  if (!user && body && body.entry) {
-    try {
-      var entryId = body.entry[0] && body.entry[0].id ? String(body.entry[0].id) : ''
-      if (entryId) {
+  // Coleta todos os IDs de conta do evento Meta (entry.id, entry.messaging.recipient.id, etc.)
+  var entries = (body && body.entry) || []
+  var eventEntryIds = []
+  for (var ei = 0; ei < entries.length; ei++) {
+    var eItem = entries[ei] || {}
+    if (eItem.id) eventEntryIds.push(String(eItem.id).trim())
+    var mList = eItem.messaging || []
+    for (var mi = 0; mi < mList.length; mi++) {
+      var rObj = mList[mi] && mList[mi].recipient
+      if (rObj && rObj.id) eventEntryIds.push(String(rObj.id).trim())
+    }
+  }
+
+  // Tenta encontrar usuário por meta_instagram_business_id casando com qualquer ID do evento
+  if (!user && eventEntryIds.length > 0) {
+    for (var eidIdx = 0; eidIdx < eventEntryIds.length; eidIdx++) {
+      var candidateEid = eventEntryIds[eidIdx]
+      if (!candidateEid) continue
+      try {
         var usersByIg = $app.findRecordsByFilter(
           'users',
           'meta_instagram_business_id = {:bid}',
           'created',
           2,
           0,
-          { bid: entryId },
+          { bid: candidateEid },
         )
         if (usersByIg && usersByIg.length > 0) {
           user = usersByIg[0]
           userId = user.id
+          $app
+            .logger()
+            .info(
+              '[IG_POST_MATCH] Usuário encontrado por meta_instagram_business_id',
+              'entry_id',
+              candidateEid,
+              'user_id',
+              userId,
+            )
+          break
         }
+      } catch (_) {}
+    }
+  }
+
+  // Fallback: se há usuários com Instagram configurado (meta_instagram_business_id ou token ou username)
+  if (!user) {
+    try {
+      var igUsers = $app.findRecordsByFilter(
+        'users',
+        "meta_instagram_business_id != '' || instagram_username != '' || meta_instagram_page_token != ''",
+        'created',
+        2,
+        0,
+      )
+      if (igUsers && igUsers.length > 0) {
+        user = igUsers[0]
+        userId = user.id
+        $app
+          .logger()
+          .info(
+            '[IG_POST_MATCH] Usuário com Instagram ativo resolvido por fallback',
+            'user_id',
+            userId,
+          )
       }
     } catch (_) {}
   }
 
-  // Fallback: se há apenas 1 usuário no sistema, assume ele
+  // Fallback final: se há apenas 1 usuário no sistema, assume ele
   if (!user) {
     try {
       var allUsers = $app.findRecordsByFilter('users', "email != ''", 'created', 2, 0)
       if (allUsers && allUsers.length === 1) {
         user = allUsers[0]
         userId = user.id
+        $app
+          .logger()
+          .info(
+            '[IG_POST_MATCH] Usuário único do CRM resolvido por fallback geral',
+            'user_id',
+            userId,
+          )
       }
     } catch (_) {}
   }
 
   if (!user) {
-    $app.logger().error('Instagram Webhook: nenhum usuário encontrado para associar o lead')
+    var noUserErr =
+      '[IG_POST_NO_USER] Nenhum usuário encontrado para associar o evento de Instagram'
+    $app.logger().error(noUserErr)
+    console.error(noUserErr)
     return
   }
+
+  // Resolução de IDs de Instagram conhecidos para matching de destinatário (requisito 3)
+  // Aceita:
+  // - ID salvo em meta_instagram_business_id no registro do usuário (dinâmico)
+  // - ID comercial oficial @brf_imoveis_ (17841418593400936)
+  // - ID da Página oficial vinculada (1343797128806374) ou da Página clássica (1219427617930954)
+  // - Fallback de aliases históricos (17841414618266409, 17841418953400936)
+  var savedIgBizId = (user.getString('meta_instagram_business_id') || '').trim()
+  var knownBusinessIds = {}
+  if (savedIgBizId) knownBusinessIds[savedIgBizId] = 'user.meta_instagram_business_id'
+  knownBusinessIds['17841418593400936'] = 'brf_imoveis_official_ig_id'
+  knownBusinessIds['1343797128806374'] = 'brf_imoveis_page_id'
+  knownBusinessIds['1219427617930954'] = 'brf_imoveis_classic_page_id'
+  knownBusinessIds['17841414618266409'] = 'bernadete_ig_alias'
+  knownBusinessIds['17841418953400936'] = 'legacy_ig_alias'
 
   var nowIso = new Date().toISOString()
   var nowBrStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
@@ -60,23 +134,101 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
     user.getString('meta_capi_token') ||
     ''
 
-  for (var entry of body.entry || []) {
+  for (var eIndex = 0; eIndex < entries.length; eIndex++) {
+    var entry = entries[eIndex] || {}
+    var entryId = entry.id ? String(entry.id).trim() : ''
+
+    // Se o evento trouxe entry.changes (ex.: comentários, menções, leadgen, feed changes)
+    var changesList = entry.changes || []
+    if (changesList.length > 0) {
+      for (var ci = 0; ci < changesList.length; ci++) {
+        var ch = changesList[ci] || {}
+        var chField = ch.field || 'unknown'
+        var chLog =
+          '[IG_POST_CHANGE] entry_id=' +
+          entryId +
+          ' field=' +
+          chField +
+          ' val_keys=' +
+          (ch.value ? Object.keys(ch.value).join(',') : 'none')
+        $app.logger().info(chLog)
+        console.log(chLog)
+      }
+    }
+
     // Eventos do tipo messaging (DMs do Instagram)
     var messagingList = entry.messaging || []
-    var recipientBusinessId = entry.id ? String(entry.id) : ''
+    if (messagingList.length === 0 && changesList.length === 0) {
+      $app
+        .logger()
+        .info('[IG_POST_ENTRY_EMPTY] Entry sem messaging nem changes', 'entry_id', entryId)
+      continue
+    }
 
-    for (var messaging of messagingList) {
+    for (var mIndex = 0; mIndex < messagingList.length; mIndex++) {
+      var messaging = messagingList[mIndex] || {}
+
       // Ignora echo da própria página/Bia ou entregas de mensagens (delivery / read)
       if (messaging.message && messaging.message.is_echo) {
+        $app
+          .logger()
+          .info(
+            '[IG_POST_SKIP_ECHO] Desconsiderando echo da própria conta',
+            'mid',
+            messaging.message.mid || '',
+          )
         continue
       }
       if (messaging.delivery || messaging.read) {
+        // Notificação de entrega/leitura silenciosa
         continue
       }
 
-      var senderId = messaging.sender ? String(messaging.sender.id) : ''
-      var recipientId = messaging.recipient ? String(messaging.recipient.id) : recipientBusinessId
-      if (!senderId) continue
+      var senderId =
+        messaging.sender && messaging.sender.id ? String(messaging.sender.id).trim() : ''
+      var recipientId =
+        messaging.recipient && messaging.recipient.id
+          ? String(messaging.recipient.id).trim()
+          : entryId
+
+      if (!senderId) {
+        $app.logger().warn('[IG_POST_NO_SENDER] Messaging sem sender.id descartado')
+        continue
+      }
+
+      // Verificação de matching do destinatário (Requisito 3)
+      var matchedPath = ''
+      if (recipientId && knownBusinessIds[recipientId]) {
+        matchedPath = 'recipient_id:' + recipientId + ' via ' + knownBusinessIds[recipientId]
+      } else if (entryId && knownBusinessIds[entryId]) {
+        matchedPath = 'entry_id:' + entryId + ' via ' + knownBusinessIds[entryId]
+      } else if (senderId && knownBusinessIds[senderId]) {
+        // Mensagem enviada pela própria conta comercial (echo que não veio com is_echo)
+        $app
+          .logger()
+          .info(
+            '[IG_POST_SKIP_SELF] Mensagem tem sender igual a conta comercial conhecida',
+            'sender_id',
+            senderId,
+          )
+        continue
+      } else {
+        // Destinatário não conhecido explicitamente mas só temos esta conta comercial no CRM
+        matchedPath = 'fallback_single_tenant: recipient=' + recipientId + ' entry=' + entryId
+      }
+
+      $app
+        .logger()
+        .info(
+          '[IG_POST_MATCH_PATH] Casamento de conta do Instagram aprovado: ' + matchedPath,
+          'sender_id',
+          senderId,
+          'recipient_id',
+          recipientId,
+        )
+      console.log(
+        '[IG_POST_MATCH_PATH] ' + matchedPath + ' sender=' + senderId + ' recipient=' + recipientId,
+      )
 
       // Extrai texto da mensagem
       var text = ''
@@ -87,21 +239,22 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
         if (messaging.message.text) {
           text = messaging.message.text
         } else if (messaging.message.attachments && messaging.message.attachments.length > 0) {
-          var att = messaging.message.attachments[0]
-          if (att.type === 'audio' || att.type === 'voice') {
+          var att = messaging.message.attachments[0] || {}
+          var aType = att.type || 'mídia'
+          if (aType === 'audio' || aType === 'voice') {
             text = '[Áudio Recebido do Instagram]'
             isAudio = true
             mediaUrl = (att.payload && att.payload.url) || ''
-          } else if (att.type === 'image') {
+          } else if (aType === 'image') {
             text = '[Imagem Recebida do Instagram]'
-          } else if (att.type === 'video') {
+          } else if (aType === 'video') {
             text = '[Vídeo Recebido do Instagram]'
-          } else if (att.type === 'story_mention') {
+          } else if (aType === 'story_mention') {
             text = '[Menção nos Stories do Instagram]'
-          } else if (att.type === 'share') {
+          } else if (aType === 'share') {
             text = '[Compartilhamento do Instagram]'
           } else {
-            text = '[' + (att.type || 'Anexo') + ' Recebido]'
+            text = '[' + aType + ' Recebido]'
           }
         } else if (messaging.message.quick_reply && messaging.message.quick_reply.payload) {
           text = messaging.message.quick_reply.payload
@@ -117,7 +270,7 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
       // Tenta obter nome e username do usuário do Instagram via Graph API v22.0
       var igProfileName = ''
       var igUsername = ''
-      if (pageToken && senderId) {
+      if (pageToken && senderId && !senderId.startsWith('test_')) {
         try {
           var profileRes = $http.send({
             url:
@@ -136,7 +289,7 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
       var contactName =
         igProfileName ||
         (igUsername ? '@' + igUsername : '') ||
-        'Lead Instagram (' + senderId.substring(0, 6) + ')'
+        'Lead Instagram (' + senderId.substring(0, Math.min(8, senderId.length)) + ')'
 
       // Transcrição de áudio via Whisper se houver mediaUrl e OpenAI key
       if (isAudio && mediaUrl) {
@@ -245,11 +398,17 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
       // Localiza cliente existente por IG Sender ID (salvo nas notes ou last_origin)
       var customer = null
       try {
-        customer = $app.findFirstRecordByFilter(
+        var existingCusts = $app.findRecordsByFilter(
           'customers',
           'notes ~ {:sid} || last_origin ~ {:sid}',
+          '-created',
+          1,
+          0,
           { sid: senderId },
         )
+        if (existingCusts && existingCusts.length > 0) {
+          customer = existingCusts[0]
+        }
       } catch (_) {}
 
       var isNewCustomer = false
@@ -294,10 +453,20 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
 
           $app.save(customer)
           isNewCustomer = true
+          $app
+            .logger()
+            .info(
+              '[IG_POST_CUSTOMER_CREATED] Novo cliente criado no CRM',
+              'customer_id',
+              customer.id,
+              'name',
+              contactName,
+            )
         } catch (err) {
           $app
             .logger()
             .error('Failed to create customer from Instagram webhook', 'error', String(err))
+          console.error('[IG_POST_CUSTOMER_ERR] ' + String(err))
           continue
         }
       } else {
@@ -356,7 +525,7 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
           0,
           { cid: customer.id, text: text },
         )
-        if (recentMsgs.length > 0) {
+        if (recentMsgs && recentMsgs.length > 0) {
           var lastMsg = recentMsgs[0]
           var diffMins =
             (new Date().getTime() - new Date(lastMsg.getString('created')).getTime()) / 60000
@@ -391,11 +560,28 @@ function processInstagramWebhookPayload(body, queryUserId, pathUserId) {
               'sender_id',
               senderId,
             )
+          console.log(
+            '[IG_POST_MSG_SAVED] customer=' +
+              customer.id +
+              ' conv=' +
+              newMsg.id +
+              ' text=' +
+              text.substring(0, 40),
+          )
         } catch (err) {
           $app
             .logger()
             .error('Failed to save conversation from Instagram webhook', 'error', String(err))
+          console.error('[IG_POST_CONV_ERR] ' + String(err))
         }
+      } else {
+        $app
+          .logger()
+          .info(
+            '[IG_POST_DUPLICATE] Mensagem idêntica recente ignorada',
+            'customer_id',
+            customer.id,
+          )
       }
     }
   }
@@ -415,24 +601,88 @@ routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
 
   var queryUserId = query['user_id'] || query['uid'] || ''
 
-  $app
-    .logger()
-    .info(
-      'Instagram Webhook received',
-      'object',
-      body ? body.object : '',
-      'entry_count',
-      body && body.entry ? body.entry.length : 0,
+  // Coleta detalhada para depuração sem segredos (requisito 1)
+  var entries = (body && body.entry) || []
+  var entrySummaries = []
+  for (var i = 0; i < entries.length; i++) {
+    var en = entries[i] || {}
+    var msgs = en.messaging || []
+    var chs = en.changes || []
+    var msgPairs = []
+    for (var m = 0; m < msgs.length; m++) {
+      var item = msgs[m] || {}
+      var sId = item.sender ? item.sender.id : ''
+      var rId = item.recipient ? item.recipient.id : ''
+      var hasTxt = item.message && item.message.text ? 'txt' : ''
+      var isEcho = item.message && item.message.is_echo ? 'echo' : ''
+      msgPairs.push(
+        sId + '->' + rId + (hasTxt ? '(' + hasTxt + ')' : '') + (isEcho ? '(echo)' : ''),
+      )
+    }
+    var chFields = []
+    for (var c = 0; c < chs.length; c++) {
+      chFields.push(chs[c].field || 'unknown')
+    }
+    entrySummaries.push(
+      '#' +
+        i +
+        '[id=' +
+        (en.id || '') +
+        ' msgs=' +
+        msgs.length +
+        (msgPairs.length ? ' pairs=' + msgPairs.join(',') : '') +
+        (chs.length ? ' chs=' + chFields.join(',') : '') +
+        ']',
     )
+  }
 
+  var debugSummary =
+    '[IG_POST_HOOK] object=' +
+    (body ? body.object : 'null') +
+    ' entries=' +
+    entries.length +
+    ' query_uid=' +
+    (queryUserId || 'none') +
+    ' ' +
+    entrySummaries.join(' ')
+
+  // Log no PocketBase logger e no console
+  $app.logger().info(debugSummary)
+  console.log(debugSummary)
+
+  // Grava também em system_logs para visualização imediata no CRM (categoria "instagram_webhook_post")
+  try {
+    var sLogsCol = $app.findCollectionByNameOrId('system_logs')
+    var sLogRec = new Record(sLogsCol)
+    sLogRec.set('type', 'instagram_webhook_post')
+    sLogRec.set('message', debugSummary)
+    sLogRec.set('user_id', queryUserId || '')
+    sLogRec.set(
+      'details',
+      JSON.stringify({
+        object: body ? body.object : null,
+        entries_count: entries.length,
+        summaries: entrySummaries,
+      }),
+    )
+    $app.saveNoValidate(sLogRec)
+  } catch (_) {}
+
+  // A Meta envia object "instagram" ou "page"
   if (!body || (body.object !== 'instagram' && body.object !== 'page')) {
-    return e.string(404, 'Not Found')
+    var rejectMsg =
+      '[IG_POST_HOOK_DISCARD] Objeto não reconhecido: ' + (body ? body.object : 'null')
+    $app.logger().warn(rejectMsg)
+    console.warn(rejectMsg)
+    // Resposta 200 rápida sempre mesmo para descarte, para a Meta não suspender o webhook
+    return e.string(200, 'EVENT_RECEIVED')
   }
 
   try {
     processInstagramWebhookPayload(body, queryUserId, '')
   } catch (err) {
     $app.logger().error('Error processing Instagram Webhook', 'error', String(err))
+    console.error('[IG_POST_HOOK_ERROR] ' + String(err))
   }
 
   return e.string(200, 'EVENT_RECEIVED')
@@ -457,24 +707,79 @@ routerAdd('POST', '/backend/v1/instagram/webhook/{userId}', (e) => {
 
   var queryUserId = query['user_id'] || query['uid'] || ''
 
-  $app
-    .logger()
-    .info(
-      'Instagram Webhook received (path userId)',
-      'user_id',
-      pathUserId,
-      'object',
-      body ? body.object : '',
+  var entries = (body && body.entry) || []
+  var entrySummaries = []
+  for (var i = 0; i < entries.length; i++) {
+    var en = entries[i] || {}
+    var msgs = en.messaging || []
+    var chs = en.changes || []
+    var msgPairs = []
+    for (var m = 0; m < msgs.length; m++) {
+      var item = msgs[m] || {}
+      var sId = item.sender ? item.sender.id : ''
+      var rId = item.recipient ? item.recipient.id : ''
+      var hasTxt = item.message && item.message.text ? 'txt' : ''
+      var isEcho = item.message && item.message.is_echo ? 'echo' : ''
+      msgPairs.push(
+        sId + '->' + rId + (hasTxt ? '(' + hasTxt + ')' : '') + (isEcho ? '(echo)' : ''),
+      )
+    }
+    var chFields = []
+    for (var c = 0; c < chs.length; c++) {
+      chFields.push(chs[c].field || 'unknown')
+    }
+    entrySummaries.push(
+      '#' +
+        i +
+        '[id=' +
+        (en.id || '') +
+        ' msgs=' +
+        msgs.length +
+        (msgPairs.length ? ' pairs=' + msgPairs.join(',') : '') +
+        (chs.length ? ' chs=' + chFields.join(',') : '') +
+        ']',
     )
+  }
+
+  var debugSummary =
+    '[IG_POST_HOOK_PATH] object=' +
+    (body ? body.object : 'null') +
+    ' entries=' +
+    entries.length +
+    ' path_uid=' +
+    pathUserId +
+    ' ' +
+    entrySummaries.join(' ')
+
+  $app.logger().info(debugSummary)
+  console.log(debugSummary)
+
+  try {
+    var sLogsCol = $app.findCollectionByNameOrId('system_logs')
+    var sLogRec = new Record(sLogsCol)
+    sLogRec.set('type', 'instagram_webhook_post')
+    sLogRec.set('message', debugSummary)
+    sLogRec.set('user_id', pathUserId || queryUserId || '')
+    sLogRec.set(
+      'details',
+      JSON.stringify({
+        object: body ? body.object : null,
+        entries_count: entries.length,
+        summaries: entrySummaries,
+      }),
+    )
+    $app.saveNoValidate(sLogRec)
+  } catch (_) {}
 
   if (!body || (body.object !== 'instagram' && body.object !== 'page')) {
-    return e.string(404, 'Not Found')
+    return e.string(200, 'EVENT_RECEIVED')
   }
 
   try {
     processInstagramWebhookPayload(body, queryUserId, pathUserId)
   } catch (err) {
     $app.logger().error('Error processing Instagram Webhook', 'error', String(err))
+    console.error('[IG_POST_HOOK_ERROR] ' + String(err))
   }
 
   return e.string(200, 'EVENT_RECEIVED')
