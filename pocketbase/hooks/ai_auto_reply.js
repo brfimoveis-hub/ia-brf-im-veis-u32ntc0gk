@@ -21,8 +21,31 @@ onRecordAfterCreateSuccess((e) => {
         if (res && res.statusCode >= 200 && res.statusCode < 300) {
           return res
         }
+
+        // Diagnóstico completo e explícito de resposta non-2xx da Meta (sem truncamento)
+        const errObj = res && res.json && res.json.error ? res.json.error : {}
+        const errCode = errObj.code !== undefined ? errObj.code : 'none'
+        const errSubcode = errObj.error_subcode !== undefined ? errObj.error_subcode : 'none'
+        const errMsg =
+          errObj.message || (res ? (typeof res.body === 'string' ? res.body : '') : '') || 'none'
+        const errType = errObj.type || 'none'
+        const errTitle = errObj.error_user_title || 'none'
+        const errUserMsg = errObj.error_user_msg || errObj.error_user_message || 'none'
+        const fbtraceId = errObj.fbtrace_id || 'none'
+        const isTransient = errObj.is_transient !== undefined ? errObj.is_transient : 'none'
+
         console.warn(
-          `[AI_REPLY] Meta HTTP call non-2xx: url=${url} statusCode=${res ? res.statusCode : 'none'} response=${JSON.stringify(res ? res.json || res.body || '' : '')}`,
+          `[AI_REPLY] Meta HTTP non-2xx: status=${res ? res.statusCode : 'none'} attempt=${attempt + 1}/${maxRetries + 1} url=${url}`,
+        )
+        console.warn(
+          `[AI_REPLY] Meta Error Details: code=${errCode} subcode=${errSubcode} type="${errType}" fbtrace_id="${fbtraceId}" is_transient=${isTransient}`,
+        )
+        console.warn(`[AI_REPLY] Meta Error Message: "${errMsg}"`)
+        if (errTitle !== 'none' || errUserMsg !== 'none') {
+          console.warn(`[AI_REPLY] Meta User Message: title="${errTitle}" msg="${errUserMsg}"`)
+        }
+        console.warn(
+          `[AI_REPLY] Meta Full Response JSON: ${JSON.stringify(res ? res.json || res.body || '' : '')}`,
         )
       } catch (httpErr) {
         console.error(`[AI_REPLY] Meta HTTP send exception: url=${url} error=${String(httpErr)}`)
@@ -36,13 +59,36 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     try {
+      const errObj = res && res.json && res.json.error ? res.json.error : {}
       const logsCol = $app.findCollectionByNameOrId('system_logs')
       const newLog = new Record(logsCol)
       newLog.set('type', 'api_failure')
-      newLog.set('message', `Falha Meta API ou Externa (${url}) após ${maxRetries} tentativas.`)
+      newLog.set(
+        'message',
+        `Falha Meta API (${url}) após ${maxRetries} tentativas. code=${errObj.code !== undefined ? errObj.code : 'none'} subcode=${errObj.error_subcode !== undefined ? errObj.error_subcode : 'none'}: ${errObj.message || ''}`,
+      )
+      newLog.set(
+        'details',
+        JSON.stringify({
+          url: url,
+          method: method,
+          statusCode: res ? res.statusCode : null,
+          code: errObj.code !== undefined ? errObj.code : null,
+          error_subcode: errObj.error_subcode !== undefined ? errObj.error_subcode : null,
+          error_user_title: errObj.error_user_title || null,
+          error_user_message: errObj.error_user_msg || errObj.error_user_message || null,
+          fbtrace_id: errObj.fbtrace_id || null,
+          message: errObj.message || null,
+          type: errObj.type || null,
+          is_transient: errObj.is_transient !== undefined ? errObj.is_transient : null,
+        }),
+      )
       newLog.set(
         'payload',
-        JSON.stringify({ statusCode: res ? res.statusCode : null, body: res ? res.json : null }),
+        JSON.stringify({
+          statusCode: res ? res.statusCode : null,
+          body: res ? res.json || res.body : null,
+        }),
       )
       $app.saveNoValidate(newLog)
     } catch (_) {}
@@ -5309,12 +5355,37 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           }
         } catch (_) {}
 
-        const igToken = userRecord
-          ? userRecord.getString('meta_instagram_page_token') ||
-            userRecord.getString('meta_page_access_token') ||
-            userRecord.getString('meta_capi_token') ||
-            ''
-          : ''
+        // Busca o token mais recente do usuário no CRM (priorizando conexão OAuth atualizada)
+        let freshUserRecord = userRecord
+        try {
+          if (userId) {
+            freshUserRecord = $app.findRecordById('users', userId)
+          }
+        } catch (_) {}
+        if (!freshUserRecord) {
+          try {
+            const latestUsers = $app.findRecordsByFilter(
+              'users',
+              "meta_instagram_page_token != '' || meta_instagram_user_token != '' || meta_page_access_token != ''",
+              '-updated',
+              1,
+              0,
+            )
+            if (latestUsers && latestUsers.length > 0) {
+              freshUserRecord = latestUsers[0]
+            }
+          } catch (_) {}
+        }
+
+        const igToken = (
+          freshUserRecord
+            ? freshUserRecord.getString('meta_instagram_page_token') ||
+              freshUserRecord.getString('meta_instagram_user_token') ||
+              freshUserRecord.getString('meta_page_access_token') ||
+              freshUserRecord.getString('meta_capi_token') ||
+              ''
+            : ''
+        ).trim()
 
         // Resolução dinâmica do Instagram Business/User Account ID oficial para o endpoint {ig_user_id}/messages
         let igRecipientTargetId = ''
@@ -5329,8 +5400,10 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             igRecipientTargetId = recipMatch[1].trim()
           }
         }
-        if (!igRecipientTargetId && userRecord) {
-          igRecipientTargetId = (userRecord.getString('meta_instagram_business_id') || '').trim()
+        if (!igRecipientTargetId && freshUserRecord) {
+          igRecipientTargetId = (
+            freshUserRecord.getString('meta_instagram_business_id') || ''
+          ).trim()
         }
         if (!igRecipientTargetId) {
           igRecipientTargetId = '17841418593400936' // ID oficial @brf_imoveis_ (fallback consistente)
@@ -5339,25 +5412,104 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         if (igSenderId && igToken && isWithin24h) {
           const igEndpointUrl = `https://graph.facebook.com/v22.0/${igRecipientTargetId}/messages`
           console.log(
-            `[AI_REPLY] Sending Instagram DM to recipient=${igSenderId} via target=${igRecipientTargetId} url=${igEndpointUrl}`,
+            `[AI_REPLY] Sending Instagram DM to recipient=${igSenderId} via target=${igRecipientTargetId} url=${igEndpointUrl} (token_prefix=${igToken.substring(0, 15)}... len=${igToken.length})`,
           )
-          const igSendRes = callMetaWithRetry(
+          const igPayloadObj = {
+            recipient: { id: igSenderId },
+            message: { text: responseText },
+          }
+          let igSendRes = callMetaWithRetry(
             igEndpointUrl,
             'POST',
             { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
-            JSON.stringify({
-              recipient: { id: igSenderId },
-              message: { text: responseText },
-            }),
+            JSON.stringify(igPayloadObj),
           )
+
+          // Fallback resiliente: se falhou com code=1 OAuthException no endpoint /{ig_user_id}/messages
+          // e o target difere da Página ou o token é um Page Access Token, testa endpoint /{page_id}/messages ou /me/messages
+          let usedFallback = false
+          let lastAttemptedUrl = igEndpointUrl
+          if (
+            (!igSendRes || igSendRes.statusCode < 200 || igSendRes.statusCode >= 300) &&
+            igSendRes &&
+            igSendRes.json &&
+            igSendRes.json.error &&
+            igSendRes.json.error.code === 1
+          ) {
+            const pageIdFallback =
+              (freshUserRecord ? freshUserRecord.getString('meta_page_id') : '') ||
+              '1219427617930954'
+            if (pageIdFallback && pageIdFallback !== igRecipientTargetId) {
+              const fallbackPageUrl = `https://graph.facebook.com/v22.0/${pageIdFallback}/messages`
+              console.log(
+                `[AI_REPLY] Retrying Instagram DM via page endpoint fallback: ${fallbackPageUrl}`,
+              )
+              const fallbackRes = callMetaWithRetry(
+                fallbackPageUrl,
+                'POST',
+                { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
+                JSON.stringify(igPayloadObj),
+              )
+              if (fallbackRes && fallbackRes.statusCode >= 200 && fallbackRes.statusCode < 300) {
+                igSendRes = fallbackRes
+                usedFallback = true
+                lastAttemptedUrl = fallbackPageUrl
+                console.log(
+                  `[AI_REPLY] Instagram DM fallback to page endpoint succeeded! url=${fallbackPageUrl}`,
+                )
+              }
+            }
+          }
+
           if (igSendRes && igSendRes.statusCode >= 200 && igSendRes.statusCode < 300) {
             console.log(
-              `[AI_REPLY] Instagram DM sent successfully to ${igSenderId} for customer=${customerId}`,
+              `[AI_REPLY] Instagram DM sent successfully to ${igSenderId} for customer=${customerId} (fallback_used=${usedFallback})`,
             )
           } else {
+            const igErrObj =
+              igSendRes && igSendRes.json && igSendRes.json.error ? igSendRes.json.error : {}
             console.warn(
-              `[AI_REPLY] Instagram DM response status: ${igSendRes ? igSendRes.statusCode : 'null'}`,
+              `[AI_REPLY] Instagram DM response status: ${igSendRes ? igSendRes.statusCode : 'null'} code=${igErrObj.code !== undefined ? igErrObj.code : 'none'} subcode=${igErrObj.error_subcode !== undefined ? igErrObj.error_subcode : 'none'} fbtrace_id="${igErrObj.fbtrace_id || 'none'}" msg="${igErrObj.message || ''}"`,
             )
+            try {
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const igFailLog = new Record(logsCol)
+              igFailLog.set('user_id', (freshUserRecord ? freshUserRecord.id : userId) || '')
+              igFailLog.set('type', 'instagram_dm_failure')
+              igFailLog.set(
+                'message',
+                `Falha ao enviar DM do Instagram: code=${igErrObj.code !== undefined ? igErrObj.code : 'none'} subcode=${igErrObj.error_subcode !== undefined ? igErrObj.error_subcode : 'none'} (${igErrObj.message || 'HTTP ' + (igSendRes ? igSendRes.statusCode : '')})`,
+              )
+              igFailLog.set(
+                'details',
+                JSON.stringify({
+                  url: lastAttemptedUrl,
+                  original_url: igEndpointUrl,
+                  statusCode: igSendRes ? igSendRes.statusCode : null,
+                  code: igErrObj.code !== undefined ? igErrObj.code : null,
+                  error_subcode:
+                    igErrObj.error_subcode !== undefined ? igErrObj.error_subcode : null,
+                  error_user_title: igErrObj.error_user_title || null,
+                  error_user_message:
+                    igErrObj.error_user_msg || igErrObj.error_user_message || null,
+                  fbtrace_id: igErrObj.fbtrace_id || null,
+                  message: igErrObj.message || null,
+                  type: igErrObj.type || null,
+                  recipient_id: igSenderId,
+                  target_id: igRecipientTargetId,
+                  token_prefix: igToken.substring(0, 15) + '...',
+                }),
+              )
+              igFailLog.set(
+                'payload',
+                JSON.stringify({
+                  request: igPayloadObj,
+                  error: igErrObj,
+                  response: igSendRes ? igSendRes.json || igSendRes.body : null,
+                }),
+              )
+              $app.saveNoValidate(igFailLog)
+            } catch (_) {}
           }
         } else if (!isWithin24h) {
           try {
@@ -5372,6 +5524,14 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             igLog.set('payload', JSON.stringify({ customer_id: customerId, sender_id: igSenderId }))
             $app.saveNoValidate(igLog)
           } catch (_) {}
+        } else if (!igSenderId) {
+          console.warn(
+            `[AI_REPLY] Instagram send skipped: igSenderId não identificado para customer=${customerId}`,
+          )
+        } else if (!igToken) {
+          console.warn(
+            `[AI_REPLY] Instagram send skipped: igToken ausente para customer=${customerId}`,
+          )
         }
       } catch (igErr) {
         console.warn(`[AI_REPLY] Instagram send error (non-fatal): ${String(igErr)}`)
