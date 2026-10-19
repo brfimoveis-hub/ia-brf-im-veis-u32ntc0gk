@@ -3040,6 +3040,7 @@ ${safeCombinedContextText || '(Nenhum contexto adicional na base)'}`
     let detectedFollowUpStep = ''
     let detectedPromiseContext = ''
     let detectedPromisePending = false
+    let detectedPromiseExplicitFalse = false
     let detectedHandover = ''
     let detectedProfile = ''
     let detectedEmail = ''
@@ -3425,6 +3426,9 @@ ${safePropertyContext}`
     if (earlyPromisePendingMatch && earlyPromisePendingMatch[1]) {
       const pVal = earlyPromisePendingMatch[1].toLowerCase()
       detectedPromisePending = pVal === 'true' || pVal === 'sim'
+      if (pVal === 'false' || pVal === 'não' || pVal === 'nao') {
+        detectedPromiseExplicitFalse = true
+      }
     }
 
     const earlyHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
@@ -4043,6 +4047,9 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     if (latePromisePendingMatch && latePromisePendingMatch[1]) {
       const pVal = latePromisePendingMatch[1].toLowerCase()
       detectedPromisePending = pVal === 'true' || pVal === 'sim'
+      if (pVal === 'false' || pVal === 'não' || pVal === 'nao') {
+        detectedPromiseExplicitFalse = true
+      }
     }
 
     const lateHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
@@ -4870,7 +4877,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           custToUpdate.set('promise_context', detectedPromiseContext)
         }
         crmUpdated = true
-      } else if (promisePendingMatch && !detectedPromisePending) {
+      } else if (detectedPromiseExplicitFalse) {
         custToUpdate.set('promise_pending', false)
         crmUpdated = true
       }

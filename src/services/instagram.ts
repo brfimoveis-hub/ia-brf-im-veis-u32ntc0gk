@@ -115,12 +115,14 @@ export function getInstagramActiveAppId(
  *
  *   - pages_show_list: permite listar as páginas do Facebook do usuário (/me/accounts)
  *   - pages_read_engagement: permite ler metadados da página vinculada
+ *   - pages_messaging: permite envio e gerenciamento de mensagens/DMs via Graph API
  *   - instagram_basic: permite obter metadados básicos da conta profissional do Instagram
  *   - business_management: permite leitura dos ativos no Business Manager
  */
 export const INSTAGRAM_OAUTH_SCOPES_LIST = [
   'pages_show_list',
   'pages_read_engagement',
+  'pages_messaging',
   'instagram_basic',
   'business_management',
 ]
