@@ -275,7 +275,11 @@ export function CustomerDetailDrawer({
                         {customer.status || '1. Acolhimento'}
                       </Badge>
                       {(() => {
-                        const src = (customer.source || customer.last_origin || '').toLowerCase()
+                        const src = (
+                          customer.source ||
+                          (customer as any).last_origin ||
+                          ''
+                        ).toLowerCase()
                         const hasIg =
                           src.includes('instagram') ||
                           (customer.notes || '').includes('IG Sender ID')

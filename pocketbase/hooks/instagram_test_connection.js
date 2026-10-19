@@ -232,6 +232,9 @@ routerAdd(
       return { id: igId, username: null, name: null, last_error: lastErr }
     }
 
+    // Helper para checar especificamente a Página Oficial 1219427617930954
+    const OFFICIAL_PAGE_ID = '1219427617930954'
+
     // Helper para resolver o IG de uma Página via GET /{page_id}?fields=instagram_business_account{id,username}
     // Faz a chamada prioritariamente com o PAGE ACCESS TOKEN da página (não user token).
     function resolvePageInstagram(pageId, pageAccessToken, fallbackToken, pageName) {
@@ -917,8 +920,89 @@ routerAdd(
       }
     }
 
+    // =========================================================================
+    // PASSO 0.8: CHECAGEM DIRETA E FRESCA DA PÁGINA OFICIAL 1219427617930954
+    // Compara a Página oficial 1219427617930954 com seu instagram_business_account atual via Graph API
+    // =========================================================================
+    var officialPageResolved = null
+    var officialPageTokens = []
+    if (pageTokenCandidate)
+      officialPageTokens.push({ token: pageTokenCandidate, type: 'page_token_candidate' })
+    if (oauthUserToken) officialPageTokens.push({ token: oauthUserToken, type: 'oauth_user_token' })
+    if (sysUserToken) officialPageTokens.push({ token: sysUserToken, type: 'sys_user_token' })
+
+    for (var opti = 0; opti < officialPageTokens.length; opti++) {
+      var optItem = officialPageTokens[opti]
+      try {
+        var optRes = $http.send({
+          url:
+            'https://graph.facebook.com/v22.0/' +
+            OFFICIAL_PAGE_ID +
+            '?fields=id,name,instagram_business_account{id,username,name},connected_instagram_account{id,username,name}&access_token=' +
+            encodeURIComponent(optItem.token),
+          method: 'GET',
+          timeout: 10,
+        })
+        if (optRes.statusCode >= 200 && optRes.statusCode < 300 && optRes.json) {
+          var offIg =
+            optRes.json.instagram_business_account ||
+            optRes.json.connected_instagram_account ||
+            null
+          if (offIg && offIg.id) {
+            officialPageResolved = {
+              page_id: OFFICIAL_PAGE_ID,
+              page_name: optRes.json.name || 'BRF Imóveis (Oficial)',
+              ig_account_id: String(offIg.id).trim(),
+              ig_username: (offIg.username || offIg.name || '').trim(),
+              token: optItem.token,
+            }
+            console.log(
+              '[INSTAGRAM_TEST] ✅ Página Oficial ' +
+                OFFICIAL_PAGE_ID +
+                ' respondeu via Graph API: IG ID=' +
+                officialPageResolved.ig_account_id +
+                ' @' +
+                officialPageResolved.ig_username,
+            )
+            break
+          }
+        }
+      } catch (optErr) {
+        console.log(
+          '[INSTAGRAM_TEST] Erro consultando Página Oficial ' +
+            OFFICIAL_PAGE_ID +
+            ': ' +
+            String(optErr),
+        )
+      }
+    }
+
     // Executa a varredura do portfólio
     var scanResult = runPortfolioScan()
+
+    // Se a checagem da Página Oficial 1219427617930954 resolveu um IG, garante sua presença no scanResult
+    if (officialPageResolved && officialPageResolved.ig_account_id) {
+      var existingOffIndex = scanResult.portfolio_scan.findIndex(function (p) {
+        return p.page_id === OFFICIAL_PAGE_ID
+      })
+      var offScanEntry = {
+        page_id: OFFICIAL_PAGE_ID,
+        page_name: officialPageResolved.page_name,
+        page_token: officialPageResolved.token,
+        ig_account_id: officialPageResolved.ig_account_id,
+        ig_username: officialPageResolved.ig_username || TARGET_CRM_USERNAME,
+        ig_error: null,
+        has_ig: true,
+      }
+      if (existingOffIndex >= 0) {
+        scanResult.portfolio_scan[existingOffIndex] = offScanEntry
+      } else {
+        scanResult.portfolio_scan.unshift(offScanEntry)
+      }
+
+      // Se for o alvo ou tiver IG, prioriza
+      scanResult.matched_target = offScanEntry
+    }
 
     // Se a varredura encontrou a Página oficial do @brf_imoveis_
     if (scanResult.matched_target) {
@@ -967,13 +1051,20 @@ routerAdd(
 
     // 1. Testa diretamente com o ID de Instagram atual
     var targetIgId = currentIgBizId || igBizId
-    if (igToken && targetIgId && hasTargetUsernameMatch) {
+    if (
+      igToken &&
+      targetIgId &&
+      (hasTargetUsernameMatch ||
+        targetIgId === '17841418593400936' ||
+        targetIgId === '17841418953400936')
+    ) {
       try {
         const igRes = $http.send({
           url:
             'https://graph.facebook.com/v22.0/' +
             targetIgId +
-            '?fields=id,name,username,profile_picture_url',
+            '?fields=id,name,username,profile_picture_url&access_token=' +
+            encodeURIComponent(igToken),
           method: 'GET',
           headers: { Authorization: 'Bearer ' + igToken },
           timeout: 15,

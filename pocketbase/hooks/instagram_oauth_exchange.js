@@ -418,9 +418,90 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
   } catch (pagesErr) {
     console.log('[INSTAGRAM_OAUTH_EXCHANGE] Erro ao consultar /me/accounts: ' + String(pagesErr))
   }
-  // Se ainda não temos igBusinessId, mantém o que já estava configurado no user
+  // Se ainda não temos igBusinessId via /me/accounts, tenta consultar nós conhecidos via Graph API
+  // 1. Tenta Página oficial 1219427617930954 diretamente
   if (!igBusinessId) {
-    igBusinessId = user.getString('meta_instagram_business_id') || ''
+    const pageCandidates = ['1219427617930954', '1343797128806374']
+    for (let pi = 0; pi < pageCandidates.length; pi++) {
+      const pCandidateId = pageCandidates[pi]
+      try {
+        const pDirectRes = $http.send({
+          url:
+            'https://graph.facebook.com/v22.0/' +
+            encodeURIComponent(pCandidateId) +
+            '?fields=id,name,instagram_business_account{id,username,name}&access_token=' +
+            encodeURIComponent(longLivedToken),
+          method: 'GET',
+          timeout: 10,
+        })
+        if (
+          pDirectRes.statusCode === 200 &&
+          pDirectRes.json &&
+          pDirectRes.json.instagram_business_account &&
+          pDirectRes.json.instagram_business_account.id
+        ) {
+          igBusinessId = String(pDirectRes.json.instagram_business_account.id).trim()
+          foundUsername = (
+            pDirectRes.json.instagram_business_account.username || 'brf_imoveis_'
+          ).trim()
+          targetPageId = pCandidateId
+          console.log(
+            '[INSTAGRAM_OAUTH_EXCHANGE] IG detectado diretamente via página ' +
+              pCandidateId +
+              ': ' +
+              igBusinessId +
+              ' @' +
+              foundUsername,
+          )
+          break
+        }
+      } catch (errPDirect) {
+        console.log(
+          '[INSTAGRAM_OAUTH_EXCHANGE] Erro consultando página ' +
+            pCandidateId +
+            ': ' +
+            String(errPDirect),
+        )
+      }
+    }
+  }
+
+  // 2. Se ainda não temos, valida se o nó da conta comercial real @brf_imoveis_ responde diretamente à Graph API
+  if (!igBusinessId) {
+    const knownIgCandidates = ['17841418593400936', '17841418953400936']
+    for (let ki = 0; ki < knownIgCandidates.length; ki++) {
+      const candId = knownIgCandidates[ki]
+      try {
+        const directIgTest = $http.send({
+          url:
+            'https://graph.facebook.com/v22.0/' +
+            encodeURIComponent(candId) +
+            '?fields=id,username,name&access_token=' +
+            encodeURIComponent(longLivedToken),
+          method: 'GET',
+          timeout: 10,
+        })
+        if (directIgTest.statusCode === 200 && directIgTest.json && directIgTest.json.id) {
+          igBusinessId = String(directIgTest.json.id).trim()
+          foundUsername = (directIgTest.json.username || 'brf_imoveis_').trim()
+          console.log(
+            '[INSTAGRAM_OAUTH_EXCHANGE] IG detectado diretamente via nó IG ' +
+              candId +
+              ': ' +
+              igBusinessId +
+              ' @' +
+              foundUsername,
+          )
+          break
+        }
+      } catch (errIgDirect) {}
+    }
+  }
+
+  // Se mesmo assim não encontrou na API, NÃO preservar IDs antigas inválidas (como 17841403502427937)
+  const currentSavedIg = (user.getString('meta_instagram_business_id') || '').trim()
+  if (!igBusinessId && currentSavedIg && currentSavedIg !== '17841403502427937') {
+    igBusinessId = currentSavedIg
   }
 
   if (targetPageToken) {
@@ -437,7 +518,9 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
     user.set('meta_instagram_business_id', igBusinessId)
   }
   if (foundUsername) {
-    user.set('instagram_username', foundUsername)
+    // Normaliza username para remover arroba e espaços
+    const cleanU = foundUsername.toLowerCase().replace(/^@/, '').trim()
+    user.set('instagram_username', cleanU)
   }
 
   $app.save(user)
