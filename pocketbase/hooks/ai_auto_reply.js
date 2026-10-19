@@ -5316,9 +5316,33 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             ''
           : ''
 
+        // Resolução dinâmica do Instagram Business/User Account ID oficial para o endpoint {ig_user_id}/messages
+        let igRecipientTargetId = ''
+        if (igNotes) {
+          const recipMatch = igNotes.match(/IG Recipient ID:\s*(\S+)/i)
+          if (
+            recipMatch &&
+            recipMatch[1] &&
+            recipMatch[1] !== 'undefined' &&
+            recipMatch[1] !== 'null'
+          ) {
+            igRecipientTargetId = recipMatch[1].trim()
+          }
+        }
+        if (!igRecipientTargetId && userRecord) {
+          igRecipientTargetId = (userRecord.getString('meta_instagram_business_id') || '').trim()
+        }
+        if (!igRecipientTargetId) {
+          igRecipientTargetId = '17841418593400936' // ID oficial @brf_imoveis_ (fallback consistente)
+        }
+
         if (igSenderId && igToken && isWithin24h) {
+          const igEndpointUrl = `https://graph.facebook.com/v22.0/${igRecipientTargetId}/messages`
+          console.log(
+            `[AI_REPLY] Sending Instagram DM to recipient=${igSenderId} via target=${igRecipientTargetId} url=${igEndpointUrl}`,
+          )
           const igSendRes = callMetaWithRetry(
-            'https://graph.facebook.com/v22.0/me/messages',
+            igEndpointUrl,
             'POST',
             { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
             JSON.stringify({
