@@ -31,12 +31,20 @@ import {
   Smile,
   Paperclip,
   Mail,
+  Zap,
 } from 'lucide-react'
 import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
 import { BiaAvatar } from '@/components/common/BiaAvatar'
 import { ReguaPauseControl } from '@/components/customers/ReguaPauseControl'
 import { EbookResendModalControl } from '@/components/customers/EbookResendModalControl'
 import { ImportPortalLeadModal } from '@/components/customers/ImportPortalLeadModal'
+import {
+  CadenceTrackHeader,
+  normalizeCadenceStep,
+  formatCadenceStepLabel,
+  type CadenceStepKey,
+} from '@/components/chat/CadenceTrackHeader'
+import { CadenceEvolutionPanel, type CadenceStats } from '@/components/chat/CadenceEvolutionPanel'
 import { sendManualReply } from '@/services/conversations'
 import { sendWhatsAppMessages } from '@/services/meta_whatsapp'
 import { toast } from '@/hooks/use-toast'
@@ -180,6 +188,34 @@ interface ThreadItem {
   channel: string
   sender: string
   is_active_24h: boolean
+  follow_up_step?: string
+  follow_up_count?: number
+  last_follow_up_at?: string
+  next_follow_up_at?: string
+  persistence_status?: string
+  promise_pending?: boolean
+  is_blocked?: boolean
+  tags?: string[]
+}
+
+// Detecção de mensagem gerada pelo cron/régua automática
+function isReguaAutomatedMessage(msg: Conversation): boolean {
+  if (msg.sender !== 'ai') return false
+  if (msg.follow_up_step) return true
+  const c = (msg.content || '').toLowerCase()
+  if (
+    c.includes('retomada de persistência') ||
+    c.includes('guardei o vistage residence') ||
+    c.includes('oportunidade que poucos ainda viram') ||
+    c.includes('separei o vistage residence') ||
+    c.includes('pensando em você, guardei') ||
+    c.includes('pensando em você, separei') ||
+    c.includes('conforme combinamos, estou passando') ||
+    c.includes('tomei a liberdade de te apresentar esta novidade')
+  ) {
+    return true
+  }
+  return false
 }
 
 export default function Atendimentos() {
@@ -204,6 +240,7 @@ export default function Atendimentos() {
   const [channelFilter, setChannelFilter] = useState<
     'all' | 'whatsapp' | 'instagram' | 'messenger'
   >('all')
+  const [cadenceFilter, setCadenceFilter] = useState<CadenceStepKey>('all')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -277,6 +314,14 @@ export default function Atendimentos() {
               channel: conv.channel || 'whatsapp',
               sender: conv.sender,
               is_active_24h: isActive,
+              follow_up_step: cust?.follow_up_step || '',
+              follow_up_count: cust?.follow_up_count ?? 0,
+              last_follow_up_at: cust?.last_follow_up_at || '',
+              next_follow_up_at: cust?.next_follow_up_at || '',
+              persistence_status: cust?.persistence_status || '',
+              promise_pending: cust?.promise_pending || false,
+              is_blocked: cust?.is_blocked || false,
+              tags: cust?.tags || [],
             })
           }
         }
@@ -372,8 +417,10 @@ export default function Atendimentos() {
     }
   })
 
-  // Realtime subscription para customers (para atualizar status/nome)
+  // Realtime subscription para customers (para atualizar status, nome, degrau e régua)
   useRealtime('customers', (e) => {
+    // Atualiza a lista lateral e os contadores de evolução de cadência
+    loadThreads()
     if (selectedCustomerId && e.record.id === selectedCustomerId) {
       setSelectedCustomer(e.record as unknown as Customer)
     }
@@ -395,13 +442,78 @@ export default function Atendimentos() {
     }
   }, [threads, selectedCustomerId, setSearchParams])
 
-  // Filtros de busca e canal
+  // Métricas e contadores de evolução da régua de cadência
+  const cadenceStats: CadenceStats = useMemo(() => {
+    const today = new Date().toDateString()
+    let active = 0
+    let paused = 0
+    let repliedToday = 0
+    let sentToday = 0
+
+    const byStep = {
+      remarketing: 0,
+      d1: 0,
+      d3: 0,
+      d7: 0,
+      d14: 0,
+      nurturing_monthly: 0,
+      finalizado: 0,
+    }
+
+    for (const t of threads) {
+      const stepKey = normalizeCadenceStep(t.follow_up_step) as keyof typeof byStep
+      if (byStep[stepKey] !== undefined) {
+        byStep[stepKey]++
+      } else {
+        byStep.d1++
+      }
+
+      const tagsStr = Array.isArray(t.tags) ? t.tags.join(' ').toLowerCase() : ''
+      const isPaused =
+        tagsStr.includes('ai_paused') || t.persistence_status === 'pausado' || t.is_blocked === true
+
+      if (isPaused) {
+        paused++
+      } else {
+        active++
+      }
+
+      // Interações de hoje
+      const msgDate = t.last_message_time ? new Date(t.last_message_time).toDateString() : ''
+      if (msgDate === today) {
+        if (t.sender === 'customer') {
+          repliedToday++
+        }
+        if (t.sender === 'ai') {
+          sentToday++
+        }
+      }
+    }
+
+    return {
+      total: threads.length,
+      activeCount: active,
+      pausedCount: paused,
+      repliedTodayCount: repliedToday,
+      sentTodayCount: sentToday,
+      byStep,
+    }
+  }, [threads])
+
+  // Filtros de busca, canal e degrau de cadência
   const filteredThreads = useMemo(() => {
     return threads.filter((thread) => {
       // Filtro de canal
       if (channelFilter !== 'all') {
         if (thread.channel.toLowerCase() !== channelFilter) return false
       }
+
+      // Filtro por degrau de cadência
+      if (cadenceFilter !== 'all') {
+        const norm = normalizeCadenceStep(thread.follow_up_step)
+        if (norm !== cadenceFilter) return false
+      }
+
       // Filtro de texto (nome ou telefone)
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase()
@@ -414,7 +526,7 @@ export default function Atendimentos() {
       }
       return true
     })
-  }, [threads, channelFilter, searchTerm])
+  }, [threads, channelFilter, cadenceFilter, searchTerm])
 
   const totalActive24h = useMemo(() => {
     return threads.filter((t) => t.is_active_24h).length
@@ -585,8 +697,17 @@ export default function Atendimentos() {
         </div>
       </div>
 
+      {/* PAINEL DE EVOLUÇÃO DA CADÊNCIA (Mobile-First): Contadores de Relance e Filtro de Degrau */}
+      <div className="pt-3 shrink-0">
+        <CadenceEvolutionPanel
+          stats={cadenceStats}
+          selectedStep={cadenceFilter}
+          onSelectStep={setCadenceFilter}
+        />
+      </div>
+
       {/* Main Container - Split View */}
-      <div className="flex flex-1 min-h-0 pt-4 gap-4 overflow-hidden">
+      <div className="flex flex-1 min-h-0 pt-3 gap-4 overflow-hidden">
         {/* Painel Esquerdo: Lista de Conversas */}
         <div
           className={cn(
@@ -733,12 +854,20 @@ export default function Atendimentos() {
                           {thread.last_message || 'Nenhum conteúdo'}
                         </p>
 
-                        <div className="flex items-center gap-1.5 mt-2">
+                        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                           <ChannelBadge channel={thread.channel} />
+                          {/* Badge de Degrau da Cadência */}
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-1.5 py-0 font-medium bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-0.5"
+                          >
+                            <Zap className="h-2.5 w-2.5 text-amber-500" />
+                            <span>{formatCadenceStepLabel(thread.follow_up_step)}</span>
+                          </Badge>
                           {thread.customer_status && (
                             <Badge
                               variant="secondary"
-                              className="text-[10px] px-1.5 py-0 max-w-[130px] truncate"
+                              className="text-[10px] px-1.5 py-0 max-w-[110px] truncate"
                               title={thread.customer_status}
                             >
                               {thread.customer_status}
@@ -882,8 +1011,12 @@ export default function Atendimentos() {
                   </div>
                 </div>
               </div>
-
-              {/* Área de Mensagens estilo Chat WhatsApp */}
+              {/* TRILHA DE CADÊNCIA DENTRO DA CONVERSA (Mobile-First no Topo do Chat) */}
+              <CadenceTrackHeader
+                customer={selectedCustomer}
+                fallbackCustomerName={currentThread?.customer_name}
+              />
+              {/* Área de Mensagens estilo Chat WhatsApp */}{' '}
               <div
                 className="flex-1 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a]"
                 style={{
@@ -962,9 +1095,16 @@ export default function Atendimentos() {
                                     <div className="flex items-center gap-1.5 font-bold text-[#008069] dark:text-[#25d366]">
                                       <BiaAvatar size="sm" className="w-4 h-4" />
                                       <span>{user?.ai_name || 'Bia (IA)'}</span>
-                                      <span className="text-[9px] font-normal px-1 py-0 rounded bg-emerald-700/10 dark:bg-emerald-300/20 text-emerald-800 dark:text-emerald-200">
-                                        Automático
-                                      </span>
+                                      {isReguaAutomatedMessage(msg) ? (
+                                        <span className="text-[9.5px] font-semibold px-1.5 py-0 rounded bg-indigo-500/15 dark:bg-indigo-400/25 text-indigo-700 dark:text-indigo-200 border border-indigo-400/30 flex items-center gap-1 shadow-2xs">
+                                          <Zap className="h-2.5 w-2.5 text-indigo-500" />
+                                          <span>Régua · automático</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-[9px] font-normal px-1 py-0 rounded bg-emerald-700/10 dark:bg-emerald-300/20 text-emerald-800 dark:text-emerald-200">
+                                          Automático
+                                        </span>
+                                      )}
                                     </div>
                                   )}
 
@@ -1035,7 +1175,6 @@ export default function Atendimentos() {
                   <div ref={messagesEndRef} />
                 </div>
               </div>
-
               {/* Barra de envio estilo WhatsApp no rodapé (mobile e desktop) */}
               <div className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0">
                 <form

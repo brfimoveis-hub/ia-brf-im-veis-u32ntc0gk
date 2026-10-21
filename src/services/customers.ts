@@ -26,6 +26,31 @@ export interface Customer {
   credit_analysis_status?: 'nao_oferecido' | 'oferecido' | 'consentido' | 'recusado' | 'enviado'
   credit_analysis_offered_at?: string
   credit_analysis_consented_at?: string
+  // Cadência e persistência da régua
+  follow_up_step?:
+    | 'remarketing'
+    | 'd1'
+    | 'd3'
+    | 'd7'
+    | 'd14'
+    | 'nurturing_monthly'
+    | 'finalizado'
+    | string
+  follow_up_count?: number
+  last_follow_up_at?: string
+  next_follow_up_at?: string
+  persistence_status?:
+    | 'ativo'
+    | 'aguardando_momento'
+    | 'pausado'
+    | 'convertido'
+    | 'respondido'
+    | string
+  promise_pending?: boolean
+  promise_made_at?: string
+  promise_context?: string
+  rejection_count?: number
+  last_rejection_reason?: string
 }
 
 export const createCustomer = (data: Partial<Customer>) =>

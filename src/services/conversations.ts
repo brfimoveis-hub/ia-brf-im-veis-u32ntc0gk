@@ -9,6 +9,13 @@ export interface Conversation {
   channel?: 'whatsapp' | 'messenger' | 'instagram'
   created: string
   updated: string
+  follow_up_count?: number
+  follow_up_step?: string
+  last_follow_up_at?: string
+  next_follow_up_at?: string
+  persistence_status?: string
+  promise_pending?: boolean
+  promise_made_at?: string
   expand?: {
     customer_id?: {
       id: string
@@ -19,6 +26,15 @@ export interface Conversation {
       source?: string
       phase?: string
       is_blocked?: boolean
+      follow_up_step?: string
+      follow_up_count?: number
+      last_follow_up_at?: string
+      next_follow_up_at?: string
+      persistence_status?: string
+      promise_pending?: boolean
+      promise_context?: string
+      tags?: string[]
+      notes?: string
     }
   }
 }
@@ -28,11 +44,20 @@ export interface InboxThread {
   customer_name: string
   customer_phone: string
   customer_status?: string
+  customer_source?: string
   last_message: string
   last_message_time: string
   channel: string
   sender: string
   unread_or_active?: boolean
+  follow_up_step?: string
+  follow_up_count?: number
+  last_follow_up_at?: string
+  next_follow_up_at?: string
+  persistence_status?: string
+  promise_pending?: boolean
+  is_blocked?: boolean
+  tags?: string[]
 }
 
 export const getConversations = (customerId: string) =>
