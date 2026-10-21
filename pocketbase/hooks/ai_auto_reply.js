@@ -2619,6 +2619,266 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
     const custIncomingMsg = (customerMessage || incomingCustMsgText || '').trim()
     const lowerCustIncoming = custIncomingMsg.toLowerCase()
 
+    // ======================================================================
+    // GATILHO "SIM" / INTERCEPTOR DA RÉGUA DE RETOMADA COMERCIAL (MAURO)
+    // Se a última mensagem de saída foi da régua de retomada ou o cliente responde
+    // exatamente "sim" / "SIM" / "Sim" (com variações triviais de pontuação/espaço):
+    // Envia imediatamente o BOOK VISTAGE RESIDENCE.pdf via WhatsApp Document
+    // + mensagem explicativa curta com localização e condições de pagamento.
+    // Fallback: se o envio do documento falhar, envia link do PDF no texto.
+    // Avança o estágio do lead (Apresentação / 3), marca como respondido e sai antes da IA.
+    // ======================================================================
+    const normalizedSim = lowerCustIncoming
+      .replace(/[.,!?;:\"'“”\s\-_]/g, '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+
+    const isSimResponse =
+      normalizedSim === 'sim' ||
+      normalizedSim === 'si' ||
+      normalizedSim === 'ss' ||
+      normalizedSim === 's' ||
+      normalizedSim === 'claro' ||
+      normalizedSim === 'manda' ||
+      normalizedSim === 'mande' ||
+      normalizedSim === 'quero' ||
+      normalizedSim === 'enviar' ||
+      normalizedSim === 'envia' ||
+      normalizedSim === 'podeenviar' ||
+      normalizedSim === 'podemandar'
+
+    let lastAiMsgWasRegua = false
+    try {
+      const recentOutbounds = $app.findRecordsByFilter(
+        'conversations',
+        `customer_id = '${customerId}' && sender = 'ai'`,
+        '-created',
+        2,
+        0,
+      )
+      if (recentOutbounds && recentOutbounds.length > 0) {
+        const lastOutText = recentOutbounds[0].getString('content') || ''
+        if (
+          lastOutText.includes('Vistage Residence') ||
+          lastOutText.includes('guardei o Vistage') ||
+          lastOutText.includes('separei o Vistage') ||
+          lastOutText.includes('separei uma oportunidade que poucos') ||
+          lastOutText.includes('Responda "Sim"') ||
+          lastOutText.includes('responda "Sim"') ||
+          lastOutText.includes('responda \\"Sim\\"') ||
+          lastOutText.includes('ebook completo na hora')
+        ) {
+          lastAiMsgWasRegua = true
+        }
+      }
+    } catch (_) {}
+
+    if (isSimResponse && (lastAiMsgWasRegua || isSimResponse)) {
+      console.log(
+        `[AI_REPLY] [GATILHO_SIM] Interceptor acionado para customer=${customerId} ("${custIncomingMsg}"). Enviando ebook Vistage...`,
+      )
+
+      const pbPublicBase =
+        $os.getenv('PUBLIC_URL') ||
+        $os.getenv('PB_PUBLIC_URL') ||
+        $os.getenv('POCKETBASE_URL') ||
+        $os.getenv('VITE_POCKETBASE_URL') ||
+        $os.getenv('PB_INSTANCE_URL') ||
+        'https://crm.brfimoveis.com.br'
+
+      // Recupera o arquivo BOOK VISTAGE RESIDENCE (id fcvyoatlxt56do2 ou busca por nome)
+      let ebookKnowledgeRec = null
+      try {
+        ebookKnowledgeRec = $app.findRecordById('ai_knowledge_files', 'fcvyoatlxt56do2')
+      } catch (_) {
+        try {
+          const matchedFiles = $app.findRecordsByFilter(
+            'ai_knowledge_files',
+            "is_active = true && (name ~ 'BOOK VISTAGE' || name ~ 'VISTAGE RESIDENCE') && file ~ '.pdf'",
+            '-created',
+            1,
+            0,
+          )
+          if (matchedFiles && matchedFiles.length > 0) {
+            ebookKnowledgeRec = matchedFiles[0]
+          }
+        } catch (_) {}
+      }
+
+      let ebookFileUrl = ''
+      let ebookFileName = 'BOOK VISTAGE RESIDENCE.pdf'
+      if (ebookKnowledgeRec) {
+        const rawFileName =
+          ebookKnowledgeRec.getString('file') || 'book_vistage_residence_alxnfnhjlr.pdf'
+        const colIdentifier =
+          ebookKnowledgeRec.collectionId ||
+          (typeof ebookKnowledgeRec.collectionName === 'function'
+            ? ebookKnowledgeRec.collectionName()
+            : ebookKnowledgeRec.collectionName) ||
+          'ai_knowledge_files'
+        ebookFileUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/${colIdentifier}/${ebookKnowledgeRec.id}/${rawFileName}`
+        ebookFileName = ebookKnowledgeRec.getString('name') || 'BOOK VISTAGE RESIDENCE.pdf'
+        if (!ebookFileName.toLowerCase().endsWith('.pdf')) {
+          ebookFileName += '.pdf'
+        }
+      } else {
+        ebookFileUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/ai_knowledge_files/fcvyoatlxt56do2/book_vistage_residence_alxnfnhjlr.pdf`
+      }
+
+      const vistageShortText = `Aqui está o ebook completo do *Vistage Residence*! 📖✨\n\n📍 *Localização Privilegiada:* Barreiros, São José (Grande Florianópolis) — região com valorização acima de 12% ao ano.\n🏢 *Plantas & Lazer:* 2 dormitórios a partir de R$ 623.110 e 3 dormitórios a partir de R$ 965.615, com rooftop, piscina e lazer completo entregue equipado.\n💳 *Condições de Lançamento:* 15% de ato e saldo parcelado em até 60x direto com a construtora (entrega em 2030).\n\nDê uma olhada no material e me diga se prefere as plantas de 2 ou de 3 dormitórios para eu te passar a simulação exata!`
+
+      const toPhoneClean = (customer.getString('phone') || '').replace(/\D/g, '')
+      let docSendSuccess = false
+
+      if (toPhoneClean && metaWhatsappToken && metaPhoneId) {
+        // Tentativa de envio como Documento WhatsApp
+        try {
+          const docPayload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: toPhoneClean,
+            type: 'document',
+            document: {
+              link: ebookFileUrl,
+              filename: ebookFileName,
+              caption: 'BOOK VISTAGE RESIDENCE — BRF Imóveis',
+            },
+          }
+          const docUrl = `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`
+          const docRes = $http.send({
+            url: docUrl,
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${metaWhatsappToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(docPayload),
+            timeout: 25,
+          })
+
+          if (docRes && docRes.statusCode >= 200 && docRes.statusCode < 300) {
+            docSendSuccess = true
+            console.log(
+              `[AI_REPLY] [GATILHO_SIM] Ebook Vistage enviado via documento WhatsApp com sucesso para ${toPhoneClean}`,
+            )
+          } else {
+            console.warn(
+              `[AI_REPLY] [GATILHO_SIM] Envio do documento retornou status ${docRes ? docRes.statusCode : 'null'}, acionando fallback de link no texto...`,
+            )
+          }
+        } catch (docErr) {
+          console.warn(
+            `[AI_REPLY] [GATILHO_SIM] Exceção ao enviar documento WhatsApp: ${String(docErr)}, acionando fallback de link no texto...`,
+          )
+        }
+
+        // Envio do texto explicativo (ou texto + link no fallback)
+        let textToSendImmediate = vistageShortText
+        if (!docSendSuccess && ebookFileUrl) {
+          textToSendImmediate = `${vistageShortText}\n\n📄 *Baixar Ebook Completo (PDF):*\n${ebookFileUrl}`
+        }
+
+        try {
+          const textPayload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: toPhoneClean,
+            type: 'text',
+            text: { body: textToSendImmediate },
+          }
+          const textUrl = `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`
+          $http.send({
+            url: textUrl,
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${metaWhatsappToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(textPayload),
+            timeout: 25,
+          })
+          console.log(
+            `[AI_REPLY] [GATILHO_SIM] Texto com condições do Vistage entregue com sucesso para ${toPhoneClean}`,
+          )
+        } catch (txtErr) {
+          console.warn(`[AI_REPLY] [GATILHO_SIM] Erro ao enviar texto WhatsApp: ${String(txtErr)}`)
+        }
+      }
+
+      // Registro da mensagem de resposta da IA na coleção conversations
+      try {
+        const convCol = $app.findCollectionByNameOrId('conversations')
+        const immediateConvRec = new Record(convCol)
+        immediateConvRec.set('customer_id', customerId)
+        immediateConvRec.set('user_id', userId || '')
+        immediateConvRec.set('channel', 'whatsapp')
+        immediateConvRec.set('sender', 'ai')
+        immediateConvRec.set(
+          'content',
+          `[GATILHO "SIM" EXECUTADO — EBOOK VISTAGE ENTREGUE]\n${vistageShortText}\n\nArquivo: ${ebookFileName} (${docSendSuccess ? 'Anexo WhatsApp' : 'Link Fallback'})\nLink: ${ebookFileUrl}`,
+        )
+        $app.saveNoValidate(immediateConvRec)
+      } catch (cErr) {
+        console.warn(
+          `[AI_REPLY] [GATILHO_SIM] Aviso ao salvar conversa de resposta: ${String(cErr)}`,
+        )
+      }
+
+      // Atualiza o cliente: avança para estágio de Apresentação (3), tira da régua e marca respondido
+      try {
+        const nowIsoDate = new Date().toISOString().replace('T', ' ').substring(0, 19)
+        customer.set('status', 'apresentacao')
+        customer.set('phase', 'apresentacao')
+        customer.set('follow_up_step', 'd1')
+        customer.set('persistence_status', 'respondido')
+        customer.set('last_contact_at', nowIsoDate)
+        customer.set('last_sent_at', nowIsoDate)
+        // Próximo toque da régua agendado para 24h caso o cliente pare após receber o ebook
+        const nextFollowUpIso = new Date(Date.now() + 24 * 3600 * 1000)
+          .toISOString()
+          .replace('T', ' ')
+          .substring(0, 19)
+        customer.set('next_follow_up_at', nextFollowUpIso)
+        $app.saveNoValidate(customer)
+
+        // Log detalhado do sucesso no system_logs
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const simLog = new Record(logsCol)
+          simLog.set('user_id', userId || '')
+          simLog.set('type', 'regua_gatilho_sim_ebook_delivered')
+          simLog.set(
+            'message',
+            `Lead respondeu "${custIncomingMsg}" à régua de retomada. Ebook Vistage entregue com sucesso (${docSendSuccess ? 'PDF Anexo' : 'Link Fallback'}).`,
+          )
+          simLog.set(
+            'details',
+            JSON.stringify({
+              customer_id: customerId,
+              customer_name: customer.getString('name') || '',
+              customer_phone: customer.getString('phone') || '',
+              incoming_message: custIncomingMsg,
+              ebook_filename: ebookFileName,
+              ebook_url: ebookFileUrl,
+              doc_sent_as_attachment: docSendSuccess,
+            }),
+          )
+          $app.saveNoValidate(simLog)
+        } catch (_) {}
+
+        console.log(
+          `[AI_REPLY] [GATILHO_SIM] Lead ${customerId} avançado para Apresentação, follow_up_step='d1', persistence_status='respondido'. Concluído com sucesso.`,
+        )
+      } catch (updCustErr) {
+        console.warn(
+          `[AI_REPLY] [GATILHO_SIM] Erro ao atualizar status do cliente: ${String(updCustErr)}`,
+        )
+      }
+
+      // Interceptor executado com sucesso: encerra o processamento desta mensagem sem acionar $ai.chat
+      return
+    }
+
     // (a) Extração de perfil por Regex simples:
     // Faixa de valor: "até 1.000.000", "900 mil", "2 milhões", "até 500k", etc.
     let extractedPillarPriceRange = ''

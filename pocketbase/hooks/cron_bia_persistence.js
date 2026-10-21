@@ -136,12 +136,17 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       console.warn('[BIA_PERSISTENCE] Aviso dedup: ' + dedupErr.message)
     }
 
-    // Se houver documento/link legítimo de Drive/PDF, asseguramos que o link esteja também
-    // presente de forma explícita no texto da mensagem caso ainda não esteja.
-    // Desta forma, mesmo se a Meta recusar o tipo 'document' (ex.: link externo do Drive bloqueado),
-    // o cliente RECEBE o e-book clicável e acessível imediatamente no WhatsApp!
+    // REGRA DE OURO (Mauro):
+    // Na régua de retomada/remarketing (1º disparo): NENHUM link e NENHUM anexo.
+    // O PDF só é entregue mediante resposta "Sim" pelo interceptor em ai_auto_reply.js.
+    // Se for passo com anexo explícito autorizado (ex: prometido ou outra rotina):
     var textToSend = cleaned
-    if (documentMedia && documentMedia.link) {
+    if (
+      stepName !== 'remarketing' &&
+      stepName !== 'nurturing_monthly' &&
+      documentMedia &&
+      documentMedia.link
+    ) {
       var directLink = documentMedia.link
       if (textToSend.indexOf(directLink) === -1) {
         var docLabel = documentMedia.caption || 'Material oficial'
@@ -193,9 +198,16 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       console.error('[BIA_PERSISTENCE] Erro HTTP Meta: ' + httpErr.message)
     }
 
-    // Se o envio do texto teve sucesso e há documento a anexar (ex: PDF do lançamento)
+    // Se o envio do texto teve sucesso e há documento a anexar:
+    // REGRA DE OURO (Mauro): na régua de retomada/remarketing não vai documento.
     var docSent = false
-    if (isOk && documentMedia && documentMedia.link) {
+    if (
+      isOk &&
+      stepName !== 'remarketing' &&
+      stepName !== 'nurturing_monthly' &&
+      documentMedia &&
+      documentMedia.link
+    ) {
       try {
         var docPayload = {
           messaging_product: 'whatsapp',
@@ -554,11 +566,12 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   // 8. PARSER DE VARIANTES DA RÉGUA EXTRAÍDO DINAMICAMENTE DO TEXTO ÚNICO
   // ============================================================================
   function extractTemplatesFromConstitution(ruleText) {
+    // 3 VERSÕES APROVADAS PELO MAURO (VERBATIM, COM SAUDAÇÃO DINÂMICA)
     var defaultTemplates = {
       remarketing: [
-        '{SAUDACAO} Lembrei de você e separei esta oportunidade do [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}. Como estão os seus planos imobiliários por aí?',
-        '{SAUDACAO} Como você já havia demonstrado interesse em oportunidades imobiliárias por aqui, tomei a liberdade de te apresentar esta novidade do [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}.',
-        '{SAUDACAO} Lembrei da sua busca por imóvel e separei esta oportunidade especial do [LANÇAMENTO] em [BAIRRO/CIDADE]{MATERIAL_ANEXO}. Faz sentido para você conhecer mais detalhes?',
+        'Bia da BRF Imóveis — {SAUDACAO}! Pensando em você, guardei o Vistage Residence, em Barreiros (Grande Florianópolis): 2 dorm a partir de R$ 623.110 e 3 dorm a partir de R$ 965.615, com 15% de ato e saldo em até 60x. Um lançamento com lazer completo, vista privilegiada e entrega em 2030 — e valorização já acima de 12% ao ano. Os valores sobem todo mês, então entrar agora é garantir o melhor preço. Quer ver tudo em detalhes? Responda "Sim" e eu te mando o ebook completo na hora! 🏙️',
+        'Bia da BRF Imóveis — {SAUDACAO}! Pensando em você, separei uma oportunidade que poucos ainda viram: o Vistage Residence, em Barreiros, São José — o lançamento da Grande Florianópolis. 2 dorm a partir de R$ 623.110, 15% de ato e saldo em até 60x, com lazer completo e entrega em 2030. Detalhe: a valorização da região já passa de 12% ao ano — e o preço sobe todo mês. Se faz sentido neste momento, responda "Sim" e receba o ebook com plantas, lazer, localização e condições. 📖✨',
+        'Bia da BRF Imóveis — {SAUDACAO}! Pensando em você, separei o Vistage Residence (Barreiros, Grande Florianópolis): 2 dorm a partir de R$ 623.110, 3 dorm a partir de R$ 965.615, 15% de ato e saldo em até 60x. Lançamento com entrega em 2030 e valorização acima de 12% ao ano — quem entra no lançamento compra o preço de hoje e acompanha o imóvel valer mais antes mesmo da chave. Responda "Sim" e eu te envio o ebook completo: plantas, lazer, localização e condições de pagamento. 📈',
       ],
       d1: [
         '{SAUDACAO} Passando para saber se você conseguiu dar uma olhada na opção{CONTEXTO_IMOVEL} ou se ficou alguma dúvida sobre a localização, planta ou fluxo inicial.',
@@ -611,8 +624,10 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     }
 
     try {
-      var rem = extractVariantsForSection(/Degrau\s*Remarketing/i)
-      if (rem) defaultTemplates.remarketing = rem
+      var rem = extractVariantsForSection(
+        /(?:Degrau\s*Remarketing|Rotação\s*Determinística|Versões\s*Aprovadas)/i,
+      )
+      if (rem && rem.length >= 3) defaultTemplates.remarketing = rem
       var d1s = extractVariantsForSection(/Degrau\s*D\+1/i)
       if (d1s) defaultTemplates.d1 = d1s
       var d3s = extractVariantsForSection(/Degrau\s*D\+3/i)
@@ -712,10 +727,13 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       return hist
     }
 
-    // Palavras/padrões inequívocos de apresentação/envio de material pela IA ou corretor:
-    // "a partir de R$", "plantas de", "unidades de", links de imóveis, envio de book, fotos,
-    // menções a código #LM/#AP, ou descrição de tipologias.
+    // Palavras/padrões de apresentação/envio de material pela IA ou corretor:
+    // Tolerante a variações, tags [STATUS], [PHASE], [PROMISE_*] e menções a lançamentos
     var presentationPatterns = [
+      /\[STATUS:\s*.*?Apresentação/i,
+      /\[STATUS:\s*3\b/i,
+      /\[PHASE:\s*(?:apresentação|apresentacao)/i,
+      /\[PROMISE_/i,
       /a partir de r\$\s*[\d\.]+/i,
       /valor a partir de/i,
       /plantas? de \d+/i,
@@ -732,6 +750,9 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       /rooftop com piscina/i,
       /residence barreiros/i,
       /vistage residence/i,
+      /vistage/i,
+      /guarda(ei|mos) o vistage/i,
+      /separei (o |uma oportunidade|o vistage)/i,
     ]
 
     for (var i = 0; i < convs.length; i++) {
@@ -944,9 +965,12 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     //     documentMedia = null E materialText = '' (a mensagem sai sem "(envio junto o e-book)").
     //     Log: "[BIA_PERSISTENCE] Material de apresentação legítimo indisponível para <propertyId> — remarketing sai sem anexo"
     var pbBaseUrl =
+      $os.getenv('PUBLIC_URL') ||
+      $os.getenv('PB_PUBLIC_URL') ||
       $os.getenv('POCKETBASE_URL') ||
       $os.getenv('VITE_POCKETBASE_URL') ||
-      'https://ia-uazapi-6d79e.shrd00.internal.goskip.dev'
+      $os.getenv('PB_INSTANCE_URL') ||
+      'https://crm.brfimoveis.com.br'
 
     try {
       function isBlacklistedAttachment(nameStr) {
@@ -1049,8 +1073,20 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
 
           if (physFile && (fSize > 0 || physFile.length > 0)) {
             if (isLegitimatePresentationName(rNameF)) {
+              var colIdentifier =
+                recF.collectionId ||
+                (typeof recF.collectionName === 'function'
+                  ? recF.collectionName()
+                  : recF.collectionName) ||
+                'ai_knowledge_files'
               var physUrl =
-                pbBaseUrl + '/api/files/' + recF.collectionId + '/' + recF.id + '/' + physFile
+                pbBaseUrl.replace(/\/$/, '') +
+                '/api/files/' +
+                colIdentifier +
+                '/' +
+                recF.id +
+                '/' +
+                physFile
               legitimateDocMedia = {
                 link: physUrl,
                 filename: rNameF.endsWith('.pdf') ? rNameF : rNameF + '.pdf',
@@ -1206,22 +1242,31 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     }
 
     if (step === 'remarketing' || step === 'nurturing_monthly') {
+      // Rotação determinística 1 -> 2 -> 3 -> 1 baseada em (seed + follow_up_count) % 3
       var remTemplate = pickVariant(parsedTemplates.remarketing)
       var textRem = remTemplate
       var lName = launchInfo.launchName || 'nossas novidades imobiliárias'
       var lLoc = launchInfo.location || 'na região'
 
-      // Anexo de material: SÓ adiciona a menção se o arquivo físico existir de fato
-      var matPart = ''
-      if (launchInfo.documentMedia && launchInfo.materialText) {
-        matPart = ' (envio junto ' + launchInfo.materialText + ')'
-      }
-
+      // REGRA DE OURO (Mauro):
+      // NENHUM link e NENHUM anexo no primeiro disparo da régua de retomada/remarketing.
+      // O PDF só é entregue mediante resposta "Sim" do cliente via interceptor.
       textRem = textRem.replace(/\[LANÇAMENTO\]/g, lName)
       textRem = textRem.replace(/\[BAIRRO\/CIDADE\]/g, lLoc)
-      textRem = textRem.replace(/\{MATERIAL_ANEXO\}/g, matPart)
-      textRem = textRem.replace(/\[MATERIAL\]/g, launchInfo.materialText || 'o material')
-      textRem = textRem.replace(/\{SAUDACAO\}/g, greeting)
+      textRem = textRem.replace(/\{MATERIAL_ANEXO\}/g, '')
+      textRem = textRem.replace(/\[MATERIAL\]/g, '')
+
+      // Saudação dinâmica: substitui {SAUDACAO} por pTimeWord ("bom dia", "boa tarde", "boa noite")
+      // ou substitui greeting completo se o template esperar greeting
+      if (textRem.indexOf('{SAUDACAO}') !== -1) {
+        textRem = textRem.replace(/\{SAUDACAO\}/g, pTimeWord)
+      } else if (textRem.indexOf('Bia da BRF Imóveis — boa tarde!') !== -1) {
+        textRem = textRem.replace(
+          'Bia da BRF Imóveis — boa tarde!',
+          'Bia da BRF Imóveis — ' + pTimeWord + '!',
+        )
+      }
+
       return textRem
     }
 
@@ -1502,32 +1547,47 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
 
       var elapsedSinceInteraction = sLatestTime ? nowMsGlobal - sLatestTime : sevenDaysMs + 1000
 
+      // DETERMINAÇÃO DO DEGRAU E PROGRESSÃO CORRETA DA CADÊNCIA:
+      // Se não há apresentação prévia (base importada), o 1º toque é remarketing,
+      // e os seguintes avançam na cadência ou nutrição mensal conforme rotação.
+      // Clientes aptos a avançar na cadência: d1 -> d3 -> d7 -> d14 -> nurturing_monthly.
       if (!presHistScheduled.hasPresentation) {
-        // CLIENTE NUNCA RECEBEU APRESENTAÇÃO PRÉVIA:
-        // Se ainda não recebeu follow-up ou se foi agendado D+1 indevidamente pelo backfill:
-        // Primeiro toque DEVE ser REMARKETING
-        if (!lastFollowUpAt || followUpCount === 0 || currentStep === 'd1') {
-          stepToExecute = 'remarketing'
-          nextStepAfterSend = 'nurturing_monthly'
+        if (!lastFollowUpAt || followUpCount === 0) {
+          stepToExecute =
+            currentStep === 'd1' || currentStep === 'remarketing' ? 'remarketing' : currentStep
+          nextStepAfterSend = stepToExecute === 'remarketing' ? 'd1' : 'nurturing_monthly'
         } else {
-          // Já recebeu remarketing inicial: segue na nutrição mensal leve
-          stepToExecute = 'nurturing_monthly'
-          nextStepAfterSend = 'nurturing_monthly'
+          if (currentStep === 'remarketing') {
+            stepToExecute = 'd1'
+            nextStepAfterSend = 'd3'
+          } else if (currentStep === 'd1') {
+            stepToExecute = 'd3'
+            nextStepAfterSend = 'd7'
+          } else if (currentStep === 'd3') {
+            stepToExecute = 'd7'
+            nextStepAfterSend = 'd14'
+          } else if (currentStep === 'd7') {
+            stepToExecute = 'd14'
+            nextStepAfterSend = 'nurturing_monthly'
+          } else {
+            stepToExecute = 'nurturing_monthly'
+            nextStepAfterSend = 'nurturing_monthly'
+          }
         }
       } else {
-        // CLIENTE JÁ RECEBEU APRESENTAÇÃO PRÉVIA COMPROVADA:
+        // CLIENTE COM HISTÓRICO DE APRESENTAÇÃO:
         if (!lastFollowUpAt || followUpCount === 0) {
           if (elapsedSinceInteraction >= sevenDaysMs) {
             stepToExecute = 'remarketing'
-            nextStepAfterSend = 'nurturing_monthly'
+            nextStepAfterSend = 'd1'
           } else {
             stepToExecute = 'd1'
             nextStepAfterSend = 'd3'
           }
         } else {
           if (currentStep === 'remarketing') {
-            stepToExecute = 'nurturing_monthly'
-            nextStepAfterSend = 'nurturing_monthly'
+            stepToExecute = 'd1'
+            nextStepAfterSend = 'd3'
           } else if (currentStep === 'd1') {
             stepToExecute = 'd3'
             nextStepAfterSend = 'd7'
@@ -1555,11 +1615,9 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
         )
         var msgTextScheduled = buildPersistenceMessageWithVariance(stepToExecute, sCust, launchInfo)
 
-        // Se for degrau de remarketing ou nutrição mensal, envia o documento se existir de fato
+        // REGRA DE OURO (Mauro):
+        // NENHUM anexo e NENHUM link no primeiro disparo da régua de retomada/remarketing
         var docToSend = null
-        if (stepToExecute === 'remarketing' || stepToExecute === 'nurturing_monthly') {
-          docToSend = launchInfo.documentMedia
-        }
 
         var ok = sendPersistenceMarketingMessage(
           sCust,
@@ -1570,7 +1628,8 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
         )
 
         if (ok) {
-          sCust.set('follow_up_step', stepToExecute)
+          // AVANÇAR follow_up_step PARA O PRÓXIMO DEGRAU (para nunca ficar preso)
+          sCust.set('follow_up_step', nextStepAfterSend)
           sCust.set('follow_up_count', followUpCount + 1)
           sCust.set('last_follow_up_at', nowIso)
           sCust.set('next_follow_up_at', calculateNextFollowUp(stepToExecute))
@@ -1578,13 +1637,13 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
           app.saveNoValidate(sCust)
           executedCount++
           console.log(
-            '[BIA_PERSISTENCE] Retomada agendada (' +
+            '[BIA_PERSISTENCE] Retomada (' +
               stepToExecute +
               ') enviada para ' +
               sCustId +
               '. Próximo degrau (' +
               nextStepAfterSend +
-              ') agendado.',
+              ') agendado com sucesso.',
           )
         }
       } finally {
@@ -1692,7 +1751,8 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       try {
         var lInfoIdle = resolveLaunchAndKnowledgeData(iCust, entryStep, lastConvs, presHistIdle)
         var entryText = buildPersistenceMessageWithVariance(entryStep, iCust, lInfoIdle)
-        var docEntry = entryStep === 'remarketing' ? lInfoIdle.documentMedia : null
+        // REGRA DE OURO (Mauro): NENHUM link e NENHUM anexo no primeiro disparo da régua de retomada/remarketing
+        var docEntry = null
 
         var entrySent = sendPersistenceMarketingMessage(
           iCust,
@@ -1702,14 +1762,22 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
           docEntry,
         )
         if (entrySent) {
-          iCust.set('follow_up_step', entryStep)
+          var nextStepForIdle = entryStep === 'remarketing' ? 'd1' : 'd3'
+          iCust.set('follow_up_step', nextStepForIdle)
           iCust.set('follow_up_count', (iCust.getInt('follow_up_count') || 0) + 1)
           iCust.set('last_follow_up_at', nowIso)
           iCust.set('next_follow_up_at', calculateNextFollowUp(entryStep))
           iCust.set('persistence_status', 'ativo')
           app.saveNoValidate(iCust)
           executedCount++
-          console.log('[BIA_PERSISTENCE] Retomada (' + entryStep + ') iniciada para ' + iCustId)
+          console.log(
+            '[BIA_PERSISTENCE] Retomada (' +
+              entryStep +
+              ') iniciada para ' +
+              iCustId +
+              '. Próximo degrau: ' +
+              nextStepForIdle,
+          )
         }
       } finally {
         releaseLock(iCustId)
