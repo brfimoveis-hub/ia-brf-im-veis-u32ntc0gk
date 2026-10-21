@@ -5678,6 +5678,12 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             recipient: { id: igSenderId },
             message: { text: responseText },
           }
+
+          // [IG_TOKEN_DEBUG] Log detalhado com payload anonimizado para validação estrita do formato
+          console.log(
+            `[IG_TOKEN_DEBUG] POST Dispatch Payload Target=${igRecipientTargetId} RecipientLength=${igSenderId.length} RecipientMasked=***${igSenderId.slice(-4)} PayloadObj=${JSON.stringify({ recipient: { id: `***${igSenderId.slice(-4)}` }, message: { text: responseText.substring(0, 80) + '...' } })}`,
+          )
+
           let igSendRes = callMetaWithRetry(
             igEndpointUrl,
             'POST',

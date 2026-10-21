@@ -122,8 +122,10 @@ export function getInstagramActiveAppId(
 export const INSTAGRAM_OAUTH_SCOPES_LIST = [
   'pages_show_list',
   'pages_read_engagement',
+  'pages_manage_metadata',
   'pages_messaging',
   'instagram_basic',
+  'instagram_manage_messages',
   'business_management',
 ]
 

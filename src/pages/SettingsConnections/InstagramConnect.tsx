@@ -762,11 +762,11 @@ export function InstagramConnect() {
                 ))}
               </div>
               <p className="text-[11px] text-muted-foreground leading-normal">
-                Configurado com escopos compatíveis com apps em desenvolvimento para leitura e
-                vinculação de Páginas e Instagram Business (sem escopos que exijam App Review
-                avançado como{' '}
+                Inclui permissões essenciais para envio e resposta de DMs via Inteligência
+                Artificial Bia:{' '}
                 <code className="text-[10px] bg-muted px-1 rounded">instagram_manage_messages</code>
-                , prevenindo o erro de <em>Invalid Scopes</em>).
+                , <code className="text-[10px] bg-muted px-1 rounded">pages_messaging</code> e{' '}
+                <code className="text-[10px] bg-muted px-1 rounded">pages_manage_metadata</code>.
               </p>
             </div>
           </div>
