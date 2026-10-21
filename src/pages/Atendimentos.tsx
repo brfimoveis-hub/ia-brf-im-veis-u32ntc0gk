@@ -45,6 +45,8 @@ import {
   type CadenceStepKey,
 } from '@/components/chat/CadenceTrackHeader'
 import { CadenceEvolutionPanel, type CadenceStats } from '@/components/chat/CadenceEvolutionPanel'
+import { CadenceStepCircle, getStepRank } from '@/components/chat/CadenceStepCircle'
+import { recordCadenceStepAdvance, getTodayCadenceAdvancesCount } from '@/services/cadence_advances'
 import { sendManualReply } from '@/services/conversations'
 import { sendWhatsAppMessages } from '@/services/meta_whatsapp'
 import { toast } from '@/hooks/use-toast'
@@ -417,15 +419,6 @@ export default function Atendimentos() {
     }
   })
 
-  // Realtime subscription para customers (para atualizar status, nome, degrau e régua)
-  useRealtime('customers', (e) => {
-    // Atualiza a lista lateral e os contadores de evolução de cadência
-    loadThreads()
-    if (selectedCustomerId && e.record.id === selectedCustomerId) {
-      setSelectedCustomer(e.record as unknown as Customer)
-    }
-  })
-
   // Se o cliente atualmente selecionado for uma conversa que foi filtrada/ocultada da lista de threads,
   // ajusta a seleção para o primeiro atendimento real disponível (em desktop)
   useEffect(() => {
@@ -441,6 +434,102 @@ export default function Atendimentos() {
       }
     }
   }, [threads, selectedCustomerId, setSearchParams])
+
+  // Cache em memória para rastrear follow_up_step anterior de cada cliente e detectar avanços
+  const previousStepsRef = useRef<Map<string, string>>(new Map())
+  const isInitialLoadRef = useRef(true)
+  const lastToastTimeRef = useRef<number>(0)
+  const advancesTodayCountRef = useRef<number>(0)
+  const [advancesToday, setAdvancesToday] = useState<number>(0)
+
+  // Carrega contagem inicial de avanços hoje
+  useEffect(() => {
+    let mounted = true
+    getTodayCadenceAdvancesCount()
+      .then((count) => {
+        if (mounted) {
+          advancesTodayCountRef.current = count
+          setAdvancesToday(count)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  // Atualiza cache de degraus após loadThreads
+  useEffect(() => {
+    if (threads.length > 0) {
+      for (const t of threads) {
+        if (t.customer_id && !previousStepsRef.current.has(t.customer_id)) {
+          previousStepsRef.current.set(t.customer_id, t.follow_up_step || '')
+        }
+      }
+      // Após popular threads na carga inicial, destrava detecção de eventos futuros
+      if (isInitialLoadRef.current) {
+        setTimeout(() => {
+          isInitialLoadRef.current = false
+        }, 1500)
+      }
+    }
+  }, [threads])
+
+  // Realtime subscription para customers (para atualizar status, nome, degrau e régua)
+  useRealtime('customers', (e) => {
+    const custRecord = e.record as unknown as Customer
+    const custId = custRecord.id
+    const newStep = custRecord.follow_up_step || ''
+
+    if (e.action === 'update' && custId && !isInitialLoadRef.current) {
+      const prevStep = previousStepsRef.current.get(custId) || ''
+      const prevRank = getStepRank(prevStep)
+      const newRank = getStepRank(newStep)
+
+      // Só dispara se houve avanço genuíno de degrau (novo rank estritamente maior que anterior)
+      // e o degrau anterior já era conhecido
+      if (prevStep && newStep && prevRank > 0 && newRank > prevRank) {
+        const custName = custRecord.name || 'Cliente'
+        const newStepLabel = formatCadenceStepLabel(newStep)
+
+        // Atualiza contadores de avanços hoje
+        setAdvancesToday((prev) => prev + 1)
+
+        // Registra evento idempotente no backend (system_logs)
+        recordCadenceStepAdvance({
+          customer_id: custId,
+          customer_name: custName,
+          customer_phone: custRecord.phone,
+          previous_step: prevStep,
+          new_step: newStep,
+          previous_rank: prevRank,
+          new_rank: newRank,
+        })
+
+        // Notificação estilo toast leve / WhatsApp Web com anti-burst (respeita 1.5s entre avisos)
+        const now = Date.now()
+        if (now - lastToastTimeRef.current >= 1500) {
+          lastToastTimeRef.current = now
+          toast({
+            title: '🚀 Avanço na Cadência',
+            description: `${custName} avançou para o ${newStepLabel}`,
+            duration: 4000,
+          })
+        }
+      }
+
+      // Atualiza referência para a próxima transição
+      previousStepsRef.current.set(custId, newStep)
+    } else if (custId && newStep) {
+      previousStepsRef.current.set(custId, newStep)
+    }
+
+    // Atualiza a lista lateral e os contadores de evolução de cadência
+    loadThreads()
+    if (selectedCustomerId && custId === selectedCustomerId) {
+      setSelectedCustomer(custRecord)
+    }
+  })
 
   // Métricas e contadores de evolução da régua de cadência
   const cadenceStats: CadenceStats = useMemo(() => {
@@ -496,9 +585,10 @@ export default function Atendimentos() {
       pausedCount: paused,
       repliedTodayCount: repliedToday,
       sentTodayCount: sentToday,
+      advancesTodayCount: advancesToday,
       byStep,
     }
-  }, [threads])
+  }, [threads, advancesToday])
 
   // Filtros de busca, canal e degrau de cadência
   const filteredThreads = useMemo(() => {
@@ -824,9 +914,13 @@ export default function Atendimentos() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <span className="font-semibold text-xs truncate text-slate-900 dark:text-slate-100">
-                            {thread.customer_name}
-                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {/* Bolinha Colorida com Número do Degrau na Lista (Palma da Mão) */}
+                            <CadenceStepCircle step={thread.follow_up_step} size="sm" />
+                            <span className="font-semibold text-xs truncate text-slate-900 dark:text-slate-100">
+                              {thread.customer_name}
+                            </span>
+                          </div>
                           <span className="text-[10px] text-muted-foreground shrink-0 font-medium">
                             {formatRelativeTime(thread.last_message_time)}
                           </span>
@@ -856,12 +950,12 @@ export default function Atendimentos() {
 
                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                           <ChannelBadge channel={thread.channel} />
-                          {/* Badge de Degrau da Cadência */}
+                          {/* Badge Elevado com Bolinha + Texto Discreto */}
                           <Badge
                             variant="outline"
-                            className="text-[10px] px-1.5 py-0 font-medium bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-0.5"
+                            className="text-[10px] px-1.5 py-0 font-medium bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-1"
                           >
-                            <Zap className="h-2.5 w-2.5 text-amber-500" />
+                            <CadenceStepCircle step={thread.follow_up_step} size="sm" />
                             <span>{formatCadenceStepLabel(thread.follow_up_step)}</span>
                           </Badge>
                           {thread.customer_status && (
@@ -932,6 +1026,12 @@ export default function Atendimentos() {
                       <h2 className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
                         {selectedCustomer?.name || currentThread?.customer_name || 'Carregando...'}
                       </h2>
+                      {/* Bolinha do Degrau no Topo ao lado do Nome */}
+                      <CadenceStepCircle
+                        step={selectedCustomer?.follow_up_step || currentThread?.follow_up_step}
+                        size="sm"
+                        showText
+                      />
                       {selectedCustomer?.status && (
                         <Badge variant="secondary" className="text-[10px] hidden sm:inline-flex">
                           {selectedCustomer.status}

@@ -16,6 +16,7 @@ import {
   type CadenceStepKey,
   normalizeCadenceStep,
 } from '@/components/chat/CadenceTrackHeader'
+import { CadenceStepCircle } from '@/components/chat/CadenceStepCircle'
 
 export interface CadenceStats {
   total: number
@@ -23,6 +24,7 @@ export interface CadenceStats {
   pausedCount: number
   repliedTodayCount: number
   sentTodayCount: number
+  advancesTodayCount?: number
   byStep: {
     remarketing: number
     d1: number
@@ -100,6 +102,14 @@ export function CadenceEvolutionPanel({
             <Send className="h-3 w-3 text-purple-500" />
             <span>{stats.sentTodayCount} disparos hoje</span>
           </div>
+
+          <div
+            className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 font-bold"
+            title="Clientes que avançaram de degrau hoje"
+          >
+            <Zap className="h-3 w-3 text-emerald-500 fill-emerald-500" />
+            <span>{stats.advancesTodayCount ?? 0} avanços hoje</span>
+          </div>
         </div>
       </div>
 
@@ -145,6 +155,7 @@ export function CadenceEvolutionPanel({
                   : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300 hover:text-emerald-700',
               )}
             >
+              <CadenceStepCircle step={cfg.key} size="sm" />
               <span className="capitalize">{cfg.shortLabel}</span>
               <span
                 className={cn(
@@ -172,7 +183,8 @@ export function CadenceEvolutionPanel({
                 : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700',
             )}
           >
-            <span>Finalizados</span>
+            <CadenceStepCircle step="finalizado" size="sm" />
+            <span>Finalizados</span>{' '}
             <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-700">
               {stats.byStep.finalizado}
             </span>

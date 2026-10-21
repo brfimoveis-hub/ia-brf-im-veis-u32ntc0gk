@@ -15,6 +15,7 @@ import {
   Zap,
 } from 'lucide-react'
 import type { Customer } from '@/services/customers'
+import { CadenceStepCircle } from '@/components/chat/CadenceStepCircle'
 
 // Definição visual dos degraus da régua de retomada/persistência
 export const CADENCE_STEPS_CONFIG = [
@@ -174,27 +175,16 @@ export function CadenceTrackHeader({
             <span className="truncate max-w-[130px] sm:max-w-none">{stageTitle}</span>
           </Badge>
 
-          {/* Badge Degrau Cadência */}
-          <Badge
-            variant="outline"
-            className={cn(
-              'text-[10.5px] px-2 py-0.5 font-semibold shrink-0 flex items-center gap-1',
-              stepKey === 'remarketing' && 'bg-blue-500/20 text-blue-200 border-blue-400/30',
-              stepKey === 'd1' && 'bg-cyan-500/20 text-cyan-200 border-cyan-400/30',
-              stepKey === 'd3' && 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30',
-              stepKey === 'd7' && 'bg-indigo-500/20 text-indigo-200 border-indigo-400/30',
-              stepKey === 'd14' && 'bg-amber-500/20 text-amber-200 border-amber-400/30',
-              stepKey === 'nurturing_monthly' &&
-                'bg-purple-500/20 text-purple-200 border-purple-400/30',
-              stepKey === 'finalizado' && 'bg-slate-500/20 text-slate-300 border-slate-400/30',
-            )}
-          >
-            <Zap className="h-3 w-3 text-amber-300 shrink-0" />
-            <span>{stepLabel}</span>
+          {/* Bolinha Colorida com Número do Degrau + Badge */}
+          <div className="flex items-center gap-1.5 shrink-0 bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
+            <CadenceStepCircle step={customer.follow_up_step} size="sm" />
+            <span className="text-[11px] font-semibold text-white">{stepLabel}</span>
             {followUpCount > 0 && (
-              <span className="text-[9.5px] opacity-80 ml-0.5">({followUpCount}º envio)</span>
+              <span className="text-[9.5px] opacity-80 ml-0.5 text-slate-300">
+                ({followUpCount}º envio)
+              </span>
             )}
-          </Badge>
+          </div>
 
           {/* Status Ativo/Pausado */}
           <div className="flex items-center gap-1 text-[11px] font-medium shrink-0">
