@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -6,7 +6,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { type Conversation, getConversations } from '@/services/conversations'
 import { type Customer, getCustomer } from '@/services/customers'
 import { cn, formatPhone } from '@/lib/utils'
-import { isAutomatedSystemThread, isSystemVerificationMessage } from '@/lib/system-messages'
+import { isAutomatedSystemThread } from '@/lib/system-messages'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +50,96 @@ import { recordCadenceStepAdvance, getTodayCadenceAdvancesCount } from '@/servic
 import { sendManualReply } from '@/services/conversations'
 import { sendWhatsAppMessages } from '@/services/meta_whatsapp'
 import { toast } from '@/hooks/use-toast'
+
+// Item individual da lista de conversas memoizado para garantir 60fps com centenas de clientes
+const ThreadListItem = memo(function ThreadListItem({
+  thread,
+  isSelected,
+  onSelect,
+}: {
+  thread: ThreadItem
+  isSelected: boolean
+  onSelect: (id: string) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(thread.customer_id)}
+      className={cn(
+        'w-full text-left p-3 transition-colors flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 relative',
+        isSelected && 'bg-primary/5 dark:bg-primary/10 border-l-4 border-l-primary',
+      )}
+    >
+      <Avatar className="h-11 w-11 shrink-0 border border-slate-200 dark:border-slate-700 shadow-xs">
+        <AvatarImage src={`https://img.usecurling.com/ppl/thumbnail?seed=${thread.customer_id}`} />
+        <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
+          {thread.customer_name.slice(0, 2).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-1 mb-0.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {/* Bolinha Colorida com Número do Degrau na Lista (Palma da Mão) */}
+            <CadenceStepCircle step={thread.follow_up_step} size="sm" />
+            <span className="font-semibold text-xs truncate text-slate-900 dark:text-slate-100">
+              {thread.customer_name}
+            </span>
+          </div>
+          <span className="text-[10px] text-muted-foreground shrink-0 font-medium">
+            {formatRelativeTime(thread.last_message_time)}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 mb-1 text-[11px] text-muted-foreground">
+          {thread.customer_phone && (
+            <span className="truncate">{formatPhone(thread.customer_phone)}</span>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-600 dark:text-slate-400 truncate line-clamp-1">
+          {thread.sender === 'ai' && (
+            <span className="inline-flex items-center gap-1 font-semibold text-primary dark:text-primary-foreground mr-1">
+              <BiaAvatar size="sm" className="inline-block w-4 h-4 align-text-bottom" />
+              Bia:
+            </span>
+          )}
+          {thread.sender === 'agent' && (
+            <span className="font-semibold text-amber-600">Corretor: </span>
+          )}
+          {thread.last_message || 'Nenhum conteúdo'}
+        </p>
+
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <ChannelBadge channel={thread.channel} />
+          {/* Badge Elevado com Bolinha + Texto Discreto */}
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0 font-medium bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-1"
+          >
+            <CadenceStepCircle step={thread.follow_up_step} size="sm" />
+            <span>{formatCadenceStepLabel(thread.follow_up_step)}</span>
+          </Badge>
+          {thread.customer_status && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0 max-w-[110px] truncate"
+              title={thread.customer_status}
+            >
+              {thread.customer_status}
+            </Badge>
+          )}
+          {thread.is_active_24h && (
+            <span
+              className="ml-auto flex h-2 w-2 rounded-full bg-emerald-500"
+              title="Mensagem nas últimas 24h"
+            />
+          )}
+        </div>
+      </div>
+    </button>
+  )
+})
 
 // Ícones específicos por canal
 function ChannelBadge({ channel }: { channel?: string }) {
@@ -253,18 +343,28 @@ export default function Atendimentos() {
     }
   }, [selectedCustomerIdFromUrl])
 
-  const selectConversation = (id: string) => {
-    setSelectedCustomerId(id)
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      next.set('cliente', id)
-      return next
-    })
-  }
+  const selectConversation = useCallback(
+    (id: string) => {
+      setSelectedCustomerId(id)
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('cliente', id)
+        return next
+      })
+    },
+    [setSearchParams],
+  )
+
+  // Ref para guardar se já temos alguma seleção inicial feita
+  const hasInitializedSelectionRef = useRef(false)
+  const isFetchingThreadsRef = useRef(false)
+  const debounceThreadsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Carrega lista de atendimentos agrupados por cliente
   const loadThreads = useCallback(
     async (showRefreshing = false) => {
+      if (isFetchingThreadsRef.current) return
+      isFetchingThreadsRef.current = true
       if (showRefreshing) setRefreshing(true)
       try {
         const currentUserId = user?.id || pb.authStore.record?.id
@@ -331,8 +431,15 @@ export default function Atendimentos() {
         const list = Array.from(grouped.values())
         setThreads(list)
 
-        // Se nenhum selecionado e temos itens, seleciona o primeiro por conveniência em desktop
-        if (!selectedCustomerId && list.length > 0 && window.innerWidth >= 768) {
+        // Se nenhum selecionado e temos itens, seleciona o primeiro por conveniência em desktop apenas 1x
+        if (
+          !hasInitializedSelectionRef.current &&
+          !selectedCustomerId &&
+          list.length > 0 &&
+          typeof window !== 'undefined' &&
+          window.innerWidth >= 768
+        ) {
+          hasInitializedSelectionRef.current = true
           setSelectedCustomerId(list[0].customer_id)
           setSearchParams((prev) => {
             const next = new URLSearchParams(prev)
@@ -343,6 +450,7 @@ export default function Atendimentos() {
       } catch (err) {
         console.error('Erro ao carregar atendimentos:', err)
       } finally {
+        isFetchingThreadsRef.current = false
         setLoadingThreads(false)
         if (showRefreshing) setRefreshing(false)
       }
@@ -350,16 +458,34 @@ export default function Atendimentos() {
     [user?.id, selectedCustomerId, setSearchParams],
   )
 
+  // Versão com debounce inteligente para evitar storm quando eventos realtime chegam em rajadas
+  const scheduleLoadThreads = useCallback(
+    (delayMs = 2500) => {
+      if (debounceThreadsTimerRef.current) {
+        clearTimeout(debounceThreadsTimerRef.current)
+      }
+      debounceThreadsTimerRef.current = setTimeout(() => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+        loadThreads()
+      }, delayMs)
+    },
+    [loadThreads],
+  )
+
   // Carga inicial
   useEffect(() => {
     loadThreads()
+    return () => {
+      if (debounceThreadsTimerRef.current) clearTimeout(debounceThreadsTimerRef.current)
+    }
   }, [loadThreads])
 
-  // Polling fallback a cada 15 segundos
+  // Polling fallback suave a cada 45 segundos (apenas se aba estiver visível)
   useEffect(() => {
     const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       loadThreads()
-    }, 15000)
+    }, 45000)
     return () => clearInterval(timer)
   }, [loadThreads])
 
@@ -391,20 +517,28 @@ export default function Atendimentos() {
     }
   }, [selectedCustomerId])
 
-  // Auto scroll para o final das mensagens
+  // Auto scroll para o final das mensagens com requestAnimationFrame (sem bloquear main thread)
+  const isFirstMessagesRenderRef = useRef(true)
   useEffect(() => {
     if (messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      const isFirst = isFirstMessagesRenderRef.current
+      isFirstMessagesRenderRef.current = false
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: isFirst ? 'auto' : 'smooth' })
+      })
     }
   }, [messages])
+
+  // Reseta flag quando troca de cliente
+  useEffect(() => {
+    isFirstMessagesRenderRef.current = true
+  }, [selectedCustomerId])
 
   // Realtime subscription para conversations
   useRealtime('conversations', (e) => {
     const record = e.record as unknown as Conversation
-    // Atualiza a lista lateral
-    loadThreads()
 
-    // Se pertence à conversa aberta atualmente
+    // 1. Se pertence à conversa aberta atualmente, atualiza na hora sem esperar!
     if (selectedCustomerId && record.customer_id === selectedCustomerId) {
       if (e.action === 'create') {
         setMessages((prev) => {
@@ -416,6 +550,35 @@ export default function Atendimentos() {
       } else if (e.action === 'delete') {
         setMessages((prev) => prev.filter((m) => m.id !== record.id))
       }
+    }
+
+    // 2. Atualiza a lista de threads pontualmente em memória para o cliente afetado,
+    // evitando re-fetch completo e pesado da coleção inteira a cada mensagem individual
+    if (record.customer_id && e.action === 'create') {
+      setThreads((prev) => {
+        const idx = prev.findIndex((t) => t.customer_id === record.customer_id)
+        if (idx !== -1) {
+          const current = prev[idx]
+          const updated: ThreadItem = {
+            ...current,
+            last_message: record.content || current.last_message,
+            last_message_time: record.created || new Date().toISOString(),
+            sender: record.sender,
+            channel: record.channel || current.channel,
+            is_active_24h: true,
+          }
+          // Move para o topo da lista de conversas
+          const next = [...prev]
+          next.splice(idx, 1)
+          next.unshift(updated)
+          return next
+        }
+        return prev
+      })
+      // Agenda sincronização completa em background com debounce
+      scheduleLoadThreads(3000)
+    } else {
+      scheduleLoadThreads(2000)
     }
   })
 
@@ -524,11 +687,42 @@ export default function Atendimentos() {
       previousStepsRef.current.set(custId, newStep)
     }
 
-    // Atualiza a lista lateral e os contadores de evolução de cadência
-    loadThreads()
+    // Atualiza pontualmente a conversa aberta em memória
     if (selectedCustomerId && custId === selectedCustomerId) {
       setSelectedCustomer(custRecord)
     }
+
+    // Atualiza pontualmente o item na lista de threads em memória
+    if (custId) {
+      setThreads((prev) => {
+        const idx = prev.findIndex((t) => t.customer_id === custId)
+        if (idx !== -1) {
+          const current = prev[idx]
+          const updated: ThreadItem = {
+            ...current,
+            customer_name: custRecord.name || current.customer_name,
+            customer_phone: custRecord.phone || current.customer_phone,
+            customer_status: custRecord.status || current.customer_status,
+            customer_source: custRecord.source || current.customer_source,
+            follow_up_step: custRecord.follow_up_step || current.follow_up_step,
+            follow_up_count: custRecord.follow_up_count ?? current.follow_up_count,
+            last_follow_up_at: custRecord.last_follow_up_at || current.last_follow_up_at,
+            next_follow_up_at: custRecord.next_follow_up_at || current.next_follow_up_at,
+            persistence_status: custRecord.persistence_status || current.persistence_status,
+            promise_pending: custRecord.promise_pending ?? current.promise_pending,
+            is_blocked: custRecord.is_blocked ?? current.is_blocked,
+            tags: custRecord.tags || current.tags,
+          }
+          const next = [...prev]
+          next[idx] = updated
+          return next
+        }
+        return prev
+      })
+    }
+
+    // Debounce na sincronização pesada do banco
+    scheduleLoadThreads(2500)
   })
 
   // Métricas e contadores de evolução da régua de cadência
@@ -891,93 +1085,14 @@ export default function Atendimentos() {
               </div>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredThreads.map((thread) => {
-                  const isSelected = selectedCustomerId === thread.customer_id
-                  return (
-                    <button
-                      key={thread.customer_id}
-                      type="button"
-                      onClick={() => selectConversation(thread.customer_id)}
-                      className={cn(
-                        'w-full text-left p-3 transition-colors flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 relative',
-                        isSelected && 'bg-primary/5 dark:bg-primary/10 border-l-4 border-l-primary',
-                      )}
-                    >
-                      <Avatar className="h-11 w-11 shrink-0 border border-slate-200 dark:border-slate-700 shadow-xs">
-                        <AvatarImage
-                          src={`https://img.usecurling.com/ppl/thumbnail?seed=${thread.customer_id}`}
-                        />
-                        <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
-                          {thread.customer_name.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            {/* Bolinha Colorida com Número do Degrau na Lista (Palma da Mão) */}
-                            <CadenceStepCircle step={thread.follow_up_step} size="sm" />
-                            <span className="font-semibold text-xs truncate text-slate-900 dark:text-slate-100">
-                              {thread.customer_name}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-muted-foreground shrink-0 font-medium">
-                            {formatRelativeTime(thread.last_message_time)}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 mb-1 text-[11px] text-muted-foreground">
-                          {thread.customer_phone && (
-                            <span className="truncate">{formatPhone(thread.customer_phone)}</span>
-                          )}
-                        </div>
-
-                        <p className="text-xs text-slate-600 dark:text-slate-400 truncate line-clamp-1">
-                          {thread.sender === 'ai' && (
-                            <span className="inline-flex items-center gap-1 font-semibold text-primary dark:text-primary-foreground mr-1">
-                              <BiaAvatar
-                                size="sm"
-                                className="inline-block w-4 h-4 align-text-bottom"
-                              />
-                              Bia:
-                            </span>
-                          )}
-                          {thread.sender === 'agent' && (
-                            <span className="font-semibold text-amber-600">Corretor: </span>
-                          )}
-                          {thread.last_message || 'Nenhum conteúdo'}
-                        </p>
-
-                        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                          <ChannelBadge channel={thread.channel} />
-                          {/* Badge Elevado com Bolinha + Texto Discreto */}
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] px-1.5 py-0 font-medium bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-1"
-                          >
-                            <CadenceStepCircle step={thread.follow_up_step} size="sm" />
-                            <span>{formatCadenceStepLabel(thread.follow_up_step)}</span>
-                          </Badge>
-                          {thread.customer_status && (
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] px-1.5 py-0 max-w-[110px] truncate"
-                              title={thread.customer_status}
-                            >
-                              {thread.customer_status}
-                            </Badge>
-                          )}
-                          {thread.is_active_24h && (
-                            <span
-                              className="ml-auto flex h-2 w-2 rounded-full bg-emerald-500"
-                              title="Mensagem nas últimas 24h"
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
+                {filteredThreads.map((thread) => (
+                  <ThreadListItem
+                    key={thread.customer_id}
+                    thread={thread}
+                    isSelected={selectedCustomerId === thread.customer_id}
+                    onSelect={selectConversation}
+                  />
+                ))}
               </div>
             )}
           </ScrollArea>

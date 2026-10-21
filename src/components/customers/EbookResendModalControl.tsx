@@ -98,10 +98,16 @@ export function EbookResendModalControl() {
 
   useEffect(() => {
     loadAudit(true)
-    // Atualiza a cada 20s
-    const timer = setInterval(() => loadAudit(true), 20000)
+    // Atualiza periodicamente (90s) se aba visível, ou quando o modal estiver aberto (a cada 30s)
+    const timer = setInterval(
+      () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+        loadAudit(true)
+      },
+      modalOpen ? 30000 : 90000,
+    )
     return () => clearInterval(timer)
-  }, [loadAudit])
+  }, [loadAudit, modalOpen])
 
   const pendingCount = auditData?.summary?.eligible_pending_count ?? 0
   const invalidListCombined: EbookInvalidPhoneClient[] = useMemo(() => {

@@ -77,8 +77,11 @@ export function ReguaPauseControl() {
 
   useEffect(() => {
     fetchStatus()
-    // Atualiza a cada 20s
-    const timer = setInterval(fetchStatus, 20000)
+    // Atualiza periodicamente (60s) apenas se a aba estiver visível
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      fetchStatus()
+    }, 60000)
     return () => clearInterval(timer)
   }, [fetchStatus])
 
