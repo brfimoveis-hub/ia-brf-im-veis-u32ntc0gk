@@ -70,12 +70,9 @@ const ThreadListItem = memo(function ThreadListItem({
         isSelected && 'bg-primary/5 dark:bg-primary/10 border-l-4 border-l-primary',
       )}
     >
-      <Avatar className="h-11 w-11 shrink-0 border border-slate-200 dark:border-slate-700 shadow-xs">
-        <AvatarImage src={`https://img.usecurling.com/ppl/thumbnail?seed=${thread.customer_id}`} />
-        <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
-          {thread.customer_name.slice(0, 2).toUpperCase()}
-        </AvatarFallback>
-      </Avatar>
+      <div className="h-11 w-11 shrink-0 rounded-full border border-slate-200 dark:border-slate-700 shadow-xs flex items-center justify-center bg-primary/10 text-primary text-xs font-bold select-none">
+        {thread.customer_name ? thread.customer_name.slice(0, 2).toUpperCase() : 'CL'}
+      </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1 mb-0.5">
@@ -333,6 +330,8 @@ export default function Atendimentos() {
     'all' | 'whatsapp' | 'instagram' | 'messenger'
   >('all')
   const [cadenceFilter, setCadenceFilter] = useState<CadenceStepKey>('all')
+  // Paginação / Limite de renderização rápida da lista para manter 60fps no DOM
+  const [visibleCount, setVisibleCount] = useState<number>(50)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -341,16 +340,19 @@ export default function Atendimentos() {
     if (selectedCustomerIdFromUrl && selectedCustomerIdFromUrl !== selectedCustomerId) {
       setSelectedCustomerId(selectedCustomerIdFromUrl)
     }
-  }, [selectedCustomerIdFromUrl])
+  }, [selectedCustomerIdFromUrl, selectedCustomerId])
 
   const selectConversation = useCallback(
     (id: string) => {
       setSelectedCustomerId(id)
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.set('cliente', id)
-        return next
-      })
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('cliente', id)
+          return next
+        },
+        { replace: true },
+      )
     },
     [setSearchParams],
   )
@@ -434,18 +436,21 @@ export default function Atendimentos() {
         // Se nenhum selecionado e temos itens, seleciona o primeiro por conveniência em desktop apenas 1x
         if (
           !hasInitializedSelectionRef.current &&
-          !selectedCustomerId &&
+          !selectedCustomerIdFromUrl &&
           list.length > 0 &&
           typeof window !== 'undefined' &&
           window.innerWidth >= 768
         ) {
           hasInitializedSelectionRef.current = true
           setSelectedCustomerId(list[0].customer_id)
-          setSearchParams((prev) => {
-            const next = new URLSearchParams(prev)
-            next.set('cliente', list[0].customer_id)
-            return next
-          })
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev)
+              next.set('cliente', list[0].customer_id)
+              return next
+            },
+            { replace: true },
+          )
         }
       } catch (err) {
         console.error('Erro ao carregar atendimentos:', err)
@@ -455,7 +460,7 @@ export default function Atendimentos() {
         if (showRefreshing) setRefreshing(false)
       }
     },
-    [user?.id, selectedCustomerId, setSearchParams],
+    [user?.id, selectedCustomerIdFromUrl, setSearchParams],
   )
 
   // Versão com debounce inteligente para evitar storm quando eventos realtime chegam em rajadas
@@ -472,20 +477,22 @@ export default function Atendimentos() {
     [loadThreads],
   )
 
-  // Carga inicial
+  // Carga inicial (executada apenas uma vez ao montar)
   useEffect(() => {
     loadThreads()
     return () => {
       if (debounceThreadsTimerRef.current) clearTimeout(debounceThreadsTimerRef.current)
     }
-  }, [loadThreads])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // Polling fallback suave a cada 45 segundos (apenas se aba estiver visível)
+  // Polling fallback suave a cada 90 segundos (apenas se aba estiver visível e não estiver buscando)
   useEffect(() => {
     const timer = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      if (isFetchingThreadsRef.current) return
       loadThreads()
-    }, 45000)
+    }, 90000)
     return () => clearInterval(timer)
   }, [loadThreads])
 
@@ -585,22 +592,26 @@ export default function Atendimentos() {
   // Se o cliente atualmente selecionado for uma conversa que foi filtrada/ocultada da lista de threads,
   // ajusta a seleção para o primeiro atendimento real disponível (em desktop)
   useEffect(() => {
-    if (threads.length > 0 && selectedCustomerId) {
+    if (threads.length > 0 && selectedCustomerId && !loadingThreads) {
       const existsInThreads = threads.some((t) => t.customer_id === selectedCustomerId)
-      if (!existsInThreads && window.innerWidth >= 768) {
+      if (!existsInThreads && typeof window !== 'undefined' && window.innerWidth >= 768) {
         setSelectedCustomerId(threads[0].customer_id)
-        setSearchParams((prev) => {
-          const next = new URLSearchParams(prev)
-          next.set('cliente', threads[0].customer_id)
-          return next
-        })
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev)
+            next.set('cliente', threads[0].customer_id)
+            return next
+          },
+          { replace: true },
+        )
       }
     }
-  }, [threads, selectedCustomerId, setSearchParams])
+  }, [threads, selectedCustomerId, loadingThreads, setSearchParams])
 
   // Cache em memória para rastrear follow_up_step anterior de cada cliente e detectar avanços
   const previousStepsRef = useRef<Map<string, string>>(new Map())
   const isInitialLoadRef = useRef(true)
+  const hasInitializedStepsRef = useRef(false)
   const lastToastTimeRef = useRef<number>(0)
   const advancesTodayCountRef = useRef<number>(0)
   const [advancesToday, setAdvancesToday] = useState<number>(0)
@@ -621,20 +632,19 @@ export default function Atendimentos() {
     }
   }, [])
 
-  // Atualiza cache de degraus após loadThreads
+  // Atualiza cache de degraus após loadThreads (só popula novos sem disparar loop)
   useEffect(() => {
-    if (threads.length > 0) {
+    if (threads.length > 0 && !hasInitializedStepsRef.current) {
+      hasInitializedStepsRef.current = true
       for (const t of threads) {
-        if (t.customer_id && !previousStepsRef.current.has(t.customer_id)) {
+        if (t.customer_id) {
           previousStepsRef.current.set(t.customer_id, t.follow_up_step || '')
         }
       }
       // Após popular threads na carga inicial, destrava detecção de eventos futuros
-      if (isInitialLoadRef.current) {
-        setTimeout(() => {
-          isInitialLoadRef.current = false
-        }, 1500)
-      }
+      setTimeout(() => {
+        isInitialLoadRef.current = false
+      }, 1500)
     }
   }, [threads])
 
@@ -811,6 +821,16 @@ export default function Atendimentos() {
       return true
     })
   }, [threads, channelFilter, cadenceFilter, searchTerm])
+
+  // Threads atualmente visíveis na viewport (janela de 50 + "carregar mais")
+  const displayedThreads = useMemo(() => {
+    return filteredThreads.slice(0, visibleCount)
+  }, [filteredThreads, visibleCount])
+
+  // Reseta contagem visível ao mudar termo de busca ou filtro
+  useEffect(() => {
+    setVisibleCount(50)
+  }, [searchTerm, channelFilter, cadenceFilter])
 
   const totalActive24h = useMemo(() => {
     return threads.filter((t) => t.is_active_24h).length
@@ -1085,7 +1105,7 @@ export default function Atendimentos() {
               </div>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredThreads.map((thread) => (
+                {displayedThreads.map((thread) => (
                   <ThreadListItem
                     key={thread.customer_id}
                     thread={thread}
@@ -1093,6 +1113,21 @@ export default function Atendimentos() {
                     onSelect={selectConversation}
                   />
                 ))}
+
+                {/* Botão de carregar mais se houver mais de visibleCount itens */}
+                {filteredThreads.length > visibleCount && (
+                  <div className="p-3 bg-slate-50/70 dark:bg-slate-800/40 text-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setVisibleCount((prev) => prev + 50)}
+                      className="w-full text-xs h-8 border-slate-300 dark:border-slate-700 font-medium"
+                    >
+                      Carregar mais ({filteredThreads.length - visibleCount} restantes)
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </ScrollArea>

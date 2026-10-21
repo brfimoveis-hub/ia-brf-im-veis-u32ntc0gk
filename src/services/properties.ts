@@ -53,7 +53,7 @@ export function detectPropertyFromText(text: string, properties: Property[]): Pr
   const cleanText = text.toLowerCase()
   const cleanTextAlphanum = cleanText.replace(/[^a-z0-9]/gi, '')
 
-  // 1. Tentar correspondência exata por código (ex: "AP343", "ARU 341", "LM 330", "AP-344")
+  // 1. Tentar correspondência exata por código (ex: "AP343", "ARU 341", "LM 330", "AP-344", "346", "AP346")
   for (const prop of properties) {
     const rawCode = (prop.code || '').toLowerCase().trim()
     if (!rawCode || rawCode.length < 3) continue
@@ -68,8 +68,23 @@ export function detectPropertyFromText(text: string, properties: Property[]): Pr
         return prop
       }
     }
-  }
 
+    // Testar match por URL se presente no texto (ex: "brfimoveis.com.br/346/")
+    if (prop.url && prop.url.length > 10) {
+      const propUrl = prop.url.toLowerCase()
+      const urlIdMatch = propUrl.match(/brfimoveis\.com\.br\/(\d+)\//)
+      if (urlIdMatch && urlIdMatch[1]) {
+        const numId = urlIdMatch[1]
+        if (
+          cleanText.includes(`/${numId}/`) ||
+          cleanText.includes(`imovel #${numId}`) ||
+          cleanText.includes(`imóvel #${numId}`)
+        ) {
+          return prop
+        }
+      }
+    }
+  }
   // 2. Tentar por palavras-chave fortes do título ou nome do lançamento (ex: "Vistage", "Viva Balneário", "Neo Continente", "Colinas de São Pedro")
   for (const prop of properties) {
     const titleLower = (prop.title || '').toLowerCase()
