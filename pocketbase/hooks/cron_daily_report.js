@@ -1,7 +1,6 @@
 cronAdd('daily_performance_report', '0 21 * * *', () => {
   const slackWebhook = $secrets.get('SLACK_WEBHOOK_URL')
   if (!slackWebhook) return
-
   const now = new Date()
   const todayStr = now.toISOString().split('T')[0]
 

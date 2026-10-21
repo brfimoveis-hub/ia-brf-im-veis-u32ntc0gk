@@ -63,7 +63,6 @@ routerAdd('POST', '/backend/v1/instagram/simulate_test_event', (e) => {
       }
     }
   } catch (_) {}
-
   if (httpAttemptSuccess) {
     return e.json(200, {
       success: true,
