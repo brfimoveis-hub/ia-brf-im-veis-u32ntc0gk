@@ -366,13 +366,15 @@ export default function Atendimentos() {
   const loadThreads = useCallback(
     async (showRefreshing = false) => {
       if (isFetchingThreadsRef.current) return
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       isFetchingThreadsRef.current = true
       if (showRefreshing) setRefreshing(true)
       try {
         const currentUserId = user?.id || pb.authStore.record?.id
         const filter = currentUserId ? `user_id = "${currentUserId}"` : ''
 
-        const records = await pb.collection('conversations').getList<Conversation>(1, 500, {
+        // Busca lista de conversas mais recentes para agrupar threads (janela otimizada de 300)
+        const records = await pb.collection('conversations').getList<Conversation>(1, 300, {
           ...(filter ? { filter } : {}),
           sort: '-created',
           expand: 'customer_id',

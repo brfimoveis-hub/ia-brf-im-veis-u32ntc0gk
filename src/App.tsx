@@ -434,10 +434,16 @@ const App = () => {
         }
       })
     }
+    if ('caches' in window) {
+      caches.keys().then((keys) => {
+        for (const key of keys) {
+          caches.delete(key)
+        }
+      })
+    }
     localStorage.removeItem('vite-plugin-react-router-cache')
     sessionStorage.removeItem('vite-plugin-react-router-cache')
   }, [])
-
   return (
     <AuthProvider>
       <TooltipProvider>
