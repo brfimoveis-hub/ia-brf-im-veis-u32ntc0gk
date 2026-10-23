@@ -65,88 +65,270 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
   )
 
   try {
-    let capiToken = ''
+    let targetUser = null
     try {
-      const capiUsers = $app.findRecordsByFilter('users', "meta_capi_token != ''", 'created', 1, 0)
-      if (capiUsers.length > 0) capiToken = capiUsers[0].getString('meta_capi_token')
+      if (globalUserId) targetUser = $app.findRecordById('users', globalUserId)
     } catch (_) {}
 
+    function normalizeLeadPhone(rawPhone) {
+      if (!rawPhone) return ''
+      const digits = String(rawPhone).replace(/\D/g, '')
+      if (!digits) return ''
+      if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+        return '+' + digits
+      }
+      if (digits.length === 10 || digits.length === 11) {
+        return '+55' + digits
+      }
+      return '+' + digits
+    }
+
     if (body.object === 'page' && body.entry) {
+      const nowIso = new Date().toISOString()
+      const nowBrStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+
       for (const entry of body.entry) {
         for (const change of entry.changes || []) {
           if (change.field === 'leadgen') {
             const value = change.value
             if (!value) continue
 
-            const leadId = value.leadgen_id
-            const formId = value.form_id
-            let leadName = 'Lead-Meta-' + (leadId || new Date().getTime())
+            const leadId = value.leadgen_id ? String(value.leadgen_id).trim() : ''
+            const formId = value.form_id ? String(value.form_id).trim() : ''
+            if (!leadId) continue
+
+            // Deduplicação persistente por leadgen_id
+            let isLeadDup = false
+            try {
+              const existingLogs = $app.findRecordsByFilter(
+                'system_logs',
+                "type = 'leadgen' && message ~ {:lid}",
+                '-created',
+                1,
+                0,
+                { lid: leadId },
+              )
+              if (existingLogs && existingLogs.length > 0) isLeadDup = true
+            } catch (_) {}
+
+            if (isLeadDup) {
+              $app.logger().info('[LEADGEN_DEDUP] Leadgen ID já processado: ' + leadId)
+              continue
+            }
+
+            let leadName = ''
             let leadEmail = ''
             let leadPhone = ''
+            let adName = ''
+            let campaignName = ''
+            let formName = ''
 
-            if (capiToken && leadId) {
+            // Coleta tokens candidatos para tentar Graph API
+            const tokenCandidates = []
+            if (targetUser) {
+              const pTok = targetUser.getString('meta_page_access_token')
+              const iTok = targetUser.getString('meta_instagram_page_token')
+              const cTok = targetUser.getString('meta_capi_token')
+              const wTok = targetUser.getString('meta_whatsapp_access_token')
+              if (pTok) tokenCandidates.push(pTok)
+              if (iTok && !tokenCandidates.includes(iTok)) tokenCandidates.push(iTok)
+              if (cTok && !tokenCandidates.includes(cTok)) tokenCandidates.push(cTok)
+              if (wTok && !tokenCandidates.includes(wTok)) tokenCandidates.push(wTok)
+            }
+
+            for (const tk of tokenCandidates) {
               try {
                 const leadRes = $http.send({
-                  url: 'https://graph.facebook.com/v21.0/' + leadId + '?access_token=' + capiToken,
+                  url:
+                    'https://graph.facebook.com/v22.0/' +
+                    leadId +
+                    '?access_token=' +
+                    encodeURIComponent(tk),
                   method: 'GET',
                   timeout: 15,
                 })
                 if (leadRes.statusCode === 200 && leadRes.json) {
-                  const fieldData = leadRes.json.field_data || []
+                  const lJson = leadRes.json
+                  adName = lJson.ad_name || ''
+                  campaignName = lJson.campaign_name || ''
+                  formName = lJson.form_id || formId
+                  const fieldData = lJson.field_data || []
                   for (const field of fieldData) {
-                    if (field.name === 'full_name' || field.name === 'first_name') {
-                      leadName = (field.values && field.values[0]) || leadName
-                    } else if (field.name === 'email') {
-                      leadEmail = (field.values && field.values[0]) || ''
-                    } else if (field.name === 'phone_number') {
-                      leadPhone = (field.values && field.values[0]) || ''
+                    const fName = (field.name || '').toLowerCase()
+                    const fVal =
+                      field.values && field.values[0] ? String(field.values[0]).trim() : ''
+                    if (fName.includes('name') || fName.includes('nome')) {
+                      if (!leadName) leadName = fVal
+                    } else if (fName.includes('email') || fName.includes('e-mail')) {
+                      if (!leadEmail) leadEmail = fVal
+                    } else if (
+                      fName.includes('phone') ||
+                      fName.includes('fone') ||
+                      fName.includes('telefone') ||
+                      fName.includes('whatsapp') ||
+                      fName.includes('celular')
+                    ) {
+                      if (!leadPhone) leadPhone = fVal
                     }
                   }
-                } else {
-                  saveLog(
-                    globalUserId,
-                    'meta_error',
-                    'Falha ao buscar dados do lead form',
-                    'HTTP ' + leadRes.statusCode,
-                    { leadId: leadId, statusCode: leadRes.statusCode },
-                  )
+                  break
                 }
-              } catch (apiErr) {
+              } catch (_) {}
+            }
+
+            const cleanPhone = normalizeLeadPhone(leadPhone)
+            const phoneDigits = cleanPhone.replace(/\D/g, '')
+            const finalName = leadName || 'Lead Anúncio ' + leadId.slice(-4)
+
+            // Verificar se o cliente já existe
+            let customer = null
+            try {
+              let sFilter = 'notes ~ {:lid}'
+              const sParams = { lid: leadId }
+              if (phoneDigits) {
+                sFilter += ' || phone ~ {:p8} || phone_1_value ~ {:p8}'
+                sParams.p8 = phoneDigits.slice(-8)
+              }
+              if (leadEmail) {
+                sFilter += ' || email = {:em}'
+                sParams.em = leadEmail
+              }
+              const existingCusts = $app.findRecordsByFilter(
+                'customers',
+                sFilter,
+                '-created',
+                1,
+                0,
+                sParams,
+              )
+              if (existingCusts && existingCusts.length > 0) customer = existingCusts[0]
+            } catch (_) {}
+
+            const adLabel =
+              'Facebook Ads' + (adName || campaignName ? ' — ' + (adName || campaignName) : '')
+            const leadNotes =
+              '[Lead de Anúncio Meta (Lead Ads)]\n' +
+              'Nome: ' +
+              finalName +
+              '\n' +
+              (cleanPhone ? 'Telefone: ' + cleanPhone + '\n' : '') +
+              (leadEmail ? 'E-mail: ' + leadEmail + '\n' : '') +
+              'Leadgen ID: ' +
+              leadId +
+              '\n' +
+              'Form ID: ' +
+              formId +
+              (formName && formName !== formId ? ' (' + formName + ')' : '') +
+              '\n' +
+              (campaignName ? 'Campanha: ' + campaignName + '\n' : '') +
+              (adName ? 'Anúncio: ' + adName + '\n' : '') +
+              'Data de entrada: ' +
+              nowBrStr
+
+            if (!customer) {
+              try {
+                const customersCol = $app.findCollectionByNameOrId('customers')
+                customer = new Record(customersCol)
+                customer.set('user_id', globalUserId)
+                customer.set('name', finalName)
+                if (leadName) customer.set('first_name', leadName.split(' ')[0])
+                if (cleanPhone) {
+                  customer.set('phone', cleanPhone)
+                  customer.set('phone_1_value', cleanPhone)
+                }
+                if (leadEmail) {
+                  customer.set('email', leadEmail)
+                  customer.set('email_1_value', leadEmail)
+                }
+                customer.set('status', '1. Acolhimento')
+                customer.set('source', 'Facebook Ads')
+                customer.set('last_origin', adLabel)
+                customer.set('last_origin_at', nowIso)
+                customer.set('tags', ['leadgen', 'facebook_ads', 'meta_ads'])
+                customer.set('notes', leadNotes)
+                customer.set('origin_history', [
+                  {
+                    source: adLabel,
+                    type: 'meta_leadgen',
+                    date: nowIso,
+                    leadgen_id: leadId,
+                    form_id: formId,
+                    ad_name: adName,
+                    campaign_name: campaignName,
+                  },
+                ])
+                $app.save(customer)
+              } catch (err) {
                 saveLog(
                   globalUserId,
                   'meta_error',
-                  'Erro ao buscar dados do lead form via Graph API',
-                  String(apiErr),
-                  { leadId: leadId, error: String(apiErr) },
+                  'Falha ao criar cliente via Lead Form Meta',
+                  String(err),
+                  { error: String(err), raw_body: body, leadId: leadId },
                 )
               }
+            } else {
+              try {
+                const curNotes = (customer.getString('notes') || '').trim()
+                if (curNotes.indexOf(leadId) === -1) {
+                  customer.set('notes', curNotes ? curNotes + '\n\n' + leadNotes : leadNotes)
+                  $app.save(customer)
+                }
+              } catch (_) {}
             }
 
-            try {
-              const customersCol = $app.findCollectionByNameOrId('customers')
-              const customer = new Record(customersCol)
-              customer.set('user_id', globalUserId)
-              customer.set('name', leadName)
-              customer.set('phone', leadPhone)
-              customer.set('email', leadEmail)
-              customer.set('email_1_value', leadEmail)
-              customer.set('phone_1_value', leadPhone)
-              customer.set('status', 'Novo')
-              customer.set('source', 'Meta')
-              customer.set(
-                'notes',
-                'Form ID: ' + formId + '\nLead ID: ' + leadId + '\nOriginado do Meta Lead Form.',
-              )
-              $app.save(customer)
-            } catch (err) {
-              saveLog(
-                globalUserId,
-                'meta_error',
-                'Falha ao criar cliente via Website (Lead Form)',
-                String(err),
-                { error: String(err), raw_body: body },
-              )
+            if (customer) {
+              try {
+                const leadsCol = $app.findCollectionByNameOrId('leads')
+                const newLead = new Record(leadsCol)
+                newLead.set('assigned_to', globalUserId)
+                newLead.set('customer_id', customer.id)
+                newLead.set('name', finalName)
+                if (cleanPhone) newLead.set('phone', cleanPhone)
+                if (leadEmail) newLead.set('email', leadEmail)
+                newLead.set('status', 'Novo')
+                newLead.set('source', 'Facebook Ads')
+                newLead.set('type', 'Venda')
+                newLead.set(
+                  'notes',
+                  'Lead de Anúncio Meta: ' + (adName || campaignName || 'Leadgen ' + leadId),
+                )
+                $app.save(newLead)
+              } catch (_) {}
             }
+
+            // Log obrigatório com type leadgen
+            try {
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const sysLog = new Record(logsCol, {
+                user_id: globalUserId,
+                type: 'leadgen',
+                message:
+                  'Lead de anúncio recebido via Webhook: ' + finalName + ' (ID: ' + leadId + ')',
+                details:
+                  'Form: ' +
+                  formId +
+                  ' | Ad: ' +
+                  (adName || 'N/A') +
+                  ' | Tel: ' +
+                  (cleanPhone || 'N/A') +
+                  ' | Email: ' +
+                  (leadEmail || 'N/A'),
+                payload: {
+                  leadgen_id: leadId,
+                  form_id: formId,
+                  ad_name: adName,
+                  campaign_name: campaignName,
+                  name: finalName,
+                  phone: cleanPhone,
+                  email: leadEmail,
+                  customer_id: customer ? customer.id : null,
+                  source: 'Facebook Ads',
+                  status: '1. Acolhimento',
+                },
+              })
+              $app.save(sysLog)
+            } catch (_) {}
           } else if (change.field === 'feed' || change.field === 'comments') {
             const value = change.value
             if (!value) continue

@@ -99,8 +99,330 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
     return e.string(404, 'Not Found')
   }
 
+  // Suporte a eventos de Page (Lead Ads / Leadgen) ou Instagram Direct no mesmo endpoint
+  if (body.object === 'page') {
+    try {
+      var nowIso = new Date().toISOString()
+      var nowBrStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      var pageToken =
+        user.getString('meta_page_access_token') ||
+        user.getString('meta_instagram_page_token') ||
+        user.getString('meta_capi_token') ||
+        user.getString('meta_whatsapp_access_token') ||
+        ''
+
+      // Função de normalização de telefone para o padrão brasileiro/internacional
+      function normalizeLeadPhone(rawPhone) {
+        if (!rawPhone) return ''
+        var digits = String(rawPhone).replace(/\D/g, '')
+        if (!digits) return ''
+        if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+          return '+' + digits
+        }
+        if (digits.length === 10 || digits.length === 11) {
+          return '+55' + digits
+        }
+        return '+' + digits
+      }
+
+      for (var entry of body.entry || []) {
+        // 1. Processar alterações da página (ex: leadgen)
+        for (var change of entry.changes || []) {
+          if (change.field === 'leadgen') {
+            var value = change.value || {}
+            var leadgenId = value.leadgen_id ? String(value.leadgen_id).trim() : ''
+            var formId = value.form_id ? String(value.form_id).trim() : ''
+            var pageId = value.page_id
+              ? String(value.page_id).trim()
+              : entry.id
+                ? String(entry.id)
+                : ''
+            var adId = value.ad_id ? String(value.ad_id).trim() : ''
+            var adsetId = value.adgroup_id ? String(value.adgroup_id).trim() : ''
+            var campaignId = value.campaign_id ? String(value.campaign_id).trim() : ''
+
+            if (!leadgenId) continue
+
+            // Deduplicação persistente por leadgen_id
+            var isLeadDup = false
+            try {
+              var existingLeadLogs = $app.findRecordsByFilter(
+                'system_logs',
+                "type = 'leadgen' && message ~ {:lid}",
+                '-created',
+                1,
+                0,
+                { lid: leadgenId },
+              )
+              if (existingLeadLogs && existingLeadLogs.length > 0) isLeadDup = true
+            } catch (_) {}
+
+            if (isLeadDup) {
+              $app.logger().info('[LEADGEN_DEDUP] Leadgen ID já processado: ' + leadgenId)
+              continue
+            }
+
+            // Consultar dados do lead na Graph API Meta
+            var leadName = ''
+            var leadEmail = ''
+            var leadPhone = ''
+            var adName = ''
+            var campaignName = ''
+            var formName = ''
+
+            var tokenCandidates = [
+              user.getString('meta_page_access_token'),
+              user.getString('meta_instagram_page_token'),
+              user.getString('meta_capi_token'),
+              user.getString('meta_whatsapp_access_token'),
+            ].filter(Boolean)
+
+            var fetchSuccess = false
+            for (var tk of tokenCandidates) {
+              try {
+                var leadRes = $http.send({
+                  url:
+                    'https://graph.facebook.com/v22.0/' +
+                    leadgenId +
+                    '?access_token=' +
+                    encodeURIComponent(tk),
+                  method: 'GET',
+                  timeout: 15,
+                })
+                if (leadRes && leadRes.statusCode === 200 && leadRes.json) {
+                  var lJson = leadRes.json
+                  adName = lJson.ad_name || ''
+                  campaignName = lJson.campaign_name || ''
+                  formName = lJson.form_id || formId
+                  var fieldData = lJson.field_data || []
+                  for (var fld of fieldData) {
+                    var fName = (fld.name || '').toLowerCase()
+                    var fVal = fld.values && fld.values[0] ? String(fld.values[0]).trim() : ''
+                    if (fName.includes('name') || fName.includes('nome')) {
+                      if (!leadName) leadName = fVal
+                    } else if (fName.includes('email') || fName.includes('e-mail')) {
+                      if (!leadEmail) leadEmail = fVal
+                    } else if (
+                      fName.includes('phone') ||
+                      fName.includes('fone') ||
+                      fName.includes('telefone') ||
+                      fName.includes('whatsapp') ||
+                      fName.includes('celular')
+                    ) {
+                      if (!leadPhone) leadPhone = fVal
+                    }
+                  }
+                  fetchSuccess = true
+                  break
+                }
+              } catch (_) {}
+            }
+
+            var cleanPhone = normalizeLeadPhone(leadPhone)
+            var phoneDigits = cleanPhone.replace(/\D/g, '')
+            var finalName = leadName || 'Lead Anúncio ' + leadgenId.slice(-4)
+
+            // Verificar se o cliente já existe no CRM
+            var customer = null
+            try {
+              var searchFilter = 'notes ~ {:lid}'
+              var searchParams = { lid: leadgenId }
+              if (phoneDigits) {
+                searchFilter += ' || phone ~ {:p8} || phone_1_value ~ {:p8}'
+                searchParams.p8 = phoneDigits.slice(-8)
+              }
+              if (leadEmail) {
+                searchFilter += ' || email = {:em}'
+                searchParams.em = leadEmail
+              }
+              var existingCusts = $app.findRecordsByFilter(
+                'customers',
+                searchFilter,
+                '-created',
+                1,
+                0,
+                searchParams,
+              )
+              if (existingCusts && existingCusts.length > 0) customer = existingCusts[0]
+            } catch (_) {}
+
+            var adLabel = 'Facebook Ads'
+            if (adName || campaignName) {
+              adLabel += ' — ' + (adName || campaignName)
+            }
+
+            var leadNotes =
+              '[Lead de Anúncio Meta (Lead Ads)]\n' +
+              'Nome: ' +
+              finalName +
+              '\n' +
+              (cleanPhone ? 'Telefone: ' + cleanPhone + '\n' : '') +
+              (leadEmail ? 'E-mail: ' + leadEmail + '\n' : '') +
+              'Leadgen ID: ' +
+              leadgenId +
+              '\n' +
+              'Form ID: ' +
+              formId +
+              (formName && formName !== formId ? ' (' + formName + ')' : '') +
+              '\n' +
+              (campaignName ? 'Campanha: ' + campaignName + '\n' : '') +
+              (adName ? 'Anúncio: ' + adName + '\n' : '') +
+              'Data de entrada: ' +
+              nowBrStr
+
+            if (!customer) {
+              try {
+                var custCol = $app.findCollectionByNameOrId('customers')
+                customer = new Record(custCol)
+                customer.set('user_id', userId)
+                customer.set('name', finalName)
+                if (leadName) customer.set('first_name', leadName.split(' ')[0])
+                if (cleanPhone) {
+                  customer.set('phone', cleanPhone)
+                  customer.set('phone_1_value', cleanPhone)
+                }
+                if (leadEmail) {
+                  customer.set('email', leadEmail)
+                  customer.set('email_1_value', leadEmail)
+                }
+                customer.set('status', '1. Acolhimento')
+                customer.set('source', 'Facebook Ads')
+                customer.set('last_origin', adLabel)
+                customer.set('last_origin_at', nowIso)
+                customer.set('tags', ['leadgen', 'facebook_ads', 'meta_ads'])
+                customer.set('notes', leadNotes)
+                customer.set('origin_history', [
+                  {
+                    source: adLabel,
+                    type: 'meta_leadgen',
+                    date: nowIso,
+                    leadgen_id: leadgenId,
+                    form_id: formId,
+                    ad_name: adName,
+                    campaign_name: campaignName,
+                  },
+                ])
+                $app.save(customer)
+              } catch (cErr) {
+                $app.logger().error('[LEADGEN] Falha ao criar customer', 'error', String(cErr))
+              }
+            } else {
+              try {
+                var curNotes = (customer.getString('notes') || '').trim()
+                if (curNotes.indexOf(leadgenId) === -1) {
+                  customer.set('notes', curNotes ? curNotes + '\n\n' + leadNotes : leadNotes)
+                  $app.save(customer)
+                }
+              } catch (_) {}
+            }
+
+            // Criar lead na coleção 'leads'
+            if (customer) {
+              try {
+                var leadsCol = $app.findCollectionByNameOrId('leads')
+                var newLead = new Record(leadsCol)
+                newLead.set('assigned_to', userId)
+                newLead.set('customer_id', customer.id)
+                newLead.set('name', finalName)
+                if (cleanPhone) newLead.set('phone', cleanPhone)
+                if (leadEmail) newLead.set('email', leadEmail)
+                newLead.set('status', 'Novo')
+                newLead.set('source', 'Facebook Ads')
+                newLead.set('type', 'Venda')
+                newLead.set(
+                  'notes',
+                  'Lead de Anúncio Meta: ' + (adName || campaignName || 'Leadgen ' + leadgenId),
+                )
+                $app.save(newLead)
+              } catch (_) {}
+            }
+
+            // Log obrigatório em system_logs (type leadgen com leadgen_id)
+            try {
+              var logsCol = $app.findCollectionByNameOrId('system_logs')
+              var sysLog = new Record(logsCol, {
+                user_id: userId,
+                type: 'leadgen',
+                message:
+                  'Lead de anúncio recebido via Webhook: ' + finalName + ' (ID: ' + leadgenId + ')',
+                details:
+                  'Form: ' +
+                  formId +
+                  ' | Ad: ' +
+                  (adName || 'N/A') +
+                  ' | Tel: ' +
+                  (cleanPhone || 'N/A') +
+                  ' | Email: ' +
+                  (leadEmail || 'N/A'),
+                payload: {
+                  leadgen_id: leadgenId,
+                  form_id: formId,
+                  ad_name: adName,
+                  campaign_name: campaignName,
+                  name: finalName,
+                  phone: cleanPhone,
+                  email: leadEmail,
+                  customer_id: customer ? customer.id : null,
+                  source: 'Facebook Ads',
+                  status: '1. Acolhimento',
+                },
+              })
+              $app.save(sysLog)
+            } catch (_) {}
+          }
+        }
+
+        // 2. Processar mensagens do Messenger se houver
+        var messagingList = entry.messaging || []
+        for (var messaging of messagingList) {
+          if (messaging.message && messaging.message.is_echo) continue
+          if (messaging.delivery || messaging.read) continue
+          var senderId = messaging.sender ? String(messaging.sender.id) : ''
+          if (!senderId) continue
+          var mText = (messaging.message && messaging.message.text) || '[Mensagem do Facebook]'
+
+          var fbCust = null
+          try {
+            fbCust = $app.findFirstRecordByFilter('customers', 'notes ~ {:sid}', { sid: senderId })
+          } catch (_) {}
+
+          if (!fbCust) {
+            try {
+              var cCol = $app.findCollectionByNameOrId('customers')
+              fbCust = new Record(cCol)
+              fbCust.set('user_id', userId)
+              fbCust.set('name', 'Lead Facebook (' + senderId.slice(-4) + ')')
+              fbCust.set('status', '1. Acolhimento')
+              fbCust.set('source', 'Facebook Messenger')
+              fbCust.set('last_origin', 'Facebook Messenger')
+              fbCust.set('last_origin_at', nowIso)
+              fbCust.set('notes', '[Origem: Facebook Messenger]\nSender ID: ' + senderId)
+              $app.save(fbCust)
+            } catch (_) {}
+          }
+
+          if (fbCust) {
+            try {
+              var convCol = $app.findCollectionByNameOrId('conversations')
+              var newConv = new Record(convCol)
+              newConv.set('customer_id', fbCust.id)
+              newConv.set('user_id', userId)
+              newConv.set('sender', 'customer')
+              newConv.set('content', mText)
+              newConv.set('channel', 'messenger')
+              $app.save(newConv)
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (pageErr) {
+      $app.logger().error('[META_WEBHOOK_PAGE_ERROR]', 'error', String(pageErr))
+    }
+    return e.string(200, 'EVENT_RECEIVED')
+  }
+
   // Suporte a eventos de Instagram Direct no mesmo endpoint se o webhook da Meta enviar para esta URL
-  if (body.object === 'instagram' || body.object === 'page') {
+  if (body.object === 'instagram') {
     try {
       // Reusa o processador de Instagram
       var nowIso = new Date().toISOString()
@@ -957,6 +1279,254 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
 
   if (!user) {
     return e.string(403, 'Forbidden: unable to resolve user for WhatsApp event')
+  }
+
+  // Suporte a eventos de Page (Lead Ads / Leadgen)
+  if (body.object === 'page') {
+    try {
+      var nowIso = new Date().toISOString()
+      var nowBrStr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+
+      function normalizeLeadPhone(rawPhone) {
+        if (!rawPhone) return ''
+        var digits = String(rawPhone).replace(/\D/g, '')
+        if (!digits) return ''
+        if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+          return '+' + digits
+        }
+        if (digits.length === 10 || digits.length === 11) {
+          return '+55' + digits
+        }
+        return '+' + digits
+      }
+
+      for (var entry of body.entry || []) {
+        for (var change of entry.changes || []) {
+          if (change.field === 'leadgen') {
+            var value = change.value || {}
+            var leadgenId = value.leadgen_id ? String(value.leadgen_id).trim() : ''
+            var formId = value.form_id ? String(value.form_id).trim() : ''
+            var adId = value.ad_id ? String(value.ad_id).trim() : ''
+
+            if (!leadgenId) continue
+
+            // Deduplicação persistente por leadgen_id
+            var isLeadDup = false
+            try {
+              var existingLeadLogs = $app.findRecordsByFilter(
+                'system_logs',
+                "type = 'leadgen' && message ~ {:lid}",
+                '-created',
+                1,
+                0,
+                { lid: leadgenId },
+              )
+              if (existingLeadLogs && existingLeadLogs.length > 0) isLeadDup = true
+            } catch (_) {}
+
+            if (isLeadDup) {
+              $app.logger().info('[LEADGEN_DEDUP] Leadgen ID já processado: ' + leadgenId)
+              continue
+            }
+
+            var leadName = ''
+            var leadEmail = ''
+            var leadPhone = ''
+            var adName = ''
+            var campaignName = ''
+            var formName = ''
+
+            var tokenCandidates = [
+              user.getString('meta_page_access_token'),
+              user.getString('meta_instagram_page_token'),
+              user.getString('meta_capi_token'),
+              user.getString('meta_whatsapp_access_token'),
+            ].filter(Boolean)
+
+            for (var tk of tokenCandidates) {
+              try {
+                var leadRes = $http.send({
+                  url:
+                    'https://graph.facebook.com/v22.0/' +
+                    leadgenId +
+                    '?access_token=' +
+                    encodeURIComponent(tk),
+                  method: 'GET',
+                  timeout: 15,
+                })
+                if (leadRes && leadRes.statusCode === 200 && leadRes.json) {
+                  var lJson = leadRes.json
+                  adName = lJson.ad_name || ''
+                  campaignName = lJson.campaign_name || ''
+                  formName = lJson.form_id || formId
+                  var fieldData = lJson.field_data || []
+                  for (var fld of fieldData) {
+                    var fName = (fld.name || '').toLowerCase()
+                    var fVal = fld.values && fld.values[0] ? String(fld.values[0]).trim() : ''
+                    if (fName.includes('name') || fName.includes('nome')) {
+                      if (!leadName) leadName = fVal
+                    } else if (fName.includes('email') || fName.includes('e-mail')) {
+                      if (!leadEmail) leadEmail = fVal
+                    } else if (
+                      fName.includes('phone') ||
+                      fName.includes('fone') ||
+                      fName.includes('telefone') ||
+                      fName.includes('whatsapp') ||
+                      fName.includes('celular')
+                    ) {
+                      if (!leadPhone) leadPhone = fVal
+                    }
+                  }
+                  break
+                }
+              } catch (_) {}
+            }
+
+            var cleanPhone = normalizeLeadPhone(leadPhone)
+            var phoneDigits = cleanPhone.replace(/\D/g, '')
+            var finalName = leadName || 'Lead Anúncio ' + leadgenId.slice(-4)
+
+            var customer = null
+            try {
+              var searchFilter = 'notes ~ {:lid}'
+              var searchParams = { lid: leadgenId }
+              if (phoneDigits) {
+                searchFilter += ' || phone ~ {:p8} || phone_1_value ~ {:p8}'
+                searchParams.p8 = phoneDigits.slice(-8)
+              }
+              if (leadEmail) {
+                searchFilter += ' || email = {:em}'
+                searchParams.em = leadEmail
+              }
+              var existingCusts = $app.findRecordsByFilter(
+                'customers',
+                searchFilter,
+                '-created',
+                1,
+                0,
+                searchParams,
+              )
+              if (existingCusts && existingCusts.length > 0) customer = existingCusts[0]
+            } catch (_) {}
+
+            var adLabel = 'Facebook Ads'
+            if (adName || campaignName) {
+              adLabel += ' — ' + (adName || campaignName)
+            }
+
+            var leadNotes =
+              '[Lead de Anúncio Meta (Lead Ads)]\n' +
+              'Nome: ' +
+              finalName +
+              '\n' +
+              (cleanPhone ? 'Telefone: ' + cleanPhone + '\n' : '') +
+              (leadEmail ? 'E-mail: ' + leadEmail + '\n' : '') +
+              'Leadgen ID: ' +
+              leadgenId +
+              '\n' +
+              'Form ID: ' +
+              formId +
+              '\n' +
+              (campaignName ? 'Campanha: ' + campaignName + '\n' : '') +
+              (adName ? 'Anúncio: ' + adName + '\n' : '') +
+              'Data de entrada: ' +
+              nowBrStr
+
+            if (!customer) {
+              try {
+                var custCol = $app.findCollectionByNameOrId('customers')
+                customer = new Record(custCol)
+                customer.set('user_id', userId)
+                customer.set('name', finalName)
+                if (leadName) customer.set('first_name', leadName.split(' ')[0])
+                if (cleanPhone) {
+                  customer.set('phone', cleanPhone)
+                  customer.set('phone_1_value', cleanPhone)
+                }
+                if (leadEmail) {
+                  customer.set('email', leadEmail)
+                  customer.set('email_1_value', leadEmail)
+                }
+                customer.set('status', '1. Acolhimento')
+                customer.set('source', 'Facebook Ads')
+                customer.set('last_origin', adLabel)
+                customer.set('last_origin_at', nowIso)
+                customer.set('tags', ['leadgen', 'facebook_ads', 'meta_ads'])
+                customer.set('notes', leadNotes)
+                customer.set('origin_history', [
+                  {
+                    source: adLabel,
+                    type: 'meta_leadgen',
+                    date: nowIso,
+                    leadgen_id: leadgenId,
+                    form_id: formId,
+                    ad_name: adName,
+                    campaign_name: campaignName,
+                  },
+                ])
+                $app.save(customer)
+              } catch (cErr) {
+                $app.logger().error('[LEADGEN_PATH] Falha ao criar customer', 'error', String(cErr))
+              }
+            }
+
+            if (customer) {
+              try {
+                var leadsCol = $app.findCollectionByNameOrId('leads')
+                var newLead = new Record(leadsCol)
+                newLead.set('assigned_to', userId)
+                newLead.set('customer_id', customer.id)
+                newLead.set('name', finalName)
+                if (cleanPhone) newLead.set('phone', cleanPhone)
+                if (leadEmail) newLead.set('email', leadEmail)
+                newLead.set('status', 'Novo')
+                newLead.set('source', 'Facebook Ads')
+                newLead.set('type', 'Venda')
+                newLead.set(
+                  'notes',
+                  'Lead de Anúncio Meta: ' + (adName || campaignName || 'Leadgen ' + leadgenId),
+                )
+                $app.save(newLead)
+              } catch (_) {}
+            }
+
+            try {
+              var logsCol = $app.findCollectionByNameOrId('system_logs')
+              var sysLog = new Record(logsCol, {
+                user_id: userId,
+                type: 'leadgen',
+                message:
+                  'Lead de anúncio recebido via Webhook: ' + finalName + ' (ID: ' + leadgenId + ')',
+                details:
+                  'Form: ' +
+                  formId +
+                  ' | Ad: ' +
+                  (adName || 'N/A') +
+                  ' | Tel: ' +
+                  (cleanPhone || 'N/A') +
+                  ' | Email: ' +
+                  (leadEmail || 'N/A'),
+                payload: {
+                  leadgen_id: leadgenId,
+                  form_id: formId,
+                  ad_name: adName,
+                  name: finalName,
+                  phone: cleanPhone,
+                  email: leadEmail,
+                  customer_id: customer ? customer.id : null,
+                  source: 'Facebook Ads',
+                  status: '1. Acolhimento',
+                },
+              })
+              $app.save(sysLog)
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (pageErr) {
+      $app.logger().error('[META_WEBHOOK_PAGE_PATH_ERROR]', 'error', String(pageErr))
+    }
+    return e.string(200, 'EVENT_RECEIVED')
   }
 
   if (!body || body.object !== 'whatsapp_business_account') {
