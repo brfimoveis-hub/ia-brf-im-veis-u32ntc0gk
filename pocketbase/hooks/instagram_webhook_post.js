@@ -451,7 +451,7 @@ function handleInstagramWebhookPost(e) {
           var existingCusts = $app.findRecordsByFilter(
             'customers',
             'notes ~ {:sid} || last_origin ~ {:sid}',
-            '-created',
+            'created',
             1,
             0,
             { sid: senderId },
@@ -462,7 +462,7 @@ function handleInstagramWebhookPost(e) {
         } catch (_) {}
 
         var isNewCustomer = false
-        var originLabel = 'Instagram Direct' + (igUsername ? ' (@' + igUsername + ')' : '')
+        var originLabel = 'Instagram Direct' + (igUsername ? ' (@' + igUsername : '')
 
         if (!customer) {
           try {
@@ -538,16 +538,66 @@ function handleInstagramWebhookPost(e) {
           } catch (_) {}
         }
 
-        // Garante criação em leads se for novo
-        if (isNewCustomer) {
-          try {
-            var leadsCol = $app.findCollectionByNameOrId('leads')
-            var lead = new Record(leadsCol)
-            lead.set('assigned_to', userId)
-            lead.set('name', contactName)
-            lead.set('source', 'Instagram Direct')
-            lead.set('status', 'Novo')
-            lead.set(
+        // UNIFICAÇÃO DE LEADS DO INSTAGRAM DIRECT POR SENDER ID:
+        // Mesma pessoa (mesmo senderId) = 1 único lead na coleção 'leads'.
+        // Se existir um lead com a mesma origem ("Instagram Direct") e mesmo senderId, atualiza-o;
+        // caso contrário, cria um novo lead.
+        try {
+          var leadsCol = $app.findCollectionByNameOrId('leads')
+          var existingLeads = $app.findRecordsByFilter(
+            'leads',
+            "source = 'Instagram Direct' && notes ~ {:sid}",
+            'created',
+            1,
+            0,
+            { sid: senderId },
+          )
+
+          if (existingLeads && existingLeads.length > 0) {
+            var existingLead = existingLeads[0]
+            var currentLeadNotes = existingLead.getString('notes') || ''
+            var leadUpdated = false
+
+            // Atualiza nome se ainda for genérico e tivermos nome da Graph API
+            if (
+              (existingLead.getString('name') || '').startsWith('Lead Instagram') &&
+              igProfileName
+            ) {
+              existingLead.set('name', igProfileName)
+              leadUpdated = true
+            }
+
+            // Anexa a nova mensagem às notes do lead preservando o histórico
+            var messageHeader = '\n[' + nowBrStr + '] Nova mensagem: ' + text
+            existingLead.set('notes', currentLeadNotes + messageHeader)
+            leadUpdated = true
+
+            if (!existingLead.getString('assigned_to') && userId) {
+              existingLead.set('assigned_to', userId)
+              leadUpdated = true
+            }
+
+            if (leadUpdated) {
+              $app.save(existingLead)
+              $app
+                .logger()
+                .info(
+                  '[IG_POST_LEAD_UPDATED] Lead existente de Instagram Direct atualizado por sender_id',
+                  'lead_id',
+                  existingLead.id,
+                  'sender_id',
+                  senderId,
+                )
+              console.log('[IG_POST_LEAD_UPDATED] lead=' + existingLead.id + ' sender=' + senderId)
+            }
+          } else {
+            // Cria novo lead apenas quando não existir
+            var newLead = new Record(leadsCol)
+            newLead.set('assigned_to', userId)
+            newLead.set('name', contactName)
+            newLead.set('source', 'Instagram Direct')
+            newLead.set('status', 'Novo')
+            newLead.set(
               'notes',
               'Capturado via Meta Instagram Direct API\n' +
                 'Sender ID: ' +
@@ -556,14 +606,23 @@ function handleInstagramWebhookPost(e) {
                 '\nMensagem: ' +
                 text,
             )
-            $app.save(lead)
-          } catch (leadErr) {
+            $app.save(newLead)
             $app
               .logger()
-              .error('Failed to create lead from Instagram webhook', 'error', String(leadErr))
+              .info(
+                '[IG_POST_LEAD_CREATED] Novo lead criado no CRM para Instagram Direct',
+                'lead_id',
+                newLead.id,
+                'sender_id',
+                senderId,
+              )
+            console.log('[IG_POST_LEAD_CREATED] lead=' + newLead.id + ' sender=' + senderId)
           }
+        } catch (leadErr) {
+          $app
+            .logger()
+            .error('Failed to process lead from Instagram webhook', 'error', String(leadErr))
         }
-
         // Deduplicação de mensagens idênticas em menos de 2 minutos
         var isDuplicate = false
         try {
@@ -1176,7 +1235,7 @@ function handleInstagramWebhookPostWithPathUser(e) {
           var existingCusts = $app.findRecordsByFilter(
             'customers',
             'notes ~ {:sid} || last_origin ~ {:sid}',
-            '-created',
+            'created',
             1,
             0,
             { sid: senderId },
@@ -1187,7 +1246,7 @@ function handleInstagramWebhookPostWithPathUser(e) {
         } catch (_) {}
 
         var isNewCustomer = false
-        var originLabel = 'Instagram Direct' + (igUsername ? ' (@' + igUsername + ')' : '')
+        var originLabel = 'Instagram Direct' + (igUsername ? ' (@' + igUsername : '')
 
         if (!customer) {
           try {
@@ -1262,15 +1321,63 @@ function handleInstagramWebhookPostWithPathUser(e) {
           } catch (_) {}
         }
 
-        if (isNewCustomer) {
-          try {
-            var leadsCol = $app.findCollectionByNameOrId('leads')
-            var lead = new Record(leadsCol)
-            lead.set('assigned_to', userId)
-            lead.set('name', contactName)
-            lead.set('source', 'Instagram Direct')
-            lead.set('status', 'Novo')
-            lead.set(
+        // UNIFICAÇÃO DE LEADS DO INSTAGRAM DIRECT POR SENDER ID:
+        // Mesma pessoa (mesmo senderId) = 1 único lead na coleção 'leads'.
+        // Se existir um lead com a mesma origem ("Instagram Direct") e mesmo senderId, atualiza-o;
+        // caso contrário, cria um novo lead.
+        try {
+          var leadsCol = $app.findCollectionByNameOrId('leads')
+          var existingLeads = $app.findRecordsByFilter(
+            'leads',
+            "source = 'Instagram Direct' && notes ~ {:sid}",
+            'created',
+            1,
+            0,
+            { sid: senderId },
+          )
+
+          if (existingLeads && existingLeads.length > 0) {
+            var existingLead = existingLeads[0]
+            var currentLeadNotes = existingLead.getString('notes') || ''
+            var leadUpdated = false
+
+            if (
+              (existingLead.getString('name') || '').startsWith('Lead Instagram') &&
+              igProfileName
+            ) {
+              existingLead.set('name', igProfileName)
+              leadUpdated = true
+            }
+
+            var messageHeader = '\n[' + nowBrStr + '] Nova mensagem: ' + text
+            existingLead.set('notes', currentLeadNotes + messageHeader)
+            leadUpdated = true
+
+            if (!existingLead.getString('assigned_to') && userId) {
+              existingLead.set('assigned_to', userId)
+              leadUpdated = true
+            }
+
+            if (leadUpdated) {
+              $app.save(existingLead)
+              $app
+                .logger()
+                .info(
+                  '[IG_POST_LEAD_UPDATED] Lead existente de Instagram Direct atualizado por sender_id',
+                  'lead_id',
+                  existingLead.id,
+                  'sender_id',
+                  senderId,
+                )
+              console.log('[IG_POST_LEAD_UPDATED] lead=' + existingLead.id + ' sender=' + senderId)
+            }
+          } else {
+            var newLead = new Record(leadsCol)
+            newLead.set('assigned_to', userId)
+            newLead.set('name', contactName)
+            newLead.set('source', 'Instagram Direct')
+            newLead.set('status', 'Novo')
+            newLead.set(
               'notes',
               'Capturado via Meta Instagram Direct API\n' +
                 'Sender ID: ' +
@@ -1279,14 +1386,23 @@ function handleInstagramWebhookPostWithPathUser(e) {
                 '\nMensagem: ' +
                 text,
             )
-            $app.save(lead)
-          } catch (leadErr) {
+            $app.save(newLead)
             $app
               .logger()
-              .error('Failed to create lead from Instagram webhook', 'error', String(leadErr))
+              .info(
+                '[IG_POST_LEAD_CREATED] Novo lead criado no CRM para Instagram Direct',
+                'lead_id',
+                newLead.id,
+                'sender_id',
+                senderId,
+              )
+            console.log('[IG_POST_LEAD_CREATED] lead=' + newLead.id + ' sender=' + senderId)
           }
+        } catch (leadErr) {
+          $app
+            .logger()
+            .error('Failed to process lead from Instagram webhook', 'error', String(leadErr))
         }
-
         var isDuplicate = false
         try {
           var recentMsgs = $app.findRecordsByFilter(

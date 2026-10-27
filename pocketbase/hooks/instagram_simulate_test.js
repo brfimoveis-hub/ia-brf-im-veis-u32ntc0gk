@@ -152,7 +152,7 @@ routerAdd('POST', '/backend/v1/instagram/simulate_test_event', (e) => {
       var existingCusts = $app.findRecordsByFilter(
         'customers',
         'notes ~ {:sid} || last_origin ~ {:sid}',
-        '-created',
+        'created',
         1,
         0,
         { sid: senderId },
@@ -203,10 +203,31 @@ routerAdd('POST', '/backend/v1/instagram/simulate_test_event', (e) => {
         .info('[IG_POST_CUSTOMER_FOUND] Cliente existente localizado', 'customer_id', customer.id)
     }
 
-    // Criação de lead se novo
-    if (isNewCustomer) {
-      try {
-        var leadsCol = $app.findCollectionByNameOrId('leads')
+    // Unificação de leads do Instagram Direct por Sender ID na simulação
+    try {
+      var leadsCol = $app.findCollectionByNameOrId('leads')
+      var existingLeads = $app.findRecordsByFilter(
+        'leads',
+        "source = 'Instagram Direct' && notes ~ {:sid}",
+        'created',
+        1,
+        0,
+        { sid: senderId },
+      )
+
+      if (existingLeads && existingLeads.length > 0) {
+        var existingLead = existingLeads[0]
+        var currentLeadNotes = existingLead.getString('notes') || ''
+        existingLead.set('notes', currentLeadNotes + '\n[' + nowBrStr + '] Nova mensagem: ' + text)
+        $app.save(existingLead)
+        $app
+          .logger()
+          .info(
+            '[IG_SIMULATE_LEAD_UPDATED] Lead existente atualizado por sender_id',
+            'lead_id',
+            existingLead.id,
+          )
+      } else {
         var lead = new Record(leadsCol)
         lead.set('assigned_to', userId)
         lead.set('name', contactName)
@@ -217,8 +238,8 @@ routerAdd('POST', '/backend/v1/instagram/simulate_test_event', (e) => {
           'Capturado via Meta Instagram Direct API\nSender ID: ' + senderId + '\nMensagem: ' + text,
         )
         $app.save(lead)
-      } catch (_) {}
-    }
+      }
+    } catch (_) {}
 
     // Salvar conversa
     var convCol = $app.findCollectionByNameOrId('conversations')
