@@ -1,7 +1,7 @@
 // Hook para POST /backend/v1/meta_whatsapp_webhook
 // Todas as funções e variáveis devem estar inline dentro do callback (regra de escopo do PocketBase JSVM)
 
-routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
+function handleMetaWhatsAppWebhookPost(e) {
   var body = {}
   try {
     body = e.requestInfo().body || {}
@@ -1176,10 +1176,10 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', (e) => {
   }
 
   return e.string(200, 'EVENT_RECEIVED')
-})
+}
 
-// Rota complementar com userId no path: POST /backend/v1/meta_whatsapp_webhook/{userId}
-routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
+// Rota complementar com userId no path
+function handleMetaWhatsAppWebhookPostWithPathUser(e) {
   var pathUserId = ''
   try {
     pathUserId = e.request.pathValue('userId') || ''
@@ -2135,4 +2135,16 @@ routerAdd('POST', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
   }
 
   return e.string(200, 'EVENT_RECEIVED')
-})
+}
+
+// Registro das rotas públicas sob /api/ (novo prefixo acessível externamente)
+routerAdd('POST', '/api/meta_whatsapp_webhook', handleMetaWhatsAppWebhookPost)
+routerAdd('POST', '/api/meta_whatsapp_webhook/{userId}', handleMetaWhatsAppWebhookPostWithPathUser)
+
+// Retrocompatibilidade: rotas originais sob /backend/v1/
+routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', handleMetaWhatsAppWebhookPost)
+routerAdd(
+  'POST',
+  '/backend/v1/meta_whatsapp_webhook/{userId}',
+  handleMetaWhatsAppWebhookPostWithPathUser,
+)

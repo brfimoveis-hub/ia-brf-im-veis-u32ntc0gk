@@ -1,4 +1,4 @@
-routerAdd('GET', '/backend/v1/meta-webhook', (e) => {
+function handleMetaGenericWebhookGet(e) {
   const query = e.requestInfo().query
   const mode = query['hub.mode']
   const token = query['hub.verify_token']
@@ -22,9 +22,12 @@ routerAdd('GET', '/backend/v1/meta-webhook', (e) => {
     return e.string(403, 'Forbidden: verify token mismatch')
   }
   return e.badRequestError('Invalid verify token')
-})
+}
 
-routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
+routerAdd('GET', '/api/meta-webhook', handleMetaGenericWebhookGet)
+routerAdd('GET', '/backend/v1/meta-webhook', handleMetaGenericWebhookGet)
+
+function handleMetaGenericWebhookPost(e) {
   const body = e.requestInfo().body
   $app.logger().info('Meta Webhook Received', 'body', body)
 
@@ -852,4 +855,7 @@ routerAdd('POST', '/backend/v1/meta-webhook', (e) => {
   }
 
   return e.json(200, { status: 'ok', message: 'Event received successfully' })
-})
+}
+
+routerAdd('POST', '/api/meta-webhook', handleMetaGenericWebhookPost)
+routerAdd('POST', '/backend/v1/meta-webhook', handleMetaGenericWebhookPost)

@@ -1,4 +1,4 @@
-routerAdd('GET', '/backend/v1/messenger/webhook', (e) => {
+function handleMessengerWebhookGet(e) {
   const query = e.requestInfo().query || {}
   const mode = query['hub.mode']
   const token = query['hub.verify_token']
@@ -20,4 +20,8 @@ routerAdd('GET', '/backend/v1/messenger/webhook', (e) => {
   } catch (err) {
     return e.string(403, 'Forbidden')
   }
-})
+}
+
+// Registro das rotas públicas sob /api/ e retrocompatibilidade /backend/v1/
+routerAdd('GET', '/api/messenger/webhook', handleMessengerWebhookGet)
+routerAdd('GET', '/backend/v1/messenger/webhook', handleMessengerWebhookGet)

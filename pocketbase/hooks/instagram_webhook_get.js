@@ -6,7 +6,7 @@
 // - hub.verify_token: o token configurado no painel da Meta App
 // - hub.challenge: string aleatória que deve ser devolvida pura (status 200)
 
-routerAdd('GET', '/backend/v1/instagram/webhook', (e) => {
+function handleInstagramWebhookGet(e) {
   var query = {}
   try {
     query = e.requestInfo().query || {}
@@ -94,10 +94,9 @@ routerAdd('GET', '/backend/v1/instagram/webhook', (e) => {
 
   $app.logger().info('Instagram Webhook Handshake Aprovado!', 'challenge_len', challenge.length)
   return e.string(200, challenge)
-})
+}
 
-// Endpoint complementar com userId no path: GET /backend/v1/instagram/webhook/{userId}
-routerAdd('GET', '/backend/v1/instagram/webhook/{userId}', (e) => {
+function handleInstagramWebhookGetWithPathUser(e) {
   var pathUserId = ''
   try {
     pathUserId = e.request.pathValue('userId') || ''
@@ -177,4 +176,12 @@ routerAdd('GET', '/backend/v1/instagram/webhook/{userId}', (e) => {
       effectiveUserId,
     )
   return e.string(200, challenge)
-})
+}
+
+// Registro das rotas públicas sob /api/ (novo prefixo acessível externamente)
+routerAdd('GET', '/api/instagram/webhook', handleInstagramWebhookGet)
+routerAdd('GET', '/api/instagram/webhook/{userId}', handleInstagramWebhookGetWithPathUser)
+
+// Retrocompatibilidade: rotas originais sob /backend/v1/
+routerAdd('GET', '/backend/v1/instagram/webhook', handleInstagramWebhookGet)
+routerAdd('GET', '/backend/v1/instagram/webhook/{userId}', handleInstagramWebhookGetWithPathUser)

@@ -9,7 +9,7 @@
 // a ReferenceError de funções top-level ou perdas de escopo de módulo no Goja.
 
 // Endpoint padrão: POST /backend/v1/instagram/webhook
-routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
+function handleInstagramWebhookPost(e) {
   // Função de processamento 100% autossuficiente declarada no escopo interno do callback
   const processPayload = function (body, queryUserId, pathUserId) {
     var userId = pathUserId || queryUserId || ''
@@ -751,10 +751,10 @@ routerAdd('POST', '/backend/v1/instagram/webhook', (e) => {
   }
 
   return e.string(200, 'EVENT_RECEIVED')
-})
+}
 
-// Endpoint complementar com userId no path: POST /backend/v1/instagram/webhook/{userId}
-routerAdd('POST', '/backend/v1/instagram/webhook/{userId}', (e) => {
+// Endpoint complementar com userId no path
+function handleInstagramWebhookPostWithPathUser(e) {
   // Função de processamento 100% autossuficiente declarada no escopo interno do callback
   const processPayload = function (body, queryUserId, pathUserId) {
     var userId = pathUserId || queryUserId || ''
@@ -1471,4 +1471,12 @@ routerAdd('POST', '/backend/v1/instagram/webhook/{userId}', (e) => {
   }
 
   return e.string(200, 'EVENT_RECEIVED')
-})
+}
+
+// Registro das rotas públicas sob /api/ (novo prefixo acessível externamente)
+routerAdd('POST', '/api/instagram/webhook', handleInstagramWebhookPost)
+routerAdd('POST', '/api/instagram/webhook/{userId}', handleInstagramWebhookPostWithPathUser)
+
+// Retrocompatibilidade: rotas originais sob /backend/v1/
+routerAdd('POST', '/backend/v1/instagram/webhook', handleInstagramWebhookPost)
+routerAdd('POST', '/backend/v1/instagram/webhook/{userId}', handleInstagramWebhookPostWithPathUser)

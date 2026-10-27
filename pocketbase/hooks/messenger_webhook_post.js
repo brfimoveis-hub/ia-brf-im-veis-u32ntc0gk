@@ -1,4 +1,4 @@
-routerAdd('POST', '/backend/v1/messenger/webhook', (e) => {
+function handleMessengerWebhookPost(e) {
   const body = e.requestInfo().body || {}
   const query = e.requestInfo().query || {}
   const userId = query['user_id'] || query['uid'] || ''
@@ -91,4 +91,8 @@ routerAdd('POST', '/backend/v1/messenger/webhook', (e) => {
   }
 
   return e.string(200, 'EVENT_RECEIVED')
-})
+}
+
+// Registro das rotas públicas sob /api/ e retrocompatibilidade /backend/v1/
+routerAdd('POST', '/api/messenger/webhook', handleMessengerWebhookPost)
+routerAdd('POST', '/backend/v1/messenger/webhook', handleMessengerWebhookPost)

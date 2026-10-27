@@ -1,7 +1,7 @@
-// Hook para GET /backend/v1/meta_whatsapp_webhook
-// Todas as funções e variáveis devem estar inline dentro do callback (regra de escopo do PocketBase JSVM)
+// Hook para GET /backend/v1/meta_whatsapp_webhook e /api/meta_whatsapp_webhook
+// Suporte a handshake de verificação de Webhook da Meta (WhatsApp Cloud API e Messenger)
 
-routerAdd('GET', '/backend/v1/meta_whatsapp_webhook', (e) => {
+function handleMetaWhatsAppWebhookGet(e) {
   var query = {}
   try {
     query = e.requestInfo().query || {}
@@ -116,10 +116,9 @@ routerAdd('GET', '/backend/v1/meta_whatsapp_webhook', (e) => {
   } catch (err) {
     return e.string(403, 'Forbidden: unexpected error during verification')
   }
-})
+}
 
-// Rota complementar com userId no path: GET /backend/v1/meta_whatsapp_webhook/{userId}
-routerAdd('GET', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
+function handleMetaWhatsAppWebhookGetWithPathUser(e) {
   var pathUserId = ''
   try {
     pathUserId = e.request.pathValue('userId') || ''
@@ -216,4 +215,16 @@ routerAdd('GET', '/backend/v1/meta_whatsapp_webhook/{userId}', (e) => {
   } catch (err) {
     return e.string(403, 'Forbidden: unexpected error during verification')
   }
-})
+}
+
+// Registro das rotas públicas sob /api/ (novo prefixo acessível externamente)
+routerAdd('GET', '/api/meta_whatsapp_webhook', handleMetaWhatsAppWebhookGet)
+routerAdd('GET', '/api/meta_whatsapp_webhook/{userId}', handleMetaWhatsAppWebhookGetWithPathUser)
+
+// Retrocompatibilidade: rotas originais sob /backend/v1/
+routerAdd('GET', '/backend/v1/meta_whatsapp_webhook', handleMetaWhatsAppWebhookGet)
+routerAdd(
+  'GET',
+  '/backend/v1/meta_whatsapp_webhook/{userId}',
+  handleMetaWhatsAppWebhookGetWithPathUser,
+)
