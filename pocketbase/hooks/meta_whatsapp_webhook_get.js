@@ -1,4 +1,4 @@
-// Hook para GET /backend/v1/meta_whatsapp_webhook e /api/meta_whatsapp_webhook
+// Hook para GET /backend/v1/meta_whatsapp_webhook
 // Suporte a handshake de verificação de Webhook da Meta (WhatsApp Cloud API e Messenger)
 
 function handleMetaWhatsAppWebhookGet(e) {
@@ -217,11 +217,7 @@ function handleMetaWhatsAppWebhookGetWithPathUser(e) {
   }
 }
 
-// Registro das rotas públicas sob /api/ (novo prefixo acessível externamente)
-routerAdd('GET', '/api/meta_whatsapp_webhook', handleMetaWhatsAppWebhookGet)
-routerAdd('GET', '/api/meta_whatsapp_webhook/{userId}', handleMetaWhatsAppWebhookGetWithPathUser)
-
-// Retrocompatibilidade: rotas originais sob /backend/v1/
+// Rotas originais sob /backend/v1/
 routerAdd('GET', '/backend/v1/meta_whatsapp_webhook', handleMetaWhatsAppWebhookGet)
 routerAdd(
   'GET',

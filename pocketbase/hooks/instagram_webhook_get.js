@@ -178,10 +178,6 @@ function handleInstagramWebhookGetWithPathUser(e) {
   return e.string(200, challenge)
 }
 
-// Registro das rotas públicas sob /api/ (novo prefixo acessível externamente)
-routerAdd('GET', '/api/instagram/webhook', handleInstagramWebhookGet)
-routerAdd('GET', '/api/instagram/webhook/{userId}', handleInstagramWebhookGetWithPathUser)
-
-// Retrocompatibilidade: rotas originais sob /backend/v1/
+// Rotas originais sob /backend/v1/
 routerAdd('GET', '/backend/v1/instagram/webhook', handleInstagramWebhookGet)
 routerAdd('GET', '/backend/v1/instagram/webhook/{userId}', handleInstagramWebhookGetWithPathUser)

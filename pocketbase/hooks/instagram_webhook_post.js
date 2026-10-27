@@ -1473,10 +1473,6 @@ function handleInstagramWebhookPostWithPathUser(e) {
   return e.string(200, 'EVENT_RECEIVED')
 }
 
-// Registro das rotas públicas sob /api/ (novo prefixo acessível externamente)
-routerAdd('POST', '/api/instagram/webhook', handleInstagramWebhookPost)
-routerAdd('POST', '/api/instagram/webhook/{userId}', handleInstagramWebhookPostWithPathUser)
-
-// Retrocompatibilidade: rotas originais sob /backend/v1/
+// Rotas originais sob /backend/v1/
 routerAdd('POST', '/backend/v1/instagram/webhook', handleInstagramWebhookPost)
 routerAdd('POST', '/backend/v1/instagram/webhook/{userId}', handleInstagramWebhookPostWithPathUser)

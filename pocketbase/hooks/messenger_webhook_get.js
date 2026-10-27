@@ -22,6 +22,5 @@ function handleMessengerWebhookGet(e) {
   }
 }
 
-// Registro das rotas públicas sob /api/ e retrocompatibilidade /backend/v1/
-routerAdd('GET', '/api/messenger/webhook', handleMessengerWebhookGet)
+// Rota original sob /backend/v1/
 routerAdd('GET', '/backend/v1/messenger/webhook', handleMessengerWebhookGet)

@@ -93,6 +93,5 @@ function handleMessengerWebhookPost(e) {
   return e.string(200, 'EVENT_RECEIVED')
 }
 
-// Registro das rotas públicas sob /api/ e retrocompatibilidade /backend/v1/
-routerAdd('POST', '/api/messenger/webhook', handleMessengerWebhookPost)
+// Rota original sob /backend/v1/
 routerAdd('POST', '/backend/v1/messenger/webhook', handleMessengerWebhookPost)

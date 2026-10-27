@@ -24,7 +24,6 @@ function handleMetaGenericWebhookGet(e) {
   return e.badRequestError('Invalid verify token')
 }
 
-routerAdd('GET', '/api/meta-webhook', handleMetaGenericWebhookGet)
 routerAdd('GET', '/backend/v1/meta-webhook', handleMetaGenericWebhookGet)
 
 function handleMetaGenericWebhookPost(e) {
@@ -536,7 +535,7 @@ function handleMetaGenericWebhookPost(e) {
         .logger()
         .info('[META_WEBHOOK_IG_DELEGATED] Evento de Instagram delegado ao instagram_webhook_post')
       console.log(
-        '[META_WEBHOOK_IG_DELEGATED] Evento de Instagram recebido em /api/meta/webhook ignorado para evitar resposta duplicada.',
+        '[META_WEBHOOK_IG_DELEGATED] Evento de Instagram recebido em /backend/v1/meta-webhook ignorado para evitar resposta duplicada.',
       )
     } else if (body.object === 'whatsapp_business_account' && body.entry) {
       for (const entry of body.entry) {
@@ -857,5 +856,4 @@ function handleMetaGenericWebhookPost(e) {
   return e.json(200, { status: 'ok', message: 'Event received successfully' })
 }
 
-routerAdd('POST', '/api/meta-webhook', handleMetaGenericWebhookPost)
 routerAdd('POST', '/backend/v1/meta-webhook', handleMetaGenericWebhookPost)

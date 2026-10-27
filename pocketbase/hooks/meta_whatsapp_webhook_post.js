@@ -2137,11 +2137,7 @@ function handleMetaWhatsAppWebhookPostWithPathUser(e) {
   return e.string(200, 'EVENT_RECEIVED')
 }
 
-// Registro das rotas públicas sob /api/ (novo prefixo acessível externamente)
-routerAdd('POST', '/api/meta_whatsapp_webhook', handleMetaWhatsAppWebhookPost)
-routerAdd('POST', '/api/meta_whatsapp_webhook/{userId}', handleMetaWhatsAppWebhookPostWithPathUser)
-
-// Retrocompatibilidade: rotas originais sob /backend/v1/
+// Rotas originais sob /backend/v1/
 routerAdd('POST', '/backend/v1/meta_whatsapp_webhook', handleMetaWhatsAppWebhookPost)
 routerAdd(
   'POST',
