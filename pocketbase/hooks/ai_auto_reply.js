@@ -792,7 +792,16 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     const isWhatsAppDirect = conversationChannel === 'whatsapp' || !conversationChannel
-    const is24_7Flow = receiverPhone.includes('992098050') || isTargetLead || isWhatsAppDirect
+    const isMessengerChannel = conversationChannel === 'messenger'
+    const isInstagramChannel = conversationChannel === 'instagram'
+    // Regra oficial do Mauro: a Bia SEMPRE gera/processa resposta 24h por dia em todos os canais.
+    // Qualquer restrição de expediente se aplica exclusivamente ao envio outbound se configurado, nunca à geração da IA.
+    const is24_7Flow =
+      receiverPhone.includes('992098050') ||
+      isTargetLead ||
+      isWhatsAppDirect ||
+      isMessengerChannel ||
+      isInstagramChannel
 
     if (!is24_7Flow) {
       if (
@@ -5556,27 +5565,201 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       } catch (_) {}
     }
 
-    // Messenger channel
+    // Messenger channel (Messenger Send API)
     if (conversationChannel === 'messenger' && responseText) {
       try {
         const messengerNotes = customer.getString('notes') || ''
-        const psidMatch = messengerNotes.match(/Messenger PSID:\s*(\S+)/)
-        const psid = psidMatch ? psidMatch[1] : ''
-        const pageToken = userRecord
-          ? userRecord.getString('meta_page_access_token') ||
-            userRecord.getString('meta_instagram_page_token') ||
-            ''
-          : ''
+        let psidMatch = messengerNotes.match(/(?:Messenger PSID|Sender ID):\s*(\S+)/i)
+        let psid = psidMatch ? psidMatch[1].trim() : ''
+
+        if (!psid) {
+          const lastOriginStr =
+            (customer.getString('last_origin') || '') + ' ' + (customer.getString('name') || '')
+          const lastOriginMatch = lastOriginStr.match(/(\d{10,25})/)
+          if (lastOriginMatch) psid = lastOriginMatch[1]
+        }
+
+        // Busca o token de página mais recente nos registros de usuários (meta_page_access_token)
+        let freshUserForMessenger = userRecord
+        try {
+          if (userId) {
+            freshUserForMessenger = $app.findRecordById('users', userId)
+          }
+        } catch (_) {}
+        if (!freshUserForMessenger || !freshUserForMessenger.getString('meta_page_access_token')) {
+          try {
+            const pageUsers = $app.findRecordsByFilter(
+              'users',
+              "meta_page_access_token != ''",
+              '-updated',
+              1,
+              0,
+            )
+            if (pageUsers && pageUsers.length > 0) {
+              freshUserForMessenger = pageUsers[0]
+            }
+          } catch (_) {}
+        }
+
+        const pageToken = (
+          freshUserForMessenger
+            ? freshUserForMessenger.getString('meta_page_access_token') ||
+              freshUserForMessenger.getString('meta_instagram_page_token') ||
+              ''
+            : ''
+        ).trim()
+
+        const messengerPageId =
+          (freshUserForMessenger ? freshUserForMessenger.getString('meta_page_id') : '') ||
+          '1343797128806374'
+
+        const messengerEndpointUrl = 'https://graph.facebook.com/v18.0/me/messages'
+        const messengerPayloadObj = {
+          recipient: { id: psid },
+          message: { text: responseText },
+        }
+
         if (psid && pageToken) {
-          callMetaWithRetry(
-            'https://graph.facebook.com/v22.0/me/messages',
+          console.log(
+            `[AI_REPLY] Sending Messenger reply to PSID=${psid} PageID=${messengerPageId} endpoint=${messengerEndpointUrl} (token_prefix=${pageToken.substring(0, 15)}... len=${pageToken.length})`,
+          )
+
+          const messengerSendRes = callMetaWithRetry(
+            messengerEndpointUrl,
             'POST',
             { Authorization: 'Bearer ' + pageToken, 'Content-Type': 'application/json' },
-            JSON.stringify({ recipient: { id: psid }, message: { text: responseText } }),
+            JSON.stringify(messengerPayloadObj),
           )
+
+          const isSuccess =
+            messengerSendRes &&
+            messengerSendRes.statusCode >= 200 &&
+            messengerSendRes.statusCode < 300
+          const resErrorObj =
+            messengerSendRes && messengerSendRes.json && messengerSendRes.json.error
+              ? messengerSendRes.json.error
+              : null
+
+          // Registrar no system_logs: tipo messenger_ai_send com payload enviado, resposta da Graph API e resultado
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const aiSendLog = new Record(logsCol)
+            aiSendLog.set(
+              'user_id',
+              (freshUserForMessenger ? freshUserForMessenger.id : userId) || '',
+            )
+            aiSendLog.set('type', 'messenger_ai_send')
+
+            if (isSuccess) {
+              aiSendLog.set(
+                'message',
+                `Resposta da Bia enviada com sucesso via Messenger Send API para PSID ${psid}`,
+              )
+              aiSendLog.set(
+                'details',
+                `Status HTTP ${messengerSendRes ? messengerSendRes.statusCode : 200}. PageID: ${messengerPageId}. Recipient: ${psid}.`,
+              )
+            } else {
+              const errCode =
+                resErrorObj && resErrorObj.code !== undefined ? resErrorObj.code : 'desconhecido'
+              const errSubcode =
+                resErrorObj && resErrorObj.error_subcode !== undefined
+                  ? resErrorObj.error_subcode
+                  : 'none'
+              const errMsg =
+                (resErrorObj && resErrorObj.message) ||
+                (messengerSendRes ? 'HTTP ' + messengerSendRes.statusCode : 'Sem resposta')
+
+              let humanDiagnostic = 'Falha no envio da resposta via Messenger.'
+              if (errCode === 10 || errCode === 200) {
+                humanDiagnostic =
+                  'Permissão pages_messaging pendente ou página não autorizada no app da Meta.'
+              } else if (errCode === 100) {
+                humanDiagnostic = 'Parâmetro inválido na chamada do Messenger Send API.'
+              } else if (errCode === 551) {
+                humanDiagnostic =
+                  'Esta pessoa não pode ser contatada pelo Messenger ou a conversa não foi iniciada pelo usuário.'
+              } else if (errCode === 230) {
+                humanDiagnostic = 'Página restrita para envio de mensagens pela Meta.'
+              } else if (
+                errMsg.toLowerCase().includes('window') ||
+                errMsg.toLowerCase().includes('24h') ||
+                errCode === 10900
+              ) {
+                humanDiagnostic = 'Janela de 24 horas da Meta expirada para este usuário.'
+              }
+
+              aiSendLog.set(
+                'message',
+                `Tentativa de envio Messenger Send API: ${humanDiagnostic} (Código Meta: ${errCode}, subcode: ${errSubcode})`,
+              )
+              aiSendLog.set(
+                'details',
+                `Endpoint: ${messengerEndpointUrl} | PageID: ${messengerPageId} | PSID: ${psid} | Status: ${messengerSendRes ? messengerSendRes.statusCode : 'null'} | Erro Meta: ${errMsg}`,
+              )
+            }
+
+            aiSendLog.set(
+              'payload',
+              JSON.stringify({
+                recipient_id: psid,
+                page_id: messengerPageId,
+                endpoint: messengerEndpointUrl,
+                request: {
+                  recipient: { id: psid },
+                  message: { text: responseText },
+                },
+                response_status: messengerSendRes ? messengerSendRes.statusCode : null,
+                response_body: messengerSendRes
+                  ? messengerSendRes.json || messengerSendRes.body
+                  : null,
+                error: resErrorObj,
+              }),
+            )
+            $app.saveNoValidate(aiSendLog)
+          } catch (logErr) {
+            console.warn(`[AI_REPLY] Error saving messenger_ai_send log: ${String(logErr)}`)
+          }
+
+          if (isSuccess) {
+            console.log(
+              `[AI_REPLY] Messenger DM sent successfully to PSID ${psid} for customer=${customerId}`,
+            )
+          } else {
+            console.warn(
+              `[AI_REPLY] Messenger DM send failed for PSID ${psid}: ${resErrorObj ? resErrorObj.message : 'HTTP ' + (messengerSendRes ? messengerSendRes.statusCode : 'null')}`,
+            )
+          }
+        } else {
+          // Token ou PSID ausente
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const missingLog = new Record(logsCol)
+            missingLog.set(
+              'user_id',
+              (freshUserForMessenger ? freshUserForMessenger.id : userId) || '',
+            )
+            missingLog.set('type', 'messenger_ai_send')
+            missingLog.set(
+              'message',
+              `Envio Messenger não realizado: ${!psid ? 'PSID do destinatário não encontrado' : 'Token de acesso da página (meta_page_access_token) ausente'}`,
+            )
+            missingLog.set('details', `psid=${psid || 'vazio'}, pageTokenPresent=${!!pageToken}`)
+            missingLog.set('payload', JSON.stringify({ customer_id: customerId, psid: psid }))
+            $app.saveNoValidate(missingLog)
+          } catch (_) {}
         }
       } catch (mErr) {
         console.warn(`[AI_REPLY] Messenger send error (non-fatal): ${String(mErr)}`)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const excLog = new Record(logsCol)
+          excLog.set('user_id', userId || '')
+          excLog.set('type', 'messenger_ai_send')
+          excLog.set('message', `Exceção não-fatal durante envio via Messenger: ${String(mErr)}`)
+          excLog.set('details', String(mErr))
+          $app.saveNoValidate(excLog)
+        } catch (_) {}
       }
     }
 

@@ -56,8 +56,8 @@ function handleMessengerSimulateIncomingTest(e) {
   try {
     var users = $app.findRecordsByFilter(
       'users',
-      "email = 'brfimoveis@gmail.com' || meta_page_access_token != ''",
-      'created',
+      "meta_page_access_token != '' || email = 'brfimoveis@gmail.com'",
+      '-updated',
       1,
       0,
     )
@@ -88,12 +88,84 @@ function handleMessengerSimulateIncomingTest(e) {
     $app.save(auditLog)
   } catch (_) {}
 
+  // 3. Localizar ou criar cliente no CRM
+  var customer = null
+  try {
+    var existingCusts = $app.findRecordsByFilter(
+      'customers',
+      "notes ~ '" + senderId + "'",
+      '-created',
+      1,
+      0,
+    )
+    if (existingCusts && existingCusts.length > 0) {
+      customer = existingCusts[0]
+    }
+  } catch (_) {}
+
+  if (!customer) {
+    try {
+      var custCol = $app.findCollectionByNameOrId('customers')
+      customer = new Record(custCol)
+      if (finalUserId) customer.set('user_id', finalUserId)
+      customer.set('name', 'Lead Messenger ' + senderId.slice(-4))
+      customer.set('status', '1. Acolhimento')
+      customer.set('source', 'Facebook Messenger')
+      customer.set('last_origin', 'Facebook Messenger')
+      customer.set('last_origin_at', nowIso)
+      customer.set(
+        'notes',
+        '[Origem: Facebook Messenger, ' +
+          nowBrStr +
+          ']\nMessenger PSID: ' +
+          senderId +
+          '\nPage ID: ' +
+          pageId +
+          '\nOrigin: Meta Messenger (Simulação)',
+      )
+      $app.save(customer)
+    } catch (cErr) {
+      $app.logger().error('Failed to create customer in simulation', 'error', String(cErr))
+    }
+  }
+
+  // 4. Inserir mensagem na collection 'conversations' disparando onRecordAfterCreateSuccess -> ai_auto_reply
+  var convRecord = null
+  var aiTriggered = false
+  if (customer) {
+    try {
+      var convCol = $app.findCollectionByNameOrId('conversations')
+      convRecord = new Record(convCol)
+      if (finalUserId) convRecord.set('user_id', finalUserId)
+      convRecord.set('customer_id', customer.id)
+      convRecord.set('sender', 'customer')
+      convRecord.set('channel', 'messenger')
+      convRecord.set('status', 'received')
+      convRecord.set('content', text)
+      convRecord.set('timestamp', nowIso)
+      convRecord.set('metadata', {
+        page_id: pageId,
+        sender_id: senderId,
+        recipient_id: pageId,
+        channel: 'messenger',
+        simulated: true,
+      })
+      $app.save(convRecord)
+      aiTriggered = true
+    } catch (convErr) {
+      $app.logger().error('Failed to create conversation in simulation', 'error', String(convErr))
+    }
+  }
+
   return e.json(200, {
     success: true,
-    message: 'Simulação de mensagem do Messenger processada e registrada com sucesso nos logs!',
+    message: 'Simulação de mensagem do Messenger processada e conversa gravada no CRM!',
     page_id: pageId,
     sender_id: senderId,
     text: text,
+    customer_id: customer ? customer.id : null,
+    conversation_id: convRecord ? convRecord.id : null,
+    ai_reply_triggered: aiTriggered,
     timestamp: nowIso,
   })
 }

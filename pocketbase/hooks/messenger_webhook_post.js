@@ -394,6 +394,17 @@ function handleMessengerWebhookPost(e) {
             }
             custUp.set('last_origin', originLabel)
             custUp.set('last_origin_at', nowIso)
+            var curNotes = custUp.getString('notes') || ''
+            if (!curNotes.includes(senderId)) {
+              custUp.set(
+                'notes',
+                (curNotes ? curNotes + '\n' : '') +
+                  'Messenger PSID: ' +
+                  senderId +
+                  '\nPage ID: ' +
+                  pageId,
+              )
+            }
             $app.save(custUp)
             customer = custUp
           } catch (_) {}
