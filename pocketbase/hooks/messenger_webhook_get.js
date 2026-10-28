@@ -10,7 +10,92 @@
 // comparando contra o token padrão "BRF IA CRM", tokens dos usuários cadastrados no CRM
 // e também suporta a query user_id/uid legada para retrocompatibilidade.
 
+function logMessengerHandshakeRequest(e, pathUserId) {
+  try {
+    var reqInfo = {}
+    try {
+      reqInfo = e.requestInfo() || {}
+    } catch (_) {}
+
+    var query = reqInfo.query || {}
+    var headers = {}
+    var userAgent = ''
+    var xHubSig = ''
+    try {
+      userAgent = e.request.header.get('user-agent') || ''
+      xHubSig =
+        e.request.header.get('x-hub-signature-256') || e.request.header.get('x-hub-signature') || ''
+      headers = {
+        'user-agent': userAgent,
+        'x-hub-signature-256': xHubSig ? '[presente]' : '[ausente]',
+        host: e.request.header.get('host') || '',
+        'content-type': e.request.header.get('content-type') || '',
+      }
+    } catch (_) {}
+
+    var nowIso = new Date().toISOString()
+    var mode = query['hub.mode'] || e.request.header.get('hub.mode') || ''
+    var token = query['hub.verify_token'] || e.request.header.get('hub.verify_token') || ''
+    var challenge = query['hub.challenge'] || e.request.header.get('hub.challenge') || ''
+
+    $app
+      .logger()
+      .info(
+        'MESSENGER_WEBHOOK_GET_HIT',
+        'time',
+        nowIso,
+        'mode',
+        mode,
+        'token_len',
+        token ? token.length : 0,
+        'challenge_len',
+        challenge ? challenge.length : 0,
+        'user_agent',
+        userAgent,
+        'path_user_id',
+        pathUserId || '',
+      )
+
+    var sysLogsCol = $app.findCollectionByNameOrId('system_logs')
+    var logRec = new Record(sysLogsCol, {
+      type: 'messenger_webhook_get',
+      message:
+        'GET /backend/v1/messenger/webhook handshake - mode: ' +
+        (mode || 'vazio') +
+        ' | token: ' +
+        (token ? token.substring(0, 15) + '...' : 'vazio'),
+      details:
+        'Method: GET | Time: ' +
+        nowIso +
+        ' | User-Agent: ' +
+        userAgent +
+        ' | PathUser: ' +
+        (pathUserId || 'none'),
+      payload: {
+        method: 'GET',
+        timestamp: nowIso,
+        query: query,
+        headers: headers,
+        mode: mode,
+        verify_token: token,
+        challenge: challenge,
+        path_user_id: pathUserId || '',
+      },
+    })
+    $app.save(logRec)
+  } catch (logErr) {
+    try {
+      $app
+        .logger()
+        .warn('Falha defensiva ao registrar handshake GET em system_logs', 'err', String(logErr))
+    } catch (_) {}
+  }
+}
+
 function handleMessengerWebhookGet(e) {
+  // Instrumentação total: grava em system_logs ANTES de qualquer validação
+  logMessengerHandshakeRequest(e, '')
+
   var query = {}
   try {
     query = e.requestInfo().query || {}
@@ -125,6 +210,9 @@ function handleMessengerWebhookGetWithPathUser(e) {
   try {
     pathUserId = e.request.pathValue('userId') || ''
   } catch (_) {}
+
+  // Instrumentação total: grava em system_logs ANTES de qualquer validação
+  logMessengerHandshakeRequest(e, pathUserId)
 
   var query = {}
   try {

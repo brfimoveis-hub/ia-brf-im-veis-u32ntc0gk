@@ -10,14 +10,31 @@
 // 3. Fallback pelo primeiro usuário do CRM (single-tenant)
 
 function handleMessengerWebhookPost(e) {
-  var body = {}
+  var nowIso = new Date().toISOString()
+  var body = null
+  var rawBodyStr = ''
+  var reqInfo = {}
   try {
-    body = e.requestInfo().body || {}
+    reqInfo = e.requestInfo() || {}
+    body = reqInfo.body || null
   } catch (_) {}
+
+  // Tentar capturar o corpo cru em formato texto se possível
+  try {
+    if (body !== null && body !== undefined) {
+      if (typeof body === 'string') {
+        rawBodyStr = body
+      } else {
+        rawBodyStr = JSON.stringify(body)
+      }
+    }
+  } catch (_) {
+    rawBodyStr = '[erro ao serializar corpo]'
+  }
 
   var query = {}
   try {
-    query = e.requestInfo().query || {}
+    query = reqInfo.query || {}
   } catch (_) {}
 
   var pathUserId = ''
@@ -28,8 +45,72 @@ function handleMessengerWebhookPost(e) {
   var queryUserId = query['user_id'] || query['uid'] || ''
   var effectiveUserId = pathUserId || queryUserId || ''
 
+  var userAgent = ''
+  var xHubSig256 = ''
+  var xHubSig = ''
+  var contentType = ''
+  try {
+    userAgent = e.request.header.get('user-agent') || ''
+    xHubSig256 = e.request.header.get('x-hub-signature-256') || ''
+    xHubSig = e.request.header.get('x-hub-signature') || ''
+    contentType = e.request.header.get('content-type') || ''
+  } catch (_) {}
+
   var entriesCount = (body && body.entry && body.entry.length) || 0
-  var rawObject = body ? body.object : ''
+  var rawObject = body && typeof body === 'object' ? body.object || '' : ''
+
+  // 1. INSTRUMENTAÇÃO TOTAL: Gravar IMEDIATAMENTE em system_logs ANTES de qualquer validação
+  // Garante que mesmo payloads vazios, inválidos, não-JSON ou com object != 'page' fiquem gravados
+  try {
+    var sysLogsCol = $app.findCollectionByNameOrId('system_logs')
+    var postLogRec = new Record(sysLogsCol, {
+      type: 'messenger_webhook_post_raw',
+      message:
+        'POST /backend/v1/messenger/webhook - object: ' +
+        (rawObject || 'desconhecido/vazio') +
+        ' | entries: ' +
+        entriesCount +
+        ' | sig256: ' +
+        (xHubSig256 ? 'presente' : 'ausente'),
+      details:
+        'Method: POST | Time: ' +
+        nowIso +
+        ' | User-Agent: ' +
+        userAgent +
+        ' | Signature-256: ' +
+        (xHubSig256 ? 'presente' : 'ausente') +
+        ' | PathUser: ' +
+        (pathUserId || 'none') +
+        ' | Content-Type: ' +
+        contentType +
+        ' | Raw Body: ' +
+        (rawBodyStr.length > 500 ? rawBodyStr.substring(0, 500) + '...' : rawBodyStr),
+      payload: {
+        method: 'POST',
+        timestamp: nowIso,
+        headers: {
+          'user-agent': userAgent,
+          'x-hub-signature-256': xHubSig256
+            ? '[presente: ' + xHubSig256.substring(0, 15) + '...]'
+            : '[ausente]',
+          'x-hub-signature': xHubSig ? '[presente]' : '[ausente]',
+          'content-type': contentType,
+        },
+        query: query,
+        raw_body:
+          rawBodyStr.length > 4000 ? rawBodyStr.substring(0, 4000) + '... [truncado]' : rawBodyStr,
+        parsed_body: body,
+        path_user_id: pathUserId || '',
+      },
+    })
+    $app.save(postLogRec)
+  } catch (rawLogErr) {
+    try {
+      $app
+        .logger()
+        .warn('Falha defensiva ao registrar POST cru em system_logs', 'err', String(rawLogErr))
+    } catch (_) {}
+  }
 
   // Log de diagnóstico detalhado para detectar QUALQUER entrega da Meta
   $app
@@ -42,6 +123,8 @@ function handleMessengerWebhookPost(e) {
       entriesCount,
       'effective_user_id',
       effectiveUserId,
+      'sig256_present',
+      Boolean(xHubSig256),
     )
 
   // Validação do objeto da Meta: Messenger envia object="page" (ou às vezes "messenger")
