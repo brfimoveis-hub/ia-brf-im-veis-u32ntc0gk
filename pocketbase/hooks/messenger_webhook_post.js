@@ -28,8 +28,25 @@ function handleMessengerWebhookPost(e) {
   var queryUserId = query['user_id'] || query['uid'] || ''
   var effectiveUserId = pathUserId || queryUserId || ''
 
+  var entriesCount = (body && body.entry && body.entry.length) || 0
+  var rawObject = body ? body.object : ''
+
+  // Log de diagnóstico detalhado para detectar QUALQUER entrega da Meta
+  $app
+    .logger()
+    .info(
+      'Messenger Webhook POST recebido',
+      'object',
+      rawObject,
+      'entries_count',
+      entriesCount,
+      'effective_user_id',
+      effectiveUserId,
+    )
+
   // Validação do objeto da Meta: Messenger envia object="page" (ou às vezes "messenger")
   if (!body || (body.object !== 'page' && body.object !== 'messenger')) {
+    $app.logger().info('Messenger Webhook ignorando objeto não-page', 'object', rawObject)
     // Retorna 200 para eventos não monitorados para não invalidar o webhook na Meta
     return e.string(200, 'EVENT_RECEIVED')
   }
@@ -72,13 +89,31 @@ function handleMessengerWebhookPost(e) {
     var entries = body.entry || []
     for (var ei = 0; ei < entries.length; ei++) {
       var entry = entries[ei] || {}
+      var pageId = entry.id ? String(entry.id) : ''
+      var entryTime = entry.time || Date.now()
       var messagingList = entry.messaging || []
+
+      // Se não tem messaging, pode ser alteração de campo (changes) como leadgen ou standby
+      if ((!messagingList || messagingList.length === 0) && entry.changes) {
+        $app
+          .logger()
+          .info(
+            'Messenger Webhook entry com changes recebida',
+            'page_id',
+            pageId,
+            'changes_len',
+            entry.changes.length,
+          )
+      }
 
       for (var mi = 0; mi < messagingList.length; mi++) {
         var messaging = messagingList[mi] || {}
 
         // Desconsidera echos da própria página
         if (messaging.message && messaging.message.is_echo) {
+          $app
+            .logger()
+            .info('Messenger Webhook ignorando echo da própria página', 'page_id', pageId)
           continue
         }
         if (messaging.delivery || messaging.read) {
@@ -87,15 +122,24 @@ function handleMessengerWebhookPost(e) {
 
         var senderId =
           messaging.sender && messaging.sender.id ? String(messaging.sender.id).trim() : ''
+        var recipientId =
+          messaging.recipient && messaging.recipient.id
+            ? String(messaging.recipient.id).trim()
+            : pageId
+
         if (!senderId) continue
 
         var text = ''
+        var hasAttachment = false
+        var attachmentType = ''
+
         if (messaging.message) {
           if (messaging.message.text) {
             text = messaging.message.text
           } else if (messaging.message.attachments && messaging.message.attachments.length > 0) {
-            var attType = messaging.message.attachments[0].type || 'mídia'
-            text = '[' + attType + ' recebido no Messenger]'
+            hasAttachment = true
+            attachmentType = messaging.message.attachments[0].type || 'mídia'
+            text = '[' + attachmentType + ' recebido no Messenger]'
           } else if (messaging.message.quick_reply && messaging.message.quick_reply.payload) {
             text = messaging.message.quick_reply.payload
           }
@@ -106,6 +150,51 @@ function handleMessengerWebhookPost(e) {
         if (!text) {
           text = '[Mensagem recebida no Messenger]'
         }
+
+        // LOG DETALHADO DO PAYLOAD BRUTO RECEBIDO NO POST DO MESSENGER
+        var previewText = text.length > 100 ? text.substring(0, 100) + '...' : text
+        $app
+          .logger()
+          .info(
+            'MESSENGER_EVENT_RECEIVED',
+            'page_id',
+            pageId,
+            'recipient_id',
+            recipientId,
+            'sender_id',
+            senderId,
+            'timestamp',
+            entryTime,
+            'text',
+            previewText,
+          )
+
+        // Registrar também em system_logs para visibilidade total no CRM e fácil consulta
+        try {
+          var sysLogsCol = $app.findCollectionByNameOrId('system_logs')
+          var auditLog = new Record(sysLogsCol, {
+            user_id: finalUserId,
+            type: 'messenger_webhook_received',
+            message: 'Mensagem recebida no Messenger de ' + senderId + ': ' + previewText,
+            details:
+              'Page ID: ' +
+              pageId +
+              ' | Sender PSID: ' +
+              senderId +
+              ' | Time: ' +
+              new Date(entryTime).toISOString(),
+            payload: {
+              page_id: pageId,
+              sender_id: senderId,
+              recipient_id: recipientId,
+              text: text,
+              time: entryTime,
+              has_attachment: hasAttachment,
+              attachment_type: attachmentType,
+            },
+          })
+          $app.save(auditLog)
+        } catch (_) {}
 
         // Tenta obter o nome do remetente via Graph API se houver token de página
         var pageToken = user
@@ -185,6 +274,8 @@ function handleMessengerWebhookPost(e) {
               ']\n' +
               'Messenger PSID: ' +
               senderId +
+              '\nPage ID: ' +
+              pageId +
               '\nOrigin: Meta Messenger'
 
             customer.set('notes', initialNotes)
@@ -194,6 +285,7 @@ function handleMessengerWebhookPost(e) {
                 type: 'messenger',
                 date: nowIso,
                 sender_id: senderId,
+                page_id: pageId,
               },
             ])
             $app.save(customer)
@@ -267,6 +359,8 @@ function handleMessengerWebhookPost(e) {
               'Capturado via Meta Messenger API\n' +
                 'Messenger PSID: ' +
                 senderId +
+                '\nPage ID: ' +
+                pageId +
                 '\nMensagem: ' +
                 text,
             )
