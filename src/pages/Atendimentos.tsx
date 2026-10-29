@@ -527,19 +527,37 @@ export default function Atendimentos() {
     }
   }, [selectedCustomerId])
 
-  // Auto scroll para o final das mensagens com requestAnimationFrame (sem bloquear main thread)
+  // Auto scroll para o final das mensagens com requestAnimationFrame e timeout fallback
   const isFirstMessagesRenderRef = useRef(true)
+  const scrollChatToBottom = useCallback((instant = false) => {
+    const el = messagesEndRef.current
+    if (!el) return
+    const behavior = instant ? 'auto' : 'smooth'
+    try {
+      el.scrollIntoView({ behavior, block: 'end' })
+    } catch {
+      // Fallback para navegadores antigos
+      el.scrollIntoView(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (messages.length > 0) {
       const isFirst = isFirstMessagesRenderRef.current
       isFirstMessagesRenderRef.current = false
-      requestAnimationFrame(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: isFirst ? 'auto' : 'smooth' })
-      })
+      // Scroll imediato
+      requestAnimationFrame(() => scrollChatToBottom(isFirst))
+      // Reforço após 100ms e 300ms caso imagens/avatares ainda estejam renderizando
+      const t1 = setTimeout(() => scrollChatToBottom(isFirst), 120)
+      const t2 = setTimeout(() => scrollChatToBottom(isFirst), 320)
+      return () => {
+        clearTimeout(t1)
+        clearTimeout(t2)
+      }
     }
-  }, [messages])
+  }, [messages, scrollChatToBottom])
 
-  // Reseta flag quando troca de cliente
+  // Reseta flag quando troca de cliente e rola ao final imediatamente
   useEffect(() => {
     isFirstMessagesRenderRef.current = true
   }, [selectedCustomerId])
@@ -937,9 +955,23 @@ export default function Atendimentos() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-5rem)] max-w-7xl mx-auto -m-4 md:-m-8 p-3 md:p-6 bg-slate-50 dark:bg-slate-950">
-      {/* Top Header com contadores e título */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b shrink-0">
+    <div
+      className={cn(
+        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950',
+        // No celular: quando conversa aberta, ocupa exatamente 100dvh (ou 100vh) sem overflow externo
+        // No desktop: mantém h-[calc(100vh-5rem)] com margins negativas elegantes
+        selectedCustomerId
+          ? 'h-[calc(100dvh-4rem)] md:h-[calc(100vh-5rem)] -m-4 md:-m-8 p-0 md:p-6 overflow-hidden'
+          : 'min-h-[calc(100dvh-4rem)] md:h-[calc(100vh-5rem)] -m-4 md:-m-8 p-3 md:p-6',
+      )}
+    >
+      {/* Top Header com contadores e título - no celular só renderiza quando nenhuma conversa está aberta para liberar altura total ao chat */}
+      <div
+        className={cn(
+          'flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b shrink-0',
+          selectedCustomerId ? 'hidden md:flex' : 'flex',
+        )}
+      >
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -1007,8 +1039,8 @@ export default function Atendimentos() {
         </div>
       </div>
 
-      {/* PAINEL DE EVOLUÇÃO DA CADÊNCIA (Mobile-First): Contadores de Relance e Filtro de Degrau */}
-      <div className="pt-3 shrink-0">
+      {/* PAINEL DE EVOLUÇÃO DA CADÊNCIA: Contadores de Relance e Filtro de Degrau (oculto no mobile quando conversa aberta) */}
+      <div className={cn('pt-3 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}>
         <CadenceEvolutionPanel
           stats={cadenceStats}
           selectedStep={cadenceFilter}
@@ -1017,7 +1049,12 @@ export default function Atendimentos() {
       </div>
 
       {/* Main Container - Split View */}
-      <div className="flex flex-1 min-h-0 pt-3 gap-4 overflow-hidden">
+      <div
+        className={cn(
+          'flex flex-1 min-h-0 overflow-hidden',
+          selectedCustomerId ? 'pt-0 md:pt-3 gap-0 md:gap-4' : 'pt-3 gap-4',
+        )}
+      >
         {/* Painel Esquerdo: Lista de Conversas */}
         <div
           className={cn(
@@ -1142,20 +1179,23 @@ export default function Atendimentos() {
         {/* Painel Direito: Chat do Cliente Selecionado */}
         <div
           className={cn(
-            'flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-xl border shadow-sm overflow-hidden',
+            'flex-1 flex flex-col bg-white dark:bg-slate-900 overflow-hidden min-h-0 h-full',
+            // No mobile sem bordas/arredondamento para preencher como WhatsApp nativo; no desktop mantém card
+            'rounded-none md:rounded-xl border-0 md:border shadow-none md:shadow-sm',
             !selectedCustomerId ? 'hidden md:flex' : 'flex',
           )}
         >
           {selectedCustomerId ? (
             <>
               {/* Header do Chat */}
-              <div className="p-3 md:p-4 border-b bg-white dark:bg-slate-900 flex items-center justify-between gap-3 shrink-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  {/* Botão de voltar visível no mobile */}
+              <div className="p-2 sm:p-3 md:p-4 border-b bg-white dark:bg-slate-900 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  {/* Botão de voltar visível no mobile com destaque amigável estilo WhatsApp */}
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="md:hidden h-8 w-8 shrink-0 -ml-1"
+                    className="md:hidden h-9 w-9 shrink-0 -ml-1 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    title="Voltar para a lista de conversas"
                     onClick={() => {
                       setSelectedCustomerId(null)
                       setSearchParams((prev) => {
@@ -1165,21 +1205,21 @@ export default function Atendimentos() {
                       })
                     }}
                   >
-                    <ArrowLeft className="h-4 w-4" />
+                    <ArrowLeft className="h-5 w-5" />
                   </Button>
 
-                  <Avatar className="h-10 w-10 border shadow-xs shrink-0">
+                  <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">
                     <AvatarImage
                       src={`https://img.usecurling.com/ppl/thumbnail?seed=${selectedCustomerId}`}
                     />
-                    <AvatarFallback className="font-semibold bg-primary/10 text-primary">
+                    <AvatarFallback className="font-semibold bg-primary/10 text-primary text-xs sm:text-sm">
                       {selectedCustomer?.name?.slice(0, 2).toUpperCase() || 'CL'}
                     </AvatarFallback>
                   </Avatar>
 
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                      <h2 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-slate-100 truncate max-w-[140px] xs:max-w-[200px] sm:max-w-none">
                         {selectedCustomer?.name || currentThread?.customer_name || 'Carregando...'}
                       </h2>
                       {/* Bolinha do Degrau no Topo ao lado do Nome */}
@@ -1225,7 +1265,7 @@ export default function Atendimentos() {
                         return null
                       })()}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Phone className="h-3 w-3" />
                         {selectedCustomer?.phone
@@ -1238,7 +1278,7 @@ export default function Atendimentos() {
                         <>
                           <span>•</span>
                           <span
-                            className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/40"
+                            className="hidden xs:flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/40"
                             title="E-mail capturado pela Bia no atendimento"
                           >
                             <Mail className="h-3 w-3" />
@@ -1253,8 +1293,8 @@ export default function Atendimentos() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/60 border rounded-lg px-2.5 py-1">
-                    <BiaAvatar size="md" showStatusIndicator />
+                  <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 dark:bg-slate-800/60 border rounded-lg px-2 sm:px-2.5 py-1">
+                    <BiaAvatar size="sm" showStatusIndicator />
                     <div className="text-left hidden sm:block">
                       <span className="text-[10px] text-muted-foreground block uppercase font-medium tracking-wide">
                         Assistente Virtual
@@ -1272,9 +1312,9 @@ export default function Atendimentos() {
                 customer={selectedCustomer}
                 fallbackCustomerName={currentThread?.customer_name}
               />
-              {/* Área de Mensagens estilo Chat WhatsApp */}{' '}
+              {/* Área de Mensagens estilo Chat WhatsApp */}
               <div
-                className="flex-1 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a]"
+                className="flex-1 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a] min-h-0"
                 style={{
                   backgroundImage: 'radial-gradient(#d1c7b7 0.75px, transparent 0.75px)',
                   backgroundSize: '16px 16px',
@@ -1432,7 +1472,7 @@ export default function Atendimentos() {
                 </div>
               </div>
               {/* Barra de envio estilo WhatsApp no rodapé (mobile e desktop) */}
-              <div className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0">
+              <div className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0 sticky bottom-0 z-20 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
                 <form
                   onSubmit={handleSendMessage}
                   className="flex items-center gap-1.5 sm:gap-2 max-w-4xl mx-auto"
@@ -1453,7 +1493,7 @@ export default function Atendimentos() {
                       onChange={(e) => setReplyText(e.target.value)}
                       placeholder="Mensagem para o cliente (responda como corretor)..."
                       disabled={sendingReply}
-                      className="bg-white dark:bg-[#2a3942] border-none shadow-xs rounded-2xl h-10 text-sm px-4 focus-visible:ring-1 focus-visible:ring-emerald-600"
+                      className="bg-white dark:bg-[#2a3942] border-none shadow-xs rounded-2xl h-10 text-xs sm:text-sm px-3 sm:px-4 focus-visible:ring-1 focus-visible:ring-emerald-600"
                     />
                   </div>
 
@@ -1472,15 +1512,15 @@ export default function Atendimentos() {
                 </form>
 
                 {/* Sub-barra informativa sutil */}
-                <div className="flex items-center justify-between text-[11px] text-[#667781] dark:text-[#8696a0] px-2 pt-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-[#667781] dark:text-[#8696a0] px-1 sm:px-2 pt-1 sm:pt-1.5">
+                  <div className="flex items-center gap-1 sm:gap-1.5 truncate">
+                    <span className="flex h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <span className="truncate">
                       A Bia está ativa respondendo automaticamente. Você pode intervir a qualquer
                       momento.
                     </span>
                   </div>
-                  <div className="hidden sm:block">
+                  <div className="hidden sm:block shrink-0 ml-2">
                     {messages.length} {messages.length === 1 ? 'mensagem' : 'mensagens'}
                   </div>
                 </div>

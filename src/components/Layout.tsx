@@ -185,7 +185,14 @@ export default function Layout() {
         </ErrorBoundary>
 
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+        <main
+          className={cn(
+            'flex-1 p-4 md:p-8',
+            location.pathname.startsWith('/atendimentos')
+              ? 'overflow-hidden md:overflow-y-auto'
+              : 'overflow-y-auto',
+          )}
+        >
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>
