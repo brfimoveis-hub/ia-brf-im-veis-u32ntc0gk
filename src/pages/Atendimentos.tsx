@@ -37,6 +37,7 @@ import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
 import { BiaAvatar } from '@/components/common/BiaAvatar'
 import { ReguaPauseControl } from '@/components/customers/ReguaPauseControl'
 import { EbookResendModalControl } from '@/components/customers/EbookResendModalControl'
+import { WhatsAppSendStatsModal } from '@/components/chat/WhatsAppSendStatsModal'
 import { ImportPortalLeadModal } from '@/components/customers/ImportPortalLeadModal'
 import {
   CadenceTrackHeader,
@@ -968,6 +969,9 @@ export default function Atendimentos() {
               }
             }}
           />
+
+          {/* Raio-X de Envios & Retorno dos últimos 7 dias (Visibilidade solicitada por Mauro) */}
+          <WhatsAppSendStatsModal />
 
           {/* Controle Manual URGENTE de Parar/Retomar Régua */}
           <ReguaPauseControl />

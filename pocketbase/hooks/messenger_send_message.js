@@ -107,24 +107,40 @@ function handleMessengerSendMessage(e) {
           resData.message_id || '',
         )
 
-      // Registrar em system_logs
+      // Registrar em system_logs (tipo messenger_send_result e mantendo legado messenger_outbound)
       try {
         var sysLogsCol = $app.findCollectionByNameOrId('system_logs')
-        var outLog = new Record(sysLogsCol, {
+        var sendResultLog = new Record(sysLogsCol, {
           user_id: user.id,
-          type: 'messenger_outbound',
-          message: 'Mensagem Messenger enviada para ' + recipientId,
+          type: 'messenger_send_result',
+          message:
+            'Envio Messenger bem-sucedido para ' +
+            recipientId +
+            ' (message_id: ' +
+            (resData.message_id || 'OK') +
+            ')',
           details:
-            'Message ID: ' + (resData.message_id || 'OK') + ' | Texto: ' + text.substring(0, 100),
+            'Sucesso: true | message_id: ' +
+            (resData.message_id || '') +
+            ' | HTTP ' +
+            res.statusCode +
+            ' | Texto: ' +
+            text.substring(0, 100),
           payload: {
+            success: true,
             recipient_id: recipientId,
             message_id: resData.message_id || '',
-            text: text,
             status_code: res.statusCode,
+            text: text,
+            raw_response: resData,
           },
         })
-        $app.save(outLog)
-      } catch (_) {}
+        $app.save(sendResultLog)
+      } catch (logErr1) {
+        $app
+          .logger()
+          .error('Falha ao gravar messenger_send_result (sucesso)', 'error', String(logErr1))
+      }
 
       return e.json(200, {
         success: true,
@@ -133,21 +149,89 @@ function handleMessengerSendMessage(e) {
         data: resData,
       })
     } else {
+      var errObj = resData.error || {}
+      var errCode = errObj.code !== undefined ? errObj.code : res.statusCode
+      var errSubcode = errObj.error_subcode !== undefined ? errObj.error_subcode : null
       var errMsg =
-        (resData.error && resData.error.message) ||
+        errObj.message ||
         'Erro na Graph API ao enviar mensagem Messenger (HTTP ' + res.statusCode + ')'
 
       $app
         .logger()
-        .error('Messenger Outbound Falha no Envio', 'error', errMsg, 'status', res.statusCode)
+        .error(
+          'Messenger Outbound Falha no Envio',
+          'error',
+          errMsg,
+          'status',
+          res.statusCode,
+          'code',
+          errCode,
+        )
+
+      // Registrar falha em system_logs (tipo messenger_send_result)
+      try {
+        var sysLogsColFail = $app.findCollectionByNameOrId('system_logs')
+        var failResultLog = new Record(sysLogsColFail, {
+          user_id: user.id,
+          type: 'messenger_send_result',
+          message:
+            'Falha no envio Messenger para ' + recipientId + ': Código ' + errCode + ' - ' + errMsg,
+          details:
+            'Sucesso: false | HTTP ' +
+            res.statusCode +
+            ' | Código: ' +
+            errCode +
+            (errSubcode ? ' | Subcode: ' + errSubcode : '') +
+            ' | Erro: ' +
+            errMsg +
+            ' | Texto: ' +
+            text.substring(0, 100),
+          payload: {
+            success: false,
+            recipient_id: recipientId,
+            message_id: null,
+            status_code: res.statusCode,
+            error_code: errCode,
+            error_subcode: errSubcode,
+            error_message: errMsg,
+            text: text,
+            raw_response: resData,
+          },
+        })
+        $app.save(failResultLog)
+      } catch (logErr2) {
+        $app
+          .logger()
+          .error('Falha ao gravar messenger_send_result (falha)', 'error', String(logErr2))
+      }
 
       return e.json(res.statusCode || 400, {
         success: false,
         error: errMsg,
+        code: errCode,
+        subcode: errSubcode,
         details: resData,
       })
     }
   } catch (err) {
+    try {
+      var sysLogsColExc = $app.findCollectionByNameOrId('system_logs')
+      var excResultLog = new Record(sysLogsColExc, {
+        user_id: user ? user.id : '',
+        type: 'messenger_send_result',
+        message: 'Exceção ao tentar envio Messenger para ' + recipientId + ': ' + String(err),
+        details: 'Sucesso: false | Exceção: ' + String(err),
+        payload: {
+          success: false,
+          recipient_id: recipientId,
+          message_id: null,
+          exception: String(err),
+          text: text,
+        },
+      })
+      $app.save(excResultLog)
+    } catch (_) {}
+
     return e.json(500, {
       success: false,
       error: 'Exceção ao enviar mensagem Messenger: ' + String(err),

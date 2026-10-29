@@ -765,6 +765,186 @@ function handleMetaWhatsAppWebhookPost(e) {
     }
   }
 
+  // Processamento de callbacks de STATUS do WhatsApp (sent / delivered / read / failed / other)
+  // Requisito: Registrar TODOS esses eventos em system_logs (tipos novos: whatsapp_status_delivered,
+  // whatsapp_status_read, whatsapp_status_failed, whatsapp_status_other) com telefone/wa_id do destinatário,
+  // wamid, timestamp da Meta e o código/erro quando falhar.
+  try {
+    for (var stEntry of body.entry || []) {
+      for (var stChange of stEntry.changes || []) {
+        var stVal = stChange.value
+        if (!stVal || !stVal.statuses || stVal.statuses.length === 0) continue
+
+        for (var statusItem of stVal.statuses) {
+          var rawStatus = (statusItem.status || '').toLowerCase()
+          var recipientPhone = String(statusItem.recipient_id || '').replace(/\D/g, '')
+          var wamid = statusItem.id || ''
+          var metaTimestamp = statusItem.timestamp || ''
+          var errorsList = statusItem.errors || []
+          var firstErr = errorsList.length > 0 ? errorsList[0] : null
+          var errorCode = firstErr && firstErr.code !== undefined ? firstErr.code : null
+          var errorTitle = firstErr ? firstErr.title || firstErr.message || '' : ''
+          var errorDetails =
+            firstErr && firstErr.error_data ? firstErr.error_data.details || '' : ''
+
+          // Determinar o tipo exato conforme requisito
+          var logType = 'whatsapp_status_other'
+          if (rawStatus === 'delivered') {
+            logType = 'whatsapp_status_delivered'
+          } else if (rawStatus === 'read') {
+            logType = 'whatsapp_status_read'
+          } else if (rawStatus === 'failed') {
+            logType = 'whatsapp_status_failed'
+          }
+
+          var statusMsg =
+            'WhatsApp status [' +
+            rawStatus +
+            '] para ' +
+            (recipientPhone || 'destinatário desconhecido')
+          if (rawStatus === 'failed' && errorCode) {
+            statusMsg += ' (Erro ' + errorCode + (errorTitle ? ': ' + errorTitle : '') + ')'
+          }
+
+          var detailStr =
+            'Status: ' +
+            rawStatus +
+            ' | Recipient: ' +
+            recipientPhone +
+            ' | wamid: ' +
+            wamid +
+            (metaTimestamp ? ' | Meta Time: ' + metaTimestamp : '')
+          if (errorCode) {
+            detailStr +=
+              ' | Code: ' +
+              errorCode +
+              (errorTitle ? ' - ' + errorTitle : '') +
+              (errorDetails ? ' (' + errorDetails + ')' : '')
+          }
+
+          try {
+            var sysLogCol = $app.findCollectionByNameOrId('system_logs')
+            var stLog = new Record(sysLogCol)
+            stLog.set('user_id', userId || '')
+            stLog.set('type', logType)
+            stLog.set('message', statusMsg)
+            stLog.set('details', detailStr)
+            stLog.set('payload', {
+              status: rawStatus,
+              recipient_id: recipientPhone,
+              wa_id: recipientPhone,
+              id: wamid,
+              wamid: wamid,
+              timestamp: metaTimestamp,
+              errors: errorsList,
+              error_code: errorCode,
+              error_title: errorTitle,
+              error_details: errorDetails,
+              raw_status_item: statusItem,
+            })
+            $app.saveNoValidate(stLog)
+          } catch (stLogErr) {
+            $app.logger().error('Falha ao gravar log de status WhatsApp', 'error', String(stLogErr))
+          }
+        }
+      }
+    }
+  } catch (allStatusErr) {
+    $app.logger().error('Erro no loop de status WhatsApp', 'error', String(allStatusErr))
+  }
+
+  // Processamento de callbacks de STATUS do WhatsApp (path userId)
+  try {
+    for (var stEntry2 of body.entry || []) {
+      for (var stChange2 of stEntry2.changes || []) {
+        var stVal2 = stChange2.value
+        if (!stVal2 || !stVal2.statuses || stVal2.statuses.length === 0) continue
+
+        for (var statusItem2 of stVal2.statuses) {
+          var rawStatus2 = (statusItem2.status || '').toLowerCase()
+          var recipientPhone2 = String(statusItem2.recipient_id || '').replace(/\D/g, '')
+          var wamid2 = statusItem2.id || ''
+          var metaTimestamp2 = statusItem2.timestamp || ''
+          var errorsList2 = statusItem2.errors || []
+          var firstErr2 = errorsList2.length > 0 ? errorsList2[0] : null
+          var errorCode2 = firstErr2 && firstErr2.code !== undefined ? firstErr2.code : null
+          var errorTitle2 = firstErr2 ? firstErr2.title || firstErr2.message || '' : ''
+          var errorDetails2 =
+            firstErr2 && firstErr2.error_data ? firstErr2.error_data.details || '' : ''
+
+          var logType2 = 'whatsapp_status_other'
+          if (rawStatus2 === 'delivered') {
+            logType2 = 'whatsapp_status_delivered'
+          } else if (rawStatus2 === 'read') {
+            logType2 = 'whatsapp_status_read'
+          } else if (rawStatus2 === 'failed') {
+            logType2 = 'whatsapp_status_failed'
+          }
+
+          var statusMsg2 =
+            'WhatsApp status [' +
+            rawStatus2 +
+            '] para ' +
+            (recipientPhone2 || 'destinatário desconhecido')
+          if (rawStatus2 === 'failed' && errorCode2) {
+            statusMsg2 += ' (Erro ' + errorCode2 + (errorTitle2 ? ': ' + errorTitle2 : '') + ')'
+          }
+
+          var detailStr2 =
+            'Status: ' +
+            rawStatus2 +
+            ' | Recipient: ' +
+            recipientPhone2 +
+            ' | wamid: ' +
+            wamid2 +
+            (metaTimestamp2 ? ' | Meta Time: ' + metaTimestamp2 : '')
+          if (errorCode2) {
+            detailStr2 +=
+              ' | Code: ' +
+              errorCode2 +
+              (errorTitle2 ? ' - ' + errorTitle2 : '') +
+              (errorDetails2 ? ' (' + errorDetails2 + ')' : '')
+          }
+
+          try {
+            var sysLogCol2 = $app.findCollectionByNameOrId('system_logs')
+            var stLog2 = new Record(sysLogCol2)
+            stLog2.set('user_id', userId || '')
+            stLog2.set('type', logType2)
+            stLog2.set('message', statusMsg2)
+            stLog2.set('details', detailStr2)
+            stLog2.set('payload', {
+              status: rawStatus2,
+              recipient_id: recipientPhone2,
+              wa_id: recipientPhone2,
+              id: wamid2,
+              wamid: wamid2,
+              timestamp: metaTimestamp2,
+              errors: errorsList2,
+              error_code: errorCode2,
+              error_title: errorTitle2,
+              error_details: errorDetails2,
+              raw_status_item: statusItem2,
+            })
+            $app.saveNoValidate(stLog2)
+          } catch (stLogErr2) {
+            $app
+              .logger()
+              .error(
+                'Falha ao gravar log de status WhatsApp (path userId)',
+                'error',
+                String(stLogErr2),
+              )
+          }
+        }
+      }
+    }
+  } catch (allStatusErr2) {
+    $app
+      .logger()
+      .error('Erro no loop de status WhatsApp (path userId)', 'error', String(allStatusErr2))
+  }
+
   try {
     for (var entry of body.entry || []) {
       for (var change of entry.changes || []) {

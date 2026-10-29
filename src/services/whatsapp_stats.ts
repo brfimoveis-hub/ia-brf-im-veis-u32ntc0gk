@@ -90,6 +90,47 @@ export interface UpdateSettingsPayload {
   monthly_investment_budget_brl?: number
 }
 
+export interface WhatsAppSendStatsTotals {
+  enviadas: number
+  entregues: number
+  lidas: number
+  falhas: number
+  outros: number
+  recebidas_de_clientes: number
+}
+
+export interface WhatsAppSendStatsRates {
+  taxa_entrega: number
+  taxa_leitura: number
+  taxa_resposta: number
+}
+
+export interface WhatsAppSendStatsDaily {
+  date: string
+  enviadas: number
+  entregues: number
+  lidas: number
+  falhas: number
+  outros: number
+  recebidas_de_clientes: number
+}
+
+export interface WhatsAppSendStatsResponse {
+  success: boolean
+  period_days: number
+  since: string
+  generated_at: string
+  totals: WhatsAppSendStatsTotals
+  rates_percent: WhatsAppSendStatsRates
+  daily_history: WhatsAppSendStatsDaily[]
+}
+
+export const getWhatsAppSendStats = async (): Promise<WhatsAppSendStatsResponse> => {
+  return pb.send<WhatsAppSendStatsResponse>('/backend/v1/whatsapp-send-stats', {
+    method: 'GET',
+  })
+}
+
 export const getWhatsAppStats = async (): Promise<WhatsAppStatsResponse> => {
   return pb.send<WhatsAppStatsResponse>('/backend/v1/whatsapp-stats', {
     method: 'GET',
