@@ -527,17 +527,33 @@ export default function Atendimentos() {
     }
   }, [selectedCustomerId])
 
-  // Auto scroll para o final das mensagens com requestAnimationFrame e timeout fallback
+  // Container de mensagens scrollável para controle de rolagem direto e confiável
+  const messagesScrollContainerRef = useRef<HTMLDivElement>(null)
   const isFirstMessagesRenderRef = useRef(true)
+
   const scrollChatToBottom = useCallback((instant = false) => {
+    // 1. Prioriza rolar o container de scroll diretamente para o topo máximo (scrollTop = scrollHeight)
+    const container = messagesScrollContainerRef.current
+    if (container) {
+      if (instant) {
+        container.scrollTop = container.scrollHeight
+      } else {
+        try {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+        } catch {
+          container.scrollTop = container.scrollHeight
+        }
+      }
+    }
+
+    // 2. Fallback complementar no elemento sentinela
     const el = messagesEndRef.current
-    if (!el) return
-    const behavior = instant ? 'auto' : 'smooth'
-    try {
-      el.scrollIntoView({ behavior, block: 'end' })
-    } catch {
-      // Fallback para navegadores antigos
-      el.scrollIntoView(false)
+    if (el) {
+      try {
+        el.scrollIntoView({ behavior: instant ? 'auto' : 'smooth', block: 'end' })
+      } catch {
+        // Fallback defensivo
+      }
     }
   }, [])
 
@@ -545,14 +561,18 @@ export default function Atendimentos() {
     if (messages.length > 0) {
       const isFirst = isFirstMessagesRenderRef.current
       isFirstMessagesRenderRef.current = false
-      // Scroll imediato
+      // Scroll imediato (instantâneo na abertura da conversa para usuário já ver última mensagem como no WhatsApp)
+      scrollChatToBottom(isFirst)
+      // Reforço com requestAnimationFrame
       requestAnimationFrame(() => scrollChatToBottom(isFirst))
-      // Reforço após 100ms e 300ms caso imagens/avatares ainda estejam renderizando
-      const t1 = setTimeout(() => scrollChatToBottom(isFirst), 120)
-      const t2 = setTimeout(() => scrollChatToBottom(isFirst), 320)
+      // Reforço em 80ms, 200ms e 400ms para aguardar layout e avatares
+      const t1 = setTimeout(() => scrollChatToBottom(isFirst), 80)
+      const t2 = setTimeout(() => scrollChatToBottom(isFirst), 200)
+      const t3 = setTimeout(() => scrollChatToBottom(isFirst), 400)
       return () => {
         clearTimeout(t1)
         clearTimeout(t2)
+        clearTimeout(t3)
       }
     }
   }, [messages, scrollChatToBottom])
@@ -957,12 +977,13 @@ export default function Atendimentos() {
   return (
     <div
       className={cn(
-        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950',
-        // No celular: quando conversa aberta, ocupa exatamente 100dvh (ou 100vh) sem overflow externo
-        // No desktop: mantém h-[calc(100vh-5rem)] com margins negativas elegantes
+        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full',
+        // No celular com conversa aberta: ocupa exatamente 100% da altura do main (100dvh) sem margens negativas nem paddings, garantindo tela cheia como WhatsApp
+        // No celular sem conversa aberta: lista de conversas com scroll normal
+        // No desktop: mantém h-[calc(100vh-5rem)] com margins e paddings idênticos à bancada atual
         selectedCustomerId
-          ? 'h-[calc(100dvh-4rem)] md:h-[calc(100vh-5rem)] -m-4 md:-m-8 p-0 md:p-6 overflow-hidden'
-          : 'min-h-[calc(100dvh-4rem)] md:h-[calc(100vh-5rem)] -m-4 md:-m-8 p-3 md:p-6',
+          ? 'h-full md:h-[calc(100vh-5rem)] m-0 md:-m-8 p-0 md:p-6 overflow-hidden'
+          : 'h-full min-h-[calc(100dvh-4rem)] md:h-[calc(100vh-5rem)] m-0 md:-m-8 p-3 md:p-6 overflow-hidden md:overflow-y-auto',
       )}
     >
       {/* Top Header com contadores e título - no celular só renderiza quando nenhuma conversa está aberta para liberar altura total ao chat */}
@@ -1207,6 +1228,13 @@ export default function Atendimentos() {
                   >
                     <ArrowLeft className="h-5 w-5" />
                   </Button>
+                  {/* Indicador discreto da versão do build no header do chat mobile */}
+                  <span
+                    className="md:hidden text-[9px] font-mono text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 shrink-0"
+                    title="Versão do Build"
+                  >
+                    v1322
+                  </span>
 
                   <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">
                     <AvatarImage
@@ -1312,9 +1340,10 @@ export default function Atendimentos() {
                 customer={selectedCustomer}
                 fallbackCustomerName={currentThread?.customer_name}
               />
-              {/* Área de Mensagens estilo Chat WhatsApp */}
+              {/* Área de Mensagens estilo Chat WhatsApp com container ref direto para scroll 100% confiável */}
               <div
-                className="flex-1 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a] min-h-0"
+                ref={messagesScrollContainerRef}
+                className="flex-1 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a] min-h-0 overscroll-contain"
                 style={{
                   backgroundImage: 'radial-gradient(#d1c7b7 0.75px, transparent 0.75px)',
                   backgroundSize: '16px 16px',
@@ -1471,8 +1500,8 @@ export default function Atendimentos() {
                   <div ref={messagesEndRef} />
                 </div>
               </div>
-              {/* Barra de envio estilo WhatsApp no rodapé (mobile e desktop) */}
-              <div className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0 sticky bottom-0 z-20 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+              {/* Barra de envio estilo WhatsApp no rodapé (mobile e desktop) com safe area inset real do Android/iOS */}
+              <div className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0 sticky bottom-0 z-30 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 <form
                   onSubmit={handleSendMessage}
                   className="flex items-center gap-1.5 sm:gap-2 max-w-4xl mx-auto"

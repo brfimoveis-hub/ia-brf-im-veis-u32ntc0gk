@@ -126,9 +126,14 @@ export default function Layout() {
             <span className="text-sm font-medium truncate max-w-[150px]">
               {currentUser?.name || currentUser?.email}
             </span>
-            <span className="text-xs text-slate-400 truncate max-w-[150px]">
-              {currentUser?.email}
-            </span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-800">
+                v0.0.1322
+              </span>
+              <span className="text-[10px] text-slate-400 truncate max-w-[100px]">
+                {currentUser?.email}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-1">
             <BugScanner className="text-slate-400 hover:text-white hover:bg-slate-800" />
@@ -146,17 +151,38 @@ export default function Layout() {
     </div>
   )
 
+  const isAtendimentos = location.pathname.startsWith('/atendimentos')
+  const hasSelectedCustomerInUrl =
+    isAtendimentos && new URLSearchParams(location.search).has('cliente')
+
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div
+      className={cn(
+        'flex bg-slate-50 overflow-hidden',
+        // No mobile: usa 100dvh com fallback para 100vh para acompanhar a área visível do navegador
+        // e barra de navegação/gestos do Android sem empurrar o conteúdo pra fora
+        'h-[100dvh] max-h-[100dvh]',
+      )}
+    >
       {/* Desktop sidebar */}
       <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
         <SidebarContent />
       </div>
 
-      <div className="flex flex-col flex-1 md:pl-64">
-        {/* Mobile header */}
-        <div className="sticky top-0 z-40 flex h-16 flex-shrink-0 bg-white border-b shadow-sm md:hidden px-4 justify-between items-center">
-          <div className="font-semibold text-lg">BRF IA CRM</div>
+      <div className="flex flex-col flex-1 min-w-0 md:pl-64 h-full overflow-hidden">
+        {/* Mobile header: quando conversa está aberta em /atendimentos, o chat tem seu próprio header nativo estilo WhatsApp */}
+        <div
+          className={cn(
+            'sticky top-0 z-40 flex h-16 flex-shrink-0 bg-white border-b shadow-sm md:hidden px-4 justify-between items-center',
+            hasSelectedCustomerInUrl ? 'hidden' : 'flex',
+          )}
+        >
+          <div className="font-semibold text-lg flex items-center gap-2">
+            <span>BRF IA CRM</span>
+            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
+              v0.0.1322
+            </span>
+          </div>
           <div className="flex items-center gap-1">
             <BugScanner />
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -175,8 +201,10 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* Connection Alert Banner */}
-        <ConnectionAlertBanner />
+        {/* Connection Alert Banner (oculto no mobile quando conversa aberta para liberar viewport total estilo WhatsApp) */}
+        <div className={cn(hasSelectedCustomerInUrl ? 'hidden md:block' : 'block')}>
+          <ConnectionAlertBanner />
+        </div>
 
         {/* Trackers lazy mount inside authenticated Layout with safe error boundary */}
         <ErrorBoundary fallback={null}>
@@ -187,10 +215,8 @@ export default function Layout() {
         {/* Main content */}
         <main
           className={cn(
-            'flex-1 p-4 md:p-8',
-            location.pathname.startsWith('/atendimentos')
-              ? 'overflow-hidden md:overflow-y-auto'
-              : 'overflow-y-auto',
+            'flex-1 min-w-0 min-h-0',
+            isAtendimentos ? 'p-0 md:p-8 overflow-hidden' : 'p-4 md:p-8 overflow-y-auto',
           )}
         >
           <ErrorBoundary>

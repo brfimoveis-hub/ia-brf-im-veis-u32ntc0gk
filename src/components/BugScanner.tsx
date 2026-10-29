@@ -44,17 +44,61 @@ export function BugScanner({ className }: { className?: string }) {
         <SheetHeader>
           <SheetTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <Bug className="h-5 w-5" />
-              Bug Scanner
+              <Bug className="h-5 w-5 text-emerald-600" />
+              <span>Diagnóstico & Versão</span>
             </span>
-            {errors.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={handleClear}>
-                <Trash2 className="h-4 w-4 mr-1" />
-                Limpar
-              </Button>
-            )}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700">
+                v0.0.1322
+              </span>
+              {errors.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={handleClear}>
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Limpar
+                </Button>
+              )}
+            </div>
           </SheetTitle>
         </SheetHeader>
+
+        {/* Card de versão e limpeza de cache para confirmação do usuário */}
+        <div className="mt-3 p-3 rounded-lg border bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-600 dark:text-slate-300 font-medium">
+              Build atual em execução:
+            </span>
+            <span className="font-bold font-mono text-emerald-700 dark:text-emerald-400">
+              v0.0.1322
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+            Se seu celular estiver mostrando versão antiga em cache, toque abaixo para forçar
+            recarga limpa.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if ('caches' in window) {
+                caches.keys().then((keys) => {
+                  for (const k of keys) caches.delete(k)
+                })
+              }
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then((regs) => {
+                  for (const r of regs) r.unregister()
+                })
+              }
+              const url = new URL(window.location.href)
+              url.searchParams.set('_v', '1322')
+              window.location.href = url.toString()
+            }}
+            className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs"
+          >
+            Limpar Cache & Recarregar v0.0.1322
+          </Button>
+        </div>
         <div className="mt-4 space-y-2">
           {errors.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
