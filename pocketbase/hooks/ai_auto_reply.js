@@ -2628,33 +2628,182 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
     const custIncomingMsg = (customerMessage || incomingCustMsgText || '').trim()
     const lowerCustIncoming = custIncomingMsg.toLowerCase()
 
-    // ======================================================================
-    // GATILHO "SIM" / INTERCEPTOR DA RÉGUA DE RETOMADA COMERCIAL (MAURO)
-    // Se a última mensagem de saída foi da régua de retomada ou o cliente responde
-    // exatamente "sim" / "SIM" / "Sim" (com variações triviais de pontuação/espaço):
-    // Envia imediatamente o BOOK VISTAGE RESIDENCE.pdf via WhatsApp Document
-    // + mensagem explicativa curta com localização e condições de pagamento.
-    // Fallback: se o envio do documento falhar, envia link do PDF no texto.
-    // Avança o estágio do lead (Apresentação / 3), marca como respondido e sai antes da IA.
-    // ======================================================================
-    const normalizedSim = lowerCustIncoming
+    // ----------------------------------------------------------------------
+    // CANCELAR CONTINUIDADE AGENDADA CASO O CLIENTE RESPONDA ANTES DOS 10 MIN
+    // Se o cliente respondeu qualquer coisa, a continuação automática é cancelada
+    // e o fluxo cai na IA da Bia ou no interceptor adequado.
+    // ----------------------------------------------------------------------
+    try {
+      const pendingContTasks = $app.findRecordsByFilter(
+        'regua_ok_tasks',
+        `customer_id = '${customerId}' && task_type = 'continuidade' && status = 'pending'`,
+        '-created',
+        5,
+        0,
+      )
+      if (pendingContTasks && pendingContTasks.length > 0) {
+        const nowCancelIso = new Date().toISOString().replace('T', ' ').substring(0, 19)
+        for (let cti = 0; cti < pendingContTasks.length; cti++) {
+          const ct = pendingContTasks[cti]
+          ct.set('status', 'canceled')
+          ct.set(
+            'last_error',
+            `Cancelado por resposta antecipada do cliente: "${custIncomingMsg.substring(0, 100)}"`,
+          )
+          ct.set('sent_at', nowCancelIso)
+          $app.saveNoValidate(ct)
+        }
+        console.log(
+          `[AI_REPLY] Continuidade agendada cancelada para customer=${customerId} por resposta do cliente: "${custIncomingMsg}"`,
+        )
+      }
+    } catch (cancelErr) {
+      console.warn(`[AI_REPLY] Aviso ao cancelar continuidade agendada: ${String(cancelErr)}`)
+    }
+
+    // ----------------------------------------------------------------------
+    // GUARDA DE RECUSA / OPT-OUT IMEDIATO ("NÃO" / "NAO") (MAURO - REGRA DA RÉGUA)
+    // "Se não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro."
+    // ----------------------------------------------------------------------
+    const normalizedExactOptOut = lowerCustIncoming
       .replace(/[.,!?;:\"'“”\s\-_]/g, '')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
 
-    const isSimResponse =
-      normalizedSim === 'sim' ||
-      normalizedSim === 'si' ||
-      normalizedSim === 'ss' ||
-      normalizedSim === 's' ||
-      normalizedSim === 'claro' ||
-      normalizedSim === 'manda' ||
-      normalizedSim === 'mande' ||
-      normalizedSim === 'quero' ||
-      normalizedSim === 'enviar' ||
-      normalizedSim === 'envia' ||
-      normalizedSim === 'podeenviar' ||
-      normalizedSim === 'podemandar'
+    const isExactNao =
+      normalizedExactOptOut === 'nao' ||
+      normalizedExactOptOut === 'n' ||
+      normalizedExactOptOut === 'nn' ||
+      normalizedExactOptOut === 'naoquero' ||
+      normalizedExactOptOut === 'naotenhointeresse'
+
+    if (isExactNao) {
+      console.log(
+        `[AI_REPLY] [OPT_OUT_NAO] Cliente respondeu "${custIncomingMsg}". Executando opt-out imediato da régua para customer=${customerId}...`,
+      )
+      try {
+        let currentCustTags = []
+        const rawCustTags = customer.get('tags')
+        if (Array.isArray(rawCustTags)) {
+          currentCustTags = rawCustTags.filter((t) => typeof t === 'string')
+        }
+        if (!currentCustTags.includes('opt_out')) currentCustTags.push('opt_out')
+        if (!currentCustTags.includes('não é o momento')) currentCustTags.push('não é o momento')
+        if (!currentCustTags.includes('frio')) currentCustTags.push('frio')
+        if (!currentCustTags.includes('ai_paused')) currentCustTags.push('ai_paused')
+
+        customer.set('tags', currentCustTags)
+        customer.set('persistence_status', 'pausado')
+        customer.set('follow_up_step', 'finalizado')
+        customer.set('next_follow_up_at', '')
+        customer.set(
+          'notes',
+          (customer.getString('notes') || '') + ' [Opt-out imediato via resposta NÃO na régua]',
+        )
+        $app.saveNoValidate(customer)
+
+        // Registrar no system_logs
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const optOutLog = new Record(logsCol)
+          optOutLog.set('user_id', userId || '')
+          optOutLog.set('type', 'regua_opt_out_nao')
+          optOutLog.set(
+            'message',
+            `Cliente respondeu "${custIncomingMsg}" e optou por sair da régua. Descadastrado imediatamente.`,
+          )
+          optOutLog.set(
+            'details',
+            JSON.stringify({
+              customer_id: customerId,
+              customer_name: customer.getString('name') || '',
+              customer_phone: customer.getString('phone') || '',
+              incoming_message: custIncomingMsg,
+            }),
+          )
+          $app.saveNoValidate(optOutLog)
+        } catch (_) {}
+
+        // Registrar conversa curta confirmando exclusão
+        try {
+          const convCol = $app.findCollectionByNameOrId('conversations')
+          const optOutConv = new Record(convCol)
+          optOutConv.set('customer_id', customerId)
+          optOutConv.set('user_id', userId || '')
+          optOutConv.set('channel', 'whatsapp')
+          optOutConv.set('sender', 'ai')
+          optOutConv.set(
+            'content',
+            'Compreendido perfeitamente. Seu contato foi retirado da nossa lista de oportunidades. Desejamos muito sucesso!',
+          )
+          $app.saveNoValidate(optOutConv)
+        } catch (_) {}
+
+        // Envia mensagem educada via WhatsApp confirmando o descadastro
+        const toPhoneClean = (customer.getString('phone') || '').replace(/\D/g, '')
+        if (toPhoneClean && metaWhatsappToken && metaPhoneId) {
+          try {
+            $http.send({
+              url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${metaWhatsappToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: toPhoneClean,
+                type: 'text',
+                text: {
+                  body: 'Compreendido perfeitamente. Seu contato foi retirado da nossa lista de oportunidades. Desejamos muito sucesso!',
+                },
+              }),
+              timeout: 15,
+            })
+          } catch (_) {}
+        }
+
+        console.log(`[AI_REPLY] [OPT_OUT_NAO] Opt-out concluído para customer=${customerId}.`)
+        return
+      } catch (optErr) {
+        console.warn(`[AI_REPLY] [OPT_OUT_NAO] Erro ao processar opt-out: ${String(optErr)}`)
+      }
+    }
+
+    // ======================================================================
+    // GATILHO "OK" / "SIM" -> EBOOK IMEDIATO + CONTINUIDADE (MAURO)
+    // Aceita variações simples: OK, Ok, ok, "quero", "sim", "manda", "pode mandar"
+    // Não dispara se 'ok' fizer parte de outra palavra (ex.: look, estoque).
+    // ======================================================================
+    const normalizedInputTokens = lowerCustIncoming
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .split(/[\s,.;:!?\-_"'“”()]+/)
+      .filter((t) => t.length > 0)
+
+    const isOkToken = normalizedInputTokens.some(
+      (tok) => tok === 'ok' || tok === 'okk' || tok === 'oq',
+    )
+    const isSimToken = normalizedInputTokens.some(
+      (tok) =>
+        tok === 'sim' ||
+        tok === 'si' ||
+        tok === 'ss' ||
+        tok === 'claro' ||
+        tok === 'quero' ||
+        tok === 'manda' ||
+        tok === 'mande',
+    )
+    const isShortAffirmative =
+      /^(?:ok|ok\!|ok\.|sim|sim\!|quero|quero\s*sim|pode\s*mandar|pode\s*enviar|manda|mande|manda\s*o\s*ebook|envia|enviar|com\s*certeza|por\s*favor)$/i.test(
+        custIncomingMsg.trim(),
+      )
+
+    const isOkResponse =
+      (isOkToken && normalizedInputTokens.length <= 4) ||
+      (isSimToken && normalizedInputTokens.length <= 4) ||
+      isShortAffirmative
 
     let lastAiMsgWasRegua = false
     try {
@@ -2672,20 +2821,38 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
           lastOutText.includes('guardei o Vistage') ||
           lastOutText.includes('separei o Vistage') ||
           lastOutText.includes('separei uma oportunidade que poucos') ||
+          lastOutText.includes('basta responder OK') ||
+          lastOutText.includes('responder OK') ||
           lastOutText.includes('Responda "Sim"') ||
           lastOutText.includes('responda "Sim"') ||
-          lastOutText.includes('responda \\"Sim\\"') ||
-          lastOutText.includes('ebook completo na hora')
+          lastOutText.includes('ebook completo') ||
+          lastOutText.includes('ebook exclusivo')
         ) {
           lastAiMsgWasRegua = true
         }
       }
     } catch (_) {}
 
-    if (isSimResponse && (lastAiMsgWasRegua || isSimResponse)) {
+    if (isOkResponse && (lastAiMsgWasRegua || isOkResponse)) {
       console.log(
-        `[AI_REPLY] [GATILHO_SIM] Interceptor acionado para customer=${customerId} ("${custIncomingMsg}"). Enviando ebook Vistage...`,
+        `[AI_REPLY] [GATILHO_OK] Interceptor acionado para customer=${customerId} ("${custIncomingMsg}"). Executando entrega do ebook Vistage...`,
       )
+
+      // Recupera o primeiro nome do cliente de forma humanizada
+      let rawCustName = (customer.getString('name') || '').trim()
+      let clientFirstName = ''
+      if (
+        rawCustName &&
+        !rawCustName.toLowerCase().startsWith('contato') &&
+        !/^\+?\d+$/.test(rawCustName)
+      ) {
+        clientFirstName = rawCustName.split(' ')[0]
+      }
+
+      // Frase curta de confirmação antes do ebook
+      const confirmShortMsg = clientFirstName
+        ? `Prontinho, ${clientFirstName}! Ebook a caminho. Em minutos te faço uma pergunta rápida para eu te indicar a planta certa 😉`
+        : `Prontinho! Ebook a caminho. Em minutos te faço uma pergunta rápida para eu te indicar a planta certa 😉`
 
       const pbPublicBase =
         $os.getenv('PUBLIC_URL') ||
@@ -2695,7 +2862,6 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         $os.getenv('PB_INSTANCE_URL') ||
         'https://crm.brfimoveis.com.br'
 
-      // Recupera o arquivo BOOK VISTAGE RESIDENCE (id fcvyoatlxt56do2 ou busca por nome)
       let ebookKnowledgeRec = null
       try {
         ebookKnowledgeRec = $app.findRecordById('ai_knowledge_files', 'fcvyoatlxt56do2')
@@ -2734,104 +2900,186 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         ebookFileUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/ai_knowledge_files/fcvyoatlxt56do2/book_vistage_residence_alxnfnhjlr.pdf`
       }
 
-      const vistageShortText = `Aqui está o ebook completo do *Vistage Residence*! 📖✨\n\n📍 *Localização Privilegiada:* Barreiros, São José (Grande Florianópolis) — região com valorização acima de 12% ao ano.\n🏢 *Plantas & Lazer:* 2 dormitórios a partir de R$ 623.110 e 3 dormitórios a partir de R$ 965.615, com rooftop, piscina e lazer completo entregue equipado.\n💳 *Condições de Lançamento:* 15% de ato e saldo parcelado em até 60x direto com a construtora (entrega em 2030).\n\nDê uma olhada no material e me diga se prefere as plantas de 2 ou de 3 dormitórios para eu te passar a simulação exata!`
-
       const toPhoneClean = (customer.getString('phone') || '').replace(/\D/g, '')
       let docSendSuccess = false
+      let docWamid = ''
 
       if (toPhoneClean && metaWhatsappToken && metaPhoneId) {
-        // Tentativa de envio como Documento WhatsApp
+        // (a) Envia frase curta humana de confirmação
         try {
-          const docPayload = {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: toPhoneClean,
-            type: 'document',
-            document: {
-              link: ebookFileUrl,
-              filename: ebookFileName,
-              caption: 'BOOK VISTAGE RESIDENCE — BRF Imóveis',
-            },
-          }
-          const docUrl = `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`
-          const docRes = $http.send({
-            url: docUrl,
+          const txtRes = $http.send({
+            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
             method: 'POST',
             headers: {
               Authorization: `Bearer ${metaWhatsappToken}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(docPayload),
+            body: JSON.stringify({
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: toPhoneClean,
+              type: 'text',
+              text: { body: confirmShortMsg },
+            }),
+            timeout: 15,
+          })
+          if (txtRes && txtRes.statusCode >= 200 && txtRes.statusCode < 300) {
+            try {
+              const b = JSON.parse(txtRes.raw || '{}')
+              const w = b.messages && b.messages[0] ? b.messages[0].id : ''
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const l = new Record(logsCol)
+              l.set('user_id', userId || '')
+              l.set('type', 'whatsapp_ai_send')
+              l.set('message', 'Frase de confirmação pós-OK entregue')
+              l.set(
+                'details',
+                JSON.stringify({
+                  customer_id: customerId,
+                  phone: toPhoneClean,
+                  wamid: w,
+                  status: 'sent',
+                  task_type: 'confirm_text',
+                }),
+              )
+              $app.saveNoValidate(l)
+            } catch (_) {}
+          }
+        } catch (_) {}
+
+        // (b) Envia documento do Ebook
+        try {
+          const docRes = $http.send({
+            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${metaWhatsappToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: toPhoneClean,
+              type: 'document',
+              document: {
+                link: ebookFileUrl,
+                filename: ebookFileName,
+                caption: 'BOOK VISTAGE RESIDENCE — BRF Imóveis',
+              },
+            }),
             timeout: 25,
           })
-
           if (docRes && docRes.statusCode >= 200 && docRes.statusCode < 300) {
             docSendSuccess = true
-            console.log(
-              `[AI_REPLY] [GATILHO_SIM] Ebook Vistage enviado via documento WhatsApp com sucesso para ${toPhoneClean}`,
-            )
-          } else {
-            console.warn(
-              `[AI_REPLY] [GATILHO_SIM] Envio do documento retornou status ${docRes ? docRes.statusCode : 'null'}, acionando fallback de link no texto...`,
-            )
+            try {
+              const b = JSON.parse(docRes.raw || '{}')
+              if (b.messages && b.messages[0]) docWamid = b.messages[0].id
+            } catch (_) {}
           }
         } catch (docErr) {
-          console.warn(
-            `[AI_REPLY] [GATILHO_SIM] Exceção ao enviar documento WhatsApp: ${String(docErr)}, acionando fallback de link no texto...`,
-          )
-        }
-
-        // Envio do texto explicativo (ou texto + link no fallback)
-        let textToSendImmediate = vistageShortText
-        if (!docSendSuccess && ebookFileUrl) {
-          textToSendImmediate = `${vistageShortText}\n\n📄 *Baixar Ebook Completo (PDF):*\n${ebookFileUrl}`
-        }
-
-        try {
-          const textPayload = {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: toPhoneClean,
-            type: 'text',
-            text: { body: textToSendImmediate },
-          }
-          const textUrl = `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`
-          $http.send({
-            url: textUrl,
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${metaWhatsappToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(textPayload),
-            timeout: 25,
-          })
-          console.log(
-            `[AI_REPLY] [GATILHO_SIM] Texto com condições do Vistage entregue com sucesso para ${toPhoneClean}`,
-          )
-        } catch (txtErr) {
-          console.warn(`[AI_REPLY] [GATILHO_SIM] Erro ao enviar texto WhatsApp: ${String(txtErr)}`)
+          console.warn(`[AI_REPLY] [GATILHO_OK] Erro no envio do documento: ${String(docErr)}`)
         }
       }
 
-      // Registro da mensagem de resposta da IA na coleção conversations
+      // Registro de estatística do ebook para o painel /atendimentos
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const logRec = new Record(logsCol)
+        logRec.set('user_id', userId || '')
+        logRec.set('type', 'whatsapp_ai_send')
+        logRec.set(
+          'message',
+          docSendSuccess
+            ? 'Documento Ebook Vistage entregue com sucesso via WhatsApp'
+            : 'Falha no envio do documento Ebook Vistage; agendado retry em 2min',
+        )
+        logRec.set(
+          'details',
+          JSON.stringify({
+            customer_id: customerId,
+            customer_name: customer.getString('name') || '',
+            phone: toPhoneClean,
+            wamid: docWamid,
+            status: docSendSuccess ? 'sent' : 'failed',
+            task_type: 'ebook_send',
+          }),
+        )
+        $app.saveNoValidate(logRec)
+      } catch (_) {}
+
+      // Se falhou o envio do anexo, cria tarefa de retry em ~2 minutos na fila
+      if (!docSendSuccess) {
+        try {
+          const tasksCol = $app.findCollectionByNameOrId('regua_ok_tasks')
+          const retryTask = new Record(tasksCol)
+          retryTask.set('customer_id', customerId)
+          retryTask.set('user_id', userId || '')
+          retryTask.set('task_type', 'ebook_retry')
+          retryTask.set('status', 'pending')
+          retryTask.set(
+            'scheduled_at',
+            new Date(Date.now() + 2 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19),
+          )
+          retryTask.set('attempts', 1)
+          retryTask.set('last_error', 'Falha no envio inicial do documento via WhatsApp')
+          $app.saveNoValidate(retryTask)
+          console.log(
+            `[AI_REPLY] [GATILHO_OK] Tarefa de retry do ebook agendada em 2min para customer=${customerId}`,
+          )
+        } catch (tErr) {
+          console.warn(`[AI_REPLY] [GATILHO_OK] Erro ao agendar ebook_retry: ${String(tErr)}`)
+        }
+      } else {
+        // Se sucesso confirmado, agenda a continuidade para daqui a ~10 minutos
+        try {
+          const tasksCol = $app.findCollectionByNameOrId('regua_ok_tasks')
+          const contTask = new Record(tasksCol)
+          contTask.set('customer_id', customerId)
+          contTask.set('user_id', userId || '')
+          contTask.set('task_type', 'continuidade')
+          contTask.set('status', 'pending')
+
+          // Regra do Mauro: envio somente na janela 8h-18h (Brasília)
+          const nowUtc = new Date()
+          const brDate = new Date(nowUtc.getTime() - 3 * 3600 * 1000)
+          const brHour = brDate.getUTCHours()
+          let schedIso = ''
+          if (brHour >= 8 && brHour < 18) {
+            schedIso = new Date(Date.now() + 10 * 60 * 1000)
+              .toISOString()
+              .replace('T', ' ')
+              .substring(0, 19)
+          } else {
+            const nextDay = new Date(Date.now() + 24 * 3600 * 1000)
+            nextDay.setUTCHours(11, 0, 0, 0) // 08:00 BRT
+            schedIso = nextDay.toISOString().replace('T', ' ').substring(0, 19)
+          }
+
+          contTask.set('scheduled_at', schedIso)
+          contTask.set('attempts', 0)
+          $app.saveNoValidate(contTask)
+          console.log(
+            `[AI_REPLY] [GATILHO_OK] Continuidade agendada para customer=${customerId} em ${schedIso}`,
+          )
+        } catch (cErr) {
+          console.warn(`[AI_REPLY] [GATILHO_OK] Erro ao agendar continuidade: ${String(cErr)}`)
+        }
+      }
+
+      // Registro da conversa no histórico
       try {
         const convCol = $app.findCollectionByNameOrId('conversations')
-        const immediateConvRec = new Record(convCol)
-        immediateConvRec.set('customer_id', customerId)
-        immediateConvRec.set('user_id', userId || '')
-        immediateConvRec.set('channel', 'whatsapp')
-        immediateConvRec.set('sender', 'ai')
-        immediateConvRec.set(
+        const convRec = new Record(convCol)
+        convRec.set('customer_id', customerId)
+        convRec.set('user_id', userId || '')
+        convRec.set('channel', 'whatsapp')
+        convRec.set('sender', 'ai')
+        convRec.set(
           'content',
-          `[GATILHO "SIM" EXECUTADO — EBOOK VISTAGE ENTREGUE]\n${vistageShortText}\n\nArquivo: ${ebookFileName} (${docSendSuccess ? 'Anexo WhatsApp' : 'Link Fallback'})\nLink: ${ebookFileUrl}`,
+          `${confirmShortMsg}\n\n[EBOOK VISTAGE RESIDENCE ENTREGUE]\nArquivo: ${ebookFileName}\nLink: ${ebookFileUrl}`,
         )
-        $app.saveNoValidate(immediateConvRec)
-      } catch (cErr) {
-        console.warn(
-          `[AI_REPLY] [GATILHO_SIM] Aviso ao salvar conversa de resposta: ${String(cErr)}`,
-        )
-      }
+        $app.saveNoValidate(convRec)
+      } catch (_) {}
 
       // Atualiza o cliente: avança para estágio de Apresentação (3), tira da régua e marca respondido
       try {
@@ -2842,49 +3090,16 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         customer.set('persistence_status', 'respondido')
         customer.set('last_contact_at', nowIsoDate)
         customer.set('last_sent_at', nowIsoDate)
-        // Próximo toque da régua agendado para 24h caso o cliente pare após receber o ebook
+        // Próximo toque de segurança em 24h
         const nextFollowUpIso = new Date(Date.now() + 24 * 3600 * 1000)
           .toISOString()
           .replace('T', ' ')
           .substring(0, 19)
         customer.set('next_follow_up_at', nextFollowUpIso)
         $app.saveNoValidate(customer)
+      } catch (_) {}
 
-        // Log detalhado do sucesso no system_logs
-        try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const simLog = new Record(logsCol)
-          simLog.set('user_id', userId || '')
-          simLog.set('type', 'regua_gatilho_sim_ebook_delivered')
-          simLog.set(
-            'message',
-            `Lead respondeu "${custIncomingMsg}" à régua de retomada. Ebook Vistage entregue com sucesso (${docSendSuccess ? 'PDF Anexo' : 'Link Fallback'}).`,
-          )
-          simLog.set(
-            'details',
-            JSON.stringify({
-              customer_id: customerId,
-              customer_name: customer.getString('name') || '',
-              customer_phone: customer.getString('phone') || '',
-              incoming_message: custIncomingMsg,
-              ebook_filename: ebookFileName,
-              ebook_url: ebookFileUrl,
-              doc_sent_as_attachment: docSendSuccess,
-            }),
-          )
-          $app.saveNoValidate(simLog)
-        } catch (_) {}
-
-        console.log(
-          `[AI_REPLY] [GATILHO_SIM] Lead ${customerId} avançado para Apresentação, follow_up_step='d1', persistence_status='respondido'. Concluído com sucesso.`,
-        )
-      } catch (updCustErr) {
-        console.warn(
-          `[AI_REPLY] [GATILHO_SIM] Erro ao atualizar status do cliente: ${String(updCustErr)}`,
-        )
-      }
-
-      // Interceptor executado com sucesso: encerra o processamento desta mensagem sem acionar $ai.chat
+      // Encerra interceptor sem passar pelo LLM
       return
     }
 

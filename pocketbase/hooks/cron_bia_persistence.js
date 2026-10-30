@@ -566,12 +566,13 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   // 8. PARSER DE VARIANTES DA RÉGUA EXTRAÍDO DINAMICAMENTE DO TEXTO ÚNICO
   // ============================================================================
   function extractTemplatesFromConstitution(ruleText) {
-    // 3 VERSÕES APROVADAS PELO MAURO (VERBATIM, COM SAUDAÇÃO DINÂMICA)
+    // 4 TEXTOS APROVADOS PELO MAURO PARA A RÉGUA DE RETOMADA (VERBATIM)
     var defaultTemplates = {
       remarketing: [
-        'Bia da BRF Imóveis — {SAUDACAO}! Pensando em você, guardei o Vistage Residence, em Barreiros (Grande Florianópolis): 2 dorm a partir de R$ 623.110 e 3 dorm a partir de R$ 965.615, com 15% de ato e saldo em até 60x. Um lançamento com lazer completo, vista privilegiada e entrega em 2030 — e valorização já acima de 12% ao ano. Os valores sobem todo mês, então entrar agora é garantir o melhor preço. Quer ver tudo em detalhes? Responda "Sim" e eu te mando o ebook completo na hora! 🏙️',
-        'Bia da BRF Imóveis — {SAUDACAO}! Pensando em você, separei uma oportunidade que poucos ainda viram: o Vistage Residence, em Barreiros, São José — o lançamento da Grande Florianópolis. 2 dorm a partir de R$ 623.110, 15% de ato e saldo em até 60x, com lazer completo e entrega em 2030. Detalhe: a valorização da região já passa de 12% ao ano — e o preço sobe todo mês. Se faz sentido neste momento, responda "Sim" e receba o ebook com plantas, lazer, localização e condições. 📖✨',
-        'Bia da BRF Imóveis — {SAUDACAO}! Pensando em você, separei o Vistage Residence (Barreiros, Grande Florianópolis): 2 dorm a partir de R$ 623.110, 3 dorm a partir de R$ 965.615, 15% de ato e saldo em até 60x. Lançamento com entrega em 2030 e valorização acima de 12% ao ano — quem entra no lançamento compra o preço de hoje e acompanha o imóvel valer mais antes mesmo da chave. Responda "Sim" e eu te envio o ebook completo: plantas, lazer, localização e condições de pagamento. 📈',
+        'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade de investimento.\n\nSão José foi a cidade que mais valorizou imóveis residenciais em Santa Catarina em 2025, com alta de 11,31% no ano e cerca de 50% de valorização acumulada nos últimos três anos. O bairro de Barreiros concentra hoje o segundo metro quadrado mais valorizado da cidade, a R$ 9.172/m².\n\nA AJ Coelho acaba de lançar o Vistage Residence nesse endereço, e preparamos um ebook completo com plantas, valores e condições de pagamento.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
+        'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade de investimento.\n\nLevantamentos recentes apontam São José entre as três melhores cidades do país para investimento em imóveis na planta, com rentabilidade média de 19,7% ao ano. A rentabilidade de locação no município está na faixa de 5,5% ao ano, acima da média nacional.\n\nO Vistage Residence, novo lançamento da AJ Coelho em Barreiros, reúne essas condições em um único endereço. Organizamos um ebook com todas as informações do empreendimento e das unidades disponíveis.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
+        'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade.\n\nBarreiros é hoje um dos bairros mais completos de São José: acesso direto à BR-101, proximidade com Florianópolis e infraestrutura consolidada de comércio, escolas, universidades e serviços. É um endereço que une qualidade de vida e valorização constante.\n\nA AJ Coelho, com mais de 30 anos de atuação na Grande Florianópolis, lança nesse bairro o Vistage Residence: 79 apartamentos, plantas a partir de 63 m², rooftop com piscina e academia, mercado no condomínio e espaço pet.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
+        'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade.\n\nO Vistage Residence é o mais novo lançamento da AJ Coelho em Barreiros, com 79 unidades distribuídas em plantas de 2 e 3 dormitórios, apartamentos garden e cobertura de 296 m². A entrega está prevista para dezembro de 2030, com unidades a partir de R$ 608 mil — valor abaixo da média praticada no bairro.\n\nPor se tratar de lançamento, as primeiras unidades são comercializadas em condições diferenciadas. Reunimos todas as informações em um ebook exclusivo.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
       ],
       d1: [
         '{SAUDACAO} Passando para saber se você conseguiu dar uma olhada na opção{CONTEXTO_IMOVEL} ou se ficou alguma dúvida sobre a localização, planta ou fluxo inicial.',
@@ -1242,29 +1243,23 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     }
 
     if (step === 'remarketing' || step === 'nurturing_monthly') {
-      // Rotação determinística 1 -> 2 -> 3 -> 1 baseada em (seed + follow_up_count) % 3
+      // Rotação determinística entre os 4 textos da régua aprovados pelo Mauro (VERBATIM)
       var remTemplate = pickVariant(parsedTemplates.remarketing)
       var textRem = remTemplate
-      var lName = launchInfo.launchName || 'nossas novidades imobiliárias'
-      var lLoc = launchInfo.location || 'na região'
+      var clientFirstName = custName || 'tudo bem'
 
-      // REGRA DE OURO (Mauro):
-      // NENHUM link e NENHUM anexo no primeiro disparo da régua de retomada/remarketing.
-      // O PDF só é entregue mediante resposta "Sim" do cliente via interceptor.
+      // Substituição verbatim de [nome] pelo primeiro nome do cliente
+      textRem = textRem.replace(/\[nome\]/g, clientFirstName)
+
+      var lName = launchInfo.launchName || 'Vistage Residence'
+      var lLoc = launchInfo.location || 'Barreiros'
       textRem = textRem.replace(/\[LANÇAMENTO\]/g, lName)
       textRem = textRem.replace(/\[BAIRRO\/CIDADE\]/g, lLoc)
       textRem = textRem.replace(/\{MATERIAL_ANEXO\}/g, '')
       textRem = textRem.replace(/\[MATERIAL\]/g, '')
 
-      // Saudação dinâmica: substitui {SAUDACAO} por pTimeWord ("bom dia", "boa tarde", "boa noite")
-      // ou substitui greeting completo se o template esperar greeting
       if (textRem.indexOf('{SAUDACAO}') !== -1) {
         textRem = textRem.replace(/\{SAUDACAO\}/g, pTimeWord)
-      } else if (textRem.indexOf('Bia da BRF Imóveis — boa tarde!') !== -1) {
-        textRem = textRem.replace(
-          'Bia da BRF Imóveis — boa tarde!',
-          'Bia da BRF Imóveis — ' + pTimeWord + '!',
-        )
       }
 
       return textRem

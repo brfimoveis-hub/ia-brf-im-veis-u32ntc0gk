@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-30T13:21:22.849Z",
+  "generatedAt": "2026-10-30T14:27:21.630Z",
   "collections": [
     {
       "name": "users",
@@ -2830,6 +2830,83 @@
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_app_controls_key ON app_controls (key)"]
+    },
+    {
+      "name": "regua_ok_tasks",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "customer_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "customers"
+        },
+        {
+          "name": "user_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "task_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["ebook_send", "ebook_retry", "continuidade"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["pending", "sent", "canceled", "failed"]
+        },
+        {
+          "name": "scheduled_at",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "attempts",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "wamid",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_error",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sent_at",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "metadata",
+          "type": "json",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": []
     }
   ]
 }
