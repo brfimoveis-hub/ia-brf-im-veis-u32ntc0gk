@@ -38,7 +38,7 @@ import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
 import { BiaAvatar } from '@/components/common/BiaAvatar'
 import { ReguaPauseControl } from '@/components/customers/ReguaPauseControl'
 import { EbookResendModalControl } from '@/components/customers/EbookResendModalControl'
-import { WhatsAppSendStatsModal } from '@/components/chat/WhatsAppSendStatsModal'
+
 import { ImportPortalLeadModal } from '@/components/customers/ImportPortalLeadModal'
 import {
   CadenceTrackHeader,
@@ -1061,9 +1061,6 @@ export default function Atendimentos() {
             }}
           />
 
-          {/* Raio-X de Envios & Retorno dos últimos 7 dias (Visibilidade solicitada por Mauro) */}
-          <WhatsAppSendStatsModal />
-
           {/* Controle Manual URGENTE de Parar/Retomar Régua (visível tanto no desktop quanto no mobile) */}
           <ReguaPauseControl />
 
@@ -1098,12 +1095,13 @@ export default function Atendimentos() {
         </div>
       </div>
 
-      {/* PAINEL DE EVOLUÇÃO DA CADÊNCIA: Contadores de Relance e Filtro de Degrau (oculto no mobile quando conversa aberta) */}
+      {/* PAINEL DE EVOLUÇÃO DA CADÊNCIA & ESTATÍSTICA EXATA: Unificado em um único lugar (oculto no mobile quando conversa aberta) */}
       <div className={cn('pt-3 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}>
         <CadenceEvolutionPanel
           stats={cadenceStats}
           selectedStep={cadenceFilter}
           onSelectStep={setCadenceFilter}
+          onSelectCustomer={selectConversation}
         />
       </div>
 
@@ -1249,7 +1247,7 @@ export default function Atendimentos() {
         >
           {selectedCustomerId ? (
             <>
-              {/* a) Cabeçalho (flex-shrink:0): botão voltar + nome do cliente + selo de versão v0.0.1324 */}
+              {/* a) Cabeçalho (flex-shrink:0): botão voltar + nome do cliente + selo de versão v0.0.1325 */}
               <div className="p-2 sm:p-3 md:p-4 border-b bg-white dark:bg-slate-900 flex items-center justify-between gap-2 sm:gap-3 shrink-0 flex-shrink-0 z-10">
                 <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                   {/* Botão de voltar visível no mobile com destaque amigável estilo WhatsApp */}
@@ -1274,7 +1272,7 @@ export default function Atendimentos() {
                     className="md:hidden text-[9px] font-mono font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 shrink-0"
                     title="Versão do Build"
                   >
-                    v0.0.1324
+                    v0.0.1325
                   </span>
 
                   <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">

@@ -90,8 +90,21 @@ export interface UpdateSettingsPayload {
   monthly_investment_budget_brl?: number
 }
 
+export interface WhatsAppSendRecipient {
+  id: string
+  customer_id?: string
+  customer_name: string
+  customer_phone: string
+  text_preview: string
+  sent_at: string
+  status: 'enviada' | 'entregue' | 'lida' | 'falhou' | 'outro' | string
+  wamid?: string
+  step?: string
+}
+
 export interface WhatsAppSendStatsTotals {
   enviadas: number
+  clientes_distintos?: number
   entregues: number
   lidas: number
   falhas: number
@@ -108,6 +121,7 @@ export interface WhatsAppSendStatsRates {
 export interface WhatsAppSendStatsDaily {
   date: string
   enviadas: number
+  clientes_distintos?: number
   entregues: number
   lidas: number
   falhas: number
@@ -123,6 +137,7 @@ export interface WhatsAppSendStatsResponse {
   totals: WhatsAppSendStatsTotals
   rates_percent: WhatsAppSendStatsRates
   daily_history: WhatsAppSendStatsDaily[]
+  recipients?: WhatsAppSendRecipient[]
 }
 
 export const getWhatsAppSendStats = async (): Promise<WhatsAppSendStatsResponse> => {
