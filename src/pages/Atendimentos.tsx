@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { type Conversation, getConversations } from '@/services/conversations'
 import { type Customer, getCustomer } from '@/services/customers'
 import { cn, formatPhone } from '@/lib/utils'
@@ -310,6 +311,8 @@ function isReguaAutomatedMessage(msg: Conversation): boolean {
 
 export default function Atendimentos() {
   const { user } = useAuth()
+  const isMobile = useIsMobile()
+  const [mobileViewportHeight, setMobileViewportHeight] = useState<number | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedCustomerIdFromUrl = searchParams.get('cliente')
 
@@ -335,6 +338,34 @@ export default function Atendimentos() {
   const [visibleCount, setVisibleCount] = useState<number>(50)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Gerenciador de altura visível do teclado e gestos mobile (visualViewport API)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const updateViewportHeight = () => {
+      if (window.visualViewport) {
+        setMobileViewportHeight(window.visualViewport.height)
+      } else {
+        setMobileViewportHeight(window.innerHeight)
+      }
+    }
+    updateViewportHeight()
+
+    const vv = window.visualViewport
+    if (vv) {
+      vv.addEventListener('resize', updateViewportHeight)
+      vv.addEventListener('scroll', updateViewportHeight)
+      return () => {
+        vv.removeEventListener('resize', updateViewportHeight)
+        vv.removeEventListener('scroll', updateViewportHeight)
+      }
+    } else {
+      window.addEventListener('resize', updateViewportHeight)
+      return () => {
+        window.removeEventListener('resize', updateViewportHeight)
+      }
+    }
+  }, [])
 
   // Sincroniza query param com selectedCustomerId
   useEffect(() => {
@@ -978,11 +1009,12 @@ export default function Atendimentos() {
     <div
       className={cn(
         'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full',
-        // No celular com conversa aberta: ocupa exatamente 100% da altura do main (100dvh) sem margens negativas nem paddings, garantindo tela cheia como WhatsApp
-        // No celular sem conversa aberta: lista de conversas com scroll normal
-        // No desktop: mantém h-[calc(100vh-5rem)] com margins e paddings idênticos à bancada atual
+        // No celular com conversa aberta: o chat passa a ser renderizado em overlay fixed de tela cheia (estilo WhatsApp Web mobile),
+        // eliminando de raiz qualquer conflito com os containers pais (Layout, main, scrollbars).
+        // No celular sem conversa aberta: lista de conversas com scroll normal.
+        // No desktop: mantém h-[calc(100vh-5rem)] com margins e paddings idênticos à bancada atual.
         selectedCustomerId
-          ? 'h-full md:h-[calc(100vh-5rem)] m-0 md:-m-8 p-0 md:p-6 overflow-hidden'
+          ? 'h-full md:h-[calc(100vh-5rem)] m-0 md:-m-8 p-3 md:p-6 overflow-hidden'
           : 'h-full min-h-[calc(100dvh-4rem)] md:h-[calc(100vh-5rem)] m-0 md:-m-8 p-3 md:p-6 overflow-hidden md:overflow-y-auto',
       )}
     >
@@ -1026,7 +1058,7 @@ export default function Atendimentos() {
           {/* Raio-X de Envios & Retorno dos últimos 7 dias (Visibilidade solicitada por Mauro) */}
           <WhatsAppSendStatsModal />
 
-          {/* Controle Manual URGENTE de Parar/Retomar Régua */}
+          {/* Controle Manual URGENTE de Parar/Retomar Régua (visível tanto no desktop quanto no mobile) */}
           <ReguaPauseControl />
 
           {/* Controle de Reenvio Dirigido de E-book (Modo Contínuo intocado) */}
@@ -1197,14 +1229,24 @@ export default function Atendimentos() {
           </ScrollArea>
         </div>
 
-        {/* Painel Direito: Chat do Cliente Selecionado */}
+        {/* Painel Direito: Chat do Cliente Selecionado
+            No mobile: overlay fixo em tela cheia (fixed inset-0 z-50), cobrindo toda a viewport independente de containers pais ou Layout.
+            No desktop: painel flex-1 padrão ao lado da lista, sem overlay, preservado pixel a pixel.
+        */}
         <div
           className={cn(
-            'flex-1 flex flex-col bg-white dark:bg-slate-900 overflow-hidden min-h-0 h-full',
-            // No mobile sem bordas/arredondamento para preencher como WhatsApp nativo; no desktop mantém card
-            'rounded-none md:rounded-xl border-0 md:border shadow-none md:shadow-sm',
-            !selectedCustomerId ? 'hidden md:flex' : 'flex',
+            'flex flex-col bg-white dark:bg-slate-900 overflow-hidden',
+            // Mobile quando selecionado: fixed inset-0 z-50 estilo WhatsApp Web Mobile nativo
+            // Desktop: flex-1 rounded-xl border shadow-sm h-full min-h-0
+            selectedCustomerId
+              ? 'fixed inset-0 z-50 md:static md:inset-auto md:z-auto md:flex-1 md:rounded-xl md:border md:shadow-sm md:h-full md:min-h-0 flex'
+              : 'hidden md:flex md:flex-1 md:rounded-xl md:border md:shadow-sm md:h-full md:min-h-0',
           )}
+          style={
+            isMobile && selectedCustomerId
+              ? { height: mobileViewportHeight ? `${mobileViewportHeight}px` : '100dvh' }
+              : undefined
+          }
         >
           {selectedCustomerId ? (
             <>
@@ -1233,7 +1275,7 @@ export default function Atendimentos() {
                     className="md:hidden text-[9px] font-mono text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 shrink-0"
                     title="Versão do Build"
                   >
-                    v1322
+                    v1323
                   </span>
 
                   <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">
@@ -1501,7 +1543,7 @@ export default function Atendimentos() {
                 </div>
               </div>
               {/* Barra de envio estilo WhatsApp no rodapé (mobile e desktop) com safe area inset real do Android/iOS */}
-              <div className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0 sticky bottom-0 z-30 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <div className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0 sticky bottom-0 z-30 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
                 <form
                   onSubmit={handleSendMessage}
                   className="flex items-center gap-1.5 sm:gap-2 max-w-4xl mx-auto"

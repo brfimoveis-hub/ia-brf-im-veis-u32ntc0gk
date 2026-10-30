@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Bug, AlertCircle, Trash2 } from 'lucide-react'
+import { ReguaPauseControl } from '@/components/customers/ReguaPauseControl'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
@@ -49,7 +50,7 @@ export function BugScanner({ className }: { className?: string }) {
             </span>
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700">
-                v0.0.1322
+                v0.0.1323
               </span>
               {errors.length > 0 && (
                 <Button variant="ghost" size="sm" onClick={handleClear}>
@@ -61,6 +62,23 @@ export function BugScanner({ className }: { className?: string }) {
           </SheetTitle>
         </SheetHeader>
 
+        {/* Freio de Emergência: Parar/Retomar Envios da Régua Automática */}
+        <div className="mt-3 p-3 rounded-lg border bg-amber-500/10 border-amber-500/30 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+              <span>⏸️ Freio de Envio da Bia</span>
+            </span>
+            <span className="text-[10px] text-amber-700 dark:text-amber-300 font-medium">
+              Controle Geral
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-800 dark:text-amber-200/90 leading-tight">
+            Interrompa ou retome o disparo de novas mensagens automáticas (régua/remarketing) com um
+            clique. Respostas a clientes continuam normais.
+          </p>
+          <ReguaPauseControl />
+        </div>
+
         {/* Card de versão e limpeza de cache para confirmação do usuário */}
         <div className="mt-3 p-3 rounded-lg border bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800 space-y-2">
           <div className="flex items-center justify-between text-xs">
@@ -68,7 +86,7 @@ export function BugScanner({ className }: { className?: string }) {
               Build atual em execução:
             </span>
             <span className="font-bold font-mono text-emerald-700 dark:text-emerald-400">
-              v0.0.1322
+              v0.0.1323
             </span>
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
@@ -91,12 +109,12 @@ export function BugScanner({ className }: { className?: string }) {
                 })
               }
               const url = new URL(window.location.href)
-              url.searchParams.set('_v', '1322')
+              url.searchParams.set('_v', '1323')
               window.location.href = url.toString()
             }}
             className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs"
           >
-            Limpar Cache & Recarregar v0.0.1322
+            Limpar Cache & Recarregar v0.0.1323
           </Button>
         </div>
         <div className="mt-4 space-y-2">
