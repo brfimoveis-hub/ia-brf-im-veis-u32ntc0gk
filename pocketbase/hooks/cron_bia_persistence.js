@@ -60,8 +60,57 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     }
 
     if (!text || typeof text !== 'string') return false
-    var cleaned = cleanWhatsAppFormat(text)
+    var isRemarketingStep = stepName === 'remarketing' || stepName === 'nurturing_monthly'
+    var cleaned = cleanWhatsAppFormat(text, isRemarketingStep)
     if (!cleaned || cleaned.length < 5) return false
+
+    // REGRA DE INTEGRIDADE RÍGIDA (Mauro):
+    // Se for passo de remarketing/retomada, o texto DEVE ser integral e conter
+    // os marcos obrigatórios de fechamento ("responder OK" e "responda NÃO").
+    // Se qualquer anomalia cortar o texto, FALHAR RUIDOSAMENTE em vez de enviar mensagem quebrada!
+    if (isRemarketingStep) {
+      var hasOkGate =
+        cleaned.indexOf('responder OK') !== -1 || cleaned.indexOf('responda OK') !== -1
+      var hasNaoGate =
+        cleaned.indexOf('responda NÃO') !== -1 || cleaned.indexOf('responda NAO') !== -1
+      var isFullLength = cleaned.length >= 350
+      if (!hasOkGate || !hasNaoGate || !isFullLength) {
+        console.error(
+          '[BIA_PERSISTENCE] FALHA GRAVE DE INTEGRIDADE: Tentativa de disparo de mensagem de remarketing incompleta/truncada para ' +
+            customer.id +
+            ' (tam: ' +
+            cleaned.length +
+            ', hasOk: ' +
+            hasOkGate +
+            ', hasNao: ' +
+            hasNaoGate +
+            '). ENVIO ABORTADO!',
+        )
+        try {
+          var errLogsCol = app.findCollectionByNameOrId('system_logs')
+          var errLogRec = new Record(errLogsCol)
+          errLogRec.set('user_id', userRecord ? userRecord.id : '')
+          errLogRec.set('type', 'whatsapp_ai_send_error')
+          errLogRec.set(
+            'message',
+            'Bloqueio de integridade: texto de remarketing incompleto para ' +
+              (customer.getString('phone') || customer.id),
+          )
+          errLogRec.set(
+            'payload',
+            JSON.stringify({
+              customer_id: customer.id,
+              step: stepName,
+              text_length: cleaned.length,
+              preview: cleaned.substring(0, 150),
+              error: 'MENSAGEM_TRUNCADA_OU_SEM_GATES',
+            }),
+          )
+          app.saveNoValidate(errLogRec)
+        } catch (_) {}
+        return false
+      }
+    }
 
     var customerId = customer.id
     var toPhone = customer.getString('phone') || customer.get('phone') || ''
@@ -303,7 +352,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   // ============================================================================
   // 2. FORMATAÇÃO E SANITIZAÇÃO DE TEXTO DO WHATSAPP
   // ============================================================================
-  function cleanWhatsAppFormat(text) {
+  function cleanWhatsAppFormat(text, isRemarketing) {
     if (!text || typeof text !== 'string') return ''
     var out = text
 
@@ -329,9 +378,12 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     // Normaliza quebras triplas
     out = out.replace(/\n{3,}/g, '\n\n')
 
-    // Limite de 800 caracteres para follow-up consultivo
-    if (out.length > 800) {
-      var truncated = out.substring(0, 800)
+    // REGRA DE OURO (Mauro):
+    // Os 4 textos de Remarketing/Retomada aprovados têm entre 800 e 1100 caracteres.
+    // NUNCA truncar textos de remarketing/retomada!
+    // Para follow-ups curtos (D+1, D+3...), manter limite de segurança alto (1500 chars).
+    if (!isRemarketing && out.length > 1500) {
+      var truncated = out.substring(0, 1500)
       var lastPeriod = Math.max(
         truncated.lastIndexOf('.\n'),
         truncated.lastIndexOf('!\n'),
@@ -339,7 +391,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
         truncated.lastIndexOf('\n\n'),
         truncated.lastIndexOf('.'),
       )
-      if (lastPeriod > 500) {
+      if (lastPeriod > 1000) {
         out = truncated.substring(0, lastPeriod + 1).trim()
       } else {
         out = truncated.trim() + '...'
@@ -565,15 +617,17 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   // ============================================================================
   // 8. PARSER DE VARIANTES DA RÉGUA EXTRAÍDO DINAMICAMENTE DO TEXTO ÚNICO
   // ============================================================================
+  // OS 4 TEXTOS APROVADOS PELO MAURO PARA A RÉGUA DE RETOMADA (VERBATIM E CANÔNICOS)
+  var CANONICAL_MAURO_REMARKETING_TEMPLATES = [
+    'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade de investimento.\n\nSão José foi a cidade que mais valorizou imóveis residenciais em Santa Catarina em 2025, com alta de 11,31% no ano e cerca de 50% de valorização acumulada nos últimos três anos. O bairro de Barreiros concentra hoje o segundo metro quadrado mais valorizado da cidade, a R$ 9.172/m².\n\nA AJ Coelho acaba de lançar o Vistage Residence nesse endereço, e preparamos um ebook completo com plantas, valores e condições de pagamento.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
+    'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade de investimento.\n\nLevantamentos recentes apontam São José entre as três melhores cidades do país para investimento em imóveis na planta, com rentabilidade média de 19,7% ao ano. A rentabilidade de locação no município está na faixa de 5,5% ao ano, acima da média nacional.\n\nO Vistage Residence, novo lançamento da AJ Coelho em Barreiros, reúne essas condições em um único endereço. Organizamos um ebook com todas as informações do empreendimento e das unidades disponíveis.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
+    'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade.\n\nBarreiros é hoje um dos bairros mais completos de São José: acesso direto à BR-101, proximidade com Florianópolis e infraestrutura consolidada de comércio, escolas, universidades e serviços. É um endereço que une qualidade de vida e valorização constante.\n\nA AJ Coelho, com mais de 30 anos de atuação na Grande Florianópolis, lança nesse bairro o Vistage Residence: 79 apartamentos, plantas a partir de 63 m², rooftop com piscina e academia, mercado no condomínio e espaço pet.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
+    'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade.\n\nO Vistage Residence é o mais novo lançamento da AJ Coelho em Barreiros, com 79 unidades distribuídas em plantas de 2 e 3 dormitórios, apartamentos garden e cobertura de 296 m². A entrega está prevista para dezembro de 2030, com unidades a partir de R$ 608 mil — valor abaixo da média praticada no bairro.\n\nPor se tratar de lançamento, as primeiras unidades são comercializadas em condições diferenciadas. Reunimos todas as informações em um ebook exclusivo.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
+  ]
+
   function extractTemplatesFromConstitution(ruleText) {
-    // 4 TEXTOS APROVADOS PELO MAURO PARA A RÉGUA DE RETOMADA (VERBATIM)
     var defaultTemplates = {
-      remarketing: [
-        'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade de investimento.\n\nSão José foi a cidade que mais valorizou imóveis residenciais em Santa Catarina em 2025, com alta de 11,31% no ano e cerca de 50% de valorização acumulada nos últimos três anos. O bairro de Barreiros concentra hoje o segundo metro quadrado mais valorizado da cidade, a R$ 9.172/m².\n\nA AJ Coelho acaba de lançar o Vistage Residence nesse endereço, e preparamos um ebook completo com plantas, valores e condições de pagamento.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
-        'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade de investimento.\n\nLevantamentos recentes apontam São José entre as três melhores cidades do país para investimento em imóveis na planta, com rentabilidade média de 19,7% ao ano. A rentabilidade de locação no município está na faixa de 5,5% ao ano, acima da média nacional.\n\nO Vistage Residence, novo lançamento da AJ Coelho em Barreiros, reúne essas condições em um único endereço. Organizamos um ebook com todas as informações do empreendimento e das unidades disponíveis.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
-        'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade.\n\nBarreiros é hoje um dos bairros mais completos de São José: acesso direto à BR-101, proximidade com Florianópolis e infraestrutura consolidada de comércio, escolas, universidades e serviços. É um endereço que une qualidade de vida e valorização constante.\n\nA AJ Coelho, com mais de 30 anos de atuação na Grande Florianópolis, lança nesse bairro o Vistage Residence: 79 apartamentos, plantas a partir de 63 m², rooftop com piscina e academia, mercado no condomínio e espaço pet.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
-        'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de entrar em contato para mais esta oportunidade.\n\nO Vistage Residence é o mais novo lançamento da AJ Coelho em Barreiros, com 79 unidades distribuídas em plantas de 2 e 3 dormitórios, apartamentos garden e cobertura de 296 m². A entrega está prevista para dezembro de 2030, com unidades a partir de R$ 608 mil — valor abaixo da média praticada no bairro.\n\nPor se tratar de lançamento, as primeiras unidades são comercializadas em condições diferenciadas. Reunimos todas as informações em um ebook exclusivo.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro.',
-      ],
+      remarketing: CANONICAL_MAURO_REMARKETING_TEMPLATES.slice(),
       d1: [
         '{SAUDACAO} Passando para saber se você conseguiu dar uma olhada na opção{CONTEXTO_IMOVEL} ou se ficou alguma dúvida sobre a localização, planta ou fluxo inicial.',
         '{SAUDACAO} Lembrei da sua busca imobiliária e separei novidades na região que você procurou — quer que eu te conte o que encontrei?',
@@ -600,10 +654,13 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       return defaultTemplates
     }
 
-    function extractVariantsForSection(sectionHeaderRegex) {
+    // Parser robusto para blocos multilinhas de variantes
+    function extractMultiLineVariants(sectionHeaderRegex) {
       var lines = ruleText.split('\n')
       var inSection = false
       var list = []
+      var currentBlock = null
+
       for (var i = 0; i < lines.length; i++) {
         var line = lines[i]
         if (sectionHeaderRegex.test(line)) {
@@ -611,33 +668,82 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
           continue
         }
         if (inSection) {
-          if (line.match(/^(\s*-\s*Degrau|\s*•|\s*\d+\.)/i) && !line.match(/VARIANTE/i)) {
+          // Fim da seção ao encontrar próximo degrau ou item numerado fora de variante
+          if (line.match(/^(\s*-\s*Degrau|\s*###|\s*##)/i) && !line.match(/VARIANTE/i)) {
+            if (currentBlock) {
+              list.push(currentBlock.trim())
+              currentBlock = null
+            }
             break
           }
-          var vMatch = line.match(/\[VARIANTE\s*\d+\]\s*:\s*["“]?([^"”\n]+)["”]?/i)
-          if (vMatch && vMatch[1]) {
-            var rawT = vMatch[1].trim()
-            if (rawT.length > 10) list.push(rawT)
+
+          // Início de nova variante: [VARIANTE X ...] ou VARIANTE X
+          var vStartMatch = line.match(
+            /(?:\[VARIANTE\s*\d+[^\]]*\]|VARIANTE\s*\d+[^:]*)\s*:\s*(.*)/i,
+          )
+          if (vStartMatch) {
+            if (currentBlock) {
+              list.push(currentBlock.trim())
+            }
+            var firstLine = (vStartMatch[1] || '').trim()
+            // Remove aspas de abertura se houver
+            firstLine = firstLine.replace(/^["“]/, '')
+            currentBlock = firstLine
+          } else if (currentBlock !== null) {
+            // Continuação do bloco multilinha da variante atual
+            var cleanLine = line
+            // Se encontrar aspas de fechamento no final da linha
+            if (cleanLine.endsWith('"') || cleanLine.endsWith('”')) {
+              cleanLine = cleanLine.substring(0, cleanLine.length - 1)
+            }
+            currentBlock += '\n' + cleanLine
           }
         }
       }
-      return list.length > 0 ? list : null
+
+      if (currentBlock) {
+        list.push(currentBlock.trim())
+      }
+
+      var filtered = []
+      for (var j = 0; j < list.length; j++) {
+        var item = list[j]
+          .replace(/^["“]/, '')
+          .replace(/["”]$/, '')
+          .trim()
+        // Uma variante da régua precisa ter pelo menos 250 caracteres (corpo completo aprovado por Mauro)
+        if (item.length >= 250) {
+          filtered.push(item)
+        }
+      }
+
+      return filtered.length > 0 ? filtered : null
     }
 
     try {
-      var rem = extractVariantsForSection(
+      var rem = extractMultiLineVariants(
         /(?:Degrau\s*Remarketing|Rotação\s*Determinística|Versões\s*Aprovadas)/i,
       )
-      if (rem && rem.length >= 3) defaultTemplates.remarketing = rem
-      var d1s = extractVariantsForSection(/Degrau\s*D\+1/i)
-      if (d1s) defaultTemplates.d1 = d1s
-      var d3s = extractVariantsForSection(/Degrau\s*D\+3/i)
-      if (d3s) defaultTemplates.d3 = d3s
-      var d7s = extractVariantsForSection(/Degrau\s*D\+7/i)
-      if (d7s) defaultTemplates.d7 = d7s
-      var d14s = extractVariantsForSection(/Degrau\s*D\+14/i)
-      if (d14s) defaultTemplates.d14 = d14s
-    } catch (_) {}
+      // SÓ aceita sobrescrever se cada variante tiver texto substancial e corpo completo
+      if (rem && rem.length >= 3) {
+        var allComplete = true
+        for (var k = 0; k < rem.length; k++) {
+          if (rem[k].length < 250 || rem[k].indexOf('responder OK') === -1) {
+            allComplete = false
+            break
+          }
+        }
+        if (allComplete) {
+          defaultTemplates.remarketing = rem
+        } else {
+          console.warn(
+            '[BIA_PERSISTENCE] Variantes extraídas do Texto Único incompletas. Mantendo canônicos de Mauro.',
+          )
+        }
+      }
+    } catch (parseErr) {
+      console.warn('[BIA_PERSISTENCE] Erro no parser de variantes: ' + parseErr.message)
+    }
 
     return defaultTemplates
   }
@@ -1244,12 +1350,28 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
 
     if (step === 'remarketing' || step === 'nurturing_monthly') {
       // Rotação determinística entre os 4 textos da régua aprovados pelo Mauro (VERBATIM)
-      var remTemplate = pickVariant(parsedTemplates.remarketing)
+      var variantsToUse =
+        parsedTemplates && parsedTemplates.remarketing && parsedTemplates.remarketing.length >= 3
+          ? parsedTemplates.remarketing
+          : CANONICAL_MAURO_REMARKETING_TEMPLATES
+      var remTemplate = pickVariant(variantsToUse)
+      if (!remTemplate || remTemplate.length < 250) {
+        remTemplate = CANONICAL_MAURO_REMARKETING_TEMPLATES[0]
+      }
       var textRem = remTemplate
-      var clientFirstName = custName || 'tudo bem'
 
-      // Substituição verbatim de [nome] pelo primeiro nome do cliente
-      textRem = textRem.replace(/\[nome\]/g, clientFirstName)
+      // REGRA DE OURO (Mauro):
+      // Substituição do placeholder [nome]:
+      // - Se o cliente tiver nome real identificado: "Olá, João. Sou a Bia..."
+      // - Se o cliente NÃO tiver nome real (ex: sem nome, número): "Olá! Sou a Bia..."
+      // JAMAIS gerar texto seco como "Olá, tudo bem. Sou a Bia..." sem o restante do corpo!
+      if (custName) {
+        textRem = textRem.replace(/Olá,\s*\[nome\]\./gi, 'Olá, ' + custName + '.')
+        textRem = textRem.replace(/\[nome\]/g, custName)
+      } else {
+        textRem = textRem.replace(/Olá,\s*\[nome\]\./gi, 'Olá!')
+        textRem = textRem.replace(/\[nome\]/g, '')
+      }
 
       var lName = launchInfo.launchName || 'Vistage Residence'
       var lLoc = launchInfo.location || 'Barreiros'
