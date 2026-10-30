@@ -128,7 +128,7 @@ export default function Layout() {
             </span>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-800">
-                v0.0.1322
+                v0.0.1324
               </span>
               <span className="text-[10px] text-slate-400 truncate max-w-[100px]">
                 {currentUser?.email}
@@ -180,7 +180,7 @@ export default function Layout() {
           <div className="font-semibold text-lg flex items-center gap-2">
             <span>BRF IA CRM</span>
             <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
-              v0.0.1322
+              v0.0.1324
             </span>
           </div>
           <div className="flex items-center gap-1">

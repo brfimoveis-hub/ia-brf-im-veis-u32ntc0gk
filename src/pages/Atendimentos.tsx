@@ -312,7 +312,7 @@ function isReguaAutomatedMessage(msg: Conversation): boolean {
 export default function Atendimentos() {
   const { user } = useAuth()
   const isMobile = useIsMobile()
-  const [mobileViewportHeight, setMobileViewportHeight] = useState<number | null>(null)
+  const [keyboardOffset, setKeyboardOffset] = useState<number>(0)
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedCustomerIdFromUrl = searchParams.get('cliente')
 
@@ -339,30 +339,26 @@ export default function Atendimentos() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Gerenciador de altura visível do teclado e gestos mobile (visualViewport API)
+  // Ajuste fino do rodapé apenas para deslocamento de teclado via visualViewport (sem alterar top/height do container)
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const updateViewportHeight = () => {
+    const updateKeyboardOffset = () => {
       if (window.visualViewport) {
-        setMobileViewportHeight(window.visualViewport.height)
+        const diff = Math.max(0, Math.round(window.innerHeight - window.visualViewport.height))
+        setKeyboardOffset(diff)
       } else {
-        setMobileViewportHeight(window.innerHeight)
+        setKeyboardOffset(0)
       }
     }
-    updateViewportHeight()
+    updateKeyboardOffset()
 
     const vv = window.visualViewport
     if (vv) {
-      vv.addEventListener('resize', updateViewportHeight)
-      vv.addEventListener('scroll', updateViewportHeight)
+      vv.addEventListener('resize', updateKeyboardOffset)
+      vv.addEventListener('scroll', updateKeyboardOffset)
       return () => {
-        vv.removeEventListener('resize', updateViewportHeight)
-        vv.removeEventListener('scroll', updateViewportHeight)
-      }
-    } else {
-      window.addEventListener('resize', updateViewportHeight)
-      return () => {
-        window.removeEventListener('resize', updateViewportHeight)
+        vv.removeEventListener('resize', updateKeyboardOffset)
+        vv.removeEventListener('scroll', updateKeyboardOffset)
       }
     }
   }, [])
@@ -566,9 +562,8 @@ export default function Atendimentos() {
     // 1. Prioriza rolar o container de scroll diretamente para o topo máximo (scrollTop = scrollHeight)
     const container = messagesScrollContainerRef.current
     if (container) {
-      if (instant) {
-        container.scrollTop = container.scrollHeight
-      } else {
+      container.scrollTop = container.scrollHeight
+      if (!instant) {
         try {
           container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
         } catch {
@@ -592,14 +587,25 @@ export default function Atendimentos() {
     if (messages.length > 0) {
       const isFirst = isFirstMessagesRenderRef.current
       isFirstMessagesRenderRef.current = false
-      // Scroll imediato (instantâneo na abertura da conversa para usuário já ver última mensagem como no WhatsApp)
-      scrollChatToBottom(isFirst)
-      // Reforço com requestAnimationFrame
-      requestAnimationFrame(() => scrollChatToBottom(isFirst))
-      // Reforço em 80ms, 200ms e 400ms para aguardar layout e avatares
-      const t1 = setTimeout(() => scrollChatToBottom(isFirst), 80)
-      const t2 = setTimeout(() => scrollChatToBottom(isFirst), 200)
-      const t3 = setTimeout(() => scrollChatToBottom(isFirst), 400)
+
+      // Chamada direta para rolagem imediata
+      const container = messagesScrollContainerRef.current
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      }
+
+      // Em requestAnimationFrame
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight
+        }
+        scrollChatToBottom(isFirst)
+      })
+
+      // Reforço em 60ms, 150ms e 350ms para aguardar renderização de bolhas e avatares
+      const t1 = setTimeout(() => scrollChatToBottom(isFirst), 60)
+      const t2 = setTimeout(() => scrollChatToBottom(isFirst), 150)
+      const t3 = setTimeout(() => scrollChatToBottom(isFirst), 350)
       return () => {
         clearTimeout(t1)
         clearTimeout(t2)
@@ -1230,28 +1236,21 @@ export default function Atendimentos() {
         </div>
 
         {/* Painel Direito: Chat do Cliente Selecionado
-            No mobile: overlay fixo em tela cheia (fixed inset-0 z-50), cobrindo toda a viewport independente de containers pais ou Layout.
+            No mobile: overlay fixo em tela cheia determinístico (fixed inset-0 z-[100] h-[100dvh] w-[100vw] flex flex-col bg-white overflow-hidden).
             No desktop: painel flex-1 padrão ao lado da lista, sem overlay, preservado pixel a pixel.
         */}
         <div
           className={cn(
             'flex flex-col bg-white dark:bg-slate-900 overflow-hidden',
-            // Mobile quando selecionado: fixed inset-0 z-50 estilo WhatsApp Web Mobile nativo
-            // Desktop: flex-1 rounded-xl border shadow-sm h-full min-h-0
             selectedCustomerId
-              ? 'fixed inset-0 z-50 md:static md:inset-auto md:z-auto md:flex-1 md:rounded-xl md:border md:shadow-sm md:h-full md:min-h-0 flex'
+              ? 'fixed inset-0 z-[100] h-[100dvh] w-[100vw] md:static md:inset-auto md:z-auto md:w-auto md:flex-1 md:rounded-xl md:border md:shadow-sm md:h-full md:min-h-0 flex'
               : 'hidden md:flex md:flex-1 md:rounded-xl md:border md:shadow-sm md:h-full md:min-h-0',
           )}
-          style={
-            isMobile && selectedCustomerId
-              ? { height: mobileViewportHeight ? `${mobileViewportHeight}px` : '100dvh' }
-              : undefined
-          }
         >
           {selectedCustomerId ? (
             <>
-              {/* Header do Chat */}
-              <div className="p-2 sm:p-3 md:p-4 border-b bg-white dark:bg-slate-900 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
+              {/* a) Cabeçalho (flex-shrink:0): botão voltar + nome do cliente + selo de versão v0.0.1324 */}
+              <div className="p-2 sm:p-3 md:p-4 border-b bg-white dark:bg-slate-900 flex items-center justify-between gap-2 sm:gap-3 shrink-0 flex-shrink-0 z-10">
                 <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                   {/* Botão de voltar visível no mobile com destaque amigável estilo WhatsApp */}
                   <Button
@@ -1270,12 +1269,12 @@ export default function Atendimentos() {
                   >
                     <ArrowLeft className="h-5 w-5" />
                   </Button>
-                  {/* Indicador discreto da versão do build no header do chat mobile */}
+                  {/* Indicador do selo de versão oficial no header do chat mobile */}
                   <span
-                    className="md:hidden text-[9px] font-mono text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 shrink-0"
+                    className="md:hidden text-[9px] font-mono font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 shrink-0"
                     title="Versão do Build"
                   >
-                    v1323
+                    v0.0.1324
                   </span>
 
                   <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">
@@ -1378,15 +1377,19 @@ export default function Atendimentos() {
                 </div>
               </div>
               {/* TRILHA DE CADÊNCIA DENTRO DA CONVERSA (Mobile-First no Topo do Chat) */}
-              <CadenceTrackHeader
-                customer={selectedCustomer}
-                fallbackCustomerName={currentThread?.customer_name}
-              />
-              {/* Área de Mensagens estilo Chat WhatsApp com container ref direto para scroll 100% confiável */}
+              <div className="shrink-0 flex-shrink-0">
+                <CadenceTrackHeader
+                  customer={selectedCustomer}
+                  fallbackCustomerName={currentThread?.customer_name}
+                />
+              </div>
+
+              {/* b) Lista de mensagens (flex:1 1 0, minHeight:0, overflowY:auto): histórico completo */}
               <div
                 ref={messagesScrollContainerRef}
-                className="flex-1 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a] min-h-0 overscroll-contain"
+                className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a] overscroll-contain"
                 style={{
+                  flex: '1 1 0%',
                   backgroundImage: 'radial-gradient(#d1c7b7 0.75px, transparent 0.75px)',
                   backgroundSize: '16px 16px',
                 }}
@@ -1542,11 +1545,34 @@ export default function Atendimentos() {
                   <div ref={messagesEndRef} />
                 </div>
               </div>
-              {/* Barra de envio estilo WhatsApp no rodapé (mobile e desktop) com safe area inset real do Android/iOS */}
-              <div className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0 sticky bottom-0 z-30 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+              {/* c) Rodapé (flex-shrink:0): nota "A Bia está ativa..." + textarea/input "Mensagem para o cliente" + botão enviar; padding-bottom: env(safe-area-inset-bottom) */}
+              <div
+                className="p-2 sm:p-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-slate-200 dark:border-slate-800 shrink-0 flex-shrink-0 z-20 flex flex-col gap-1.5"
+                style={{
+                  paddingBottom:
+                    isMobile && keyboardOffset > 0
+                      ? `${keyboardOffset}px`
+                      : 'max(0.5rem, env(safe-area-inset-bottom, 0px))',
+                }}
+              >
+                {/* Nota da Bia */}
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-[#667781] dark:text-[#8696a0] px-1 sm:px-2">
+                  <div className="flex items-center gap-1 sm:gap-1.5 truncate">
+                    <span className="flex h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <span className="truncate">
+                      A Bia está ativa respondendo automaticamente. Você pode intervir a qualquer
+                      momento.
+                    </span>
+                  </div>
+                  <div className="hidden sm:block shrink-0 ml-2">
+                    {messages.length} {messages.length === 1 ? 'mensagem' : 'mensagens'}
+                  </div>
+                </div>
+
+                {/* Form de envio com input e botão */}
                 <form
                   onSubmit={handleSendMessage}
-                  className="flex items-center gap-1.5 sm:gap-2 max-w-4xl mx-auto"
+                  className="flex items-center gap-1.5 sm:gap-2 max-w-4xl mx-auto w-full"
                 >
                   <Button
                     type="button"
@@ -1581,20 +1607,6 @@ export default function Atendimentos() {
                     )}
                   </Button>
                 </form>
-
-                {/* Sub-barra informativa sutil */}
-                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-[#667781] dark:text-[#8696a0] px-1 sm:px-2 pt-1 sm:pt-1.5">
-                  <div className="flex items-center gap-1 sm:gap-1.5 truncate">
-                    <span className="flex h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                    <span className="truncate">
-                      A Bia está ativa respondendo automaticamente. Você pode intervir a qualquer
-                      momento.
-                    </span>
-                  </div>
-                  <div className="hidden sm:block shrink-0 ml-2">
-                    {messages.length} {messages.length === 1 ? 'mensagem' : 'mensagens'}
-                  </div>
-                </div>
               </div>
             </>
           ) : (
