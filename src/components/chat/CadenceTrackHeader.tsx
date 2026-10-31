@@ -162,25 +162,31 @@ export function CadenceTrackHeader({
   const followUpCount = customer.follow_up_count ?? 0
 
   return (
-    <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white border-b border-slate-800/80 shadow-xs shrink-0 transition-all">
-      {/* Barra compacta superior (sempre visível no mobile) */}
-      <div className="px-3 py-2 flex items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
+    <div className="bg-slate-100/90 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700/80 shadow-2xs shrink-0 transition-all">
+      {/* Barra de cabeçalho legítima e reconhecível da cadência/régua (sem tarja preta) */}
+      <div className="px-3 py-1.5 flex items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0 hidden xs:inline">
+            Régua:
+          </span>
+
           {/* Badge Estágio do Funil */}
           <Badge
             variant="outline"
-            className="bg-white/10 text-slate-100 border-white/20 text-[10.5px] px-2 py-0.5 font-medium shrink-0 flex items-center gap-1"
+            className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 text-[10.5px] px-2 py-0.5 font-medium shrink-0 flex items-center gap-1 shadow-2xs"
           >
-            <Sparkles className="h-3 w-3 text-amber-400 shrink-0" />
+            <Sparkles className="h-3 w-3 text-amber-500 shrink-0" />
             <span className="truncate max-w-[130px] sm:max-w-none">{stageTitle}</span>
           </Badge>
 
           {/* Bolinha Colorida com Número do Degrau + Badge */}
-          <div className="flex items-center gap-1.5 shrink-0 bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
+          <div className="flex items-center gap-1.5 shrink-0 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs">
             <CadenceStepCircle step={customer.follow_up_step} size="sm" />
-            <span className="text-[11px] font-semibold text-white">{stepLabel}</span>
+            <span className="text-[11px] font-semibold text-slate-900 dark:text-white">
+              {stepLabel}
+            </span>
             {followUpCount > 0 && (
-              <span className="text-[9.5px] opacity-80 ml-0.5 text-slate-300">
+              <span className="text-[9.5px] opacity-80 ml-0.5 text-slate-500 dark:text-slate-400">
                 ({followUpCount}º envio)
               </span>
             )}
@@ -189,13 +195,13 @@ export function CadenceTrackHeader({
           {/* Status Ativo/Pausado */}
           <div className="flex items-center gap-1 text-[11px] font-medium shrink-0">
             {isAiPaused ? (
-              <span className="inline-flex items-center gap-1 text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-400/30">
+              <span className="inline-flex items-center gap-1 text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700">
                 <PauseCircle className="h-3 w-3" />
                 <span>Pausado</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded border border-emerald-400/30">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="inline-flex items-center gap-1 text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span>Ativo</span>
               </span>
             )}
@@ -203,10 +209,12 @@ export function CadenceTrackHeader({
 
           {/* Próximo envio no header compacto */}
           {!isAiPaused && (
-            <div className="hidden sm:flex items-center gap-1 text-slate-300 text-[11px]">
-              <Clock className="h-3 w-3 text-cyan-300" />
+            <div className="hidden sm:flex items-center gap-1 text-slate-600 dark:text-slate-300 text-[11px]">
+              <Clock className="h-3 w-3 text-cyan-600 dark:text-cyan-400" />
               <span>Próximo disparo:</span>
-              <strong className="text-white font-medium">{nextDateFormatted}</strong>
+              <strong className="text-slate-900 dark:text-white font-medium">
+                {nextDateFormatted}
+              </strong>
             </div>
           )}
         </div>
@@ -216,7 +224,7 @@ export function CadenceTrackHeader({
           variant="ghost"
           size="sm"
           onClick={() => setExpanded((prev) => !prev)}
-          className="h-6 px-1.5 text-[11px] text-slate-300 hover:text-white hover:bg-white/10 shrink-0 gap-1"
+          className="h-6 px-1.5 text-[11px] text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60 shrink-0 gap-1"
           title={expanded ? 'Recolher detalhes da cadência' : 'Ver trilha visual da cadência'}
         >
           <span className="hidden xs:inline">{expanded ? 'Ocultar trilha' : 'Ver trilha'}</span>
@@ -230,11 +238,11 @@ export function CadenceTrackHeader({
 
       {/* Painel colapsável: Trilha visual passo-a-passo e resumo dos disparos */}
       {expanded && (
-        <div className="px-3 pb-3 pt-1 border-t border-slate-700/60 bg-slate-950/40 space-y-2.5">
+        <div className="px-3 pb-2.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 space-y-2">
           {/* Trilha horizontal de degraus */}
           <div>
-            <div className="flex items-center justify-between text-[10.5px] text-slate-300 mb-1">
-              <span className="font-semibold uppercase tracking-wider text-slate-400">
+            <div className="flex items-center justify-between text-[10.5px] text-slate-600 dark:text-slate-300 mb-1">
+              <span className="font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Evolução da Régua de Retomada
               </span>
               <span>
@@ -242,7 +250,7 @@ export function CadenceTrackHeader({
               </span>
             </div>
 
-            <div className="grid grid-cols-6 gap-1 bg-slate-900/80 p-1.5 rounded-lg border border-slate-800">
+            <div className="grid grid-cols-6 gap-1 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
               {CADENCE_STEPS_CONFIG.map((cfg, idx) => {
                 const isCurrent = cfg.key === stepKey
                 const isPassed = stepIndex >= 0 && idx < stepIndex
@@ -252,18 +260,21 @@ export function CadenceTrackHeader({
                     className={cn(
                       'flex flex-col items-center justify-center p-1 rounded text-center transition-all',
                       isCurrent &&
-                        'bg-emerald-500/25 border border-emerald-400/50 text-white font-bold shadow-xs',
-                      isPassed && 'bg-slate-800/80 text-emerald-300 font-medium',
-                      !isCurrent && !isPassed && 'text-slate-400 bg-slate-950/40 opacity-70',
+                        'bg-emerald-500/20 border border-emerald-500/50 text-emerald-800 dark:text-emerald-200 font-bold shadow-2xs',
+                      isPassed &&
+                        'bg-slate-200/80 dark:bg-slate-700/80 text-emerald-700 dark:text-emerald-300 font-medium',
+                      !isCurrent &&
+                        !isPassed &&
+                        'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900/40 opacity-70',
                     )}
                   >
                     <div className="flex items-center gap-0.5 text-[10px]">
                       {isPassed ? (
-                        <CheckCircle2 className="h-2.5 w-2.5 text-emerald-400" />
+                        <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600 dark:text-emerald-400" />
                       ) : isCurrent ? (
-                        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
                       ) : (
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
                       )}
                       <span className="truncate">{cfg.shortLabel}</span>
                     </div>
@@ -274,20 +285,22 @@ export function CadenceTrackHeader({
           </div>
 
           {/* Dados operacionais: última mensagem, próxima prevista e promessas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
-            <div className="flex items-center gap-1.5 bg-slate-900/60 p-1.5 rounded border border-slate-800/80 text-slate-300">
-              <Clock className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-0.5">
+            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/80 p-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+              <Clock className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
               <div className="truncate">
-                <span className="text-slate-400 mr-1">Próximo disparo:</span>
-                <span className="font-medium text-white">{nextDateFormatted}</span>
+                <span className="text-slate-500 dark:text-slate-400 mr-1">Próximo disparo:</span>
+                <span className="font-medium text-slate-900 dark:text-white">
+                  {nextDateFormatted}
+                </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 bg-slate-900/60 p-1.5 rounded border border-slate-800/80 text-slate-300">
-              <Calendar className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/80 p-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+              <Calendar className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <div className="truncate">
-                <span className="text-slate-400 mr-1">Último disparo:</span>
-                <span className="font-medium text-white">
+                <span className="text-slate-500 dark:text-slate-400 mr-1">Último disparo:</span>
+                <span className="font-medium text-slate-900 dark:text-white">
                   {customer.last_follow_up_at
                     ? new Date(customer.last_follow_up_at).toLocaleDateString('pt-BR', {
                         day: '2-digit',
@@ -302,8 +315,8 @@ export function CadenceTrackHeader({
           </div>
 
           {customer.promise_pending && (
-            <div className="bg-amber-950/50 border border-amber-600/40 text-amber-200 p-2 rounded text-xs flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-amber-400 shrink-0" />
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 p-2 rounded text-xs flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
               <span>
                 <strong>Promessa pendente:</strong>{' '}
                 {customer.promise_context || 'Retorno prioritário com Mauro programado.'}

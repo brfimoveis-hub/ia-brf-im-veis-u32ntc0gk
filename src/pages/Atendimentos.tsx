@@ -1016,39 +1016,38 @@ export default function Atendimentos() {
   return (
     <div
       className={cn(
-        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full',
+        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full h-full',
         // No celular com conversa aberta: o chat passa a ser renderizado em overlay fixed de tela cheia (estilo WhatsApp Web mobile),
         // eliminando de raiz qualquer conflito com os containers pais (Layout, main, scrollbars).
         // No celular sem conversa aberta: lista de conversas com scroll normal.
-        // No desktop: mantém h-[calc(100vh-5rem)] com margins e paddings idênticos à bancada atual.
+        // No desktop: ocupa a altura total do container (h-full) aproveitando todo o espaço disponível, sem espaço morto embaixo.
         selectedCustomerId
-          ? 'h-full md:h-[calc(100vh-5rem)] m-0 md:-m-8 p-3 md:p-6 overflow-hidden'
-          : 'h-full min-h-[calc(100dvh-4rem)] md:h-[calc(100vh-5rem)] m-0 md:-m-8 p-3 md:p-6 overflow-hidden md:overflow-y-auto',
+          ? 'm-0 p-2 sm:p-3 md:p-4 overflow-hidden'
+          : 'min-h-[calc(100dvh-4rem)] m-0 p-3 md:p-4 overflow-hidden md:overflow-y-auto',
       )}
     >
       {/* Top Header com contadores e título - no celular só renderiza quando nenhuma conversa está aberta para liberar altura total ao chat */}
       <div
         className={cn(
-          'flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b shrink-0',
+          'flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b shrink-0',
           selectedCustomerId ? 'hidden md:flex' : 'flex',
         )}
       >
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <BiaAvatar size="md" />
-              Atendimentos da IA (Bia)
+              Central Única de Atendimentos da Bia (IA)
             </h1>
             <Badge
               variant="outline"
-              className="bg-primary/10 text-primary border-primary/20 text-xs"
+              className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-xs"
             >
               Tempo Real
             </Badge>
           </div>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Acompanhe o que a assistente virtual Bia e os corretores estão respondendo aos clientes
-            em tempo real.
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+            Ponto único de acompanhamento de conversas e intervenção de corretores em tempo real.
           </p>
         </div>
 
@@ -1123,7 +1122,7 @@ export default function Atendimentos() {
       )}
 
       {/* PAINEL DE EVOLUÇÃO DA CADÊNCIA & ESTATÍSTICA EXATA: Unificado em um único lugar (oculto no mobile quando conversa aberta) */}
-      <div className={cn('pt-3 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}>
+      <div className={cn('pt-2 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}>
         <CadenceEvolutionPanel
           stats={cadenceStats}
           selectedStep={cadenceFilter}
@@ -1136,7 +1135,7 @@ export default function Atendimentos() {
       <div
         className={cn(
           'flex flex-1 min-h-0 overflow-hidden',
-          selectedCustomerId ? 'pt-0 md:pt-3 gap-0 md:gap-4' : 'pt-3 gap-4',
+          selectedCustomerId ? 'pt-0 md:pt-2 gap-0 md:gap-3' : 'pt-2 gap-3',
         )}
       >
         {/* Painel Esquerdo: Lista de Conversas */}

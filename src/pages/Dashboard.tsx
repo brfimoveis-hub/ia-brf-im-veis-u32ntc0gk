@@ -255,12 +255,13 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base sm:text-lg flex items-center gap-2">
                 <Bot className="h-5 w-5 text-emerald-600" />
-                Central de Atendimentos (Bia)
+                Atendimentos da Bia (Conversas)
               </CardTitle>
               <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </div>
             <CardDescription className="text-xs sm:text-sm">
-              Acompanhe as conversas em tempo real estilo WhatsApp e o que a Bia está respondendo.
+              Acompanhe as conversas em tempo real estilo WhatsApp. As conversas ao vivo ficam
+              centralizadas no menu Atendimentos (IA).
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 sm:p-5 pt-0">
@@ -269,7 +270,7 @@ export default function Dashboard() {
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               size="sm"
             >
-              <Link to="/atendimentos">Abrir Painel de Atendimentos</Link>
+              <Link to="/atendimentos">Ir para Atendimentos (IA)</Link>
             </Button>
           </CardContent>
         </Card>
