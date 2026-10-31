@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-31T17:50:51.668Z",
+  "generatedAt": "2026-10-31T18:17:20.625Z",
   "collections": [
     {
       "name": "users",
@@ -2284,6 +2284,42 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "learning_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origin",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "context_customer",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "context_property",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conflict_flag",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

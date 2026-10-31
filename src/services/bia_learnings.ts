@@ -7,12 +7,24 @@ export type BiaLearningCategory =
   | 'apresentacao'
   | 'geral'
 
+export type BiaLearningType = 'ERRO' | 'ACERTO' | 'OBJECOES' | 'DUVIDA_SEM_RESPOSTA' | 'DIRETRIZ'
+
+export type BiaLearningOrigin = 'auto' | 'seed_expert' | 'manual' | 'cron_semanal'
+
+export type BiaLearningStatus = 'aprovado' | 'pendente' | 'descartado' | 'em_revisao'
+
 export interface BiaLearning {
   id: string
   user_id?: string
   title: string
   rule_text: string
   category: BiaLearningCategory
+  learning_type?: BiaLearningType
+  origin?: BiaLearningOrigin
+  status?: BiaLearningStatus
+  context_customer?: string
+  context_property?: string
+  conflict_flag?: string
   author: string
   is_active: boolean
   priority: number
@@ -26,6 +38,12 @@ export type CreateBiaLearningPayload = {
   title: string
   rule_text: string
   category?: BiaLearningCategory
+  learning_type?: BiaLearningType
+  origin?: BiaLearningOrigin
+  status?: BiaLearningStatus
+  context_customer?: string
+  context_property?: string
+  conflict_flag?: string
   author?: string
   is_active?: boolean
   priority?: number
@@ -89,4 +107,36 @@ export const markBiaLearningReviewed = async (
     last_reviewed_at: new Date().toISOString(),
     reviewed_by: reviewer,
   })
+}
+
+export const approveBiaLearning = async (id: string, reviewer = 'Mauro'): Promise<BiaLearning> => {
+  return pb.collection('bia_learnings').update<BiaLearning>(id, {
+    status: 'aprovado',
+    is_active: true,
+    last_reviewed_at: new Date().toISOString(),
+    reviewed_by: reviewer,
+  })
+}
+
+export const discardBiaLearning = async (id: string, reviewer = 'Mauro'): Promise<BiaLearning> => {
+  return pb.collection('bia_learnings').update<BiaLearning>(id, {
+    status: 'descartado',
+    is_active: false,
+    last_reviewed_at: new Date().toISOString(),
+    reviewed_by: reviewer,
+  })
+}
+
+export const triggerWeeklyReguaConsolidation = async (): Promise<{
+  success: boolean
+  message: string
+}> => {
+  const res = await fetch('/backend/v1/bia/consolidate_weekly_regua', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+  if (!res.ok) {
+    throw new Error(`Falha ao consolidar régua: ${res.statusText}`)
+  }
+  return res.json()
 }

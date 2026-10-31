@@ -879,28 +879,127 @@ onRecordAfterCreateSuccess((e) => {
     const biaInstructions = userRecord ? userRecord.getString('bia_instructions') : ''
     const motherAiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
 
-    // Carregar Caderno de Aprendizados da Bia (regras permanentes ativas do curador/Mauro - Prioridade desc: Constituição v3 = 500, foco total no imóvel = 200)
+    // Carregar Caderno de Aprendizados da Bia (Constituição v4.0 Soberana + Lições Vivas Aprovadas/Erros)
     let biaLearningsText = ''
+    let liveLessonsText = ''
     try {
-      const activeLearnings = $app.findRecordsByFilter(
+      const allActiveLearnings = $app.findRecordsByFilter(
         'bia_learnings',
         'is_active = true',
         '-priority,-created',
-        50,
+        60,
         0,
       )
-      if (activeLearnings && activeLearnings.length > 0) {
-        biaLearningsText =
-          '\n### REGRAS PERMANENTES DO CURADOR (CADERNO DE APRENDIZADOS DA BIA - SIGA SEMPRE):\n' +
-          activeLearnings
-            .map((rec, idx) => {
-              const rTitle = (rec.getString('title') || '').trim()
-              const rText = (rec.getString('rule_text') || '').trim()
-              const rAuthor = (rec.getString('author') || 'Mauro').trim()
-              const rPriority = rec.getInt('priority') || 0
-              return `${idx + 1}. [${rTitle || 'Regra Permanente'}] (Prioridade ${rPriority} - Curador: ${rAuthor}): ${rText}`
-            })
-            .join('\n\n')
+
+      if (allActiveLearnings && allActiveLearnings.length > 0) {
+        // 1. Identificar Constituição v4.0 (prioridade >= 1000 ou título com Constituição)
+        const constitutionRec = allActiveLearnings.find((r) => {
+          const prio = r.getInt('priority') || 0
+          const tit = (r.getString('title') || '').toLowerCase()
+          return prio >= 1000 || tit.includes('constituição') || tit.includes('constituicao')
+        })
+
+        if (constitutionRec) {
+          const cTitle = (constitutionRec.getString('title') || 'CONSTITUIÇÃO V4.0').trim()
+          const cText = (constitutionRec.getString('rule_text') || '').trim()
+          biaLearningsText = `\n### ${cTitle} (AUTORIDADE MÁXIMA E INTOCADA):\n${cText}\n`
+        }
+
+        // 2. Filtro e montagem do bloco "LIÇÕES VIVAS" (limite rígido <= 1500 caracteres, anti-contradição e dedup)
+        // Pedido Mauro: lições do tipo ERRO ou ACERTO/OBJECOES aprovadas entram na base viva
+        const candidateLessons = allActiveLearnings.filter((r) => {
+          if (constitutionRec && r.id === constitutionRec.id) return false
+          const lStatus = (r.getString('status') || 'aprovado').toLowerCase()
+          const lType = (r.getString('learning_type') || '').toUpperCase()
+          // Lições descartadas não entram
+          if (lStatus === 'descartado') return false
+          // Lições do tipo ERRO entram mesmo se pendentes ("aprende a não errar mais da próxima vez")
+          if (lType === 'ERRO') return true
+          // Demais categorias entram se aprovadas ou ativas sem rejeição
+          return lStatus === 'aprovado' || !lStatus
+        })
+
+        // Verificador de contradição com a Constituição v4.0
+        // Regras pétreas da Constituição: 1 pergunta por mensagem, nunca dar preço cheio antes de valorizar,
+        // apenas vendas (nunca locação), transbordo pro Mauro 99972-8050, nunca negar imóvel do catálogo.
+        const checkConflictWithConstitution = (text) => {
+          if (!text) return false
+          const low = text.toLowerCase()
+          if (
+            low.includes('pode fazer 2 perguntas') ||
+            low.includes('faça várias perguntas') ||
+            low.includes('trabalhamos com aluguel') ||
+            low.includes('trabalhamos com locação') ||
+            low.includes('passar número da bia') ||
+            low.includes('diga que não temos o imóvel') ||
+            low.includes('tabela markdown') ||
+            low.includes('enviar link logo na primeira frase')
+          ) {
+            return true
+          }
+          return false
+        }
+
+        // Deduplicação semântica simples (por palavras-chave e tokens normalizados)
+        const selectedLessons = []
+        const seenSignatures = []
+        let currentChars = 0
+        const MAX_LESSONS_CHARS = 1450 // Limite rígido seguro abaixo de 1.500 chars
+
+        for (const lesson of candidateLessons) {
+          const lTitle = (lesson.getString('title') || '').trim()
+          const lText = (lesson.getString('rule_text') || '').trim()
+          const lType = (lesson.getString('learning_type') || 'ACERTO').toUpperCase()
+          const fullLessonContent = `${lTitle} ${lText}`.toLowerCase()
+
+          // Se contradisser a Constituição, marca para revisão e pula
+          if (checkConflictWithConstitution(fullLessonContent)) {
+            console.warn(
+              `[BIA_LEARNING_LOOP] Lição "${lTitle}" [${lesson.id}] contradiz a Constituição v4.0! Bloqueada do contexto e marcada para revisão.`,
+            )
+            try {
+              if (
+                lesson.getString('status') !== 'em_revisao' ||
+                !lesson.getString('conflict_flag')
+              ) {
+                lesson.set('status', 'em_revisao')
+                lesson.set('conflict_flag', 'Contradição detectada com a Constituição v4.0')
+                $app.saveNoValidate(lesson)
+              }
+            } catch (_) {}
+            continue
+          }
+
+          // Anti-duplicação: calcula assinatura de 3 palavras-chave principais
+          const words = fullLessonContent
+            .replace(/[^\w\s]/gi, '')
+            .split(/\s+/)
+            .filter((w) => w.length > 4)
+          const signature = words.slice(0, 4).join('_')
+          if (signature && seenSignatures.includes(signature)) {
+            continue
+          }
+          seenSignatures.push(signature)
+
+          const formattedLine = `• [${lType}] ${lTitle ? `*${lTitle}*: ` : ''}${lText}`
+          if (currentChars + formattedLine.length + 10 <= MAX_LESSONS_CHARS) {
+            selectedLessons.push(formattedLine)
+            currentChars += formattedLine.length + 2
+          } else {
+            // Limite de 1.500 caracteres atingido
+            break
+          }
+        }
+
+        if (selectedLessons.length > 0) {
+          liveLessonsText =
+            `\n### LIÇÕES VIVAS (LOOP DE APRENDIZADO - MEMÓRIA DE EXPERTS E ATENDIMENTOS):\n` +
+            selectedLessons.join('\n') +
+            `\n`
+          console.log(
+            `[BIA_LEARNING_LOOP] Injetadas ${selectedLessons.length} Lições Vivas (${currentChars} caracteres, limite 1.500).`,
+          )
+        }
       }
     } catch (learningsErr) {
       console.warn(`[AI_REPLY] Error loading bia_learnings (non-fatal): ${String(learningsErr)}`)
@@ -3512,7 +3611,7 @@ Emita sempre as tags canônicas de estágio [STATUS: 1. Acolhimento .. 10. Pós-
 
 DIRETRIZ MESTRA E SOBERANA DE ATENDIMENTO:
 ${biaLearningsText}
-${personaInstructions}
+${liveLessonsText ? `${liveLessonsText}\n` : ''}${personaInstructions}
 
 ${universalCadenceInstruction}
 
@@ -3607,7 +3706,7 @@ ${safeCombinedContextText || '(Nenhum contexto adicional na base)'}`
           const minimalSystemPrompt = `Você é ${aiName}, da BRF Imóveis.
 DIRETRIZ SOBERANA:
 ${biaLearningsText}
-
+${liveLessonsText ? `${liveLessonsText}\n` : ''}
 ${safePropertyContext}`
 
           const minimalMessages = [
@@ -5647,6 +5746,132 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
     // GARANTIA ABSOLUTA: O cliente NUNCA vê colchetes nem tags de máquina no texto final enviado
     const finalCleanBody =
       typeof stripAllMachineTags === 'function' ? stripAllMachineTags(responseText) : responseText
+
+    // ======================================================================
+    // LOOP DE APRENDIZADO DA BIA: REGISTRO AUTOMÁTICO PÓS-ATENDIMENTO
+    // ======================================================================
+    try {
+      const isSystemOrBotCustomer =
+        isSystemSenderNumber ||
+        isVerificationCodeMsg ||
+        checkCustPhone.replace(/\D/g, '') === '447710173736' ||
+        /^facebook\s+business$/i.test(checkCustName)
+
+      // Apenas registrar aprendizado se NÃO for robô/automação e houver interação real com texto
+      if (!isSystemOrBotCustomer && custIncomingMsg && finalCleanBody) {
+        let detectedLearningType = ''
+        let learningReason = ''
+
+        const lowIncoming = custIncomingMsg.toLowerCase()
+        const lowReply = finalCleanBody.toLowerCase()
+
+        // 1. Falha operacional / Dúvida que ela não soube responder
+        const indicatesUnknownInfo =
+          lowReply.includes('vou confirmar esse detalhe') ||
+          lowReply.includes('vou confirmar com o diretor') ||
+          lowReply.includes('não tenho essa informação') ||
+          lowReply.includes('vou verificar com o mauro') ||
+          lowReply.includes('vou consultar a diretoria') ||
+          claimsCatalogUnavailable
+
+        // 2. Erro / descompasso / recusa do cliente detectada
+        if (isCustomerExplicitRejection || isMismatchDetected) {
+          detectedLearningType = 'ERRO'
+          learningReason = `Desalinhamento com o cliente ou recusa explícita: cliente expressou insatisfação ("${custIncomingMsg.substring(0, 80)}") e a Bia readequou o foco.`
+        } else if (indicatesUnknownInfo) {
+          detectedLearningType = 'DUVIDA_SEM_RESPOSTA'
+          learningReason = `Informação técnica solicitada pelo lead não constava expressamente no dossiê: a Bia acolheu com transparência para checagem com Mauro.`
+        } else if (
+          lowIncoming.includes('caro') ||
+          lowIncoming.includes('muito caro') ||
+          lowIncoming.includes('fora do orçamento') ||
+          lowIncoming.includes('acima do que posso') ||
+          lowIncoming.includes('não tenho essa entrada') ||
+          lowIncoming.includes('juros altos')
+        ) {
+          detectedLearningType = 'OBJECOES'
+          learningReason = `Objeção de preço/condição financeira levantada pelo lead. Bia tratou apresentando fluxo facilitado e valorização do produto.`
+        } else if (
+          stageMoved ||
+          detectedHandover ||
+          lowIncoming.includes('visita') ||
+          lowIncoming.includes('agendar') ||
+          lowIncoming.includes('gostei') ||
+          lowIncoming.includes('proposta') ||
+          lowIncoming.includes('pode mandar')
+        ) {
+          detectedLearningType = 'ACERTO'
+          learningReason = `Avanço no funil ou acolhimento bem-sucedido com interesse do cliente no imóvel.`
+        }
+
+        if (detectedLearningType) {
+          // Extrair contexto do cliente e do imóvel em foco
+          const leadContextLabel = `${displayName || customer.getString('name') || 'Cliente'} (${customerPhone || 'WhatsApp'})`
+          const propertyContextLabel = matchedLaunch
+            ? matchedLaunch.getString('name') || matchedLaunch.getString('enterprise_name') || ''
+            : targetSpecificProp
+              ? `${targetSpecificProp.getString('code') || ''} - ${targetSpecificProp.getString('title') || ''}`
+              : lastMsgPropertyCodeOrNum || 'Catálogo Geral'
+
+          // Montar resumo curto de 1 a 3 frases
+          let shortSummary = learningReason
+          if (!shortSummary) {
+            shortSummary = `Interação tratada com o cliente no imóvel ${propertyContextLabel}. Resposta gerada consultivamente conforme as diretrizes da BRF Imóveis.`
+          }
+
+          // Anti-duplicação de registros automáticos recentes do mesmo cliente no mesmo dia
+          const existingRecentLearnings = $app.findRecordsByFilter(
+            'bia_learnings',
+            `context_customer ~ '${customerId}' && learning_type = '${detectedLearningType}'`,
+            '-created',
+            1,
+            0,
+          )
+
+          let shouldRecordLearning = true
+          if (existingRecentLearnings && existingRecentLearnings.length > 0) {
+            const lastLearnTime = new Date(
+              existingRecentLearnings[0].getString('created'),
+            ).getTime()
+            const nowTime = new Date().getTime()
+            // Se já gravou aprendizado igual para o mesmo cliente nas últimas 2 horas, não duplica
+            if (nowTime - lastLearnTime < 2 * 60 * 60 * 1000) {
+              shouldRecordLearning = false
+            }
+          }
+
+          if (shouldRecordLearning) {
+            const learningsCol = $app.findCollectionByNameOrId('bia_learnings')
+            const newLearnRec = new Record(learningsCol)
+            newLearnRec.set('user_id', userId || '')
+            newLearnRec.set(
+              'title',
+              `[${detectedLearningType}] ${propertyContextLabel.substring(0, 30)} - ${displayName || 'Lead'}`,
+            )
+            newLearnRec.set('rule_text', shortSummary)
+            newLearnRec.set('category', 'comportamento')
+            newLearnRec.set('learning_type', detectedLearningType)
+            newLearnRec.set('origin', 'auto')
+            // ERRO entra como aprovado para aplicação automática imediata (pedido Mauro), outros como pendente
+            newLearnRec.set('status', detectedLearningType === 'ERRO' ? 'aprovado' : 'pendente')
+            newLearnRec.set('is_active', true)
+            newLearnRec.set('priority', detectedLearningType === 'ERRO' ? 160 : 100)
+            newLearnRec.set('author', 'Bia (Loop Automático)')
+            newLearnRec.set('context_customer', `${leadContextLabel} [ID: ${customerId}]`)
+            newLearnRec.set('context_property', propertyContextLabel)
+            $app.saveNoValidate(newLearnRec)
+
+            console.log(
+              `[BIA_LEARNING_LOOP] Novo aprendizado pós-atendimento registrado com sucesso: tipo=${detectedLearningType}, cliente=${customerId}, resumo="${shortSummary.substring(0, 60)}..."`,
+            )
+          }
+        }
+      }
+    } catch (autoLearnErr) {
+      console.warn(
+        `[BIA_LEARNING_LOOP] Erro não fatal no registro automático pós-atendimento: ${String(autoLearnErr)}`,
+      )
+    }
 
     if ((conversationChannel === 'whatsapp' || !conversationChannel) && metaToken && metaPhoneId) {
       console.log(
