@@ -1241,7 +1241,7 @@ export default function Atendimentos() {
           className={cn(
             'flex flex-col bg-white dark:bg-slate-900 overflow-hidden',
             selectedCustomerId
-              ? 'fixed inset-0 z-[100] h-[100dvh] w-[100vw] md:static md:inset-auto md:z-auto md:w-auto md:flex-1 md:rounded-xl md:border md:shadow-sm md:h-full md:min-h-0 flex'
+              ? 'fixed inset-0 z-[100] h-[100dvh] max-h-[100dvh] w-[100vw] md:static md:inset-auto md:z-auto md:w-auto md:flex-1 md:rounded-xl md:border md:shadow-sm md:h-full md:min-h-0 flex'
               : 'hidden md:flex md:flex-1 md:rounded-xl md:border md:shadow-sm md:h-full md:min-h-0',
           )}
         >
@@ -1385,11 +1385,12 @@ export default function Atendimentos() {
               {/* b) Lista de mensagens (flex:1 1 0, minHeight:0, overflowY:auto): histórico completo */}
               <div
                 ref={messagesScrollContainerRef}
-                className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a] overscroll-contain"
+                className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 relative bg-[#efeae2] dark:bg-[#0b141a] overscroll-contain isolate"
                 style={{
                   flex: '1 1 0%',
                   backgroundImage: 'radial-gradient(#d1c7b7 0.75px, transparent 0.75px)',
                   backgroundSize: '16px 16px',
+                  WebkitOverflowScrolling: 'touch',
                 }}
               >
                 <div className="space-y-3 pb-2 relative z-10 max-w-3xl mx-auto flex flex-col">
@@ -1442,13 +1443,13 @@ export default function Atendimentos() {
                             <div
                               key={msg.id}
                               className={cn(
-                                'flex w-full group',
+                                'flex w-full group clear-both relative',
                                 isCustomer ? 'justify-start' : 'justify-end',
                               )}
                             >
                               <div
                                 className={cn(
-                                  'max-w-[88%] sm:max-w-[75%] rounded-2xl px-3.5 py-2 shadow-xs relative text-slate-900 dark:text-slate-100',
+                                  'max-w-[88%] sm:max-w-[75%] rounded-2xl px-3.5 py-2 shadow-xs relative text-slate-900 dark:text-slate-100 flex flex-col',
                                   // Bolha estilo WhatsApp com "tail" sutil
                                   isCustomer
                                     ? 'bg-white dark:bg-[#202c33] rounded-tl-xs border border-black/5 dark:border-white/5'

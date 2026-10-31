@@ -64,21 +64,32 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     var cleaned = cleanWhatsAppFormat(text, isRemarketingStep)
     if (!cleaned || cleaned.length < 5) return false
 
-    // REGRA DE INTEGRIDADE RÍGIDA (Mauro):
+    // REGRA DE INTEGRIDADE RÍGIDA (Mauro - FALHA B):
     // Se for passo de remarketing/retomada, o texto DEVE ser integral e conter
     // os marcos obrigatórios de fechamento ("responder OK" e "responda NÃO").
-    // Se qualquer anomalia cortar o texto, FALHAR RUIDOSAMENTE em vez de enviar mensagem quebrada!
+    // TRAVAS: Mínimo >= 350 caracteres E MÁXIMO <= 4096 caracteres.
+    // Se ultrapassar 4096 ou for menor que 350, ABORTAR ENVIO COM REGISTRO EM LOG/ESTATÍSTICA! NUNCA truncar na frente do cliente!
     if (isRemarketingStep) {
       var hasOkGate =
         cleaned.indexOf('responder OK') !== -1 || cleaned.indexOf('responda OK') !== -1
       var hasNaoGate =
         cleaned.indexOf('responda NÃO') !== -1 || cleaned.indexOf('responda NAO') !== -1
-      var isFullLength = cleaned.length >= 350
-      if (!hasOkGate || !hasNaoGate || !isFullLength) {
+      var isMinLength = cleaned.length >= 350
+      var isWithinMaxLength = cleaned.length <= 4096
+
+      if (!hasOkGate || !hasNaoGate || !isMinLength || !isWithinMaxLength) {
+        var failureReason = !isWithinMaxLength
+          ? 'MENSAGEM_EXCEDE_4096_CARACTERES'
+          : !isMinLength
+            ? 'MENSAGEM_ABAIXO_350_CARACTERES'
+            : 'MENSAGEM_SEM_GATES_OK_NAO'
+
         console.error(
-          '[BIA_PERSISTENCE] FALHA GRAVE DE INTEGRIDADE: Tentativa de disparo de mensagem de remarketing incompleta/truncada para ' +
+          '[BIA_PERSISTENCE] FALHA GRAVE DE INTEGRIDADE: Disparo abortado para ' +
             customer.id +
-            ' (tam: ' +
+            ' (motivo: ' +
+            failureReason +
+            ', tam: ' +
             cleaned.length +
             ', hasOk: ' +
             hasOkGate +
@@ -93,8 +104,13 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
           errLogRec.set('type', 'whatsapp_ai_send_error')
           errLogRec.set(
             'message',
-            'Bloqueio de integridade: texto de remarketing incompleto para ' +
-              (customer.getString('phone') || customer.id),
+            'Bloqueio de integridade (' +
+              failureReason +
+              '): ' +
+              (customer.getString('phone') || customer.id) +
+              ' (' +
+              cleaned.length +
+              ' chars)',
           )
           errLogRec.set(
             'payload',
@@ -102,8 +118,10 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
               customer_id: customer.id,
               step: stepName,
               text_length: cleaned.length,
+              max_allowed: 4096,
+              min_allowed: 350,
               preview: cleaned.substring(0, 150),
-              error: 'MENSAGEM_TRUNCADA_OU_SEM_GATES',
+              error: failureReason,
             }),
           )
           app.saveNoValidate(errLogRec)
@@ -113,6 +131,20 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     }
 
     var customerId = customer.id
+    var rawCustTags = customer.get('tags') || []
+    var custTagsStr = JSON.stringify(rawCustTags).toLowerCase()
+    if (
+      custTagsStr.includes('telefone_corrompido') ||
+      custTagsStr.includes('telefone_invalido') ||
+      custTagsStr.includes('erro_numero_whatsapp')
+    ) {
+      console.log(
+        '[BIA_PERSISTENCE] [sendPersistenceMarketingMessage] Pulando cliente com telefone inválido/corrompido: ' +
+          customerId,
+      )
+      return false
+    }
+
     var toPhone = customer.getString('phone') || customer.get('phone') || ''
     toPhone = String(toPhone).replace(/\D/g, '')
     // Remove zero inicial de DDD (ex: 048984360590 -> 48984360590)
@@ -124,6 +156,15 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       toPhone = '48' + toPhone
     }
     if (toPhone.length < 10) return false
+    // Bloquear telefones corrompidos com mais de 13 dígitos
+    if (toPhone.length > 13) {
+      console.warn(
+        '[BIA_PERSISTENCE] Telefone com mais de 13 dígitos (' +
+          toPhone +
+          '). Bloqueando envio para evitar erro Meta 131009.',
+      )
+      return false
+    }
     if (!toPhone.startsWith('55') && toPhone.length <= 11) {
       toPhone = '55' + toPhone
     }
@@ -1383,6 +1424,60 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       if (textRem.indexOf('{SAUDACAO}') !== -1) {
         textRem = textRem.replace(/\{SAUDACAO\}/g, pTimeWord)
       }
+
+      // DECISÃO PRESCRITIVA DO MAURO — VALORES DINÂMICOS DO CRM:
+      // Busca o valor base mais recente do Vistage na coleção 'launches'
+      // Se a tabela não tiver valor definido, usa "sob consulta".
+      var dynamicMinPrice = ''
+      try {
+        var vLaunchRecords = app.findRecordsByFilter(
+          'launches',
+          "enterprise_name ~ 'Vistage' || name ~ 'Vistage'",
+          '-updated',
+          1,
+          0,
+        )
+        if (vLaunchRecords && vLaunchRecords.length > 0) {
+          var vRec = vLaunchRecords[0]
+          dynamicMinPrice = (vRec.getString('min_price') || '').trim()
+          if (!dynamicMinPrice) {
+            var vUnits = vRec.get('units') || []
+            if (typeof vUnits === 'string') {
+              try {
+                vUnits = JSON.parse(vUnits)
+              } catch (_) {
+                vUnits = []
+              }
+            }
+            if (Array.isArray(vUnits) && vUnits.length > 0) {
+              for (var uI = 0; uI < vUnits.length; uI++) {
+                var pCandidate = vUnits[uI].min_price || vUnits[uI].price || ''
+                if (pCandidate) {
+                  dynamicMinPrice = String(pCandidate).trim()
+                  break
+                }
+              }
+            }
+          }
+        }
+      } catch (dynErr) {
+        console.warn(
+          '[BIA_PERSISTENCE] Erro ao buscar valor dinâmico do Vistage: ' + dynErr.message,
+        )
+      }
+
+      var priceReplacement = dynamicMinPrice ? dynamicMinPrice : 'sob consulta'
+      // Se contiver R$, formata sem duplicar "a partir de R$..."
+      if (
+        priceReplacement.toLowerCase().indexOf('sob consulta') === -1 &&
+        !priceReplacement.startsWith('R$')
+      ) {
+        priceReplacement = 'R$ ' + priceReplacement
+      }
+
+      // Injeta na variante 4 ou em qualquer variante que cite "a partir de R$ 608 mil" ou valores fixos legados
+      textRem = textRem.replace(/a partir de R\$\s*608\s*mil/gi, 'a partir de ' + priceReplacement)
+      textRem = textRem.replace(/a partir de R\$\s*596\s*mil/gi, 'a partir de ' + priceReplacement)
 
       return textRem
     }
