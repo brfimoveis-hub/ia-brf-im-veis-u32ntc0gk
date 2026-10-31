@@ -45,7 +45,9 @@ import {
   Sparkles,
   BarChart3,
   ExternalLink,
+  BookOpen,
 } from 'lucide-react'
+import { BiaLearningsReviewPanel } from '@/components/chat/BiaLearningsReviewPanel'
 
 export default function Estatisticas() {
   const [data, setData] = useState<WhatsAppStatsResponse | null>(null)
@@ -178,9 +180,16 @@ export default function Estatisticas() {
 
       {/* Abas Principais */}
       <Tabs defaultValue="resumo" className="space-y-6">
-        <TabsList className="bg-slate-100 p-1 rounded-lg">
+        <TabsList className="bg-slate-100 p-1 rounded-lg flex-wrap">
           <TabsTrigger value="resumo" className="text-xs md:text-sm">
             Resumo & Métricas
+          </TabsTrigger>
+          <TabsTrigger
+            value="licoes"
+            className="text-xs md:text-sm flex items-center gap-1.5 font-semibold text-emerald-800"
+          >
+            <BookOpen className="h-3.5 w-3.5 text-amber-600" />
+            Caderno de Lições (Bia)
           </TabsTrigger>
           <TabsTrigger value="saude" className="text-xs md:text-sm">
             Saúde da Meta
@@ -195,6 +204,11 @@ export default function Estatisticas() {
             Configurações
           </TabsTrigger>
         </TabsList>
+
+        {/* ---------------- ABA: CADERNO DE LIÇÕES VIVAS DA BIA ---------------- */}
+        <TabsContent value="licoes" className="space-y-6">
+          <BiaLearningsReviewPanel onUpdated={loadStats} />
+        </TabsContent>
 
         {/* ---------------- ABA 1: RESUMO ---------------- */}
         <TabsContent value="resumo" className="space-y-6">

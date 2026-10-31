@@ -20,7 +20,9 @@ import {
   Clock,
   ShieldCheck,
   CheckCircle2,
+  BookOpen,
 } from 'lucide-react'
+import { BiaLearningsReviewPanel } from './BiaLearningsReviewPanel'
 import { CADENCE_STEPS_CONFIG, type CadenceStepKey } from '@/components/chat/CadenceTrackHeader'
 import { CadenceStepCircle } from '@/components/chat/CadenceStepCircle'
 import {
@@ -70,6 +72,7 @@ export function CadenceEvolutionPanel({
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'enviada' | 'entregue' | 'lida' | 'falhou'
   >('all')
+  const [showLearningsPanel, setShowLearningsPanel] = useState(false)
 
   const loadExactStats = async () => {
     setLoadingSendStats(true)
@@ -224,6 +227,29 @@ export function CadenceEvolutionPanel({
             <span>{stats.advancesTodayCount ?? 0} avanços hoje</span>
           </div>
 
+          {/* Botão de alternar caderno de lições vivas da Bia */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowLearningsPanel((prev) => !prev)}
+            className={cn(
+              'h-6 px-2 text-[11px] gap-1 font-semibold transition-all border',
+              showLearningsPanel
+                ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                : 'text-slate-700 dark:text-slate-300 hover:border-amber-300',
+            )}
+            title="Abrir o Caderno de Lições Vivas da Bia para revisar acertos, erros, objeções e dúvidas"
+          >
+            <BookOpen className="h-3 w-3 text-amber-600" />
+            <span>{showLearningsPanel ? 'Ocultar Lições Vivas' : 'Lições Vivas da Bia'}</span>
+            {showLearningsPanel ? (
+              <ChevronUp className="h-3 w-3" />
+            ) : (
+              <ChevronDown className="h-3 w-3" />
+            )}
+          </Button>
+
           {/* Botão de alternar visão detalhada do controle exato de envios */}
           <Button
             type="button"
@@ -248,6 +274,13 @@ export function CadenceEvolutionPanel({
           </Button>
         </div>
       </div>
+
+      {/* SEÇÃO INTEGRADA: CADERNO DE LIÇÕES VIVAS DA BIA (MAURO) */}
+      {showLearningsPanel && (
+        <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+          <BiaLearningsReviewPanel />
+        </div>
+      )}
 
       {/* 2. BARRA DE FILTRO POR DEGRAU DA RÉGUA (CHIPS MOBILE-FRIENDLY) */}
       <div className="flex items-center gap-1 overflow-x-auto pb-1 pt-0.5 scrollbar-none -mx-1 px-1">

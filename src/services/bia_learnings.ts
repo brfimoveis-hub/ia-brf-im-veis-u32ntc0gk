@@ -56,8 +56,12 @@ export type UpdateBiaLearningPayload = Partial<CreateBiaLearningPayload> & {
 }
 
 export const getBiaLearnings = async (userId?: string): Promise<BiaLearning[]> => {
+  // O caderno de aprendizados e lições semente pertencem ao sistema/Mauro (algumas têm user_id do Mauro, outras vazias, outras de admin).
+  // Retornamos todas as lições acessíveis (ou com filtro aberto para incluir sem user_id)
   const currentUserId = userId || pb.authStore.record?.id
-  const filter = currentUserId ? `user_id = "${currentUserId}" || user_id = ""` : ''
+  const filter = currentUserId
+    ? `user_id = "${currentUserId}" || user_id = "" || origin = "seed_expert" || origin = "cron_semanal" || origin = "auto"`
+    : ''
 
   const records = await pb.collection('bia_learnings').getFullList<BiaLearning>({
     filter: filter || undefined,
@@ -130,13 +134,15 @@ export const discardBiaLearning = async (id: string, reviewer = 'Mauro'): Promis
 export const triggerWeeklyReguaConsolidation = async (): Promise<{
   success: boolean
   message: string
+  learning_id?: string
+  title?: string
 }> => {
-  const res = await fetch('/backend/v1/bia/consolidate_weekly_regua', {
+  return pb.send<{
+    success: boolean
+    message: string
+    learning_id?: string
+    title?: string
+  }>('/backend/v1/bia/consolidate_weekly_regua', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
   })
-  if (!res.ok) {
-    throw new Error(`Falha ao consolidar régua: ${res.statusText}`)
-  }
-  return res.json()
 }

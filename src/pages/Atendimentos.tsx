@@ -47,6 +47,7 @@ import {
   type CadenceStepKey,
 } from '@/components/chat/CadenceTrackHeader'
 import { CadenceEvolutionPanel, type CadenceStats } from '@/components/chat/CadenceEvolutionPanel'
+import { BiaLearningsReviewPanel } from '@/components/chat/BiaLearningsReviewPanel'
 import { CadenceStepCircle, getStepRank } from '@/components/chat/CadenceStepCircle'
 import { recordCadenceStepAdvance, getTodayCadenceAdvancesCount } from '@/services/cadence_advances'
 import { sendManualReply } from '@/services/conversations'
@@ -319,6 +320,7 @@ export default function Atendimentos() {
   const [threads, setThreads] = useState<ThreadItem[]>([])
   const [loadingThreads, setLoadingThreads] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [showLearningsModal, setShowLearningsModal] = useState(false)
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     selectedCustomerIdFromUrl || null,
@@ -1067,6 +1069,24 @@ export default function Atendimentos() {
           {/* Controle de Reenvio Dirigido de E-book (Modo Contínuo intocado) */}
           <EbookResendModalControl />
 
+          {/* Botão de Acesso Rápido ao Caderno de Lições da Bia */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowLearningsModal((prev) => !prev)}
+            className={cn(
+              'h-8 gap-1.5 text-xs font-semibold border transition-all',
+              showLearningsModal
+                ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200'
+                : 'text-amber-800 dark:text-amber-300 border-amber-300/80 hover:bg-amber-50 dark:hover:bg-amber-950/40',
+            )}
+            title="Abrir o Caderno de Lições Vivas da Bia"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-amber-600 fill-amber-500" />
+            <span className="hidden sm:inline">Caderno de Lições</span>
+            <span className="sm:hidden">Lições</span>
+          </Button>
+
           {/* Contadores */}
           <div className="hidden lg:flex items-center gap-1.5 bg-white dark:bg-slate-900 border px-3 py-1.5 rounded-lg text-xs shadow-sm">
             <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -1094,6 +1114,13 @@ export default function Atendimentos() {
           </Button>
         </div>
       </div>
+
+      {/* CADERNO DE LIÇÕES VIVAS DA BIA: Expansão direta sob demanda em Atendimentos */}
+      {showLearningsModal && (
+        <div className={cn('pt-3 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}>
+          <BiaLearningsReviewPanel />
+        </div>
+      )}
 
       {/* PAINEL DE EVOLUÇÃO DA CADÊNCIA & ESTATÍSTICA EXATA: Unificado em um único lugar (oculto no mobile quando conversa aberta) */}
       <div className={cn('pt-3 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}>
