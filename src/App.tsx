@@ -68,82 +68,48 @@ const GuestRoute = () => {
 
 const RouteTracker = () => {
   const location = useLocation()
-  const { loading, user } = useAuth()
 
   useEffect(() => {
-    // Zero localStorage writes during auth loading or before user is ready
-    if (loading || !user) return
-
+    // Gravação IMEDIATA e SÍNCRONA da rota atual para BugScanner e diagnósticos automatizados
+    // Funciona mesmo antes de autenticação ou em rotas públicas/anônimas
     const path = location.pathname
-    let isCancelled = false
-    let idleId: any = null
+    const component = resolveComponentFromPath(path)
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+    const isProduction = hostname.includes('brfiacrminteligente.goskip.app')
+    const environment = isProduction ? 'production' : 'preview'
 
-    const scheduleTask = (cb: () => void) => {
-      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        return (window as any).requestIdleCallback(cb, { timeout: 2000 })
-      }
-      return setTimeout(cb, 50)
+    const routeData = {
+      path,
+      component,
+      environment,
+      version: APP_VERSION,
     }
 
-    const cancelScheduledTask = (id: any) => {
-      if (
-        typeof window !== 'undefined' &&
-        'cancelIdleCallback' in window &&
-        typeof id === 'number'
-      ) {
+    try {
+      localStorage.setItem('currentRoute', JSON.stringify(routeData))
+
+      const existing = localStorage.getItem('route-store')
+      const newState = { currentRoute: routeData }
+      if (existing) {
         try {
-          ;(window as any).cancelIdleCallback(id)
-        } catch {
-          clearTimeout(id)
-        }
-      } else {
-        clearTimeout(id)
-      }
-    }
-
-    // Atualização com scheduleTask: resolve nome real via resolveComponentFromPath (nunca grava 'Index')
-    idleId = scheduleTask(() => {
-      if (isCancelled) return
-
-      const component = resolveComponentFromPath(path)
-      const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
-      const isProduction = hostname.includes('brfiacrminteligente.goskip.app')
-      const environment = isProduction ? 'production' : 'preview'
-
-      const routeData = {
-        path,
-        component,
-        environment,
-        version: APP_VERSION,
-      }
-
-      try {
-        localStorage.setItem('currentRoute', JSON.stringify(routeData))
-
-        const existing = localStorage.getItem('route-store')
-        const newState = { currentRoute: routeData }
-        if (existing) {
           const parsed = JSON.parse(existing)
           localStorage.setItem(
             'route-store',
             JSON.stringify({
               ...parsed,
-              state: { ...parsed.state, ...newState },
+              state: { ...(parsed.state || {}), ...newState },
             }),
           )
-        } else {
+        } catch {
           localStorage.setItem('route-store', JSON.stringify({ state: newState }))
         }
-      } catch {
-        // Ignora erros de storage (ex: modo anônimo ou quota)
+      } else {
+        localStorage.setItem('route-store', JSON.stringify({ state: newState }))
       }
-    })
-
-    return () => {
-      isCancelled = true
-      if (idleId) cancelScheduledTask(idleId)
+    } catch {
+      // Ignora erros de storage (ex: quota ou restrições do navegador)
     }
-  }, [location.pathname, loading, user])
+  }, [location.pathname])
 
   return null
 }

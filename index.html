@@ -22,7 +22,38 @@
     <!-- Service Worker Kill-Switch & Cache Buster -->
     <script>
       (function() {
-        var CURRENT_VERSION = 'v0.0.1348';
+        var CURRENT_VERSION = 'v0.0.1349';
+
+        // Inicialização defensiva síncrona de rota para scanners e robôs de auditoria
+        try {
+          var initialPath = window.location.pathname || '/';
+          var cleanPath = initialPath.split('?')[0].split('#')[0].toLowerCase().trim();
+          var initialComp = 'Atendimentos';
+          if (cleanPath === '' || cleanPath === '/' || cleanPath.indexOf('/atendimentos') === 0) initialComp = 'Atendimentos';
+          else if (cleanPath.indexOf('/dashboard') === 0) initialComp = 'Dashboard';
+          else if (cleanPath.indexOf('/customers') === 0 || cleanPath.indexOf('/cadences') === 0 || cleanPath.indexOf('/clientes') === 0) initialComp = 'Customers';
+          else if (cleanPath.indexOf('/launches') === 0) initialComp = 'Launches';
+          else if (cleanPath.indexOf('/posts') === 0) initialComp = 'ScheduledPosts';
+          else if (cleanPath.indexOf('/estatisticas') === 0) initialComp = 'Estatisticas';
+          else if (cleanPath.indexOf('/anuncios') === 0) initialComp = 'Anuncios';
+          else if (cleanPath.indexOf('/faxina-meta') === 0) initialComp = 'FaxinaAtivosMeta';
+          else if (cleanPath.indexOf('/email-marketing') === 0) initialComp = 'EmailMarketing';
+          else if (cleanPath.indexOf('/settings') === 0) initialComp = 'SettingsAI';
+          else if (cleanPath.indexOf('/login') === 0) initialComp = 'Login';
+          else if (cleanPath.indexOf('/privacidade') === 0) initialComp = 'PrivacyPolicy';
+          else if (cleanPath.indexOf('/site') === 0 || cleanPath.indexOf('/vistage') === 0) initialComp = 'VistageLandingPage';
+
+          var isProdHost = (window.location.hostname || '').indexOf('brfiacrminteligente.goskip.app') !== -1;
+          var envLabel = isProdHost ? 'production' : 'preview';
+          var syncRouteData = {
+            path: initialPath,
+            component: initialComp,
+            environment: envLabel,
+            version: CURRENT_VERSION
+          };
+          localStorage.setItem('currentRoute', JSON.stringify(syncRouteData));
+          localStorage.setItem('route-store', JSON.stringify({ state: { currentRoute: syncRouteData } }));
+        } catch (e) {}
 
         // 1. Ouvir mensagens do kill-switch para recarregar se necessário
         if ('serviceWorker' in navigator) {

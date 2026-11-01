@@ -986,45 +986,61 @@ function Atendimentos() {
     }
   }
 
+  const [mobileCadenceCollapsed, setMobileCadenceCollapsed] = useState(true)
+
   return (
     <div
       className={cn(
         'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full h-full min-h-0',
-        // No celular com conversa aberta: o chat passa a ser renderizado em overlay fixed de tela cheia (estilo WhatsApp Web mobile),
-        // eliminando de raiz qualquer conflito com os containers pais (Layout, main, scrollbars).
-        // No celular sem conversa aberta: lista de conversas com scroll normal e flex min-h-0.
-        // No desktop: ocupa a altura total do container (h-full) aproveitando todo o espaço disponível, sem espaço morto embaixo.
         selectedCustomerId
-          ? 'm-0 p-2 sm:p-3 md:p-4 overflow-hidden'
-          : 'm-0 p-3 md:p-4 overflow-hidden',
+          ? 'm-0 p-1.5 sm:p-3 md:p-4 overflow-hidden'
+          : 'm-0 p-2 sm:p-3 md:p-4 overflow-hidden',
       )}
     >
-      {/* Top Header com contadores e título - no celular só renderiza quando nenhuma conversa está aberta para liberar altura total ao chat */}
+      {/* Top Header com contadores e título - compacto no mobile */}
       <div
         className={cn(
-          'flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b shrink-0',
+          'flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b shrink-0',
           selectedCustomerId ? 'hidden md:flex' : 'flex',
         )}
       >
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <BiaAvatar size="md" />
-              Central Única de Atendimentos da Bia (IA)
-            </h1>
-            <Badge
-              variant="outline"
-              className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-xs"
-            >
-              Tempo Real
-            </Badge>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <BiaAvatar size="md" className="shrink-0" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-base sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 truncate">
+                  Central de Atendimentos
+                </h1>
+                <Badge
+                  variant="outline"
+                  className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] sm:text-xs shrink-0"
+                >
+                  Tempo Real
+                </Badge>
+              </div>
+              <p className="text-[11px] sm:text-sm text-muted-foreground truncate hidden xs:block">
+                Acompanhamento e intervenção de corretores em tempo real.
+              </p>
+            </div>
           </div>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Ponto único de acompanhamento de conversas e intervenção de corretores em tempo real.
-          </p>
+
+          {/* Botão de atualizar no topo móvel */}
+          <div className="flex items-center gap-1 sm:hidden">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => loadThreads(true)}
+              disabled={refreshing}
+              className="h-7 w-7 p-0"
+              title="Atualizar conversas"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center flex-wrap gap-2 self-start sm:self-auto">
+        <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 self-start sm:self-auto">
           {/* Botão de Importação Rápida de Lead de Portais Externos */}
           <ImportPortalLeadModal
             onSuccess={(newCustId) => {
@@ -1035,10 +1051,10 @@ function Atendimentos() {
             }}
           />
 
-          {/* Controle Manual URGENTE de Parar/Retomar Régua (visível tanto no desktop quanto no mobile) */}
+          {/* Controle Manual URGENTE de Parar/Retomar Régua */}
           <ReguaPauseControl />
 
-          {/* Controle de Reenvio Dirigido de E-book (Modo Contínuo intocado) */}
+          {/* Controle de Reenvio Dirigido de E-book */}
           <EbookResendModalControl />
 
           {/* Botão de Acesso Rápido ao Caderno de Lições da Bia */}
@@ -1047,7 +1063,7 @@ function Atendimentos() {
             size="sm"
             onClick={() => setShowLearningsModal((prev) => !prev)}
             className={cn(
-              'h-8 gap-1.5 text-xs font-semibold border transition-all',
+              'h-7 sm:h-8 gap-1 sm:gap-1.5 text-xs font-semibold border transition-all',
               showLearningsModal
                 ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200'
                 : 'text-amber-800 dark:text-amber-300 border-amber-300/80 hover:bg-amber-50 dark:hover:bg-amber-950/40',
@@ -1056,7 +1072,7 @@ function Atendimentos() {
           >
             <Sparkles className="h-3.5 w-3.5 text-amber-600 fill-amber-500" />
             <span className="hidden sm:inline">Caderno de Lições</span>
-            <span className="sm:hidden">Lições</span>
+            <span className="sm:hidden text-[11px]">Lições</span>
           </Button>
 
           {/* Contadores */}
@@ -1078,55 +1094,83 @@ function Atendimentos() {
             size="sm"
             onClick={() => loadThreads(true)}
             disabled={refreshing}
-            className="h-8 gap-1.5 text-xs"
+            className="h-8 gap-1.5 text-xs hidden sm:flex"
             title="Atualizar conversas"
           >
             <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
-            <span className="hidden sm:inline">Atualizar</span>
+            <span>Atualizar</span>
           </Button>
         </div>
       </div>
 
       {/* CADERNO DE LIÇÕES VIVAS DA BIA: Expansão direta sob demanda em Atendimentos */}
       {showLearningsModal && (
-        <div className={cn('pt-3 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}>
+        <div
+          className={cn('pt-2 sm:pt-3 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}
+        >
           <BiaLearningsReviewPanel />
         </div>
       )}
 
-      {/* PAINEL DE EVOLUÇÃO DA CADÊNCIA & ESTATÍSTICA EXATA: Unificado em um único lugar (oculto no mobile quando conversa aberta) */}
-      <div className={cn('pt-2 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}>
-        <CadenceEvolutionPanel
-          stats={cadenceStats}
-          selectedStep={cadenceFilter}
-          onSelectStep={setCadenceFilter}
-          onSelectCustomer={selectConversation}
-        />
+      {/* PAINEL DE EVOLUÇÃO DA CADÊNCIA & ESTATÍSTICA EXATA:
+          No mobile: colapsável via toggle para liberar altura para a lista de conversas.
+          No desktop: sempre aberto normalmente.
+      */}
+      <div
+        className={cn('pt-1.5 sm:pt-2 shrink-0', selectedCustomerId ? 'hidden md:block' : 'block')}
+      >
+        {/* Toggle compacto no mobile para não ocupar a tela toda */}
+        <div className="sm:hidden flex items-center justify-between py-1 px-1 bg-slate-100 dark:bg-slate-800/60 rounded-lg mb-1">
+          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+            <span>📊 Régua &amp; Cadência</span>
+            <span className="text-[10px] font-normal text-muted-foreground">
+              ({threads.length} conversas)
+            </span>
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setMobileCadenceCollapsed((prev) => !prev)}
+            className="h-6 px-2 text-[10px] text-slate-600 dark:text-slate-300 font-medium"
+          >
+            {mobileCadenceCollapsed ? 'Mostrar Filtros' : 'Recolher'}
+          </Button>
+        </div>
+
+        <div className={cn(mobileCadenceCollapsed ? 'hidden sm:block' : 'block')}>
+          <CadenceEvolutionPanel
+            stats={cadenceStats}
+            selectedStep={cadenceFilter}
+            onSelectStep={setCadenceFilter}
+            onSelectCustomer={selectConversation}
+          />
+        </div>
       </div>
 
       {/* Main Container - Split View */}
       <div
         className={cn(
           'flex flex-1 min-h-0 overflow-hidden',
-          selectedCustomerId ? 'pt-0 md:pt-2 gap-0 md:gap-3' : 'pt-2 gap-3',
+          selectedCustomerId ? 'pt-0 md:pt-2 gap-0 md:gap-3' : 'pt-1.5 sm:pt-2 gap-3',
         )}
       >
         {/* Painel Esquerdo: Lista de Conversas */}
         <div
           className={cn(
-            'flex flex-col w-full md:w-80 lg:w-96 bg-white dark:bg-slate-900 rounded-xl border shadow-sm overflow-hidden shrink-0 transition-all',
+            'flex flex-col w-full md:w-80 lg:w-96 bg-white dark:bg-slate-900 rounded-xl border shadow-sm overflow-hidden shrink-0 transition-all min-h-0',
             selectedCustomerId ? 'hidden md:flex' : 'flex',
           )}
         >
           {/* Busca e Filtros */}
-          <div className="p-3 border-b space-y-2 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="p-2.5 sm:p-3 border-b space-y-2 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar cliente ou telefone..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 h-9 text-xs bg-white dark:bg-slate-800"
+                className="pl-9 h-8 sm:h-9 text-xs bg-white dark:bg-slate-800"
               />
             </div>
 
@@ -1136,7 +1180,7 @@ function Atendimentos() {
                 type="button"
                 onClick={() => setChannelFilter('all')}
                 className={cn(
-                  'flex-1 py-1 px-2 rounded-md font-medium transition-all text-center text-[11px]',
+                  'flex-1 py-1 px-1.5 rounded-md font-medium transition-all text-center text-[11px]',
                   channelFilter === 'all'
                     ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900',
@@ -1148,7 +1192,7 @@ function Atendimentos() {
                 type="button"
                 onClick={() => setChannelFilter('whatsapp')}
                 className={cn(
-                  'flex-1 py-1 px-2 rounded-md font-medium transition-all text-center text-[11px]',
+                  'flex-1 py-1 px-1.5 rounded-md font-medium transition-all text-center text-[11px]',
                   channelFilter === 'whatsapp'
                     ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900',
@@ -1160,7 +1204,7 @@ function Atendimentos() {
                 type="button"
                 onClick={() => setChannelFilter('instagram')}
                 className={cn(
-                  'flex-1 py-1 px-2 rounded-md font-medium transition-all text-center text-[11px]',
+                  'flex-1 py-1 px-1.5 rounded-md font-medium transition-all text-center text-[11px]',
                   channelFilter === 'instagram'
                     ? 'bg-white dark:bg-slate-900 text-pink-600 dark:text-pink-400 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900',
@@ -1172,7 +1216,7 @@ function Atendimentos() {
                 type="button"
                 onClick={() => setChannelFilter('messenger')}
                 className={cn(
-                  'flex-1 py-1 px-2 rounded-md font-medium transition-all text-center text-[11px]',
+                  'flex-1 py-1 px-1.5 rounded-md font-medium transition-all text-center text-[11px]',
                   channelFilter === 'messenger'
                     ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900',
@@ -1183,10 +1227,13 @@ function Atendimentos() {
             </div>
           </div>
 
-          {/* Lista scrollável de threads */}
-          <ScrollArea
-            className="flex-1 min-h-0 overscroll-contain"
-            style={{ WebkitOverflowScrolling: 'touch' }}
+          {/* Lista scrollável de conversas com overflow-y-auto nativo e touch-pan-y garantido */}
+          <div
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y"
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              flex: '1 1 0%',
+            }}
           >
             {loadingThreads ? (
               <div className="p-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
@@ -1228,7 +1275,7 @@ function Atendimentos() {
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 pb-8">
                 {displayedThreads.map((thread) => (
                   <ThreadListItem
                     key={thread.customer_id}
@@ -1254,7 +1301,7 @@ function Atendimentos() {
                 )}
               </div>
             )}
-          </ScrollArea>
+          </div>
         </div>
 
         {/* Painel Direito: Chat do Cliente Selecionado
