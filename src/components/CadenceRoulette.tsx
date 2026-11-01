@@ -109,10 +109,40 @@ export function CadenceRoulette({
   const pageRef = useRef(1)
   const isFetchingMoreRef = useRef(false)
   const hasMoreRef = useRef(true)
+  const leadsRef = useRef<Customer[]>([])
+  const globalIndexRef = useRef(0)
+  const totalItemsRef = useRef(0)
+  const isPausedRef = useRef(false)
+  const isEditingCadenceRef = useRef(false)
+  const isEditingNotesRef = useRef(false)
 
   useEffect(() => {
     pageRef.current = page
   }, [page])
+
+  useEffect(() => {
+    leadsRef.current = leads
+  }, [leads])
+
+  useEffect(() => {
+    globalIndexRef.current = globalIndex
+  }, [globalIndex])
+
+  useEffect(() => {
+    totalItemsRef.current = totalItems
+  }, [totalItems])
+
+  useEffect(() => {
+    isPausedRef.current = isPaused
+  }, [isPaused])
+
+  useEffect(() => {
+    isEditingCadenceRef.current = isEditingCadence
+  }, [isEditingCadence])
+
+  useEffect(() => {
+    isEditingNotesRef.current = isEditingNotes
+  }, [isEditingNotes])
 
   useEffect(() => {
     isFetchingMoreRef.current = isFetchingMore
@@ -134,22 +164,29 @@ export function CadenceRoulette({
         setLeads((prev) => {
           if (overwrite) {
             addedCount = data.items.length
+            leadsRef.current = data.items
             return data.items
           }
           const newItems = data.items.filter(
             (item) => !prev.some((existing) => existing.id === item.id),
           )
           addedCount = newItems.length
-          return [...prev, ...newItems]
+          const combined = [...prev, ...newItems]
+          leadsRef.current = combined
+          return combined
         })
 
         setTotalItems(data.totalItems)
+        totalItemsRef.current = data.totalItems
         const moreAvailable = p < data.totalPages && data.items.length > 0
         setHasMore(moreAvailable)
         hasMoreRef.current = moreAvailable
         setPage(p)
         pageRef.current = p
-        if (overwrite) setGlobalIndex(0)
+        if (overwrite) {
+          setGlobalIndex(0)
+          globalIndexRef.current = 0
+        }
         return addedCount
       } catch (err) {
         if (!overwrite) {
@@ -178,8 +215,12 @@ export function CadenceRoulette({
 
   const loadMore = useCallback(async (): Promise<number> => {
     if (isFetchingMoreRef.current || !hasMoreRef.current) return 0
-    const nextPage = pageRef.current + 1
-    return await loadLeads(nextPage, false)
+    try {
+      const nextPage = pageRef.current + 1
+      return await loadLeads(nextPage, false)
+    } catch {
+      return 0
+    }
   }, [loadLeads])
 
   const lastElementRef = useCallback(
@@ -217,26 +258,36 @@ export function CadenceRoulette({
   }, [globalIndex, isPaused, isEditingCadence, isEditingNotes])
 
   const nextCustomer = useCallback(async () => {
-    if (totalItems === 0) return
+    if (isPausedRef.current || isEditingCadenceRef.current || isEditingNotesRef.current) return
+    const currentTotal = totalItemsRef.current
+    const currentLeads = leadsRef.current
+    if (currentTotal === 0 && currentLeads.length === 0) return
 
     const event = new CustomEvent('roulette-next', { cancelable: true })
     window.dispatchEvent(event)
     if (event.defaultPrevented) return
 
-    const currentIdx = globalIndex
-    const currentLeadsCount = leads.length
+    const currentIdx = globalIndexRef.current
+    const currentLeadsCount = currentLeads.length
 
-    // Se alcançou ou ultrapassou o fim da lista carregada localmente
+    // Se alcançou ou ultrapassou o fim da página / lista carregada localmente
     if (currentIdx >= currentLeadsCount - 1) {
       if (hasMoreRef.current) {
-        const added = await loadMore()
-        if (added > 0) {
-          setGlobalIndex(currentIdx + 1)
-          setRotationKey((k) => k + 1)
-          return
+        try {
+          const added = await loadMore()
+          if (added > 0) {
+            const nextIdx = currentIdx + 1
+            globalIndexRef.current = nextIdx
+            setGlobalIndex(nextIdx)
+            setRotationKey((k) => k + 1)
+            return
+          }
+        } catch {
+          // Erro tratado silenciosamente para não travar a roleta
         }
       }
-      // Fim real da fila ou sem novos registros: recomeça do primeiro da lista
+      // Fim da fila ou erro ao carregar mais: recomeça do índice 0 em ciclo contínuo
+      globalIndexRef.current = 0
       setGlobalIndex(0)
       setRotationKey((k) => k + 1)
       return
@@ -248,39 +299,29 @@ export function CadenceRoulette({
       hasMoreRef.current &&
       !isFetchingMoreRef.current
     ) {
-      loadMore()
+      loadMore().catch(() => {})
     }
 
-    setGlobalIndex(currentIdx + 1)
+    const nextIdx = currentIdx + 1
+    globalIndexRef.current = nextIdx
+    setGlobalIndex(nextIdx)
     setRotationKey((k) => k + 1)
-  }, [totalItems, globalIndex, leads.length, loadMore])
+  }, [loadMore])
 
   const nextCustomerRef = useRef(nextCustomer)
   useEffect(() => {
     nextCustomerRef.current = nextCustomer
   }, [nextCustomer])
 
+  // Timer contínuo e estável: o interval NUNCA é desmontado a cada render
+  // Lê estados atualizados exclusivamente através de refs
   useEffect(() => {
-    if (
-      !isInitialized ||
-      isLoading ||
-      isPaused ||
-      isEditingCadence ||
-      isEditingNotes ||
-      totalItems === 0
-    )
-      return
-    const timer = setInterval(() => nextCustomerRef.current(), 15000)
+    if (!isInitialized) return
+    const timer = setInterval(() => {
+      nextCustomerRef.current?.()
+    }, 15000)
     return () => clearInterval(timer)
-  }, [
-    isInitialized,
-    isLoading,
-    isPaused,
-    isEditingCadence,
-    isEditingNotes,
-    totalItems,
-    rotationKey,
-  ])
+  }, [isInitialized])
 
   const currentCadence = cadences[cadenceIndex]
   const currentCustomer = leads[globalIndex]

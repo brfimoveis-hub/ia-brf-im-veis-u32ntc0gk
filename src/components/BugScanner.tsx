@@ -1,14 +1,44 @@
 import { useState, useEffect } from 'react'
-import { Bug, AlertCircle, Trash2 } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
+import { Bug, AlertCircle, Trash2, Code2 } from 'lucide-react'
 import { ReguaPauseControl } from '@/components/customers/ReguaPauseControl'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { subscribeToErrors, setupGlobalErrorHandlers, type ErrorReport } from '@/lib/error-reporter'
+import { APP_VERSION } from '@/lib/version'
+
+function resolveComponentFromPath(pathname: string): string {
+  const lowerPath = pathname.toLowerCase()
+  if (lowerPath === '/atendimentos' || lowerPath.startsWith('/atendimentos/')) return 'Atendimentos'
+  if (lowerPath === '/dashboard' || lowerPath.startsWith('/dashboard/')) return 'Dashboard'
+  if (lowerPath === '/customers' || lowerPath.startsWith('/customers/')) return 'Customers'
+  if (lowerPath === '/launches' || lowerPath.startsWith('/launches/')) return 'Launches'
+  if (lowerPath.startsWith('/l/')) return 'LaunchLanding'
+  if (lowerPath === '/posts' || lowerPath.startsWith('/posts/') || lowerPath === '/agenda')
+    return 'ScheduledPosts'
+  if (lowerPath === '/estatisticas' || lowerPath.startsWith('/estatisticas/')) return 'Estatisticas'
+  if (lowerPath === '/anuncios' || lowerPath.startsWith('/anuncios/')) return 'Anuncios'
+  if (lowerPath === '/faxina-meta' || lowerPath.startsWith('/faxina-meta/'))
+    return 'FaxinaAtivosMeta'
+  if (lowerPath === '/email-marketing' || lowerPath.startsWith('/email-marketing/'))
+    return 'EmailMarketing'
+  if (lowerPath === '/settings/remarketing') return 'SettingsRemarketing'
+  if (lowerPath.startsWith('/settings/connections')) return 'SettingsConnections'
+  if (lowerPath === '/settings/ai' || lowerPath === '/settings') return 'SettingsAI'
+  if (lowerPath === '/login') return 'Login'
+  if (lowerPath === '/forgot-password') return 'ForgotPassword'
+  if (lowerPath === '/reset-password') return 'ResetPassword'
+  if (lowerPath === '/privacidade') return 'PrivacyPolicy'
+  if (lowerPath === '/site' || lowerPath === '/vistage') return 'VistageLandingPage'
+  if (lowerPath === '/') return 'Atendimentos'
+  return 'Unknown'
+}
 
 export function BugScanner({ className }: { className?: string }) {
   const [errors, setErrors] = useState<ErrorReport[]>([])
   const [open, setOpen] = useState(false)
+  const location = useLocation()
 
   useEffect(() => {
     setupGlobalErrorHandlers()
@@ -50,7 +80,7 @@ export function BugScanner({ className }: { className?: string }) {
             </span>
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700">
-                v0.0.1323
+                {APP_VERSION}
               </span>
               {errors.length > 0 && (
                 <Button variant="ghost" size="sm" onClick={handleClear}>
@@ -61,6 +91,28 @@ export function BugScanner({ className }: { className?: string }) {
             </div>
           </SheetTitle>
         </SheetHeader>
+
+        {/* Debug: Rota atual e componente renderizado */}
+        <div className="mt-3 p-3 rounded-lg border bg-slate-900 text-slate-100 dark:bg-slate-950 border-slate-700 space-y-1.5 font-mono text-xs">
+          <div className="flex items-center justify-between text-slate-400 border-b border-slate-800 pb-1">
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+              <Code2 className="h-3.5 w-3.5" /> currentRoute
+            </span>
+            <span className="text-[10px] text-slate-400">{APP_VERSION}</span>
+          </div>
+          <pre className="text-[11px] text-emerald-300 bg-slate-950/80 p-2 rounded overflow-x-auto whitespace-pre">
+            {JSON.stringify(
+              {
+                currentRoute: {
+                  path: location.pathname,
+                  component: resolveComponentFromPath(location.pathname),
+                },
+              },
+              null,
+              2,
+            )}
+          </pre>
+        </div>
 
         {/* Freio de Emergência: Parar/Retomar Envios da Régua Automática */}
         <div className="mt-3 p-3 rounded-lg border bg-amber-500/10 border-amber-500/30 space-y-2">
@@ -86,7 +138,7 @@ export function BugScanner({ className }: { className?: string }) {
               Build atual em execução:
             </span>
             <span className="font-bold font-mono text-emerald-700 dark:text-emerald-400">
-              v0.0.1323
+              {APP_VERSION}
             </span>
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
@@ -109,13 +161,13 @@ export function BugScanner({ className }: { className?: string }) {
                 })
               }
               const url = new URL(window.location.href)
-              url.searchParams.set('_v', '1323')
+              url.searchParams.set('_v', '1335')
               window.location.href = url.toString()
             }}
             className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs"
           >
-            Limpar Cache & Recarregar v0.0.1323
-          </Button>
+            Limpar Cache & Recarregar {APP_VERSION}
+          </Button>{' '}
         </div>
         <div className="mt-4 space-y-2">
           {errors.length === 0 ? (

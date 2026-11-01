@@ -58,7 +58,7 @@ const GuestRoute = () => {
   const location = useLocation()
   if (loading) return <PageLoader />
   if (user) {
-    const from = location.state?.from?.pathname || '/dashboard'
+    const from = location.state?.from?.pathname || '/atendimentos'
     return <Navigate to={from} replace />
   }
   return <Outlet />
@@ -167,15 +167,13 @@ const RouteTracker = () => {
         } else if (lowerPath === '/privacidade') {
           component = 'PrivacyPolicy'
         } else if (lowerPath === '/') {
-          component = 'Root'
+          component = 'Atendimentos'
         }
 
         const routeData = { path, component }
 
         try {
-          if (component !== 'Root') {
-            localStorage.setItem('currentRoute', JSON.stringify(routeData))
-          }
+          localStorage.setItem('currentRoute', JSON.stringify(routeData))
 
           const existing = localStorage.getItem('route-store')
           const newState = { currentRoute: routeData }
@@ -233,7 +231,7 @@ const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <Navigate to="/dashboard" replace />,
+            element: <Navigate to="/atendimentos" replace />,
           },
         ],
       },
