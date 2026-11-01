@@ -21,6 +21,7 @@ import { BulkEmailModal } from '@/components/customers/BulkEmailModal'
 import { WhatsAppSendModal } from '@/components/customers/WhatsAppSendModal'
 import { UnifiedKanban } from '@/components/customers/UnifiedKanban'
 import { UnifiedTable } from '@/components/customers/UnifiedTable'
+import { CadenceRoulette } from '@/components/CadenceRoulette'
 import { UnifiedStatisticsDashboard } from '@/components/customers/UnifiedStatisticsDashboard'
 import { CustomerFilterBar } from '@/components/customers/CustomerFilterBar'
 import { customerSelectionStore, useCustomerSelection } from '@/stores/customer-selection'
@@ -31,6 +32,7 @@ import {
   buildBaseFilter,
   combineFilters,
   escapeFilterValue,
+  CONFIDENCE_BASE_FILTER,
   type CustomerFilterState,
 } from '@/lib/customer-filters'
 
@@ -80,6 +82,35 @@ export default function Customers() {
     baseFilter,
     statusFilter !== 'all' ? `status = '${escapeFilterValue(statusFilter)}'` : '',
   )
+
+  // Filtro canônico da "Lista de Confiança": clientes elegíveis para a régua
+  // is_blocked != true, sem tag telefone_invalido, sem tag erro_numero_whatsapp, telefone presente
+  const confidenceFilter = combineFilters(
+    CONFIDENCE_BASE_FILTER,
+    baseFilter,
+    statusFilter !== 'all' ? `status = '${escapeFilterValue(statusFilter)}'` : '',
+  )
+  const [confidenceTotal, setConfidenceTotal] = useState<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    pb.collection('customers')
+      .getList(1, 1, {
+        filter: confidenceFilter,
+        fields: 'id',
+      })
+      .then((res) => {
+        if (!cancelled) {
+          setConfidenceTotal(res.totalItems)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setConfidenceTotal(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [confidenceFilter, refreshKey])
 
   const hasActiveFilters =
     !!searchInput ||
@@ -324,9 +355,21 @@ export default function Customers() {
       )}
 
       <Tabs defaultValue="pipeline" className="flex-1 flex flex-col min-h-0">
-        <TabsList>
+        <TabsList className="grid grid-cols-4 w-full sm:w-auto">
           <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
           <TabsTrigger value="list">Lista</TabsTrigger>
+          <TabsTrigger value="confidence" className="gap-1.5">
+            <span>Lista de Confiança</span>
+            {confidenceTotal !== null && (
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold px-1.5 py-0.2 rounded-full">
+                {confidenceTotal}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="roulette" className="gap-1.5">
+            <span>Roleta</span>
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent
@@ -371,6 +414,64 @@ export default function Customers() {
               onSortChange={setSort}
               refreshKey={refreshKey}
               onCustomerDeleted={() => setRefreshKey((k) => k + 1)}
+            />
+          </ErrorBoundary>
+        </TabsContent>
+
+        <TabsContent
+          value="confidence"
+          className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col space-y-3"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+            <div className="space-y-0.5">
+              <h3 className="text-sm font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+                <span>🛡️ Lista de Confiança</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                  {confidenceTotal !== null
+                    ? `${confidenceTotal} clientes prontos para a régua`
+                    : 'Carregando elegíveis...'}
+                </span>
+              </h3>
+              <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80">
+                Apenas contatos validados: telefone válido, sem tag de erro de WhatsApp ou número
+                inválido e não bloqueados.
+              </p>
+            </div>
+          </div>
+
+          <ErrorBoundary
+            fallback={
+              <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
+                Erro ao carregar a lista de confiança. Recarregue a página.
+              </div>
+            }
+          >
+            <UnifiedTable
+              filter={confidenceFilter}
+              sort={sort}
+              onSortChange={setSort}
+              refreshKey={refreshKey}
+              onCustomerDeleted={() => setRefreshKey((k) => k + 1)}
+            />
+          </ErrorBoundary>
+        </TabsContent>
+
+        <TabsContent
+          value="roulette"
+          className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col"
+        >
+          <ErrorBoundary
+            fallback={
+              <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
+                Erro ao carregar a Roleta de Clientes. Recarregue a página.
+              </div>
+            }
+          >
+            <CadenceRoulette
+              search={search}
+              phaseFilter={statusFilter !== 'all' ? statusFilter : undefined}
+              sourceFilter={sourceFilter !== 'all' ? sourceFilter : undefined}
+              onCustomerUpdated={() => setRefreshKey((k) => k + 1)}
             />
           </ErrorBoundary>
         </TabsContent>

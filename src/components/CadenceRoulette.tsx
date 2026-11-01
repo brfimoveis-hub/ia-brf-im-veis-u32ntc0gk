@@ -448,9 +448,11 @@ export function CadenceRoulette({
       <CardHeader className="flex flex-row items-center justify-between pb-4 shrink-0 border-b border-border/40 bg-background/50 backdrop-blur-sm z-10">
         <div>
           <CardTitle className="text-secondary flex items-center gap-2 text-xl">
-            Roleta Inteligente: Villa dos Açores
+            Roleta Inteligente de Clientes
           </CardTitle>
-          <CardDescription>Pipeline da Bia - Ciclo de Cadência</CardDescription>
+          <CardDescription>
+            Pipeline da Bia - Ciclo de Cadência &amp; Atendimento Contínuo
+          </CardDescription>
         </div>
 
         <div className="flex items-center gap-2 z-10">

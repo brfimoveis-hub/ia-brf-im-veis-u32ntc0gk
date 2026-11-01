@@ -166,3 +166,7 @@ export function buildStageFilter(stage: string): string {
 export function combineFilters(...parts: (string | undefined | null)[]): string {
   return parts.filter((p) => !!p && p.trim() !== '').join(' && ')
 }
+
+// Filtro canônico de elegibilidade para a régua / lista de confiança
+export const CONFIDENCE_BASE_FILTER =
+  "is_blocked != true && tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (phone != '' || phone_1_value != '')"

@@ -20,6 +20,7 @@ import { PaginationBar } from './PaginationBar'
 import { SortableTableHead } from './SortableTableHead'
 import { TableErrorState } from './TableErrorState'
 import { reportError } from '@/lib/error-reporter'
+import { validateBrazilianPhoneLocal } from '@/services/ebook_resend'
 
 interface Props {
   filter: string
@@ -80,10 +81,9 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey, onCustome
           sort,
         })
         if (rid !== requestIdRef.current) return
-        setItems(Array.isArray(result?.items) ? result.items : [])
-        setTotalItems(
-          typeof result?.totalItems === 'number' ? result.totalItems : result?.items?.length || 0,
-        )
+        const rawItems = Array.isArray(result?.items) ? result.items : []
+        setItems(rawItems)
+        setTotalItems(typeof result?.totalItems === 'number' ? result.totalItems : rawItems.length)
         setFetchError(false)
       } catch (err: any) {
         console.error('UnifiedTable fetch error:', err)
@@ -268,7 +268,22 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey, onCustome
                         {c.name || c.first_name || 'Sem nome'}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {c.phone ? formatPhone(c.phone) : '-'}
+                        {(() => {
+                          const rawP = c.phone || c.phone_1_value
+                          if (!rawP) return '-'
+                          const valRes = validateBrazilianPhoneLocal(rawP)
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              <span>{formatPhone(rawP)}</span>
+                              {valRes.valid && (
+                                <span
+                                  className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0"
+                                  title="Número validado para WhatsApp"
+                                />
+                              )}
+                            </div>
+                          )
+                        })()}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {c.email || c.email_1_value || '-'}

@@ -17,6 +17,8 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { CONFIDENCE_BASE_FILTER } from '@/lib/customer-filters'
+import { getInboxThreads } from '@/services/conversations'
 
 // Sequential delay between dashboard fetches (ms).
 const FETCH_DELAY_MS = 300
@@ -51,9 +53,12 @@ export default function Dashboard() {
       }
       await wait(FETCH_DELAY_MS)
 
-      // 2) Customers count
+      // 2) Customers count — conta apenas clientes elegíveis (mesma definição da Lista de Confiança)
       try {
-        const res = await pb.collection('customers').getList(1, 1, { fields: 'id' })
+        const res = await pb.collection('customers').getList(1, 1, {
+          filter: CONFIDENCE_BASE_FILTER,
+          fields: 'id',
+        })
         setCustomerCount(res.totalItems)
       } catch (err) {
         console.error('dashboard customers fetch failed', err)
@@ -61,13 +66,19 @@ export default function Dashboard() {
       }
       await wait(FETCH_DELAY_MS)
 
-      // 3) Leads / IA interactions count
+      // 3) Atendimentos IA — total de conversas na central (mesma fonte de /atendimentos)
       try {
-        const res = await pb.collection('leads').getList(1, 1, { fields: 'id' })
-        setIaInteractions(res.totalItems)
+        const threads = await getInboxThreads()
+        setIaInteractions(threads.length)
       } catch (err) {
-        console.error('dashboard leads fetch failed', err)
-        setIaInteractions(null)
+        console.error('dashboard threads fetch failed, fallback to conversations collection', err)
+        try {
+          const convRes = await pb.collection('conversations').getList(1, 1, { fields: 'id' })
+          setIaInteractions(convRes.totalItems)
+        } catch (convErr) {
+          console.error('dashboard conversations fallback failed', convErr)
+          setIaInteractions(null)
+        }
       }
     } finally {
       setLoading(false)
@@ -200,11 +211,13 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
             <div className="text-xl sm:text-2xl font-bold">{renderValue(customerCount)}</div>
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">Na base de dados</p>
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">
+              Prontos para a régua
+            </p>
           </CardContent>
         </Card>
 
-        {/* IA Interações / Leads */}
+        {/* Atendimentos IA / Conversas */}
         <Card
           onClick={() => {
             if (!loaded && !loading) loadDashboard()
@@ -220,7 +233,9 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
             <div className="text-xl sm:text-2xl font-bold">{renderValue(iaInteractions)}</div>
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">Leads capturados</p>
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">
+              Conversas na central
+            </p>
           </CardContent>
         </Card>
 

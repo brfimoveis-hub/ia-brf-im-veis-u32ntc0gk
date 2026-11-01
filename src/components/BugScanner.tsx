@@ -227,12 +227,12 @@ export function BugScanner({ className }: { className?: string }) {
                 })
               }
               const url = new URL(window.location.href)
-              url.searchParams.set('_v', '1342')
+              url.searchParams.set('_v', APP_VERSION.replace(/[^0-9]/g, ''))
               window.location.href = url.toString()
             }}
             className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs"
           >
-            Limpar Cache & Recarregar v0.0.1342
+            Limpar Cache & Recarregar {APP_VERSION}
           </Button>{' '}
         </div>
         <div className="mt-4 space-y-2">
