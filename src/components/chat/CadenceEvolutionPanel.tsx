@@ -38,6 +38,7 @@ export interface CadenceStats {
   repliedTodayCount: number
   sentTodayCount: number
   advancesTodayCount?: number
+  activeConversations24h?: number
   byStep: {
     remarketing: number
     d1: number

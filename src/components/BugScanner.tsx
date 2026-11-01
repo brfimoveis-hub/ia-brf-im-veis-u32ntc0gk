@@ -8,51 +8,51 @@ import { cn } from '@/lib/utils'
 import { subscribeToErrors, setupGlobalErrorHandlers, type ErrorReport } from '@/lib/error-reporter'
 import { APP_VERSION } from '@/lib/version'
 
-function resolveComponentFromPath(pathname: string): string {
-  const lowerPath = pathname.toLowerCase()
-  if (lowerPath === '/atendimentos' || lowerPath.startsWith('/atendimentos/')) return 'Atendimentos'
-  if (lowerPath === '/dashboard' || lowerPath.startsWith('/dashboard/')) return 'Dashboard'
+export function resolveComponentFromPath(pathname: string): string {
+  const cleanPath = (pathname || '').split('?')[0].split('#')[0].toLowerCase()
+  if (cleanPath === '/atendimentos' || cleanPath.startsWith('/atendimentos/')) return 'Atendimentos'
+  if (cleanPath === '/dashboard' || cleanPath.startsWith('/dashboard/')) return 'Dashboard'
   if (
-    lowerPath === '/customers' ||
-    lowerPath.startsWith('/customers/') ||
-    lowerPath === '/customer-list' ||
-    lowerPath.startsWith('/customer-list/') ||
-    lowerPath === '/cadences' ||
-    lowerPath.startsWith('/cadences/')
+    cleanPath === '/customers' ||
+    cleanPath.startsWith('/customers/') ||
+    cleanPath === '/customer-list' ||
+    cleanPath.startsWith('/customer-list/') ||
+    cleanPath === '/cadences' ||
+    cleanPath.startsWith('/cadences/')
   )
     return 'Customers'
-  if (lowerPath === '/launches' || lowerPath.startsWith('/launches/')) return 'Launches'
-  if (lowerPath.startsWith('/l/')) return 'LaunchLanding'
+  if (cleanPath === '/launches' || cleanPath.startsWith('/launches/')) return 'Launches'
+  if (cleanPath.startsWith('/l/')) return 'LaunchLanding'
   if (
-    lowerPath === '/posts' ||
-    lowerPath.startsWith('/posts/') ||
-    lowerPath === '/agenda' ||
-    lowerPath.startsWith('/agenda/')
+    cleanPath === '/posts' ||
+    cleanPath.startsWith('/posts/') ||
+    cleanPath === '/agenda' ||
+    cleanPath.startsWith('/agenda/')
   )
     return 'ScheduledPosts'
-  if (lowerPath === '/estatisticas' || lowerPath.startsWith('/estatisticas/')) return 'Estatisticas'
-  if (lowerPath === '/anuncios' || lowerPath.startsWith('/anuncios/')) return 'Anuncios'
-  if (lowerPath === '/faxina-meta' || lowerPath.startsWith('/faxina-meta/'))
+  if (cleanPath === '/estatisticas' || cleanPath.startsWith('/estatisticas/')) return 'Estatisticas'
+  if (cleanPath === '/anuncios' || cleanPath.startsWith('/anuncios/')) return 'Anuncios'
+  if (cleanPath === '/faxina-meta' || cleanPath.startsWith('/faxina-meta/'))
     return 'FaxinaAtivosMeta'
-  if (lowerPath.startsWith('/email-marketing/') && lowerPath !== '/email-marketing')
+  if (cleanPath.startsWith('/email-marketing/') && cleanPath !== '/email-marketing')
     return 'EmailCampaignDetail'
-  if (lowerPath === '/email-marketing' || lowerPath.startsWith('/email-marketing/'))
+  if (cleanPath === '/email-marketing' || cleanPath.startsWith('/email-marketing/'))
     return 'EmailMarketing'
-  if (lowerPath === '/settings/remarketing' || lowerPath.startsWith('/settings/remarketing/'))
+  if (cleanPath === '/settings/remarketing' || cleanPath.startsWith('/settings/remarketing/'))
     return 'SettingsRemarketing'
-  if (lowerPath.startsWith('/settings/connections')) return 'SettingsConnections'
+  if (cleanPath.startsWith('/settings/connections')) return 'SettingsConnections'
   if (
-    lowerPath === '/settings/ai' ||
-    lowerPath.startsWith('/settings/ai/') ||
-    lowerPath === '/settings'
+    cleanPath === '/settings/ai' ||
+    cleanPath.startsWith('/settings/ai/') ||
+    cleanPath === '/settings'
   )
     return 'SettingsAI'
-  if (lowerPath === '/login') return 'Login'
-  if (lowerPath === '/forgot-password') return 'ForgotPassword'
-  if (lowerPath === '/reset-password') return 'ResetPassword'
-  if (lowerPath === '/privacidade') return 'PrivacyPolicy'
-  if (lowerPath === '/site' || lowerPath === '/vistage') return 'VistageLandingPage'
-  if (lowerPath === '/') return 'Atendimentos'
+  if (cleanPath === '/login') return 'Login'
+  if (cleanPath === '/forgot-password') return 'ForgotPassword'
+  if (cleanPath === '/reset-password') return 'ResetPassword'
+  if (cleanPath === '/privacidade') return 'PrivacyPolicy'
+  if (cleanPath === '/site' || cleanPath === '/vistage') return 'VistageLandingPage'
+  if (cleanPath === '' || cleanPath === '/') return 'Atendimentos'
   return 'NotFound'
 }
 
@@ -115,12 +115,24 @@ export function BugScanner({ className }: { className?: string }) {
 
         {/* Debug: Rota atual e componente renderizado com detecção de ambiente preview x produção */}
         {(() => {
-          const isProductionHost =
-            typeof window !== 'undefined' &&
-            window.location.hostname.includes('brfiacrminteligente.goskip.app')
+          const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+          const isProductionHost = hostname.includes('brfiacrminteligente.goskip.app')
+          const environmentLabel = isProductionHost ? 'production' : 'preview'
           const currentResolved = resolveComponentFromPath(location.pathname)
 
-          // Fallback de segurança: se algum cache ou script antigo gravou "Index", expõe o componente real
+          // Objeto canônico de debug garantindo ambiente e versão dentro de currentRoute e na raiz
+          const debugPayload = {
+            currentRoute: {
+              path: location.pathname,
+              component: currentResolved,
+              environment: environmentLabel,
+              version: APP_VERSION,
+            },
+            environment: environmentLabel,
+            version: APP_VERSION,
+            host: hostname,
+          }
+
           return (
             <div className="mt-3 p-3 rounded-lg border bg-slate-900 text-slate-100 dark:bg-slate-950 border-slate-700 space-y-2 font-mono text-xs">
               <div className="flex items-center justify-between text-slate-400 border-b border-slate-800 pb-1.5">
@@ -154,18 +166,7 @@ export function BugScanner({ className }: { className?: string }) {
               </div>
 
               <pre className="text-[11px] text-emerald-300 bg-slate-950/80 p-2 rounded overflow-x-auto whitespace-pre">
-                {JSON.stringify(
-                  {
-                    currentRoute: {
-                      path: location.pathname,
-                      component: currentResolved,
-                    },
-                    environment: isProductionHost ? 'production' : 'preview',
-                    version: APP_VERSION,
-                  },
-                  null,
-                  2,
-                )}
+                {JSON.stringify(debugPayload, null, 2)}
               </pre>
             </div>
           )
@@ -218,12 +219,12 @@ export function BugScanner({ className }: { className?: string }) {
                 })
               }
               const url = new URL(window.location.href)
-              url.searchParams.set('_v', '1339')
+              url.searchParams.set('_v', '1340')
               window.location.href = url.toString()
             }}
             className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs"
           >
-            Limpar Cache & Recarregar {APP_VERSION}
+            Limpar Cache & Recarregar v0.0.1340
           </Button>{' '}
         </div>
         <div className="mt-4 space-y-2">

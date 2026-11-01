@@ -13,6 +13,8 @@ import Layout from './components/Layout'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
 import { Loader2 } from 'lucide-react'
 import { GlobalError } from '@/components/GlobalError'
+import { APP_VERSION } from '@/lib/version'
+import { resolveComponentFromPath } from '@/components/BugScanner'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 import Dashboard from './pages/Dashboard'
@@ -99,105 +101,46 @@ const RouteTracker = () => {
       }
     }
 
-    // Debounce de 2 segundos antes de gravar no localStorage
-    const timeoutId = setTimeout(() => {
-      idleId = scheduleTask(() => {
-        if (isCancelled) return
+    // Atualização com scheduleTask: resolve nome real via resolveComponentFromPath (nunca grava 'Index')
+    idleId = scheduleTask(() => {
+      if (isCancelled) return
 
-        let component = 'Unknown'
-        const lowerPath = path.toLowerCase()
+      const component = resolveComponentFromPath(path)
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+      const isProduction = hostname.includes('brfiacrminteligente.goskip.app')
+      const environment = isProduction ? 'production' : 'preview'
 
-        if (lowerPath.startsWith('/l/')) {
-          component = 'LaunchLanding'
-        } else if (lowerPath === '/launches' || lowerPath.startsWith('/launches/')) {
-          component = 'Launches'
-        } else if (lowerPath === '/estatisticas' || lowerPath.startsWith('/estatisticas/')) {
-          component = 'Estatisticas'
-        } else if (
-          lowerPath === '/posts' ||
-          lowerPath.startsWith('/posts/') ||
-          lowerPath === '/agenda' ||
-          lowerPath.startsWith('/agenda/')
-        ) {
-          component = 'ScheduledPosts'
-        } else if (lowerPath === '/anuncios' || lowerPath.startsWith('/anuncios/')) {
-          component = 'Anuncios'
-        } else if (lowerPath === '/atendimentos' || lowerPath.startsWith('/atendimentos/')) {
-          component = 'Atendimentos'
-        } else if (
-          lowerPath === '/settings/connections' ||
-          lowerPath.startsWith('/settings/connections/')
-        ) {
-          component = 'SettingsConnections'
-        } else if (
-          lowerPath === '/settings/remarketing' ||
-          lowerPath.startsWith('/settings/remarketing/')
-        ) {
-          component = 'SettingsRemarketing'
-        } else if (lowerPath === '/settings/ai' || lowerPath.startsWith('/settings/ai/')) {
-          component = 'SettingsAI'
-        } else if (lowerPath === '/faxina-meta' || lowerPath.startsWith('/faxina-meta/')) {
-          component = 'FaxinaAtivosMeta'
-        } else if (lowerPath.startsWith('/dashboard')) {
-          component = 'Dashboard'
-        } else if (lowerPath.startsWith('/customers')) {
-          component = 'Customers'
-        } else if (lowerPath.startsWith('/customer-list')) {
-          component = 'Customers'
-        } else if (lowerPath.startsWith('/cadences')) {
-          component = 'Customers'
-        } else if (lowerPath.startsWith('/email-marketing/') && lowerPath !== '/email-marketing') {
-          component = 'EmailCampaignDetail'
-        } else if (lowerPath.startsWith('/email-marketing')) {
-          component = 'EmailMarketing'
-        } else if (lowerPath === '/settings') {
-          component = 'SettingsAI'
-        } else if (lowerPath === '/login') {
-          component = 'Login'
-        } else if (lowerPath === '/forgot-password') {
-          component = 'ForgotPassword'
-        } else if (lowerPath === '/reset-password') {
-          component = 'ResetPassword'
-        } else if (
-          lowerPath === '/site' ||
-          lowerPath === '/vistage' ||
-          lowerPath === '/l/vistage-residence'
-        ) {
-          component = 'VistageLandingPage'
-        } else if (lowerPath === '/privacidade') {
-          component = 'PrivacyPolicy'
-        } else if (lowerPath === '/') {
-          component = 'Atendimentos'
+      const routeData = {
+        path,
+        component,
+        environment,
+        version: APP_VERSION,
+      }
+
+      try {
+        localStorage.setItem('currentRoute', JSON.stringify(routeData))
+
+        const existing = localStorage.getItem('route-store')
+        const newState = { currentRoute: routeData }
+        if (existing) {
+          const parsed = JSON.parse(existing)
+          localStorage.setItem(
+            'route-store',
+            JSON.stringify({
+              ...parsed,
+              state: { ...parsed.state, ...newState },
+            }),
+          )
+        } else {
+          localStorage.setItem('route-store', JSON.stringify({ state: newState }))
         }
-
-        const routeData = { path, component }
-
-        try {
-          localStorage.setItem('currentRoute', JSON.stringify(routeData))
-
-          const existing = localStorage.getItem('route-store')
-          const newState = { currentRoute: routeData }
-          if (existing) {
-            const parsed = JSON.parse(existing)
-            localStorage.setItem(
-              'route-store',
-              JSON.stringify({
-                ...parsed,
-                state: { ...parsed.state, ...newState },
-              }),
-            )
-          } else {
-            localStorage.setItem('route-store', JSON.stringify({ state: newState }))
-          }
-        } catch {
-          // Ignora erros de storage (ex: modo anônimo ou quota)
-        }
-      })
-    }, 2000)
+      } catch {
+        // Ignora erros de storage (ex: modo anônimo ou quota)
+      }
+    })
 
     return () => {
       isCancelled = true
-      clearTimeout(timeoutId)
       if (idleId) cancelScheduledTask(idleId)
     }
   }, [location.pathname, loading, user])

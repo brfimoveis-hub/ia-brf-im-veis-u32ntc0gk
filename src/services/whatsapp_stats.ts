@@ -140,6 +140,109 @@ export interface WhatsAppSendStatsResponse {
   recipients?: WhatsAppSendRecipient[]
 }
 
+import { getInboxThreads, type InboxThread } from '@/services/conversations'
+import { normalizeCadenceStep } from '@/components/chat/CadenceTrackHeader'
+
+export interface UnifiedWhatsAppStatsCounters {
+  total: number
+  activeCount: number
+  pausedCount: number
+  repliedTodayCount: number
+  sentTodayCount: number
+  advancesTodayCount: number
+  activeConversations24h: number
+  byStep: {
+    remarketing: number
+    d1: number
+    d3: number
+    d7: number
+    d14: number
+    nurturing_monthly: number
+    finalizado: number
+  }
+}
+
+/**
+ * Deriva todos os contadores da régua e do atendimento a partir de uma lista
+ * de threads da MESMA fonte (conversas / inbox).
+ */
+export function deriveStatsFromThreads(
+  threads: InboxThread[],
+  advancesToday = 0,
+): UnifiedWhatsAppStatsCounters {
+  const today = new Date().toDateString()
+  let active = 0
+  let paused = 0
+  let repliedToday = 0
+  let sentToday = 0
+  let active24h = 0
+
+  const byStep = {
+    remarketing: 0,
+    d1: 0,
+    d3: 0,
+    d7: 0,
+    d14: 0,
+    nurturing_monthly: 0,
+    finalizado: 0,
+  }
+
+  for (const t of threads) {
+    const stepKey = normalizeCadenceStep(t.follow_up_step) as keyof typeof byStep
+    if (byStep[stepKey] !== undefined) {
+      byStep[stepKey]++
+    } else {
+      byStep.d1++
+    }
+
+    const tagsStr = Array.isArray(t.tags) ? t.tags.join(' ').toLowerCase() : ''
+    const isPaused =
+      tagsStr.includes('ai_paused') || t.persistence_status === 'pausado' || t.is_blocked === true
+
+    if (isPaused) {
+      paused++
+    } else {
+      active++
+    }
+
+    if (t.unread_or_active) {
+      active24h++
+    }
+
+    const msgDate = t.last_message_time ? new Date(t.last_message_time).toDateString() : ''
+    if (msgDate === today) {
+      if (t.sender === 'customer') {
+        repliedToday++
+      }
+      if (t.sender === 'ai') {
+        sentToday++
+      }
+    }
+  }
+
+  return {
+    total: threads.length,
+    activeCount: active,
+    pausedCount: paused,
+    repliedTodayCount: repliedToday,
+    sentTodayCount: sentToday,
+    advancesTodayCount: advancesToday,
+    activeConversations24h: active24h,
+    byStep,
+  }
+}
+
+/**
+ * Busca os contadores unificados direto da mesma função que popula a lista de conversas
+ * (getInboxThreads em src/services/conversations.ts), garantindo consistência total.
+ */
+export const getUnifiedCadenceCounters = async (
+  userId?: string,
+): Promise<UnifiedWhatsAppStatsCounters> => {
+  const threads = await getInboxThreads(userId)
+  return deriveStatsFromThreads(threads)
+}
+
 export const getWhatsAppSendStats = async (): Promise<WhatsAppSendStatsResponse> => {
   return pb.send<WhatsAppSendStatsResponse>('/backend/v1/whatsapp-send-stats', {
     method: 'GET',

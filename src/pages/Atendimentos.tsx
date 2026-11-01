@@ -47,6 +47,7 @@ import {
   type CadenceStepKey,
 } from '@/components/chat/CadenceTrackHeader'
 import { CadenceEvolutionPanel, type CadenceStats } from '@/components/chat/CadenceEvolutionPanel'
+import { deriveStatsFromThreads } from '@/services/whatsapp_stats'
 import { BiaLearningsReviewPanel } from '@/components/chat/BiaLearningsReviewPanel'
 import { CadenceStepCircle, getStepRank } from '@/components/chat/CadenceStepCircle'
 import { recordCadenceStepAdvance, getTodayCadenceAdvancesCount } from '@/services/cadence_advances'
@@ -817,63 +818,31 @@ function Atendimentos() {
     scheduleLoadThreads(2500)
   })
 
-  // Métricas e contadores de evolução da régua de cadência
+  // Métricas e contadores de evolução da régua de cadência derivados da mesma fonte unificada (whatsapp_stats.ts)
   const cadenceStats: CadenceStats = useMemo(() => {
-    const today = new Date().toDateString()
-    let active = 0
-    let paused = 0
-    let repliedToday = 0
-    let sentToday = 0
-
-    const byStep = {
-      remarketing: 0,
-      d1: 0,
-      d3: 0,
-      d7: 0,
-      d14: 0,
-      nurturing_monthly: 0,
-      finalizado: 0,
-    }
-
-    for (const t of threads) {
-      const stepKey = normalizeCadenceStep(t.follow_up_step) as keyof typeof byStep
-      if (byStep[stepKey] !== undefined) {
-        byStep[stepKey]++
-      } else {
-        byStep.d1++
-      }
-
-      const tagsStr = Array.isArray(t.tags) ? t.tags.join(' ').toLowerCase() : ''
-      const isPaused =
-        tagsStr.includes('ai_paused') || t.persistence_status === 'pausado' || t.is_blocked === true
-
-      if (isPaused) {
-        paused++
-      } else {
-        active++
-      }
-
-      // Interações de hoje
-      const msgDate = t.last_message_time ? new Date(t.last_message_time).toDateString() : ''
-      if (msgDate === today) {
-        if (t.sender === 'customer') {
-          repliedToday++
-        }
-        if (t.sender === 'ai') {
-          sentToday++
-        }
-      }
-    }
-
-    return {
-      total: threads.length,
-      activeCount: active,
-      pausedCount: paused,
-      repliedTodayCount: repliedToday,
-      sentTodayCount: sentToday,
-      advancesTodayCount: advancesToday,
-      byStep,
-    }
+    return deriveStatsFromThreads(
+      threads.map((t) => ({
+        customer_id: t.customer_id,
+        customer_name: t.customer_name,
+        customer_phone: t.customer_phone,
+        customer_status: t.customer_status,
+        customer_source: t.customer_source,
+        last_message: t.last_message,
+        last_message_time: t.last_message_time,
+        channel: t.channel,
+        sender: t.sender,
+        unread_or_active: t.is_active_24h,
+        follow_up_step: t.follow_up_step,
+        follow_up_count: t.follow_up_count,
+        last_follow_up_at: t.last_follow_up_at,
+        next_follow_up_at: t.next_follow_up_at,
+        persistence_status: t.persistence_status,
+        promise_pending: t.promise_pending,
+        is_blocked: t.is_blocked,
+        tags: t.tags,
+      })),
+      advancesToday,
+    )
   }, [threads, advancesToday])
 
   // Filtros de busca, canal e degrau de cadência
@@ -915,8 +884,8 @@ function Atendimentos() {
   }, [searchTerm, channelFilter, cadenceFilter])
 
   const totalActive24h = useMemo(() => {
-    return threads.filter((t) => t.is_active_24h).length
-  }, [threads])
+    return cadenceStats.activeConversations24h ?? threads.filter((t) => t.is_active_24h).length
+  }, [cadenceStats.activeConversations24h, threads])
 
   const currentThread = useMemo(() => {
     return threads.find((t) => t.customer_id === selectedCustomerId)
@@ -1300,7 +1269,7 @@ function Atendimentos() {
                     className="md:hidden text-[9px] font-mono font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 shrink-0"
                     title="Versão do Build"
                   >
-                    v0.0.1339
+                    v0.0.1340
                   </span>
 
                   <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">
