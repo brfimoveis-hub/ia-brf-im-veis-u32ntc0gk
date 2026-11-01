@@ -19,22 +19,63 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>BRF IA CRM</title>
-    <!-- Cache Buster & Service Worker Cleanup -->
+    <!-- Service Worker Kill-Switch & Cache Buster -->
     <script>
       (function() {
+        var CURRENT_VERSION = 'v0.0.1346';
+
+        // 1. Ouvir mensagens do kill-switch para recarregar se necessário
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.getRegistrations().then(function(regs) {
-            for (var i = 0; i < regs.length; i++) {
-              regs[i].unregister();
+          navigator.serviceWorker.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'sw-kill-switch-reload') {
+              if (!sessionStorage.getItem('sw_killed_reload_done')) {
+                sessionStorage.setItem('sw_killed_reload_done', '1');
+                window.location.reload();
+              }
             }
           });
+
+          // Registrar /sw.js imediatamente para forçar o navegador a instalar/ativar o kill-switch
+          navigator.serviceWorker.register('/sw.js').catch(function() {
+            // Silencioso se der erro (ex: protocolo não seguro em dev)
+          });
+
+          // Limpeza preventiva síncrona/direta de qualquer registro conhecido
+          if (navigator.serviceWorker.getRegistrations) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+              for (var i = 0; i < regs.length; i++) {
+                regs[i].unregister();
+              }
+            }).catch(function() {});
+          }
         }
+
+        // 2. Apagar caches de CacheStorage
         if ('caches' in window) {
           caches.keys().then(function(keys) {
             for (var i = 0; i < keys.length; i++) {
               caches.delete(keys[i]);
             }
-          });
+          }).catch(function() {});
+        }
+
+        // 3. Detecção de nova versão do build: se localStorage['app_version'] mudou, recarrega uma única vez
+        try {
+          var storedVersion = localStorage.getItem('app_version');
+          if (storedVersion !== CURRENT_VERSION) {
+            localStorage.setItem('app_version', CURRENT_VERSION);
+            localStorage.removeItem('vite-plugin-react-router-cache');
+            var reloadFlagKey = 'app_version_reload_done_' + CURRENT_VERSION;
+            if (!sessionStorage.getItem(reloadFlagKey)) {
+              sessionStorage.setItem(reloadFlagKey, '1');
+              // Se já havia uma versão antiga gravada, recarrega para obter os bundles novos limpos
+              if (storedVersion) {
+                window.location.reload();
+              }
+            }
+          }
+        } catch (e) {
+          // Ignora erros de localStorage
         }
       })();
     </script>
