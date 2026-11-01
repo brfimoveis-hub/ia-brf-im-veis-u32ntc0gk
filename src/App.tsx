@@ -388,6 +388,35 @@ const App = () => {
     }
     localStorage.removeItem('vite-plugin-react-router-cache')
     sessionStorage.removeItem('vite-plugin-react-router-cache')
+
+    // Saneamento preventivo: se houver resíduo antigo com "component": "Index" ou sem environment/version, limpa
+    try {
+      const oldCurrent = localStorage.getItem('currentRoute')
+      if (oldCurrent) {
+        const parsed = JSON.parse(oldCurrent)
+        if (
+          parsed.component === 'Index' ||
+          !parsed.environment ||
+          !parsed.version ||
+          parsed.version !== APP_VERSION
+        ) {
+          localStorage.removeItem('currentRoute')
+        }
+      }
+      const oldStore = localStorage.getItem('route-store')
+      if (oldStore) {
+        const parsedStore = JSON.parse(oldStore)
+        if (
+          parsedStore?.state?.currentRoute?.component === 'Index' ||
+          !parsedStore?.state?.currentRoute?.environment ||
+          !parsedStore?.state?.currentRoute?.version
+        ) {
+          localStorage.removeItem('route-store')
+        }
+      }
+    } catch {
+      // Ignora erros de parsing
+    }
   }, [])
   return (
     <AuthProvider>

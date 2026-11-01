@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bug, AlertCircle, Trash2, Code2 } from 'lucide-react'
+import { Bug, AlertCircle, Trash2, Code2, Copy, Check } from 'lucide-react'
+import { toast } from '@/hooks/use-toast'
 import { ReguaPauseControl } from '@/components/customers/ReguaPauseControl'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -67,6 +68,7 @@ export function resolveComponentFromPath(pathname: string): string {
 export function BugScanner({ className }: { className?: string }) {
   const [errors, setErrors] = useState<ErrorReport[]>([])
   const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
   const location = useLocation()
 
   useEffect(() => {
@@ -147,7 +149,34 @@ export function BugScanner({ className }: { className?: string }) {
                 <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
                   <Code2 className="h-3.5 w-3.5" /> currentRoute
                 </span>
-                <span className="text-[10px] font-bold text-emerald-400">{APP_VERSION}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-emerald-400">{APP_VERSION}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const jsonText = JSON.stringify(debugPayload, null, 2)
+                      if (navigator?.clipboard?.writeText) {
+                        navigator.clipboard.writeText(jsonText).then(() => {
+                          setCopied(true)
+                          setTimeout(() => setCopied(false), 2000)
+                          toast({
+                            title: 'JSON Copiado',
+                            description: `Versão ${APP_VERSION} (${environmentLabel})`,
+                          })
+                        })
+                      }
+                    }}
+                    className="flex items-center gap-1 text-[10px] font-sans px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+                    title="Copiar JSON de diagnóstico"
+                  >
+                    {copied ? (
+                      <Check className="h-3 w-3 text-emerald-400" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                    <span>{copied ? 'Copiado' : 'Copiar'}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Banner de Ambiente: Alerta explícito quando em Produção vs Preview */}
