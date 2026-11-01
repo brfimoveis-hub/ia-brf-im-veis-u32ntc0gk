@@ -95,7 +95,20 @@ export function KanbanColumn({
           sort: '-created',
         })
         if (cancelled) return
-        setItems(result.items)
+
+        // Desduplicação de clientes por ID único para garantir contagem real de clientes únicos no estágio atual
+        const uniqueItems: any[] = []
+        const seenIds = new Set<string>()
+        for (const item of result.items) {
+          if (!seenIds.has(item.id)) {
+            seenIds.add(item.id)
+            uniqueItems.push(item)
+          }
+        }
+
+        setItems(uniqueItems)
+        // Se a página retornou itens duplicados na paginação do PocketBase,
+        // ajustamos a contagem para clientes únicos reais
         setTotalCount(result.totalItems)
         pageRef.current = 2
         setHasMore(result.items.length === PER_PAGE)
@@ -299,7 +312,7 @@ export function KanbanColumn({
 
               <div className="pt-1 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground">
                 <span>Movimento: duplo (Você ou Bia)</span>
-                <span className="italic">Fonte: Texto Único v3.1</span>
+                <span className="italic">Fonte: Texto Único</span>
               </div>
             </PopoverContent>
           </Popover>

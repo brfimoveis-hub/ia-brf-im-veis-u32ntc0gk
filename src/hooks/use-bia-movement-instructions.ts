@@ -12,43 +12,66 @@ export interface BiaMovementInstructionsState {
   error: string | null
   sourceRecordId: string | null
   lastUpdated: string | null
+  constitutionVersion: string
   reload: () => Promise<void>
 }
 
 // Cache em memória para evitar refetch repetido a cada render
 let cachedStages: Record<number, StageParsedInstruction> | null = null
 let cachedRecordId: string | null = null
+let cachedVersionLabel: string = 'Constituição v4.0'
 let cachedTimestamp: number = 0
 const CACHE_TTL_MS = 60 * 1000 // 1 minuto
 
 /**
- * Busca o Texto Único da Bia ativo (priorizando o id soberano tYVJIdIFb5rW4iq ou o de maior prioridade ativa)
+ * Extrai a versão da constituição a partir do título ou do rule_text
+ */
+function extractConstitutionVersion(record: any): string {
+  if (!record) return 'Nenhuma constituição ativa'
+  const textToScan = `${record.title || ''} ${(record.rule_text || '').slice(0, 300)}`
+  const vMatch = textToScan.match(/v(\d+(\.\d+)?)/i)
+  if (vMatch) {
+    return `Constituição v${vMatch[1]}`
+  }
+  if (record.title) {
+    return record.title
+  }
+  return 'Constituição v4.0'
+}
+
+/**
+ * Busca o Texto Único da Bia ativo (priorizando o registro ativo de maior prioridade no banco)
  */
 export async function fetchBiaMovementMap(): Promise<{
   stages: Record<number, StageParsedInstruction>
   recordId: string | null
   updatedAt: string | null
+  version: string
 }> {
-  // 1. Tenta carregar o registro canônico por ID
   let learningRecord: any = null
+
+  // 1. Busca primeiro o registro ativo de maior prioridade (ex: v4.0 Soberana priority=2000)
   try {
-    learningRecord = await pb.collection('bia_learnings').getOne('tYVJIdIFb5rW4iq')
-  } catch {
-    learningRecord = null
+    const records = await pb.collection('bia_learnings').getList(1, 1, {
+      filter: 'is_active = true',
+      sort: '-priority,-created',
+    })
+    if (records.items.length > 0) {
+      learningRecord = records.items[0]
+    }
+  } catch (err) {
+    console.warn(
+      '[useBiaMovementInstructions] Falha ao consultar bia_learnings por prioridade:',
+      err,
+    )
   }
 
-  // 2. Se não achou por ID direto, busca o registro ativo de maior prioridade
+  // 2. Se não achou ativo por prioridade, tenta o ID canônico histórico
   if (!learningRecord) {
     try {
-      const records = await pb.collection('bia_learnings').getList(1, 1, {
-        filter: 'is_active = true',
-        sort: '-priority,-created',
-      })
-      if (records.items.length > 0) {
-        learningRecord = records.items[0]
-      }
-    } catch (err) {
-      console.warn('[useBiaMovementInstructions] Falha ao consultar bia_learnings:', err)
+      learningRecord = await pb.collection('bia_learnings').getOne('tYVJIdIFb5rW4iq')
+    } catch {
+      learningRecord = null
     }
   }
 
@@ -58,15 +81,20 @@ export async function fetchBiaMovementMap(): Promise<{
     ruleText = (pb.authStore.record as any).bia_instructions || ''
   }
 
+  const version = learningRecord
+    ? extractConstitutionVersion(learningRecord)
+    : 'Nenhuma constituição ativa'
   const stages = parseMovementMapStages(ruleText)
   cachedStages = stages
   cachedRecordId = learningRecord?.id || null
+  cachedVersionLabel = version
   cachedTimestamp = Date.now()
 
   return {
     stages,
     recordId: learningRecord?.id || null,
     updatedAt: learningRecord?.updated || null,
+    version,
   }
 }
 
@@ -83,12 +111,14 @@ export function useBiaMovementInstructions(): BiaMovementInstructionsState {
   const [error, setError] = useState<string | null>(null)
   const [sourceRecordId, setSourceRecordId] = useState<string | null>(cachedRecordId)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
+  const [constitutionVersion, setConstitutionVersion] = useState<string>(cachedVersionLabel)
   const isMountedRef = useRef(true)
 
   const load = useCallback(async (force = false) => {
     if (!force && cachedStages && Date.now() - cachedTimestamp < CACHE_TTL_MS) {
       setStages(cachedStages)
       setSourceRecordId(cachedRecordId)
+      setConstitutionVersion(cachedVersionLabel)
       setLoading(false)
       return
     }
@@ -101,6 +131,7 @@ export function useBiaMovementInstructions(): BiaMovementInstructionsState {
       setStages(res.stages)
       setSourceRecordId(res.recordId)
       setLastUpdated(res.updatedAt)
+      setConstitutionVersion(res.version)
     } catch (err: any) {
       if (!isMountedRef.current) return
       console.warn('[useBiaMovementInstructions] Erro ao carregar instruções:', err)
@@ -156,6 +187,7 @@ export function useBiaMovementInstructions(): BiaMovementInstructionsState {
     error,
     sourceRecordId,
     lastUpdated,
+    constitutionVersion,
     reload: () => load(true),
   }
 }

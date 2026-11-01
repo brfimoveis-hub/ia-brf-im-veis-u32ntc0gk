@@ -27,6 +27,7 @@ export function UnifiedKanban({ filters, refreshKey, onUpdateStatus }: Props) {
   const {
     stages: biaStages,
     loading: biaLoading,
+    constitutionVersion,
     reload: reloadBiaInstructions,
   } = useBiaMovementInstructions()
 
@@ -79,7 +80,7 @@ export function UnifiedKanban({ filters, refreshKey, onUpdateStatus }: Props) {
             <span>Cadências da Bia</span>
           </Badge>
           <span className="text-[11px] hidden sm:inline text-muted-foreground">
-            Instruções sincronizadas com a <strong>Constituição v3.1</strong> (Texto Único).
+            Instruções sincronizadas com a <strong>{constitutionVersion}</strong> (Texto Único).
             Mudanças no Caderno de Aprendizados refletem aqui automaticamente.
           </span>
         </div>

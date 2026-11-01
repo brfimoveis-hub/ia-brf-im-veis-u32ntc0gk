@@ -9,7 +9,9 @@ import { subscribeToErrors, setupGlobalErrorHandlers, type ErrorReport } from '@
 import { APP_VERSION } from '@/lib/version'
 
 export function resolveComponentFromPath(pathname: string): string {
-  const cleanPath = (pathname || '').split('?')[0].split('#')[0].toLowerCase()
+  const raw = (pathname || '').split('?')[0].split('#')[0]
+  const cleanPath = raw.toLowerCase().trim()
+  if (cleanPath === '' || cleanPath === '/') return 'Atendimentos'
   if (cleanPath === '/atendimentos' || cleanPath.startsWith('/atendimentos/')) return 'Atendimentos'
   if (cleanPath === '/dashboard' || cleanPath.startsWith('/dashboard/')) return 'Dashboard'
   if (
@@ -52,7 +54,6 @@ export function resolveComponentFromPath(pathname: string): string {
   if (cleanPath === '/reset-password') return 'ResetPassword'
   if (cleanPath === '/privacidade') return 'PrivacyPolicy'
   if (cleanPath === '/site' || cleanPath === '/vistage') return 'VistageLandingPage'
-  if (cleanPath === '' || cleanPath === '/') return 'Atendimentos'
   return 'NotFound'
 }
 
@@ -219,12 +220,12 @@ export function BugScanner({ className }: { className?: string }) {
                 })
               }
               const url = new URL(window.location.href)
-              url.searchParams.set('_v', '1340')
+              url.searchParams.set('_v', '1341')
               window.location.href = url.toString()
             }}
             className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs"
           >
-            Limpar Cache & Recarregar v0.0.1340
+            Limpar Cache & Recarregar v0.0.1341
           </Button>{' '}
         </div>
         <div className="mt-4 space-y-2">
