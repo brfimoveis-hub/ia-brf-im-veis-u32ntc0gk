@@ -351,6 +351,13 @@
     background-clip: content-box;
   }
 
+  /* Suporte global a rolagem suave por toque em dispositivos móveis / iOS */
+  .touch-scroll,
+  .overscroll-contain {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
   /* Barra de rolagem horizontal proeminente para o Kanban de 10 estágios */
   .kanban-horizontal-scroll {
     scrollbar-width: auto;

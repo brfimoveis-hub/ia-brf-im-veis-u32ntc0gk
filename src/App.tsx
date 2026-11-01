@@ -299,6 +299,14 @@ const router = createBrowserRouter([
                 ),
               },
               {
+                path: 'clientes',
+                element: <Navigate to="/customers" replace />,
+              },
+              {
+                path: 'clientes/*',
+                element: <Navigate to="/customers" replace />,
+              },
+              {
                 path: 'customer-list/*',
                 element: <Navigate to="/customers" replace />,
               },

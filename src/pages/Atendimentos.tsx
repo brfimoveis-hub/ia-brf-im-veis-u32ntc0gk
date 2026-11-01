@@ -989,14 +989,14 @@ function Atendimentos() {
   return (
     <div
       className={cn(
-        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full h-full',
+        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full h-full min-h-0',
         // No celular com conversa aberta: o chat passa a ser renderizado em overlay fixed de tela cheia (estilo WhatsApp Web mobile),
         // eliminando de raiz qualquer conflito com os containers pais (Layout, main, scrollbars).
-        // No celular sem conversa aberta: lista de conversas com scroll normal.
+        // No celular sem conversa aberta: lista de conversas com scroll normal e flex min-h-0.
         // No desktop: ocupa a altura total do container (h-full) aproveitando todo o espaço disponível, sem espaço morto embaixo.
         selectedCustomerId
           ? 'm-0 p-2 sm:p-3 md:p-4 overflow-hidden'
-          : 'min-h-[calc(100dvh-4rem)] m-0 p-3 md:p-4 overflow-hidden md:overflow-y-auto',
+          : 'm-0 p-3 md:p-4 overflow-hidden',
       )}
     >
       {/* Top Header com contadores e título - no celular só renderiza quando nenhuma conversa está aberta para liberar altura total ao chat */}
@@ -1184,7 +1184,10 @@ function Atendimentos() {
           </div>
 
           {/* Lista scrollável de threads */}
-          <ScrollArea className="flex-1">
+          <ScrollArea
+            className="flex-1 min-h-0 overscroll-contain"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
             {loadingThreads ? (
               <div className="p-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
                 <RefreshCw className="h-6 w-6 animate-spin text-primary opacity-60" />

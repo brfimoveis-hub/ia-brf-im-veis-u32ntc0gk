@@ -56,7 +56,10 @@ export function CustomerKanban({
   }
 
   return (
-    <div className="flex h-full gap-4 overflow-x-auto pb-4 items-start">
+    <div
+      className="flex h-full gap-4 overflow-x-auto pb-4 items-start overscroll-contain"
+      style={{ WebkitOverflowScrolling: 'touch' }}
+    >
       {PHASES.map((phase) => {
         const columnLeads = leads.filter((l) => phase.aliases.includes(l.status || ''))
         return (
@@ -101,7 +104,10 @@ export function CustomerKanban({
                 </span>
               </div>
             </div>
-            <div className="flex flex-col gap-3 overflow-y-auto flex-1 min-h-[150px] scroll-smooth px-1 pb-2">
+            <div
+              className="flex flex-col gap-3 overflow-y-auto flex-1 min-h-[150px] scroll-smooth px-1 pb-2 overscroll-contain"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
               {columnLeads.map((lead) => (
                 <Card
                   key={lead.id}

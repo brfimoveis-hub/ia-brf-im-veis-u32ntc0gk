@@ -424,7 +424,7 @@ export function CadenceRoulette({
   return (
     <Card
       className={cn(
-        'shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative transition-opacity duration-200 flex flex-col h-[700px]',
+        'shadow-subtle border-primary/10 bg-gradient-to-br from-background to-primary/5 overflow-hidden relative transition-opacity duration-200 flex flex-col h-[700px] max-h-[80vh] min-h-[400px]',
         isLoading && 'pointer-events-none',
       )}
     >
@@ -589,7 +589,10 @@ export function CadenceRoulette({
         </div>
 
         {/* Bottom section: Infinite Scroll Customers List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 relative scroll-smooth bg-background/30">
+        <div
+          className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 relative scroll-smooth bg-background/30 overscroll-contain"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           {leads.map((customer, index) => {
             const isActive = index === globalIndex
             const isEditingThisNotes = isEditingNotes && isActive

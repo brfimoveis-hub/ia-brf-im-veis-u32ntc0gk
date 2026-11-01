@@ -103,7 +103,10 @@ export function UnifiedKanban({ filters, refreshKey, onUpdateStatus }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-[450px] gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-1 kanban-horizontal-scroll">
+      <div
+        className="flex flex-1 min-h-[450px] max-h-[75vh] gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-1 kanban-horizontal-scroll overscroll-contain"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
         {CUSTOMER_STAGES.map((stage, index) => {
           const instruction = getStageInstruction(biaStages, index + 1)
           return (
