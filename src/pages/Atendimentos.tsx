@@ -322,6 +322,7 @@ function Atendimentos() {
 
   const [threads, setThreads] = useState<ThreadItem[]>([])
   const [loadingThreads, setLoadingThreads] = useState(true)
+  const [threadsError, setThreadsError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [showLearningsModal, setShowLearningsModal] = useState(false)
 
@@ -395,20 +396,18 @@ function Atendimentos() {
   const isFetchingThreadsRef = useRef(false)
   const debounceThreadsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Carrega lista de atendimentos agrupados por cliente
+  // Carrega lista de atendimentos agrupados por cliente de forma totalmente desacoplada da URL e do cliente selecionado
   const loadThreads = useCallback(
     async (showRefreshing = false) => {
       if (isFetchingThreadsRef.current) return
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       isFetchingThreadsRef.current = true
       if (showRefreshing) setRefreshing(true)
+      setThreadsError(null)
       try {
-        const currentUserId = user?.id || pb.authStore.record?.id
-        const filter = currentUserId ? `user_id = "${currentUserId}"` : ''
-
-        // Busca lista de conversas mais recentes para agrupar threads (janela otimizada de 300)
-        const records = await pb.collection('conversations').getList<Conversation>(1, 300, {
-          ...(filter ? { filter } : {}),
+        // Busca lista de conversas mais recentes para agrupar threads (janela otimizada de 500)
+        // Sem filtro restritivo de user_id no client para garantir que todas as conversas do CRM apareçam na central
+        const records = await pb.collection('conversations').getList<Conversation>(1, 500, {
           sort: '-created',
           expand: 'customer_id',
         })
@@ -471,31 +470,34 @@ function Atendimentos() {
         // Se nenhum selecionado e temos itens, seleciona o primeiro por conveniência em desktop apenas 1x
         if (
           !hasInitializedSelectionRef.current &&
-          !selectedCustomerIdFromUrl &&
           list.length > 0 &&
           typeof window !== 'undefined' &&
           window.innerWidth >= 768
         ) {
-          hasInitializedSelectionRef.current = true
-          setSelectedCustomerId(list[0].customer_id)
-          setSearchParams(
-            (prev) => {
-              const next = new URLSearchParams(prev)
-              next.set('cliente', list[0].customer_id)
-              return next
-            },
-            { replace: true },
-          )
+          const currentUrlParam = new URLSearchParams(window.location.search).get('cliente')
+          if (!currentUrlParam) {
+            hasInitializedSelectionRef.current = true
+            setSelectedCustomerId(list[0].customer_id)
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev)
+                next.set('cliente', list[0].customer_id)
+                return next
+              },
+              { replace: true },
+            )
+          }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Erro ao carregar atendimentos:', err)
+        setThreadsError(err?.message || 'Falha ao conectar com o servidor para listar conversas.')
       } finally {
         isFetchingThreadsRef.current = false
         setLoadingThreads(false)
         if (showRefreshing) setRefreshing(false)
       }
     },
-    [user?.id, selectedCustomerIdFromUrl, setSearchParams],
+    [setSearchParams],
   )
 
   // Versão com debounce inteligente para evitar storm quando eventos realtime chegam em rajadas
@@ -512,14 +514,13 @@ function Atendimentos() {
     [loadThreads],
   )
 
-  // Carga inicial (executada apenas uma vez ao montar)
+  // Carga inicial (executada imediatamente no mount do componente)
   useEffect(() => {
     loadThreads()
     return () => {
       if (debounceThreadsTimerRef.current) clearTimeout(debounceThreadsTimerRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loadThreads])
 
   // Polling fallback suave a cada 90 segundos (apenas se aba estiver visível e não estiver buscando)
   useEffect(() => {
@@ -1188,6 +1189,28 @@ function Atendimentos() {
                 <RefreshCw className="h-6 w-6 animate-spin text-primary opacity-60" />
                 <span>Carregando conversas...</span>
               </div>
+            ) : threadsError ? (
+              <div className="p-8 text-center text-sm text-destructive flex flex-col items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center text-destructive">
+                  <RefreshCw className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <p className="font-semibold text-slate-900 dark:text-slate-100">
+                    Não foi possível carregar as conversas
+                  </p>
+                  <p className="text-xs text-muted-foreground max-w-[220px]">{threadsError}</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => loadThreads(true)}
+                  className="gap-1.5 text-xs font-medium"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Tentar de novo
+                </Button>
+              </div>
             ) : filteredThreads.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
                 <MessageSquare className="h-10 w-10 text-muted-foreground/30" />
@@ -1269,7 +1292,7 @@ function Atendimentos() {
                     className="md:hidden text-[9px] font-mono font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 shrink-0"
                     title="Versão do Build"
                   >
-                    v0.0.1341
+                    v0.0.1342
                   </span>
 
                   <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">

@@ -54,6 +54,13 @@ export function resolveComponentFromPath(pathname: string): string {
   if (cleanPath === '/reset-password') return 'ResetPassword'
   if (cleanPath === '/privacidade') return 'PrivacyPolicy'
   if (cleanPath === '/site' || cleanPath === '/vistage') return 'VistageLandingPage'
+
+  // Garantia explícita: NUNCA retornar 'Index' sob nenhuma hipótese.
+  // Se a rota não for mapeada acima, deriva um nome legível baseado no pathname (ex: '/leads' -> 'Leads')
+  const segment = cleanPath.replace(/^\/+/, '').split('/')[0]
+  if (segment && segment !== 'index') {
+    return segment.charAt(0).toUpperCase() + segment.slice(1)
+  }
   return 'NotFound'
 }
 
@@ -220,12 +227,12 @@ export function BugScanner({ className }: { className?: string }) {
                 })
               }
               const url = new URL(window.location.href)
-              url.searchParams.set('_v', '1341')
+              url.searchParams.set('_v', '1342')
               window.location.href = url.toString()
             }}
             className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs"
           >
-            Limpar Cache & Recarregar v0.0.1341
+            Limpar Cache & Recarregar v0.0.1342
           </Button>{' '}
         </div>
         <div className="mt-4 space-y-2">
