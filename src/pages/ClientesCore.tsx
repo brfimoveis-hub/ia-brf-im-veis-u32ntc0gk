@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 
+ClientesCore.displayName = 'ClientesCore'
 export default function ClientesCore() {
   const [customers, setCustomers] = useState<any[]>([])
   const [leads, setLeads] = useState<any[]>([])

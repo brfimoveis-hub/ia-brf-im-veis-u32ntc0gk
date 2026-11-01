@@ -464,4 +464,5 @@ export function Launches() {
   )
 }
 
+Launches.displayName = 'Launches'
 export default Launches

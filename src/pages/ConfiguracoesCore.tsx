@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import { MetaCapiConfig } from './MetaCapiConfig'
 
+ConfiguracoesCore.displayName = 'ConfiguracoesCore'
 export default function ConfiguracoesCore() {
   const location = useLocation()
 

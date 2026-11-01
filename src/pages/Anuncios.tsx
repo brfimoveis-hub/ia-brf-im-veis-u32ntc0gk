@@ -73,6 +73,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LeadOriginLinksManager } from '@/components/LeadOriginLinksManager'
 import { LeadOriginsDashboard } from '@/components/LeadOriginsDashboard'
 
+Anuncios.displayName = 'Anuncios'
 export default function Anuncios() {
   const { user } = useAuth()
 

@@ -250,8 +250,13 @@ export function CadenceRoulette({
   // Scroll to active item when auto-advancing, with debounce to prevent system hangs
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (itemRefs.current[globalIndex] && !isPaused && !isEditingCadence && !isEditingNotes) {
-        itemRefs.current[globalIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const activeEl = itemRefs.current[globalIndex]
+      if (activeEl && !isPaused && !isEditingCadence && !isEditingNotes) {
+        try {
+          activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        } catch {
+          activeEl.scrollIntoView()
+        }
       }
     }, 150)
     return () => clearTimeout(timeoutId)

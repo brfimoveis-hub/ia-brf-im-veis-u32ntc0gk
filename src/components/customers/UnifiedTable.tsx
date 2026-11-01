@@ -174,8 +174,8 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey, onCustome
 
   return (
     <>
-      <div className="rounded-md border flex-1 overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-auto">
+      <div className="rounded-md border flex-1 min-h-[350px] overflow-hidden flex flex-col bg-white dark:bg-slate-900 shadow-xs">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
           <Table>
             <TableHeader className="bg-muted sticky top-0 z-10">
               <TableRow>

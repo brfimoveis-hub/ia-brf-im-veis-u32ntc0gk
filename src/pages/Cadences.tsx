@@ -71,6 +71,7 @@ function CadencesSkeleton() {
   )
 }
 
+Cadences.displayName = 'Cadences'
 export default function Cadences() {
   const { user } = useAuth()
   const { toast } = useToast()

@@ -49,6 +49,7 @@ import {
 } from 'lucide-react'
 import { BiaLearningsReviewPanel } from '@/components/chat/BiaLearningsReviewPanel'
 
+Estatisticas.displayName = 'Estatisticas'
 export default function Estatisticas() {
   const [data, setData] = useState<WhatsAppStatsResponse | null>(null)
   const [loading, setLoading] = useState(true)

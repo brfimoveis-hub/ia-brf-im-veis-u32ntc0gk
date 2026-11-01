@@ -195,7 +195,7 @@ export default function Customers() {
   )
 
   return (
-    <div className="flex flex-1 flex-col space-y-4 min-h-0">
+    <div className="flex flex-1 flex-col space-y-4 min-h-0 h-full">
       <RemarketingSyncModal
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
@@ -378,3 +378,5 @@ export default function Customers() {
     </div>
   )
 }
+
+Customers.displayName = 'Customers'

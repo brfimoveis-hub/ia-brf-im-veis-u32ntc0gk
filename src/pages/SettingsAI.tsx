@@ -213,6 +213,7 @@ const CATEGORY_LABELS: Record<BiaLearningCategory, { label: string; color: strin
   },
 }
 
+SettingsAI.displayName = 'SettingsAI'
 export default function SettingsAI() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)

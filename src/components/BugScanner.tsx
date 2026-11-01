@@ -12,7 +12,15 @@ function resolveComponentFromPath(pathname: string): string {
   const lowerPath = pathname.toLowerCase()
   if (lowerPath === '/atendimentos' || lowerPath.startsWith('/atendimentos/')) return 'Atendimentos'
   if (lowerPath === '/dashboard' || lowerPath.startsWith('/dashboard/')) return 'Dashboard'
-  if (lowerPath === '/customers' || lowerPath.startsWith('/customers/')) return 'Customers'
+  if (
+    lowerPath === '/customers' ||
+    lowerPath.startsWith('/customers/') ||
+    lowerPath === '/customer-list' ||
+    lowerPath.startsWith('/customer-list/') ||
+    lowerPath === '/cadences' ||
+    lowerPath.startsWith('/cadences/')
+  )
+    return 'Customers'
   if (lowerPath === '/launches' || lowerPath.startsWith('/launches/')) return 'Launches'
   if (lowerPath.startsWith('/l/')) return 'LaunchLanding'
   if (lowerPath === '/posts' || lowerPath.startsWith('/posts/') || lowerPath === '/agenda')
@@ -161,7 +169,7 @@ export function BugScanner({ className }: { className?: string }) {
                 })
               }
               const url = new URL(window.location.href)
-              url.searchParams.set('_v', '1336')
+              url.searchParams.set('_v', '1337')
               window.location.href = url.toString()
             }}
             className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs"
