@@ -66,12 +66,15 @@ export default function Layout() {
   ]
 
   const SidebarContent = () => (
-    <div className="flex h-full flex-col bg-slate-900 text-slate-100">
-      <div className="flex h-16 items-center px-5 text-lg font-semibold border-b border-slate-800 gap-2.5">
+    <div className="flex h-full flex-col overflow-hidden bg-slate-900 text-slate-100">
+      {/* Topo da sidebar: avatar + título BRF IA CRM (fixo, não rola) */}
+      <div className="flex h-16 flex-shrink-0 items-center px-5 text-lg font-semibold border-b border-slate-800 gap-2.5">
         <BiaAvatar size="sm" showStatusIndicator />
         <span className="truncate">BRF IA CRM</span>
       </div>
-      <div className="flex-1 overflow-y-auto py-4">
+
+      {/* Área superior de links de navegação com rolagem própria independente: flex: 1 1 auto, min-height: 0, overflow-y: auto */}
+      <div className="flex-1 min-h-0 overflow-y-auto py-4 sidebar-scrollbar">
         <nav className="space-y-1 px-3">
           {navItems.map((item) => {
             const isActive = location.pathname.startsWith(item.path)
@@ -95,7 +98,8 @@ export default function Layout() {
         </nav>
       </div>
 
-      <div className="border-t border-slate-800 p-4 space-y-4">
+      {/* Área inferior fixa: STATUS DAS INTEGRAÇÕES + usuário + ações (sempre visível na base, fora do scroll) */}
+      <div className="flex-shrink-0 border-t border-slate-800 p-4 space-y-4 bg-slate-900">
         <div className="space-y-2">
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
             Status das Integrações
@@ -128,7 +132,7 @@ export default function Layout() {
             </span>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-800">
-                v0.0.1340
+                v0.0.1344
               </span>
               <span className="text-[10px] text-slate-400 truncate max-w-[100px]">
                 {currentUser?.email}
@@ -164,10 +168,10 @@ export default function Layout() {
         'h-[100dvh] max-h-[100dvh]',
       )}
     >
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
+      {/* Desktop sidebar: 100dvh (fallback 100vh), flex column, overflow hidden */}
+      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 h-screen h-[100dvh] overflow-hidden">
         <SidebarContent />
-      </div>
+      </aside>
 
       <div className="flex flex-col flex-1 min-w-0 md:pl-64 h-full overflow-hidden">
         {/* Mobile header: quando conversa está aberta em /atendimentos, o chat tem seu próprio header nativo estilo WhatsApp */}
@@ -180,7 +184,7 @@ export default function Layout() {
           <div className="font-semibold text-lg flex items-center gap-2">
             <span>BRF IA CRM</span>
             <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
-              v0.0.1340
+              v0.0.1344
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -193,7 +197,7 @@ export default function Layout() {
               </SheetTrigger>
               <SheetContent
                 side="left"
-                className="p-0 w-72 max-w-[80vw] bg-slate-900 border-none shadow-2xl"
+                className="p-0 w-72 max-w-[80vw] bg-slate-900 border-none shadow-2xl h-screen h-[100dvh] overflow-hidden flex flex-col"
               >
                 <SidebarContent />
               </SheetContent>

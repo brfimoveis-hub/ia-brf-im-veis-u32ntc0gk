@@ -308,6 +308,25 @@
     animation: spotlight 2s ease forwards;
   }
 
+  /* Scrollbar fina e discreta para a barra lateral esquerda */
+  .sidebar-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.35);
+    border-radius: 9999px;
+  }
+  .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.6);
+  }
+
   /* Estilização elegante de scrollbar visível para Kanban e listas */
   .custom-scrollbar {
     scrollbar-width: thin;
