@@ -139,11 +139,9 @@ const ThreadListItem = memo(function ThreadListItem({
       </div>
     </button>
   )
-}
+})
 
-Atendimentos.displayName = 'Atendimentos'
-export default Atendimentos
-export { Atendimentos }
+ThreadListItem.displayName = 'ThreadListItem'
 
 // Ícones específicos por canal
 function ChannelBadge({ channel }: { channel?: string }) {
@@ -1660,3 +1658,7 @@ function Atendimentos() {
     </div>
   )
 }
+
+Atendimentos.displayName = 'Atendimentos'
+export default Atendimentos
+export { Atendimentos }
