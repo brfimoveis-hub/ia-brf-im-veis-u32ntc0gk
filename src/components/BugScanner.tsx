@@ -161,7 +161,7 @@ export function BugScanner({ className }: { className?: string }) {
                 })
               }
               const url = new URL(window.location.href)
-              url.searchParams.set('_v', '1335')
+              url.searchParams.set('_v', '1336')
               window.location.href = url.toString()
             }}
             className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-xs"

@@ -139,7 +139,11 @@ const ThreadListItem = memo(function ThreadListItem({
       </div>
     </button>
   )
-})
+}
+
+Atendimentos.displayName = 'Atendimentos'
+export default Atendimentos
+export { Atendimentos }
 
 // Ícones específicos por canal
 function ChannelBadge({ channel }: { channel?: string }) {
@@ -310,7 +314,7 @@ function isReguaAutomatedMessage(msg: Conversation): boolean {
   return false
 }
 
-export default function Atendimentos() {
+function Atendimentos() {
   const { user } = useAuth()
   const isMobile = useIsMobile()
   const [keyboardOffset, setKeyboardOffset] = useState<number>(0)
@@ -1273,7 +1277,7 @@ export default function Atendimentos() {
         >
           {selectedCustomerId ? (
             <>
-              {/* a) Cabeçalho (flex-shrink:0): botão voltar + nome do cliente + selo de versão v0.0.1325 */}
+              {/* a) Cabeçalho (flex-shrink:0): botão voltar + nome do cliente + selo de versão v0.0.1336 */}
               <div className="p-2 sm:p-3 md:p-4 border-b bg-white dark:bg-slate-900 flex items-center justify-between gap-2 sm:gap-3 shrink-0 flex-shrink-0 z-10">
                 <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                   {/* Botão de voltar visível no mobile com destaque amigável estilo WhatsApp */}
@@ -1298,7 +1302,7 @@ export default function Atendimentos() {
                     className="md:hidden text-[9px] font-mono font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 shrink-0"
                     title="Versão do Build"
                   >
-                    v0.0.1325
+                    v0.0.1336
                   </span>
 
                   <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">
