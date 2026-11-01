@@ -1292,7 +1292,7 @@ function Atendimentos() {
                     className="md:hidden text-[9px] font-mono font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 shrink-0"
                     title="Versão do Build"
                   >
-                    v0.0.1342
+                    v0.0.1344
                   </span>
 
                   <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">
