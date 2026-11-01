@@ -20,7 +20,16 @@ export const CUSTOMER_STAGES = [
   '10. Pós-venda e Indicação',
 ]
 
-export const SOURCE_OPTIONS = ['Villa dos Açores', 'Google Ads', 'Meta Ads', 'Instagram', 'Website']
+export const SOURCE_OPTIONS = [
+  'Facebook Ads',
+  'Meta Ads',
+  'Uazapi / WhatsApp',
+  'Manual / CRM',
+  'Villa dos Açores',
+  'Google Ads',
+  'Instagram',
+  'Website',
+]
 export const LEAD_PROFILE_OPTIONS = ['Investidor', 'Morador', 'Primeiro Imóvel', 'Veranista']
 
 export interface CustomerFilterState {
@@ -31,6 +40,7 @@ export interface CustomerFilterState {
   urgency: string
   noSend: boolean
   tags: string
+  inRegua?: 'all' | 'in_regua' | 'paused' | 'opt_out'
 }
 
 export function escapeFilterValue(v: string): string {
@@ -48,7 +58,24 @@ export function buildBaseFilter(filters: CustomerFilterState): string {
     )
   }
   if (filters.source && filters.source !== 'all') {
-    parts.push(`source ~ '${escapeFilterValue(filters.source)}'`)
+    if (filters.source === 'Uazapi / WhatsApp') {
+      parts.push(`(source ~ 'WhatsApp' || source ~ 'Uazapi' || source ~ 'uazapi')`)
+    } else if (filters.source === 'Facebook Ads') {
+      parts.push(`(source ~ 'Facebook' || source ~ 'Meta')`)
+    } else if (filters.source === 'Manual / CRM') {
+      parts.push(`(source ~ 'Manual' || source ~ 'CRM' || source = '' || source = null)`)
+    } else {
+      parts.push(`source ~ '${escapeFilterValue(filters.source)}'`)
+    }
+  }
+  if (filters.inRegua && filters.inRegua !== 'all') {
+    if (filters.inRegua === 'in_regua') {
+      parts.push(`regua_active = true && regua_opt_out != true`)
+    } else if (filters.inRegua === 'paused') {
+      parts.push(`(regua_active = false || regua_paused = true) && regua_opt_out != true`)
+    } else if (filters.inRegua === 'opt_out') {
+      parts.push(`regua_opt_out = true`)
+    }
   }
   if (filters.neighborhood && filters.neighborhood.trim()) {
     parts.push(`neighborhood ~ '${escapeFilterValue(filters.neighborhood.trim())}'`)

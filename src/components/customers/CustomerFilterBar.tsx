@@ -28,6 +28,8 @@ interface Props {
   onNoSendChange: (v: boolean) => void
   tags: string
   onTagsChange: (v: string) => void
+  reguaFilter?: string
+  onReguaFilterChange?: (v: 'all' | 'in_regua' | 'paused' | 'opt_out') => void
   onClear: () => void
   hasActiveFilters: boolean
 }
@@ -49,6 +51,8 @@ export function CustomerFilterBar({
   onNoSendChange,
   tags,
   onTagsChange,
+  reguaFilter,
+  onReguaFilterChange,
   onClear,
   hasActiveFilters,
 }: Props) {
@@ -78,7 +82,7 @@ export function CustomerFilterBar({
           </SelectContent>
         </Select>
         <Select value={sourceFilter} onValueChange={onSourceChange}>
-          <SelectTrigger className="w-full lg:w-40">
+          <SelectTrigger className="w-full lg:w-44">
             <SelectValue placeholder="Origem" />
           </SelectTrigger>
           <SelectContent>
@@ -90,6 +94,24 @@ export function CustomerFilterBar({
             ))}
           </SelectContent>
         </Select>
+        {onReguaFilterChange && (
+          <Select
+            value={reguaFilter || 'all'}
+            onValueChange={(val) =>
+              onReguaFilterChange(val as 'all' | 'in_regua' | 'paused' | 'opt_out')
+            }
+          >
+            <SelectTrigger className="w-full lg:w-40">
+              <SelectValue placeholder="Régua" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toda a Régua</SelectItem>
+              <SelectItem value="in_regua">🟢 Ativos na Régua</SelectItem>
+              <SelectItem value="paused">⏸️ Régua Pausada</SelectItem>
+              <SelectItem value="opt_out">🛑 Opt-out (NÃO)</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <Select value={leadProfile} onValueChange={onLeadProfileChange}>
           <SelectTrigger className="w-full lg:w-44">
             <SelectValue placeholder="Perfil" />

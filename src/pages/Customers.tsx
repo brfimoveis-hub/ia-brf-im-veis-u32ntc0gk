@@ -44,6 +44,7 @@ export default function Customers() {
   const [urgencyFilter, setUrgencyFilter] = useState('all')
   const [noSend, setNoSend] = useState(false)
   const [tags, setTags] = useState('')
+  const [reguaFilter, setReguaFilter] = useState<'all' | 'in_regua' | 'paused' | 'opt_out'>('all')
   const [sort, setSort] = useState('-created')
   const [refreshKey, setRefreshKey] = useState(0)
   const [showImport, setShowImport] = useState(false)
@@ -72,6 +73,7 @@ export default function Customers() {
     urgency: urgencyFilter,
     noSend,
     tags,
+    inRegua: reguaFilter,
   }
   const baseFilter = buildBaseFilter(filters)
   const listFilter = combineFilters(
@@ -86,6 +88,7 @@ export default function Customers() {
     !!neighborhood.trim() ||
     leadProfile !== 'all' ||
     urgencyFilter !== 'all' ||
+    reguaFilter !== 'all' ||
     noSend
 
   const handleClearFilters = useCallback(() => {
@@ -98,6 +101,7 @@ export default function Customers() {
     setUrgencyFilter('all')
     setNoSend(false)
     setTags('')
+    setReguaFilter('all')
   }, [])
 
   const handleUpdateStatus = useCallback(async (id: string, status: string) => {
@@ -284,6 +288,8 @@ export default function Customers() {
         onNoSendChange={setNoSend}
         tags={tags}
         onTagsChange={setTags}
+        reguaFilter={reguaFilter}
+        onReguaFilterChange={setReguaFilter}
         onClear={handleClearFilters}
         hasActiveFilters={hasActiveFilters}
       />

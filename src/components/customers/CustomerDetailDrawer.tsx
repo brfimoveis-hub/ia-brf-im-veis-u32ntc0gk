@@ -279,6 +279,22 @@ export function CustomerDetailDrawer({
                         </p>
                       )}
                     </div>
+                    {/* Botão de Navegação Direta para a Central de Atendimentos */}
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-7 text-xs font-semibold bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/30 gap-1.5"
+                        onClick={() => {
+                          onOpenChange(false)
+                          window.location.href = `/atendimentos?cliente=${customer.id}`
+                        }}
+                      >
+                        <Bot className="h-3.5 w-3.5 text-emerald-600" />
+                        <span>Abrir na Central de Atendimentos</span>
+                      </Button>
+                    </div>
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <Badge variant="secondary" className="font-medium">
                         {customer.status || '1. Acolhimento'}

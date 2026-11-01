@@ -604,8 +604,8 @@ export function CadenceRoulette({
                 className={cn(
                   'bg-background/90 backdrop-blur-sm border rounded-xl p-4 transition-all duration-300 cursor-pointer',
                   isActive
-                    ? 'border-primary shadow-md ring-1 ring-primary/20 relative'
-                    : 'border-border/60 shadow-sm hover:border-primary/40 opacity-70 hover:opacity-100',
+                    ? 'border-emerald-500 shadow-md ring-2 ring-emerald-500/30 relative'
+                    : 'border-border/60 shadow-sm hover:border-emerald-500/40 opacity-70 hover:opacity-100',
                 )}
                 onClick={() => {
                   if (!isEditingNotes && !isEditingCadence) {
@@ -615,7 +615,7 @@ export function CadenceRoulette({
                 }}
               >
                 {isActive && (
-                  <div className="absolute -left-[1px] top-1/2 -translate-y-1/2 w-1 h-12 bg-primary rounded-r-md" />
+                  <div className="absolute -left-[2px] top-1/2 -translate-y-1/2 w-1.5 h-14 bg-emerald-500 rounded-r-md shadow-xs animate-pulse" />
                 )}
 
                 <div className="flex flex-col sm:flex-row gap-4 items-start justify-between pl-2">
@@ -624,18 +624,29 @@ export function CadenceRoulette({
                       <User
                         className={cn(
                           'h-4 w-4',
-                          isActive ? 'text-primary' : 'text-muted-foreground',
+                          isActive
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-muted-foreground',
                         )}
                       />
                       <h3
                         className={cn(
                           'font-semibold',
-                          isActive ? 'text-primary' : 'text-secondary',
+                          isActive
+                            ? 'text-emerald-700 dark:text-emerald-300 font-bold'
+                            : 'text-secondary',
                         )}
                       >
                         {customer.name || 'Cliente Sem Nome'}
                       </h3>
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          'text-[10px]',
+                          isActive &&
+                            'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-semibold',
+                        )}
+                      >
                         {customer.status}
                       </Badge>
                     </div>

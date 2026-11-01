@@ -151,7 +151,7 @@ const RouteTracker = () => {
         } else if (lowerPath.startsWith('/email-marketing')) {
           component = 'EmailMarketing'
         } else if (lowerPath === '/settings') {
-          component = 'Settings'
+          component = 'SettingsAI'
         } else if (lowerPath === '/login') {
           component = 'Login'
         } else if (lowerPath === '/forgot-password') {
