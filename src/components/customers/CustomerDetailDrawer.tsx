@@ -190,6 +190,9 @@ export function CustomerDetailDrawer({
   const handleDelete = async () => {
     if (!customerId) return
     const idToDelete = customerId
+    // Remoção otimista imediata: fecha drawer e notifica componente pai antes/junto da deleção
+    onCustomerDeleted?.(idToDelete)
+    onOpenChange(false)
     try {
       const msgs = await getConversations(idToDelete).catch(() => [])
       for (const m of msgs) {
@@ -200,11 +203,9 @@ export function CustomerDetailDrawer({
       }
       await deleteCustomer(idToDelete)
       toast({ title: 'Cliente excluído com sucesso' })
-      onCustomerDeleted?.(idToDelete)
-      onOpenChange(false)
     } catch (error) {
       console.error('Erro ao excluir cliente:', error)
-      toast({ title: 'Erro ao excluir cliente', variant: 'destructive' })
+      toast({ title: 'Erro ao excluir cliente no backend', variant: 'destructive' })
     }
   }
 

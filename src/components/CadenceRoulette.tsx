@@ -106,33 +106,64 @@ export function CadenceRoulette({
       )
   }, [toast])
 
+  const pageRef = useRef(1)
+  const isFetchingMoreRef = useRef(false)
+  const hasMoreRef = useRef(true)
+
+  useEffect(() => {
+    pageRef.current = page
+  }, [page])
+
+  useEffect(() => {
+    isFetchingMoreRef.current = isFetchingMore
+  }, [isFetchingMore])
+
+  useEffect(() => {
+    hasMoreRef.current = hasMore
+  }, [hasMore])
+
   const loadLeads = useCallback(
-    async (p: number, overwrite = false) => {
+    async (p: number, overwrite = false): Promise<number> => {
       try {
         if (overwrite) setIsLoading(true)
         else setIsFetchingMore(true)
 
         const data = await getPaginatedCustomers(p, perPage, search, phaseFilter, sourceFilter)
 
+        let addedCount = 0
         setLeads((prev) => {
-          if (overwrite) return data.items
-          const newItems = data.items.filter((item) => !prev.some((p) => p.id === item.id))
+          if (overwrite) {
+            addedCount = data.items.length
+            return data.items
+          }
+          const newItems = data.items.filter(
+            (item) => !prev.some((existing) => existing.id === item.id),
+          )
+          addedCount = newItems.length
           return [...prev, ...newItems]
         })
 
         setTotalItems(data.totalItems)
-        setHasMore(p < data.totalPages)
+        const moreAvailable = p < data.totalPages && data.items.length > 0
+        setHasMore(moreAvailable)
+        hasMoreRef.current = moreAvailable
+        setPage(p)
+        pageRef.current = p
         if (overwrite) setGlobalIndex(0)
+        return addedCount
       } catch (err) {
-        if (!overwrite)
+        if (!overwrite) {
           toast({
             title: 'Erro',
             description: 'Falha ao carregar mais clientes.',
             variant: 'destructive',
           })
+        }
+        return 0
       } finally {
         setIsLoading(false)
         setIsFetchingMore(false)
+        isFetchingMoreRef.current = false
         setIsInitialized(true)
       }
     },
@@ -141,16 +172,15 @@ export function CadenceRoulette({
 
   useEffect(() => {
     setPage(1)
+    pageRef.current = 1
     loadLeads(1, true)
   }, [search, phaseFilter, sourceFilter, loadLeads])
 
-  const loadMore = useCallback(() => {
-    if (!isFetchingMore && hasMore) {
-      const nextPage = page + 1
-      setPage(nextPage)
-      loadLeads(nextPage, false)
-    }
-  }, [isFetchingMore, hasMore, page, loadLeads])
+  const loadMore = useCallback(async (): Promise<number> => {
+    if (isFetchingMoreRef.current || !hasMoreRef.current) return 0
+    const nextPage = pageRef.current + 1
+    return await loadLeads(nextPage, false)
+  }, [loadLeads])
 
   const lastElementRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -186,24 +216,44 @@ export function CadenceRoulette({
     return () => clearTimeout(timeoutId)
   }, [globalIndex, isPaused, isEditingCadence, isEditingNotes])
 
-  const nextCustomer = useCallback(() => {
+  const nextCustomer = useCallback(async () => {
     if (totalItems === 0) return
 
     const event = new CustomEvent('roulette-next', { cancelable: true })
     window.dispatchEvent(event)
     if (event.defaultPrevented) return
 
-    setGlobalIndex((prev) => {
-      const nextIndex = prev >= totalItems - 1 ? 0 : prev + 1
-      // Se o próximo índice estiver próximo do fim da lista carregada localmente,
-      // dispara carga da próxima página ativamente independente de scroll ou IntersectionObserver
-      if (nextIndex >= leads.length - 3 && hasMore && !isFetchingMore) {
-        loadMore()
+    const currentIdx = globalIndex
+    const currentLeadsCount = leads.length
+
+    // Se alcançou ou ultrapassou o fim da lista carregada localmente
+    if (currentIdx >= currentLeadsCount - 1) {
+      if (hasMoreRef.current) {
+        const added = await loadMore()
+        if (added > 0) {
+          setGlobalIndex(currentIdx + 1)
+          setRotationKey((k) => k + 1)
+          return
+        }
       }
-      return nextIndex
-    })
+      // Fim real da fila ou sem novos registros: recomeça do primeiro da lista
+      setGlobalIndex(0)
+      setRotationKey((k) => k + 1)
+      return
+    }
+
+    // Se está a menos de 3 posições do final, pré-carrega silenciosamente em background
+    if (
+      currentIdx + 1 >= currentLeadsCount - 3 &&
+      hasMoreRef.current &&
+      !isFetchingMoreRef.current
+    ) {
+      loadMore()
+    }
+
+    setGlobalIndex(currentIdx + 1)
     setRotationKey((k) => k + 1)
-  }, [totalItems, leads.length, hasMore, isFetchingMore, loadMore])
+  }, [totalItems, globalIndex, leads.length, loadMore])
 
   const nextCustomerRef = useRef(nextCustomer)
   useEffect(() => {

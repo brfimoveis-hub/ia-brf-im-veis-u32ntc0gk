@@ -20,6 +20,10 @@ export function UnifiedKanban({ filters, refreshKey, onUpdateStatus }: Props) {
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const draggingCustomerRef = useRef<any>(null)
   const handlesRef = useRef<Map<string, KanbanColumnHandle>>(new Map())
+
+  const handleCustomerDeleted = useCallback((deletedId: string) => {
+    handlesRef.current.forEach((h) => h.removeItem(deletedId))
+  }, [])
   const {
     stages: biaStages,
     loading: biaLoading,
@@ -122,6 +126,7 @@ export function UnifiedKanban({ filters, refreshKey, onUpdateStatus }: Props) {
         customerId={drawerId}
         open={!!drawerId}
         onOpenChange={handleCloseDrawer}
+        onCustomerDeleted={handleCustomerDeleted}
       />
     </>
   )
