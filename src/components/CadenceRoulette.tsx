@@ -194,11 +194,16 @@ export function CadenceRoulette({
     if (event.defaultPrevented) return
 
     setGlobalIndex((prev) => {
-      if (prev >= totalItems - 1) return 0
-      return prev + 1
+      const nextIndex = prev >= totalItems - 1 ? 0 : prev + 1
+      // Se o próximo índice estiver próximo do fim da lista carregada localmente,
+      // dispara carga da próxima página ativamente independente de scroll ou IntersectionObserver
+      if (nextIndex >= leads.length - 3 && hasMore && !isFetchingMore) {
+        loadMore()
+      }
+      return nextIndex
     })
     setRotationKey((k) => k + 1)
-  }, [totalItems])
+  }, [totalItems, leads.length, hasMore, isFetchingMore, loadMore])
 
   const nextCustomerRef = useRef(nextCustomer)
   useEffect(() => {

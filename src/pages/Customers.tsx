@@ -364,6 +364,7 @@ export default function Customers() {
               sort={sort}
               onSortChange={setSort}
               refreshKey={refreshKey}
+              onCustomerDeleted={() => setRefreshKey((k) => k + 1)}
             />
           </ErrorBoundary>
         </TabsContent>

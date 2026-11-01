@@ -67,6 +67,10 @@ export function CustomerTable({
   const [currentPage, setCurrentPage] = useState(1)
   const [perPage, setPerPage] = useState(20)
 
+  const handleCustomerDeleted = (id: string) => {
+    onDelete(id)
+  }
+
   const totalItems = leads.length
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage))
 
@@ -136,6 +140,7 @@ export function CustomerTable({
         customerId={selectedCustomerId}
         open={!!selectedCustomerId}
         onOpenChange={(open) => !open && setSelectedCustomerId(null)}
+        onCustomerDeleted={handleCustomerDeleted}
       />
       <RemarketingSyncModal
         isOpen={isSyncModalOpen}

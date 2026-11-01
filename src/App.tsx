@@ -302,6 +302,10 @@ const router = createBrowserRouter([
                 ),
               },
               {
+                path: 'bia',
+                element: <Navigate to="/atendimentos" replace />,
+              },
+              {
                 path: 'estatisticas',
                 element: (
                   <ErrorBoundary>

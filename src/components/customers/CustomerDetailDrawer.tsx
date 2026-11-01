@@ -54,10 +54,12 @@ export function CustomerDetailDrawer({
   customerId,
   open,
   onOpenChange,
+  onCustomerDeleted,
 }: {
   customerId: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCustomerDeleted?: (deletedId: string) => void
 }) {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -187,15 +189,21 @@ export function CustomerDetailDrawer({
 
   const handleDelete = async () => {
     if (!customerId) return
+    const idToDelete = customerId
     try {
-      const msgs = await getConversations(customerId)
+      const msgs = await getConversations(idToDelete).catch(() => [])
       for (const m of msgs) {
-        await pb.collection('conversations').delete(m.id)
+        await pb
+          .collection('conversations')
+          .delete(m.id)
+          .catch(() => {})
       }
-      await deleteCustomer(customerId)
+      await deleteCustomer(idToDelete)
       toast({ title: 'Cliente excluído com sucesso' })
+      onCustomerDeleted?.(idToDelete)
       onOpenChange(false)
     } catch (error) {
+      console.error('Erro ao excluir cliente:', error)
       toast({ title: 'Erro ao excluir cliente', variant: 'destructive' })
     }
   }

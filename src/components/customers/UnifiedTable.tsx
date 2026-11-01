@@ -26,6 +26,7 @@ interface Props {
   sort: string
   onSortChange: (sort: string) => void
   refreshKey: number
+  onCustomerDeleted?: (deletedId: string) => void
 }
 
 const PAGE_SIZE = 20
@@ -41,7 +42,7 @@ function formatDateSafe(dateStr: string | undefined | null, fmt: string): string
   }
 }
 
-export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) {
+export function UnifiedTable({ filter, sort, onSortChange, refreshKey, onCustomerDeleted }: Props) {
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(PAGE_SIZE)
   const [items, setItems] = useState<any[]>([])
@@ -145,6 +146,16 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
     setRetryKey((k) => k + 1)
   }, [])
 
+  const handleCustomerDeleted = useCallback(
+    (deletedId: string) => {
+      setItems((prev) => prev.filter((item) => item?.id !== deletedId))
+      setTotalItems((prev) => Math.max(0, prev - 1))
+      customerSelectionStore.removeMany([deletedId])
+      onCustomerDeleted?.(deletedId)
+    },
+    [onCustomerDeleted],
+  )
+
   if (fetchError && !loading) {
     return (
       <>
@@ -155,6 +166,7 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
           customerId={drawerId}
           open={!!drawerId}
           onOpenChange={(open) => !open && setDrawerId(null)}
+          onCustomerDeleted={handleCustomerDeleted}
         />
       </>
     )
@@ -304,6 +316,7 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey }: Props) 
         customerId={drawerId}
         open={!!drawerId}
         onOpenChange={(open) => !open && setDrawerId(null)}
+        onCustomerDeleted={handleCustomerDeleted}
       />
     </>
   )

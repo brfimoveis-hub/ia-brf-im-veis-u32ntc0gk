@@ -92,12 +92,14 @@ export default function Cadences() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCadence, setEditingCadence] = useState<Cadence | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
 
   const filteredCadences = useMemo(() => {
-    if (statusFilter === 'all') return cadences
-    if (statusFilter === 'active') return cadences.filter((c) => c.is_active)
-    return cadences.filter((c) => !c.is_active)
-  }, [cadences, statusFilter])
+    const list = cadences.filter((c) => !deletedIds.has(c.id))
+    if (statusFilter === 'all') return list
+    if (statusFilter === 'active') return list.filter((c) => c.is_active)
+    return list.filter((c) => !c.is_active)
+  }, [cadences, statusFilter, deletedIds])
 
   const handleOpenNew = () => {
     setEditingCadence(null)
@@ -127,11 +129,19 @@ export default function Cadences() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir esta cadência?')) return
+    // Remoção otimista imediata para que a UI reflita a exclusão no mesmo instante
+    setDeletedIds((prev) => new Set(prev).add(id))
     try {
       await deleteCadence(id)
       toast({ title: 'Cadência excluída com sucesso' })
       refresh()
-    } catch {
+    } catch (err) {
+      console.error('Erro ao excluir cadência:', err)
+      setDeletedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
       toast({ title: 'Erro ao excluir', variant: 'destructive' })
     }
   }
