@@ -167,10 +167,13 @@ export default function Layout() {
   return (
     <div
       className={cn(
-        'flex bg-slate-50 overflow-hidden',
-        // No mobile: usa 100dvh com fallback para 100vh para acompanhar a área visível do navegador
-        // e barra de navegação/gestos do Android sem empurrar o conteúdo pra fora
-        'h-[100dvh] max-h-[100dvh]',
+        'flex bg-slate-50',
+        // No mobile: quando nenhuma conversa está aberta (ex.: lista de atendimentos ou lista de clientes),
+        // permite rolagem nativa fluida da tela/página (min-h-[100dvh]), sem trancar a janela em overflow-hidden rígido.
+        // No desktop (>= lg) ou quando uma conversa está em tela cheia no mobile, mantém viewport travada.
+        hasSelectedCustomerInUrl
+          ? 'h-[100dvh] max-h-[100dvh] overflow-hidden'
+          : 'min-h-[100dvh] lg:h-[100dvh] lg:max-h-[100dvh] lg:overflow-hidden',
       )}
     >
       {/* Desktop sidebar: 100dvh (fallback 100vh), flex column, overflow hidden */}
@@ -178,7 +181,14 @@ export default function Layout() {
         <SidebarContent />
       </aside>
 
-      <div className="flex flex-col flex-1 min-w-0 md:pl-64 h-full overflow-hidden">
+      <div
+        className={cn(
+          'flex flex-col flex-1 min-w-0 md:pl-64',
+          hasSelectedCustomerInUrl
+            ? 'h-full overflow-hidden'
+            : 'min-h-[100dvh] lg:h-full lg:overflow-hidden',
+        )}
+      >
         {/* Mobile header: quando conversa está aberta em /atendimentos, o chat tem seu próprio header nativo estilo WhatsApp */}
         <div
           className={cn(
@@ -225,11 +235,19 @@ export default function Layout() {
           <MetaPixel />
         </ErrorBoundary>
 
-        {/* Main content: flex-1 min-h-0 com overscroll e touch fluido */}
+        {/* Main content:
+            - No desktop (>= lg): flex-1 min-h-0 h-full com scroll interno ou split view fixo.
+            - No mobile: quando conversa aberta em /atendimentos, ocupa 100% da viewport.
+            - No mobile quando na lista de atendimentos ou demais páginas: rolagem nativa fluida da página, sem overflow-hidden limitador.
+        */}
         <main
           className={cn(
-            'flex-1 min-w-0 min-h-0 overscroll-contain flex flex-col h-full',
-            isAtendimentos ? 'p-0 md:p-8 overflow-hidden' : 'p-3 sm:p-4 md:p-8 overflow-y-auto',
+            'flex-1 min-w-0 flex flex-col',
+            hasSelectedCustomerInUrl
+              ? 'h-full min-h-0 overflow-hidden p-0'
+              : isAtendimentos
+                ? 'p-0 lg:p-8 lg:h-full lg:min-h-0 lg:overflow-hidden min-h-0'
+                : 'p-3 sm:p-4 md:p-8 overflow-y-auto min-h-0 lg:h-full',
           )}
           style={{ WebkitOverflowScrolling: 'touch' }}
         >

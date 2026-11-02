@@ -175,11 +175,11 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey, onCustome
   return (
     <>
       <div
-        className="rounded-md border flex-1 min-h-[350px] max-h-[70vh] overflow-hidden flex flex-col bg-white dark:bg-slate-900 shadow-xs"
+        className="rounded-md border flex-1 flex flex-col bg-white dark:bg-slate-900 shadow-xs min-h-[350px] lg:max-h-[70vh] lg:overflow-hidden"
         style={{ flex: '1 1 auto' }}
       >
         <div
-          className="flex-1 min-h-0 overflow-y-auto overflow-x-auto overscroll-contain touch-pan-y"
+          className="flex-1 min-h-0 overflow-x-auto lg:overflow-y-auto overscroll-contain touch-pan-y"
           style={{ WebkitOverflowScrolling: 'touch', flex: '1 1 auto' }}
         >
           <Table>
