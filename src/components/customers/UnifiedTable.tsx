@@ -179,8 +179,12 @@ export function UnifiedTable({ filter, sort, onSortChange, refreshKey, onCustome
         style={{ flex: '1 1 auto' }}
       >
         <div
-          className="flex-1 min-h-0 overflow-x-auto lg:overflow-y-auto overscroll-contain touch-pan-y"
-          style={{ WebkitOverflowScrolling: 'touch', flex: '1 1 auto' }}
+          className="flex-1 min-h-0 overflow-x-auto lg:overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            flex: '1 1 auto',
+            scrollbarGutter: 'stable',
+          }}
         >
           <Table>
             <TableHeader className="bg-muted sticky top-0 z-10">

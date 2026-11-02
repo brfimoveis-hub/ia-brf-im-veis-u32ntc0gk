@@ -242,18 +242,20 @@ export default function Layout() {
         */}
         <main
           className={cn(
-            'flex-1 min-w-0 flex flex-col',
+            'flex-1 min-w-0 flex flex-col min-h-0',
             hasSelectedCustomerInUrl
-              ? 'h-full min-h-0 overflow-hidden p-0'
+              ? 'h-full overflow-hidden p-0'
               : isAtendimentos
-                ? 'p-0 lg:p-8 lg:h-full lg:min-h-0 lg:overflow-hidden min-h-0'
-                : 'p-3 sm:p-4 md:p-8 overflow-y-auto min-h-0 lg:h-full',
+                ? 'p-0 lg:p-8 lg:h-full lg:overflow-hidden'
+                : 'p-3 sm:p-4 md:p-8 overflow-y-auto lg:h-full',
           )}
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          <ErrorBoundary>
-            <Outlet />
-          </ErrorBoundary>
+          <div className="flex-1 min-h-0 flex flex-col w-full lg:h-full">
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
+          </div>
         </main>
       </div>
     </div>

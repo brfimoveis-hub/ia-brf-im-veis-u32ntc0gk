@@ -358,7 +358,7 @@ export function KanbanColumn({
       <div
         ref={scrollRef}
         className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-[150px] pr-1 pb-2 custom-scrollbar overscroll-contain"
-        style={{ WebkitOverflowScrolling: 'touch' }}
+        style={{ WebkitOverflowScrolling: 'touch', scrollbarGutter: 'stable' }}
       >
         {items.map((customer) => (
           <Card

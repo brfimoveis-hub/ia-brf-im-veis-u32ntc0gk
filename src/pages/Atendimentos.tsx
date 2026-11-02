@@ -991,12 +991,12 @@ function Atendimentos() {
   return (
     <div
       className={cn(
-        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full',
+        'flex flex-col flex-1 max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full',
         // No desktop (>= lg): altura 100%, overflow-hidden e split view interno.
         // No mobile: se conversa aberta, tela cheia com overlay. Se na lista, altura livre/natural para rolagem nativa da página.
         selectedCustomerId
           ? 'h-full min-h-0 overflow-hidden m-0 p-1.5 sm:p-3 md:p-4'
-          : 'm-0 p-2 sm:p-3 lg:p-4 min-h-0 lg:h-full lg:overflow-hidden',
+          : 'm-0 p-2 sm:p-3 lg:p-4 min-h-0 lg:h-full lg:max-h-full lg:overflow-hidden',
       )}
     >
       {/* Top Header com contadores e título - compacto no mobile */}
@@ -1170,7 +1170,7 @@ function Atendimentos() {
           'flex flex-1 min-h-0',
           selectedCustomerId
             ? 'pt-0 md:pt-2 gap-0 md:gap-3 overflow-hidden'
-            : 'pt-1.5 sm:pt-2 gap-3 lg:h-full lg:overflow-hidden',
+            : 'pt-1.5 sm:pt-2 gap-3 lg:flex-1 lg:min-h-0 lg:h-full lg:overflow-hidden',
         )}
       >
         {/* Painel Esquerdo: Lista de Conversas */}
@@ -1179,7 +1179,7 @@ function Atendimentos() {
             'flex flex-col w-full md:w-80 lg:w-96 bg-white dark:bg-slate-900 rounded-xl border shadow-sm shrink-0 transition-all',
             // No desktop: h-full min-h-0 overflow-hidden (scroll interno da coluna).
             // No mobile: altura natural, sem trancar altura nem forçar overflow aninhado que impede scroll com o dedo.
-            'min-h-0 lg:h-full lg:overflow-hidden',
+            'min-h-0 lg:flex-1 lg:h-full lg:max-h-full lg:overflow-hidden',
             selectedCustomerId ? 'hidden md:flex' : 'flex',
           )}
         >
@@ -1258,6 +1258,7 @@ function Atendimentos() {
             style={{
               WebkitOverflowScrolling: 'touch',
               touchAction: 'pan-y',
+              scrollbarGutter: 'stable',
             }}
           >
             {loadingThreads ? (
