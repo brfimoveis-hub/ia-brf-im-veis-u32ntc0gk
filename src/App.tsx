@@ -88,7 +88,12 @@ const RouteTracker = () => {
     }
 
     try {
-      // Grava sempre com environment e version garantidos e NUNCA Index
+      // Grava na chave nova versionada do BugScanner v2
+      const bugscanKey = `bugscan_v2_${APP_VERSION}_currentRoute`
+      const bugscanStoreKey = `bugscan_v2_${APP_VERSION}_route_store`
+      localStorage.setItem(bugscanKey, JSON.stringify(routeData))
+      localStorage.setItem(bugscanStoreKey, JSON.stringify({ state: { currentRoute: routeData } }))
+      // Grava também as chaves canônicas com environment e version garantidos e NUNCA Index
       localStorage.setItem('currentRoute', JSON.stringify(routeData))
       localStorage.setItem('route-store', JSON.stringify({ state: { currentRoute: routeData } }))
     } catch {
@@ -361,6 +366,16 @@ const App = () => {
         localStorage.removeItem('route-store')
         localStorage.setItem('app_version', APP_VERSION)
       }
+
+      // Purga qualquer resíduo legado ou inválido que contenha "Index" ou versão diferente
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i)
+        if (!k) continue
+        if (k.startsWith('bugscan_') && !k.includes(APP_VERSION)) {
+          localStorage.removeItem(k)
+        }
+      }
+
       const oldCurrent = localStorage.getItem('currentRoute')
       if (oldCurrent) {
         const parsed = JSON.parse(oldCurrent)

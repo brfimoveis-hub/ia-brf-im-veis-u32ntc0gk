@@ -22,23 +22,32 @@
     <!-- Service Worker Kill-Switch & Cache Buster -->
     <script>
       (function() {
-        var CURRENT_VERSION = 'v0.0.1354';
+        var CURRENT_VERSION = 'v0.0.1355';
+        var BUGSCAN_STORAGE_KEY = 'bugscan_v2_' + CURRENT_VERSION + '_currentRoute';
+        var BUGSCAN_STORE_KEY = 'bugscan_v2_' + CURRENT_VERSION + '_route_store';
 
         // Purga garantida síncrona na entrada (antes do primeiro render do React)
         try {
+          // Purga imediata de chaves antigas e resíduos de versões anteriores (ex: currentRoute e route-store soltos)
+          localStorage.removeItem('currentRoute');
+          localStorage.removeItem('route-store');
+          localStorage.removeItem('vite-plugin-react-router-cache');
+          sessionStorage.removeItem('vite-plugin-react-router-cache');
+
+          // Limpa qualquer chave bugscan legada que não seja a da versão atual
+          for (var i = localStorage.length - 1; i >= 0; i--) {
+            var k = localStorage.key(i);
+            if (k && (k === 'currentRoute' || k === 'route-store' || (k.indexOf('bugscan_') === 0 && k.indexOf(CURRENT_VERSION) === -1))) {
+              localStorage.removeItem(k);
+            }
+          }
+
           var storedVersion = localStorage.getItem('app_version');
           if (storedVersion !== CURRENT_VERSION) {
-            // Versão mudou ou primeira inicialização nesta build:
-            // 1. Purga todas as chaves de rota, stores persistidos e caches que possam conter "Index" ou estado antigo
-            localStorage.removeItem('currentRoute');
-            localStorage.removeItem('route-store');
-            localStorage.removeItem('vite-plugin-react-router-cache');
-            sessionStorage.removeItem('vite-plugin-react-router-cache');
-
-            // 2. Grava o carimbo de versão atualizado
+            // Grava o carimbo de versão atualizado
             localStorage.setItem('app_version', CURRENT_VERSION);
 
-            // 3. Se havia versão anterior armazenada, forçar UMA única recarga limpa para garantir descarte de bundles/SW antigos
+            // Se havia versão anterior armazenada, forçar UMA única recarga limpa para garantir descarte de bundles/SW antigos
             var reloadKey = 'app_reload_version_' + CURRENT_VERSION;
             if (storedVersion && !sessionStorage.getItem(reloadKey)) {
               sessionStorage.setItem(reloadKey, '1');
@@ -75,6 +84,9 @@
             environment: envLabel,
             version: CURRENT_VERSION
           };
+          localStorage.setItem(BUGSCAN_STORAGE_KEY, JSON.stringify(syncRouteData));
+          localStorage.setItem(BUGSCAN_STORE_KEY, JSON.stringify({ state: { currentRoute: syncRouteData } }));
+          // Também grava currentRoute com carimbo completo e validado para scanners que buscam essa chave diretamente
           localStorage.setItem('currentRoute', JSON.stringify(syncRouteData));
           localStorage.setItem('route-store', JSON.stringify({ state: { currentRoute: syncRouteData } }));
           // Espelha também no escopo global para acesso direto de scanners sem depender de storage

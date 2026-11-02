@@ -104,7 +104,7 @@ export function UnifiedKanban({ filters, refreshKey, onUpdateStatus }: Props) {
       </div>
 
       <div
-        className="flex w-full min-h-[580px] md:h-[calc(100dvh-260px)] md:max-h-[800px] gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-1 kanban-horizontal-scroll overscroll-contain"
+        className="flex w-full min-h-[580px] md:h-[calc(100dvh-220px)] md:min-h-[640px] gap-4 overflow-x-auto overflow-y-hidden pb-4 pt-1 kanban-horizontal-scroll overscroll-contain"
         style={{ WebkitOverflowScrolling: 'touch', scrollbarGutter: 'stable' }}
       >
         {CUSTOMER_STAGES.map((stage, index) => {

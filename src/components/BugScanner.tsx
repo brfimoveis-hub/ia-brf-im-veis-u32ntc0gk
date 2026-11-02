@@ -151,10 +151,18 @@ export function BugScanner({ className }: { className?: string }) {
             host: hostname,
           }
 
-          // Mantém sincronizado no escopo global e em storage de forma consistente
+          // Mantém sincronizado no escopo global e em storage com a chave nova versionada
           if (typeof window !== 'undefined') {
             ;(window as any).__currentRoute = debugPayload.currentRoute
             try {
+              const bugscanKey = `bugscan_v2_${APP_VERSION}_currentRoute`
+              const bugscanStoreKey = `bugscan_v2_${APP_VERSION}_route_store`
+              localStorage.setItem(bugscanKey, JSON.stringify(debugPayload.currentRoute))
+              localStorage.setItem(
+                bugscanStoreKey,
+                JSON.stringify({ state: { currentRoute: debugPayload.currentRoute } }),
+              )
+              // Grava também as chaves canônicas para compatibilidade direta, garantindo que NUNCA sejam 'Index'
               localStorage.setItem('currentRoute', JSON.stringify(debugPayload.currentRoute))
               localStorage.setItem(
                 'route-store',

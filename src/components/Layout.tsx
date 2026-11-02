@@ -232,7 +232,7 @@ export default function Layout() {
 
         {/* Main content:
             - Garante rolagem natural e sem bloqueio em mobile e desktop.
-            - No desktop split view de /atendimentos, o container ocupa min-h-[calc(100dvh-...)] com cada painel tendo scroll garantido.
+            - No desktop split view de /atendimentos, o container tem altura concreta lg:h-[calc(100dvh-4rem)] com cada painel tendo scroll garantido.
             - Em /clientes, permite que a página e as listas rolem suavemente até o final.
         */}
         <main
@@ -241,12 +241,17 @@ export default function Layout() {
             hasSelectedCustomerInUrl
               ? 'h-full overflow-hidden p-0'
               : isAtendimentos
-                ? 'p-0 lg:p-6'
+                ? 'p-0 lg:p-6 lg:h-[calc(100dvh-4rem)] lg:max-h-[calc(100dvh-4rem)] lg:overflow-hidden'
                 : 'p-3 sm:p-4 md:p-8',
           )}
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          <div className="flex-1 flex flex-col w-full">
+          <div
+            className={cn(
+              'flex-1 flex flex-col w-full min-h-0',
+              isAtendimentos && 'lg:h-full lg:max-h-full',
+            )}
+          >
             <ErrorBoundary>
               <Outlet />
             </ErrorBoundary>
