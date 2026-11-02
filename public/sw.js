@@ -1,4 +1,4 @@
-// Service Worker Kill-Switch (v0.0.1353)
+// Service Worker Kill-Switch (v0.0.1354)
 // Desregistra todos os service workers da origem, limpa todos os caches e se auto-destrói.
 // Não cacheia nenhum recurso da aplicação.
 
@@ -43,7 +43,7 @@ self.addEventListener('activate', function (event) {
         await self.clients.claim()
         const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
         for (const client of clients) {
-          client.postMessage({ type: 'sw-kill-switch-reload', version: 'v0.0.1353' })
+          client.postMessage({ type: 'sw-kill-switch-reload', version: 'v0.0.1354' })
         }
       } catch (e) {
         console.warn('[SW Kill-Switch] Erro ao notificar clientes:', e)

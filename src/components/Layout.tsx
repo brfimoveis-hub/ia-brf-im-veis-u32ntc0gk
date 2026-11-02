@@ -167,26 +167,21 @@ export default function Layout() {
   return (
     <div
       className={cn(
-        'flex bg-slate-50',
-        // No mobile: quando nenhuma conversa está aberta (ex.: lista de atendimentos ou lista de clientes),
-        // permite rolagem nativa fluida da tela/página (min-h-[100dvh]), sem trancar a janela em overflow-hidden rígido.
-        // No desktop (>= lg) ou quando uma conversa está em tela cheia no mobile, mantém viewport travada.
-        hasSelectedCustomerInUrl
-          ? 'h-[100dvh] max-h-[100dvh] overflow-hidden'
-          : 'min-h-[100dvh] lg:h-[100dvh] lg:max-h-[100dvh] lg:overflow-hidden',
+        'flex bg-slate-50 w-full min-h-[100dvh]',
+        // No mobile com conversa aberta: fixa a viewport em tela cheia estilo WhatsApp
+        // Em todas as outras situações (inclusive desktop), min-h-[100dvh] permite rolagem natural sem truncar altura
+        hasSelectedCustomerInUrl && 'h-[100dvh] max-h-[100dvh] overflow-hidden',
       )}
     >
-      {/* Desktop sidebar: 100dvh (fallback 100vh), flex column, overflow hidden */}
-      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 h-screen h-[100dvh] overflow-hidden">
+      {/* Desktop sidebar: 100dvh, flex column, overflow hidden, fixada à esquerda com rolagem independente de links */}
+      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 h-screen h-[100dvh] overflow-hidden z-30">
         <SidebarContent />
       </aside>
 
       <div
         className={cn(
-          'flex flex-col flex-1 min-w-0 md:pl-64',
-          hasSelectedCustomerInUrl
-            ? 'h-full overflow-hidden'
-            : 'min-h-[100dvh] lg:h-full lg:overflow-hidden',
+          'flex flex-col flex-1 min-w-0 md:pl-64 w-full',
+          hasSelectedCustomerInUrl ? 'h-full overflow-hidden' : 'min-h-[100dvh]',
         )}
       >
         {/* Mobile header: quando conversa está aberta em /atendimentos, o chat tem seu próprio header nativo estilo WhatsApp */}
@@ -236,22 +231,22 @@ export default function Layout() {
         </ErrorBoundary>
 
         {/* Main content:
-            - No desktop (>= lg): flex-1 min-h-0 h-full com scroll interno ou split view fixo.
-            - No mobile: quando conversa aberta em /atendimentos, ocupa 100% da viewport.
-            - No mobile quando na lista de atendimentos ou demais páginas: rolagem nativa fluida da página, sem overflow-hidden limitador.
+            - Garante rolagem natural e sem bloqueio em mobile e desktop.
+            - No desktop split view de /atendimentos, o container ocupa min-h-[calc(100dvh-...)] com cada painel tendo scroll garantido.
+            - Em /clientes, permite que a página e as listas rolem suavemente até o final.
         */}
         <main
           className={cn(
-            'flex-1 min-w-0 flex flex-col min-h-0',
+            'flex-1 min-w-0 flex flex-col',
             hasSelectedCustomerInUrl
               ? 'h-full overflow-hidden p-0'
               : isAtendimentos
-                ? 'p-0 lg:p-8 lg:h-full lg:overflow-hidden'
-                : 'p-3 sm:p-4 md:p-8 overflow-y-auto lg:h-full',
+                ? 'p-0 lg:p-6'
+                : 'p-3 sm:p-4 md:p-8',
           )}
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          <div className="flex-1 min-h-0 flex flex-col w-full lg:h-full">
+          <div className="flex-1 flex flex-col w-full">
             <ErrorBoundary>
               <Outlet />
             </ErrorBoundary>

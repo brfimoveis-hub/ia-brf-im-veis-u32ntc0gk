@@ -207,7 +207,7 @@ export function KanbanColumn({
 
   return (
     <div
-      className="flex w-[280px] shrink-0 flex-col rounded-xl bg-muted/40 border border-border/50 p-3 max-h-full"
+      className="flex w-[280px] shrink-0 flex-col rounded-xl bg-muted/40 border border-border/50 p-3 h-full max-h-full min-h-0"
       onDragOver={(e) => {
         e.preventDefault()
         e.dataTransfer.dropEffect = 'move'
@@ -357,7 +357,7 @@ export function KanbanColumn({
 
       <div
         ref={scrollRef}
-        className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-[150px] pr-1 pb-2 custom-scrollbar overscroll-contain"
+        className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-0 pr-1 pb-2 custom-scrollbar overscroll-contain"
         style={{ WebkitOverflowScrolling: 'touch', scrollbarGutter: 'stable' }}
       >
         {items.map((customer) => (

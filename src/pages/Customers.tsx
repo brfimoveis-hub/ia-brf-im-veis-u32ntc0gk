@@ -230,10 +230,7 @@ export default function Customers() {
   )
 
   return (
-    <div
-      className="flex flex-1 flex-col space-y-4 min-h-0 w-full pb-8 lg:pb-4"
-      style={{ flex: '1 1 auto' }}
-    >
+    <div className="flex flex-1 flex-col space-y-4 w-full pb-8 lg:pb-4">
       <RemarketingSyncModal
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
@@ -375,15 +372,12 @@ export default function Customers() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent
-          value="pipeline"
-          className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col"
-        >
-          <div ref={kanbanLazy.ref} className="flex-1 min-h-0 flex flex-col">
+        <TabsContent value="pipeline" className="mt-4 data-[state=active]:flex flex-col">
+          <div ref={kanbanLazy.ref} className="w-full flex flex-col">
             {kanbanLazy.visible ? (
               <ErrorBoundary
                 fallback={
-                  <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
+                  <div className="flex items-center justify-center p-8 text-muted-foreground">
                     Erro ao carregar o Pipeline Kanban. Recarregue a página.
                   </div>
                 }
@@ -395,7 +389,7 @@ export default function Customers() {
                 />
               </ErrorBoundary>
             ) : (
-              <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 text-muted-foreground py-12">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="text-sm">Carregando pipeline...</span>
               </div>
@@ -403,10 +397,10 @@ export default function Customers() {
           </div>
         </TabsContent>
 
-        <TabsContent value="list" className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col">
+        <TabsContent value="list" className="mt-4 data-[state=active]:flex flex-col">
           <ErrorBoundary
             fallback={
-              <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
+              <div className="flex items-center justify-center p-8 text-muted-foreground">
                 Erro ao carregar a lista de clientes. Recarregue a página.
               </div>
             }
@@ -423,7 +417,7 @@ export default function Customers() {
 
         <TabsContent
           value="confidence"
-          className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col space-y-3"
+          className="mt-4 data-[state=active]:flex flex-col space-y-3"
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
             <div className="space-y-0.5">
@@ -444,7 +438,7 @@ export default function Customers() {
 
           <ErrorBoundary
             fallback={
-              <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
+              <div className="flex items-center justify-center p-8 text-muted-foreground">
                 Erro ao carregar a lista de confiança. Recarregue a página.
               </div>
             }
@@ -459,13 +453,10 @@ export default function Customers() {
           </ErrorBoundary>
         </TabsContent>
 
-        <TabsContent
-          value="roulette"
-          className="flex-1 mt-4 min-h-0 data-[state=active]:flex flex-col"
-        >
+        <TabsContent value="roulette" className="mt-4 data-[state=active]:flex flex-col">
           <ErrorBoundary
             fallback={
-              <div className="flex flex-1 items-center justify-center p-8 text-muted-foreground">
+              <div className="flex items-center justify-center p-8 text-muted-foreground">
                 Erro ao carregar a Roleta de Clientes. Recarregue a página.
               </div>
             }

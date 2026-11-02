@@ -992,11 +992,9 @@ function Atendimentos() {
     <div
       className={cn(
         'flex flex-col flex-1 max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full',
-        // No desktop (>= lg): altura 100%, overflow-hidden e split view interno.
         // No mobile: se conversa aberta, tela cheia com overlay. Se na lista, altura livre/natural para rolagem nativa da página.
-        selectedCustomerId
-          ? 'h-full min-h-0 overflow-hidden m-0 p-1.5 sm:p-3 md:p-4'
-          : 'm-0 p-2 sm:p-3 lg:p-4 min-h-0 lg:h-full lg:max-h-full lg:overflow-hidden',
+        // No desktop (>= md): altura total e split view consistente com rolagem garantida em ambas as colunas.
+        selectedCustomerId ? 'm-0 p-1.5 sm:p-3 md:p-4' : 'm-0 p-2 sm:p-3 lg:p-4',
       )}
     >
       {/* Top Header com contadores e título - compacto no mobile */}
@@ -1162,24 +1160,24 @@ function Atendimentos() {
       </div>
 
       {/* Main Container - Split View
-          - No desktop (>= lg): split view lado a lado com altura fixa e scroll interno.
+          - No desktop (>= md): split view lado a lado ocupando altura real calculada h-[calc(100dvh-180px)] min-h-[580px].
           - No mobile: quando sem conversa aberta, a lista usa altura natural com rolagem nativa da página (sem scroll aninhado trancado).
       */}
       <div
         className={cn(
           'flex flex-1 min-h-0',
           selectedCustomerId
-            ? 'pt-0 md:pt-2 gap-0 md:gap-3 overflow-hidden'
-            : 'pt-1.5 sm:pt-2 gap-3 lg:flex-1 lg:min-h-0 lg:h-full lg:overflow-hidden',
+            ? 'pt-0 md:pt-2 gap-0 md:gap-3 md:h-[calc(100dvh-180px)] md:min-h-[580px]'
+            : 'pt-1.5 sm:pt-2 gap-3 md:h-[calc(100dvh-180px)] md:min-h-[580px]',
         )}
       >
         {/* Painel Esquerdo: Lista de Conversas */}
         <div
           className={cn(
             'flex flex-col w-full md:w-80 lg:w-96 bg-white dark:bg-slate-900 rounded-xl border shadow-sm shrink-0 transition-all',
-            // No desktop: h-full min-h-0 overflow-hidden (scroll interno da coluna).
+            // No desktop: md:h-full md:min-h-0 md:overflow-hidden (com scroll interno garantido na lista).
             // No mobile: altura natural, sem trancar altura nem forçar overflow aninhado que impede scroll com o dedo.
-            'min-h-0 lg:flex-1 lg:h-full lg:max-h-full lg:overflow-hidden',
+            'md:h-full md:min-h-0 md:overflow-hidden',
             selectedCustomerId ? 'hidden md:flex' : 'flex',
           )}
         >
@@ -1249,12 +1247,12 @@ function Atendimentos() {
           </div>
 
           {/* Lista de conversas:
-              - No desktop (>= lg): flex-1 min-h-0 overflow-y-auto (scroll interno da coluna).
+              - No desktop (>= md): flex-1 min-h-0 overflow-y-auto garantido com rolagem suave e barra visível.
               - No mobile: rolagem nativa de documento (single-document scroll), sem altura forçada,
                 permitindo que o dedo role suavemente até o último cliente da lista.
           */}
           <div
-            className="flex-1 min-h-0 lg:overflow-y-auto lg:overscroll-contain touch-pan-y custom-scrollbar"
+            className="flex-1 min-h-0 md:overflow-y-auto md:overscroll-contain touch-pan-y custom-scrollbar"
             style={{
               WebkitOverflowScrolling: 'touch',
               touchAction: 'pan-y',
