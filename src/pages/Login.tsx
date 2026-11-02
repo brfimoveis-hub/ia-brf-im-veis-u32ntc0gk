@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import { Users, Loader2 } from 'lucide-react'
+import { APP_VERSION } from '@/lib/version'
 
 export default function Login() {
   const [email, setEmail] = useState('brfimoveis@gmail.com')
@@ -61,6 +62,15 @@ export default function Login() {
         <CardHeader className="text-center pb-6">
           <div className="mx-auto bg-primary/10 p-3 rounded-full mb-4 w-fit">
             <Users className="w-6 h-6 text-primary" />
+          </div>
+          <div className="flex items-center justify-center gap-1.5 mb-1">
+            <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+              {APP_VERSION} ·{' '}
+              {typeof window !== 'undefined' &&
+              window.location.hostname.includes('brfiacrminteligente.goskip.app')
+                ? 'produção'
+                : 'preview'}
+            </span>
           </div>
           <CardTitle className="text-2xl">Bem-vindo(a) de volta</CardTitle>
           <CardDescription>Acesse o CRM para gerenciar seus clientes.</CardDescription>

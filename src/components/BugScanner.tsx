@@ -57,12 +57,14 @@ export function resolveComponentFromPath(pathname: string): string {
   if (cleanPath === '/site' || cleanPath === '/vistage') return 'VistageLandingPage'
 
   // Garantia explícita: NUNCA retornar 'Index' sob nenhuma hipótese.
+  // Se a rota for raiz vazia, é Atendimentos.
+  if (!cleanPath || cleanPath === '/') return 'Atendimentos'
   // Se a rota não for mapeada acima, deriva um nome legível baseado no pathname (ex: '/leads' -> 'Leads')
   const segment = cleanPath.replace(/^\/+/, '').split('/')[0]
   if (segment && segment !== 'index') {
     return segment.charAt(0).toUpperCase() + segment.slice(1)
   }
-  return 'NotFound'
+  return 'Atendimentos'
 }
 
 export function BugScanner({ className }: { className?: string }) {
@@ -123,18 +125,21 @@ export function BugScanner({ className }: { className?: string }) {
           </SheetTitle>
         </SheetHeader>
 
-        {/* Debug: Rota atual e componente renderizado com detecção de ambiente preview x produção */}
+        {/* Debug: Rota atual e componente renderizado 100% DE FONTE VIVA EM MEMÓRIA (NUNCA lê localStorage nem store) */}
         {(() => {
+          const livePathname =
+            (typeof window !== 'undefined' && window.location.pathname) || location.pathname || '/'
           const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
           const isProductionHost = hostname.includes('brfiacrminteligente.goskip.app')
           const environmentLabel = isProductionHost ? 'production' : 'preview'
-          const currentResolved = resolveComponentFromPath(location.pathname)
+          // Resolve componente a partir da rota viva atual
+          const currentResolved = resolveComponentFromPath(livePathname)
 
-          // Objeto canônico de debug garantindo ambiente e versão dentro de currentRoute e na raiz
+          // Objeto canônico de debug 100% VIVO garantindo ambiente e versão dentro de currentRoute e na raiz
           const debugPayload = {
             currentRoute: {
-              path: location.pathname,
-              component: currentResolved,
+              path: livePathname,
+              component: currentResolved === 'Index' ? 'Atendimentos' : currentResolved,
               environment: environmentLabel,
               version: APP_VERSION,
             },

@@ -230,7 +230,10 @@ export default function Customers() {
   )
 
   return (
-    <div className="flex flex-1 flex-col space-y-4 min-h-0 w-full pb-8">
+    <div
+      className="flex flex-1 flex-col space-y-4 min-h-0 w-full pb-8"
+      style={{ flex: '1 1 auto' }}
+    >
       <RemarketingSyncModal
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}

@@ -6,7 +6,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -577,7 +576,13 @@ export function CustomerDetailDrawer({
                 value="conversations"
                 className="flex-1 flex flex-col m-0 overflow-hidden focus-visible:outline-none min-h-0"
               >
-                <ScrollArea className="flex-1 min-h-0 p-4 relative bg-[#e5ddd5] dark:bg-[#0b141a]">
+                <div
+                  className="flex-1 min-h-0 p-4 relative bg-[#e5ddd5] dark:bg-[#0b141a] overflow-y-auto overscroll-contain touch-pan-y"
+                  style={{
+                    WebkitOverflowScrolling: 'touch',
+                    flex: '1 1 auto',
+                  }}
+                >
                   <div
                     className="absolute inset-0 opacity-[0.06] dark:opacity-[0.03] pointer-events-none"
                     style={{
@@ -670,7 +675,7 @@ export function CustomerDetailDrawer({
                     )}
                     <div ref={messagesEndRef} />
                   </div>
-                </ScrollArea>
+                </div>
                 <div className="p-3 bg-card border-t shrink-0">
                   {customer.is_blocked ? (
                     <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">

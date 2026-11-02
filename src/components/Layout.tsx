@@ -131,9 +131,13 @@ export default function Layout() {
             <span className="text-sm font-medium truncate max-w-[150px]">
               {currentUser?.name || currentUser?.email}
             </span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-800">
-                {APP_VERSION}
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-800">
+                {APP_VERSION} ·{' '}
+                {typeof window !== 'undefined' &&
+                window.location.hostname.includes('brfiacrminteligente.goskip.app')
+                  ? 'prod'
+                  : 'prev'}
               </span>
               <span className="text-[10px] text-slate-400 truncate max-w-[100px]">
                 {currentUser?.email}
@@ -184,8 +188,12 @@ export default function Layout() {
         >
           <div className="font-semibold text-lg flex items-center gap-2">
             <span>BRF IA CRM</span>
-            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
-              {APP_VERSION}
+            <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
+              {APP_VERSION} ·{' '}
+              {typeof window !== 'undefined' &&
+              window.location.hostname.includes('brfiacrminteligente.goskip.app')
+                ? 'prod'
+                : 'prev'}
             </span>
           </div>
           <div className="flex items-center gap-1">

@@ -12,7 +12,6 @@ import { isAutomatedSystemThread } from '@/lib/system-messages'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   Search,
@@ -1008,10 +1007,21 @@ function Atendimentos() {
           <div className="flex items-center gap-2 min-w-0">
             <BiaAvatar size="md" className="shrink-0" />
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <h1 className="text-base sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 truncate">
                   Central de Atendimentos
                 </h1>
+                {/* Selo permanente de versão e ambiente visível na tela sem abrir a joaninha */}
+                <span
+                  className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 shadow-2xs shrink-0"
+                  title="Versão e Ambiente ativos"
+                >
+                  {APP_VERSION} ·{' '}
+                  {typeof window !== 'undefined' &&
+                  window.location.hostname.includes('brfiacrminteligente.goskip.app')
+                    ? 'produção'
+                    : 'preview'}
+                </span>
                 <Badge
                   variant="outline"
                   className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] sm:text-xs shrink-0"
@@ -1232,7 +1242,7 @@ function Atendimentos() {
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y"
             style={{
               WebkitOverflowScrolling: 'touch',
-              flex: '1 1 0%',
+              flex: '1 1 auto',
             }}
           >
             {loadingThreads ? (
@@ -1340,10 +1350,14 @@ function Atendimentos() {
                   </Button>
                   {/* Indicador do selo de versão oficial no header do chat mobile */}
                   <span
-                    className="md:hidden text-[9px] font-mono font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 shrink-0"
-                    title="Versão do Build"
+                    className="md:hidden text-[9px] font-mono font-bold text-emerald-800 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 shrink-0"
+                    title="Versão e Ambiente do Build"
                   >
-                    {APP_VERSION}
+                    {APP_VERSION} ·{' '}
+                    {typeof window !== 'undefined' &&
+                    window.location.hostname.includes('brfiacrminteligente.goskip.app')
+                      ? 'prod'
+                      : 'prev'}
                   </span>
 
                   <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border shadow-xs shrink-0">

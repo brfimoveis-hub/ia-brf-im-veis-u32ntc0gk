@@ -72,42 +72,27 @@ const RouteTracker = () => {
   useEffect(() => {
     // Gravação IMEDIATA e SÍNCRONA da rota atual para BugScanner e diagnósticos automatizados
     // Funciona mesmo antes de autenticação ou em rotas públicas/anônimas
-    const path = location.pathname
-    const component = resolveComponentFromPath(path)
+    const livePath =
+      (typeof window !== 'undefined' && window.location.pathname) || location.pathname || '/'
+    const resolved = resolveComponentFromPath(livePath)
+    const component = resolved === 'Index' ? 'Atendimentos' : resolved
     const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
     const isProduction = hostname.includes('brfiacrminteligente.goskip.app')
     const environment = isProduction ? 'production' : 'preview'
 
     const routeData = {
-      path,
+      path: livePath,
       component,
       environment,
       version: APP_VERSION,
     }
 
     try {
+      // Grava sempre com environment e version garantidos e NUNCA Index
       localStorage.setItem('currentRoute', JSON.stringify(routeData))
-
-      const existing = localStorage.getItem('route-store')
-      const newState = { currentRoute: routeData }
-      if (existing) {
-        try {
-          const parsed = JSON.parse(existing)
-          localStorage.setItem(
-            'route-store',
-            JSON.stringify({
-              ...parsed,
-              state: { ...(parsed.state || {}), ...newState },
-            }),
-          )
-        } catch {
-          localStorage.setItem('route-store', JSON.stringify({ state: newState }))
-        }
-      } else {
-        localStorage.setItem('route-store', JSON.stringify({ state: newState }))
-      }
+      localStorage.setItem('route-store', JSON.stringify({ state: { currentRoute: routeData } }))
     } catch {
-      // Ignora erros de storage (ex: quota ou restrições do navegador)
+      // Ignora erros de storage (ex: quota ou navegação privada restrita)
     }
   }, [location.pathname])
 
@@ -363,8 +348,14 @@ const App = () => {
     localStorage.removeItem('vite-plugin-react-router-cache')
     sessionStorage.removeItem('vite-plugin-react-router-cache')
 
-    // Saneamento preventivo: se houver resíduo antigo com "component": "Index" ou sem environment/version, limpa
+    // Saneamento preventivo e purga de versão
     try {
+      const storedVersion = localStorage.getItem('app_version')
+      if (storedVersion !== APP_VERSION) {
+        localStorage.removeItem('currentRoute')
+        localStorage.removeItem('route-store')
+        localStorage.setItem('app_version', APP_VERSION)
+      }
       const oldCurrent = localStorage.getItem('currentRoute')
       if (oldCurrent) {
         const parsed = JSON.parse(oldCurrent)
@@ -383,7 +374,8 @@ const App = () => {
         if (
           parsedStore?.state?.currentRoute?.component === 'Index' ||
           !parsedStore?.state?.currentRoute?.environment ||
-          !parsedStore?.state?.currentRoute?.version
+          !parsedStore?.state?.currentRoute?.version ||
+          parsedStore?.state?.currentRoute?.version !== APP_VERSION
         ) {
           localStorage.removeItem('route-store')
         }
