@@ -378,25 +378,33 @@ const App = () => {
 
       const oldCurrent = localStorage.getItem('currentRoute')
       if (oldCurrent) {
-        const parsed = JSON.parse(oldCurrent)
-        if (
-          parsed.component === 'Index' ||
-          !parsed.environment ||
-          !parsed.version ||
-          parsed.version !== APP_VERSION
-        ) {
+        try {
+          const parsed = JSON.parse(oldCurrent)
+          if (
+            parsed.component === 'Index' ||
+            !parsed.environment ||
+            !parsed.version ||
+            parsed.version !== APP_VERSION
+          ) {
+            localStorage.removeItem('currentRoute')
+          }
+        } catch {
           localStorage.removeItem('currentRoute')
         }
       }
       const oldStore = localStorage.getItem('route-store')
       if (oldStore) {
-        const parsedStore = JSON.parse(oldStore)
-        if (
-          parsedStore?.state?.currentRoute?.component === 'Index' ||
-          !parsedStore?.state?.currentRoute?.environment ||
-          !parsedStore?.state?.currentRoute?.version ||
-          parsedStore?.state?.currentRoute?.version !== APP_VERSION
-        ) {
+        try {
+          const parsedStore = JSON.parse(oldStore)
+          if (
+            parsedStore?.state?.currentRoute?.component === 'Index' ||
+            !parsedStore?.state?.currentRoute?.environment ||
+            !parsedStore?.state?.currentRoute?.version ||
+            parsedStore?.state?.currentRoute?.version !== APP_VERSION
+          ) {
+            localStorage.removeItem('route-store')
+          }
+        } catch {
           localStorage.removeItem('route-store')
         }
       }

@@ -1162,25 +1162,26 @@ function Atendimentos() {
       </div>
 
       {/* Main Container - Split View
-          - No desktop (>= md): split view lado a lado ocupando altura real calculada h-[calc(100dvh-180px)] min-h-[580px].
-          - No desktop (>= lg): ocupa flex-1 min-h-0 h-full lg:h-[calc(100dvh-190px)] com altura concreta transmitida aos dois painéis.
-          - No mobile: quando sem conversa aberta, a lista usa altura natural com rolagem nativa da página (sem scroll aninhado trancado).
+          - No desktop (>= md): split view lado a lado com altura calculada concreta da tela real (ex.: md:h-[calc(100dvh-200px)] md:max-h-[calc(100dvh-200px)] md:min-h-[540px]).
+          - Mesmíssimo critério que fez /clientes funcionar na máquina real do usuário: altura calculada concreta delimitada, sem depender de classes flex que resolvam para zero.
+          - No mobile: rolagem nativa intacta da página quando sem conversa selecionada (aprovado na v0.0.1352).
       */}
       <div
         className={cn(
           'flex flex-1 min-h-0',
           selectedCustomerId
-            ? 'pt-0 md:pt-2 gap-0 md:gap-3 md:h-[calc(100dvh-180px)] lg:h-[calc(100dvh-190px)] md:min-h-[580px]'
-            : 'pt-1.5 sm:pt-2 gap-3 md:h-[calc(100dvh-180px)] lg:h-[calc(100dvh-190px)] md:min-h-[580px]',
+            ? 'pt-0 md:pt-2 gap-0 md:gap-3 md:h-[calc(100dvh-200px)] md:max-h-[calc(100dvh-200px)] md:min-h-[540px]'
+            : 'pt-1.5 sm:pt-2 gap-3 md:h-[calc(100dvh-200px)] md:max-h-[calc(100dvh-200px)] md:min-h-[540px]',
         )}
       >
-        {/* Painel Esquerdo: Lista de Conversas */}
+        {/* Painel Esquerdo: Lista de Conversas
+            No desktop: altura calculada concreta md:h-full md:max-h-[calc(100dvh-200px)] com md:overflow-hidden.
+            No mobile: altura natural, sem trancar altura nem forçar overflow aninhado que impeça scroll nativo.
+        */}
         <div
           className={cn(
             'flex flex-col w-full md:w-80 lg:w-96 bg-white dark:bg-slate-900 rounded-xl border shadow-sm shrink-0 transition-all',
-            // No desktop: md:h-full md:min-h-0 md:max-h-full md:overflow-hidden (com scroll interno garantido na lista).
-            // No mobile: altura natural, sem trancar altura nem forçar overflow aninhado que impede scroll com o dedo.
-            'md:h-full md:min-h-0 md:max-h-full md:overflow-hidden',
+            'md:h-full md:max-h-[calc(100dvh-200px)] md:min-h-[540px] md:overflow-hidden',
             selectedCustomerId ? 'hidden md:flex' : 'flex',
           )}
         >
@@ -1250,16 +1251,15 @@ function Atendimentos() {
           </div>
 
           {/* Lista de conversas:
-              - No desktop (>= md): EXATAMENTE o mesmo padrão comprovado do painel de mensagens da direita:
-                flex-1 min-h-0 md:overflow-y-auto md:overscroll-contain isolate com scrollbarGutter stable.
-                No desktop o mouse wheel e a barra de rolagem rolam suavemente até a última conversa.
+              - No desktop (>= md): altura calculada concreta da viewport md:h-[calc(100dvh-320px)] md:max-h-[calc(100dvh-320px)],
+                com md:overflow-y-auto e overscroll-contain ativo.
+                Garante que mesmo se o flex pai falhar, a lista TEM um limite de altura fixo e ROLA com rodinha do mouse e barra até a ÚLTIMA conversa.
               - No mobile: rolagem nativa de documento (single-document scroll), sem altura forçada,
-                permitindo que o dedo role suavemente até o último cliente da lista.
+                permitindo que o dedo role suavemente até o último cliente da lista (intocado e protegido).
           */}
           <div
-            className="flex-1 min-h-0 md:overflow-y-auto md:overscroll-contain touch-pan-y custom-scrollbar relative"
+            className="flex-1 min-h-0 md:h-[calc(100dvh-320px)] md:max-h-[calc(100dvh-320px)] md:overflow-y-auto md:overscroll-contain touch-pan-y custom-scrollbar relative"
             style={{
-              flex: '1 1 0%',
               WebkitOverflowScrolling: 'touch',
               scrollbarGutter: 'stable',
             }}
