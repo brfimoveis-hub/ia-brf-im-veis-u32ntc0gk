@@ -94,6 +94,11 @@ const RouteTracker = () => {
     } catch {
       // Ignora erros de storage (ex: quota ou navegação privada restrita)
     }
+
+    // Espelha também no window global para detecção viva imediata
+    if (typeof window !== 'undefined') {
+      ;(window as any).__currentRoute = routeData
+    }
   }, [location.pathname])
 
   return null

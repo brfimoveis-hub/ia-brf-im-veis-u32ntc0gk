@@ -228,7 +228,7 @@ export default function Layout() {
         {/* Main content: flex-1 min-h-0 com overscroll e touch fluido */}
         <main
           className={cn(
-            'flex-1 min-w-0 min-h-0 overscroll-contain flex flex-col',
+            'flex-1 min-w-0 min-h-0 overscroll-contain flex flex-col h-full',
             isAtendimentos ? 'p-0 md:p-8 overflow-hidden' : 'p-3 sm:p-4 md:p-8 overflow-y-auto',
           )}
           style={{ WebkitOverflowScrolling: 'touch' }}

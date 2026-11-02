@@ -136,16 +136,33 @@ export function BugScanner({ className }: { className?: string }) {
           const currentResolved = resolveComponentFromPath(livePathname)
 
           // Objeto canônico de debug 100% VIVO garantindo ambiente e versão dentro de currentRoute e na raiz
+          const resolvedComponentName =
+            currentResolved === 'Index' || !currentResolved ? 'Atendimentos' : currentResolved
+
           const debugPayload = {
             currentRoute: {
               path: livePathname,
-              component: currentResolved === 'Index' ? 'Atendimentos' : currentResolved,
+              component: resolvedComponentName,
               environment: environmentLabel,
               version: APP_VERSION,
             },
             environment: environmentLabel,
             version: APP_VERSION,
             host: hostname,
+          }
+
+          // Mantém sincronizado no escopo global e em storage de forma consistente
+          if (typeof window !== 'undefined') {
+            ;(window as any).__currentRoute = debugPayload.currentRoute
+            try {
+              localStorage.setItem('currentRoute', JSON.stringify(debugPayload.currentRoute))
+              localStorage.setItem(
+                'route-store',
+                JSON.stringify({ state: { currentRoute: debugPayload.currentRoute } }),
+              )
+            } catch {
+              // ignora erros de quota em storage
+            }
           }
 
           return (

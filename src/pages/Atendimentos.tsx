@@ -69,8 +69,9 @@ const ThreadListItem = memo(function ThreadListItem({
     <button
       type="button"
       onClick={() => onSelect(thread.customer_id)}
+      style={{ touchAction: 'pan-y' }}
       className={cn(
-        'w-full text-left p-3 transition-colors flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 relative',
+        'w-full text-left p-3 transition-colors flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 relative touch-pan-y',
         isSelected && 'bg-primary/5 dark:bg-primary/10 border-l-4 border-l-primary',
       )}
     >
@@ -990,10 +991,8 @@ function Atendimentos() {
   return (
     <div
       className={cn(
-        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full h-full min-h-0',
-        selectedCustomerId
-          ? 'm-0 p-1.5 sm:p-3 md:p-4 overflow-hidden'
-          : 'm-0 p-2 sm:p-3 md:p-4 overflow-hidden',
+        'flex flex-col max-w-7xl mx-auto bg-slate-50 dark:bg-slate-950 w-full h-full min-h-0 overflow-hidden',
+        selectedCustomerId ? 'm-0 p-1.5 sm:p-3 md:p-4' : 'm-0 p-2 sm:p-3 md:p-4',
       )}
     >
       {/* Top Header com contadores e título - compacto no mobile */}
@@ -1162,13 +1161,13 @@ function Atendimentos() {
       <div
         className={cn(
           'flex flex-1 min-h-0 overflow-hidden',
-          selectedCustomerId ? 'pt-0 md:pt-2 gap-0 md:gap-3' : 'pt-1.5 sm:pt-2 gap-3',
+          selectedCustomerId ? 'pt-0 md:pt-2 gap-0 md:gap-3' : 'pt-1.5 sm:pt-2 gap-3 h-full',
         )}
       >
         {/* Painel Esquerdo: Lista de Conversas */}
         <div
           className={cn(
-            'flex flex-col w-full md:w-80 lg:w-96 bg-white dark:bg-slate-900 rounded-xl border shadow-sm overflow-hidden shrink-0 transition-all min-h-0',
+            'flex flex-col w-full md:w-80 lg:w-96 bg-white dark:bg-slate-900 rounded-xl border shadow-sm overflow-hidden shrink-0 transition-all min-h-0 h-full',
             selectedCustomerId ? 'hidden md:flex' : 'flex',
           )}
         >
@@ -1237,11 +1236,12 @@ function Atendimentos() {
             </div>
           </div>
 
-          {/* Lista scrollável de conversas com overflow-y-auto nativo e touch-pan-y garantido */}
+          {/* Lista scrollável de conversas com overflow-y-auto nativo e touch fluido garantido */}
           <div
-            className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y"
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar"
             style={{
               WebkitOverflowScrolling: 'touch',
+              touchAction: 'pan-y',
               flex: '1 1 auto',
             }}
           >
@@ -1285,7 +1285,10 @@ function Atendimentos() {
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 pb-8">
+              <div
+                className="divide-y divide-slate-100 dark:divide-slate-800 pb-16 touch-pan-y"
+                style={{ touchAction: 'pan-y' }}
+              >
                 {displayedThreads.map((thread) => (
                   <ThreadListItem
                     key={thread.customer_id}

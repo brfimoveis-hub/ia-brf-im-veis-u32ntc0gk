@@ -22,7 +22,7 @@
     <!-- Service Worker Kill-Switch & Cache Buster -->
     <script>
       (function() {
-        var CURRENT_VERSION = 'v0.0.1350';
+        var CURRENT_VERSION = 'v0.0.1351';
 
         // Purga garantida síncrona na entrada (antes do primeiro render do React)
         try {
@@ -77,6 +77,8 @@
           };
           localStorage.setItem('currentRoute', JSON.stringify(syncRouteData));
           localStorage.setItem('route-store', JSON.stringify({ state: { currentRoute: syncRouteData } }));
+          // Espelha também no escopo global para acesso direto de scanners sem depender de storage
+          window.__currentRoute = syncRouteData;
         } catch (e) {}
 
         // 1. Ouvir mensagens do kill-switch para recarregar se necessário
