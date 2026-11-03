@@ -370,9 +370,10 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       if (sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300) {
         isOk = true
         try {
-          var parsedRes = typeof sendRes.json === 'object' && sendRes.json !== null
-            ? sendRes.json
-            : JSON.parse(sendRes.raw || sendRes.body || '{}')
+          var parsedRes =
+            typeof sendRes.json === 'object' && sendRes.json !== null
+              ? sendRes.json
+              : JSON.parse(sendRes.raw || sendRes.body || '{}')
           if (parsedRes && parsedRes.messages && parsedRes.messages[0]) {
             extractedWamid = parsedRes.messages[0].id || ''
           }
@@ -1797,9 +1798,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
               messagePreview: msgText.substring(0, 160),
               details: { error: promErrReason, permanent: true },
             })
-            console.error(
-              '[BIA_PERSISTENCE] Falha permanente em promessa para cliente ' + pCustId,
-            )
+            console.error('[BIA_PERSISTENCE] Falha permanente em promessa para cliente ' + pCustId)
           } else {
             var retryPromDelay = promCurAttempt === 1 ? 2 : 4
             var retryPromIso = computeNextBusinessWindowIso(retryPromDelay)

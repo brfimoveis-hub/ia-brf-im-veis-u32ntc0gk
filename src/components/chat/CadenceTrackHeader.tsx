@@ -18,10 +18,7 @@ import {
 } from 'lucide-react'
 import type { Customer } from '@/services/customers'
 import { CadenceStepCircle } from '@/components/chat/CadenceStepCircle'
-import {
-  getCustomerCadenceAttempts,
-  type CadenceAttempt,
-} from '@/services/cadence_attempts'
+import { getCustomerCadenceAttempts, type CadenceAttempt } from '@/services/cadence_attempts'
 
 // Definição visual dos degraus da régua de retomada/persistência
 export const CADENCE_STEPS_CONFIG = [
@@ -390,7 +387,12 @@ export function CadenceTrackHeader({
                       <span className="shrink-0 text-[9px] opacity-75">
                         {att.next_attempt_at
                           ? `Próx: ${new Date(att.next_attempt_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
-                          : new Date(att.created).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          : new Date(att.created).toLocaleDateString('pt-BR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
                       </span>
                     </div>
                   )
