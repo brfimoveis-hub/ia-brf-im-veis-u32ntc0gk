@@ -47,28 +47,127 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   }
 
   // ============================================================================
-  // 1. PONTO ÚNICO DE ENVIO DE RETOMADAS / MARKETING (TEXTO E DOCUMENTOS)
+  // 1. CÁLCULO DE PRÓXIMO HORÁRIO VÁLIDO DENTRO DA JANELA COMERCIAL (08h-18h Brasília seg-sáb)
+  // Regra de Ouro (Mauro): NADA sai fora da janela 8h-18h; tentativa fora do horário
+  // é reagendada para o próximo horário válido, nunca descartada.
+  // ============================================================================
+  function computeNextBusinessWindowIso(hoursFromNow) {
+    var addMs = (hoursFromNow || 2) * 3600 * 1000
+    var target = new Date(Date.now() + addMs)
+
+    // Ajusta para o fuso de Brasília (UTC-3)
+    var utc = target.getTime() + target.getTimezoneOffset() * 60000
+    var br = new Date(utc - 3 * 3600000)
+
+    var day = br.getDay() // 0 = Domingo
+    var hour = br.getHours()
+
+    // Se cair no domingo (day === 0), adia para segunda-feira às 09h00 de Brasília
+    if (day === 0) {
+      br.setDate(br.getDate() + 1)
+      br.setHours(9, 0, 0, 0)
+    } else if (hour < 8) {
+      // Antes das 8h: ajusta para hoje às 08h30
+      br.setHours(8, 30, 0, 0)
+    } else if (hour >= 18) {
+      // Após 18h: ajusta para o próximo dia útil às 08h30
+      br.setDate(br.getDate() + 1)
+      if (br.getDay() === 0) {
+        br.setDate(br.getDate() + 1)
+      }
+      br.setHours(8, 30, 0, 0)
+    }
+
+    // Converte br (que representa Brasília) de volta para UTC Date
+    var targetUtcMs = br.getTime() + 3 * 3600000
+    return new Date(targetUtcMs).toISOString()
+  }
+
+  // Consulta contagem e status de tentativas de um degrau para o cliente
+  function getCustomerStepAttemptInfo(customerId, stepName) {
+    var info = {
+      attemptNumber: 1,
+      maxAttempts: 3,
+      previousAttempts: 0,
+      lastStatus: '',
+    }
+    try {
+      var attempts = app.findRecordsByFilter(
+        'cadence_attempts',
+        "customer_id = '" + customerId + "' && step = '" + stepName + "'",
+        '-created',
+        10,
+        0,
+      )
+      if (attempts && attempts.length > 0) {
+        info.previousAttempts = attempts.length
+        info.attemptNumber = attempts.length + 1
+        info.lastStatus = attempts[0].getString('status') || ''
+      }
+    } catch (_) {}
+    return info
+  }
+
+  // Registra auditoria na coleção cadence_attempts (transparência total por cliente)
+  function recordCadenceAttempt(data) {
+    try {
+      var col = app.findCollectionByNameOrId('cadence_attempts')
+      var rec = new Record(col)
+      rec.set('customer_id', data.customerId)
+      rec.set('user_id', data.userId || '')
+      rec.set('step', data.step)
+      rec.set('attempt_number', data.attemptNumber || 1)
+      rec.set('max_attempts', data.maxAttempts || 3)
+      rec.set('status', data.status)
+      rec.set('failure_reason', data.failureReason || '')
+      rec.set('next_attempt_at', data.nextAttemptAt || '')
+      rec.set('sent_at', data.sentAt || '')
+      rec.set('wamid', data.wamid || '')
+      rec.set('channel', data.channel || 'whatsapp')
+      rec.set('message_preview', (data.messagePreview || '').substring(0, 160))
+      rec.set('details', data.details ? JSON.stringify(data.details) : null)
+      app.saveNoValidate(rec)
+    } catch (attErr) {
+      console.warn('[BIA_PERSISTENCE] Falha ao registrar cadence_attempts: ' + attErr.message)
+    }
+  }
+
+  // ============================================================================
+  // 1.1 PONTO ÚNICO DE ENVIO DE RETOMADAS / MARKETING (TEXTO E DOCUMENTOS)
+  //
+  // REGRAS DETERMINÍSTICAS (Mauro - Roteiro v0.0.1357):
+  // (a) O degrau SÓ avança E a mensagem SÓ é gravada na coleção conversations
+  //     quando o envio HTTP via Meta/Uazapi retorna SUCESSO (HTTP 2xx).
+  // (b) Em falha, o degrau NÃO avança — a MESMA tentativa do degrau é reagendada
+  //     automaticamente para o próximo horário válido dentro da janela 8h-18h,
+  //     com limite de 3 tentativas antes de marcar falha permanente.
+  // (c) Falha permanente é VISÍVEL (status 'permanent_failure', log e aviso), NUNCA silenciosa.
   // ============================================================================
   function sendPersistenceMarketingMessage(customer, text, userRecord, stepName, documentMedia) {
-    // Checagem inline de pausa: se o usuário pausar durante o processamento do lote,
-    // interrompe envios pendentes imediatamente!
+    var customerId = customer.id
+
+    // Checagem inline de pausa
     if (!isReguaActiveNow()) {
       console.log(
         '[BIA_PERSISTENCE] [sendPersistenceMarketingMessage] Régua pausada durante o lote! Cancelando envio.',
       )
-      return false
+      return { ok: false, error: 'REGUA_PAUSADA', wamid: '' }
     }
 
-    if (!text || typeof text !== 'string') return false
+    if (!text || typeof text !== 'string') {
+      return { ok: false, error: 'TEXTO_VAZIO', wamid: '' }
+    }
+
     var isRemarketingStep = stepName === 'remarketing' || stepName === 'nurturing_monthly'
     var cleaned = cleanWhatsAppFormat(text, isRemarketingStep)
-    if (!cleaned || cleaned.length < 5) return false
+    if (!cleaned || cleaned.length < 5) {
+      return { ok: false, error: 'TEXTO_INVALIDO', wamid: '' }
+    }
 
     // REGRA DE INTEGRIDADE RÍGIDA (Mauro - FALHA B):
     // Se for passo de remarketing/retomada, o texto DEVE ser integral e conter
     // os marcos obrigatórios de fechamento ("responder OK" e "responda NÃO").
     // TRAVAS: Mínimo >= 350 caracteres E MÁXIMO <= 4096 caracteres.
-    // Se ultrapassar 4096 ou for menor que 350, ABORTAR ENVIO COM REGISTRO EM LOG/ESTATÍSTICA! NUNCA truncar na frente do cliente!
     if (isRemarketingStep) {
       var hasOkGate =
         cleaned.indexOf('responder OK') !== -1 || cleaned.indexOf('responda OK') !== -1
@@ -126,11 +225,10 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
           )
           app.saveNoValidate(errLogRec)
         } catch (_) {}
-        return false
+        return { ok: false, error: failureReason, wamid: '' }
       }
     }
 
-    var customerId = customer.id
     var rawCustTags = customer.get('tags') || []
     var custTagsStr = JSON.stringify(rawCustTags).toLowerCase()
     if (
@@ -142,28 +240,27 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
         '[BIA_PERSISTENCE] [sendPersistenceMarketingMessage] Pulando cliente com telefone inválido/corrompido: ' +
           customerId,
       )
-      return false
+      return { ok: false, error: 'TELEFONE_INVALIDO_TAG', wamid: '' }
     }
 
     var toPhone = customer.getString('phone') || customer.get('phone') || ''
     toPhone = String(toPhone).replace(/\D/g, '')
-    // Remove zero inicial de DDD (ex: 048984360590 -> 48984360590)
     if (toPhone.startsWith('0') && toPhone.length >= 11) {
       toPhone = toPhone.substring(1)
     }
-    // Números com 8 ou 9 dígitos locais (sem DDD explícito): assumir DDD 48 de Florianópolis/BRF
     if (toPhone.length === 8 || toPhone.length === 9) {
       toPhone = '48' + toPhone
     }
-    if (toPhone.length < 10) return false
-    // Bloquear telefones corrompidos com mais de 13 dígitos
+    if (toPhone.length < 10) {
+      return { ok: false, error: 'TELEFONE_CURTO', wamid: '' }
+    }
     if (toPhone.length > 13) {
       console.warn(
         '[BIA_PERSISTENCE] Telefone com mais de 13 dígitos (' +
           toPhone +
           '). Bloqueando envio para evitar erro Meta 131009.',
       )
-      return false
+      return { ok: false, error: 'TELEFONE_LONGO_MAIS_13_DIGITOS', wamid: '' }
     }
     if (!toPhone.startsWith('55') && toPhone.length <= 11) {
       toPhone = '55' + toPhone
@@ -186,7 +283,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
 
     if (!token || !phoneId) {
       console.warn('[BIA_PERSISTENCE] [sendPersistenceMarketingMessage] Credenciais Meta ausentes.')
-      return false
+      return { ok: false, error: 'CREDENCIAIS_META_AUSENTES', wamid: '' }
     }
 
     var normalizedCurrent = normalizeTextForDedup(cleaned)
@@ -217,7 +314,7 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
                   customerId +
                   '. Bloqueando duplicata.',
               )
-              return false
+              return { ok: false, error: 'DEDUP_MENSAGEM_JA_ENVIADA', wamid: '' }
             }
           }
         } catch (_) {}
@@ -228,8 +325,6 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
 
     // REGRA DE OURO (Mauro):
     // Na régua de retomada/remarketing (1º disparo): NENHUM link e NENHUM anexo.
-    // O PDF só é entregue mediante resposta "Sim" pelo interceptor em ai_auto_reply.js.
-    // Se for passo com anexo explícito autorizado (ex: prometido ou outra rotina):
     var textToSend = cleaned
     if (
       stepName !== 'remarketing' &&
@@ -244,24 +339,15 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       }
     }
 
-    // Registrar conversa na tabela conversations
-    try {
-      var convCol = app.findCollectionByNameOrId('conversations')
-      var conv = new Record(convCol)
-      conv.set('user_id', userId || customer.getString('user_id') || '')
-      conv.set('customer_id', customerId)
-      conv.set('sender', 'ai')
-      conv.set('content', textToSend)
-      conv.set('channel', 'whatsapp')
-      app.save(conv)
-    } catch (cErr) {
-      console.warn('[BIA_PERSISTENCE] Aviso ao registrar conversa: ' + cErr.message)
-    }
-
-    // Disparo HTTP de texto para a Meta Graph API v21.0
+    // =========================================================================
+    // DISPARO HTTP DE TEXTO PARA A META GRAPH API v21.0
+    // ATENÇÃO: NADA É GRAVADO EM CONVERSATIONS ANTES DO RETORNO DE SUCESSO!
+    // =========================================================================
     var url = 'https://graph.facebook.com/v21.0/' + phoneId + '/messages'
     var isOk = false
     var sendRes = null
+    var extractedWamid = ''
+    var httpErrorMessage = ''
 
     try {
       sendRes = $http.send({
@@ -283,13 +369,48 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
 
       if (sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300) {
         isOk = true
+        try {
+          var parsedRes = typeof sendRes.json === 'object' && sendRes.json !== null
+            ? sendRes.json
+            : JSON.parse(sendRes.raw || sendRes.body || '{}')
+          if (parsedRes && parsedRes.messages && parsedRes.messages[0]) {
+            extractedWamid = parsedRes.messages[0].id || ''
+          }
+        } catch (_) {}
+      } else {
+        httpErrorMessage = sendRes
+          ? 'HTTP ' + sendRes.statusCode + ': ' + (sendRes.raw || sendRes.body || '')
+          : 'Sem resposta do servidor'
       }
     } catch (httpErr) {
+      httpErrorMessage = 'Exceção HTTP: ' + httpErr.message
       console.error('[BIA_PERSISTENCE] Erro HTTP Meta: ' + httpErr.message)
     }
 
+    // =========================================================================
+    // REGRA DE OURO (Mauro - Roteiro v0.0.1357):
+    // Apenas quando isOk === true (HTTP 2xx confirmado) a mensagem é gravada
+    // na tabela conversations. Se falhar, conversations NUNCA é poluída com
+    // mensagens fantasmas não entregues.
+    // =========================================================================
+    if (isOk) {
+      try {
+        var convCol = app.findCollectionByNameOrId('conversations')
+        var conv = new Record(convCol)
+        conv.set('user_id', userId || customer.getString('user_id') || '')
+        conv.set('customer_id', customerId)
+        conv.set('sender', 'ai')
+        conv.set('content', textToSend)
+        conv.set('channel', 'whatsapp')
+        conv.set('follow_up_step', stepName || '')
+        conv.set('last_follow_up_at', new Date().toISOString())
+        app.save(conv)
+      } catch (cErr) {
+        console.warn('[BIA_PERSISTENCE] Aviso ao registrar conversa: ' + cErr.message)
+      }
+    }
+
     // Se o envio do texto teve sucesso e há documento a anexar:
-    // REGRA DE OURO (Mauro): na régua de retomada/remarketing não vai documento.
     var docSent = false
     if (
       isOk &&
@@ -364,9 +485,11 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
           response: sendRes ? sendRes.json || sendRes.body : null,
           phone_id: phoneId,
           to: toPhone,
+          wamid: extractedWamid,
           step: stepName || '',
           customer_id: customerId,
           document_sent: docSent,
+          error: isOk ? null : httpErrorMessage,
           document_info: documentMedia
             ? { filename: documentMedia.filename, link: documentMedia.link }
             : null,
@@ -379,7 +502,9 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
           full_text: cleaned,
           customer_id: customerId,
           follow_up_step: stepName || '',
+          wamid: extractedWamid,
           document_sent: docSent,
+          status: isOk ? 'sent' : 'failed',
         }),
       )
       app.saveNoValidate(logRec)
@@ -387,7 +512,12 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
       console.warn('[BIA_PERSISTENCE] Falha ao gravar log whatsapp_ai_send: ' + logErr.message)
     }
 
-    return isOk
+    return {
+      ok: isOk,
+      wamid: extractedWamid,
+      error: isOk ? '' : httpErrorMessage || 'FALHA_ENVIO_HTTP',
+      preview: cleaned.substring(0, 160),
+    }
   }
 
   // ============================================================================
@@ -1614,23 +1744,81 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
         var pPresHist = checkCustomerPresentationHistory(pCust, pConvs)
         var lInfoProm = resolveLaunchAndKnowledgeData(pCust, 'promised_followup', pConvs, pPresHist)
         var msgText = buildPersistenceMessageWithVariance('promised_followup', pCust, lInfoProm)
-        var sent = sendPersistenceMarketingMessage(
+        var promAttemptInfo = getCustomerStepAttemptInfo(pCustId, 'promised_followup')
+        var promOutcome = sendPersistenceMarketingMessage(
           pCust,
           msgText,
           activeUserRecord,
           'promised_followup',
           null,
         )
-        if (sent) {
+        if (promOutcome && promOutcome.ok) {
           pCust.set('promise_pending', false)
           pCust.set('last_follow_up_at', nowIso)
-          pCust.set('next_follow_up_at', new Date(Date.now() + 2 * oneDayMs).toISOString())
+          var nextPromIso = new Date(Date.now() + 2 * oneDayMs).toISOString()
+          pCust.set('next_follow_up_at', nextPromIso)
           pCust.set('follow_up_step', 'd3')
           pCust.set('follow_up_count', (pCust.getInt('follow_up_count') || 0) + 1)
           pCust.set('persistence_status', 'ativo')
           app.saveNoValidate(pCust)
+
+          recordCadenceAttempt({
+            customerId: pCustId,
+            userId: activeUserRecord ? activeUserRecord.id : '',
+            step: 'promised_followup',
+            attemptNumber: promAttemptInfo.attemptNumber,
+            maxAttempts: promAttemptInfo.maxAttempts,
+            status: 'sent',
+            sentAt: nowIso,
+            nextAttemptAt: nextPromIso,
+            wamid: promOutcome.wamid || '',
+            messagePreview: promOutcome.preview || msgText.substring(0, 160),
+            details: { step: 'promised_followup', nextStep: 'd3' },
+          })
+
           executedCount++
           console.log('[BIA_PERSISTENCE] Promessa cumprida para cliente ' + pCustId)
+        } else {
+          var promCurAttempt = promAttemptInfo.attemptNumber
+          var promMaxLimit = promAttemptInfo.maxAttempts || 3
+          var isPromPermanent = promCurAttempt >= promMaxLimit
+          var promErrReason = (promOutcome && promOutcome.error) || 'FALHA_ENVIO_META'
+
+          if (isPromPermanent) {
+            recordCadenceAttempt({
+              customerId: pCustId,
+              userId: activeUserRecord ? activeUserRecord.id : '',
+              step: 'promised_followup',
+              attemptNumber: promCurAttempt,
+              maxAttempts: promMaxLimit,
+              status: 'permanent_failure',
+              failureReason: promErrReason + ' (esgotadas ' + promCurAttempt + ' tentativas)',
+              nextAttemptAt: '',
+              messagePreview: msgText.substring(0, 160),
+              details: { error: promErrReason, permanent: true },
+            })
+            console.error(
+              '[BIA_PERSISTENCE] Falha permanente em promessa para cliente ' + pCustId,
+            )
+          } else {
+            var retryPromDelay = promCurAttempt === 1 ? 2 : 4
+            var retryPromIso = computeNextBusinessWindowIso(retryPromDelay)
+            pCust.set('next_follow_up_at', retryPromIso)
+            app.saveNoValidate(pCust)
+
+            recordCadenceAttempt({
+              customerId: pCustId,
+              userId: activeUserRecord ? activeUserRecord.id : '',
+              step: 'promised_followup',
+              attemptNumber: promCurAttempt,
+              maxAttempts: promMaxLimit,
+              status: 'rescheduled',
+              failureReason: promErrReason,
+              nextAttemptAt: retryPromIso,
+              messagePreview: msgText.substring(0, 160),
+              details: { error: promErrReason, rescheduled_to: retryPromIso },
+            })
+          }
         }
       } finally {
         releaseLock(pCustId)
@@ -1831,7 +2019,8 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
         // NENHUM anexo e NENHUM link no primeiro disparo da régua de retomada/remarketing
         var docToSend = null
 
-        var ok = sendPersistenceMarketingMessage(
+        var stepAttemptInfo = getCustomerStepAttemptInfo(sCustId, stepToExecute)
+        var sendOutcome = sendPersistenceMarketingMessage(
           sCust,
           msgTextScheduled,
           activeUserRecord,
@@ -1839,14 +2028,34 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
           docToSend,
         )
 
-        if (ok) {
-          // AVANÇAR follow_up_step PARA O PRÓXIMO DEGRAU (para nunca ficar preso)
+        if (sendOutcome && sendOutcome.ok) {
+          // (a) SUCESSO: AVANÇAR follow_up_step PARA O PRÓXIMO DEGRAU
           sCust.set('follow_up_step', nextStepAfterSend)
           sCust.set('follow_up_count', followUpCount + 1)
           sCust.set('last_follow_up_at', nowIso)
-          sCust.set('next_follow_up_at', calculateNextFollowUp(stepToExecute))
+          var nextScheduledIso = calculateNextFollowUp(stepToExecute)
+          sCust.set('next_follow_up_at', nextScheduledIso)
           sCust.set('persistence_status', 'ativo')
           app.saveNoValidate(sCust)
+
+          // Grava auditoria na coleção cadence_attempts
+          recordCadenceAttempt({
+            customerId: sCustId,
+            userId: activeUserRecord ? activeUserRecord.id : '',
+            step: stepToExecute,
+            attemptNumber: stepAttemptInfo.attemptNumber,
+            maxAttempts: stepAttemptInfo.maxAttempts,
+            status: 'sent',
+            sentAt: nowIso,
+            nextAttemptAt: nextScheduledIso,
+            wamid: sendOutcome.wamid || '',
+            messagePreview: sendOutcome.preview || msgTextScheduled.substring(0, 160),
+            details: {
+              nextStep: nextStepAfterSend,
+              followUpCount: followUpCount + 1,
+            },
+          })
+
           executedCount++
           console.log(
             '[BIA_PERSISTENCE] Retomada (' +
@@ -1857,6 +2066,87 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
               nextStepAfterSend +
               ') agendado com sucesso.',
           )
+        } else {
+          // (b) FALHA: O DEGRAU NÃO AVANÇA!
+          // A MESMA tentativa do degrau é reagendada automaticamente para o próximo
+          // horário válido dentro da janela 8h-18h (regra de ouro do Mauro).
+          // Limite de 3 tentativas antes de marcar falha permanente visível.
+          var currentAttemptNum = stepAttemptInfo.attemptNumber
+          var maxAttemptsLimit = stepAttemptInfo.maxAttempts || 3
+          var isPermanent = currentAttemptNum >= maxAttemptsLimit
+          var errReason = (sendOutcome && sendOutcome.error) || 'FALHA_ENVIO_META'
+
+          if (isPermanent) {
+            // (c) FALHA PERMANENTE VISÍVEL: status 'permanent_failure'
+            // O cliente fica com o degrau travado nele e status permanente transparente
+            sCust.set('persistence_status', 'pausado')
+            app.saveNoValidate(sCust)
+
+            recordCadenceAttempt({
+              customerId: sCustId,
+              userId: activeUserRecord ? activeUserRecord.id : '',
+              step: stepToExecute,
+              attemptNumber: currentAttemptNum,
+              maxAttempts: maxAttemptsLimit,
+              status: 'permanent_failure',
+              failureReason: errReason + ' (esgotadas ' + currentAttemptNum + ' tentativas)',
+              nextAttemptAt: '',
+              messagePreview: msgTextScheduled.substring(0, 160),
+              details: {
+                error: errReason,
+                permanent: true,
+                attempts_exhausted: currentAttemptNum,
+              },
+            })
+
+            console.error(
+              '[BIA_PERSISTENCE] FALHA PERMANENTE no degrau ' +
+                stepToExecute +
+                ' para cliente ' +
+                sCustId +
+                ': esgotadas ' +
+                currentAttemptNum +
+                ' tentativas. Motivo: ' +
+                errReason,
+            )
+          } else {
+            // Reagendamento automático na janela comercial 8h-18h
+            // Intervalo progressivo: 2h na 1ª falha, 4h na 2ª
+            var retryDelayHours = currentAttemptNum === 1 ? 2 : 4
+            var nextRetryIso = computeNextBusinessWindowIso(retryDelayHours)
+            sCust.set('next_follow_up_at', nextRetryIso)
+            app.saveNoValidate(sCust)
+
+            recordCadenceAttempt({
+              customerId: sCustId,
+              userId: activeUserRecord ? activeUserRecord.id : '',
+              step: stepToExecute,
+              attemptNumber: currentAttemptNum,
+              maxAttempts: maxAttemptsLimit,
+              status: 'rescheduled',
+              failureReason: errReason,
+              nextAttemptAt: nextRetryIso,
+              messagePreview: msgTextScheduled.substring(0, 160),
+              details: {
+                error: errReason,
+                retryDelayHours: retryDelayHours,
+                rescheduled_to: nextRetryIso,
+              },
+            })
+
+            console.warn(
+              '[BIA_PERSISTENCE] Degrau ' +
+                stepToExecute +
+                ' falhou para ' +
+                sCustId +
+                ' (tentativa ' +
+                currentAttemptNum +
+                '/' +
+                maxAttemptsLimit +
+                '). Degrau NÃO avançou. Reagendado para janela 8h-18h: ' +
+                nextRetryIso,
+            )
+          }
         }
       } finally {
         releaseLock(sCustId)
@@ -1966,21 +2256,42 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
         // REGRA DE OURO (Mauro): NENHUM link e NENHUM anexo no primeiro disparo da régua de retomada/remarketing
         var docEntry = null
 
-        var entrySent = sendPersistenceMarketingMessage(
+        var idleAttemptInfo = getCustomerStepAttemptInfo(iCustId, entryStep)
+        var entryOutcome = sendPersistenceMarketingMessage(
           iCust,
           entryText,
           activeUserRecord,
           entryStep,
           docEntry,
         )
-        if (entrySent) {
+        if (entryOutcome && entryOutcome.ok) {
           var nextStepForIdle = entryStep === 'remarketing' ? 'd1' : 'd3'
           iCust.set('follow_up_step', nextStepForIdle)
-          iCust.set('follow_up_count', (iCust.getInt('follow_up_count') || 0) + 1)
+          var updatedIdleCount = (iCust.getInt('follow_up_count') || 0) + 1
+          iCust.set('follow_up_count', updatedIdleCount)
           iCust.set('last_follow_up_at', nowIso)
-          iCust.set('next_follow_up_at', calculateNextFollowUp(entryStep))
+          var idleNextIso = calculateNextFollowUp(entryStep)
+          iCust.set('next_follow_up_at', idleNextIso)
           iCust.set('persistence_status', 'ativo')
           app.saveNoValidate(iCust)
+
+          recordCadenceAttempt({
+            customerId: iCustId,
+            userId: activeUserRecord ? activeUserRecord.id : '',
+            step: entryStep,
+            attemptNumber: idleAttemptInfo.attemptNumber,
+            maxAttempts: idleAttemptInfo.maxAttempts,
+            status: 'sent',
+            sentAt: nowIso,
+            nextAttemptAt: idleNextIso,
+            wamid: entryOutcome.wamid || '',
+            messagePreview: entryOutcome.preview || entryText.substring(0, 160),
+            details: {
+              nextStep: nextStepForIdle,
+              followUpCount: updatedIdleCount,
+            },
+          })
+
           executedCount++
           console.log(
             '[BIA_PERSISTENCE] Retomada (' +
@@ -1990,6 +2301,75 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
               '. Próximo degrau: ' +
               nextStepForIdle,
           )
+        } else {
+          var idleCurAttempt = idleAttemptInfo.attemptNumber
+          var idleMaxLimit = idleAttemptInfo.maxAttempts || 3
+          var isIdlePermanent = idleCurAttempt >= idleMaxLimit
+          var idleErrReason = (entryOutcome && entryOutcome.error) || 'FALHA_ENVIO_META'
+
+          if (isIdlePermanent) {
+            iCust.set('follow_up_step', entryStep)
+            iCust.set('persistence_status', 'pausado')
+            app.saveNoValidate(iCust)
+
+            recordCadenceAttempt({
+              customerId: iCustId,
+              userId: activeUserRecord ? activeUserRecord.id : '',
+              step: entryStep,
+              attemptNumber: idleCurAttempt,
+              maxAttempts: idleMaxLimit,
+              status: 'permanent_failure',
+              failureReason: idleErrReason + ' (esgotadas ' + idleCurAttempt + ' tentativas)',
+              nextAttemptAt: '',
+              messagePreview: entryText.substring(0, 160),
+              details: {
+                error: idleErrReason,
+                permanent: true,
+                attempts_exhausted: idleCurAttempt,
+              },
+            })
+
+            console.error(
+              '[BIA_PERSISTENCE] FALHA PERMANENTE na entrada da régua (' +
+                entryStep +
+                ') para cliente ' +
+                iCustId +
+                ': ' +
+                idleErrReason,
+            )
+          } else {
+            var idleRetryDelay = idleCurAttempt === 1 ? 2 : 4
+            var idleRetryIso = computeNextBusinessWindowIso(idleRetryDelay)
+            iCust.set('follow_up_step', entryStep)
+            iCust.set('next_follow_up_at', idleRetryIso)
+            app.saveNoValidate(iCust)
+
+            recordCadenceAttempt({
+              customerId: iCustId,
+              userId: activeUserRecord ? activeUserRecord.id : '',
+              step: entryStep,
+              attemptNumber: idleCurAttempt,
+              maxAttempts: idleMaxLimit,
+              status: 'rescheduled',
+              failureReason: idleErrReason,
+              nextAttemptAt: idleRetryIso,
+              messagePreview: entryText.substring(0, 160),
+              details: {
+                error: idleErrReason,
+                retryDelayHours: idleRetryDelay,
+                rescheduled_to: idleRetryIso,
+              },
+            })
+
+            console.warn(
+              '[BIA_PERSISTENCE] Entrada da régua (' +
+                entryStep +
+                ') falhou para ' +
+                iCustId +
+                '. Degrau NÃO avançou. Reagendado para janela 8h-18h: ' +
+                idleRetryIso,
+            )
+          }
         }
       } finally {
         releaseLock(iCustId)
