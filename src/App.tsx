@@ -26,6 +26,7 @@ import Launches from './pages/Launches'
 import LaunchLanding from './pages/LaunchLanding'
 import FaxinaAtivosMeta from './pages/FaxinaAtivosMeta'
 import ScheduledPosts from './pages/ScheduledPosts'
+import CartasMeta from './pages/CartasMeta'
 
 import EmailMarketing from './pages/EmailMarketing'
 import EmailCampaignDetail from './pages/EmailCampaignDetail'
@@ -228,6 +229,14 @@ const router = createBrowserRouter([
                 element: (
                   <ErrorBoundary>
                     <FaxinaAtivosMeta />
+                  </ErrorBoundary>
+                ),
+              },
+              {
+                path: 'cartas',
+                element: (
+                  <ErrorBoundary>
+                    <CartasMeta />
                   </ErrorBoundary>
                 ),
               },

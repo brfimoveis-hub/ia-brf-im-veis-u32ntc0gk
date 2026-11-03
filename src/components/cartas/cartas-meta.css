@@ -1,0 +1,72 @@
+/* Folhas A4 da página de cartas para a Meta (/cartas) */
+
+/* Tela: folha branca com sombra leve */
+.cartas-sheet {
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.15);
+}
+
+/* Campo vazio: [texto] em cinza claro e itálico */
+.cartas-placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  /* Esconde todo o app (menu lateral, cabeçalhos, botões) e mostra só a raiz das cartas */
+  body * {
+    visibility: hidden !important;
+  }
+
+  .cartas-print-root,
+  .cartas-print-root * {
+    visibility: visible !important;
+  }
+
+  .cartas-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 210mm;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Formulário, títulos e botões não vão para o papel */
+  .cartas-no-print {
+    display: none !important;
+  }
+
+  .cartas-sheet {
+    width: 210mm !important;
+    min-height: 296mm !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Uma carta por folha A4: sem espaçamento entre blocos no papel */
+  .cartas-bloco {
+    margin: 0 !important;
+  }
+
+  .cartas-bloco + .cartas-bloco {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  /* Impressão de uma carta só: esconde as outras */
+  .printing-one .cartas-bloco:not(.is-ativo) {
+    display: none !important;
+  }
+
+  .cartas-placeholder {
+    color: #9ca3af !important;
+  }
+}

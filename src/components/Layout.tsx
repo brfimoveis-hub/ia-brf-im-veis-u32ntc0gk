@@ -19,6 +19,7 @@ import {
   Megaphone,
   Building2,
   Trash2,
+  Printer,
 } from 'lucide-react'
 import { BiaAvatar } from '@/components/common/BiaAvatar'
 import { Button } from '@/components/ui/button'
@@ -62,6 +63,7 @@ export default function Layout() {
     { name: 'Email Marketing', path: '/email-marketing', icon: Mail },
     { name: 'Remarketing', path: '/settings/remarketing', icon: Target },
     { name: 'Faxina de Ativos Meta', path: '/faxina-meta', icon: Trash2 },
+    { name: 'Cartas Meta', path: '/cartas', icon: Printer },
     { name: 'Conexões', path: '/settings/connections', icon: Activity },
     { name: 'Configurações de IA', path: '/settings/ai', icon: Sparkles },
   ]
