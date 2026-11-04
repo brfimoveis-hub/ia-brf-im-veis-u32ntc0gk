@@ -1,15 +1,87 @@
-/* Folhas A4 da página de cartas para a Meta (/cartas) */
+/* Folhas A4 da página de cartas para a Meta (/cartas) — timbre profissional */
 
 /* Tela: folha branca com sombra leve */
 .cartas-sheet {
   background: #ffffff;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.15);
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.18);
 }
 
 /* Campo vazio: [texto] em cinza claro e itálico */
 .cartas-placeholder {
   color: #9ca3af;
   font-style: italic;
+}
+
+/* ---------------- Timbre ---------------- */
+.cartas-timbre {
+  text-align: center;
+  margin-bottom: 10mm;
+}
+
+.cartas-empresa {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 15pt;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #1f2937;
+  margin: 0 0 1.5mm;
+}
+
+.cartas-linha {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9pt;
+  line-height: 1.45;
+  color: #4b5563;
+  margin: 0;
+}
+
+/* Filete duplo (linha grossa + fina) fechando o timbre */
+.cartas-filete {
+  margin: 4mm 0 0;
+}
+.cartas-filete span {
+  display: block;
+  height: 0;
+}
+.cartas-filete span:first-child {
+  border-top: 1.6pt solid #1f2937;
+}
+.cartas-filete span:last-child {
+  border-top: 0.6pt solid #1f2937;
+  margin-top: 1.2pt;
+}
+
+/* ---------------- Corpo ---------------- */
+.cartas-corpo {
+  flex: 1 1 auto;
+}
+
+.cartas-local-data {
+  text-align: right;
+  margin: 0 0 8mm;
+  font-size: 12pt;
+}
+
+.cartas-paragrafo {
+  margin: 0 0 0.75em;
+  text-align: justify;
+}
+
+/* ---------------- Rodapé ---------------- */
+.cartas-pe {
+  margin-top: 12mm;
+  text-align: center;
+}
+.cartas-filete-pe {
+  border-top: 0.6pt solid #9ca3af;
+  margin-bottom: 2mm;
+}
+.cartas-pe p {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 8pt;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  margin: 0;
 }
 
 @page {
