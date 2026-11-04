@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { CARTAS_META } from '@/data/cartas-meta-content'
 import { useCartasMetaCampos } from '@/hooks/use-cartas-meta-campos'
 import { CartasMetaForm } from '@/components/cartas/CartasMetaForm'
+import { APP_VERSION } from '@/lib/version'
 import { CartaMetaSheet } from '@/components/cartas/CartaMetaSheet'
 import '@/components/cartas/cartas-meta.css'
 
@@ -36,9 +37,18 @@ export default function CartasMeta() {
     <div className={modo ? `space-y-6 printing-${modo}` : 'space-y-6'}>
       <div className="cartas-no-print flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Cartas Meta</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-900">Cartas Meta</h1>
+            <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700">
+              {APP_VERSION} ·{' '}
+              {typeof window !== 'undefined' &&
+              window.location.hostname.includes('brfiacrminteligente.goskip.app')
+                ? 'prod'
+                : 'prev'}
+            </span>
+          </div>
           <p className="text-sm text-slate-600">
-            Preencha os dados abaixo e imprima as cartas em folhas A4.
+            Preencha os dados abaixo e imprima as cartas em folhas A4 timbradas.
           </p>
         </div>
         <Button

@@ -22,7 +22,7 @@ export const DADOS_EMPRESA_TIMBRE = {
   contatos: 'EMAIL: brfimoveis@gmail.com – SITE: www.brfimoveis.com.br – CRECI: 6838',
   // Versão resumida do rodapé ABNT
   rodapeLinha1:
-    'BRF IMÓVEIS LTDA – CNPJ: 22.886.297/0001-77 / Rua José Cândido da Silva, 118/602 – Balneário – Estreito, Florianópolis SC',
+    'BRF IMÓVEIS LTDA – CNPJ 22.886.297/0001-77 / Rua José Cândido da Silva, 118/602 – Balneário – Estreito, Florianópolis SC – CEP 88.075-250',
   rodapeLinha2:
     '(48) 99972.8012 – (48) 99972.8050 WhatsApp / brfimoveis@gmail.com – www.brfimoveis.com.br – CRECI 6838',
 }

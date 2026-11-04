@@ -71,7 +71,7 @@ export function CartaMetaSheet({
 
   return (
     <article className="carta-meta-page">
-      {/* Timbre institucional: LOGO À ESQUERDA, AO LADO DO BLOCO DE TEXTO DA EMPRESA */}
+      {/* Timbre institucional: APENAS LOGO À ESQUERDA + BLOCO REDUZIDO (NOME DA EMPRESA E CNPJ) */}
       <header className="carta-meta-header">
         <div className="carta-meta-timbre-row">
           <div className="carta-meta-logo-wrap">
@@ -79,10 +79,8 @@ export function CartaMetaSheet({
           </div>
 
           <div className="carta-meta-company-info">
-            <div className="carta-meta-company-title">{DADOS_EMPRESA_TIMBRE.nomeCnpj}</div>
-            <div className="carta-meta-company-line">{DADOS_EMPRESA_TIMBRE.endereco}</div>
-            <div className="carta-meta-company-line">{DADOS_EMPRESA_TIMBRE.telefones}</div>
-            <div className="carta-meta-company-line">{DADOS_EMPRESA_TIMBRE.contatos}</div>
+            <div className="carta-meta-company-title">BRF IMÓVEIS LTDA</div>
+            <div className="carta-meta-company-cnpj">CNPJ: 22.886.297/0001-77</div>
           </div>
         </div>
         <div className="carta-meta-divider" />

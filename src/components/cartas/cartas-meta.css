@@ -77,12 +77,20 @@
 }
 
 .carta-meta-company-title {
-  font-size: 9.5pt;
+  font-size: 11pt;
   font-weight: 700;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
   color: #111827;
   text-transform: uppercase;
   line-height: 1.3;
+}
+
+.carta-meta-company-cnpj {
+  font-size: 9pt;
+  font-weight: 600;
+  color: #374151;
+  letter-spacing: 0.3px;
+  line-height: 1.35;
 }
 
 .carta-meta-company-line {
@@ -178,32 +186,56 @@
 @media print {
   @page {
     size: A4 portrait;
-    /* Margens ABNT: Superior 3cm, Esquerda 3cm, Inferior 2cm, Direita 2cm */
-    margin: 30mm 20mm 20mm 30mm;
+    /* Margem zero na página física para suprimir cabeçalhos e rodapés automáticos gerados pelo navegador (título da aba, data/hora, url, número de página padrão do browser) */
+    margin: 0;
   }
 
-  /* Ocultar rigorosamente elementos da interface do CRM durante a impressão */
-  header,
+  /* Ocultar rigorosamente todos os elementos da interface do CRM e chrome do app durante a impressão */
+  header:not(.carta-meta-header),
+  footer:not(.carta-meta-footer),
   aside,
   nav,
   .cartas-no-print,
   #app-sidebar,
   .sidebar,
   [data-sidebar='sidebar'],
+  [data-radix-portal],
   button {
     display: none !important;
   }
 
   body,
-  html,
+  html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+
   #root,
+  #root > div,
   main {
     background: #ffffff !important;
     color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
     box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Remove padding e min-height do layout CRM pai */
+  main.flex-1 {
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   /* Na impressão de UMA carta: esconde os outros blocos */
@@ -222,20 +254,28 @@
     break-after: avoid !important;
   }
 
-  /* O container da folha na impressão ajusta-se à margem do @page */
+  /* O container da folha na impressão recebe as margens ABNT exatas (3cm topo e esquerda, 2cm rodapé e direita) */
   .carta-meta-page {
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-height: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-height: 297mm !important;
+    height: 297mm !important;
+    box-sizing: border-box !important;
+    margin: 0 auto !important;
+    /* Margens ABNT internas da folha: Superior 30mm, Direita 20mm, Inferior 20mm, Esquerda 30mm */
+    padding: 30mm 20mm 20mm 30mm !important;
     font-size: 11pt !important;
     line-height: 1.5 !important;
     font-family: 'Times New Roman', Times, Georgia, serif !important;
     color: #000000 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   .carta-meta-header {
