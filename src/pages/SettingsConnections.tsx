@@ -11,6 +11,7 @@ import ChavesNaMao from './SettingsConnections/ChavesNaMao'
 import { StatusTrafficLight } from './SettingsConnections/StatusTrafficLight'
 import { ConnectionHealthDashboard } from './SettingsConnections/ConnectionHealthDashboard'
 import { InstagramConnect } from './SettingsConnections/InstagramConnect'
+import { MetaMessengerPageConnect } from './SettingsConnections/MetaMessengerPageConnect'
 import { VerifiableConnectionCard } from './SettingsConnections/VerifiableConnectionCard'
 import {
   MessageCircle,
@@ -168,6 +169,9 @@ export default function SettingsConnections() {
         </TabsList>
 
         <TabsContent value="meta" className="mt-4 space-y-4">
+          <ErrorBoundary logType="meta_messenger_panel_error">
+            <MetaMessengerPageConnect />
+          </ErrorBoundary>
           <ErrorBoundary logType="instagram_panel_error">
             <InstagramConnect />
           </ErrorBoundary>
