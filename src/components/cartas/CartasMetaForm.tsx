@@ -21,11 +21,18 @@ export function CartasMetaForm({ valores, onChange }: Props) {
       <CardContent className="grid gap-4 sm:grid-cols-2">
         {CAMPOS_CARTA.map((campo) => (
           <div key={campo.key} className="space-y-1.5">
-            <Label htmlFor={`cartas-${campo.key}`}>{campo.label}</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor={`cartas-${campo.key}`}>{campo.label}</Label>
+              {campo.helpText && (
+                <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                  {campo.helpText}
+                </span>
+              )}
+            </div>
             <Input
               id={`cartas-${campo.key}`}
               type={campo.type ?? 'text'}
-              value={valores[campo.key]}
+              value={valores[campo.key] ?? ''}
               placeholder={campo.placeholder}
               onChange={(e) => onChange(campo.key, e.target.value)}
             />

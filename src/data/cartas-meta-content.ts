@@ -2,8 +2,7 @@
 // Não parafrasear: qualquer alteração de texto deve ser pedida explicitamente pelo Mauro.
 
 export type CampoCarta =
-  | 'dia'
-  | 'ano'
+  | 'dataCarta'
   | 'linkBernadete'
   | 'linkMauro'
   | 'idMauro'
@@ -31,10 +30,16 @@ export const CAMPOS_CARTA: {
   key: CampoCarta
   label: string
   placeholder: string
-  type?: 'number' | 'text'
+  type?: 'number' | 'text' | 'date'
+  helpText?: string
 }[] = [
-  { key: 'dia', label: 'Dia de novembro (número)', placeholder: 'ex.: 4', type: 'number' },
-  { key: 'ano', label: 'Ano', placeholder: '2026' },
+  {
+    key: 'dataCarta',
+    label: 'Data da carta (hoje ou outra data)',
+    placeholder: 'YYYY-MM-DD',
+    type: 'date',
+    helpText: 'Preenchida automaticamente com hoje. Usada em formato PT e EN em todas as 4 cartas.',
+  },
   {
     key: 'linkBernadete',
     label: 'Link do perfil do Facebook da Bernadete',
@@ -56,15 +61,100 @@ export const CAMPOS_CARTA: {
 ]
 
 // Texto mostrado no lugar do campo vazio, entre colchetes.
-export const PLACEHOLDER_CAMPO: Record<CampoCarta, string> = {
-  dia: 'dia',
-  ano: 'ano',
+export const PLACEHOLDER_CAMPO: Record<string, string> = {
+  dataCarta: 'data da carta',
+  dataPt: 'data por extenso (PT)',
+  dataEn: 'data por extenso (EN)',
   linkBernadete: 'link do perfil da Bernadete',
   linkMauro: 'link do perfil do Mauro',
   idMauro: 'ID do Facebook do Mauro',
   cpfMauro: 'CPF do Mauro',
   enderecoMauro: 'endereço pessoal do Mauro',
   telefoneMauro: 'telefone pessoal do Mauro',
+}
+
+export const MESES_PT = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+] as const
+
+export const MESES_EN = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const
+
+export function formatarDataHojeIso(): string {
+  const agora = new Date()
+  const ano = agora.getFullYear()
+  const mes = String(agora.getMonth() + 1).padStart(2, '0')
+  const dia = String(agora.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
+export function parseDataCarta(valor?: string): { dia: number; mes: number; ano: number } {
+  if (valor && typeof valor === 'string') {
+    const trimmed = valor.trim()
+    // Aceita YYYY-MM-DD
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+    if (isoMatch) {
+      const a = parseInt(isoMatch[1], 10)
+      const m = parseInt(isoMatch[2], 10)
+      const d = parseInt(isoMatch[3], 10)
+      if (a >= 1900 && a <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        return { ano: a, mes: m, dia: d }
+      }
+    }
+    // Aceita DD/MM/YYYY
+    const brMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (brMatch) {
+      const d = parseInt(brMatch[1], 10)
+      const m = parseInt(brMatch[2], 10)
+      const a = parseInt(brMatch[3], 10)
+      if (a >= 1900 && a <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        return { ano: a, mes: m, dia: d }
+      }
+    }
+  }
+
+  // Padrão sempre HOJE (não congelado)
+  const agora = new Date()
+  return {
+    dia: agora.getDate(),
+    mes: agora.getMonth() + 1,
+    ano: agora.getFullYear(),
+  }
+}
+
+export function formatarDataPt(valor?: string): string {
+  const { dia, mes, ano } = parseDataCarta(valor)
+  const nomeMes = MESES_PT[mes - 1] || 'novembro'
+  return `Florianópolis, ${dia} de ${nomeMes} de ${ano}`
+}
+
+export function formatarDataEn(valor?: string): string {
+  const { dia, mes, ano } = parseDataCarta(valor)
+  const nomeMes = MESES_EN[mes - 1] || 'November'
+  return `Florianópolis, ${nomeMes} ${dia}, ${ano}`
 }
 
 export type CartaMeta = {
@@ -86,7 +176,7 @@ export const CARTAS_META: CartaMeta[] = [
     id: 'bernadete-pt',
     titulo: 'Carta 1 — Bernadete (português)',
     cabecalho: CABECALHO_PADRAO,
-    corpo: `Florianópolis, {dia} de novembro de {ano}
+    corpo: `{dataPt}
 
 À Meta Platforms, Inc.
 
@@ -116,7 +206,7 @@ Sócia-Administradora com administração isolada, BRFIMOVEIS LTDA
     id: 'bernadete-en',
     titulo: 'Carta 2 — Bernadete (inglês)',
     cabecalho: CABECALHO_PADRAO,
-    corpo: `Florianópolis, November {dia}, {ano}
+    corpo: `{dataEn}
 
 Dear Meta,
 
@@ -146,7 +236,7 @@ Managing Partner with sole administration powers, BRFIMOVEIS LTDA
     id: 'mauro-pt',
     titulo: 'Carta 3 — Mauro (português)',
     cabecalho: CABECALHO_PADRAO,
-    corpo: `Florianópolis, {dia} de novembro de {ano}
+    corpo: `{dataPt}
 
 À META PLATFORMS, INC. — Equipe de Revisão de Contas / Status da Conta
 
@@ -231,7 +321,7 @@ CPF: {cpfMauro}`,
     id: 'mauro-en',
     titulo: 'Carta 4 — Mauro (inglês)',
     cabecalho: CABECALHO_PADRAO,
-    corpo: `Florianópolis, November {dia}, {ano}
+    corpo: `{dataEn}
 
 TO META PLATFORMS, INC. — Account Review Team / Account Status
 

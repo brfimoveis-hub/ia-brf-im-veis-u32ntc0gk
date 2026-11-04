@@ -5,6 +5,8 @@ import {
   PLACEHOLDER_CAMPO,
   CampoCarta,
   DADOS_EMPRESA_TIMBRE,
+  formatarDataPt,
+  formatarDataEn,
 } from '@/data/cartas-meta-content'
 import logoBrf from '@/assets/logofinalmarcadagua-copia-393ad.png'
 
@@ -28,13 +30,22 @@ function renderizarTextoComCampos(texto: string, valores: CamposValores): React.
       partes.push(texto.substring(lastIndex, match.index))
     }
 
-    const chave = match[1] as CampoCarta
-    const valor = valores[chave]?.trim()
+    const chave = match[1] as string
+    let valorFinal: string | undefined
 
-    if (valor) {
+    if (chave === 'dataPt') {
+      valorFinal = formatarDataPt(valores.dataCarta)
+    } else if (chave === 'dataEn') {
+      valorFinal = formatarDataEn(valores.dataCarta)
+    } else if (chave in valores) {
+      const v = valores[chave as CampoCarta]?.trim()
+      if (v) valorFinal = v
+    }
+
+    if (valorFinal) {
       partes.push(
         <span key={`${chave}-${match.index}`} className="carta-campo-preenchido">
-          {valor}
+          {valorFinal}
         </span>,
       )
     } else {
