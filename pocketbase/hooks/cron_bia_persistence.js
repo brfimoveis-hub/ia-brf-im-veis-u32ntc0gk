@@ -6,10 +6,13 @@
  * PONTO ÚNICO DE ENVIO DE RETOMADAS/MARKETING — migrar para a API de Mensagens de Marketing (MM) da Meta até 13/10/2027;
  * descontinuação do envio de marketing via Cloud API nessa data.
  *
- * Periodicidade: 'STAR/15 8-17 STAR STAR STAR' (A cada 15 min, das 08h às 18h horário de Brasília, seg a sáb)
+ * Periodicidade: 'STAR/15 STAR STAR STAR STAR' (A cada 15 min, o dia todo — a JANELA 08h-18h
+ * de Brasília é garantida pelo gate isBrasiliaBusinessHours() em UTC explícito, imune ao fuso
+ * do servidor. O cron não pode depender do fuso da máquina: antes, '8-17' no fuso do servidor
+ * fazia a régua parar de processar no meio da tarde (~13:45 de Brasília).
  */
 
-cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
+cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
   var app = $app
 
   // ============================================================================
@@ -55,30 +58,30 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
     var addMs = (hoursFromNow || 2) * 3600 * 1000
     var target = new Date(Date.now() + addMs)
 
-    // Ajusta para o fuso de Brasília (UTC-3)
-    var utc = target.getTime() + target.getTimezoneOffset() * 60000
-    var br = new Date(utc - 3 * 3600000)
+    // "br" representa o horário de Brasília escrito nos campos UTC da data —
+    // matemática 100% em UTC explícito, imune ao fuso do servidor (JSVM roda em UTC).
+    var br = new Date(target.getTime() - 3 * 3600000)
 
-    var day = br.getDay() // 0 = Domingo
-    var hour = br.getHours()
+    var day = br.getUTCDay() // 0 = Domingo
+    var hour = br.getUTCHours()
 
     // Se cair no domingo (day === 0), adia para segunda-feira às 09h00 de Brasília
     if (day === 0) {
-      br.setDate(br.getDate() + 1)
-      br.setHours(9, 0, 0, 0)
+      br.setUTCDate(br.getUTCDate() + 1)
+      br.setUTCHours(9, 0, 0, 0)
     } else if (hour < 8) {
       // Antes das 8h: ajusta para hoje às 08h30
-      br.setHours(8, 30, 0, 0)
+      br.setUTCHours(8, 30, 0, 0)
     } else if (hour >= 18) {
       // Após 18h: ajusta para o próximo dia útil às 08h30
-      br.setDate(br.getDate() + 1)
-      if (br.getDay() === 0) {
-        br.setDate(br.getDate() + 1)
+      br.setUTCDate(br.getUTCDate() + 1)
+      if (br.getUTCDay() === 0) {
+        br.setUTCDate(br.getUTCDate() + 1)
       }
-      br.setHours(8, 30, 0, 0)
+      br.setUTCHours(8, 30, 0, 0)
     }
 
-    // Converte br (que representa Brasília) de volta para UTC Date
+    // Converte "br" (Brasília em campos UTC) de volta para UTC real (+3h)
     var targetUtcMs = br.getTime() + 3 * 3600000
     return new Date(targetUtcMs).toISOString()
   }
@@ -582,12 +585,11 @@ cronAdd('bia_persistence_followup', '*/15 8-17 * * *', function () {
   // ============================================================================
   function isBrasiliaBusinessHours() {
     var now = new Date()
-    var utcTime = now.getTime() + now.getTimezoneOffset() * 60000
-    var brTime = new Date(utcTime - 3 * 3600000)
-    var dayOfWeek = brTime.getDay()
+    var brTime = new Date(now.getTime() - 3 * 3600000)
+    var dayOfWeek = brTime.getUTCDay()
     if (dayOfWeek === 0) return false // Domingo pausado por respeito comercial
 
-    var hours = brTime.getHours()
+    var hours = brTime.getUTCHours()
     return hours >= 8 && hours < 18
   }
 
