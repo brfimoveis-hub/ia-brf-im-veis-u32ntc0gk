@@ -187,9 +187,9 @@ export default function Layout() {
         )}
       >
         {/* Mobile header: quando conversa está aberta em /atendimentos, o chat tem seu próprio header nativo estilo WhatsApp */}
-        <div
+        <header
           className={cn(
-            'sticky top-0 z-40 flex h-16 flex-shrink-0 bg-white border-b shadow-sm md:hidden px-4 justify-between items-center',
+            'app-topbar-mobile sticky top-0 z-40 flex h-16 flex-shrink-0 bg-white border-b shadow-sm md:hidden px-4 justify-between items-center',
             hasSelectedCustomerInUrl ? 'hidden' : 'flex',
           )}
         >
@@ -219,10 +219,12 @@ export default function Layout() {
               </SheetContent>
             </Sheet>
           </div>
-        </div>
+        </header>
 
         {/* Connection Alert Banner (oculto no mobile quando conversa aberta para liberar viewport total estilo WhatsApp) */}
-        <div className={cn(hasSelectedCustomerInUrl ? 'hidden md:block' : 'block')}>
+        <div
+          className={cn('cartas-no-print', hasSelectedCustomerInUrl ? 'hidden md:block' : 'block')}
+        >
           <ConnectionAlertBanner />
         </div>
 

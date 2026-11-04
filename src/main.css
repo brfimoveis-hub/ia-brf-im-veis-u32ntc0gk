@@ -58,7 +58,7 @@
   @media print {
     @page {
       size: A4 portrait;
-      margin: 12mm 15mm 15mm 15mm;
+      margin: 0;
     }
 
     body {
@@ -72,13 +72,18 @@
     /* Oculta barras de navegação, cabeçalhos, rodapés de app e botões interativos */
     nav,
     aside,
-    header.sticky,
+    header:not(.carta-meta-header),
+    footer:not(.carta-meta-footer),
+    .app-topbar-mobile,
+    .cartas-no-print,
     .md\:fixed,
     .print-hide,
     button:not(.print-show),
     [aria-label='Abrir menu'],
-    [data-radix-portal] {
+    [data-radix-portal],
+    [data-radix-popper-content-wrapper] {
       display: none !important;
+      visibility: hidden !important;
     }
 
     /* Remove espaçamentos de layout da aplicação */

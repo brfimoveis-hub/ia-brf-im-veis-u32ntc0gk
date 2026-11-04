@@ -3,12 +3,14 @@
 
 export type CampoCarta =
   | 'dataCarta'
-  | 'linkBernadete'
-  | 'linkMauro'
-  | 'idMauro'
+  | 'nomeMauro'
   | 'cpfMauro'
   | 'enderecoMauro'
   | 'telefoneMauro'
+  | 'emailMauro'
+  | 'linkMauro'
+  | 'idMauro'
+  | 'linkBernadete'
 
 export type CamposValores = Record<CampoCarta, string>
 
@@ -41,23 +43,47 @@ export const CAMPOS_CARTA: {
     helpText: 'Preenchida automaticamente com hoje. Usada em formato PT e EN em todas as 4 cartas.',
   },
   {
-    key: 'linkBernadete',
-    label: 'Link do perfil do Facebook da Bernadete',
-    placeholder: 'https://www.facebook.com/...',
+    key: 'nomeMauro',
+    label: 'Nome completo do Mauro',
+    placeholder: 'Mauro Fengler',
+    helpText: 'Utilizado na identificação e na assinatura das cartas do Mauro.',
+  },
+  {
+    key: 'cpfMauro',
+    label: 'CPF do Mauro',
+    placeholder: '296.090.209-25',
+  },
+  {
+    key: 'enderecoMauro',
+    label: 'Endereço pessoal do Mauro',
+    placeholder:
+      'Rua José Cândido da Silva, 118 – Apto 602 – CEP 88.075-250 – Estreito, Florianópolis SC',
+  },
+  {
+    key: 'telefoneMauro',
+    label: 'Telefone pessoal do Mauro',
+    placeholder: '(48) 99972.8050',
+  },
+  {
+    key: 'emailMauro',
+    label: 'E-mail pessoal do Mauro',
+    placeholder: 'maurofengler@yahoo.com.br',
   },
   {
     key: 'linkMauro',
     label: 'Link do perfil do Facebook do Mauro',
     placeholder: 'https://www.facebook.com/...',
   },
-  { key: 'idMauro', label: 'ID do usuário Facebook do Mauro', placeholder: 'número do ID' },
-  { key: 'cpfMauro', label: 'CPF do Mauro', placeholder: '000.000.000-00' },
   {
-    key: 'enderecoMauro',
-    label: 'Endereço pessoal do Mauro',
-    placeholder: 'Rua, número, complemento, bairro, cidade - UF, CEP',
+    key: 'idMauro',
+    label: 'ID do usuário Facebook do Mauro',
+    placeholder: 'número do ID',
   },
-  { key: 'telefoneMauro', label: 'Telefone pessoal do Mauro', placeholder: '(48) 90000-0000' },
+  {
+    key: 'linkBernadete',
+    label: 'Link do perfil do Facebook da Bernadete',
+    placeholder: 'https://www.facebook.com/...',
+  },
 ]
 
 // Texto mostrado no lugar do campo vazio, entre colchetes.
@@ -65,12 +91,14 @@ export const PLACEHOLDER_CAMPO: Record<string, string> = {
   dataCarta: 'data da carta',
   dataPt: 'data por extenso (PT)',
   dataEn: 'data por extenso (EN)',
-  linkBernadete: 'link do perfil da Bernadete',
-  linkMauro: 'link do perfil do Mauro',
-  idMauro: 'ID do Facebook do Mauro',
+  nomeMauro: 'nome completo do Mauro',
   cpfMauro: 'CPF do Mauro',
   enderecoMauro: 'endereço pessoal do Mauro',
   telefoneMauro: 'telefone pessoal do Mauro',
+  emailMauro: 'e-mail do Mauro',
+  linkMauro: 'link do perfil do Mauro',
+  idMauro: 'ID do Facebook do Mauro',
+  linkBernadete: 'link do perfil da Bernadete',
 }
 
 export const MESES_PT = [
@@ -246,7 +274,7 @@ Prezados,
 
 1. QUEM SOU
 
-Sou Mauro Fengler, sócio-administrador da BRFIMOVEIS LTDA (CNPJ 22.886.297/0001-77), residente e domiciliado em {enderecoMauro}, telefone pessoal {telefoneMauro}, titular do CPF nº {cpfMauro}, com perfil de Facebook {linkMauro} (ID do usuário: {idMauro}), imobiliária com atuação em Florianópolis e região, operando no digital através de:
+Sou {nomeMauro}, sócio-administrador da BRFIMOVEIS LTDA (CNPJ 22.886.297/0001-77), residente e domiciliado em {enderecoMauro}, telefone pessoal {telefoneMauro}, e-mail {emailMauro}, titular do CPF nº {cpfMauro}, com perfil de Facebook {linkMauro} (ID do usuário: {idMauro}), imobiliária com atuação em Florianópolis e região, operando no digital através de:
 - Página oficial: BRF Imóveis (ID 1219427617930954);
 - Instagram comercial: @brf_imoveis_ e perfil mauro.brfimoveis (com Threads);
 - Portfólio BRF Imóveis 1 (ID 3016760162334990);
@@ -313,7 +341,7 @@ Solicito ainda que qualquer decisão desta reavaliação seja comunicada por esc
 Atenciosamente,
 
 _______________________________
-Mauro Fengler
+{nomeMauro}
 Sócio-administrador — BRFIMOVEIS LTDA
 CPF: {cpfMauro}`,
   },
@@ -331,7 +359,7 @@ Dear Meta team,
 
 1. WHO I AM
 
-I am Mauro Fengler, managing partner of BRFIMOVEIS LTDA (CNPJ 22.886.297/0001-77), residing at {enderecoMauro}, personal phone {telefoneMauro}, CPF {cpfMauro}, Facebook profile {linkMauro} (User ID: {idMauro}), a real estate agency operating in Florianópolis and region, with its digital operation running on:
+I am {nomeMauro}, managing partner of BRFIMOVEIS LTDA (CNPJ 22.886.297/0001-77), residing at {enderecoMauro}, personal phone {telefoneMauro}, email {emailMauro}, CPF {cpfMauro}, Facebook profile {linkMauro} (User ID: {idMauro}), a real estate agency operating in Florianópolis and region, with its digital operation running on:
 - Official Page: BRF Imóveis (ID 1219427617930954);
 - Business Instagram: @brf_imoveis_ and profile mauro.brfimoveis (with Threads);
 - Business portfolio BRF Imóveis 1 (ID 3016760162334990);
@@ -398,7 +426,7 @@ I also kindly request that any decision on this reassessment be communicated in 
 Sincerely,
 
 _______________________________
-Mauro Fengler
+{nomeMauro}
 Managing Partner — BRFIMOVEIS LTDA
 CPF: {cpfMauro}`,
   },

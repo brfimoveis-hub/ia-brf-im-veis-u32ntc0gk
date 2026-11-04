@@ -194,7 +194,11 @@
     margin: 0;
   }
 
-  /* Ocultar rigorosamente todos os elementos da interface do CRM e chrome do app durante a impressão */
+  /* Ocultar rigorosamente todos os elementos da interface do CRM e chrome do app durante a impressão:
+     - Topbar / Mobile header (barra superior branca com "BRF IA CRM")
+     - Sidebar desktop (barra lateral escura com "BRF IA CRM")
+     - Banners de conexão, scanners, dialogs, botões, navs
+  */
   header:not(.carta-meta-header),
   footer:not(.carta-meta-footer),
   aside,
@@ -204,8 +208,20 @@
   .sidebar,
   [data-sidebar='sidebar'],
   [data-radix-portal],
+  [data-radix-popper-content-wrapper],
+  [role='dialog'],
+  .sticky,
+  .fixed,
   button {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    top: -9999px !important;
+    left: -9999px !important;
   }
 
   body,
@@ -334,16 +350,24 @@
   .sidebar,
   [data-sidebar='sidebar'],
   [data-radix-portal],
+  [data-radix-popper-content-wrapper],
   header:not(.carta-meta-header),
   footer:not(.carta-meta-footer),
   aside,
   nav,
+  .sticky,
+  .md\:fixed,
   button {
     display: none !important;
     visibility: hidden !important;
+    opacity: 0 !important;
     height: 0 !important;
+    width: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
+    position: absolute !important;
+    top: -9999px !important;
+    left: -9999px !important;
   }
 
   .carta-campo-vazio {

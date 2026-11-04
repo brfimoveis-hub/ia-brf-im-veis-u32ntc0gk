@@ -9,16 +9,28 @@ import {
 // Campos únicos das cartas, guardados neste navegador (localStorage).
 const STORAGE_KEY = 'cartas_meta_campos_v1'
 
-function valoresVazios(): CamposValores {
-  const vazio = {} as CamposValores
-  for (const campo of CAMPOS_CARTA) vazio[campo.key] = ''
+// Defaults garantidos para o Mauro preencher instantaneamente as cartas 3 e 4
+export const DEFAULTS_MAURO: Partial<CamposValores> = {
+  nomeMauro: 'Mauro Fengler',
+  cpfMauro: '296.090.209-25',
+  enderecoMauro:
+    'Rua José Cândido da Silva, 118 – Apto 602 – CEP 88.075-250 – Estreito, Florianópolis SC',
+  telefoneMauro: '(48) 99972.8050',
+  emailMauro: 'maurofengler@yahoo.com.br',
+}
+
+function valoresIniciaisComDefaults(): CamposValores {
+  const base = {} as CamposValores
+  for (const campo of CAMPOS_CARTA) {
+    base[campo.key] = DEFAULTS_MAURO[campo.key] || ''
+  }
   // Padrão de data é HOJE (formato ISO YYYY-MM-DD para input date)
-  vazio.dataCarta = formatarDataHojeIso()
-  return vazio
+  base.dataCarta = formatarDataHojeIso()
+  return base
 }
 
 function carregarValores(): CamposValores {
-  const base = valoresVazios()
+  const base = valoresIniciaisComDefaults()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
@@ -44,6 +56,15 @@ function carregarValores(): CamposValores {
 
   if (!base.dataCarta) {
     base.dataCarta = formatarDataHojeIso()
+  }
+
+  // Se algum campo essencial do Mauro estiver em branco mesmo após carregar do storage
+  // (ex: storage salvo antes da inclusão de nomeMauro ou emailMauro), preenche com o default
+  for (const [k, v] of Object.entries(DEFAULTS_MAURO)) {
+    const key = k as CampoCarta
+    if (!base[key] || base[key].trim() === '') {
+      base[key] = v!
+    }
   }
 
   return base
