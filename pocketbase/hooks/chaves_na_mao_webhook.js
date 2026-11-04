@@ -3,7 +3,7 @@
 // Salva em 'leads' E em 'customers', associando imóvel (ex: LM327) e registrando
 // auditoria transparente em 'system_logs' tanto para sucesso quanto para falha.
 
-routerAdd('GET', '/backend/v1/chaves_na_mao_webhook/status', (e) => {
+routerAdd('GET', '/backend/v1/chaves_na_mao_webhook/health', (e) => {
   return e.json(200, {
     status: 'active',
     service: 'chaves_na_mao_webhook',
