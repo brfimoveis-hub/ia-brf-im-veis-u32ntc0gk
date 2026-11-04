@@ -56,8 +56,12 @@ export default function CartasMeta() {
       </div>
 
       <div className="cartas-print-root space-y-10">
-        {CARTAS_META.map((carta) => {
+        {CARTAS_META.map((carta, index) => {
           const ativa = modo === 'one' && cartaAtiva === carta.id
+          // Quando imprimindo 1 carta, é página 1 de 1. Quando imprimindo todas (4), é página index+1 de 4.
+          const paginaNumero = modo === 'all' ? index + 1 : 1
+          const totalPaginas = modo === 'all' ? CARTAS_META.length : 1
+
           return (
             <div
               key={carta.id}
@@ -72,10 +76,16 @@ export default function CartasMeta() {
                   onClick={() => imprimir('one', carta.id)}
                 >
                   <Printer className="h-4 w-4" />
-                  Imprimir
+                  Imprimir esta carta
                 </Button>
               </div>
-              <CartaMetaSheet carta={carta} valores={valores} ativa={ativa} />
+              <CartaMetaSheet
+                carta={carta}
+                valores={valores}
+                ativa={ativa}
+                paginaNumero={paginaNumero}
+                totalPaginas={totalPaginas}
+              />
             </div>
           )
         })}

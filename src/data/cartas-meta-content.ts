@@ -3,17 +3,29 @@
 
 export type CampoCarta =
   | 'dia'
-  | 'enderecoEmpresa'
-  | 'telefoneEmpresa'
+  | 'ano'
   | 'linkBernadete'
   | 'linkMauro'
   | 'idMauro'
   | 'cpfMauro'
   | 'enderecoMauro'
   | 'telefoneMauro'
-  | 'emailMauro'
 
 export type CamposValores = Record<CampoCarta, string>
+
+// Dados FIXOS e institucionais da empresa em papel timbrado oficial (idênticos em todas as cartas)
+export const DADOS_EMPRESA_TIMBRE = {
+  nomeCnpj: 'BRF IMÓVEIS LTDA – CNPJ: 22.886.297/0001-77',
+  endereco:
+    'Rua José Cândido da Silva, 118/602 – Balneário – Estreito, Florianópolis SC – CEP 88.075-250',
+  telefones: 'TELEFONES: (48) 99972.8012 (TIM) – (48) 99972.8050 (TIM) WhatsApp',
+  contatos: 'EMAIL: brfimoveis@gmail.com – SITE: www.brfimoveis.com.br – CRECI: 6838',
+  // Versão resumida do rodapé ABNT
+  rodapeLinha1:
+    'BRF IMÓVEIS LTDA – CNPJ: 22.886.297/0001-77 / Rua José Cândido da Silva, 118/602 – Balneário – Estreito, Florianópolis SC',
+  rodapeLinha2:
+    '(48) 99972.8012 – (48) 99972.8050 WhatsApp / brfimoveis@gmail.com – www.brfimoveis.com.br – CRECI 6838',
+}
 
 export const CAMPOS_CARTA: {
   key: CampoCarta
@@ -21,13 +33,8 @@ export const CAMPOS_CARTA: {
   placeholder: string
   type?: 'number' | 'text'
 }[] = [
-  { key: 'dia', label: 'Dia de novembro (número)', placeholder: 'ex.: 5', type: 'number' },
-  {
-    key: 'enderecoEmpresa',
-    label: 'Endereço da empresa',
-    placeholder: 'Rua, número, bairro, cidade - UF, CEP',
-  },
-  { key: 'telefoneEmpresa', label: 'Telefone da empresa', placeholder: '(48) 0000-0000' },
+  { key: 'dia', label: 'Dia de novembro (número)', placeholder: 'ex.: 4', type: 'number' },
+  { key: 'ano', label: 'Ano', placeholder: '2026' },
   {
     key: 'linkBernadete',
     label: 'Link do perfil do Facebook da Bernadete',
@@ -42,25 +49,22 @@ export const CAMPOS_CARTA: {
   { key: 'cpfMauro', label: 'CPF do Mauro', placeholder: '000.000.000-00' },
   {
     key: 'enderecoMauro',
-    label: 'Endereço completo do Mauro',
-    placeholder: 'Rua, número, bairro, cidade - UF, CEP',
+    label: 'Endereço pessoal do Mauro',
+    placeholder: 'Rua, número, complemento, bairro, cidade - UF, CEP',
   },
-  { key: 'telefoneMauro', label: 'Telefone do Mauro', placeholder: '(48) 00000-0000' },
-  { key: 'emailMauro', label: 'E-mail do Mauro', placeholder: 'nome@exemplo.com' },
+  { key: 'telefoneMauro', label: 'Telefone pessoal do Mauro', placeholder: '(48) 90000-0000' },
 ]
 
 // Texto mostrado no lugar do campo vazio, entre colchetes.
 export const PLACEHOLDER_CAMPO: Record<CampoCarta, string> = {
   dia: 'dia',
-  enderecoEmpresa: 'endereço da empresa',
-  telefoneEmpresa: 'telefone da empresa',
+  ano: 'ano',
   linkBernadete: 'link do perfil da Bernadete',
   linkMauro: 'link do perfil do Mauro',
   idMauro: 'ID do Facebook do Mauro',
   cpfMauro: 'CPF do Mauro',
-  enderecoMauro: 'endereço completo do Mauro',
-  telefoneMauro: 'telefone do Mauro',
-  emailMauro: 'e-mail do Mauro',
+  enderecoMauro: 'endereço pessoal do Mauro',
+  telefoneMauro: 'telefone pessoal do Mauro',
 }
 
 export type CartaMeta = {
@@ -70,28 +74,19 @@ export type CartaMeta = {
   corpo: string
 }
 
-const CABECALHO_BERNADETE = [
-  'BRF IMOVEIS LTDA',
-  '{enderecoEmpresa}',
-  '{telefoneEmpresa}',
-  'bernadeterhoden@yahoo.com.br',
-  'www.brfimoveis.com.br',
-]
-
-const CABECALHO_MAURO = [
-  'MAURO FENGLER',
-  '{enderecoMauro}',
-  '{telefoneMauro} · {emailMauro}',
-  'Perfil do Facebook: {linkMauro}',
-  'Usuário Facebook ID: {idMauro}',
+const CABECALHO_PADRAO = [
+  DADOS_EMPRESA_TIMBRE.nomeCnpj,
+  DADOS_EMPRESA_TIMBRE.endereco,
+  DADOS_EMPRESA_TIMBRE.telefones,
+  DADOS_EMPRESA_TIMBRE.contatos,
 ]
 
 export const CARTAS_META: CartaMeta[] = [
   {
     id: 'bernadete-pt',
     titulo: 'Carta 1 — Bernadete (português)',
-    cabecalho: CABECALHO_BERNADETE,
-    corpo: `Florianópolis, {dia} de novembro de 2026
+    cabecalho: CABECALHO_PADRAO,
+    corpo: `Florianópolis, {dia} de novembro de {ano}
 
 À Meta Platforms, Inc.
 
@@ -120,8 +115,8 @@ Sócia-Administradora com administração isolada, BRFIMOVEIS LTDA
   {
     id: 'bernadete-en',
     titulo: 'Carta 2 — Bernadete (inglês)',
-    cabecalho: CABECALHO_BERNADETE,
-    corpo: `Florianópolis, November {dia}, 2026
+    cabecalho: CABECALHO_PADRAO,
+    corpo: `Florianópolis, November {dia}, {ano}
 
 Dear Meta,
 
@@ -150,8 +145,8 @@ Managing Partner with sole administration powers, BRFIMOVEIS LTDA
   {
     id: 'mauro-pt',
     titulo: 'Carta 3 — Mauro (português)',
-    cabecalho: CABECALHO_MAURO,
-    corpo: `Florianópolis, {dia} de novembro de 2026
+    cabecalho: CABECALHO_PADRAO,
+    corpo: `Florianópolis, {dia} de novembro de {ano}
 
 À META PLATFORMS, INC. — Equipe de Revisão de Contas / Status da Conta
 
@@ -161,7 +156,7 @@ Prezados,
 
 1. QUEM SOU
 
-Sou Mauro Fengler, sócio-administrador da BRFIMOVEIS LTDA (CNPJ 22.886.297/0001-77), imobiliária com atuação em Florianópolis e região, operando no digital através de:
+Sou Mauro Fengler, sócio-administrador da BRFIMOVEIS LTDA (CNPJ 22.886.297/0001-77), residente e domiciliado em {enderecoMauro}, telefone pessoal {telefoneMauro}, titular do CPF nº {cpfMauro}, com perfil de Facebook {linkMauro} (ID do usuário: {idMauro}), imobiliária com atuação em Florianópolis e região, operando no digital através de:
 - Página oficial: BRF Imóveis (ID 1219427617930954);
 - Instagram comercial: @brf_imoveis_ e perfil mauro.brfimoveis (com Threads);
 - Portfólio BRF Imóveis 1 (ID 3016760162334990);
@@ -235,8 +230,8 @@ CPF: {cpfMauro}`,
   {
     id: 'mauro-en',
     titulo: 'Carta 4 — Mauro (inglês)',
-    cabecalho: CABECALHO_MAURO,
-    corpo: `Florianópolis, November {dia}, 2026
+    cabecalho: CABECALHO_PADRAO,
+    corpo: `Florianópolis, November {dia}, {ano}
 
 TO META PLATFORMS, INC. — Account Review Team / Account Status
 
@@ -246,7 +241,7 @@ Dear Meta team,
 
 1. WHO I AM
 
-I am Mauro Fengler, managing partner of BRFIMOVEIS LTDA (CNPJ 22.886.297/0001-77), a real estate agency operating in Florianópolis and region, with its digital operation running on:
+I am Mauro Fengler, managing partner of BRFIMOVEIS LTDA (CNPJ 22.886.297/0001-77), residing at {enderecoMauro}, personal phone {telefoneMauro}, CPF {cpfMauro}, Facebook profile {linkMauro} (User ID: {idMauro}), a real estate agency operating in Florianópolis and region, with its digital operation running on:
 - Official Page: BRF Imóveis (ID 1219427617930954);
 - Business Instagram: @brf_imoveis_ and profile mauro.brfimoveis (with Threads);
 - Business portfolio BRF Imóveis 1 (ID 3016760162334990);

@@ -1,90 +1,110 @@
 /* src/components/cartas/cartas-meta.css */
 
-/* Folha A4 em tela (preview) */
+/* =========================================================================
+   FOLHA A4 EM TELA (PREVIEW) E CONFIGURAÇÃO GERAL
+   ========================================================================= */
+
 .carta-meta-page {
   background: #ffffff;
-  color: #0f172a;
+  color: #111827;
   box-shadow:
     0 4px 20px -2px rgba(0, 0, 0, 0.08),
     0 2px 6px -1px rgba(0, 0, 0, 0.04);
-  border-radius: 4px;
-  border: 1px solid #e2e8f0;
+  border-radius: 2px;
+  border: 1px solid #e5e7eb;
   width: 100%;
   max-width: 210mm;
   min-height: 297mm;
   margin: 0 auto;
-  padding: 22mm 24mm 24mm 24mm;
+  /* Margens ABNT: Superior 3cm (30mm), Esquerda 3cm (30mm), Inferior 2cm (20mm), Direita 2cm (20mm) */
+  padding: 30mm 20mm 20mm 30mm;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   position: relative;
-  font-family:
-    'Calibri',
-    'Segoe UI',
-    -apple-system,
-    BlinkMacSystemFont,
-    Roboto,
-    sans-serif;
-  line-height: 1.45;
+  /* Fonte serifada ABNT padrão (Times New Roman / Georgia / serif) */
+  font-family: 'Times New Roman', Times, Georgia, Cambria, serif;
+  line-height: 1.5;
   font-size: 11pt;
 }
 
-/* Timbre: Logotipo no topo (na frente) seguido dos dados da empresa */
+/* =========================================================================
+   1. TIMBRE (CABEÇALHO) OFICIAL
+   Logo à esquerda, ao lado do bloco de dados da empresa, com linha divisória fina
+   ========================================================================= */
+
 .carta-meta-header {
-  border-bottom: 1.5px solid #0f172a;
-  padding-bottom: 14px;
   margin-bottom: 22px;
   display: flex;
   flex-direction: column;
+  width: 100%;
+}
+
+.carta-meta-timbre-row {
+  display: flex;
+  flex-direction: row;
   align-items: center;
-  text-align: center;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 16px;
+  padding-bottom: 10px;
 }
 
 .carta-meta-logo-wrap {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* Logo nítida ~3.5cm de largura (~130px) */
 .carta-meta-logo {
-  height: 52px;
-  width: auto;
-  max-width: 220px;
+  width: 35mm;
+  max-width: 135px;
+  height: auto;
+  max-height: 28mm;
   object-fit: contain;
+  display: block;
 }
 
 .carta-meta-company-info {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
+  justify-content: center;
+  text-align: left;
   gap: 2px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
 .carta-meta-company-title {
-  font-size: 13pt;
-  font-weight: 800;
-  letter-spacing: 0.8px;
-  color: #0f172a;
+  font-size: 9.5pt;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #111827;
   text-transform: uppercase;
+  line-height: 1.3;
 }
 
 .carta-meta-company-line {
-  font-size: 9.5pt;
-  color: #334155;
+  font-size: 8pt;
+  color: #374151;
   line-height: 1.35;
 }
 
-.carta-meta-company-line strong {
-  color: #0f172a;
-  font-weight: 600;
+.carta-meta-divider {
+  width: 100%;
+  height: 1px;
+  background-color: #1f2937;
+  margin-top: 4px;
 }
 
-/* Corpo do documento */
+/* =========================================================================
+   CORPO FORMAL DA CARTA (FORMATO ABNT)
+   ========================================================================= */
+
 .carta-meta-body {
   flex: 1 1 auto;
-  color: #1e293b;
+  color: #111827;
   font-size: 11pt;
   line-height: 1.5;
   text-align: justify;
@@ -103,6 +123,8 @@
   padding: 1px 4px;
   border-radius: 2px;
   font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 10pt;
 }
 
 .carta-campo-preenchido {
@@ -110,28 +132,57 @@
   font-weight: 600;
 }
 
-/* Rodapé institucional sutil */
+/* =========================================================================
+   2. RODAPÉ ABNT
+   Mesmos dados do timbre + à direita "Página X de Y"
+   ========================================================================= */
+
 .carta-meta-footer {
-  margin-top: 20px;
-  padding-top: 10px;
-  border-top: 1px solid #e2e8f0;
+  margin-top: 24px;
+  padding-top: 8px;
+  border-top: 0.75px solid #9ca3af;
   display: flex;
+  flex-direction: row;
   justify-content: space-between;
-  align-items: center;
-  font-size: 8.5pt;
-  color: #64748b;
+  align-items: flex-end;
+  font-size: 7.5pt;
+  color: #4b5563;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.3;
+  gap: 12px;
+}
+
+.carta-meta-footer-dados {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5px;
+}
+
+.carta-meta-footer-line {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.carta-meta-footer-paginacao {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
 }
 
 /* =========================================================================
-   REGRAS DE IMPRESSÃO (A4 LIMPO, SEM SIDEBAR, SEM HEADER, SEM CONTROLES)
+   3. REGRAS DE IMPRESSÃO A4 ABNT (PÁGINA LIMPA, SEM MENU, SEM PAINEL)
    ========================================================================= */
+
 @media print {
   @page {
     size: A4 portrait;
-    margin: 15mm 18mm 18mm 18mm;
+    /* Margens ABNT: Superior 3cm, Esquerda 3cm, Inferior 2cm, Direita 2cm */
+    margin: 30mm 20mm 20mm 30mm;
   }
 
-  /* Ocultar elementos da interface do CRM durante a impressão */
+  /* Ocultar rigorosamente elementos da interface do CRM durante a impressão */
   header,
   aside,
   nav,
@@ -160,7 +211,7 @@
     display: none !important;
   }
 
-  /* Quebra de página estrita entre cartas na impressão de TODAS */
+  /* Quebra de página estrita entre cartas na impressão de TODAS: uma carta por folha A4 */
   .printing-all .cartas-bloco {
     page-break-after: always !important;
     break-after: page !important;
@@ -171,7 +222,7 @@
     break-after: avoid !important;
   }
 
-  /* O container da folha na impressão */
+  /* O container da folha na impressão ajusta-se à margem do @page */
   .carta-meta-page {
     box-shadow: none !important;
     border: none !important;
@@ -182,14 +233,32 @@
     margin: 0 !important;
     padding: 0 !important;
     font-size: 11pt !important;
-    line-height: 1.45 !important;
+    line-height: 1.5 !important;
+    font-family: 'Times New Roman', Times, Georgia, serif !important;
+    color: #000000 !important;
   }
 
   .carta-meta-header {
-    border-bottom: 1.5pt solid #000000 !important;
+    margin-bottom: 18px !important;
+  }
+
+  .carta-meta-divider {
+    background-color: #000000 !important;
+    height: 1pt !important;
   }
 
   .carta-meta-footer {
-    border-top: 0.5pt solid #cccccc !important;
+    border-top: 0.5pt solid #333333 !important;
+    color: #333333 !important;
+  }
+
+  .carta-meta-footer-paginacao {
+    color: #000000 !important;
+  }
+
+  .carta-campo-vazio {
+    background-color: transparent !important;
+    color: #000000 !important;
+    border-bottom: 1px dashed #000000 !important;
   }
 }

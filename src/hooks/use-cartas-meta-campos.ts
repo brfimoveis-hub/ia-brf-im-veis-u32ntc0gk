@@ -24,6 +24,9 @@ function carregarValores(): CamposValores {
   } catch {
     // Ignora conteúdo inválido no storage
   }
+  if (!base.ano) {
+    base.ano = '2026'
+  }
   return base
 }
 

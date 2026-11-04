@@ -1,10 +1,19 @@
 import React from 'react'
-import { CartaMeta, CamposValores, PLACEHOLDER_CAMPO, CampoCarta } from '@/data/cartas-meta-content'
+import {
+  CartaMeta,
+  CamposValores,
+  PLACEHOLDER_CAMPO,
+  CampoCarta,
+  DADOS_EMPRESA_TIMBRE,
+} from '@/data/cartas-meta-content'
+import logoBrf from '@/assets/logofinalmarcadagua-copia-393ad.png'
 
 interface CartaMetaSheetProps {
   carta: CartaMeta
   valores: CamposValores
   ativa?: boolean
+  paginaNumero?: number
+  totalPaginas?: number
 }
 
 // Substitui {chave} pelos valores digitados ou por um aviso destacado caso vazio
@@ -51,70 +60,35 @@ function renderizarTextoComCampos(texto: string, valores: CamposValores): React.
   return partes
 }
 
-export function CartaMetaSheet({ carta, valores }: CartaMetaSheetProps) {
+export function CartaMetaSheet({
+  carta,
+  valores,
+  paginaNumero = 1,
+  totalPaginas = 1,
+}: CartaMetaSheetProps) {
   // Parágrafos do corpo
   const paragrafos = carta.corpo.split('\n\n')
 
-  // Dados do timbre configurados conforme DOCX da imobiliária
-  const endereco =
-    valores.enderecoEmpresa?.trim() ||
-    'Rua Fúlvio Aducci, 1358 - Estreito, Florianópolis - SC, 88075-000'
-  const telefone = valores.telefoneEmpresa?.trim() || '(48) 3034-7000'
-  const emailBernadete = 'bernadeterhoden@yahoo.com.br'
-  const siteEmpresa = 'www.brfimoveis.com.br'
-
-  const isCartaBernadete = carta.id.startsWith('bernadete')
-
   return (
     <article className="carta-meta-page">
-      {/* Timbre institucional: LOGO no topo (na frente) + cabeçalho elegante */}
+      {/* Timbre institucional: LOGO À ESQUERDA, AO LADO DO BLOCO DE TEXTO DA EMPRESA */}
       <header className="carta-meta-header">
-        <div className="carta-meta-logo-wrap">
-          <img
-            src="/icon.svg"
-            alt="BRF Imóveis"
-            className="carta-meta-logo"
-            onError={(e) => {
-              // Fallback gracioso se svg não renderizar
-              const target = e.currentTarget
-              target.style.display = 'none'
-            }}
-          />
-        </div>
+        <div className="carta-meta-timbre-row">
+          <div className="carta-meta-logo-wrap">
+            <img src={logoBrf} alt="BRF Imóveis" className="carta-meta-logo" loading="eager" />
+          </div>
 
-        <div className="carta-meta-company-info">
-          {isCartaBernadete ? (
-            <>
-              <div className="carta-meta-company-title">BRF IMÓVEIS LTDA</div>
-              <div className="carta-meta-company-line">{endereco}</div>
-              <div className="carta-meta-company-line">
-                Telefone: <strong>{telefone}</strong> · E-mail: <strong>{emailBernadete}</strong>
-              </div>
-              <div className="carta-meta-company-line">
-                Website: <strong>{siteEmpresa}</strong>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="carta-meta-company-title">
-                {valores.linkMauro ? 'MAURO FENGLER — SÓCIO-ADMINISTRADOR' : 'MAURO FENGLER'}
-              </div>
-              <div className="carta-meta-company-line">
-                {valores.enderecoMauro?.trim() || endereco}
-              </div>
-              <div className="carta-meta-company-line">
-                Telefone: <strong>{valores.telefoneMauro?.trim() || telefone}</strong> · E-mail:{' '}
-                <strong>{valores.emailMauro?.trim() || emailBernadete}</strong>
-              </div>
-              <div className="carta-meta-company-line">
-                BRF Imóveis LTDA · <strong>{siteEmpresa}</strong>
-              </div>
-            </>
-          )}
+          <div className="carta-meta-company-info">
+            <div className="carta-meta-company-title">{DADOS_EMPRESA_TIMBRE.nomeCnpj}</div>
+            <div className="carta-meta-company-line">{DADOS_EMPRESA_TIMBRE.endereco}</div>
+            <div className="carta-meta-company-line">{DADOS_EMPRESA_TIMBRE.telefones}</div>
+            <div className="carta-meta-company-line">{DADOS_EMPRESA_TIMBRE.contatos}</div>
+          </div>
         </div>
+        <div className="carta-meta-divider" />
       </header>
 
-      {/* Corpo formal da carta */}
+      {/* Corpo formal da carta (Formato ABNT: fonte serifada, espaçamento confortável) */}
       <main className="carta-meta-body">
         {paragrafos.map((paragrafo, index) => (
           <p key={index} className="carta-meta-paragraph">
@@ -123,10 +97,15 @@ export function CartaMetaSheet({ carta, valores }: CartaMetaSheetProps) {
         ))}
       </main>
 
-      {/* Rodapé institucional */}
+      {/* Rodapé ABNT: dados da empresa à esquerda + Página X de Y à direita */}
       <footer className="carta-meta-footer">
-        <span>BRF Imóveis LTDA — Documento Oficial</span>
-        <span>{siteEmpresa}</span>
+        <div className="carta-meta-footer-dados">
+          <div className="carta-meta-footer-line">{DADOS_EMPRESA_TIMBRE.rodapeLinha1}</div>
+          <div className="carta-meta-footer-line">{DADOS_EMPRESA_TIMBRE.rodapeLinha2}</div>
+        </div>
+        <div className="carta-meta-footer-paginacao">
+          Página {paginaNumero} de {totalPaginas}
+        </div>
       </footer>
     </article>
   )
