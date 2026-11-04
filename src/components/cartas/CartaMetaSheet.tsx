@@ -1,107 +1,135 @@
-import { Fragment } from 'react'
-import logo from '@/assets/logofinalmarcadagua-copia-393ad.png'
-import {
-  PLACEHOLDER_CAMPO,
-  type CampoCarta,
-  type CamposValores,
-  type CartaMeta,
-} from '@/data/cartas-meta-content'
-import { cn } from '@/lib/utils'
+import React from 'react'
+import { CartaMeta, CamposValores, PLACEHOLDER_CAMPO, CampoCarta } from '@/data/cartas-meta-content'
 
-type Props = {
+interface CartaMetaSheetProps {
   carta: CartaMeta
   valores: CamposValores
   ativa?: boolean
 }
 
-// Troca {campo} pelo valor preenchido; campo vazio vira [texto] destacado em cinza.
-function renderComCampos(texto: string, valores: CamposValores) {
-  return texto.split(/(\{\w+\})/).map((parte, i) => {
-    const m = parte.match(/^\{(\w+)\}$/)
-    if (!m) return <span key={i}>{parte}</span>
-    const key = m[1] as CampoCarta
-    const valor = (valores[key] ?? '').trim()
-    if (valor) return <span key={i}>{valor}</span>
-    return (
-      <span key={i} className="cartas-placeholder">
-        [{PLACEHOLDER_CAMPO[key] ?? key}]
-      </span>
-    )
-  })
+// Substitui {chave} pelos valores digitados ou por um aviso destacado caso vazio
+function renderizarTextoComCampos(texto: string, valores: CamposValores): React.ReactNode[] {
+  const partes: React.ReactNode[] = []
+  const regex = /\{([a-zA-Z0-9]+)\}/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(texto)) !== null) {
+    if (match.index > lastIndex) {
+      partes.push(texto.substring(lastIndex, match.index))
+    }
+
+    const chave = match[1] as CampoCarta
+    const valor = valores[chave]?.trim()
+
+    if (valor) {
+      partes.push(
+        <span key={`${chave}-${match.index}`} className="carta-campo-preenchido">
+          {valor}
+        </span>,
+      )
+    } else {
+      const nomeLegivel = PLACEHOLDER_CAMPO[chave] || chave
+      partes.push(
+        <span
+          key={`${chave}-${match.index}`}
+          className="carta-campo-vazio"
+          title={`Preencha o campo "${nomeLegivel}" no formulário acima`}
+        >
+          [{nomeLegivel}]
+        </span>,
+      )
+    }
+
+    lastIndex = regex.lastIndex
+  }
+
+  if (lastIndex < texto.length) {
+    partes.push(texto.substring(lastIndex))
+  }
+
+  return partes
 }
 
-// Identifica o bloco de local/data ("Florianópolis, {dia} de novembro de 2026")
-// para alinhá-lo à direita, como no timbre da carta original do Mauro.
-function isLinhaLocalData(linha: string) {
-  return /,\s*\{dia\}\s+de\s+novembro/i.test(linha) || /\bde\s+novembro\s+de\s+\d{4}/i.test(linha)
-}
-
-export function CartaMetaSheet({ carta, valores, ativa = false }: Props) {
+export function CartaMetaSheet({ carta, valores }: CartaMetaSheetProps) {
+  // Parágrafos do corpo
   const paragrafos = carta.corpo.split('\n\n')
 
-  // O primeiro bloco do corpo é a linha "Cidade, dia de novembro de 2026".
-  const primeiroBloco = paragrafos[0] ?? ''
-  const primeiraLinhaUnica =
-    primeiroBloco.split('\n').length === 1 && isLinhaLocalData(primeiroBloco)
-  const corpoSemData = primeiraLinhaUnica ? paragrafos.slice(1) : paragrafos
+  // Dados do timbre configurados conforme DOCX da imobiliária
+  const endereco =
+    valores.enderecoEmpresa?.trim() ||
+    'Rua Fúlvio Aducci, 1358 - Estreito, Florianópolis - SC, 88075-000'
+  const telefone = valores.telefoneEmpresa?.trim() || '(48) 3034-7000'
+  const emailBernadete = 'bernadeterhoden@yahoo.com.br'
+  const siteEmpresa = 'www.brfimoveis.com.br'
+
+  const isCartaBernadete = carta.id.startsWith('bernadete')
 
   return (
-    <section
-      className={cn('cartas-sheet bg-white text-black shadow-md mx-auto', ativa && 'is-ativo')}
-      data-id={carta.id}
-      style={{
-        width: 'min(210mm, 100%)',
-        minHeight: '297mm',
-        padding: '18mm 22mm 20mm',
-        boxSizing: 'border-box',
-        display: 'flex',
-        flexDirection: 'column',
-        fontFamily: "'Times New Roman', Times, serif",
-        fontSize: '12pt',
-        lineHeight: 1.5,
-      }}
-    >
-      {/* TIMBRE: logo centralizada + bloco de identificação da empresa */}
-      <header className="cartas-timbre">
-        <img
-          src={logo}
-          alt="BRF Imóveis"
-          className="cartas-logo"
-          style={{ width: '4.6cm', display: 'block', margin: '0 auto 4mm' }}
-        />
-        <p className="cartas-empresa">BRF IMÓVEIS LTDA</p>
-        {carta.cabecalho.map((linha, i) => (
-          <p key={i} className="cartas-linha">
-            {renderComCampos(linha, valores)}
-          </p>
-        ))}
-        <div className="cartas-filete" aria-hidden="true">
-          <span />
-          <span />
+    <article className="carta-meta-page">
+      {/* Timbre institucional: LOGO no topo (na frente) + cabeçalho elegante */}
+      <header className="carta-meta-header">
+        <div className="carta-meta-logo-wrap">
+          <img
+            src="/icon.svg"
+            alt="BRF Imóveis"
+            className="carta-meta-logo"
+            onError={(e) => {
+              // Fallback gracioso se svg não renderizar
+              const target = e.currentTarget
+              target.style.display = 'none'
+            }}
+          />
+        </div>
+
+        <div className="carta-meta-company-info">
+          {isCartaBernadete ? (
+            <>
+              <div className="carta-meta-company-title">BRF IMÓVEIS LTDA</div>
+              <div className="carta-meta-company-line">{endereco}</div>
+              <div className="carta-meta-company-line">
+                Telefone: <strong>{telefone}</strong> · E-mail: <strong>{emailBernadete}</strong>
+              </div>
+              <div className="carta-meta-company-line">
+                Website: <strong>{siteEmpresa}</strong>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="carta-meta-company-title">
+                {valores.linkMauro ? 'MAURO FENGLER — SÓCIO-ADMINISTRADOR' : 'MAURO FENGLER'}
+              </div>
+              <div className="carta-meta-company-line">
+                {valores.enderecoMauro?.trim() || endereco}
+              </div>
+              <div className="carta-meta-company-line">
+                Telefone: <strong>{valores.telefoneMauro?.trim() || telefone}</strong> · E-mail:{' '}
+                <strong>{valores.emailMauro?.trim() || emailBernadete}</strong>
+              </div>
+              <div className="carta-meta-company-line">
+                BRF Imóveis LTDA · <strong>{siteEmpresa}</strong>
+              </div>
+            </>
+          )}
         </div>
       </header>
 
-      <div className="cartas-corpo">
-        {primeiraLinhaUnica && (
-          <p className="cartas-local-data">{renderComCampos(primeiroBloco, valores)}</p>
-        )}
-
-        {corpoSemData.map((par, i) => (
-          <p key={i} className="cartas-paragrafo">
-            {par.split('\n').map((linha, j) => (
-              <Fragment key={j}>
-                {j > 0 && <br />}
-                {renderComCampos(linha, valores)}
-              </Fragment>
-            ))}
+      {/* Corpo formal da carta */}
+      <main className="carta-meta-body">
+        {paragrafos.map((paragrafo, index) => (
+          <p key={index} className="carta-meta-paragraph">
+            {renderizarTextoComCampos(paragrafo, valores)}
           </p>
         ))}
-      </div>
+      </main>
 
-      <footer className="cartas-pe">
-        <div className="cartas-filete-pe" aria-hidden="true" />
-        <p>BRF Imóveis · www.brfimoveis.com.br</p>
+      {/* Rodapé institucional */}
+      <footer className="carta-meta-footer">
+        <span>BRF Imóveis LTDA — Documento Oficial</span>
+        <span>{siteEmpresa}</span>
       </footer>
-    </section>
+    </article>
   )
 }
+
+export default CartaMetaSheet
