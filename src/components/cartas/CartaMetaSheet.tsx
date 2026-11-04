@@ -80,46 +80,97 @@ export function CartaMetaSheet({
   // Parágrafos do corpo
   const paragrafos = carta.corpo.split('\n\n')
 
+  // Detecta se um parágrafo é um título de seção (ex: "1. QUEM SOU", "3. CRONOLOGIA COMPLETA DO CASO")
+  // para aplicar classe com break-after: avoid
+  const isTituloSecao = (texto: string) => {
+    const trimmed = texto.trim()
+    return (
+      /^\d+(\.\d+)?\.\s+[A-ZÀ-Ú0-9\s()—–,-]+$/.test(trimmed) ||
+      /^Assunto:|^Subject:|^À META PLATFORMS|^TO META PLATFORMS|^À Meta Platforms|^Dear Meta/i.test(
+        trimmed,
+      )
+    )
+  }
+
+  const renderTimbreContent = () => (
+    <div className="carta-meta-header-inner">
+      <div className="carta-meta-timbre-row">
+        <div className="carta-meta-logo-wrap">
+          <img src={logoBrf} alt="BRF Imóveis" className="carta-meta-logo" loading="eager" />
+        </div>
+
+        <div className="carta-meta-company-info">
+          <div className="carta-meta-company-title">BRF IMÓVEIS LTDA</div>
+          <div className="carta-meta-company-cnpj">CNPJ: 22.886.297/0001-77</div>
+        </div>
+      </div>
+      <div className="carta-meta-divider" />
+    </div>
+  )
+
+  const renderRodapeContent = () => (
+    <div className="carta-meta-footer-inner">
+      <div className="carta-meta-footer-dados">
+        <div className="carta-meta-footer-line">{DADOS_EMPRESA_TIMBRE.rodapeLinha1}</div>
+        <div className="carta-meta-footer-line">{DADOS_EMPRESA_TIMBRE.rodapeLinha2}</div>
+      </div>
+      <div className="carta-meta-footer-paginacao">
+        Página {paginaNumero} de {totalPaginas}
+      </div>
+      <div className="carta-meta-footer-paginacao-print">
+        Página <span className="paginacao-print-current"></span> de{' '}
+        <span className="paginacao-print-total"></span>
+      </div>
+    </div>
+  )
+
   return (
-    <article className="carta-meta-page">
-      {/* Timbre institucional: APENAS LOGO À ESQUERDA + BLOCO REDUZIDO (NOME DA EMPRESA E CNPJ) */}
-      <header className="carta-meta-header">
-        <div className="carta-meta-timbre-row">
-          <div className="carta-meta-logo-wrap">
-            <img src={logoBrf} alt="BRF Imóveis" className="carta-meta-logo" loading="eager" />
-          </div>
-
-          <div className="carta-meta-company-info">
-            <div className="carta-meta-company-title">BRF IMÓVEIS LTDA</div>
-            <div className="carta-meta-company-cnpj">CNPJ: 22.886.297/0001-77</div>
-          </div>
-        </div>
-        <div className="carta-meta-divider" />
-      </header>
-
-      {/* Corpo formal da carta (Formato ABNT: fonte serifada, espaçamento confortável) */}
-      <main className="carta-meta-body">
-        {paragrafos.map((paragrafo, index) => (
-          <p key={index} className="carta-meta-paragraph">
-            {renderizarTextoComCampos(paragrafo, valores)}
-          </p>
-        ))}
-      </main>
-
-      {/* Rodapé ABNT: dados da empresa à esquerda + Página X de Y à direita */}
-      <footer className="carta-meta-footer">
-        <div className="carta-meta-footer-dados">
-          <div className="carta-meta-footer-line">{DADOS_EMPRESA_TIMBRE.rodapeLinha1}</div>
-          <div className="carta-meta-footer-line">{DADOS_EMPRESA_TIMBRE.rodapeLinha2}</div>
-        </div>
-        <div className="carta-meta-footer-paginacao">
-          Página {paginaNumero} de {totalPaginas}
-        </div>
-        <div className="carta-meta-footer-paginacao-print">
-          Página <span className="paginacao-print-current"></span> de{' '}
-          <span className="paginacao-print-total"></span>
-        </div>
-      </footer>
+    <article className="carta-meta-page" data-carta-id={carta.id}>
+      {/*
+        Estrutura de impressão A4 com repetição nativa de cabeçalho e rodapé em todas as páginas:
+        <table> com <thead> (table-header-group) e <tfoot> (table-footer-group).
+        O navegador Chromium/Chrome/Edge e Firefox repetem thead e tfoot no topo e base de cada página física cortada,
+        garantindo que o tbody quebre respeitando perfeitamente o espaço entre eles.
+      */}
+      <table className="carta-meta-table">
+        <thead className="carta-meta-thead">
+          <tr>
+            <th className="carta-meta-th">
+              <header className="carta-meta-header">{renderTimbreContent()}</header>
+            </th>
+          </tr>
+        </thead>
+        <tbody className="carta-meta-tbody">
+          <tr>
+            <td className="carta-meta-td">
+              <main className="carta-meta-body">
+                {paragrafos.map((paragrafo, index) => {
+                  const heading = isTituloSecao(paragrafo)
+                  return (
+                    <p
+                      key={index}
+                      className={
+                        heading
+                          ? 'carta-meta-paragraph carta-meta-paragraph-heading'
+                          : 'carta-meta-paragraph'
+                      }
+                    >
+                      {renderizarTextoComCampos(paragrafo, valores)}
+                    </p>
+                  )
+                })}
+              </main>
+            </td>
+          </tr>
+        </tbody>
+        <tfoot className="carta-meta-tfoot">
+          <tr>
+            <td className="carta-meta-td-foot">
+              <footer className="carta-meta-footer">{renderRodapeContent()}</footer>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </article>
   )
 }

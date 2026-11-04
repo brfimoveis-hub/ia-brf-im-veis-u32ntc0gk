@@ -16,16 +16,59 @@
   max-width: 210mm;
   min-height: 297mm;
   margin: 0 auto;
-  /* Margens ABNT: Superior 3cm (30mm), Esquerda 3cm (30mm), Inferior 2cm (20mm), Direita 2cm (20mm) */
-  padding: 30mm 20mm 20mm 30mm;
+  /* Margens ABNT na tela: Superior 3cm (30mm), Esquerda 3cm (30mm), Inferior 20mm, Direita 20mm */
+  padding: 24mm 20mm 20mm 25mm;
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
+  display: block;
   position: relative;
   /* Fonte serifada ABNT padrão (Times New Roman / Georgia / serif) */
   font-family: 'Times New Roman', Times, Georgia, Cambria, serif;
   line-height: 1.5;
   font-size: 11pt;
+}
+
+/* Tabela base que suporta repetição nativa thead/tfoot em modo impressão */
+.carta-meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin: 0;
+  padding: 0;
+  table-layout: fixed;
+}
+
+.carta-meta-thead {
+  display: table-header-group;
+}
+
+.carta-meta-tbody {
+  display: table-row-group;
+}
+
+.carta-meta-tfoot {
+  display: table-footer-group;
+}
+
+.carta-meta-th {
+  padding: 0;
+  margin: 0;
+  border: none;
+  font-weight: normal;
+  text-align: left;
+}
+
+.carta-meta-td {
+  padding: 0;
+  margin: 0;
+  border: none;
+  vertical-align: top;
+}
+
+.carta-meta-td-foot {
+  padding: 0;
+  margin: 0;
+  border: none;
+  vertical-align: bottom;
 }
 
 /* =========================================================================
@@ -34,9 +77,13 @@
    ========================================================================= */
 
 .carta-meta-header {
-  margin-bottom: 22px;
+  margin-bottom: 20px;
   display: flex;
   flex-direction: column;
+  width: 100%;
+}
+
+.carta-meta-header-inner {
   width: 100%;
 }
 
@@ -146,9 +193,13 @@
    ========================================================================= */
 
 .carta-meta-footer {
-  margin-top: 24px;
+  margin-top: 20px;
   padding-top: 8px;
   border-top: 0.75px solid #9ca3af;
+  width: 100%;
+}
+
+.carta-meta-footer-inner {
   display: flex;
   flex-direction: row;
   justify-content: space-between;
@@ -158,6 +209,7 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.3;
   gap: 12px;
+  width: 100%;
 }
 
 .carta-meta-footer-dados {
@@ -190,8 +242,9 @@
 @media print {
   @page {
     size: A4 portrait;
-    /* Margem zero na página física para suprimir cabeçalhos e rodapés automáticos gerados pelo navegador (título da aba, data/hora, url, número de página padrão do browser) */
-    margin: 0;
+    /* Margens físicas seguras de 14mm superior e inferior para evitar corte de cabeçalho e rodapé em impressoras desktop comuns (área não-imprimível típica é 4-10mm).
+       Como document.title é esvaziado antes da impressão, o browser não imprime URL nem título. */
+    margin: 14mm 0 14mm 0;
   }
 
   /* Ocultar rigorosamente todos os elementos da interface do CRM e chrome do app durante a impressão:
@@ -280,16 +333,17 @@
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
-    width: 210mm !important;
-    max-width: 210mm !important;
-    min-height: 297mm !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
     height: auto !important;
     box-sizing: border-box !important;
-    margin: 0 auto !important;
-    /* Margens ABNT internas da folha: Superior 30mm, Direita 20mm, Inferior 20mm, Esquerda 30mm */
-    padding: 30mm 20mm 20mm 30mm !important;
-    font-size: 11pt !important;
-    line-height: 1.5 !important;
+    margin: 0 !important;
+    /* Não colocar padding vertical no container da folha aqui: as margens da folha física são providas por @page margin (14mm topo e fundo) e thead/tfoot (espaçamento estrutural que repete em cada página).
+       Padding horizontal garante margens esquerda (25mm) e direita (15mm) ABNT. */
+    padding: 0 15mm 0 25mm !important;
+    font-size: 10.5pt !important;
+    line-height: 1.45 !important;
     font-family: 'Times New Roman', Times, Georgia, serif !important;
     color: #000000 !important;
     display: block !important;
@@ -297,9 +351,63 @@
     break-inside: auto !important;
   }
 
+  .carta-meta-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    table-layout: fixed !important;
+  }
+
+  /* thead repete no topo de CADA página gerada pelo Chromium/Firefox */
+  .carta-meta-thead {
+    display: table-header-group !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* tfoot repete no rodapé de CADA página gerada */
+  .carta-meta-tfoot {
+    display: table-footer-group !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .carta-meta-tbody {
+    display: table-row-group !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .carta-meta-th {
+    padding-top: 0 !important;
+    padding-bottom: 12px !important;
+    margin: 0 !important;
+    border: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .carta-meta-td {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    vertical-align: top !important;
+  }
+
+  .carta-meta-td-foot {
+    padding-top: 10px !important;
+    padding-bottom: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
   /* Garante que o cabeçalho e o rodapé não se quebrem internamente e fiquem nítidos */
   .carta-meta-header {
-    margin-bottom: 18px !important;
+    margin-bottom: 12px !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
@@ -307,8 +415,21 @@
   .carta-meta-paragraph {
     break-inside: auto !important;
     page-break-inside: auto !important;
-    orphans: 3 !important;
-    widows: 3 !important;
+    orphans: 2 !important;
+    widows: 2 !important;
+    margin-bottom: 9pt !important;
+  }
+
+  /* Títulos e seções numeradas nunca quebram órfãos no fim da página */
+  .carta-meta-body h1,
+  .carta-meta-body h2,
+  .carta-meta-body h3,
+  .carta-meta-paragraph-heading,
+  .carta-meta-heading {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   .carta-meta-divider {
@@ -319,7 +440,8 @@
   .carta-meta-footer {
     border-top: 0.5pt solid #333333 !important;
     color: #333333 !important;
-    margin-top: 24px !important;
+    margin-top: 0 !important;
+    padding-top: 6px !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
