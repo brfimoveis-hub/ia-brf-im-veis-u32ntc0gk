@@ -179,6 +179,10 @@
   white-space: nowrap;
 }
 
+.carta-meta-footer-paginacao-print {
+  display: none;
+}
+
 /* =========================================================================
    3. REGRAS DE IMPRESSÃO A4 ABNT (PÁGINA LIMPA, SEM MENU, SEM PAINEL)
    ========================================================================= */
@@ -254,7 +258,8 @@
     break-after: avoid !important;
   }
 
-  /* O container da folha na impressão recebe as margens ABNT exatas (3cm topo e esquerda, 2cm rodapé e direita) */
+  /* O container da folha na impressão recebe as margens ABNT exatas (3cm topo e esquerda, 2cm rodapé e direita)
+     IMPORTANTE: Permite fluxo natural e múltiplas páginas por carta quando o conteúdo exigir (não trava em height fixa nem corta com overflow) */
   .carta-meta-page {
     box-shadow: none !important;
     border: none !important;
@@ -262,7 +267,7 @@
     width: 210mm !important;
     max-width: 210mm !important;
     min-height: 297mm !important;
-    height: 297mm !important;
+    height: auto !important;
     box-sizing: border-box !important;
     margin: 0 auto !important;
     /* Margens ABNT internas da folha: Superior 30mm, Direita 20mm, Inferior 20mm, Esquerda 30mm */
@@ -271,15 +276,23 @@
     line-height: 1.5 !important;
     font-family: 'Times New Roman', Times, Georgia, serif !important;
     color: #000000 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
+    display: block !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
   }
 
+  /* Garante que o cabeçalho e o rodapé não se quebrem internamente e fiquem nítidos */
   .carta-meta-header {
     margin-bottom: 18px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .carta-meta-paragraph {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    orphans: 3 !important;
+    widows: 3 !important;
   }
 
   .carta-meta-divider {
@@ -290,10 +303,47 @@
   .carta-meta-footer {
     border-top: 0.5pt solid #333333 !important;
     color: #333333 !important;
+    margin-top: 24px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   .carta-meta-footer-paginacao {
     color: #000000 !important;
+    display: none !important;
+  }
+
+  .carta-meta-footer-paginacao-print {
+    display: inline-block !important;
+    color: #000000 !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+  }
+
+  .carta-meta-footer-paginacao-print .paginacao-print-current::after {
+    content: counter(page);
+  }
+
+  .carta-meta-footer-paginacao-print .paginacao-print-total::after {
+    content: counter(pages);
+  }
+
+  /* Blindagem absoluta contra qualquer elemento estranho da aplicação ou extensões no print */
+  .cartas-no-print,
+  #app-sidebar,
+  .sidebar,
+  [data-sidebar='sidebar'],
+  [data-radix-portal],
+  header:not(.carta-meta-header),
+  footer:not(.carta-meta-footer),
+  aside,
+  nav,
+  button {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .carta-campo-vazio {

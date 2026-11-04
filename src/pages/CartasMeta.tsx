@@ -21,16 +21,33 @@ export default function CartasMeta() {
     const limpar = () => {
       setModo(null)
       setCartaAtiva(null)
+      document.title = 'BRF IA CRM'
+    }
+    const antesDeImprimir = () => {
+      document.title = ''
     }
     window.addEventListener('afterprint', limpar)
-    return () => window.removeEventListener('afterprint', limpar)
+    window.addEventListener('beforeprint', antesDeImprimir)
+    return () => {
+      window.removeEventListener('afterprint', limpar)
+      window.removeEventListener('beforeprint', antesDeImprimir)
+    }
   }, [])
 
   const imprimir = (novoModo: 'all' | 'one', id?: string) => {
     setCartaAtiva(id ?? null)
     setModo(novoModo)
+    // Atualiza temporariamente o title da página para evitar que o navegador imprima "BRF IA CRM" no cabeçalho padrão
+    const previousTitle = document.title
+    document.title = ''
     // Espera o React aplicar a classe de impressão antes de abrir o diálogo
-    setTimeout(() => window.print(), 100)
+    setTimeout(() => {
+      window.print()
+      // Restaura o title após o diálogo de impressão fechar
+      setTimeout(() => {
+        document.title = previousTitle || 'BRF IA CRM'
+      }, 500)
+    }, 100)
   }
 
   return (

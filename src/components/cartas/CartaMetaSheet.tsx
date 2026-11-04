@@ -115,6 +115,10 @@ export function CartaMetaSheet({
         <div className="carta-meta-footer-paginacao">
           Página {paginaNumero} de {totalPaginas}
         </div>
+        <div className="carta-meta-footer-paginacao-print">
+          Página <span className="paginacao-print-current"></span> de{' '}
+          <span className="paginacao-print-total"></span>
+        </div>
       </footer>
     </article>
   )
