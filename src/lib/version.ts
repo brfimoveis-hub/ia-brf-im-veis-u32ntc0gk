@@ -1,3 +1,3 @@
 // Versão do build para verificação de cache e confirmação no app
-export const APP_VERSION = 'v0.0.1373'
+export const APP_VERSION = 'v0.0.1374'
 export const APP_BUILD_TIME = new Date().toISOString()
