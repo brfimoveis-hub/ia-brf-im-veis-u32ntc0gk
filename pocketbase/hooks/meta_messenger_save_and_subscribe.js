@@ -1,12 +1,19 @@
 // Hook para POST /backend/v1/meta_messenger/save_and_subscribe
-// Valida o Page Access Token via GET /me, subscreve a Página ao Webhook via POST /{page-id}/subscribed_apps
+// Valida o token colado, subscreve a Página ao Webhook via POST /{page-id}/subscribed_apps
 // e salva os dados na coleção users e grava auditoria completa em system_logs
 //
 // Robustez de tipo de token:
-// - Se o token colado for um USER access token, GET /me?fields=id,name,category retorna
-//   erro #100 ("Tried accessing nonexisting field (category)") ou um objeto sem "category".
-//   Nesse caso, o hook converte sozinho: GET /me/accounts?fields=access_token,id,name,
-//   localiza a Página alvo e prossegue com o PAGE access token dela.
+// - O token colado no painel costuma ser um USER access token gerado no Graph API Explorer
+//   (como Bernadete). O hook detecta o tipo e converte sozinho: GET /me/accounts?fields=
+//   access_token,id,name localiza a Página alvo e prossegue com o PAGE access token dela.
+// - VALIDAÇÃO SEM CAMPO "category": esse campo é a única causa do erro #100
+//   ("Tried accessing nonexisting field (category)") — usuários não o possuem. Nenhuma
+//   consulta de validação pede "category".
+// - Validação da Página: GET /{page_id}?fields=id,name COM O PAGE TOKEN — se o id
+//   retornado for exatamente o da Página alvo, o token é da Página certa.
+// - Toda chamada depois da conversão usa o PAGE TOKEN (nenhum resquício de token de usuário).
+// - Se o page token não puder ser obtido (/me/accounts sem acesso à Página), a mensagem
+//   amigável orienta regerar no Graph API Explorer com "Token da Página".
 
 routerAdd(
   'POST',
@@ -22,13 +29,16 @@ routerAdd(
       body = e.requestInfo().body || {}
     } catch (_) {}
 
-    // 5. Trim do token colado: remove espaços e quebras de linha acidentais
+    // Trim do token colado: remove espaços e quebras de linha acidentais
     var token = String(body.page_access_token || body.meta_page_access_token || '').replace(
       /\s+/g,
       '',
     )
     var targetPageId = String(body.page_id || '1401557100168686').trim()
     var targetPageName = 'www.brfimoveis.com.br'
+    var GRAPH_BASE = 'https://graph.facebook.com/v22.0/'
+    var GRAPH_FIELDS_SUBSCRIBE = 'messages,messaging_postbacks,messaging_referrals'
+    var GRAPH_GET_PAGE = 'GET /{page_id}?fields=id,name com page token'
 
     if (!token) {
       return e.badRequestError('O Page Access Token é obrigatório.')
@@ -49,26 +59,88 @@ routerAdd(
       } catch (_) {}
     }
 
-    var graphMe = function (accessToken) {
-      return $http.send({
-        url: 'https://graph.facebook.com/v22.0/me?fields=id,name,category',
-        method: 'GET',
-        headers: { Authorization: 'Bearer ' + accessToken },
-        timeout: 15,
-      })
+    var friendlyTokenError = function (errObj, httpStatus) {
+      var code = (errObj && errObj.code) || 0
+      var raw = String((errObj && errObj.message) || '')
+      var friendly = raw || 'Token inválido ou expirado pela Meta (HTTP ' + (httpStatus || 0) + ')'
+      if (code === 190) {
+        friendly =
+          'Token expirado ou inválido (código 190). Gere um novo Page Access Token no Graph API Explorer.'
+      } else if (code === 10 || code === 200) {
+        friendly =
+          'Permissões insuficientes no token (código ' +
+          code +
+          '). Certifique-se de marcar pages_messaging, pages_manage_metadata, pages_show_list e instagram_manage_messages.'
+      }
+      return {
+        friendly: friendly,
+        code: code,
+        raw: raw,
+        subcode: (errObj && errObj.error_subcode) || 0,
+      }
     }
 
-    // 1. Validação do Token via Graph API: GET /me?fields=id,name,category
+    // Consulta de validação da Página: GET /{page_id}?fields=id,name — SEM "category".
+    // Prova que o token é da Página certa conferindo o id retornado.
+    var validatePageToken = function (pageToken, pageId) {
+      var res = null
+      try {
+        res = $http.send({
+          url: GRAPH_BASE + pageId + '?fields=id,name',
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + pageToken },
+          timeout: 15,
+        })
+      } catch (netErr) {
+        return { netError: String(netErr && netErr.message ? netErr.message : netErr) }
+      }
+      var data = res && res.json ? res.json : {}
+      var errObj = data.error || {}
+      var ok =
+        !!res &&
+        res.statusCode >= 200 &&
+        res.statusCode < 300 &&
+        !errObj.code &&
+        String(data.id || '') === pageId
+      return {
+        ok: ok,
+        returnedId: String(data.id || ''),
+        returnedName: String(data.name || ''),
+        errObj: errObj,
+        httpStatus: res ? res.statusCode : 0,
+        validation: ok
+          ? {
+              confirmed_page_id: pageId,
+              returned_page_id: String(data.id || ''),
+              returned_page_name: String(data.name || ''),
+              method: GRAPH_GET_PAGE,
+            }
+          : {
+              confirmed_page_id: null,
+              returned_page_id: String(data.id || ''),
+              method: GRAPH_GET_PAGE,
+              graph_error: errObj || null,
+              http_status: res ? res.statusCode : 0,
+            },
+      }
+    }
+
+    // Consulta de tipo de token: GET /me?fields=id,name — SEM "category",
+    // que não existe em objetos de usuário e é a causa do erro #100.
     var meRes = null
     var meErr = null
     try {
-      meRes = graphMe(token)
+      meRes = $http.send({
+        url: GRAPH_BASE + 'me?fields=id,name',
+        method: 'GET',
+        headers: { Authorization: 'Bearer ' + token },
+        timeout: 15,
+      })
     } catch (netErr) {
       meErr = netErr
     }
 
     if (meErr) {
-      // Falha de rede em system_logs
       logErr(
         'meta_messenger_token_validation_error',
         'Falha de rede ao validar token da Página ' + targetPageId,
@@ -84,21 +156,23 @@ routerAdd(
     var meErrObj = meData.error || {}
     var tokenType = 'page'
     var tokenConverted = false
+    var pageTokenValidation = null
 
-    // 1.a Detecção de tipo: erro #100 de campo inexistente (category) => token de usuário
-    var meMsgLower = String(meErrObj.message || '').toLowerCase()
+    // 1. Detecção de tipo: erro #100 de "category" no /me, ou /me resolvendo num id
+    // diferente da Página alvo (o /me de um usuário nunca é o id da Página).
     var isCategoryFieldError =
       meErrObj.code === 100 &&
-      meMsgLower.indexOf('category') !== -1 &&
-      (meMsgLower.indexOf('nonexisting') !== -1 || meMsgLower.indexOf('inexistente') !== -1)
-
-    var isUserObject = !!(
+      String(meErrObj.message || '')
+        .toLowerCase()
+        .indexOf('category') !== -1
+    var meResolvedOk = !!(
       meRes &&
       meRes.statusCode >= 200 &&
       meRes.statusCode < 300 &&
       meData.id &&
-      !meData.category
+      !meErrObj.code
     )
+    var isUserObject = !!(meResolvedOk && String(meData.id) !== targetPageId)
 
     if (isCategoryFieldError || isUserObject) {
       tokenType = 'user'
@@ -121,7 +195,7 @@ routerAdd(
       var accountsErr = null
       try {
         accountsRes = $http.send({
-          url: 'https://graph.facebook.com/v22.0/me/accounts?fields=access_token,id,name&limit=100',
+          url: GRAPH_BASE + 'me/accounts?fields=access_token,id,name&limit=100',
           method: 'GET',
           headers: { Authorization: 'Bearer ' + token },
           timeout: 15,
@@ -191,50 +265,45 @@ routerAdd(
         })
       }
 
-      // Valida o PAGE token recém-obtido
-      var pageMeRes = null
-      try {
-        pageMeRes = graphMe(pageToken)
-      } catch (pgNetErr) {
+      // Valida o PAGE TOKEN recém-obtido contra a Página alvo (sem "category")
+      var pgCheck = validatePageToken(pageToken, targetPageId)
+      if (pgCheck.netError) {
         logErr(
           'meta_messenger_token_validation_error',
           'Falha de rede ao validar o Page Token convertido',
           '',
-          { page_id: targetPageId, error: String(pgNetErr.message || pgNetErr) },
+          { page_id: targetPageId, error: pgCheck.netError },
         )
         return e.badRequestError(
-          'Erro de conexão com a Meta Graph API ao validar o token da Página: ' +
-            String(pgNetErr.message || pgNetErr),
+          'Erro de conexão com a Meta Graph API ao validar o token da Página: ' + pgCheck.netError,
         )
       }
+      pageTokenValidation = pgCheck.validation
 
-      var pgData = pageMeRes && pageMeRes.json ? pageMeRes.json : {}
-      var pgErrObj = pgData.error || {}
-      if (
-        !pageMeRes ||
-        pageMeRes.statusCode < 200 ||
-        pageMeRes.statusCode >= 300 ||
-        pgErrObj.code ||
-        !pgData.category
-      ) {
+      if (!pgCheck.ok) {
         logErr(
           'meta_messenger_token_validation_error',
-          'Token da Página convertido falhou na validação: ' + String(pgErrObj.message || ''),
-          'HTTP ' + (pageMeRes ? pageMeRes.statusCode : 0) + ' | code=' + (pgErrObj.code || 0),
-          { page_id: targetPageId, graph_error: pgErrObj || null },
+          'Page Token não confirmou a Página ' + targetPageId + ' via GET /{page_id}',
+          'HTTP ' +
+            pgCheck.httpStatus +
+            ' | code=' +
+            (pgCheck.errObj.code || 0) +
+            ' | id_retornado=' +
+            pgCheck.returnedId,
+          { page_id: targetPageId, page_token_validation: pageTokenValidation },
         )
         return e.json(400, {
           success: false,
           error:
             'Conseguimos o token da Página www.brfimoveis.com.br, mas ele falhou na validação na Meta. Gere novamente no Graph API Explorer escolhendo "Token da Página" → www.brfimoveis.com.br',
-          code: pgErrObj.code || 0,
-          raw_message: String(pgErrObj.message || ''),
+          code: pgCheck.errObj.code || 0,
+          raw_message: String(pgCheck.errObj.message || ''),
         })
       }
 
       token = pageToken
       tokenConverted = true
-      meData = pgData
+      meData = { id: targetPageId, name: pgCheck.returnedName || pageName || targetPageName }
 
       try {
         var conv = new Record(sysLogsCol, {
@@ -246,59 +315,63 @@ routerAdd(
             ' (' +
             targetPageId +
             '). Fluxo segue normal.',
-          details: 'Conversão user→page concluída na Página ' + targetPageId,
-          payload: { page_id: targetPageId, page_name: pageName },
+          details:
+            'Conversão user→page concluída | Página confirmada via GET /{page_id}: ' + targetPageId,
+          payload: {
+            page_id: targetPageId,
+            page_name: pageName,
+            page_token_validation: pageTokenValidation,
+          },
         })
         $app.save(conv)
       } catch (_) {}
     }
 
-    if (!meRes || meRes.statusCode < 200 || meRes.statusCode >= 300) {
-      // Só chega aqui se for page token com erro genérico da Meta
-      var errObj = meErrObj
-      var errMsg =
-        errObj.message ||
-        'Token inválido ou expirado pela Meta (HTTP ' + (meRes ? meRes.statusCode : 0) + ')'
-      var errCode = errObj.code || 0
-      var errSubcode = errObj.error_subcode || 0
+    // 3. Token informado já é de Página: valida contra a Página alvo (sem "category")
+    if (!tokenConverted) {
+      var finalCheck = validatePageToken(token, targetPageId)
+      if (finalCheck.netError) {
+        logErr(
+          'meta_messenger_token_validation_error',
+          'Falha de rede ao validar o Page Token informado',
+          '',
+          { page_id: targetPageId, error: finalCheck.netError },
+        )
+        return e.badRequestError(
+          'Erro de conexão com a Meta Graph API ao validar o token da Página: ' +
+            finalCheck.netError,
+        )
+      }
+      pageTokenValidation = finalCheck.validation
 
-      var friendlyMsg = errMsg
-      if (errCode === 190) {
-        friendlyMsg =
-          'Token expirado ou inválido (código 190). Gere um novo Page Access Token no Graph API Explorer.'
-      } else if (errCode === 10 || errCode === 200) {
-        friendlyMsg =
-          'Permissões insuficientes no token (código ' +
-          errCode +
-          '). Certifique-se de marcar pages_messaging, pages_manage_metadata, pages_show_list e instagram_manage_messages.'
+      if (!finalCheck.ok) {
+        var fErr = friendlyTokenError(finalCheck.errObj, finalCheck.httpStatus)
+        logErr(
+          'meta_messenger_token_validation_error',
+          'Falha ao validar Page Token: ' + fErr.friendly,
+          'HTTP ' + finalCheck.httpStatus + ' | Code: ' + fErr.code + ' | Subcode: ' + fErr.subcode,
+          {
+            page_id: targetPageId,
+            graph_error: finalCheck.errObj,
+            page_token_validation: pageTokenValidation,
+          },
+        )
+        return e.json(400, {
+          success: false,
+          error: fErr.friendly,
+          code: fErr.code,
+          subcode: fErr.subcode,
+          raw_message: fErr.raw,
+        })
       }
 
-      logErr(
-        'meta_messenger_token_validation_error',
-        'Falha ao validar Page Token: ' + friendlyMsg,
-        'HTTP ' +
-          (meRes ? meRes.statusCode : 0) +
-          ' | Code: ' +
-          errCode +
-          ' | Subcode: ' +
-          errSubcode,
-        { page_id: targetPageId, graph_error: errObj },
-      )
-
-      return e.json(400, {
-        success: false,
-        error: friendlyMsg,
-        code: errCode,
-        subcode: errSubcode,
-        raw_message: errMsg,
-      })
+      meData = { id: targetPageId, name: finalCheck.returnedName || targetPageName }
     }
 
-    var detectedPageId = meData.id ? String(meData.id) : targetPageId
+    var detectedPageId = targetPageId
     var detectedPageName = meData.name || targetPageName
 
-    // 2. Subscrição da Página ao Webhook: POST /{page-id}/subscribed_apps
-    // Subscribed fields: messages, messaging_postbacks, messaging_referrals
+    // 4. Subscrição da Página ao Webhook: POST /{page-id}/subscribed_apps
     var subRes = null
     var subSuccess = false
     var subErrorMsg = ''
@@ -307,9 +380,10 @@ routerAdd(
     try {
       subRes = $http.send({
         url:
-          'https://graph.facebook.com/v22.0/' +
+          GRAPH_BASE +
           detectedPageId +
-          '/subscribed_apps?subscribed_fields=messages,messaging_postbacks,messaging_referrals',
+          '/subscribed_apps?subscribed_fields=' +
+          GRAPH_FIELDS_SUBSCRIBE,
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token },
         timeout: 15,
@@ -330,7 +404,7 @@ routerAdd(
       subErrorMsg = 'Erro de rede na subscrição: ' + String(subExc.message || subExc)
     }
 
-    // 3. Salva os dados no registro do usuário
+    // 5. Salva o TOKEN DA PÁGINA no registro do usuário (nunca o token de usuário)
     try {
       var user = $app.findRecordById('users', userId)
       user.set('meta_page_access_token', token)
@@ -340,7 +414,7 @@ routerAdd(
       $app.logger().error('Falha ao salvar token no usuário', 'err', String(saveUserErr))
     }
 
-    // 4. Registro de Auditoria em system_logs
+    // 6. Registro de Auditoria em system_logs
     try {
       var auditType = subSuccess
         ? 'meta_messenger_subscribed_success'
@@ -363,7 +437,9 @@ routerAdd(
         type: auditType,
         message: auditMsg,
         details:
-          'Subscribed fields: messages,messaging_postbacks,messaging_referrals | Status: ' +
+          'Subscribed fields: ' +
+          GRAPH_FIELDS_SUBSCRIBE +
+          ' | Status: ' +
           (subSuccess ? 'OK' : 'Pendente') +
           (tokenConverted ? ' | Conversão user→page aplicada' : ''),
         payload: {
@@ -374,6 +450,7 @@ routerAdd(
           sub_code: subErrorCode || null,
           token_type_detected: tokenType,
           token_converted: tokenConverted,
+          page_token_validation: pageTokenValidation,
           me_data: meData,
         },
       })
@@ -388,6 +465,7 @@ routerAdd(
       subscription_warning: subSuccess ? null : subErrorMsg,
       token_type: tokenType,
       token_converted: tokenConverted,
+      page_validation: pageTokenValidation,
       message: subSuccess
         ? 'Página "' + detectedPageName + '" conectada e subscrita com sucesso ao Webhook!'
         : 'Página "' + detectedPageName + '" conectada! Aviso de subscrição: ' + subErrorMsg,
