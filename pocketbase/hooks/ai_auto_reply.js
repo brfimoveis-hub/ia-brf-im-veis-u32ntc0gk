@@ -5231,7 +5231,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       return trimmed.replace(greetingRegex, '').trim()
     }
 
-    // Se o cliente enviou áudio/voz de qualquer formato no WhatsApp, responder com áudio (voz)
+    // Se o cliente enviou áudio/voz (WhatsApp, Messenger ou Instagram Direct), responder com áudio (voz)
     const isCustomerVoice =
       customerMessage.startsWith('[Áudio do cliente]') ||
       customerMessage.startsWith('[Áudio transcrevido]') ||
@@ -5239,12 +5239,12 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       incomingText.startsWith('[Áudio do cliente]') ||
       incomingText.startsWith('[Áudio transcrevido]') ||
       incomingText.startsWith('[Áudio Recebido')
-
-    // Se a transcrição do áudio falhou, responder com pedido educado para escrever
-    if (
+    const isAudioTranscriptionFailure =
       customerMessage.includes('[Áudio Recebido - não foi possível transcrever]') ||
       incomingText.includes('[Áudio Recebido - não foi possível transcrever]')
-    ) {
+
+    // Se a transcrição do áudio falhou, responder com pedido educado para escrever
+    if (isAudioTranscriptionFailure) {
       const audioFallbackGreeting = isFirstAiMessageOrAfter24h
         ? buildTemporalGreeting(displayName, brHour, true) + ' '
         : ''
@@ -6005,8 +6005,350 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       } catch (_) {}
     }
 
-    // Messenger channel (Messenger Send API)
-    if (conversationChannel === 'messenger' && responseText) {
+    // ===== RESPOSTA EM VOZ (Messenger / Instagram Direct) =====
+    // Mesma TTS do WhatsApp (OpenAI tts-1 com ai_voice_id do usuário), upload do
+    // .mp3 como anexo de áudio na Graph API (/PAGE_ID/assets, field type=audio) e
+    // envio via /me/messages com message.attachments[{type:'audio', payload:{attachment_id}}].
+    // Degradável: em qualquer falha devolve ok=false para o canal responder em texto.
+    function sendMetaChannelVoiceReply(opts) {
+      const out = { ok: false, error: '', stage: '' }
+      try {
+        const voiceToken = (opts.pageToken || '').trim()
+        const voicePageId = (opts.pageId || '').trim()
+        const voiceText = (opts.text || '').trim()
+        if (!voiceToken || !voicePageId || !voiceText) {
+          out.error = !voiceToken
+            ? 'Token de página ausente para resposta em voz'
+            : !voicePageId
+              ? 'ID da Página ausente para resposta em voz'
+              : 'Texto vazio para resposta em voz'
+          out.stage = 'params'
+          return out
+        }
+
+        const voiceOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
+        if (
+          !voiceOpenAiKey &&
+          typeof $secrets !== 'undefined' &&
+          $secrets.has &&
+          $secrets.has('OPENAI_API_KEY')
+        ) {
+          try {
+            voiceOpenAiKey = $secrets.get('OPENAI_API_KEY') || ''
+          } catch (_) {}
+        }
+        if (!voiceOpenAiKey) {
+          out.error = 'OPENAI_API_KEY ausente para gerar a voz'
+          out.stage = 'tts_key'
+          return out
+        }
+
+        // 1. TTS — mesma chamada do fluxo WhatsApp (voz configurada no usuário, padrão 'nova')
+        const ttsRes = callMetaWithRetry(
+          'https://api.openai.com/v1/audio/speech',
+          'POST',
+          { Authorization: `Bearer ${voiceOpenAiKey}`, 'Content-Type': 'application/json' },
+          JSON.stringify({
+            model: 'tts-1',
+            input: voiceText,
+            voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
+          }),
+        )
+        if (!ttsRes || ttsRes.statusCode !== 200 || !ttsRes.body) {
+          out.error = `TTS falhou (status=${ttsRes ? ttsRes.statusCode : 'none'})`
+          out.stage = 'tts'
+          return out
+        }
+
+        // 2. Upload do áudio na Página (assets do Messenger Platform) — multipart idêntico ao WhatsApp
+        const audioBoundary = '----BoundaryAudio' + $security.randomString(16)
+        const partTypeStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\naudio\r\n`
+        const partFileStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="file"; filename="bia_audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`
+        const audioFooterStr = `\r\n--${audioBoundary}--\r\n`
+        const partTypeBytes = new Uint8Array(partTypeStr.length)
+        for (let ai = 0; ai < partTypeStr.length; ai++) partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
+        const partFileBytes = new Uint8Array(partFileStr.length)
+        for (let bi = 0; bi < partFileStr.length; bi++) partFileBytes[bi] = partFileStr.charCodeAt(bi)
+        const audioFooterBytes = new Uint8Array(audioFooterStr.length)
+        for (let ci = 0; ci < audioFooterStr.length; ci++)
+          audioFooterBytes[ci] = audioFooterStr.charCodeAt(ci)
+        const audioBodyBytes = new Uint8Array(
+          partTypeBytes.length + partFileBytes.length + ttsRes.body.length + audioFooterBytes.length,
+        )
+        let audioOffset = 0
+        audioBodyBytes.set(partTypeBytes, audioOffset)
+        audioOffset += partTypeBytes.length
+        audioBodyBytes.set(partFileBytes, audioOffset)
+        audioOffset += partFileBytes.length
+        audioBodyBytes.set(ttsRes.body, audioOffset)
+        audioOffset += ttsRes.body.length
+        audioBodyBytes.set(audioFooterBytes, audioOffset)
+
+        const uploadRes = callMetaWithRetry(
+          `https://graph.facebook.com/v22.0/${voicePageId}/assets`,
+          'POST',
+          {
+            Authorization: `Bearer ${voiceToken}`,
+            'Content-Type': `multipart/form-data; boundary=${audioBoundary}`,
+          },
+          audioBodyBytes.buffer,
+        )
+        if (!uploadRes || uploadRes.statusCode < 200 || uploadRes.statusCode >= 300) {
+          out.error = `Upload de áudio na Página falhou (status=${uploadRes ? uploadRes.statusCode : 'none'}) ${JSON.stringify((uploadRes && (uploadRes.json || uploadRes.body)) || '')}`
+          out.stage = 'upload'
+          return out
+        }
+
+        // Tenta attachment_id direto; sem ele, resolve pelo handle do upload
+        let audioAttachmentId = (uploadRes.json && uploadRes.json.attachment_id) || ''
+        if (!audioAttachmentId) {
+          const uploadHandle = (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
+          if (uploadHandle) {
+            const assetMetaRes = callMetaWithRetry(
+              `https://graph.facebook.com/v22.0/${voicePageId}/assets?fields=attachment_id&handle=${encodeURIComponent(uploadHandle)}`,
+              'GET',
+              { Authorization: `Bearer ${voiceToken}` },
+              null,
+            )
+            if (assetMetaRes && assetMetaRes.json && assetMetaRes.json[0] && assetMetaRes.json[0].attachment_id) {
+              audioAttachmentId = assetMetaRes.json[0].attachment_id
+            }
+          }
+        }
+        if (!audioAttachmentId) {
+          out.error = 'Upload ok, mas attachment_id do áudio não retornado pela Graph API'
+          out.stage = 'upload_meta'
+          return out
+        }
+
+        // 3. Envio da mensagem de voz
+        const voiceSendRes = callMetaWithRetry(
+          `https://graph.facebook.com/v22.0/me/messages`,
+          'POST',
+          { Authorization: `Bearer ${voiceToken}`, 'Content-Type': 'application/json' },
+          JSON.stringify({
+            recipient: { id: opts.recipientId },
+            message: {
+              attachment: {
+                type: 'audio',
+                payload: { attachment_id: audioAttachmentId, is_reusable: true },
+              },
+            },
+          }),
+        )
+        const voiceOk =
+          voiceSendRes && voiceSendRes.statusCode >= 200 && voiceSendRes.statusCode < 300
+        if (!voiceOk) {
+          out.error = `Envio da mensagem de voz falhou (status=${voiceSendRes ? voiceSendRes.statusCode : 'none'}) ${JSON.stringify((voiceSendRes && (voiceSendRes.json || voiceSendRes.body)) || '')}`
+          out.stage = 'send'
+          return out
+        }
+        out.ok = true
+        return out
+      } catch (voiceErr) {
+        out.error = String(voiceErr && voiceErr.message ? voiceErr.message : voiceErr)
+        out.stage = out.stage || 'exception'
+        return out
+      }
+    }
+
+    function logVoiceReplyResult(logTypePrefix, ok, stage, errorText, extraPayload) {
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const voiceLog = new Record(logsCol)
+        voiceLog.set('user_id', userId || '')
+        voiceLog.set('type', logTypePrefix + (ok ? '_audio_sent' : '_audio_failed'))
+        voiceLog.set(
+          'message',
+          ok
+            ? `Resposta da Bia enviada em VOZ (${stage === 'sent' ? 'áudio' : 'áudio'}) com sucesso`
+            : `Falha ao enviar resposta em voz (${stage}): ${String(errorText || '').substring(0, 180)}`,
+        )
+        voiceLog.set('details', `stage=${stage} | ok=${ok} | erro=${String(errorText || '').substring(0, 200)}`)
+        voiceLog.set(
+          'payload',
+          JSON.stringify(Object.assign({ stage: stage, success: ok, error: errorText || null }, extraPayload || {})),
+        )
+        $app.saveNoValidate(voiceLog)
+      } catch (_) {}
+    }
+
+    // ===== RESPOSTA EM VOZ (Messenger / Instagram Direct) =====
+    // Mesma TTS do WhatsApp (OpenAI tts-1 com ai_voice_id do usuário), upload do
+    // .mp3 como anexo de áudio na Graph API (/PAGE_ID/assets, field type=audio) e
+    // envio via /me/messages com message.attachments[{type:'audio', payload:{attachment_id}}].
+    // Degradável: em qualquer falha devolve ok=false para o canal responder em texto.
+    function sendMetaChannelVoiceReply(opts) {
+      const out = { ok: false, error: '', stage: '' }
+      try {
+        const voiceToken = (opts.pageToken || '').trim()
+        const voicePageId = (opts.pageId || '').trim()
+        const voiceText = (opts.text || '').trim()
+        if (!voiceToken || !voicePageId || !voiceText) {
+          out.error = !voiceToken
+            ? 'Token de página ausente para resposta em voz'
+            : !voicePageId
+              ? 'ID da Página ausente para resposta em voz'
+              : 'Texto vazio para resposta em voz'
+          out.stage = 'params'
+          return out
+        }
+
+        const voiceOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
+        if (!voiceOpenAiKey) {
+          out.error = 'OPENAI_API_KEY ausente para gerar a voz'
+          out.stage = 'tts_key'
+          return out
+        }
+
+        // 1. TTS — mesma chamada do fluxo WhatsApp (voz configurada no usuário, padrão 'nova')
+        const ttsRes = callMetaWithRetry(
+          'https://api.openai.com/v1/audio/speech',
+          'POST',
+          { Authorization: `Bearer ${voiceOpenAiKey}`, 'Content-Type': 'application/json' },
+          JSON.stringify({
+            model: 'tts-1',
+            input: voiceText,
+            voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
+          }),
+        )
+        if (!ttsRes || ttsRes.statusCode !== 200 || !ttsRes.body) {
+          out.error = `TTS falhou (status=${ttsRes ? ttsRes.statusCode : 'none'})`
+          out.stage = 'tts'
+          return out
+        }
+
+        // 2. Upload do áudio na Página (assets do Messenger Platform) — multipart idêntico ao WhatsApp
+        const audioBoundary = '----BoundaryAudio' + $security.randomString(16)
+        const partTypeStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\naudio\r\n`
+        const partFileStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="file"; filename="bia_audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`
+        const audioFooterStr = `\r\n--${audioBoundary}--\r\n`
+        const partTypeBytes = new Uint8Array(partTypeStr.length)
+        for (let ai = 0; ai < partTypeStr.length; ai++) partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
+        const partFileBytes = new Uint8Array(partFileStr.length)
+        for (let bi = 0; bi < partFileStr.length; bi++) partFileBytes[bi] = partFileStr.charCodeAt(bi)
+        const audioFooterBytes = new Uint8Array(audioFooterStr.length)
+        const audioFooterBytes = new Uint8Array(audioFooterStr.length)
+        for (let ci = 0; ci < audioFooterStr.length; ci++)
+          audioFooterBytes[ci] = audioFooterStr.charCodeAt(ci)
+        const audioBodyBytes = new Uint8Array(
+          partTypeBytes.length +
+            partFileBytes.length +
+            ttsRes.body.length +
+            audioFooterBytes.length,
+        )
+        let audioOffset = 0
+        audioBodyBytes.set(partTypeBytes, audioOffset)
+        audioOffset += partTypeBytes.length
+        audioBodyBytes.set(partFileBytes, audioOffset)
+        audioOffset += partFileBytes.length
+        audioBodyBytes.set(ttsRes.body, audioOffset)
+        audioOffset += ttsRes.body.length
+        audioBodyBytes.set(audioFooterBytes, audioOffset)
+
+        const uploadRes = callMetaWithRetry(
+          `https://graph.facebook.com/v22.0/${voicePageId}/assets`,
+          'POST',
+          {
+            Authorization: `Bearer ${voiceToken}`,
+            'Content-Type': `multipart/form-data; boundary=${audioBoundary}`,
+          },
+          audioBodyBytes.buffer,
+        )
+        if (!uploadRes || uploadRes.statusCode < 200 || uploadRes.statusCode >= 300) {
+          out.error = `Upload de áudio na Página falhou (status=${uploadRes ? uploadRes.statusCode : 'none'}) ${JSON.stringify((uploadRes && (uploadRes.json || uploadRes.body)) || '')}`
+          out.stage = 'upload'
+          return out
+        }
+
+        // Tenta attachment_id direto; sem ele, resolve pelo handle/id retornado
+        let audioAttachmentId = (uploadRes.json && uploadRes.json.attachment_id) || ''
+        if (!audioAttachmentId) {
+          const uploadHandle = (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
+          if (uploadHandle) {
+            const assetMetaRes = callMetaWithRetry(
+              `https://graph.facebook.com/v22.0/${voicePageId}/assets?fields=attachment_id&handle=${encodeURIComponent(uploadHandle)}`,
+              'GET',
+              { Authorization: `Bearer ${voiceToken}` },
+              null,
+            )
+            if (
+              assetMetaRes &&
+              assetMetaRes.json &&
+              assetMetaRes.json[0] &&
+              assetMetaRes.json[0].attachment_id
+            ) {
+              audioAttachmentId = assetMetaRes.json[0].attachment_id
+            }
+          }
+        }
+        if (!audioAttachmentId) {
+          out.error = 'Upload ok, mas attachment_id do áudio não retornado pela Graph API'
+          out.stage = 'upload_meta'
+          return out
+        }
+
+        // 3. Envio da mensagem de voz
+        const voiceSendRes = callMetaWithRetry(
+          'https://graph.facebook.com/v22.0/me/messages',
+          'POST',
+          { Authorization: `Bearer ${voiceToken}`, 'Content-Type': 'application/json' },
+          JSON.stringify({
+            recipient: { id: opts.recipientId },
+            message: {
+              attachment: {
+                type: 'audio',
+                payload: { attachment_id: audioAttachmentId, is_reusable: true },
+              },
+            },
+          }),
+        )
+        const voiceOk =
+          voiceSendRes && voiceSendRes.statusCode >= 200 && voiceSendRes.statusCode < 300
+        if (!voiceOk) {
+          out.error = `Envio da mensagem de voz falhou (status=${voiceSendRes ? voiceSendRes.statusCode : 'none'}) ${JSON.stringify((voiceSendRes && (voiceSendRes.json || voiceSendRes.body)) || '')}`
+          out.stage = 'send'
+          return out
+        }
+        out.ok = true
+        return out
+      } catch (voiceErr) {
+        out.error = String(voiceErr && voiceErr.message ? voiceErr.message : voiceErr)
+        out.stage = out.stage || 'exception'
+        return out
+      }
+    }
+
+    function logVoiceReplyResult(logTypePrefix, ok, stage, errorText, extraPayload) {
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const voiceLog = new Record(logsCol)
+        voiceLog.set('user_id', userId || '')
+        voiceLog.set('type', logTypePrefix + (ok ? '_audio_sent' : '_audio_failed'))
+        voiceLog.set(
+          'message',
+          ok
+            ? `Resposta da Bia em VOZ enviada com sucesso (${logTypePrefix})`
+            : `Falha ao enviar resposta em voz (${stage}): ${String(errorText || '').substring(0, 180)}`,
+        )
+        voiceLog.set(
+          'details',
+          `stage=${stage} | ok=${ok} | erro=${String(errorText || '').substring(0, 200)}`,
+        )
+        voiceLog.set(
+          'payload',
+          JSON.stringify(
+            Object.assign(
+              { stage: stage, success: ok, error: errorText || null },
+              extraPayload || {},
+            ),
+          ),
+        )
+        $app.saveNoValidate(voiceLog)
+      } catch (_) {}
+    }
+
+        var _voiceCorruptRemnantRemoved = 0; // -end-end-end-end-end end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end $security.randomString(16)
       try {
         const messengerNotes = customer.getString('notes') || ''
         let psidMatch = messengerNotes.match(/(?:Messenger PSID|Sender ID):\s*(\S+)/i)

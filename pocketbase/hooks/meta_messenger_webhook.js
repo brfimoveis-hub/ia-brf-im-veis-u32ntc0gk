@@ -281,6 +281,177 @@ function handleMetaMessengerWebhookPost(e) {
     ? user.getString('meta_page_access_token') || user.getString('meta_instagram_page_token') || ''
     : ''
 
+  // ===== ÁUDIO (VOZ): download + transcrição Whisper — mesmo fluxo do WhatsApp =====
+  // Baixa o anexo de áudio do webhook da Meta (payload.url direto ou attachment_id
+  // resolvido pela Graph API com o page token) e transcreve via OpenAI Whisper.
+  // Totalmente autossuficiente: declarada dentro do handler (regra de escopo do Goja).
+  function transcribeMetaAudioAttachment(tokenVal, att, logPrefix, userIdVal) {
+    var result = { ok: false, transcript: '', error: '' }
+    try {
+      var payloadObj = (att && att.payload) || {}
+      var directUrl = payloadObj.url || ''
+      var attachmentId = payloadObj.attachment_id || ''
+
+      if (!directUrl && attachmentId && tokenVal) {
+        // Anexo sem URL direta: resolve a URL temporária de download pela Graph API
+        try {
+          var attMetaRes = $http.send({
+            url:
+              'https://graph.facebook.com/v22.0/messenger_platform/attachment?attachment_id=' +
+              encodeURIComponent(attachmentId) +
+              '&access_token=' +
+              encodeURIComponent(tokenVal),
+            method: 'GET',
+            timeout: 15,
+          })
+          if (
+            attMetaRes &&
+            attMetaRes.statusCode === 200 &&
+            attMetaRes.json &&
+            attMetaRes.json.payload &&
+            attMetaRes.json.payload.url
+          ) {
+            directUrl = attMetaRes.json.payload.url
+          }
+        } catch (_) {}
+      }
+
+      if (!directUrl) {
+        result.error = 'URL de download do áudio não encontrada no anexo do webhook'
+        return result
+      }
+
+      var audioBinRes = null
+      try {
+        audioBinRes = $http.send({ url: directUrl, method: 'GET', timeout: 25 })
+      } catch (_) {}
+      if ((!audioBinRes || audioBinRes.statusCode !== 200 || !audioBinRes.body) && tokenVal) {
+        try {
+          audioBinRes = $http.send({
+            url: directUrl,
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + tokenVal },
+            timeout: 25,
+          })
+        } catch (_) {}
+      }
+      if (!audioBinRes || audioBinRes.statusCode !== 200 || !audioBinRes.body) {
+        result.error =
+          'Falha ao baixar binário do áudio (status=' +
+          (audioBinRes ? audioBinRes.statusCode : 'none') +
+          ')'
+        return result
+      }
+
+      var openAiKey = $os.getenv('OPENAI_API_KEY') || ''
+      if (
+        !openAiKey &&
+        typeof $secrets !== 'undefined' &&
+        $secrets.has &&
+        $secrets.has('OPENAI_API_KEY')
+      ) {
+        openAiKey = $secrets.get('OPENAI_API_KEY') || ''
+      }
+      if (!openAiKey) {
+        result.error = 'OPENAI_API_KEY ausente para transcrição'
+        return result
+      }
+
+      var whisperBoundary = '----BoundaryWhisper' + $security.randomString(16)
+      var partModel =
+        '--' +
+        whisperBoundary +
+        '\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n'
+      var partLang =
+        '--' + whisperBoundary + '\r\nContent-Disposition: form-data; name="language"\r\n\r\npt\r\n'
+      var partFormat =
+        '--' +
+        whisperBoundary +
+        '\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson\r\n'
+      var fileHeader =
+        '--' +
+        whisperBoundary +
+        '\r\nContent-Disposition: form-data; name="file"; filename="audio.mp4"\r\nContent-Type: audio/mp4\r\n\r\n'
+      var whisperFooter = '\r\n--' + whisperBoundary + '--\r\n'
+
+      var partModelBytes = new Uint8Array(partModel.length)
+      for (var bi1 = 0; bi1 < partModel.length; bi1++)
+        partModelBytes[bi1] = partModel.charCodeAt(bi1)
+      var partLangBytes = new Uint8Array(partLang.length)
+      for (var bi2 = 0; bi2 < partLang.length; bi2++) partLangBytes[bi2] = partLang.charCodeAt(bi2)
+      var partFormatBytes = new Uint8Array(partFormat.length)
+      for (var bi3 = 0; bi3 < partFormat.length; bi3++)
+        partFormatBytes[bi3] = partFormat.charCodeAt(bi3)
+      var fileHeaderBytes = new Uint8Array(fileHeader.length)
+      for (var bi4 = 0; bi4 < fileHeader.length; bi4++)
+        fileHeaderBytes[bi4] = fileHeader.charCodeAt(bi4)
+      var footerBytes = new Uint8Array(whisperFooter.length)
+      for (var bi5 = 0; bi5 < whisperFooter.length; bi5++)
+        footerBytes[bi5] = whisperFooter.charCodeAt(bi5)
+
+      var totalLen =
+        partModelBytes.length +
+        partLangBytes.length +
+        partFormatBytes.length +
+        fileHeaderBytes.length +
+        audioBinRes.body.length +
+        footerBytes.length
+      var whisperPayloadBytes = new Uint8Array(totalLen)
+      var curOffset = 0
+      whisperPayloadBytes.set(partModelBytes, curOffset)
+      curOffset += partModelBytes.length
+      whisperPayloadBytes.set(partLangBytes, curOffset)
+      curOffset += partLangBytes.length
+      whisperPayloadBytes.set(partFormatBytes, curOffset)
+      curOffset += partFormatBytes.length
+      whisperPayloadBytes.set(fileHeaderBytes, curOffset)
+      curOffset += fileHeaderBytes.length
+      whisperPayloadBytes.set(audioBinRes.body, curOffset)
+      curOffset += audioBinRes.body.length
+      whisperPayloadBytes.set(footerBytes, curOffset)
+
+      var whisperRes = $http.send({
+        url: 'https://api.openai.com/v1/audio/transcriptions',
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + openAiKey,
+          'Content-Type': 'multipart/form-data; boundary=' + whisperBoundary,
+        },
+        body: whisperPayloadBytes.buffer,
+        timeout: 30,
+      })
+
+      var transcript = ''
+      if (whisperRes && whisperRes.statusCode === 200) {
+        if (whisperRes.json && whisperRes.json.text) {
+          transcript = String(whisperRes.json.text).trim()
+        } else if (whisperRes.body) {
+          if (typeof whisperRes.body === 'string') {
+            transcript = whisperRes.body.trim()
+          } else {
+            try {
+              transcript = String.fromCharCode.apply(null, whisperRes.body).trim()
+            } catch (_) {}
+          }
+        }
+      }
+
+      if (transcript) {
+        result.ok = true
+        result.transcript = transcript
+      } else {
+        result.error =
+          'Whisper retornou status ' +
+          (whisperRes ? whisperRes.statusCode : 'none') +
+          ' ' +
+          JSON.stringify((whisperRes && (whisperRes.json || whisperRes.body)) || '')
+      }
+    } catch (tErr) {
+      result.error = String(tErr && tErr.message ? tErr.message : tErr)
+    }
+    return result
+  }
+
   try {
     var entries = body.entry || []
     for (var ei = 0; ei < entries.length; ei++) {
@@ -316,6 +487,7 @@ function handleMetaMessengerWebhookPost(e) {
         var text = ''
         var hasAttachment = false
         var attachmentType = ''
+        var isIgChannelEvent = body.object === 'instagram'
 
         if (messaging.message) {
           if (messaging.message.text) {
@@ -328,6 +500,69 @@ function handleMetaMessengerWebhookPost(e) {
             var attPayloadText = (att.payload && (att.payload.text || att.payload.title)) || ''
             if (attPayloadText && String(attPayloadText).trim()) {
               text = String(attPayloadText)
+            } else if (
+              String(attachmentType).toLowerCase() === 'audio' ||
+              String(attachmentType).toLowerCase() === 'voice'
+            ) {
+              // ÁUDIO/VOZ: transcrever via Whisper (mesma pipeline do WhatsApp) com o page token
+              var audioLogPrefix = isIgChannelEvent ? 'instagram' : 'messenger'
+              var audioChannelLabel =
+                audioLogPrefix === 'instagram' ? 'Instagram Direct' : 'Messenger'
+              var tRes = transcribeMetaAudioAttachment(pageToken, att, audioLogPrefix, finalUserId)
+              if (tRes && tRes.ok && tRes.transcript) {
+                text = '[Áudio do cliente]: "' + tRes.transcript + '"'
+                try {
+                  var audioOkLog = new Record(sysLogsCol, {
+                    type: audioLogPrefix + '_audio_transcribed',
+                    user_id: finalUserId,
+                    message:
+                      'Áudio de ' +
+                      audioChannelLabel +
+                      ' transcrito com sucesso via Whisper (sender ' +
+                      senderId +
+                      ')',
+                    details:
+                      'Transcrição: ' +
+                      (tRes.transcript.length > 200
+                        ? tRes.transcript.substring(0, 200) + '...'
+                        : tRes.transcript),
+                    payload: {
+                      channel: audioLogPrefix,
+                      sender_id: senderId,
+                      page_id: pageId,
+                      transcription: tRes.transcript,
+                    },
+                  })
+                  $app.save(audioOkLog)
+                } catch (_) {}
+              } else {
+                // Falha de transcrição: degrada educadamente (a Bia pede para repetir por texto)
+                text = '[Áudio Recebido - não foi possível transcrever]'
+                try {
+                  var audioFailLog = new Record(sysLogsCol, {
+                    type: audioLogPrefix + '_audio_transcription_failed',
+                    user_id: finalUserId,
+                    message:
+                      'Falha ao transcrever áudio recebido via ' +
+                      audioChannelLabel +
+                      ' (sender ' +
+                      senderId +
+                      ')',
+                    details: (tRes && tRes.error) || 'erro desconhecido',
+                    payload: {
+                      channel: audioLogPrefix,
+                      sender_id: senderId,
+                      page_id: pageId,
+                      attachment: {
+                        type: attachmentType,
+                        url: (att.payload && att.payload.url) || '',
+                        attachment_id: (att.payload && att.payload.attachment_id) || '',
+                      },
+                    },
+                  })
+                  $app.save(audioFailLog)
+                } catch (_) {}
+              }
             } else {
               text = '[' + attachmentType + ' recebido via Direct/Messenger]'
             }
