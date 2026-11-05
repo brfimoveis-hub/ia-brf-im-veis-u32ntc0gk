@@ -278,34 +278,44 @@ function handleInstagramWebhookPost(e) {
           }
         }
 
-        // Extrai texto da mensagem
+        // Extrai texto da mensagem — DEFEITO 1: preservar o TEXTO REAL do lead
         var text = ''
         var isAudio = false
         var mediaUrl = ''
 
-        if (messaging.message) {
-          if (messaging.message.text) {
-            text = messaging.message.text
-          } else if (messaging.message.attachments && messaging.message.attachments.length > 0) {
-            var att = messaging.message.attachments[0] || {}
-            var aType = att.type || 'mídia'
-            if (aType === 'audio' || aType === 'voice') {
+        var msgObj = messaging.message || null
+        if (msgObj) {
+          if (msgObj.text && String(msgObj.text).trim()) {
+            text = String(msgObj.text)
+          } else if (msgObj.attachments && msgObj.attachments.length > 0) {
+            // Sem texto no nível da mensagem: tenta o texto/título embutido no
+            // anexo (shares, stories e cards trazem payload.text / payload.title)
+            var att = msgObj.attachments[0] || {}
+            var aType = String(att.type || 'mídia').toLowerCase()
+            var attPayloadText = (att.payload && (att.payload.text || att.payload.title)) || ''
+            if (attPayloadText && String(attPayloadText).trim()) {
+              text = String(attPayloadText)
+            } else if (aType === 'audio' || aType === 'voice') {
               text = '[Áudio Recebido do Instagram]'
               isAudio = true
               mediaUrl = (att.payload && att.payload.url) || ''
+            } else if (aType === 'sticker') {
+              text = '[figurinha]'
             } else if (aType === 'image') {
-              text = '[Imagem Recebida do Instagram]'
-            } else if (aType === 'video') {
-              text = '[Vídeo Recebido do Instagram]'
+              text = '[imagem]'
+            } else if (aType === 'video' || aType === 'ig_reel' || aType === 'reel') {
+              text = '[vídeo]'
             } else if (aType === 'story_mention') {
-              text = '[Menção nos Stories do Instagram]'
+              text = '[menção nos stories]'
             } else if (aType === 'share') {
-              text = '[Compartilhamento do Instagram]'
+              text = '[compartilhamento]'
             } else {
-              text = '[' + aType + ' Recebido]'
+              text = '[' + aType + ']'
             }
-          } else if (messaging.message.quick_reply && messaging.message.quick_reply.payload) {
-            text = messaging.message.quick_reply.payload
+          } else if (msgObj.quick_reply && msgObj.quick_reply.payload) {
+            text = msgObj.quick_reply.payload
+          } else if (msgObj.admin_text) {
+            text = String(msgObj.admin_text)
           }
         } else if (messaging.postback && messaging.postback.title) {
           text = messaging.postback.title
@@ -313,6 +323,23 @@ function handleInstagramWebhookPost(e) {
 
         if (!text) {
           text = '[Mensagem Recebida do Instagram]'
+          // Diagnóstico DEFEITO 1: evento da Meta chegou sem texto extraível
+          // (ex.: permissão instagram_manage_messages pendente). Grava o payload
+          // bruto da mensagem para auditoria e ajuste futuro da extração.
+          try {
+            var rawLogCol = $app.findCollectionByNameOrId('system_logs')
+            var rawLogRec = new Record(rawLogCol)
+            rawLogRec.set('type', 'instagram_message_raw')
+            rawLogRec.set(
+              'message',
+              'Evento do Instagram sem texto extraível (sender=' + senderId + ')',
+            )
+            rawLogRec.set(
+              'payload',
+              JSON.stringify({ sender_id: senderId, recipient_id: recipientId, message: msgObj }),
+            )
+            $app.saveNoValidate(rawLogRec)
+          } catch (_) {}
         }
 
         // Tenta obter nome e username do usuário do Instagram via Graph API v22.0
@@ -1066,33 +1093,41 @@ function handleInstagramWebhookPostWithPathUser(e) {
           }
         }
 
+        // Extrai texto da mensagem — DEFEITO 1: preservar o TEXTO REAL do lead
         var text = ''
         var isAudio = false
         var mediaUrl = ''
 
-        if (messaging.message) {
-          if (messaging.message.text) {
-            text = messaging.message.text
-          } else if (messaging.message.attachments && messaging.message.attachments.length > 0) {
-            var att = messaging.message.attachments[0] || {}
-            var aType = att.type || 'mídia'
+        var msgObj = messaging.message || null
+        if (msgObj) {
+          if (msgObj.text && String(msgObj.text).trim()) {
+            text = String(msgObj.text)
+          } else if (msgObj.attachments && msgObj.attachments.length > 0) {
+            // Sem texto no nível da mensagem: tenta o texto/título embutido no
+            // anexo (shares, stories e cards trazem payload.text / payload.title)
+            var att = msgObj.attachments[0] || {}
+            var aType = String(att.type || 'mídia').toLowerCase()
             if (aType === 'audio' || aType === 'voice') {
               text = '[Áudio Recebido do Instagram]'
               isAudio = true
               mediaUrl = (att.payload && att.payload.url) || ''
+            } else if (aType === 'sticker') {
+              text = '[figurinha]'
             } else if (aType === 'image') {
-              text = '[Imagem Recebida do Instagram]'
-            } else if (aType === 'video') {
-              text = '[Vídeo Recebido do Instagram]'
+              text = '[imagem]'
+            } else if (aType === 'video' || aType === 'ig_reel' || aType === 'reel') {
+              text = '[vídeo]'
             } else if (aType === 'story_mention') {
-              text = '[Menção nos Stories do Instagram]'
+              text = '[menção nos stories]'
             } else if (aType === 'share') {
-              text = '[Compartilhamento do Instagram]'
+              text = '[compartilhamento]'
             } else {
-              text = '[' + aType + ' Recebido]'
+              text = '[' + aType + ']'
             }
-          } else if (messaging.message.quick_reply && messaging.message.quick_reply.payload) {
-            text = messaging.message.quick_reply.payload
+          } else if (msgObj.quick_reply && msgObj.quick_reply.payload) {
+            text = msgObj.quick_reply.payload
+          } else if (msgObj.admin_text) {
+            text = String(msgObj.admin_text)
           }
         } else if (messaging.postback && messaging.postback.title) {
           text = messaging.postback.title
@@ -1100,6 +1135,21 @@ function handleInstagramWebhookPostWithPathUser(e) {
 
         if (!text) {
           text = '[Mensagem Recebida do Instagram]'
+          // Diagnóstico DEFEITO 1: evento da Meta chegou sem texto extraível.
+          try {
+            var rawLogCol2 = $app.findCollectionByNameOrId('system_logs')
+            var rawLogRec2 = new Record(rawLogCol2)
+            rawLogRec2.set('type', 'instagram_message_raw')
+            rawLogRec2.set(
+              'message',
+              'Evento do Instagram sem texto extraível (sender=' + senderId + ')',
+            )
+            rawLogRec2.set(
+              'payload',
+              JSON.stringify({ sender_id: senderId, recipient_id: recipientId, message: msgObj }),
+            )
+            $app.saveNoValidate(rawLogRec2)
+          } catch (_) {}
         }
 
         var igProfileName = ''

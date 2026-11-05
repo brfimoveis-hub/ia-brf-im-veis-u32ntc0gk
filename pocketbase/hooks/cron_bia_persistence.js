@@ -406,7 +406,14 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
         conv.set('sender', 'ai')
         conv.set('content', textToSend)
         conv.set('channel', 'whatsapp')
-        conv.set('follow_up_step', stepName || '')
+        // DEFEITO 2: 'remarketing' NÃO pertence ao enum follow_up_step de
+        // conversations (d1, d3, d7, d14, nurturing_monthly, finalizado).
+        // Retomada de remarketing é mapeada para o degrau válido 'd1' —
+        // é o próximo degrau real da régua após a retomada (log "Próximo degrau: d1").
+        // Enum NÃO é alterado; os demais degraus já são valores válidos.
+        var convFollowUpStep = stepName || ''
+        if (convFollowUpStep === 'remarketing') convFollowUpStep = 'd1'
+        conv.set('follow_up_step', convFollowUpStep)
         conv.set('last_follow_up_at', new Date().toISOString())
         app.save(conv)
       } catch (cErr) {
