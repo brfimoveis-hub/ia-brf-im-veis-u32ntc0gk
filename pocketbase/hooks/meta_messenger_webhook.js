@@ -322,8 +322,15 @@ function handleMetaMessengerWebhookPost(e) {
             text = messaging.message.text
           } else if (messaging.message.attachments && messaging.message.attachments.length > 0) {
             hasAttachment = true
-            attachmentType = messaging.message.attachments[0].type || 'mídia'
-            text = '[' + attachmentType + ' recebido via Direct/Messenger]'
+            var att = messaging.message.attachments[0] || {}
+            attachmentType = att.type || 'mídia'
+            // Fallback de texto: shares, stories e cards trazem payload.text / payload.title
+            var attPayloadText = (att.payload && (att.payload.text || att.payload.title)) || ''
+            if (attPayloadText && String(attPayloadText).trim()) {
+              text = String(attPayloadText)
+            } else {
+              text = '[' + attachmentType + ' recebido via Direct/Messenger]'
+            }
           } else if (messaging.message.quick_reply && messaging.message.quick_reply.payload) {
             text = messaging.message.quick_reply.payload
           }

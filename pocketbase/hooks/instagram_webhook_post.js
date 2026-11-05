@@ -1107,7 +1107,11 @@ function handleInstagramWebhookPostWithPathUser(e) {
             // anexo (shares, stories e cards trazem payload.text / payload.title)
             var att = msgObj.attachments[0] || {}
             var aType = String(att.type || 'mídia').toLowerCase()
-            if (aType === 'audio' || aType === 'voice') {
+            // Fallback de texto: shares, stories e cards trazem payload.text / payload.title
+            var attPayloadText = (att.payload && (att.payload.text || att.payload.title)) || ''
+            if (attPayloadText && String(attPayloadText).trim()) {
+              text = String(attPayloadText)
+            } else if (aType === 'audio' || aType === 'voice') {
               text = '[Áudio Recebido do Instagram]'
               isAudio = true
               mediaUrl = (att.payload && att.payload.url) || ''

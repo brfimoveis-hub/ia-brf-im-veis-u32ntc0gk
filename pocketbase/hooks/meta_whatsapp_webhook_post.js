@@ -453,12 +453,19 @@ function handleMetaWhatsAppWebhookPost(e) {
               text = messaging.message.text
             } else if (messaging.message.attachments && messaging.message.attachments.length > 0) {
               var attType = messaging.message.attachments[0].type || 'mídia'
-              text =
-                '[' +
-                (attType === 'audio' || attType === 'voice'
-                  ? 'Áudio'
-                  : attType.charAt(0).toUpperCase() + attType.slice(1)) +
-                ' Recebido do Instagram]'
+              // Fallback de texto: shares, stories e cards trazem payload.text / payload.title
+              var attPayload = messaging.message.attachments[0].payload || {}
+              var attPayloadText = attPayload.text || attPayload.title || ''
+              if (attPayloadText && String(attPayloadText).trim()) {
+                text = String(attPayloadText)
+              } else {
+                text =
+                  '[' +
+                  (attType === 'audio' || attType === 'voice'
+                    ? 'Áudio'
+                    : attType.charAt(0).toUpperCase() + attType.slice(1)) +
+                  ' Recebido do Instagram]'
+              }
             } else if (messaging.message.quick_reply && messaging.message.quick_reply.payload) {
               text = messaging.message.quick_reply.payload
             }
