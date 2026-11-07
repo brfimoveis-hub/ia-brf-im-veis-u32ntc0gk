@@ -35,7 +35,7 @@ routerAdd(
       '',
     )
     var targetPageId = String(body.page_id || '1401557100168686').trim()
-    var targetPageName = 'www.brfimoveis.com.br'
+    var targetPageName = String(body.page_name || 'www.brfimoveis.com.br').trim()
     var GRAPH_BASE = 'https://graph.facebook.com/v22.0/'
     var GRAPH_FIELDS_SUBSCRIBE = 'messages,messaging_postbacks,messaging_referrals'
     var GRAPH_GET_PAGE = 'GET /{page_id}?fields=id,name com page token'
@@ -123,6 +123,97 @@ routerAdd(
               http_status: res ? res.statusCode : 0,
             },
       }
+    }
+
+    // Consulta de permissões do token: GET /me/permissions — usada para dizer
+    // EXATAMENTE quais permissões faltam quando a conversão user→page não puder seguir.
+    var fetchGrantedPermissions = function (accessToken) {
+      var res = null
+      try {
+        res = $http.send({
+          url: GRAPH_BASE + 'me/permissions',
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + accessToken },
+          timeout: 15,
+        })
+      } catch (permNetErr) {
+        return {
+          netError: String(permNetErr && permNetErr.message ? permNetErr.message : permNetErr),
+        }
+      }
+      var data = res && res.json ? res.json : {}
+      var errObj = data.error || {}
+      var granted = []
+      var dataList = data.data || []
+      for (var pi = 0; pi < dataList.length; pi++) {
+        if (String(dataList[pi].status) === 'granted' && dataList[pi].permission) {
+          granted.push(String(dataList[pi].permission))
+        }
+      }
+      return {
+        ok: !!res && res.statusCode >= 200 && res.statusCode < 300 && !errObj.code,
+        granted: granted,
+        errObj: errObj,
+        httpStatus: res ? res.statusCode : 0,
+      }
+    }
+
+    // Monta mensagem amigável listando exatamente as permissões que faltam
+    var REQUIRED_USER_PERMS = ['pages_show_list', 'pages_manage_metadata']
+    var buildMissingPermissionsError = function (grantedList) {
+      var missing = []
+      for (var mi = 0; mi < REQUIRED_USER_PERMS.length; mi++) {
+        if (grantedList.indexOf(REQUIRED_USER_PERMS[mi]) === -1) {
+          missing.push(REQUIRED_USER_PERMS[mi])
+        }
+      }
+      if (!missing.length) {
+        return null
+      }
+      var missingText = missing
+        .map(function (m) {
+          return '"' + m + '"'
+        })
+        .join(', ')
+      return (
+        'O token colado é de usuário e não tem ' +
+        (missing.length === 1 ? 'a permissão' : 'as permissões') +
+        ' ' +
+        missingText +
+        '. No Graph API Explorer, adicione ' +
+        (missing.length === 1 ? 'essa permissão' : 'essas permissões') +
+        ' à lista e gere o token novamente (Perfil "Mauro" do Chrome → app BRF Imóveis 2).'
+      )
+    }
+
+    // Localiza a Página alvo em /me/accounts: primeiro pelo ID, depois pelo nome
+    // (regra do Mauro: nunca depender só de um ID fixo — busca parametrizada por nome/ID).
+    var findTargetPage = function (pages) {
+      var wantedName = String(targetPageName || '').toLowerCase()
+      var wantedNameBare = wantedName.replace(/^www\./, '')
+      for (var fi = 0; fi < pages.length; fi++) {
+        if (String(pages[fi].id) === targetPageId && pages[fi].access_token) {
+          return pages[fi]
+        }
+      }
+      for (var fj = 0; fj < pages.length; fj++) {
+        var nm = String(pages[fj].name || '').toLowerCase()
+        if (pages[fj].access_token && (nm === wantedName || nm === wantedNameBare)) {
+          return pages[fj]
+        }
+      }
+      for (var fk = 0; fk < pages.length; fk++) {
+        var nk = String(pages[fk].name || '').toLowerCase()
+        if (
+          pages[fk].access_token &&
+          wantedName &&
+          nk.indexOf(wantedName) !== -1 &&
+          nk.indexOf('brf') !== -1
+        ) {
+          return pages[fk]
+        }
+      }
+      return null
     }
 
     // Consulta de tipo de token: GET /me?fields=id,name — SEM "category",
@@ -238,30 +329,40 @@ routerAdd(
       var pages = accData.data || []
       var pageToken = ''
       var pageName = ''
-      for (var i = 0; i < pages.length; i++) {
-        if (String(pages[i].id) === targetPageId && pages[i].access_token) {
-          pageToken = pages[i].access_token
-          pageName = pages[i].name || targetPageName
-          break
-        }
+      var targetPage = findTargetPage(pages)
+      if (targetPage) {
+        pageToken = targetPage.access_token
+        pageName = targetPage.name || targetPageName
+        targetPageId = String(targetPage.id || targetPageId)
       }
 
       if (!pageToken) {
+        // Consulta /me/permissions para dizer EXATAMENTE quais permissões faltam
+        var permCheck = fetchGrantedPermissions(token)
+        var grantedList = permCheck && permCheck.granted ? permCheck.granted : []
+        var missingMsg = buildMissingPermissionsError(grantedList)
         logErr(
           'meta_messenger_token_validation_error',
-          'Token de usuário sem acesso à Página ' + targetPageId + ' — não é possível converter',
-          'Páginas visíveis: ' + pages.length,
+          missingMsg ||
+            'Token de usuário sem acesso à Página ' + targetPageId + ' — não é possível converter',
+          'Páginas visíveis: ' +
+            pages.length +
+            ' | permissões concedidas: ' +
+            grantedList.join(', '),
           {
             page_id: targetPageId,
             visible_pages: pages.map(function (p) {
               return { id: p.id, name: p.name }
             }),
+            granted_permissions: grantedList,
           },
         )
         return e.json(400, {
           success: false,
           error:
-            'O token colado é de usuário e não tem acesso à Página www.brfimoveis.com.br. Gere novamente no Graph API Explorer escolhendo "Token da Página" → www.brfimoveis.com.br',
+            missingMsg ||
+            'O token de usuário é válido e tem as permissões, mas a Página www.brfimoveis.com.br não apareceu em /me/accounts. Confirme que o perfil que gerou o token é admin da Página e gere o token novamente no Graph API Explorer (app BRF Imóveis 2).',
+          granted_permissions: grantedList,
         })
       }
 

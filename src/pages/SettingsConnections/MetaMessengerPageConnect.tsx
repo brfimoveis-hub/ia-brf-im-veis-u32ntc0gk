@@ -73,7 +73,9 @@ export function MetaMessengerPageConnect() {
 
     setLoading(true)
     try {
-      const res = await saveAndSubscribeMessengerPage(tokenInput, TARGET_PAGE_ID)
+      // O backend aceita token de USUÁRIO (gerado com pages_show_list +
+      // pages_manage_metadata) e converte sozinho para o token da Página.
+      const res = await saveAndSubscribeMessengerPage(tokenInput, TARGET_PAGE_ID, TARGET_PAGE_NAME)
       setLastResult({
         connected: true,
         page_name: res.page_name || TARGET_PAGE_NAME,
@@ -216,11 +218,13 @@ export function MetaMessengerPageConnect() {
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Ao salvar, o CRM valida o token na Graph API via{' '}
-            <code className="text-foreground">GET /me</code> e subscreve a Página automaticamente ao
-            webhook (<code className="text-foreground">messages</code>,{' '}
+            Aceita <strong>token de usuário OU token de Página</strong>: se for de usuário, o CRM
+            troca sozinho pelo token da Página via{' '}
+            <code className="text-foreground">/me/accounts</code> e subscreve a Página
+            automaticamente ao webhook (<code className="text-foreground">messages</code>,{' '}
             <code className="text-foreground">messaging_postbacks</code>,{' '}
-            <code className="text-foreground">messaging_referrals</code>).
+            <code className="text-foreground">messaging_referrals</code>). O token expira em ~1h,
+            mas o que fica salvo no CRM é o token da Página, que não expira com ele.
           </p>
         </div>
 
@@ -291,8 +295,10 @@ export function MetaMessengerPageConnect() {
               .
             </li>
             <li>
-              No seletor <strong>Token de Usuário ou Página</strong>, escolha a Página{' '}
-              <strong>www.brfimoveis.com.br (1401557100168686)</strong>.
+              No seletor <strong>Token de Usuário ou Página</strong>, pode deixar como{' '}
+              <strong>Usuário</strong> (padrão) ou escolher a Página{' '}
+              <strong>www.brfimoveis.com.br (1401557100168686)</strong> — os dois funcionam: se for
+              token de usuário, o CRM troca automaticamente pelo token da Página.
             </li>
             <li>
               Em <strong>Permissões</strong>, adicione exatamente estas 4 permissões:

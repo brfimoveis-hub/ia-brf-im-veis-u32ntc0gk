@@ -6066,14 +6066,19 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         const partFileStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="file"; filename="bia_audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`
         const audioFooterStr = `\r\n--${audioBoundary}--\r\n`
         const partTypeBytes = new Uint8Array(partTypeStr.length)
-        for (let ai = 0; ai < partTypeStr.length; ai++) partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
+        for (let ai = 0; ai < partTypeStr.length; ai++)
+          partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
         const partFileBytes = new Uint8Array(partFileStr.length)
-        for (let bi = 0; bi < partFileStr.length; bi++) partFileBytes[bi] = partFileStr.charCodeAt(bi)
+        for (let bi = 0; bi < partFileStr.length; bi++)
+          partFileBytes[bi] = partFileStr.charCodeAt(bi)
         const audioFooterBytes = new Uint8Array(audioFooterStr.length)
         for (let ci = 0; ci < audioFooterStr.length; ci++)
           audioFooterBytes[ci] = audioFooterStr.charCodeAt(ci)
         const audioBodyBytes = new Uint8Array(
-          partTypeBytes.length + partFileBytes.length + ttsRes.body.length + audioFooterBytes.length,
+          partTypeBytes.length +
+            partFileBytes.length +
+            ttsRes.body.length +
+            audioFooterBytes.length,
         )
         let audioOffset = 0
         audioBodyBytes.set(partTypeBytes, audioOffset)
@@ -6102,7 +6107,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         // Tenta attachment_id direto; sem ele, resolve pelo handle do upload
         let audioAttachmentId = (uploadRes.json && uploadRes.json.attachment_id) || ''
         if (!audioAttachmentId) {
-          const uploadHandle = (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
+          const uploadHandle =
+            (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
           if (uploadHandle) {
             const assetMetaRes = callMetaWithRetry(
               `https://graph.facebook.com/v22.0/${voicePageId}/assets?fields=attachment_id&handle=${encodeURIComponent(uploadHandle)}`,
@@ -6110,7 +6116,12 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
               { Authorization: `Bearer ${voiceToken}` },
               null,
             )
-            if (assetMetaRes && assetMetaRes.json && assetMetaRes.json[0] && assetMetaRes.json[0].attachment_id) {
+            if (
+              assetMetaRes &&
+              assetMetaRes.json &&
+              assetMetaRes.json[0] &&
+              assetMetaRes.json[0].attachment_id
+            ) {
               audioAttachmentId = assetMetaRes.json[0].attachment_id
             }
           }
@@ -6164,10 +6175,18 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             ? `Resposta da Bia enviada em VOZ (${stage === 'sent' ? 'áudio' : 'áudio'}) com sucesso`
             : `Falha ao enviar resposta em voz (${stage}): ${String(errorText || '').substring(0, 180)}`,
         )
-        voiceLog.set('details', `stage=${stage} | ok=${ok} | erro=${String(errorText || '').substring(0, 200)}`)
+        voiceLog.set(
+          'details',
+          `stage=${stage} | ok=${ok} | erro=${String(errorText || '').substring(0, 200)}`,
+        )
         voiceLog.set(
           'payload',
-          JSON.stringify(Object.assign({ stage: stage, success: ok, error: errorText || null }, extraPayload || {})),
+          JSON.stringify(
+            Object.assign(
+              { stage: stage, success: ok, error: errorText || null },
+              extraPayload || {},
+            ),
+          ),
         )
         $app.saveNoValidate(voiceLog)
       } catch (_) {}
@@ -6224,10 +6243,11 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         const partFileStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="file"; filename="bia_audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`
         const audioFooterStr = `\r\n--${audioBoundary}--\r\n`
         const partTypeBytes = new Uint8Array(partTypeStr.length)
-        for (let ai = 0; ai < partTypeStr.length; ai++) partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
+        for (let ai = 0; ai < partTypeStr.length; ai++)
+          partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
         const partFileBytes = new Uint8Array(partFileStr.length)
-        for (let bi = 0; bi < partFileStr.length; bi++) partFileBytes[bi] = partFileStr.charCodeAt(bi)
-        const audioFooterBytes = new Uint8Array(audioFooterStr.length)
+        for (let bi = 0; bi < partFileStr.length; bi++)
+          partFileBytes[bi] = partFileStr.charCodeAt(bi)
         const audioFooterBytes = new Uint8Array(audioFooterStr.length)
         for (let ci = 0; ci < audioFooterStr.length; ci++)
           audioFooterBytes[ci] = audioFooterStr.charCodeAt(ci)
@@ -6264,7 +6284,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         // Tenta attachment_id direto; sem ele, resolve pelo handle/id retornado
         let audioAttachmentId = (uploadRes.json && uploadRes.json.attachment_id) || ''
         if (!audioAttachmentId) {
-          const uploadHandle = (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
+          const uploadHandle =
+            (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
           if (uploadHandle) {
             const assetMetaRes = callMetaWithRetry(
               `https://graph.facebook.com/v22.0/${voicePageId}/assets?fields=attachment_id&handle=${encodeURIComponent(uploadHandle)}`,
@@ -6348,7 +6369,8 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       } catch (_) {}
     }
 
-        var _voiceCorruptRemnantRemoved = 0; // -end-end-end-end-end end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end $security.randomString(16)
+    if (conversationChannel === 'messenger' && responseText) {
+      // -end-end-end end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end-end $security.randomString(16)
       try {
         const messengerNotes = customer.getString('notes') || ''
         let psidMatch = messengerNotes.match(/(?:Messenger PSID|Sender ID):\s*(\S+)/i)
@@ -6507,6 +6529,35 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             console.log(
               `[AI_REPLY] Messenger DM sent successfully to PSID ${psid} for customer=${customerId}`,
             )
+            // Fluxo de voz Bia (Messenger): cliente mandou áudio → responde também em voz via TTS
+            if (sendAudio) {
+              try {
+                const voiceOut = sendMetaChannelVoiceReply({
+                  pageToken: pageToken,
+                  pageId: messengerPageId,
+                  text: responseText,
+                  recipientId: psid,
+                })
+                logVoiceReplyResult(
+                  'messenger_voice_reply',
+                  voiceOut.ok,
+                  voiceOut.stage,
+                  voiceOut.error,
+                  { customer_id: customerId, psid: psid, page_id: messengerPageId },
+                )
+                if (voiceOut.ok) {
+                  console.log(`[AI_REPLY] Messenger voice reply sent to PSID ${psid}`)
+                } else {
+                  console.warn(
+                    `[AI_REPLY] Messenger voice reply failed (non-fatal): ${voiceOut.error}`,
+                  )
+                }
+              } catch (voiceExc) {
+                console.warn(
+                  `[AI_REPLY] Messenger voice reply exception (non-fatal): ${String(voiceExc)}`,
+                )
+              }
+            }
           } else {
             console.warn(
               `[AI_REPLY] Messenger DM send failed for PSID ${psid}: ${resErrorObj ? resErrorObj.message : 'HTTP ' + (messengerSendRes ? messengerSendRes.statusCode : 'null')}`,
