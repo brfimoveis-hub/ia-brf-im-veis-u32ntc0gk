@@ -312,7 +312,7 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
-    // Detecção e bloqueio de automação/mensagens de sistema (código de verificação, SMS Meta/Instagram, etc.)
+    // Detecção e bloqueio de automação/mensagens de sistema, códigos de verificação e GUARDA ANTI-BOT
     const incomingText = (e.record.getString('content') || '').trim()
     const checkCustPhone = customerInitialCheck.getString('phone') || ''
     const checkCustName = customerInitialCheck.getString('name') || ''
@@ -339,9 +339,54 @@ onRecordAfterCreateSuccess((e) => {
       checkCustPhone === '+44 7710 173736' ||
       /^facebook\s+business$/i.test(checkCustName)
 
-    if (isVerificationCodeMsg || isSystemSenderNumber) {
+    // GUARDA ANTI-BOT: Detecção rigorosa de robôs, auto-respostas e assistentes virtuais de terceiros
+    const lowerCustName = checkCustName.toLowerCase()
+    const isBotSenderName =
+      lowerCustName.includes('bot') ||
+      lowerCustName.includes('auto reply') ||
+      lowerCustName.includes('resposta automática') ||
+      lowerCustName.includes('resposta automatica') ||
+      lowerCustName.includes('atendimento virtual') ||
+      lowerCustName.includes('meta business') ||
+      lowerCustName.includes('assistente virtual')
+
+    const lowerIncoming = incomingText.toLowerCase()
+    const isAutoReplyOrBotMessage =
+      lowerIncoming.includes('esta é uma mensagem automática') ||
+      lowerIncoming.includes('esta e uma mensagem automatica') ||
+      lowerIncoming.includes('essa é uma mensagem automática') ||
+      lowerIncoming.includes('essa e uma mensagem automatica') ||
+      lowerIncoming.includes('mensagem gravada automaticamente') ||
+      lowerIncoming.includes('resposta automática') ||
+      lowerIncoming.includes('resposta automatica') ||
+      lowerIncoming.includes('mensagem automática') ||
+      lowerIncoming.includes('mensagem automatica') ||
+      (lowerIncoming.includes('horário de atendimento') &&
+        (lowerIncoming.includes('retornaremos') || lowerIncoming.includes('estamos ausentes'))) ||
+      lowerIncoming.includes('não responda a este número') ||
+      lowerIncoming.includes('nao responda a este numero') ||
+      lowerIncoming.includes('digite 1 para') ||
+      lowerIncoming.includes('digite uma opção') ||
+      lowerIncoming.includes('digite uma opcao') ||
+      lowerIncoming.includes('escolha uma das opções') ||
+      lowerIncoming.includes('escolha uma das opcoes') ||
+      lowerIncoming.includes('protocolo de atendimento:') ||
+      lowerIncoming.includes('responda a pesquisa do meu atendimento') ||
+      lowerIncoming.includes('sua opinião é muito importante para nós') ||
+      lowerIncoming.includes('como você classifica nosso atendimento') ||
+      lowerIncoming.includes('continue setting up your account') ||
+      (lowerIncoming.includes('obrigado por entrar em contato') &&
+        lowerIncoming.includes('no momento')) ||
+      lowerIncoming.includes('agradecemos seu contato, no momento')
+
+    if (
+      isVerificationCodeMsg ||
+      isSystemSenderNumber ||
+      isBotSenderName ||
+      isAutoReplyOrBotMessage
+    ) {
       console.log(
-        `[AI_REPLY] Mensagem de verificação/sistema detectada para customer=${customerId}. Resposta automática cancelada.`,
+        `[AI_REPLY] [ANTI-BOT] Mensagem de verificação, auto-resposta ou robô detectada para customer=${customerId} (name="${checkCustName}"). Resposta automática cancelada.`,
       )
       return e.next()
     }

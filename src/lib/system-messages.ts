@@ -131,6 +131,52 @@ export function isSystemCustomerName(name?: string | null): boolean {
  * 5. O remetente não tem nome real (apenas o número de telefone como nome, ex: "447710173736") e a mensagem é payload técnico
  *    ou aviso de "mensagem automática... sem atendimento humano".
  */
+export function isBotOrAutoReplyMessage(text: string | null | undefined): boolean {
+  if (!text) return false
+  const t = text.toLowerCase()
+  return (
+    t.includes('esta é uma mensagem automática') ||
+    t.includes('esta e uma mensagem automatica') ||
+    t.includes('essa é uma mensagem automática') ||
+    t.includes('essa e uma mensagem automatica') ||
+    t.includes('mensagem gravada automaticamente') ||
+    t.includes('resposta automática') ||
+    t.includes('resposta automatica') ||
+    t.includes('mensagem automática') ||
+    t.includes('mensagem automatica') ||
+    (t.includes('horário de atendimento') &&
+      (t.includes('retornaremos') || t.includes('estamos ausentes'))) ||
+    t.includes('não responda a este número') ||
+    t.includes('nao responda a este numero') ||
+    t.includes('digite 1 para') ||
+    t.includes('digite uma opção') ||
+    t.includes('digite uma opcao') ||
+    t.includes('escolha uma das opções') ||
+    t.includes('escolha uma das opcoes') ||
+    t.includes('protocolo de atendimento:') ||
+    t.includes('responda a pesquisa do meu atendimento') ||
+    t.includes('sua opinião é muito importante para nós') ||
+    t.includes('como você classifica nosso atendimento') ||
+    t.includes('continue setting up your account') ||
+    (t.includes('obrigado por entrar em contato') && t.includes('no momento')) ||
+    t.includes('agradecemos seu contato, no momento')
+  )
+}
+
+export function isBotCustomerName(name: string | null | undefined): boolean {
+  if (!name) return false
+  const n = name.toLowerCase()
+  return (
+    n.includes('bot') ||
+    n.includes('auto reply') ||
+    n.includes('resposta automática') ||
+    n.includes('resposta automatica') ||
+    n.includes('atendimento virtual') ||
+    n.includes('meta business') ||
+    n.includes('assistente virtual')
+  )
+}
+
 export function isAutomatedSystemThread(target: SystemDetectionTarget): boolean {
   if (!target) return false
 
@@ -157,6 +203,11 @@ export function isAutomatedSystemThread(target: SystemDetectionTarget): boolean 
 
   // 4. Mensagem é código de verificação ou aviso automático de sistema
   if (isSystemVerificationMessage(message)) {
+    return true
+  }
+
+  // 4b. GUARDA ANTI-BOT: mensagens de robô/auto-resposta ou nome de bot
+  if (isBotOrAutoReplyMessage(message) || isBotCustomerName(name)) {
     return true
   }
 
