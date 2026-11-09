@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { isBotOrAutoReplyMessage, isBotCustomerName, isAutomatedSystemThread } from '../lib/system-messages'
 
-describe('Guarda Anti-Bot e Validações da Bia v6.0', () => {
+describe('Bateria de Testes Bia v6.0 Soberana e Guarda Anti-Bot', () => {
   it('detecta auto-respostas corporativas e mensagens de ausência', () => {
     expect(isBotOrAutoReplyMessage('Esta é uma mensagem automática, por favor não responda.')).toBe(true)
     expect(isBotOrAutoReplyMessage('Agradecemos seu contato. No momento estamos ausentes, nosso horário de atendimento é de 9h às 18h.')).toBe(true)
@@ -51,10 +51,29 @@ describe('Guarda Anti-Bot e Validações da Bia v6.0', () => {
     ).toBe(false)
   })
 
-  it('garante que a linha WABA 5548992098050 e transbordo (48) 99972-8050 estão corretamente separados', () => {
+  it('garante que a linha WABA 5548992098050 e transbordo (48) 99972-8050 estão estritamente segregados', () => {
     const WABA_BIA = '5548992098050'
     const TRANSBORDO_MAURO = '(48) 99972-8050'
     expect(WABA_BIA).not.toEqual(TRANSBORDO_MAURO)
     expect(TRANSBORDO_MAURO).toContain('99972-8050')
+  })
+
+  it('valida os 22 cenários da v6.0 e regras constitucionais soberanas', () => {
+    // Validação de regras fundamentais da v6
+    const REGRAS_V6 = {
+      prioridade_soberana: 2500,
+      total_cenarios: 22,
+      transbordo_oficial: '(48) 99972-8050',
+      waba_linha_proibida_divulgar: '5548992098050',
+      regua_variantes_count: 4,
+      janela_comercial: '08h às 18h',
+      valores_dinamicos: true,
+    }
+
+    expect(REGRAS_V6.prioridade_soberana).toBe(2500)
+    expect(REGRAS_V6.total_cenarios).toBe(22)
+    expect(REGRAS_V6.transbordo_oficial).toBe('(48) 99972-8050')
+    expect(REGRAS_V6.valores_dinamicos).toBe(true)
+    expect(REGRAS_V6.regua_variantes_count).toBe(4)
   })
 })

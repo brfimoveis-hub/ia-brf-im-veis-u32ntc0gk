@@ -18,7 +18,9 @@ import {
   ArrowUpDown,
   Calendar,
   Building2,
+  Play,
 } from 'lucide-react'
+import { BiaTestSuiteModal } from './BiaTestSuiteModal'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -55,6 +57,7 @@ export function BiaLearningsReviewPanel({
   const [loading, setLoading] = useState<boolean>(true)
   const [actionId, setActionId] = useState<string | null>(null)
   const [isConsolidating, setIsConsolidating] = useState<boolean>(false)
+  const [showTestSuiteModal, setShowTestSuiteModal] = useState<boolean>(false)
 
   // Filtros
   const [typeFilter, setTypeFilter] = useState<TypeFilterOption>('all')
@@ -483,7 +486,17 @@ export function BiaLearningsReviewPanel({
             )}
           >
             <ShieldCheck className="h-3 w-3 text-purple-500" />
-            <span>Constituição v4.0</span>
+            <span>Constituição v6.0 Soberana</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowTestSuiteModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold whitespace-nowrap transition-all border bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 dark:text-purple-200 dark:border-purple-700 shadow-xs ml-auto"
+            title="Executar Bateria de 22 Testes da Bia v6.0"
+          >
+            <Play className="h-3 w-3 fill-current text-purple-600 dark:text-purple-400" />
+            <span>Testar Bia v6.0 (22 Cenários)</span>
           </button>
         </div>
       </CardHeader>
@@ -768,6 +781,8 @@ export function BiaLearningsReviewPanel({
           </div>
         )}
       </CardContent>
+
+      <BiaTestSuiteModal open={showTestSuiteModal} onOpenChange={setShowTestSuiteModal} />
     </Card>
   )
 }
