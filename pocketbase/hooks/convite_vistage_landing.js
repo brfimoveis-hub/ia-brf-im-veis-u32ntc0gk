@@ -1,5 +1,5 @@
 // ============================================================================
-// CONVITE VISTAGE + LANDING PAGE — v2 (hook idempotente, escopo 100% inline)
+// CONVITE VISTAGE + LANDING PAGE — v3 (hook 100% inline, sem referências top-level)
 //
 // Parte 1: rota pública POST /backend/v1/landing-lead que grava o lead no CRM
 //          (coleção customers + conversa de entrada) a partir do formulário da
@@ -8,16 +8,17 @@
 // Parte 3: disparo do CONVITE com o link da landing page — cron a cada 15 min,
 //          SAI IMEDIATAMENTE se app_controls.key='convite_vistage' estiver
 //          is_active=false (criado PAUSADO por padrão). Regras respeitadas:
-//   - Janela de envio 8h–18h America/Sao_Paulo.
-//   - Ordem alfabética por `name` começando na letra 'a' (cursor alfabético).
+//   - Janela de envio 8h–18h America/Sao_Paulo (segunda a sábado, nunca domingo).
+//   - Ordem alfabética por `name` (cursor alfabético) para TODOS os contatos (~6356).
+//   - Disparo nasce DESLIGADO. Só liga manualmente pelo painel /configuracoes.
+//   - Guarda de 24h Meta: contatos cuja última conversa é Messenger/Instagram
+//     são registrados como 'convite_vistage_fora_janela' e NÃO recebem o disparo.
 //   - Cursor só avança com envio OK; falha grava em system_logs e NÃO avança
-//     (sem disparo retroativo em massa — lote pequeno por rodada).
-//   - Canal Messenger/Instagram Direct fora da janela de 24h do Meta: o contato
-//     é registrado como 'convite_vistage_fora_janela' e NÃO recebe promoção.
+//     (mantém o mesmo contato e registra erro visível, sem disparo retroativo em massa).
 //   - Envio somente pela WABA oficial do CRM (credenciais do usuário do banco).
 //
-// IMPORTANTE (escopo JSVM PocketBase): nenhuma função ou constante top-level
-// aqui — tudo inline dentro dos callbacks para evitar ReferenceError.
+// REQUISITO TÉCNICO (JSVM PocketBase): nenhuma função auxiliar ou constante fora
+// dos callbacks — tudo inline para garantir deploy 100% livre de ReferenceError.
 // ============================================================================
 
 routerAdd('POST /backend/v1/landing-lead', (e) => {
@@ -54,7 +55,7 @@ routerAdd('POST /backend/v1/landing-lead', (e) => {
     }
   } catch (_) {}
 
-  // Dedup por telefone: se já existe, apenas confirma (sem duplicar cadastro).
+  // Dedup por telefone: se já existe, apenas confirma (sem duplicar cadastro)
   try {
     var existing = app.findFirstRecordByFilter('customers', "phone = '" + digits + "'")
     if (existing) {
@@ -116,6 +117,10 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
   } catch (_) {
     ctrl = null
   }
+
+  var conviteTextoVerbatim =
+    'Como você já está na nossa lista de contatos, tomamos a liberdade de enviar um convite para conhecer esse lançamento. Talvez seja o seu momento de investir ou adquirir seu primeiro imóvel.'
+
   if (!ctrl) {
     try {
       var col = app.findCollectionByNameOrId('app_controls')
@@ -130,10 +135,10 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
       rec.set(
         'metadata',
         JSON.stringify({
-          mensagem:
-            'Como você já está na nossa lista de contatos, tomamos a liberdade de enviar um convite para conhecer esse lançamento. Talvez seja o seu momento de investir ou adquirir seu primeiro imóvel.',
-          link: '',
+          mensagem: conviteTextoVerbatim,
+          link: 'https://ia-uazapi-6d79e--preview.goskip.app/lancamento/vistage',
           cursor_nome: '',
+          ultimo_enviado_nome: '',
           total_enviados: 0,
         }),
       )
@@ -151,6 +156,7 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
   } catch (_) {
     isActive = false
   }
+  // Guarda absoluta: se não ativo, sai sem fazer nenhuma operação
   if (!isActive) {
     return
   }
@@ -162,18 +168,17 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
     meta = {}
   }
   var landingLink = String(meta.link || '').trim()
-  var mensagemPadrao =
-    'Como você já está na nossa lista de contatos, tomamos a liberdade de enviar um convite para conhecer esse lançamento. Talvez seja o seu momento de investir ou adquirir seu primeiro imóvel.'
   if (!landingLink) {
     console.warn('[CONVITE_VISTAGE] Ativo mas sem link da landing — saindo.')
     return
   }
 
-  // ---- Janela 8h–18h America/Sao_Paulo ----
+  // ---- Janela 8h–18h America/Sao_Paulo (UTC-3) ----
   var now = new Date()
   var brTime = new Date(now.getTime() - 3 * 3600000)
   var brHour = brTime.getHours()
   var brDay = brTime.getDay()
+  // Domingo (0) ou fora de 8h..17h59: não dispara
   if (brDay === 0 || brHour < 8 || brHour >= 18) {
     return
   }
@@ -196,15 +201,19 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
       activeUserId = usersWithMeta[0].id
     }
   } catch (_) {}
+
   if (!metaToken || !metaPhoneId) {
+    console.warn('[CONVITE_VISTAGE] Credenciais da Meta WABA não configuradas em users.')
     return
   }
 
-  // ---- Cursor alfabético: começa na letra 'a' ----
+  // ---- Cursor alfabético para TODOS os contatos da base (~6356) ----
+  // Se cursor_nome estiver vazio, inicia do começo da base
   var cursorNome = String(meta.cursor_nome || '').trim()
   var filtro = cursorNome
-    ? "name >= '" + cursorNome + "' && phone != '' && is_blocked = false"
+    ? "name >= '" + cursorNome.replace(/'/g, "''") + "' && phone != '' && is_blocked = false"
     : "phone != '' && is_blocked = false"
+
   var candidates = []
   try {
     candidates = app.findRecordsByFilter('customers', filtro, 'name', 10, 0)
@@ -212,12 +221,14 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
     console.error('[CONVITE_VISTAGE] Falha ao buscar candidatos: ' + String(fetchErr))
     return
   }
+
   if (!candidates || candidates.length === 0) {
     return
   }
 
   var sentOk = 0
   var envioOkNome = ''
+
   for (var i = 0; i < candidates.length; i++) {
     var cust = candidates[i]
     var custId = cust.id
@@ -225,8 +236,11 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
     if (phoneDigits.length === 10 || phoneDigits.length === 11) {
       phoneDigits = '55' + phoneDigits
     }
+    if (phoneDigits.length < 10) {
+      continue
+    }
 
-    // Guarda 24h Meta — última conversa por Messenger/Instagram Direct: NÃO envia
+    // Guarda 24h Meta: se a última conversa foi Messenger ou Instagram, NÃO envia convite
     var lastConvChannel = ''
     try {
       var lastConv = app.findRecordsByFilter(
@@ -245,13 +259,15 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
       try {
         var logsColFJ = app.findCollectionByNameOrId('system_logs')
         var logFJ = new Record(logsColFJ)
-        logFJ.set('user_id', activeUserId)
+        if (activeUserId) {
+          logFJ.set('user_id', activeUserId)
+        }
         logFJ.set('type', 'convite_vistage_fora_janela')
         logFJ.set(
           'message',
           'Contato ' +
             custId +
-            ' fora da janela 24h Meta — sem disparo (canal: ' +
+            ' fora da janela 24h Meta — convite não disparado (último canal: ' +
             lastConvChannel +
             ')',
         )
@@ -260,16 +276,18 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
       continue
     }
 
-    var msgFull =
-      'Como você já está na nossa lista de contatos, tomamos a liberdade de enviar um convite para conhecer esse lançamento. Talvez seja o seu momento de investir ou adquirir seu primeiro imóvel.\n\n' +
-      landingLink
+    var msgFull = conviteTextoVerbatim + '\n\n' + landingLink
 
     var okSend = false
+    var errorDetails = ''
     try {
       var res = $http.send({
         url: 'https://graph.facebook.com/v21.0/' + metaPhoneId + '/messages',
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + metaToken, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: 'Bearer ' + metaToken,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
@@ -281,15 +299,20 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
       })
       if (res && res.statusCode >= 200 && res.statusCode < 300) {
         okSend = true
+      } else {
+        errorDetails =
+          'HTTP ' + (res ? res.statusCode : 0) + ': ' + (res ? res.raw : 'Sem resposta')
       }
     } catch (sendErr) {
-      console.error('[CONVITE_VISTAGE] Erro de envio para ' + custId + ': ' + String(sendErr))
+      errorDetails = String(sendErr)
       okSend = false
     }
 
     if (okSend) {
       sentOk++
       envioOkNome = cust.getString('name')
+
+      // Registra conversa no histórico
       try {
         var convCol2 = app.findCollectionByNameOrId('conversations')
         var conv2 = new Record(convCol2)
@@ -302,41 +325,68 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
         conv2.set('content', msgFull)
         app.saveNoValidate(conv2)
       } catch (_) {}
+
+      // Atualiza last_follow_up_at do cliente
       try {
         cust.set('last_follow_up_at', new Date().toISOString())
         app.saveNoValidate(cust)
       } catch (_) {}
+
+      // Log de sucesso
+      try {
+        var logsColOk = app.findCollectionByNameOrId('system_logs')
+        var logOk = new Record(logsColOk)
+        if (activeUserId) {
+          logOk.set('user_id', activeUserId)
+        }
+        logOk.set('type', 'convite_vistage_sucesso')
+        logOk.set(
+          'message',
+          'Convite enviado com sucesso para ' + (cust.getString('name') || custId),
+        )
+        app.saveNoValidate(logOk)
+      } catch (_) {}
     } else {
-      // Falha: NÃO avança o cursor — registra e processa o mesmo nome na próxima rodada
+      // Falha: cursor NÃO avança. Registra log para o painel de configurações e para a rodada
       try {
         var logsCol2 = app.findCollectionByNameOrId('system_logs')
         var logFail = new Record(logsCol2)
-        logFail.set('user_id', activeUserId)
+        if (activeUserId) {
+          logFail.set('user_id', activeUserId)
+        }
         logFail.set('type', 'convite_vistage_falha')
         logFail.set(
           'message',
-          'Falha no envio do convite para ' + custId + ' — cursor NÃO avança, será reprocessado',
+          'Falha no envio para ' +
+            (cust.getString('name') || custId) +
+            ' (' +
+            phoneDigits +
+            '): ' +
+            errorDetails +
+            ' — cursor mantido',
         )
         app.saveNoValidate(logFail)
       } catch (_) {}
       break
     }
 
-    // Lote pequeno por rodada (sem disparo retroativo em massa)
+    // Limite prudente por ciclo de 15 min (máx 15 mensagens por rodada)
     if (sentOk >= 15) {
       break
     }
   }
 
   // ---- Avança cursor SÓ se houve envio OK nesta rodada ----
-  // aponta para o PRÓXIMO nome depois do último enviado (senão reenvia para o mesmo)
+  // Aponta para o PRÓXIMO nome após o último enviado
   if (sentOk > 0 && envioOkNome) {
     var novoMeta = meta || {}
     var proximoNome = ''
     try {
       var proxRecs = app.findRecordsByFilter(
         'customers',
-        "name > '" + String(envioOkNome).replace(/'/g, "''") + "' && phone != ''",
+        "name > '" +
+          String(envioOkNome).replace(/'/g, "''") +
+          "' && phone != '' && is_blocked = false",
         'name',
         1,
         0,
@@ -345,9 +395,11 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
         proximoNome = proxRecs[0].getString('name')
       }
     } catch (_) {}
+
     novoMeta.cursor_nome = proximoNome
     novoMeta.ultimo_enviado_nome = envioOkNome
     novoMeta.total_enviados = (parseInt(novoMeta.total_enviados || 0, 10) || 0) + sentOk
+
     try {
       ctrl.set('metadata', JSON.stringify(novoMeta))
       app.saveNoValidate(ctrl)

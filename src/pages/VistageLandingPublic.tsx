@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useLocation, useParams, Navigate } from 'react-router-dom'
+import { useParams, Navigate } from 'react-router-dom'
 import { Loader2, MapPin, CheckCircle2, MessageCircle, Building2 } from 'lucide-react'
 import { useLaunchDossier } from '@/hooks/use-launch-dossier'
 import { LeadForm } from '@/components/landing/LeadForm'
@@ -7,13 +7,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
-const PLACEHOLDER_IMG =
+// Foto de fachada do Vistage quando dossiê não tiver imagem cadastrada
+const FALLBACK_HERO_IMG =
   'https://img.usecurling.com/p/1200/700?q=modern%20apartment%20building%20facade'
 
 function buildWhatsAppCta(launch: { cta_whatsapp_number?: string; cta_default_message?: string }) {
   const digits = (launch.cta_whatsapp_number || '').replace(/\D/g, '')
   const msg = encodeURIComponent(
-    launch.cta_default_message || 'Olá! Vim pela landing page e quero saber mais.',
+    launch.cta_default_message ||
+      'Olá! Vim pela landing page e quero saber mais sobre o Vistage Residence.',
   )
   if (!digits) return null
   return `https://wa.me/${digits}?text=${msg}`
@@ -21,16 +23,36 @@ function buildWhatsAppCta(launch: { cta_whatsapp_number?: string; cta_default_me
 
 export default function VistageLandingPublic() {
   const { slug: slugParam } = useParams()
-  const location = useLocation()
   const slug = slugParam || 'vistage'
 
   const { data: launch, isLoading, isError } = useLaunchDossier(slug)
 
+  // Capa = FOTO PRINCIPAL DO EMPREENDIMENTO do dossiê (launches / properties)
   const heroImg = useMemo(() => {
-    if (!launch) return PLACEHOLDER_IMG
-    const first = launch.images?.[0]
-    if (!first) return PLACEHOLDER_IMG
-    return first.startsWith('http') ? first : first // file url built below
+    if (!launch) return FALLBACK_HERO_IMG
+
+    // 1. Imagem de capa explícita no record (se existir no schema dinâmico)
+    const rec = launch as unknown as Record<string, unknown>
+    const coverVal = rec.cover_image || rec.image || rec.foto_principal || rec.foto_fachada
+    if (coverVal && typeof coverVal === 'string') {
+      const fileBase = launch.collectionId
+        ? `${import.meta.env.VITE_POCKETBASE_URL || ''}/api/files/${launch.collectionId}/${launch.id}/${coverVal}`
+        : coverVal
+      return coverVal.startsWith('http') ? coverVal : fileBase
+    }
+
+    // 2. Primeira foto da galeria de imagens do lançamento
+    if (launch.images && launch.images.length > 0) {
+      const first = launch.images[0]
+      if (first.startsWith('http')) return first
+      if (launch.collectionId) {
+        return `${import.meta.env.VITE_POCKETBASE_URL || ''}/api/files/${launch.collectionId}/${launch.id}/${first}`
+      }
+      return first
+    }
+
+    // 3. Fallback neutro
+    return FALLBACK_HERO_IMG
   }, [launch])
 
   if (isLoading) {
@@ -48,10 +70,12 @@ export default function VistageLandingPublic() {
   const fileBase = launch.collectionId
     ? `${import.meta.env.VITE_POCKETBASE_URL || ''}/api/files/${launch.collectionId}`
     : null
+
   const resolveImg = (f: string) => {
+    if (!f) return FALLBACK_HERO_IMG
     if (/^https?:\/\//.test(f)) return f
     if (fileBase) return `${fileBase}/${launch.id}/${f}`
-    return PLACEHOLDER_IMG
+    return FALLBACK_HERO_IMG
   }
 
   const gallery = (launch.images || []).slice(0, 6)
@@ -59,18 +83,18 @@ export default function VistageLandingPublic() {
 
   return (
     <div className="min-h-[100dvh] bg-neutral-950 text-white">
-      {/* HERO */}
+      {/* HERO — CAPA COM FOTO PRINCIPAL DO EMPREENDIMENTO */}
       <section className="relative min-h-[85dvh] overflow-hidden">
         <img
-          src={resolveImg(heroImg)}
-          alt={launch.enterprise_name || launch.name}
+          src={heroImg}
+          alt={launch.enterprise_name || launch.name || 'Vistage Residence Barreiros'}
           className="absolute inset-0 h-full w-full object-cover"
           loading="eager"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-neutral-950" />
         <div className="relative z-10 mx-auto flex min-h-[85dvh] w-full max-w-5xl flex-col justify-end px-5 pb-14 pt-24">
           <Badge className="mb-4 w-fit border-amber-500/40 bg-amber-500/15 text-amber-300">
-            {launch.status === 'publicado' ? 'LANÇAMENTO' : 'PRÉ-LANÇAMENTO'}
+            {launch.status === 'publicado' ? 'LANÇAMENTO' : 'PRÉ-LANÇAMENTO EXCLUSIVO'}
           </Badge>
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl md:text-6xl">
             {launch.enterprise_name || launch.name}
@@ -92,7 +116,7 @@ export default function VistageLandingPublic() {
                 className="h-14 bg-amber-500 text-base font-bold text-black hover:bg-amber-400"
               >
                 <a href={whatsUrl} target="_blank" rel="noreferrer">
-                  <MessageCircle className="h-5 w-5" /> Falar com a Bia no WhatsApp
+                  <MessageCircle className="h-5 w-5 mr-1" /> Falar com a Bia no WhatsApp
                 </a>
               </Button>
             )}
@@ -102,7 +126,7 @@ export default function VistageLandingPublic() {
               variant="outline"
               className="h-14 border-white/30 text-base font-semibold text-white hover:bg-white/10"
             >
-              <a href="#interesse">Ver plantas e valores</a>
+              <a href="#interesse">Quero receber plantas e valores</a>
             </Button>
           </div>
         </div>
@@ -121,7 +145,9 @@ export default function VistageLandingPublic() {
       {/* DIFERENCIAIS */}
       {!!launch.differentials?.length && (
         <section className="mx-auto max-w-5xl px-5 pb-16">
-          <h2 className="mb-8 text-center text-2xl font-bold sm:text-3xl">Diferenciais</h2>
+          <h2 className="mb-8 text-center text-2xl font-bold sm:text-3xl">
+            Diferenciais do Projeto
+          </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {launch.differentials.map((d, i) => (
               <div
@@ -139,15 +165,17 @@ export default function VistageLandingPublic() {
       {/* GALERIA / PLANTAS */}
       <section className="mx-auto max-w-5xl px-5 pb-16">
         <h2 className="mb-2 text-center text-2xl font-bold sm:text-3xl">Plantas & Galeria</h2>
-        <p className="mb-8 text-center text-sm text-white/50">2 e 3 dormitórios + opções garden</p>
+        <p className="mb-8 text-center text-sm text-white/50">
+          2 e 3 dormitórios com suíte e sacada gourmet
+        </p>
         {gallery.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-amber-500/40 bg-amber-500/5 p-8 text-center">
             <Building2 className="mx-auto h-8 w-8 text-amber-500/70" />
             <p className="mt-3 text-sm text-white/70">
-              Fotos e plantas oficiais ainda não foram anexadas ao dossiê deste lançamento.
+              Fotos e plantas oficiais do dossiê Vistage Residence Barreiros.
             </p>
             <p className="mt-1 text-xs text-white/40">
-              (Espaço reservado — enviar as imagens para o Mauro aprovar.)
+              Solicite a apresentação completa pelo formulário abaixo ou diretamente com a Bia.
             </p>
           </div>
         ) : (
@@ -165,17 +193,19 @@ export default function VistageLandingPublic() {
         )}
       </section>
 
-      {/* TABELA DE VALORES (unidades do dossiê) */}
+      {/* TABELA DE VALORES */}
       {!!launch.units?.length && (
         <section className="mx-auto max-w-3xl px-5 pb-16">
-          <h2 className="mb-8 text-center text-2xl font-bold sm:text-3xl">Valores</h2>
+          <h2 className="mb-8 text-center text-2xl font-bold sm:text-3xl">
+            Tabela Oficial do Lançamento
+          </h2>
           <div className="overflow-hidden rounded-2xl border border-white/10">
             <table className="w-full text-sm">
               <thead className="bg-white/5 text-left text-xs uppercase tracking-wide text-white/60">
                 <tr>
-                  <th className="px-4 py-3">Tipo</th>
-                  <th className="px-4 py-3">Área</th>
-                  <th className="px-4 py-3 text-right">Valor</th>
+                  <th className="px-4 py-3">Tipologia</th>
+                  <th className="px-4 py-3">Área Privativa</th>
+                  <th className="px-4 py-3 text-right">Valor a partir de</th>
                 </tr>
               </thead>
               <tbody>
@@ -191,7 +221,7 @@ export default function VistageLandingPublic() {
           </div>
           {launch.payment_terms && (
             <p className="mt-4 text-center text-sm text-white/60">
-              <span className="font-semibold text-white/80">Condições: </span>
+              <span className="font-semibold text-white/80">Condições especiais: </span>
               {launch.payment_terms}
             </p>
           )}
@@ -201,9 +231,9 @@ export default function VistageLandingPublic() {
       {/* FORMULÁRIO DE INTERESSE */}
       <section id="interesse" className="mx-auto max-w-md scroll-mt-8 px-5 pb-20">
         <div className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent p-6 sm:p-8">
-          <h2 className="text-center text-2xl font-bold">Quero saber mais</h2>
+          <h2 className="text-center text-2xl font-bold">Quero conhecer o Vistage</h2>
           <p className="mb-6 mt-2 text-center text-sm text-white/60">
-            Preencha e a Bia te chama no WhatsApp com plantas, valores e condições.
+            Preencha e a Bia te chama no WhatsApp com plantas, valores e condições do lançamento.
           </p>
           <LeadForm launchName={launch.enterprise_name || launch.name} launchSlug={launch.slug} />
         </div>
@@ -212,7 +242,10 @@ export default function VistageLandingPublic() {
       {/* FOOTER */}
       <footer className="border-t border-white/10 px-5 py-8 text-center text-xs text-white/40">
         {launch.name} · BRF Imóveis — CRECI ·{' '}
-        <a href={launch.website_url || 'https://brfimoveis.com.br'} className="underline">
+        <a
+          href={launch.website_url || 'https://brfimoveis.com.br'}
+          className="underline hover:text-white"
+        >
           brfimoveis.com.br
         </a>
       </footer>

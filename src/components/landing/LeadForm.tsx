@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Loader2, Send } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { createCustomer } from '@/services/customers'
+import pb from '@/lib/pocketbase/client'
 
 interface LeadFormProps {
   launchName: string
@@ -32,15 +33,36 @@ export function LeadForm({ launchName, launchSlug }: LeadFormProps) {
     if (!isValid || loading) return
     setLoading(true)
     try {
-      await createCustomer({
-        name: nome.trim(),
-        phone: whatsapp.replace(/\D/g, ''),
-        source: 'Landing Page Vistage',
-        status: 'novo',
-        notes: `[LANDING ${launchName} / ${launchSlug}] ${mensagem.trim() || 'Interesse no lançamento'}`,
-        tags: ['landing_vistage'],
-        lead_profile: 'investidor',
-      })
+      // 1. Tenta POST no endpoint backend /landing-lead (cria customer + conversa para Bia)
+      let backendOk = false
+      try {
+        const res = await pb.send<{ ok: boolean }>('/backend/v1/landing-lead', {
+          method: 'POST',
+          body: {
+            name: nome.trim(),
+            phone: whatsapp.replace(/\D/g, ''),
+            message: `[LANDING ${launchName} / ${launchSlug}] ${mensagem.trim() || 'Interesse no lançamento'}`,
+          },
+        })
+        if (res && res.ok) {
+          backendOk = true
+        }
+      } catch {
+        backendOk = false
+      }
+
+      // 2. Se backend direto não responder, usa createCustomer via PocketBase SDK
+      if (!backendOk) {
+        await createCustomer({
+          name: nome.trim(),
+          phone: whatsapp.replace(/\D/g, ''),
+          source: 'Landing Page Vistage',
+          status: 'novo',
+          notes: `[LANDING ${launchName} / ${launchSlug}] ${mensagem.trim() || 'Interesse no lançamento'}`,
+          tags: ['landing_vistage'],
+          lead_profile: 'investidor',
+        })
+      }
       setDone(true)
       toast({
         title: 'Recebido!',
