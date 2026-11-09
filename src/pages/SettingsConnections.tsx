@@ -13,6 +13,7 @@ import { ConnectionHealthDashboard } from './SettingsConnections/ConnectionHealt
 import { InstagramConnect } from './SettingsConnections/InstagramConnect'
 import { MetaMessengerPageConnect } from './SettingsConnections/MetaMessengerPageConnect'
 import { VerifiableConnectionCard } from './SettingsConnections/VerifiableConnectionCard'
+import { ConviteLandingPanel } from '@/components/ConviteLandingPanel'
 import {
   MessageCircle,
   TrendingUp,
@@ -157,6 +158,10 @@ export default function SettingsConnections() {
 
       <ErrorBoundary logType="connection_health_error">
         <ConnectionHealthDashboard />
+      </ErrorBoundary>
+
+      <ErrorBoundary logType="convite_landing_panel_error">
+        <ConviteLandingPanel />
       </ErrorBoundary>
 
       <Tabs defaultValue="meta">

@@ -40,6 +40,7 @@ import ResetPassword from './pages/ResetPassword'
 import InstagramCallback from './pages/InstagramCallback'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import VistageLandingPage from './pages/VistageLandingPage'
+import VistageLandingPublic from './pages/VistageLandingPublic'
 
 const PageLoader = () => (
   <div className="flex h-[calc(100vh-4rem)] w-full items-center justify-center">
@@ -164,6 +165,22 @@ const router = createBrowserRouter([
       {
         path: 'vistage',
         element: <VistageLandingPage />,
+      },
+      {
+        path: 'lancamento/vistage',
+        element: (
+          <ErrorBoundary>
+            <VistageLandingPublic />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: 'lancamento/:slug',
+        element: (
+          <ErrorBoundary>
+            <VistageLandingPublic />
+          </ErrorBoundary>
+        ),
       },
       {
         path: 'privacidade',
