@@ -71,6 +71,26 @@ export async function getLaunchBySlug(slug: string): Promise<Launch | null> {
     const record = await pb.collection('launches').getFirstListItem<Launch>(`slug = "${slug}"`)
     return record
   } catch (e) {
+    // Fallback inteligente para variantes do Vistage (ex: rota /lancamento/vistage e slug no banco 'vistage-residence')
+    if (slug === 'vistage' || slug === 'vistage-residence') {
+      try {
+        const altSlug = slug === 'vistage' ? 'vistage-residence' : 'vistage'
+        const altRecord = await pb
+          .collection('launches')
+          .getFirstListItem<Launch>(`slug = "${altSlug}"`)
+        return altRecord
+      } catch {
+        /* intentionally ignored */
+      }
+      try {
+        const byName = await pb
+          .collection('launches')
+          .getFirstListItem<Launch>(`name ~ 'Vistage' || enterprise_name ~ 'Vistage'`)
+        return byName
+      } catch {
+        /* intentionally ignored */
+      }
+    }
     console.warn(`Lançamento não encontrado para o slug: ${slug}`, e)
     return null
   }

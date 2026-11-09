@@ -33,7 +33,8 @@ export default function VistageLandingPublic() {
 
     // 1. Imagem de capa explícita no record (se existir no schema dinâmico)
     const rec = launch as unknown as Record<string, unknown>
-    const coverVal = rec.cover_image || rec.image || rec.foto_principal || rec.foto_fachada
+    const coverVal =
+      rec.cover_image || rec.image || rec.foto_principal || rec.foto_fachada || rec.image_url
     if (coverVal && typeof coverVal === 'string') {
       const fileBase = launch.collectionId
         ? `${import.meta.env.VITE_POCKETBASE_URL || ''}/api/files/${launch.collectionId}/${launch.id}/${coverVal}`
@@ -51,9 +52,18 @@ export default function VistageLandingPublic() {
       return first
     }
 
-    // 3. Fallback neutro
+    // 3. Foto oficial do empreendimento no catálogo da BRF Imóveis (Vistage Residence Barreiros - AJ Coelho)
+    const isVistage =
+      slug.includes('vistage') ||
+      (launch.name && launch.name.toLowerCase().includes('vistage')) ||
+      (launch.enterprise_name && launch.enterprise_name.toLowerCase().includes('vistage'))
+    if (isVistage) {
+      return 'https://www.brfimoveis.com.br/admin/imovel/mini/20260831T1600430300-579711422.jpg'
+    }
+
+    // 4. Fallback neutro
     return FALLBACK_HERO_IMG
-  }, [launch])
+  }, [launch, slug])
 
   if (isLoading) {
     return (
