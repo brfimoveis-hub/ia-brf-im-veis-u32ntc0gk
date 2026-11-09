@@ -1,11 +1,17 @@
 import { useMemo } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
-import { Loader2, MapPin, CheckCircle2, MessageCircle, Building2 } from 'lucide-react'
+import { Loader2, MapPin, CheckCircle2, MessageCircle } from 'lucide-react'
 import { useLaunchDossier } from '@/hooks/use-launch-dossier'
 import { LeadForm } from '@/components/landing/LeadForm'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+
+// Fotos oficiais de Lazer e Áreas Comuns do Vistage enviadas pelo Mauro
+// Sequência: (1) Piscina/rooftop cascata, (2) Salão Gourmet/jogos, (3) Lobby recepção madeira
+import fotoPiscinaRooftop from '@/assets/30-5e980.png'
+import fotoSalaoGourmet from '@/assets/24-94861.png'
+import fotoLobbyRecepcao from '@/assets/22-a73bf.png'
 
 // Foto de fachada do Vistage quando dossiê não tiver imagem cadastrada
 const FALLBACK_HERO_IMG =
@@ -65,6 +71,58 @@ export default function VistageLandingPublic() {
     return FALLBACK_HERO_IMG
   }, [launch, slug])
 
+  // Galeria de Lazer & Áreas Comuns na sequência oficial definida pelo Mauro:
+  // 1. Piscina coberta / rooftop com cascata e tijolinho
+  // 2. Salão de festas gourmet com churrasqueira, bar e mesa de jogos
+  // 3. Lobby / recepção com painel de madeira e sofás cinza
+  const gallery = useMemo(() => {
+    const defaultPhotos = [
+      {
+        src: fotoPiscinaRooftop,
+        alt: 'Piscina no Rooftop com cascata e tijolinho — Vistage Residence',
+        title: 'Piscina no Rooftop & Cascata',
+      },
+      {
+        src: fotoSalaoGourmet,
+        alt: 'Salão de festas gourmet com bar e mesa de jogos — Vistage Residence',
+        title: 'Salão Gourmet & Jogos',
+      },
+      {
+        src: fotoLobbyRecepcao,
+        alt: 'Lobby e recepção com painel de madeira e sofás cinza — Vistage Residence',
+        title: 'Lobby & Recepção',
+      },
+    ]
+
+    if (!launch) return defaultPhotos
+
+    const fileBase = launch.collectionId
+      ? `${import.meta.env.VITE_POCKETBASE_URL || ''}/api/files/${launch.collectionId}`
+      : null
+
+    const resolveImg = (f: string) => {
+      if (!f) return FALLBACK_HERO_IMG
+      if (/^https?:\/\//.test(f)) return f
+      if (fileBase) return `${fileBase}/${launch.id}/${f}`
+      return FALLBACK_HERO_IMG
+    }
+
+    // Se houver fotos adicionais válidas cadastradas no dossiê que não sejam repetidas
+    const extraPhotos = (launch.images || [])
+      .map((f, i) => {
+        const resolved = resolveImg(f)
+        if (!resolved || resolved === FALLBACK_HERO_IMG) return null
+        return {
+          src: resolved,
+          alt: `${launch.enterprise_name || launch.name} — foto ${i + 1}`,
+          title: `Área Comum ${i + 1}`,
+        }
+      })
+      .filter((item): item is { src: string; alt: string; title: string } => item !== null)
+
+    return [...defaultPhotos, ...extraPhotos]
+  }, [launch])
+
   if (isLoading) {
     return (
       <div className="flex min-h-[100dvh] items-center justify-center bg-neutral-950">
@@ -77,18 +135,6 @@ export default function VistageLandingPublic() {
     return <Navigate to="/404" replace />
   }
 
-  const fileBase = launch.collectionId
-    ? `${import.meta.env.VITE_POCKETBASE_URL || ''}/api/files/${launch.collectionId}`
-    : null
-
-  const resolveImg = (f: string) => {
-    if (!f) return FALLBACK_HERO_IMG
-    if (/^https?:\/\//.test(f)) return f
-    if (fileBase) return `${fileBase}/${launch.id}/${f}`
-    return FALLBACK_HERO_IMG
-  }
-
-  const gallery = (launch.images || []).slice(0, 6)
   const whatsUrl = buildWhatsAppCta(launch)
 
   return (
@@ -172,35 +218,31 @@ export default function VistageLandingPublic() {
         </section>
       )}
 
-      {/* GALERIA / PLANTAS */}
+      {/* LAZER & ÁREAS COMUNS (GALERIA) */}
       <section className="mx-auto max-w-5xl px-5 pb-16">
-        <h2 className="mb-2 text-center text-2xl font-bold sm:text-3xl">Plantas & Galeria</h2>
+        <h2 className="mb-2 text-center text-2xl font-bold sm:text-3xl">Lazer & Áreas Comuns</h2>
         <p className="mb-8 text-center text-sm text-white/50">
-          2 e 3 dormitórios com suíte e sacada gourmet
+          Estrutura completa entregue equipada, decorada e climatizada
         </p>
-        {gallery.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-amber-500/40 bg-amber-500/5 p-8 text-center">
-            <Building2 className="mx-auto h-8 w-8 text-amber-500/70" />
-            <p className="mt-3 text-sm text-white/70">
-              Fotos e plantas oficiais do dossiê Vistage Residence Barreiros.
-            </p>
-            <p className="mt-1 text-xs text-white/40">
-              Solicite a apresentação completa pelo formulário abaixo ou diretamente com a Bia.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {gallery.map((f, i) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+          {gallery.map((photo, i) => (
+            <div
+              key={i}
+              className="group relative overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 shadow-lg"
+            >
               <img
-                key={i}
-                src={resolveImg(f)}
-                alt={`${launch.enterprise_name || launch.name} — imagem ${i + 1}`}
-                loading="lazy"
-                className="aspect-[4/3] w-full rounded-xl object-cover"
+                src={photo.src}
+                alt={photo.alt}
+                loading={i === 0 ? 'eager' : 'lazy'}
+                className="aspect-[4/3] w-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
-            ))}
-          </div>
-        )}
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3.5 pt-8">
+                <p className="text-sm font-semibold text-white drop-shadow-xs">{photo.title}</p>
+                <p className="text-[11px] text-white/70">Vistage Residence</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* TABELA DE VALORES */}
