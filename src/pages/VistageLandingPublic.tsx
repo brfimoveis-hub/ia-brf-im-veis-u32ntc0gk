@@ -245,40 +245,25 @@ export default function VistageLandingPublic() {
         </div>
       </section>
 
-      {/* TABELA DE VALORES */}
-      {!!launch.units?.length && (
-        <section className="mx-auto max-w-3xl px-5 pb-16">
-          <h2 className="mb-8 text-center text-2xl font-bold sm:text-3xl">
-            Tabela Oficial do Lançamento
-          </h2>
-          <div className="overflow-hidden rounded-2xl border border-white/10">
-            <table className="w-full text-sm">
-              <thead className="bg-white/5 text-left text-xs uppercase tracking-wide text-white/60">
-                <tr>
-                  <th className="px-4 py-3">Tipologia</th>
-                  <th className="px-4 py-3">Área Privativa</th>
-                  <th className="px-4 py-3 text-right">Valor a partir de</th>
-                </tr>
-              </thead>
-              <tbody>
-                {launch.units.map((u, i) => (
-                  <tr key={i} className={cn('border-t border-white/5', i % 2 && 'bg-white/[0.02]')}>
-                    <td className="px-4 py-3 font-medium">{u.typology}</td>
-                    <td className="px-4 py-3 text-white/70">{u.area}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-amber-400">{u.price}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* CTA DE VALORES E DISPONIBILIDADE */}
+      <section className="mx-auto max-w-3xl px-5 pb-16">
+        <div className="rounded-3xl border border-amber-500/30 bg-gradient-to-b from-amber-500/10 via-white/[0.03] to-transparent p-8 text-center sm:p-10">
+          <h2 className="text-2xl font-bold sm:text-3xl">Consulte valores e disponibilidade</h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm text-white/70 sm:text-base">
+            Receba as plantas detalhadas, tabela atualizada e condições especiais de pagamento
+            diretamente com a nossa equipe no WhatsApp.
+          </p>
+          <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Button
+              asChild
+              size="lg"
+              className="h-13 bg-amber-500 px-8 text-base font-bold text-black hover:bg-amber-400"
+            >
+              <a href="#interesse">Quero consultar valores e disponibilidade</a>
+            </Button>
           </div>
-          {launch.payment_terms && (
-            <p className="mt-4 text-center text-sm text-white/60">
-              <span className="font-semibold text-white/80">Condições especiais: </span>
-              {launch.payment_terms}
-            </p>
-          )}
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* FORMULÁRIO DE INTERESSE */}
       <section id="interesse" className="mx-auto max-w-md scroll-mt-8 px-5 pb-20">
