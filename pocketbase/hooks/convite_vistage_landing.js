@@ -32,7 +32,9 @@ routerAdd('POST /backend/v1/landing-lead', (e) => {
 
   var nome = String(body.name || body.nome || '').trim()
   var fone = String(body.phone || body.whatsapp || body.telefone || '').trim()
+  var email = String(body.email || '').trim()
   var msg = String(body.message || body.mensagem || '').trim()
+  var campaignSource = String(body.campaign_source || body.source || 'landing_vistage').trim()
 
   if (nome.length < 2) {
     e.json(400, { ok: false, error: 'Informe seu nome.' })
@@ -57,31 +59,51 @@ routerAdd('POST /backend/v1/landing-lead', (e) => {
 
   // Dedup por telefone: se já existe, apenas confirma (sem duplicar cadastro)
   try {
-    var existing = app.findFirstRecordByFilter('customers', "phone = '" + digits + "'")
-    if (existing) {
-      e.json(200, { ok: true, duplicated: true })
-      return
-    }
-  } catch (_) {}
+    var existing = null
+    try {
+      existing = app.findFirstRecordByFilter('customers', "phone = '" + digits + "'")
+    } catch (_) {}
 
-  try {
-    var custCol = app.findCollectionByNameOrId('customers')
-    var cust = new Record(custCol)
+    var cust = existing
+    var isNew = false
+
+    if (!cust) {
+      isNew = true
+      var custCol = app.findCollectionByNameOrId('customers')
+      cust = new Record(custCol)
+      cust.set('phone', digits)
+      cust.set('status', 'novo')
+      cust.set('phase', 'lead_landing')
+      cust.set('is_blocked', false)
+    }
+
     cust.set('name', nome)
     var first = (nome.split(' ')[0] || nome).trim()
     cust.set('first_name', first)
-    cust.set('phone', digits)
-    cust.set('status', 'novo')
-    cust.set('phase', 'lead_landing')
-    cust.set('source', 'landing_page')
-    cust.set('is_blocked', false)
+    if (email) {
+      cust.set('email', email)
+    }
+    cust.set('source', campaignSource)
     if (userRec) {
       cust.set('user_id', userRec.id)
     }
-    cust.set('tags', JSON.stringify(['landing_vistage']))
+
+    var existingTags = []
+    try {
+      var rawT = cust.get('tags')
+      if (Array.isArray(rawT)) existingTags = rawT
+      else if (typeof rawT === 'string' && rawT.startsWith('[')) existingTags = JSON.parse(rawT)
+    } catch (_) {}
+
+    if (!existingTags.includes(campaignSource)) existingTags.push(campaignSource)
+    if (!existingTags.includes('lead_campanha')) existingTags.push('lead_campanha')
+    cust.set('tags', JSON.stringify(existingTags))
+
+    // Inicializa follow_up_step da campanha
+    cust.set('follow_up_step', 'remarketing')
     app.saveNoValidate(cust)
 
-    // Conversa de entrada para dar contexto à Bia
+    // Conversa de entrada do lead capturado
     try {
       var convCol = app.findCollectionByNameOrId('conversations')
       var conv = new Record(convCol)
@@ -93,15 +115,38 @@ routerAdd('POST /backend/v1/landing-lead', (e) => {
       conv.set('channel', 'landing_page')
       conv.set(
         'content',
-        'Lead da landing page Vistage Residence: ' + (msg || nome + ' quer conhecer o lançamento.'),
+        'Lead da landing page Vistage Residence (' +
+          campaignSource +
+          '): ' +
+          (msg || nome + ' preencheu formulário e solicitou material/ebook do Vistage.'),
       )
       app.saveNoValidate(conv)
     } catch (_) {}
 
-    e.json(200, { ok: true, id: cust.id })
+    // Resposta imediata da Bia com entrega do Ebook da campanha
+    try {
+      var convBia = new Record(app.findCollectionByNameOrId('conversations'))
+      if (userRec) {
+        convBia.set('user_id', userRec.id)
+      }
+      convBia.set('customer_id', cust.id)
+      convBia.set('sender', 'bia')
+      convBia.set('channel', 'whatsapp')
+      var biaGreeting = first ? 'Olá, ' + first + '! ' : 'Olá! '
+      convBia.set(
+        'content',
+        biaGreeting +
+          'Aqui é a Bia, consultora da BRF Imóveis. Conforme solicitado na landing page do Vistage Residence, estou te encaminhando o material exclusivo do empreendimento com apresentação completa e plantas.\n\n' +
+          '📖 Acesse o book digital: https://ia-uazapi-6d79e--preview.goskip.app/assets/vistage_ebook.pdf\n\n' +
+          'Lembrando que os valores de referência partem de R$ 607.880 para 2 dormitórios e R$ 929.844 para 3 dormitórios (valores atualizados pelo CUB). Ficou com alguma dúvida sobre as plantas ou fluxo na planta com a AJ Coelho?',
+      )
+      app.saveNoValidate(convBia)
+    } catch (_) {}
+
+    e.json(200, { ok: true, id: cust.id, isNew: isNew })
     return
   } catch (err) {
-    console.error('[LANDING_LEAD] Falha ao gravar lead: ' + String(err))
+    console.error('[LANDING_LEAD] Falha ao processar lead da campanha: ' + String(err))
     e.json(500, { ok: false, error: 'Falha ao gravar. Tente novamente.' })
     return
   }
