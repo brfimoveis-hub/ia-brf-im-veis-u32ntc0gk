@@ -25,7 +25,12 @@ export interface ReguaControlState {
   record_id?: string
 }
 
-export function ReguaPauseControl() {
+export interface ReguaPauseControlProps {
+  className?: string
+  compact?: boolean
+}
+
+export function ReguaPauseControl({ className, compact = false }: ReguaPauseControlProps = {}) {
   const [controlState, setControlState] = useState<ReguaControlState | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionInProgress, setActionInProgress] = useState(false)
@@ -146,50 +151,52 @@ export function ReguaPauseControl() {
     <>
       <div
         className={cn(
-          'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs shadow-xs transition-colors',
+          'flex items-center gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border text-xs shadow-xs transition-colors shrink-0',
           isPaused
-            ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200'
+            ? 'bg-amber-500/15 border-amber-500/40 text-amber-950 dark:text-amber-200'
             : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200',
+          className,
         )}
       >
         <div className="flex items-center gap-1.5">
           {isPaused ? (
             <span
-              className="flex h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse"
-              title="Régua pausada: nenhum envio automático sai"
+              className="flex h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse shrink-0"
+              title="Envio da Bia Pausado: nenhuma resposta automática ou régua sai"
             />
           ) : (
             <span
-              className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"
-              title="Régua ativa: disparos programados em andamento"
+              className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"
+              title="Envio da Bia Ativo: respostas e régua em andamento"
             />
           )}
 
           <div className="flex flex-col text-left">
-            <span className="font-semibold flex items-center gap-1">
-              Régua Automática:
+            <span className="font-semibold flex items-center gap-1 text-[11px] sm:text-xs">
+              {compact ? 'Envio Bia:' : 'Envio da Bia / Régua:'}
               <Badge
                 variant="outline"
                 className={cn(
                   'text-[10px] px-1.5 py-0 uppercase font-bold tracking-wider',
                   isPaused
-                    ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                    ? 'bg-amber-500/25 text-amber-800 dark:text-amber-200 border-amber-500/50'
                     : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40',
                 )}
               >
-                {loading ? 'Checando...' : isPaused ? 'Pausada' : 'Ativa'}
+                {loading ? 'Checando...' : isPaused ? 'Pausado' : 'Ativo'}
               </Badge>
             </span>
 
-            {isPaused ? (
-              <span className="text-[10px] text-amber-700 dark:text-amber-300/80 leading-none mt-0.5">
-                Envios travados (fila preservada)
-              </span>
-            ) : (
-              <span className="text-[10px] text-emerald-700 dark:text-emerald-300/80 leading-none mt-0.5">
-                Disparos em janela comercial
-              </span>
-            )}
+            {!compact &&
+              (isPaused ? (
+                <span className="text-[10px] text-amber-800 dark:text-amber-300 font-medium leading-none mt-0.5">
+                  Respostas e régua travados (fila preservada)
+                </span>
+              ) : (
+                <span className="text-[10px] text-emerald-700 dark:text-emerald-300/80 leading-none mt-0.5">
+                  Respostas imediatas e régua comercial ativas
+                </span>
+              ))}
           </div>
         </div>
 
@@ -199,15 +206,15 @@ export function ReguaPauseControl() {
             size="sm"
             onClick={() => handleToggleClick('resume')}
             disabled={loading || actionInProgress}
-            className="h-7 text-xs px-2.5 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
-            title="Retomar envios da régua comercial e remarketing"
+            className="h-7 text-xs px-2 sm:px-2.5 gap-1 sm:gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs shrink-0"
+            title="Retomar envios da Bia (respostas automáticas e régua de remarketing)"
           >
             {actionInProgress ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Play className="h-3.5 w-3.5 fill-current" />
             )}
-            <span>Retomar Régua</span>
+            <span>Retomar Envio</span>
           </Button>
         ) : (
           <Button
@@ -215,15 +222,15 @@ export function ReguaPauseControl() {
             variant="destructive"
             onClick={() => handleToggleClick('pause')}
             disabled={loading || actionInProgress}
-            className="h-7 text-xs px-2.5 gap-1.5 font-medium shadow-xs"
-            title="Pausar envios imediatamente (freia disparos em andamento)"
+            className="h-7 text-xs px-2 sm:px-2.5 gap-1 sm:gap-1.5 font-bold shadow-xs shrink-0"
+            title="Pausar envio da Bia imediatamente (freia disparos e respostas em andamento)"
           >
             {actionInProgress ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Pause className="h-3.5 w-3.5 fill-current" />
             )}
-            <span>Parar Envio Agora</span>
+            <span>Parar Envio</span>
           </Button>
         )}
       </div>
@@ -236,27 +243,28 @@ export function ReguaPauseControl() {
               {pendingAction === 'pause' ? (
                 <>
                   <AlertTriangle className="h-5 w-5 text-amber-500" />
-                  <span>Pausar Régua e Automações de Envio?</span>
+                  <span>Pausar Envio da Bia e Automações?</span>
                 </>
               ) : (
                 <>
                   <ShieldCheck className="h-5 w-5 text-emerald-600" />
-                  <span>Retomar Régua de Automações?</span>
+                  <span>Retomar Envio da Bia e Automações?</span>
                 </>
               )}
             </DialogTitle>
             <DialogDescription className="text-sm pt-2">
               {pendingAction === 'pause' ? (
                 <span>
-                  Todos os envios automáticos (régua de persistência D+1/D+3/D+7/D+14/mensal,
-                  campanhas de remarketing e ações de e-book) serão <strong>parados na hora</strong>
-                  . A fila agendada continuará intacta para sair quando você retomar.
+                  Todos os envios da Bia (respostas automáticas a clientes, régua de persistência
+                  D+1/D+3/D+7/D+14/mensal, campanhas de remarketing e ações de e-book) serão{' '}
+                  <strong>parados na hora</strong>. Nenhuma mensagem nova sairá enquanto pausado. O
+                  histórico e a fila continuam intactos.
                 </span>
               ) : (
                 <span>
-                  A régua comercial será <strong>reativada</strong>. Os envios agendados voltarão a
-                  processar normalmente dentro da janela de horário comercial (8h às 18h)
-                  respeitando o limite seguro anti-flood.
+                  O envio automático da Bia e a régua comercial serão <strong>reativados</strong>. A
+                  Bia voltará a responder às conversas recebidas e os envios de régua programados
+                  sairão normalmente na janela comercial, sem disparos retroativos em massa.
                 </span>
               )}
             </DialogDescription>

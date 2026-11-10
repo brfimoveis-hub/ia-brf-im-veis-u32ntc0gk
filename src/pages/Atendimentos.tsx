@@ -1053,7 +1053,7 @@ function Atendimentos() {
           </div>
         </div>
 
-        <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 self-start sm:self-auto">
+        <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 self-start sm:self-auto w-full sm:w-auto justify-between sm:justify-end">
           {/* Botão de Importação Rápida de Lead de Portais Externos */}
           <ImportPortalLeadModal
             onSuccess={(newCustId) => {
@@ -1064,7 +1064,7 @@ function Atendimentos() {
             }}
           />
 
-          {/* Controle Manual URGENTE de Parar/Retomar Régua */}
+          {/* Controle Manual URGENTE de Parar/Retomar Envio da Bia e Régua (KILL-SWITCH VISÍVEL) */}
           <ReguaPauseControl />
 
           {/* Controle de Reenvio Dirigido de E-book */}
@@ -1479,6 +1479,8 @@ function Atendimentos() {
                       </span>
                     </div>
                   </div>
+                  {/* Botão de emergência direto no topo da conversa para garantir que Mauro possa parar mesmo com conversa aberta no mobile */}
+                  <ReguaPauseControl compact className="scale-95 origin-right" />
                 </div>
               </div>
               {/* TRILHA DE CADÊNCIA DENTRO DA CONVERSA (Mobile-First no Topo do Chat) */}

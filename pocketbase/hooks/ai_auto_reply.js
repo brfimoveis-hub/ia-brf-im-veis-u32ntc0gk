@@ -836,6 +836,46 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
 
+    // Kill-switch global: se as automações / envios da Bia estiverem pausados em app_controls (regua_automations_active == false),
+    // a Bia suspende respostas automáticas imediatamente, conforme regra e solicitação urgente do Mauro.
+    let globalAutomationsActive = true
+    try {
+      if (typeof isReguaAutomationsActive === 'function') {
+        globalAutomationsActive = isReguaAutomationsActive($app)
+      } else {
+        const ctrl = $app.findFirstRecordByFilter(
+          'app_controls',
+          "key = 'regua_automations_active'",
+        )
+        if (ctrl) {
+          globalAutomationsActive = !!ctrl.getBool('is_active')
+        }
+      }
+    } catch (_) {}
+
+    if (!globalAutomationsActive) {
+      console.log(
+        `[AI_REPLY] Message deferred: global automations/Bia paused (regua_automations_active=false)`,
+      )
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const log = new Record(logsCol)
+        log.set('user_id', userId || '')
+        log.set('type', 'ai_reply_deferred_global_paused')
+        log.set(
+          'message',
+          'Bia em pausa: botão Parar Envio ativo (app_controls.regua_automations_active = false)',
+        )
+        log.set(
+          'details',
+          `Mensagem de ${customerPhone} adiada enquanto o envio da Bia estiver pausado. Fila preservada.`,
+        )
+        log.set('payload', JSON.stringify({ customer_id: customerId }))
+        $app.saveNoValidate(log)
+      } catch (_) {}
+      return e.next()
+    }
+
     const isWhatsAppDirect = conversationChannel === 'whatsapp' || !conversationChannel
     const isMessengerChannel = conversationChannel === 'messenger'
     const isInstagramChannel = conversationChannel === 'instagram'
