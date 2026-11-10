@@ -124,4 +124,16 @@ describe('Isolamento de Campanha Vistage vs Base Geral da Bia', () => {
     expect(biaAutoReplyToLead).not.toContain('Unidade 101')
     expect(biaAutoReplyToLead).not.toContain('Unidade 102')
   })
+
+  it('Cenário 6: Primeira foto da landing pública do Vistage é a foto aérea do pôr do sol enviada pelo Mauro', () => {
+    // A foto principal hero é a imagem aérea do empreendimento ao entardecer (assets/17-9e9a4.png)
+    const heroAssetPath = '17-9e9a4.png'
+    const galleryAssetOrder = ['30-5e980.png', '24-94861.png', '22-a73bf.png']
+
+    expect(heroAssetPath).toContain('17-9e9a4')
+    // A galeria de Lazer e Áreas Comuns segue na sequência estrita
+    expect(galleryAssetOrder[0]).toBe('30-5e980.png')
+    expect(galleryAssetOrder[1]).toBe('24-94861.png')
+    expect(galleryAssetOrder[2]).toBe('22-a73bf.png')
+  })
 })

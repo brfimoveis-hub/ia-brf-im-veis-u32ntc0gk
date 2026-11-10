@@ -14,15 +14,17 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
+// Foto aérea noturna/crepúsculo oficial do Vistage Residence Barreiros enviada pelo Mauro
+import fotoHeroVistageAerea from '@/assets/17-9e9a4.png'
+
 // Fotos oficiais de Lazer e Áreas Comuns do Vistage enviadas pelo Mauro
 // Sequência: (1) Piscina/rooftop cascata, (2) Salão Gourmet/jogos, (3) Lobby recepção madeira
 import fotoPiscinaRooftop from '@/assets/30-5e980.png'
 import fotoSalaoGourmet from '@/assets/24-94861.png'
 import fotoLobbyRecepcao from '@/assets/22-a73bf.png'
 
-// Foto de fachada do Vistage quando dossiê não tiver imagem cadastrada
-const FALLBACK_HERO_IMG =
-  'https://img.usecurling.com/p/1200/700?q=modern%20apartment%20building%20facade'
+// Foto de fachada fallback do Vistage
+const FALLBACK_HERO_IMG = fotoHeroVistageAerea
 
 function buildWhatsAppCta(launch: { cta_whatsapp_number?: string; cta_default_message?: string }) {
   const digits = (launch.cta_whatsapp_number || '').replace(/\D/g, '')
@@ -50,7 +52,18 @@ export default function VistageLandingPublic() {
   }
 
   // Capa = FOTO PRINCIPAL DO EMPREENDIMENTO do dossiê (launches / properties)
+  // Regra expressa do Mauro: a primeira foto do hero do Vistage Residence Barreiros
+  // é a foto aérea crepuscular com o edifício em destaque, céu alaranjado e rastro de luzes.
   const heroImg = useMemo(() => {
+    const isVistage =
+      slug.includes('vistage') ||
+      (launch?.name && launch.name.toLowerCase().includes('vistage')) ||
+      (launch?.enterprise_name && launch.enterprise_name.toLowerCase().includes('vistage'))
+
+    if (isVistage) {
+      return fotoHeroVistageAerea
+    }
+
     if (!launch) return FALLBACK_HERO_IMG
 
     // 1. Imagem de capa explícita no record (se existir no schema dinâmico)
@@ -74,16 +87,7 @@ export default function VistageLandingPublic() {
       return first
     }
 
-    // 3. Foto oficial do empreendimento no catálogo da BRF Imóveis (Vistage Residence Barreiros - AJ Coelho)
-    const isVistage =
-      slug.includes('vistage') ||
-      (launch.name && launch.name.toLowerCase().includes('vistage')) ||
-      (launch.enterprise_name && launch.enterprise_name.toLowerCase().includes('vistage'))
-    if (isVistage) {
-      return 'https://www.brfimoveis.com.br/admin/imovel/mini/20260831T1600430300-579711422.jpg'
-    }
-
-    // 4. Fallback neutro
+    // 3. Fallback
     return FALLBACK_HERO_IMG
   }, [launch, slug])
 
