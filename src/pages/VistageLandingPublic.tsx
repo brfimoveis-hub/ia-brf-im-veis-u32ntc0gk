@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
 import { Loader2, MapPin, CheckCircle2, MessageCircle, HelpCircle } from 'lucide-react'
 import { useLaunchDossier } from '@/hooks/use-launch-dossier'
@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
-// Foto aérea noturna/crepúsculo oficial do Vistage Residence Barreiros enviada pelo Mauro
+// Foto aérea noturna/crepúsculo oficial do Residencial Vistage Residence enviada pelo Mauro
 import fotoHeroVistageAerea from '@/assets/17-9e9a4.png'
 
 // Fotos oficiais de Lazer e Áreas Comuns do Vistage enviadas pelo Mauro
@@ -23,6 +23,9 @@ import fotoPiscinaRooftop from '@/assets/30-5e980.png'
 import fotoSalaoGourmet from '@/assets/24-94861.png'
 import fotoLobbyRecepcao from '@/assets/22-a73bf.png'
 
+// Nome oficial do empreendimento — decidido pelo Mauro (nunca "Vistage Residence Barreiros" sozinho)
+export const VISTAGE_NOME_OFICIAL = 'Residencial Vistage Residence'
+
 // Foto de fachada fallback do Vistage
 const FALLBACK_HERO_IMG = fotoHeroVistageAerea
 
@@ -30,7 +33,7 @@ function buildWhatsAppCta(launch: { cta_whatsapp_number?: string; cta_default_me
   const digits = (launch.cta_whatsapp_number || '').replace(/\D/g, '')
   const msg = encodeURIComponent(
     launch.cta_default_message ||
-      'Olá! Vim pela landing page e quero saber mais sobre o Vistage Residence.',
+      `Olá! Vim pela landing page e quero saber mais sobre o ${VISTAGE_NOME_OFICIAL}.`,
   )
   if (!digits) return null
   return `https://wa.me/${digits}?text=${msg}`
@@ -42,6 +45,18 @@ export default function VistageLandingPublic() {
 
   const { data: launch, isLoading, isError } = useLaunchDossier(slug)
 
+  // Título da página / meta SEO — sempre o nome oficial do empreendimento
+  useEffect(() => {
+    document.title = `${VISTAGE_NOME_OFICIAL} | BRF Imóveis`
+    const meta = document.querySelector('meta[name="description"]')
+    if (meta) {
+      meta.setAttribute(
+        'content',
+        `${VISTAGE_NOME_OFICIAL} em São José/SC — apartamentos de alto padrão a partir de R$ 607.880. Fale com a Bia e receba plantas e valores atualizados.`,
+      )
+    }
+  }, [])
+
   // Estado do diálogo de captura ativado por CTAs e perguntas do FAQ
   const [modalOpen, setModalOpen] = useState(false)
   const [modalContext, setModalContext] = useState<string>('')
@@ -52,7 +67,7 @@ export default function VistageLandingPublic() {
   }
 
   // Capa = FOTO PRINCIPAL DO EMPREENDIMENTO do dossiê (launches / properties)
-  // Regra expressa do Mauro: a primeira foto do hero do Vistage Residence Barreiros
+  // Regra expressa do Mauro: a primeira foto do hero do Residencial Vistage Residence
   // é a foto aérea crepuscular com o edifício em destaque, céu alaranjado e rastro de luzes.
   const heroImg = useMemo(() => {
     const isVistage =
@@ -99,17 +114,17 @@ export default function VistageLandingPublic() {
     const defaultPhotos = [
       {
         src: fotoPiscinaRooftop,
-        alt: 'Piscina no Rooftop com cascata e tijolinho — Vistage Residence',
+        alt: `Piscina no Rooftop com cascata e tijolinho — ${VISTAGE_NOME_OFICIAL}`,
         title: 'Piscina no Rooftop & Cascata',
       },
       {
         src: fotoSalaoGourmet,
-        alt: 'Salão de festas gourmet com bar e mesa de jogos — Vistage Residence',
+        alt: `Salão de festas gourmet com bar e mesa de jogos — ${VISTAGE_NOME_OFICIAL}`,
         title: 'Salão Gourmet & Jogos',
       },
       {
         src: fotoLobbyRecepcao,
-        alt: 'Lobby e recepção com painel de madeira e sofás cinza — Vistage Residence',
+        alt: `Lobby e recepção com painel de madeira e sofás cinza — ${VISTAGE_NOME_OFICIAL}`,
         title: 'Lobby & Recepção',
       },
     ]
@@ -172,7 +187,7 @@ export default function VistageLandingPublic() {
         {/* Foto original completa (object-contain): a maquete do prédio iluminado aparece inteira */}
         <img
           src={heroImg}
-          alt={launch.enterprise_name || launch.name || 'Vistage Residence Barreiros'}
+          alt={launch.enterprise_name || launch.name || VISTAGE_NOME_OFICIAL}
           className="absolute inset-0 h-full w-full object-contain"
           loading="eager"
         />
@@ -278,7 +293,7 @@ export default function VistageLandingPublic() {
               />
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3.5 pt-8">
                 <p className="text-sm font-semibold text-white drop-shadow-xs">{photo.title}</p>
-                <p className="text-[11px] text-white/70">Vistage Residence</p>
+                <p className="text-[11px] text-white/70">{VISTAGE_NOME_OFICIAL}</p>
               </div>
             </div>
           ))}
@@ -349,7 +364,11 @@ export default function VistageLandingPublic() {
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button
               type="button"
-              onClick={() => handleOpenLeadModal('Consulta geral de unidades disponíveis Vistage')}
+              onClick={() =>
+                handleOpenLeadModal(
+                  `Consulta geral de unidades disponíveis ${VISTAGE_NOME_OFICIAL}`,
+                )
+              }
               size="lg"
               className="h-13 bg-amber-500 px-8 text-base font-bold text-black hover:bg-amber-400"
             >
@@ -379,7 +398,7 @@ export default function VistageLandingPublic() {
         </p>
         <div className="space-y-3">
           {[
-            'Qual a localização exata do Vistage Residence?',
+            `Qual a localização exata do ${VISTAGE_NOME_OFICIAL}?`,
             'Como funciona o financiamento na planta pela Caixa?',
             'O que está incluso na área de lazer do Rooftop?',
             'Quando é a previsão de entrega do empreendimento?',
@@ -408,7 +427,9 @@ export default function VistageLandingPublic() {
               Atendimento Exclusivo Bia IA
             </Badge>
           </div>
-          <h2 className="text-center text-2xl font-bold">Quero conhecer o Vistage</h2>
+          <h2 className="text-center text-2xl font-bold">
+            Quero conhecer o {VISTAGE_NOME_OFICIAL}
+          </h2>
           <p className="mb-6 mt-2 text-center text-sm text-white/60">
             Preencha seus dados para a Bia te chamar imediatamente no WhatsApp com o book em PDF,
             valores atualizados e plantas.
@@ -423,11 +444,11 @@ export default function VistageLandingPublic() {
           <DialogHeader>
             <div className="flex items-center gap-2 mb-1">
               <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 text-[11px]">
-                <HelpCircle className="h-3 w-3 mr-1" /> Consulta Vistage Residence
+                <HelpCircle className="h-3 w-3 mr-1" /> Consulta {VISTAGE_NOME_OFICIAL}
               </Badge>
             </div>
             <DialogTitle className="text-xl font-bold text-white">
-              Falar com a Bia sobre o Vistage
+              Falar com a Bia sobre o {VISTAGE_NOME_OFICIAL}
             </DialogTitle>
             <DialogDescription className="text-xs text-white/70">
               {modalContext
