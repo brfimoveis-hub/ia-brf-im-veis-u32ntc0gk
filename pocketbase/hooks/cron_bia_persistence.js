@@ -1721,6 +1721,20 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
       var pCust = promiseCustomers[pIdx]
       var pCustId = pCust.id
 
+      // REGRA DO MAURO: Se for lead de campanha Vistage e a campanha estiver desativada/em revisão, não dispara
+      if (isCampaignLeadRecord(pCust)) {
+        var campCtrlActiveProm = false
+        try {
+          var cCtrlProm = app.findFirstRecordByFilter('app_controls', "key = 'convite_vistage'")
+          if (cCtrlProm && cCtrlProm.getBool('is_active')) {
+            campCtrlActiveProm = true
+          }
+        } catch (_) {}
+        if (!campCtrlActiveProm) {
+          continue
+        }
+      }
+
       // Guarda 1: ai_paused nas tags
       var pTagsRaw = pCust.get('tags') || []
       var pTagsStr = JSON.stringify(pTagsRaw)
@@ -1835,6 +1849,9 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
 
   // 11.2 AGENDADOS: Clientes com next_follow_up_at vencido
   // Processa em lote seguro por execução (máx 15 por ciclo de 15 min), respeitando anti-flood
+  // REGRA DO MAURO: Leads da campanha Vistage só rodam se a campanha estiver aprovada/ativa.
+  // Leads da base geral rodam a régua normal de remarketing da base.
+  // Base geral (sem tags de campanha) NUNCA entra na campanha Vistage.
   try {
     var scheduledBatchLimit = 15
     var scheduledCustomers = app.findRecordsByFilter(
@@ -1865,6 +1882,27 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
 
       var sCust = scheduledCustomers[sIdx]
       var sCustId = sCust.id
+
+      // REGRA DO MAURO: Isolamento de campanha Vistage
+      // 1) Se este cliente for lead de campanha (source='landing_vistage' ou tags de campanha),
+      // a régua de campanha só dispara se o controle 'convite_vistage' estiver expressamente ativo.
+      // Se estiver desativado/em revisão, NADA é disparado para leads de campanha.
+      // 2) Clientes da base geral (sem tags/source de campanha) seguem na régua geral de remarketing
+      // e JAMAIS recebem textos específicos da campanha Vistage.
+      var isCampLead = isCampaignLeadRecord(sCust)
+      if (isCampLead) {
+        var campCtrlActive = false
+        try {
+          var cCtrl = app.findFirstRecordByFilter('app_controls', "key = 'convite_vistage'")
+          if (cCtrl && cCtrl.getBool('is_active')) {
+            campCtrlActive = true
+          }
+        } catch (_) {}
+        if (!campCtrlActive) {
+          // Campanha em revisão / desligada pelo Mauro: não dispara régua para leads da campanha
+          continue
+        }
+      }
 
       // Guarda 1: ai_paused ou cliente bloqueado
       var sTagsRaw = sCust.get('tags') || []
@@ -2163,12 +2201,30 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
     )
   }
 
-  // 11.3 ENTRADA NA RÉGUA: Clientes em silêncio > 24h sem next_follow_up_at ou com follow_up_step vazio
+  // =========================================================================
+  // HELPER DE ISOLAMENTO: distingue leads de campanha de contatos da base geral.
+  // Regra do Mauro: clientes da base geral (sem tags/source de campanha) JAMAIS
+  // entram na régua de campanha específica do Vistage.
+  // =========================================================================
+  function isCampaignLeadRecord(custRec) {
+    if (!custRec) return false
+    var src = String(custRec.getString('source') || '')
+      .toLowerCase()
+      .trim()
+    if (src === 'landing_vistage' || src === 'campanha_vistage') return true
+    var tRaw = custRec.get('tags') || []
+    var tStr = (typeof tRaw === 'string' ? tRaw : JSON.stringify(tRaw)).toLowerCase()
+    return tStr.indexOf('landing_vistage') !== -1 || tStr.indexOf('lead_campanha') !== -1
+  }
+
+  // 11.3 ENTRADA NA RÉGUA GERAL DE REMARKETING: Clientes da base geral em silêncio > 24h sem agendamento
+  // REGRA DO MAURO: Clientes da base geral (sem tags/source de campanha) entram APENAS na régua de remarketing geral.
+  // Leads da campanha (landing_vistage / lead_campanha) são EXCLUÍDOS daqui e só rodam se a campanha for expressamente ativada.
   try {
     var idleBatchLimit = 15
     var idleCustomers = app.findRecordsByFilter(
       'customers',
-      "tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && (persistence_status = 'ativo' || persistence_status = '' || persistence_status = null) && is_blocked = false && (next_follow_up_at = '' || next_follow_up_at = null) && (follow_up_step = '' || follow_up_step = null)",
+      "tags !~ 'telefone_invalido' && tags !~ 'erro_numero_whatsapp' && tags !~ 'lead_campanha' && tags !~ 'landing_vistage' && tags !~ 'campanha_vistage' && source != 'landing_vistage' && source != 'campanha_vistage' && (persistence_status = 'ativo' || persistence_status = '' || persistence_status = null) && is_blocked = false && (next_follow_up_at = '' || next_follow_up_at = null) && (follow_up_step = '' || follow_up_step = null)",
       '-updated',
       25,
       0,
@@ -2187,6 +2243,11 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
 
       var iCust = idleCustomers[idIdx]
       var iCustId = iCust.id
+
+      // Guarda estrita: Se for lead de campanha Vistage, não entra no remarketing da base geral
+      if (isCampaignLeadRecord(iCust)) {
+        continue
+      }
 
       // Guarda 1: ai_paused ou cliente bloqueado
       var iTagsRaw = iCust.get('tags') || []
