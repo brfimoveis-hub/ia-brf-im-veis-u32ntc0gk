@@ -104,6 +104,7 @@ routerAdd('POST /backend/v1/landing-lead', (e) => {
     app.saveNoValidate(cust)
 
     // Conversa de entrada do lead capturado
+    var createdConvId = ''
     try {
       var convCol = app.findCollectionByNameOrId('conversations')
       var conv = new Record(convCol)
@@ -121,9 +122,11 @@ routerAdd('POST /backend/v1/landing-lead', (e) => {
           (msg || nome + ' preencheu formulário e solicitou material/ebook do Vistage.'),
       )
       app.saveNoValidate(conv)
+      createdConvId = conv.id
     } catch (_) {}
 
     // Resposta imediata da Bia com entrega do Ebook da campanha
+    var ebookSent = false
     try {
       var convBia = new Record(app.findCollectionByNameOrId('conversations'))
       if (userRec) {
@@ -141,6 +144,7 @@ routerAdd('POST /backend/v1/landing-lead', (e) => {
           'Lembrando que os valores de referência partem de R$ 607.880 para 2 dormitórios e R$ 929.844 para 3 dormitórios (valores atualizados pelo CUB). Ficou com alguma dúvida sobre as plantas ou fluxo na planta com a AJ Coelho?',
       )
       app.saveNoValidate(convBia)
+      ebookSent = true
     } catch (_) {}
 
     e.json(200, { ok: true, id: cust.id, isNew: isNew })

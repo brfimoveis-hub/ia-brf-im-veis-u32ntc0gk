@@ -15,6 +15,7 @@ interface LeadFormProps {
 export function LeadForm({ launchName, launchSlug }: LeadFormProps) {
   const [nome, setNome] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
+  const [email, setEmail] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -26,7 +27,11 @@ export function LeadForm({ launchName, launchSlug }: LeadFormProps) {
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
   }
 
-  const isValid = nome.trim().length >= 2 && whatsapp.replace(/\D/g, '').length >= 10
+  const isValid =
+    nome.trim().length >= 2 &&
+    whatsapp.replace(/\D/g, '').length >= 10 &&
+    email.trim().length >= 5 &&
+    email.includes('@')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -41,7 +46,10 @@ export function LeadForm({ launchName, launchSlug }: LeadFormProps) {
           body: {
             name: nome.trim(),
             phone: whatsapp.replace(/\D/g, ''),
+            email: email.trim().toLowerCase(),
             message: `[LANDING ${launchName} / ${launchSlug}] ${mensagem.trim() || 'Interesse no lançamento'}`,
+            campaign_source: 'landing_vistage',
+            source: 'landing_vistage',
           },
         })
         if (res && res.ok) {
@@ -56,10 +64,11 @@ export function LeadForm({ launchName, launchSlug }: LeadFormProps) {
         await createCustomer({
           name: nome.trim(),
           phone: whatsapp.replace(/\D/g, ''),
-          source: 'Landing Page Vistage',
+          email: email.trim().toLowerCase(),
+          source: 'landing_vistage',
           status: 'novo',
           notes: `[LANDING ${launchName} / ${launchSlug}] ${mensagem.trim() || 'Interesse no lançamento'}`,
-          tags: ['landing_vistage'],
+          tags: ['landing_vistage', 'lead_campanha'],
           lead_profile: 'investidor',
         })
       }
@@ -116,6 +125,20 @@ export function LeadForm({ launchName, launchSlug }: LeadFormProps) {
           onChange={(e) => setWhatsapp(formatPhone(e.target.value))}
           placeholder="(48) 99999-9999"
           inputMode="tel"
+          required
+          className="h-12 border-white/20 bg-white/5 text-white placeholder:text-white/40"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="lead-email" className="text-white/90">
+          Seu e-mail
+        </Label>
+        <Input
+          id="lead-email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="exemplo@email.com"
           required
           className="h-12 border-white/20 bg-white/5 text-white placeholder:text-white/40"
         />

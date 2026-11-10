@@ -245,32 +245,131 @@ export default function VistageLandingPublic() {
         </div>
       </section>
 
-      {/* CTA DE VALORES E DISPONIBILIDADE */}
+      {/* SEÇÃO DE VALORES DE REFERÊNCIA (APENAS REFERÊNCIA + NOTA CUB, SEM TABELA COMPLETA) */}
       <section className="mx-auto max-w-3xl px-5 pb-16">
         <div className="rounded-3xl border border-amber-500/30 bg-gradient-to-b from-amber-500/10 via-white/[0.03] to-transparent p-8 text-center sm:p-10">
-          <h2 className="text-2xl font-bold sm:text-3xl">Consulte valores e disponibilidade</h2>
+          <Badge className="mb-3 bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/20">
+            Valores de Referência
+          </Badge>
+          <h2 className="text-2xl font-bold sm:text-3xl">Condições de Pré-Lançamento</h2>
           <p className="mx-auto mt-3 max-w-xl text-sm text-white/70 sm:text-base">
-            Receba as plantas detalhadas, tabela atualizada e condições especiais de pagamento
-            diretamente com a nossa equipe no WhatsApp.
+            Valores iniciais das primeiras unidades disponíveis direto com a construtora AJ Coelho.
           </p>
-          <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 text-left">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-amber-500/40 transition-colors">
+              <span className="text-xs uppercase tracking-wider text-amber-400 font-semibold">
+                2 Dormitórios com Suíte
+              </span>
+              <p className="mt-2 text-3xl font-extrabold text-white">a partir de R$ 607.880</p>
+              <p className="mt-2 text-xs text-white/60">
+                Plantas inteligentes a partir de 66m² privativos com sacada e churrasqueira a
+                carvão.
+              </p>
+              <a
+                href="#interesse"
+                className="mt-4 inline-flex items-center text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-4"
+              >
+                Solicitar book do 2 dormitórios →
+              </a>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-amber-500/40 transition-colors">
+              <span className="text-xs uppercase tracking-wider text-amber-400 font-semibold">
+                3 Dormitórios (1 suíte + 2 demi)
+              </span>
+              <p className="mt-2 text-3xl font-extrabold text-white">a partir de R$ 929.844</p>
+              <p className="mt-2 text-xs text-white/60">
+                Plantas amplas a partir de 101m² privativos, vista panorâmica e alto padrão de
+                acabamento.
+              </p>
+              <a
+                href="#interesse"
+                className="mt-4 inline-flex items-center text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-4"
+              >
+                Solicitar book do 3 dormitórios →
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-200/90 font-medium">
+            ⚠️ Valores variam todo mês, atualizados pelo CUB.
+          </div>
+
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button
               asChild
               size="lg"
               className="h-13 bg-amber-500 px-8 text-base font-bold text-black hover:bg-amber-400"
             >
-              <a href="#interesse">Quero consultar valores e disponibilidade</a>
+              <a href="#interesse">Quero consultar unidades disponíveis</a>
             </Button>
           </div>
         </div>
       </section>
 
-      {/* FORMULÁRIO DE INTERESSE */}
+      {/* FAQ INTERATIVO — CADA PERGUNTA AGE COMO GATILHO PARA CAPTURA PELA BIA */}
+      <section className="mx-auto max-w-3xl px-5 pb-16">
+        <h2 className="mb-2 text-center text-2xl font-bold sm:text-3xl">Dúvidas Frequentes</h2>
+        <p className="mb-8 text-center text-sm text-white/50">
+          Clique em qualquer dúvida para receber a resposta detalhada e o material completo no
+          WhatsApp
+        </p>
+        <div className="space-y-3">
+          {[
+            {
+              p: 'Qual a localização exata do Vistage Residence?',
+              r: 'O Vistage está situado em Barreiros, São José/SC, em rua nobre com acesso imediato à BR-101 e proximidade aos principais serviços da Grande Florianópolis.',
+            },
+            {
+              p: 'Como funciona o financiamento na planta pela Caixa?',
+              r: 'O empreendimento conta com garantia de entrega e crédito imobiliário Caixa durante a obra, com entrada facilitada em até 60 parcelas direto com a construtora AJ Coelho.',
+            },
+            {
+              p: 'O que está incluso na área de lazer do Rooftop?',
+              r: 'Piscina com borda infinita e deck molhado panorâmico, academia com vista definitiva para o mar, salão de festas gourmet e brinquedoteca integrada.',
+            },
+            {
+              p: 'Quando é a previsão de entrega do empreendimento?',
+              r: 'A entrega das chaves está prevista para dezembro de 2030, permitindo um fluxo suave de investimento durante o período construtivo.',
+            },
+            {
+              p: 'Posso visitar o apartamento modelo decorado?',
+              r: 'Sim! Agendamentos de visitas ao decorado ou apresentação das plantas humanizadas são coordenados diretamente pela equipe da BRF Imóveis.',
+            },
+          ].map((faq, idx) => (
+            <div
+              key={idx}
+              className="rounded-2xl border border-white/10 bg-white/5 p-5 text-left transition hover:border-amber-500/40"
+            >
+              <p className="text-base font-semibold text-white">{faq.p}</p>
+              <p className="mt-2 text-sm text-white/70">{faq.r}</p>
+              <div className="mt-3 flex items-center justify-between pt-2 border-t border-white/5">
+                <span className="text-[11px] text-white/50">
+                  Quer detalhes ou simulação desta pergunta?
+                </span>
+                <a
+                  href="#interesse"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-amber-400 hover:text-amber-300"
+                >
+                  Perguntar à Bia no WhatsApp →
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FORMULÁRIO DE CAPTURA COM NOME, TELEFONE E EMAIL */}
       <section id="interesse" className="mx-auto max-w-md scroll-mt-8 px-5 pb-20">
         <div className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent p-6 sm:p-8">
+          <Badge className="mb-2 bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+            Atendimento Exclusivo Bia IA
+          </Badge>
           <h2 className="text-center text-2xl font-bold">Quero conhecer o Vistage</h2>
           <p className="mb-6 mt-2 text-center text-sm text-white/60">
-            Preencha e a Bia te chama no WhatsApp com plantas, valores e condições do lançamento.
+            Preencha seus dados para a Bia te chamar imediatamente no WhatsApp com o book em PDF,
+            valores atualizados e plantas.
           </p>
           <LeadForm launchName={launch.enterprise_name || launch.name} launchSlug={launch.slug} />
         </div>
