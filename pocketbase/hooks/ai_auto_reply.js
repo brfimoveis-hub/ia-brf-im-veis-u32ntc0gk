@@ -2909,7 +2909,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         }
 
         console.log(`[AI_REPLY] [OPT_OUT_NAO] Opt-out concluído para customer=${customerId}.`)
-        return
+        return e.next()
       } catch (optErr) {
         console.warn(`[AI_REPLY] [OPT_OUT_NAO] Erro ao processar opt-out: ${String(optErr)}`)
       }
@@ -3244,7 +3244,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
       } catch (_) {}
 
       // Encerra interceptor sem passar pelo LLM
-      return
+      return e.next()
     }
 
     // (a) Extração de perfil por Regex simples:
