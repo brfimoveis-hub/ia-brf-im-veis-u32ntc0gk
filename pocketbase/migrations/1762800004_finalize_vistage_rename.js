@@ -34,7 +34,14 @@ migrate(
     for (var i = 0; i < launches.length; i++) {
       var l = launches[i]
       var changed = false
-      var fields = ['name', 'enterprise_name', 'headline', 'description', 'cta_default_message', 'raw_material']
+      var fields = [
+        'name',
+        'enterprise_name',
+        'headline',
+        'description',
+        'cta_default_message',
+        'raw_material',
+      ]
       for (var f = 0; f < fields.length; f++) {
         var v = l.getString(fields[f])
         if (v && v.indexOf('Vistage') !== -1) {
@@ -54,7 +61,14 @@ migrate(
         l.set('enterprise_name', NEW)
         changed = true
       }
-      var jsonFields = ['specific_cadence', 'landing_theme', 'sales_arguments', 'payment_terms', 'keywords', 'units']
+      var jsonFields = [
+        'specific_cadence',
+        'landing_theme',
+        'sales_arguments',
+        'payment_terms',
+        'keywords',
+        'units',
+      ]
       for (var g = 0; g < jsonFields.length; g++) {
         var jv = l.getString(jsonFields[g])
         if (jv && jv.indexOf('Vistage Residence Barreiros') !== -1) {
@@ -116,7 +130,13 @@ migrate(
 
     // ---- bia_learnings ----
     try {
-      var bls = app.findRecordsByFilter('bia_learnings', "content ~ 'Vistage Residence Barreiros'", '', 0, 0)
+      var bls = app.findRecordsByFilter(
+        'bia_learnings',
+        "content ~ 'Vistage Residence Barreiros'",
+        '',
+        0,
+        0,
+      )
       for (var b = 0; b < bls.length; b++) {
         var bl = bls[b]
         bl.set('content', replaceAll(bl.getString('content')))
@@ -129,7 +149,13 @@ migrate(
 
     // ---- app_controls ----
     try {
-      var ctrls = app.findRecordsByFilter('app_controls', "value ~ 'Vistage Residence Barreiros'", '', 0, 0)
+      var ctrls = app.findRecordsByFilter(
+        'app_controls',
+        "value ~ 'Vistage Residence Barreiros'",
+        '',
+        0,
+        0,
+      )
       for (var c = 0; c < ctrls.length; c++) {
         var ctl = ctrls[c]
         ctl.set('value', replaceAll(ctl.getString('value')))
