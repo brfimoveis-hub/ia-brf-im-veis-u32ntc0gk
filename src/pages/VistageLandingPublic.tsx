@@ -159,15 +159,25 @@ export default function VistageLandingPublic() {
 
   return (
     <div className="min-h-[100dvh] bg-neutral-950 text-white">
-      {/* HERO — CAPA COM FOTO PRINCIPAL DO EMPREENDIMENTO */}
+      {/* HERO — CAPA COM FOTO PRINCIPAL DO EMPREENDIMENTO (foto original INTEIRA, sem corte) */}
       <section className="relative min-h-[85dvh] overflow-hidden">
+        {/* Fundo: a MESMA foto desfocada só para preencher as laterais — motivo nunca cortado */}
+        <img
+          src={heroImg}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full scale-110 object-cover brightness-[0.35] blur-2xl"
+          loading="eager"
+        />
+        {/* Foto original completa (object-contain): a maquete do prédio iluminado aparece inteira */}
         <img
           src={heroImg}
           alt={launch.enterprise_name || launch.name || 'Vistage Residence Barreiros'}
-          className="absolute inset-0 h-full w-full object-cover object-[center_35%]"
+          className="absolute inset-0 h-full w-full object-contain"
           loading="eager"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-black/40 to-black/25 pointer-events-none" />
+        {/* Degradê apenas na base, para leitura do texto — não cobre o prédio */}
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-neutral-950 via-neutral-950/70 to-transparent pointer-events-none" />
         <div className="relative z-10 mx-auto flex min-h-[85dvh] w-full max-w-5xl flex-col justify-end px-5 pb-14 pt-32">
           <Badge className="mb-4 w-fit border-amber-500/40 bg-amber-500/15 text-amber-300">
             Novo Lançamento
@@ -365,51 +375,27 @@ export default function VistageLandingPublic() {
       <section className="mx-auto max-w-3xl px-5 pb-16">
         <h2 className="mb-2 text-center text-2xl font-bold sm:text-3xl">Dúvidas Frequentes</h2>
         <p className="mb-8 text-center text-sm text-white/50">
-          Clique em qualquer dúvida para receber a resposta detalhada e o material completo no
-          WhatsApp
+          Toque em qualquer dúvida: a Bia responde pessoalmente no seu WhatsApp
         </p>
         <div className="space-y-3">
           {[
-            {
-              p: 'Qual a localização exata do Vistage Residence?',
-              r: 'O Vistage está situado em Barreiros, São José/SC, em rua nobre com acesso imediato à BR-101 e proximidade aos principais serviços da Grande Florianópolis.',
-            },
-            {
-              p: 'Como funciona o financiamento na planta pela Caixa?',
-              r: 'O empreendimento conta com garantia de entrega e crédito imobiliário Caixa durante a obra, com entrada facilitada em até 60 parcelas direto com a construtora AJ Coelho.',
-            },
-            {
-              p: 'O que está incluso na área de lazer do Rooftop?',
-              r: 'Piscina com borda infinita e deck molhado panorâmico, academia com vista definitiva para o mar, salão de festas gourmet e brinquedoteca integrada.',
-            },
-            {
-              p: 'Quando é a previsão de entrega do empreendimento?',
-              r: 'A entrega das chaves está prevista para dezembro de 2030, permitindo um fluxo suave de investimento durante o período construtivo.',
-            },
-            {
-              p: 'Posso visitar o apartamento modelo decorado?',
-              r: 'Sim! Agendamentos de visitas ao decorado ou apresentação das plantas humanizadas são coordenados diretamente pela equipe da BRF Imóveis.',
-            },
-          ].map((faq, idx) => (
-            <div
+            'Qual a localização exata do Vistage Residence?',
+            'Como funciona o financiamento na planta pela Caixa?',
+            'O que está incluso na área de lazer do Rooftop?',
+            'Quando é a previsão de entrega do empreendimento?',
+            'Posso visitar o apartamento modelo decorado?',
+          ].map((pergunta, idx) => (
+            <button
               key={idx}
-              className="rounded-2xl border border-white/10 bg-white/5 p-5 text-left transition hover:border-amber-500/40"
+              type="button"
+              onClick={() => handleOpenLeadModal(`Dúvida FAQ: ${pergunta}`)}
+              className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-5 text-left transition hover:border-amber-500/40 hover:bg-white/[0.08] cursor-pointer"
             >
-              <p className="text-base font-semibold text-white">{faq.p}</p>
-              <p className="mt-2 text-sm text-white/70">{faq.r}</p>
-              <div className="mt-3 flex items-center justify-between pt-2 border-t border-white/5">
-                <span className="text-[11px] text-white/50">
-                  Quer detalhes ou simulação desta pergunta?
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleOpenLeadModal(`Dúvida FAQ: ${faq.p}`)}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-amber-400 hover:text-amber-300 cursor-pointer"
-                >
-                  Perguntar à Bia no WhatsApp →
-                </button>
-              </div>
-            </div>
+              <span className="text-base font-semibold text-white">{pergunta}</span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-amber-400">
+                <HelpCircle className="h-4 w-4" /> Bia responde
+              </span>
+            </button>
           ))}
         </div>
       </section>
