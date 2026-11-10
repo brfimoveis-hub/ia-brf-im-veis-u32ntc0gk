@@ -1,8 +1,15 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
-import { Loader2, MapPin, CheckCircle2, MessageCircle } from 'lucide-react'
+import { Loader2, MapPin, CheckCircle2, MessageCircle, HelpCircle } from 'lucide-react'
 import { useLaunchDossier } from '@/hooks/use-launch-dossier'
 import { LeadForm } from '@/components/landing/LeadForm'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -32,6 +39,15 @@ export default function VistageLandingPublic() {
   const slug = slugParam || 'vistage'
 
   const { data: launch, isLoading, isError } = useLaunchDossier(slug)
+
+  // Estado do diálogo de captura ativado por CTAs e perguntas do FAQ
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalContext, setModalContext] = useState<string>('')
+
+  const handleOpenLeadModal = (contextTitle?: string) => {
+    setModalContext(contextTitle || '')
+    setModalOpen(true)
+  }
 
   // Capa = FOTO PRINCIPAL DO EMPREENDIMENTO do dossiê (launches / properties)
   const heroImg = useMemo(() => {
@@ -169,20 +185,30 @@ export default function VistageLandingPublic() {
               <Button
                 asChild
                 size="lg"
-                className="h-14 bg-amber-500 text-base font-bold text-black hover:bg-amber-400"
+                className="h-14 bg-emerald-500 text-base font-bold text-black hover:bg-emerald-400 shadow-lg shadow-emerald-500/20"
               >
                 <a href={whatsUrl} target="_blank" rel="noreferrer">
-                  <MessageCircle className="h-5 w-5 mr-1" /> Falar com a Bia no WhatsApp
+                  <MessageCircle className="h-5 w-5 mr-1.5" /> Falar com a Bia no WhatsApp
                 </a>
               </Button>
             )}
+            <Button
+              type="button"
+              onClick={() =>
+                handleOpenLeadModal('Interesse geral: Plantas e Valores do Lançamento')
+              }
+              size="lg"
+              className="h-14 bg-amber-500 text-base font-bold text-black hover:bg-amber-400"
+            >
+              Quero receber plantas e valores
+            </Button>
             <Button
               asChild
               size="lg"
               variant="outline"
               className="h-14 border-white/30 text-base font-semibold text-white hover:bg-white/10"
             >
-              <a href="#interesse">Quero receber plantas e valores</a>
+              <a href="#interesse">Preencher formulário completo</a>
             </Button>
           </div>
         </div>
@@ -257,53 +283,76 @@ export default function VistageLandingPublic() {
           </p>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-2 text-left">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-amber-500/40 transition-colors">
-              <span className="text-xs uppercase tracking-wider text-amber-400 font-semibold">
-                2 Dormitórios com Suíte
-              </span>
-              <p className="mt-2 text-3xl font-extrabold text-white">a partir de R$ 607.880</p>
-              <p className="mt-2 text-xs text-white/60">
-                Plantas inteligentes a partir de 66m² privativos com sacada e churrasqueira a
-                carvão.
-              </p>
-              <a
-                href="#interesse"
-                className="mt-4 inline-flex items-center text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-4"
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-amber-500/40 transition-colors flex flex-col justify-between">
+              <div>
+                <span className="text-xs uppercase tracking-wider text-amber-400 font-semibold">
+                  2 Dormitórios com Suíte
+                </span>
+                <p className="mt-2 text-3xl font-extrabold text-white">a partir de R$ 607.880</p>
+                <p className="mt-2 text-xs text-white/60">
+                  Plantas inteligentes a partir de 66m² privativos com sacada e churrasqueira a
+                  carvão.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  handleOpenLeadModal('Interesse: 2 Dormitórios com Suíte (a partir de R$ 607.880)')
+                }
+                className="mt-5 inline-flex items-center text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-4 cursor-pointer text-left"
               >
                 Solicitar book do 2 dormitórios →
-              </a>
+              </button>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-amber-500/40 transition-colors">
-              <span className="text-xs uppercase tracking-wider text-amber-400 font-semibold">
-                3 Dormitórios (1 suíte + 2 demi)
-              </span>
-              <p className="mt-2 text-3xl font-extrabold text-white">a partir de R$ 929.844</p>
-              <p className="mt-2 text-xs text-white/60">
-                Plantas amplas a partir de 101m² privativos, vista panorâmica e alto padrão de
-                acabamento.
-              </p>
-              <a
-                href="#interesse"
-                className="mt-4 inline-flex items-center text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-4"
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-amber-500/40 transition-colors flex flex-col justify-between">
+              <div>
+                <span className="text-xs uppercase tracking-wider text-amber-400 font-semibold">
+                  3 Dormitórios (1 suíte + 2 demi)
+                </span>
+                <p className="mt-2 text-3xl font-extrabold text-white">a partir de R$ 929.844</p>
+                <p className="mt-2 text-xs text-white/60">
+                  Plantas amplas a partir de 101m² privativos, vista panorâmica e alto padrão de
+                  acabamento.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  handleOpenLeadModal('Interesse: 3 Dormitórios (a partir de R$ 929.844)')
+                }
+                className="mt-5 inline-flex items-center text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-4 cursor-pointer text-left"
               >
                 Solicitar book do 3 dormitórios →
-              </a>
+              </button>
             </div>
           </div>
 
-          <div className="mt-6 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-200/90 font-medium">
-            ⚠️ Valores variam todo mês, atualizados pelo CUB.
+          <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3.5 text-xs text-amber-200 font-medium tracking-wide">
+            Valores variam todo mês, atualizados pelo CUB.
           </div>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button
-              asChild
+              type="button"
+              onClick={() => handleOpenLeadModal('Consulta geral de unidades disponíveis Vistage')}
               size="lg"
               className="h-13 bg-amber-500 px-8 text-base font-bold text-black hover:bg-amber-400"
             >
-              <a href="#interesse">Quero consultar unidades disponíveis</a>
+              Quero consultar unidades disponíveis
             </Button>
+            {whatsUrl && (
+              <Button
+                asChild
+                size="lg"
+                variant="outline"
+                className="h-13 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10"
+              >
+                <a href={whatsUrl} target="_blank" rel="noreferrer">
+                  <MessageCircle className="h-4 w-4 mr-1.5" /> Falar com a Bia
+                </a>
+              </Button>
+            )}
           </div>
         </div>
       </section>
@@ -348,12 +397,13 @@ export default function VistageLandingPublic() {
                 <span className="text-[11px] text-white/50">
                   Quer detalhes ou simulação desta pergunta?
                 </span>
-                <a
-                  href="#interesse"
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-amber-400 hover:text-amber-300"
+                <button
+                  type="button"
+                  onClick={() => handleOpenLeadModal(`Dúvida FAQ: ${faq.p}`)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-amber-400 hover:text-amber-300 cursor-pointer"
                 >
                   Perguntar à Bia no WhatsApp →
-                </a>
+                </button>
               </div>
             </div>
           ))}
@@ -363,9 +413,11 @@ export default function VistageLandingPublic() {
       {/* FORMULÁRIO DE CAPTURA COM NOME, TELEFONE E EMAIL */}
       <section id="interesse" className="mx-auto max-w-md scroll-mt-8 px-5 pb-20">
         <div className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent p-6 sm:p-8">
-          <Badge className="mb-2 bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
-            Atendimento Exclusivo Bia IA
-          </Badge>
+          <div className="flex justify-center mb-2">
+            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+              Atendimento Exclusivo Bia IA
+            </Badge>
+          </div>
           <h2 className="text-center text-2xl font-bold">Quero conhecer o Vistage</h2>
           <p className="mb-6 mt-2 text-center text-sm text-white/60">
             Preencha seus dados para a Bia te chamar imediatamente no WhatsApp com o book em PDF,
@@ -374,6 +426,37 @@ export default function VistageLandingPublic() {
           <LeadForm launchName={launch.enterprise_name || launch.name} launchSlug={launch.slug} />
         </div>
       </section>
+
+      {/* DIÁLOGO MODAL DO FORMULÁRIO — ACIONADO POR CADA CTA / PERGUNTA DA PÁGINA */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-w-md border-neutral-800 bg-neutral-900 text-white">
+          <DialogHeader>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 text-[11px]">
+                <HelpCircle className="h-3 w-3 mr-1" /> Consulta Vistage Residence
+              </Badge>
+            </div>
+            <DialogTitle className="text-xl font-bold text-white">
+              Falar com a Bia sobre o Vistage
+            </DialogTitle>
+            <DialogDescription className="text-xs text-white/70">
+              {modalContext
+                ? `${modalContext} — Preencha para receber a resposta e material no WhatsApp.`
+                : 'Preencha para receber plantas, valores de referência e o book em PDF no WhatsApp.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2">
+            <LeadForm
+              launchName={launch.enterprise_name || launch.name}
+              launchSlug={launch.slug}
+              initialQuestion={modalContext}
+              onSuccess={() => {
+                setTimeout(() => setModalOpen(false), 2200)
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* FOOTER */}
       <footer className="border-t border-white/10 px-5 py-8 text-center text-xs text-white/40">

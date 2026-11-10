@@ -10,13 +10,15 @@ import pb from '@/lib/pocketbase/client'
 interface LeadFormProps {
   launchName: string
   launchSlug: string
+  initialQuestion?: string
+  onSuccess?: () => void
 }
 
-export function LeadForm({ launchName, launchSlug }: LeadFormProps) {
+export function LeadForm({ launchName, launchSlug, initialQuestion, onSuccess }: LeadFormProps) {
   const [nome, setNome] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
   const [email, setEmail] = useState('')
-  const [mensagem, setMensagem] = useState('')
+  const [mensagem, setMensagem] = useState(initialQuestion || '')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
 
@@ -77,6 +79,9 @@ export function LeadForm({ launchName, launchSlug }: LeadFormProps) {
         title: 'Recebido!',
         description: 'A Bia vai te chamar no WhatsApp em instantes.',
       })
+      if (onSuccess) {
+        onSuccess()
+      }
     } catch (err: any) {
       toast({
         title: 'Erro ao enviar',
