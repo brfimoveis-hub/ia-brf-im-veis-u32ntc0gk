@@ -164,13 +164,13 @@ export default function VistageLandingPublic() {
         <img
           src={heroImg}
           alt={launch.enterprise_name || launch.name || 'Vistage Residence Barreiros'}
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover object-[center_35%]"
           loading="eager"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-neutral-950" />
-        <div className="relative z-10 mx-auto flex min-h-[85dvh] w-full max-w-5xl flex-col justify-end px-5 pb-14 pt-24">
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-black/40 to-black/25 pointer-events-none" />
+        <div className="relative z-10 mx-auto flex min-h-[85dvh] w-full max-w-5xl flex-col justify-end px-5 pb-14 pt-32">
           <Badge className="mb-4 w-fit border-amber-500/40 bg-amber-500/15 text-amber-300">
-            {launch.status === 'publicado' ? 'LANÇAMENTO' : 'PRÉ-LANÇAMENTO EXCLUSIVO'}
+            Novo Lançamento
           </Badge>
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl md:text-6xl">
             {launch.enterprise_name || launch.name}

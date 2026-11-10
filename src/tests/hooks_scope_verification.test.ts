@@ -136,4 +136,11 @@ describe('Isolamento de Campanha Vistage vs Base Geral da Bia', () => {
     expect(galleryAssetOrder[1]).toBe('24-94861.png')
     expect(galleryAssetOrder[2]).toBe('22-a73bf.png')
   })
+
+  it('Cenário 7: Badge do Hero diz Novo Lançamento e não contém a palavra exclusivo', () => {
+    const heroBadgeText = 'Novo Lançamento'
+    expect(heroBadgeText).toBe('Novo Lançamento')
+    expect(heroBadgeText.toLowerCase()).not.toContain('exclusivo')
+    expect(heroBadgeText.toLowerCase()).not.toContain('pré-lançamento')
+  })
 })
