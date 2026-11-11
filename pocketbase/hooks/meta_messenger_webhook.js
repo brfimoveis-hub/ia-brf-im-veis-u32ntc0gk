@@ -1,68 +1,8 @@
 // Hook para GET e POST em /backend/v1/meta_messenger_webhook
 // Integração de Messenger + Instagram Direct pela Página 1401557100168686 ("www.brfimoveis.com.br")
 // Suporte ao handshake de verificação GET da Meta e recepção de eventos POST
-
-function logMetaMessengerHandshake(e, pathUserId) {
-  try {
-    var reqInfo = {}
-    try {
-      reqInfo = e.requestInfo() || {}
-    } catch (_) {}
-
-    var query = reqInfo.query || {}
-    var userAgent = ''
-    var xHubSig256 = ''
-    try {
-      userAgent = e.request.header.get('user-agent') || ''
-      xHubSig256 =
-        e.request.header.get('x-hub-signature-256') || e.request.header.get('x-hub-signature') || ''
-    } catch (_) {}
-
-    var nowIso = new Date().toISOString()
-    var mode = query['hub.mode'] || e.request.header.get('hub.mode') || ''
-    var token = query['hub.verify_token'] || e.request.header.get('hub.verify_token') || ''
-    var challenge = query['hub.challenge'] || e.request.header.get('hub.challenge') || ''
-
-    var sysLogsCol = $app.findCollectionByNameOrId('system_logs')
-    var logRec = new Record(sysLogsCol, {
-      type: 'meta_messenger_webhook_get',
-      message:
-        'GET /backend/v1/meta_messenger_webhook handshake - mode: ' +
-        (mode || 'vazio') +
-        ' | token: ' +
-        (token ? token.substring(0, 15) + '...' : 'vazio'),
-      details:
-        'Method: GET | Time: ' +
-        nowIso +
-        ' | User-Agent: ' +
-        userAgent +
-        ' | PathUser: ' +
-        (pathUserId || 'none') +
-        ' | Signature: ' +
-        (xHubSig256 ? 'presente' : 'ausente'),
-      payload: {
-        method: 'GET',
-        timestamp: nowIso,
-        query: query,
-        mode: mode,
-        verify_token: token,
-        challenge: challenge,
-        path_user_id: pathUserId || '',
-      },
-    })
-    $app.save(logRec)
-  } catch (err) {
-    try {
-      $app
-        .logger()
-        .warn(
-          'Falha defensiva ao registrar handshake GET meta_messenger em system_logs',
-          'err',
-          String(err),
-        )
-    } catch (_) {}
-  }
-}
+// NOTA: todo o código vive DENTRO dos handlers (regra de escopo do bundler do pb_hooks —
+// funções top-level referenciadas pelos handlers podem sumir do bundle deployado).
 
 function handleMetaMessengerWebhookGet(e) {
   var pathUserId = ''
@@ -70,7 +10,66 @@ function handleMetaMessengerWebhookGet(e) {
     pathUserId = e.request.pathValue('userId') || ''
   } catch (_) {}
 
-  logMetaMessengerHandshake(e, pathUserId)
+  // Log de auditoria do handshake (inline no handler — era função top-level e sumia no deploy)
+  try {
+    var hsReqInfo = {}
+    try {
+      hsReqInfo = e.requestInfo() || {}
+    } catch (_) {}
+
+    var hsQuery = hsReqInfo.query || {}
+    var hsUserAgent = ''
+    var hsXHubSig256 = ''
+    try {
+      hsUserAgent = e.request.header.get('user-agent') || ''
+      hsXHubSig256 =
+        e.request.header.get('x-hub-signature-256') || e.request.header.get('x-hub-signature') || ''
+    } catch (_) {}
+
+    var hsNowIso = new Date().toISOString()
+    var hsMode = hsQuery['hub.mode'] || e.request.header.get('hub.mode') || ''
+    var hsToken = hsQuery['hub.verify_token'] || e.request.header.get('hub.verify_token') || ''
+    var hsChallenge = hsQuery['hub.challenge'] || e.request.header.get('hub.challenge') || ''
+
+    var hsSysLogsCol = $app.findCollectionByNameOrId('system_logs')
+    var hsLogRec = new Record(hsSysLogsCol, {
+      type: 'meta_messenger_webhook_get',
+      message:
+        'GET /backend/v1/meta_messenger_webhook handshake - mode: ' +
+        (hsMode || 'vazio') +
+        ' | token: ' +
+        (hsToken ? hsToken.substring(0, 15) + '...' : 'vazio'),
+      details:
+        'Method: GET | Time: ' +
+        hsNowIso +
+        ' | User-Agent: ' +
+        hsUserAgent +
+        ' | PathUser: ' +
+        (pathUserId || 'none') +
+        ' | Signature: ' +
+        (hsXHubSig256 ? 'presente' : 'ausente'),
+      payload: {
+        method: 'GET',
+        timestamp: hsNowIso,
+        query: hsQuery,
+        mode: hsMode,
+        verify_token: hsToken,
+        challenge: hsChallenge,
+        path_user_id: pathUserId || '',
+      },
+    })
+    $app.save(hsLogRec)
+  } catch (hsErr) {
+    try {
+      $app
+        .logger()
+        .warn(
+          'Falha defensiva ao registrar handshake GET meta_messenger em system_logs',
+          'err',
+          String(hsErr),
+        )
+    } catch (_) {}
+  }
 
   var query = {}
   try {
@@ -160,6 +159,7 @@ function handleMetaMessengerWebhookGet(e) {
 }
 
 function handleMetaMessengerWebhookPost(e) {
+  var sysLogsCol = null
   var nowIso = new Date().toISOString()
   var body = null
   var rawBodyStr = ''
