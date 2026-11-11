@@ -583,15 +583,72 @@ export default function Anuncios() {
                     <span>Por que os anúncios precisam dessa autorização extra?</span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    Por motivos de segurança e privacidade bancária, o Facebook separa os acessos de
-                    publicação de posts dos acessos ao Gerenciador de Anúncios (orçamento e
-                    campanhas). A sua conta de anúncios cadastrada{' '}
+                    A Meta recusou a leitura porque o token atual não tem as permissões de anúncios
+                    (<code className="font-mono text-[11px]">ads_read</code> /{' '}
+                    <code className="font-mono text-[11px]">ads_management</code>): &quot;Ad account
+                    owner has NOT granted ads_management or ads_read permission&quot;. A sua conta
+                    de anúncios cadastrada{' '}
                     <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px] text-foreground">
                       ID: 1487400719850387
                     </code>{' '}
                     está ativa e com pontuação 100, aguardando apenas o consentimento do
                     proprietário.
                   </p>
+
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-amber-900">
+                      Passo a passo para liberar (quem executa: Bernadete):
+                    </p>
+                    <ol className="text-xs text-amber-900/90 list-decimal pl-4 space-y-1.5 leading-relaxed">
+                      <li>
+                        Acesse o{' '}
+                        <a
+                          href="https://developers.facebook.com/tools/explorer/"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium underline text-amber-700 hover:text-amber-800"
+                        >
+                          Graph API Explorer <ExternalLink className="h-3 w-3 inline" />
+                        </a>{' '}
+                        logada com o perfil dono da conta de anúncios (Bernadete) e selecione o app{' '}
+                        <strong>BRF Imóveis 2</strong>.
+                      </li>
+                      <li>
+                        Em <strong>Permissões</strong>, adicione as permissões de anúncios{' '}
+                        <Badge variant="secondary" className="font-mono text-[10px]">
+                          ads_read
+                        </Badge>{' '}
+                        <Badge variant="secondary" className="font-mono text-[10px]">
+                          ads_management
+                        </Badge>{' '}
+                        <strong>além das 5 permissões de messaging já usadas</strong> (
+                        <span className="font-mono text-[10px]">
+                          pages_show_list, pages_messaging, pages_manage_metadata,
+                          instagram_manage_messages, instagram_basic
+                        </span>
+                        ).
+                      </li>
+                      <li>
+                        Clique em <strong>Generate Access Token</strong>, depois em{' '}
+                        <strong>Extend Token Access</strong> (
+                        <a
+                          href="https://developers.facebook.com/tools/accesstoken/"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium underline text-amber-700 hover:text-amber-800"
+                        >
+                          developers.facebook.com/tools/accesstoken{' '}
+                          <ExternalLink className="h-3 w-3 inline" />
+                        </a>
+                        ) para estender a validade para ~60 dias.
+                      </li>
+                      <li>
+                        Copie o token estendido e cole em <strong>Configurações → Conexões</strong>{' '}
+                        (campo Page Access Token). Volte aqui e clique em{' '}
+                        <strong>Verificar Novamente</strong>.
+                      </li>
+                    </ol>
+                  </div>
 
                   {isPreview && (
                     <div className="p-3 rounded bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs space-y-1">

@@ -20,6 +20,7 @@ import {
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import { saveAndSubscribeMessengerPage } from '@/services/meta_messenger'
+import { TokenExpiryBanner } from './TokenExpiryBanner'
 
 const TARGET_PAGE_ID = '1401557100168686'
 const TARGET_PAGE_NAME = 'www.brfimoveis.com.br'
@@ -155,6 +156,9 @@ export function MetaMessengerPageConnect() {
       </CardHeader>
 
       <CardContent className="space-y-5">
+        {/* Vigia de token: data de expiração + avisos amarelo/vermelho */}
+        <TokenExpiryBanner />
+
         {/* Banner de status / confirmação */}
         {isConnected ? (
           <Alert className="border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100">
