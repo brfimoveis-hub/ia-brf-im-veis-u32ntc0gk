@@ -389,10 +389,29 @@ onRecordAfterCreateSuccess((e) => {
           (sendRes ? sendRes.statusCode : 'null') +
           ' code=' +
           (errObj.code !== undefined ? errObj.code : 'none') +
+          ' subcode=' +
+          (errObj.error_subcode !== undefined ? errObj.error_subcode : 'none') +
           ' msg="' +
           (errObj.message || '') +
           '"',
       )
+      // Token IG expirado (401 code=190): registra também no painel do CRM
+      // (/configuracoes) para a renovação manual não ficar só nos logs do servidor.
+      if (
+        sendRes &&
+        sendRes.statusCode === 401 &&
+        errObj.code === 190 &&
+        userId &&
+        typeof $app !== 'undefined'
+      ) {
+        try {
+          var tokUser = $app.findRecordById('users', userId)
+          if (tokUser) {
+            tokUser.set('meta_token_status', 'expired')
+            $app.saveNoValidate(tokUser)
+          }
+        } catch (_) {}
+      }
     }
   } catch (hookErr) {
     console.warn('[IG_AUTO_REPLY] Erro não-fatal: ' + String(hookErr))
