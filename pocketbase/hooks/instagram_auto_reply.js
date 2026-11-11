@@ -412,6 +412,36 @@ onRecordAfterCreateSuccess((e) => {
           }
         } catch (_) {}
       }
+      // FRENTE 1-e (vigia): qualquer falha de envio IG grava alerta de nível error
+      // com a resposta completa da Meta — falha nunca fica só no console.
+      try {
+        var igFailAlert = new Record($app.findCollectionByNameOrId('system_logs'))
+        igFailAlert.set('user_id', userId || '')
+        igFailAlert.set('type', 'instagram_send_failed_alert')
+        igFailAlert.set(
+          'message',
+          'FALHA DE ENVIO INSTAGRAM (status=' +
+            (sendRes ? sendRes.statusCode : 'null') +
+            ' code=' +
+            (errObj.code !== undefined ? errObj.code : 'n/a') +
+            '): leads podem não receber resposta da Bia. Resposta da Meta: ' +
+            (errObj.message || JSON.stringify(errObj)),
+        )
+        igFailAlert.set(
+          'details',
+          JSON.stringify({
+            statusCode: sendRes ? sendRes.statusCode : null,
+            code: errObj.code !== undefined ? errObj.code : null,
+            error_subcode: errObj.error_subcode !== undefined ? errObj.error_subcode : null,
+            error_type: errObj.type || null,
+            fbtrace_id: errObj.fbtrace_id || null,
+            meta_response: resBody,
+            recipient_id: igSenderId,
+            target_id: igTargetId,
+          }),
+        )
+        $app.saveNoValidate(igFailAlert)
+      } catch (_) {}
     }
   } catch (hookErr) {
     console.warn('[IG_AUTO_REPLY] Erro não-fatal: ' + String(hookErr))

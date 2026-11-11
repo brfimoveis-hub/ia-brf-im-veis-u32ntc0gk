@@ -6027,6 +6027,51 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           }),
         )
         $app.saveNoValidate(logRec)
+
+        // FRENTE 1-e (vigia): falha de envio NUNCA pode ficar em silêncio no painel.
+        // Erro 190/401 (token expirado) marca meta_token_status='expired' e grava
+        // alerta de nível error com a resposta completa da Meta.
+        if (!isOk && sendRes) {
+          const waErrObj =
+            sendRes.json && sendRes.json.error
+              ? sendRes.json.error
+              : { message: String(sendRes.body || 'HTTP ' + sendRes.statusCode) }
+          const waCode = waErrObj.code !== undefined ? waErrObj.code : null
+          try {
+            const alertLog = new Record($app.findCollectionByNameOrId('system_logs'))
+            alertLog.set('user_id', userId || '')
+            alertLog.set('type', 'whatsapp_send_failed_alert')
+            alertLog.set(
+              'message',
+              `FALHA DE ENVIO WHATSAPP (status=${sendRes.statusCode} code=${waCode !== null ? waCode : 'n/a'}): leads podem não receber resposta da Bia. Resposta da Meta: ${waErrObj.message || JSON.stringify(waErrObj)}`,
+            )
+            alertLog.set(
+              'details',
+              JSON.stringify({
+                statusCode: sendRes.statusCode,
+                code: waCode,
+                error_subcode: waErrObj.error_subcode !== undefined ? waErrObj.error_subcode : null,
+                error_type: waErrObj.type || null,
+                fbtrace_id: waErrObj.fbtrace_id || null,
+                meta_response: sendRes.json || sendRes.body || null,
+                phone_id: metaPhoneId,
+                to: cleanPhone,
+                customer_id: customerId,
+              }),
+            )
+            $app.saveNoValidate(alertLog)
+          } catch (_) {}
+
+          if (sendRes.statusCode === 401 || waCode === 190) {
+            try {
+              const failUser = userId ? $app.findRecordById('users', userId) : null
+              if (failUser) {
+                failUser.set('meta_token_status', 'expired')
+                $app.saveNoValidate(failUser)
+              }
+            } catch (_) {}
+          }
+        }
       } catch (logErr) {
         console.warn(`[AI_REPLY] Failed to log whatsapp_ai_send: ${String(logErr)}`)
       }
@@ -6665,6 +6710,59 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             console.warn(
               `[AI_REPLY] Messenger DM send failed for PSID ${psid}: ${resErrorObj ? resErrorObj.message : 'HTTP ' + (messengerSendRes ? messengerSendRes.statusCode : 'null')}`,
             )
+            // FRENTE 1-e (vigia): falha de envio Messenger nunca pode ficar em silêncio
+            // no painel. Grava alerta de nível error com a resposta completa da Meta e,
+            // em erro 190/401 (token expirado), marca meta_token_status='expired'.
+            try {
+              const msFailLog = new Record($app.findCollectionByNameOrId('system_logs'))
+              const msErrCode =
+                resErrorObj && resErrorObj.code !== undefined ? resErrorObj.code : null
+              msFailLog.set(
+                'user_id',
+                (freshUserForMessenger ? freshUserForMessenger.id : userId) || '',
+              )
+              msFailLog.set('type', 'messenger_send_failed_alert')
+              msFailLog.set(
+                'message',
+                `FALHA DE ENVIO MESSENGER (code=${msErrCode !== null ? msErrCode : 'n/a'}): leads podem não receber resposta da Bia. Resposta da Meta: ${resErrorObj ? resErrorObj.message : 'HTTP ' + (messengerSendRes ? messengerSendRes.statusCode : 'null')}`,
+              )
+              msFailLog.set(
+                'details',
+                JSON.stringify({
+                  statusCode: messengerSendRes ? messengerSendRes.statusCode : null,
+                  code: msErrCode,
+                  error_subcode:
+                    resErrorObj && resErrorObj.error_subcode !== undefined
+                      ? resErrorObj.error_subcode
+                      : null,
+                  error_type: resErrorObj ? resErrorObj.type || null : null,
+                  fbtrace_id: resErrorObj ? resErrorObj.fbtrace_id || null : null,
+                  meta_response: messengerSendRes
+                    ? messengerSendRes.json || messengerSendRes.body
+                    : null,
+                  psid: psid,
+                  customer_id: customerId,
+                }),
+              )
+              $app.saveNoValidate(msFailLog)
+            } catch (_) {}
+
+            try {
+              const msCode = resErrorObj && resErrorObj.code !== undefined ? resErrorObj.code : null
+              const msStatus = messengerSendRes ? messengerSendRes.statusCode : 0
+              if (msStatus === 401 || msCode === 190) {
+                const msFailUser = (freshUserForMessenger ? freshUserForMessenger.id : userId)
+                  ? $app.findRecordById(
+                      'users',
+                      freshUserForMessenger ? freshUserForMessenger.id : userId,
+                    )
+                  : null
+                if (msFailUser) {
+                  msFailUser.set('meta_token_status', 'expired')
+                  $app.saveNoValidate(msFailUser)
+                }
+              }
+            } catch (_) {}
           }
         } else {
           // Token ou PSID ausente
