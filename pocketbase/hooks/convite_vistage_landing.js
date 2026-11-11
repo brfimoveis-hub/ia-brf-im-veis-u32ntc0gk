@@ -170,8 +170,8 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
   // FIX 11/11: mensagem da campanha no formato do parser da régua —
   // saudação personalizada com o nome do cliente, nome correto do
   // empreendimento ("Residencial Vistage Residence", JAMAIS "Barreiros -
-  // AJ Coelho"), link da landing page de PRODUÇÃO e o e-book oficial.
-  var VISTAGE_LANDING_URL = 'https://brfiacrminteligente.goskip.app/lancamento/vistage'
+  // AJ Coelho"), link da landing page (mesma URL da campanha ativa) e o e-book.
+  var VISTAGE_LANDING_URL = 'https://ia-uazapi-6d79e--preview.goskip.app/lancamento/vistage'
   var VISTAGE_EBOOK_URL =
     'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'
 
@@ -238,7 +238,49 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
     isActive = false
   }
   // Guarda absoluta: se não ativo, sai sem fazer nenhuma operação
+  // ENVIO-TESTE (11/11): caminho INDEPENDENTE dos gates — lê o flag do metadata
+  // e, se setado, envia UMA única mensagem da campanha só para o número de
+  // teste do Mauro (5548999728050), mesmo com os gates desligados. O flag é
+  // limpo na sequência — nunca fica em pé, para o teste não virar disparo em massa.
+  var testOnlyPhone = ''
+  var metaEarly = {}
+  try {
+    if (ctrl) {
+      metaEarly = JSON.parse(ctrl.getString('metadata') || '{}') || {}
+    }
+  } catch (_) {
+    metaEarly = {}
+  }
+  try {
+    if (metaEarly && metaEarly.test_only_phone) {
+      testOnlyPhone = String(metaEarly.test_only_phone).replace(/\D/g, '')
+      delete metaEarly.test_only_phone
+      try {
+        ctrl.set('metadata', JSON.stringify(metaEarly))
+        app.saveNoValidate(ctrl)
+      } catch (_) {}
+      console.log('[CONVITE_VISTAGE] Modo ENVIO-TESTE: só ' + testOnlyPhone)
+    }
+  } catch (_) {}
+
   if (!isActive) {
+    return
+  }
+
+  // Gate duplo (11/11): o painel do lançamento também controla o disparo via
+  // launches.campaign_dispatch_active. Só dispara se AMBOS estiverem ativos —
+  // é assim que o Mauro desliga o disparo pelo painel (flag false = NADA envia).
+  var panelDispatchActive = false
+  try {
+    var vLaunches = app.findRecordsByFilter('launches', 'campaign_dispatch_active = true', '', 1, 0)
+    if (vLaunches && vLaunches.length > 0) {
+      panelDispatchActive = true
+    }
+  } catch (_) {}
+  if (!panelDispatchActive) {
+    console.log(
+      '[CONVITE_VISTAGE] campaign_dispatch_active=false no painel do lançamento — disparo NÃO roda.',
+    )
     return
   }
 
@@ -248,6 +290,24 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
   } catch (_) {
     meta = {}
   }
+
+  // Test-send gate (11/11): quando este flag está no metadata, o disparo ignora
+  // o cursor alfabético e envia UMA única mensagem da campanha, só para o
+  // número de teste do Mauro (5548999728050). O flag é limpo na sequência —
+  // nunca fica em pé, para o teste não virar disparo em massa.
+  var testOnlyPhone = ''
+  try {
+    if (meta && meta.test_only_phone) {
+      testOnlyPhone = String(meta.test_only_phone).replace(/\D/g, '')
+      delete meta.test_only_phone
+      try {
+        ctrl.set('metadata', JSON.stringify(meta))
+        app.saveNoValidate(ctrl)
+      } catch (_) {}
+      console.log('[CONVITE_VISTAGE] Modo ENVIO-TESTE: só ' + testOnlyPhone)
+    }
+  } catch (_) {}
+
   // FIX 11/11: landing page de PRODUÇÃO sempre (metadados antigos guardavam
   // o link de preview — por isso o link errado saía nas mensagens)
   var landingLink = VISTAGE_LANDING_URL
@@ -293,9 +353,15 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
   // ---- Cursor alfabético para TODOS os contatos da base (~6356) ----
   // Se cursor_nome estiver vazio, inicia do começo da base
   var cursorNome = String(meta.cursor_nome || '').trim()
+  // ENVIO-TESTE: quando o flag test_only_phone está setado, ignora o cursor
+  // e busca SOMENTE o contato do Mauro — nenhum outro número é consultado.
   var filtro = cursorNome
     ? "name >= '" + cursorNome.replace(/'/g, "''") + "' && phone != '' && is_blocked = false"
     : "phone != '' && is_blocked = false"
+  if (testOnlyPhone) {
+    filtro = "phone = '" + testOnlyPhone + "'"
+    cursorNome = ''
+  }
 
   var candidates = []
   try {
@@ -453,10 +519,36 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
       break
     }
 
+    // ENVIO-TESTE: enviou a única mensagem de teste, encerra a rodada
+    if (testOnlyPhone) {
+      break
+    }
+
     // Limite prudente por ciclo de 15 min (máx 15 mensagens por rodada)
     if (sentOk >= 15) {
       break
     }
+  }
+
+  // ENVIO-TESTE: não avança cursor nem contadores da campanha.
+  if (testOnlyPhone) {
+    try {
+      var logsColT = app.findCollectionByNameOrId('system_logs')
+      var logT = new Record(logsColT)
+      if (activeUserId) {
+        logT.set('user_id', activeUserId)
+      }
+      logT.set('type', 'convite_vistage_teste')
+      logT.set(
+        'message',
+        'ENVIO-TESTE concluído (sentOk=' +
+          sentOk +
+          (errorDetails ? ', erro: ' + errorDetails : '') +
+          ') — nenhum outro destinatário, cursor intacto.',
+      )
+      app.saveNoValidate(logT)
+    } catch (_) {}
+    return
   }
 
   // ---- Avança cursor SÓ se houve envio OK nesta rodada ----

@@ -50,6 +50,31 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
   }
 
   // ============================================================================
+  // 0.1 ISOLAMENTO DA CAMPANHA (11/11): a régua genérica de persistência NUNCA
+  // fornece texto nem envia para leads da campanha Convite Vistage — esses
+  // contatos têm régua PRÓPRIA (cron convite_vistage_disparo, em
+  // convite_vistage_landing.js) com mensagem oficial da campanha
+  // ("Residencial Vistage Residence" + landing + e-book).
+  // ============================================================================
+  function isCampaignLeadRecord(rec) {
+    try {
+      var srcC = String(rec.getString('source') || '').toLowerCase()
+      if (srcC.indexOf('landing_vistage') !== -1 || srcC.indexOf('convite_vistage') !== -1) {
+        return true
+      }
+      var rawTagsC = rec.get('tags') || []
+      var tagsStrC = JSON.stringify(rawTagsC).toLowerCase()
+      return (
+        tagsStrC.indexOf('lead_campanha') !== -1 ||
+        tagsStrC.indexOf('landing_vistage') !== -1 ||
+        tagsStrC.indexOf('convite_vistage') !== -1
+      )
+    } catch (_) {
+      return false
+    }
+  }
+
+  // ============================================================================
   // 1. CÁLCULO DE PRÓXIMO HORÁRIO VÁLIDO DENTRO DA JANELA COMERCIAL (08h-18h Brasília seg-sáb)
   // Regra de Ouro (Mauro): NADA sai fora da janela 8h-18h; tentativa fora do horário
   // é reagendada para o próximo horário válido, nunca descartada.
@@ -155,6 +180,15 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
         '[BIA_PERSISTENCE] [sendPersistenceMarketingMessage] Régua pausada durante o lote! Cancelando envio.',
       )
       return { ok: false, error: 'REGUA_PAUSADA', wamid: '' }
+    }
+
+    // ISOLAMENTO (11/11): régua genérica NUNCA envia para lead da campanha Vistage.
+    // Texto da campanha sai SOMENTE pelo motor próprio (convite_vistage_landing.js).
+    if (isCampaignLeadRecord(customer)) {
+      console.log(
+        '[BIA_PERSISTENCE] [sendPersistenceMarketingMessage] Lead da campanha Convite Vistage — BLOQUEADO na régua genérica (quem atende é a régua própria da campanha).',
+      )
+      return { ok: false, error: 'BLOQUEADO_CAMPANHA_VISTAGE', wamid: '' }
     }
 
     if (!text || typeof text !== 'string') {
@@ -2054,67 +2088,20 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
 
       try {
         // ====================================================================
-        // CAMPANHA VISTAGE (fix 11/11): lead de campanha recebe SOMENTE a
-        // mensagem específica da campanha — jamais o texto genérico da régua
-        // ("planejamento imobiliário...", nome antigo "Barreiros - AJ Coelho").
-        // Formato do parser da régua: saudação com nome do cliente, nome
-        // correto do lançamento, link da landing page e o e-book oficial.
+        // CAMPANHA VISTAGE (isolamento 11/11): lead de campanha NUNCA recebe
+        // texto da régua genérica ("planejamento imobiliário...", nome antigo
+        // "Barreiros - AJ Coelho"). Quem atende lead de campanha é EXCLUSIVA-
+        // MENTE o motor próprio da campanha (cron convite_vistage_disparo, em
+        // convite_vistage_landing.js) com a mensagem oficial: nome correto
+        // "Residencial Vistage Residence" + link /lancamento/vistage + e-book.
+        // Aqui na régua genérica o lead de campanha é simplesmente IGNORADO.
         // ====================================================================
         if (isCampLead) {
-          var custNameCamp = (sCust.getString('first_name') || sCust.getString('name') || '').trim()
-          var brTimeCamp = new Date(Date.now() - 3 * 3600000)
-          var campTimeWord =
-            brTimeCamp.getUTCHours() < 12
-              ? 'bom dia'
-              : brTimeCamp.getUTCHours() < 18
-                ? 'boa tarde'
-                : 'boa noite'
-          var campGreeting = custNameCamp
-            ? 'Olá, ' + custNameCamp + '! ' + campTimeWord + ', tudo bem?'
-            : 'Olá! ' + campTimeWord + ', tudo bem?'
-          var campMsg =
-            campGreeting +
-            ' Sou a Bia, da BRF Imóveis. Preparamos para você a apresentação do Residencial Vistage Residence, em Barreiros, com plantas, diferenciais e o e-book completo do empreendimento.' +
-            '\n\n📖 E-book do lançamento: https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing' +
-            '\n\n🏠 Conheça a página do lançamento e deixe seu contato que eu mesma retomo o atendimento: https://brfiacrminteligente.goskip.app/lancamento/vistage' +
-            '\n\nOs valores de referência variam todo mês, atualizados pelo CUB — te apresento a tabela vigente quando você responder por aqui. Caso prefira não receber mais novidades, responda NÃO.'
-          var campOutcome = sendPersistenceMarketingMessage(
-            sCust,
-            campMsg,
-            activeUserRecord,
-            'remarketing',
-            null,
+          console.log(
+            '[BIA_PERSISTENCE] Lead da campanha Convite Vistage (' +
+              sCustId +
+              ') ignorado pela régua genérica — texto sai só pelo motor próprio da campanha.',
           )
-          if (campOutcome && campOutcome.ok) {
-            sCust.set('follow_up_step', 'd1')
-            sCust.set('follow_up_count', followUpCount + 1)
-            sCust.set('last_follow_up_at', nowIso)
-            sCust.set('next_follow_up_at', calculateNextFollowUp('remarketing'))
-            sCust.set('persistence_status', 'ativo')
-            app.saveNoValidate(sCust)
-            try {
-              recordCadenceAttempt({
-                customerId: sCustId,
-                userId: activeUserRecord ? activeUserRecord.id : '',
-                step: 'remarketing',
-                attemptNumber: 1,
-                maxAttempts: 1,
-                status: 'sent',
-                sentAt: nowIso,
-                nextAttemptAt: calculateNextFollowUp('remarketing'),
-                wamid: campOutcome.wamid || '',
-                messagePreview: campMsg.substring(0, 160),
-                details: { nextStep: 'd1', source: 'campaign_vistage' },
-              })
-            } catch (_) {}
-            executedCount++
-            console.log(
-              '[BIA_PERSISTENCE] Mensagem da CAMPANHA Vistage (landing + e-book) enviada para ' +
-                sCustId,
-            )
-          }
-          // CAMPANHA USA SOMENTE ESTE TEXTO — nunca cai na régua genérica abaixo
-          // (inclusive em caso de falha de envio: nada do texto antigo é gerado)
           continue
         }
 
