@@ -1,4 +1,13 @@
 onRecordAfterCreateSuccess((e) => {
+  // GUARDA ANTI-FANTASMA (11/11): leads vindos do Direct do Instagram são atendidos
+  // pelo webhook (instagram_webhook_post) + ai_auto_reply + instagram_auto_reply.
+  // Este hook gerava uma "resposta da Bia" SEM canal, apenas salva no CRM (nunca
+  // enviada ao Direct) — mascarava o bug de entrega. Não disparar para esses leads.
+  const ghostSource = e.record.getString('source') || ''
+  if (/instagram/i.test(ghostSource)) {
+    return e.next()
+  }
+
   const customerId = e.record.id
   const userId = e.record.getString('user_id')
   const status = e.record.getString('status') || 'Novo'

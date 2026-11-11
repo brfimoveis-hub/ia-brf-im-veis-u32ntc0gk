@@ -6828,6 +6828,42 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             }
           }
 
+          // LOG COMPLETO DO GRAPH EM TODO ENVIO IG (sucesso ou falha) — nunca mais
+          // ficar cegos entre o aceite da Graph e a entrega no celular.
+          try {
+            const igResBody = igSendRes ? igSendRes.json || igSendRes.body : null
+            const igResMid =
+              igResBody && igResBody.message_id
+                ? igResBody.message_id
+                : igResBody && igResBody.recipient && igResBody.recipient.message_id
+                  ? igResBody.recipient.message_id
+                  : null
+            const logsColOk = $app.findCollectionByNameOrId('system_logs')
+            const igOkLog = new Record(logsColOk)
+            igOkLog.set('user_id', (freshUserRecord ? freshUserRecord.id : userId) || '')
+            igOkLog.set('type', 'instagram_send_result')
+            igOkLog.set(
+              'message',
+              `[IG_SEND_RESULT] status=${igSendRes ? igSendRes.statusCode : 'null'} recipient=${igSenderId || 'n/a'} target=${igRecipientTargetId} message_id=${igResMid || 'n/a'} origin=ai_auto_reply fallback_used=${usedFallback}`,
+            )
+            igOkLog.set(
+              'details',
+              JSON.stringify({
+                url: lastAttemptedUrl,
+                original_url: igEndpointUrl,
+                statusCode: igSendRes ? igSendRes.statusCode : null,
+                recipient_id: igSenderId || null,
+                target_id: igRecipientTargetId,
+                message_id: igResMid,
+                token_prefix: igToken.substring(0, 15) + '...',
+                origin: 'ai_auto_reply',
+                fallback_used: usedFallback,
+              }),
+            )
+            igOkLog.set('payload', JSON.stringify({ request: igPayloadObj, response: igResBody }))
+            $app.saveNoValidate(igOkLog)
+          } catch (_) {}
+
           if (igSendRes && igSendRes.statusCode >= 200 && igSendRes.statusCode < 300) {
             console.log(
               `[AI_REPLY] Instagram DM sent successfully to ${igSenderId} for customer=${customerId} (fallback_used=${usedFallback})`,
