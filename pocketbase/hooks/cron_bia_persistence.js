@@ -1902,6 +1902,9 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
           // Campanha em revisão / desligada pelo Mauro: não dispara régua para leads da campanha
           continue
         }
+        // Campanha ATIVA: o lead de campanha recebe a mensagem específica da
+        // campanha (injetada APÓS as guardas de silêncio/anti-bot, mais abaixo)
+        // e NUNCA cai nos textos genéricos da régua.
       }
 
       // Guarda 1: ai_paused ou cliente bloqueado
@@ -2050,6 +2053,71 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
       if (!acquireLock(sCustId)) continue
 
       try {
+        // ====================================================================
+        // CAMPANHA VISTAGE (fix 11/11): lead de campanha recebe SOMENTE a
+        // mensagem específica da campanha — jamais o texto genérico da régua
+        // ("planejamento imobiliário...", nome antigo "Barreiros - AJ Coelho").
+        // Formato do parser da régua: saudação com nome do cliente, nome
+        // correto do lançamento, link da landing page e o e-book oficial.
+        // ====================================================================
+        if (isCampLead) {
+          var custNameCamp = (sCust.getString('first_name') || sCust.getString('name') || '').trim()
+          var brTimeCamp = new Date(Date.now() - 3 * 3600000)
+          var campTimeWord =
+            brTimeCamp.getUTCHours() < 12
+              ? 'bom dia'
+              : brTimeCamp.getUTCHours() < 18
+                ? 'boa tarde'
+                : 'boa noite'
+          var campGreeting = custNameCamp
+            ? 'Olá, ' + custNameCamp + '! ' + campTimeWord + ', tudo bem?'
+            : 'Olá! ' + campTimeWord + ', tudo bem?'
+          var campMsg =
+            campGreeting +
+            ' Sou a Bia, da BRF Imóveis. Preparamos para você a apresentação do Residencial Vistage Residence, em Barreiros, com plantas, diferenciais e o e-book completo do empreendimento.' +
+            '\n\n📖 E-book do lançamento: https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing' +
+            '\n\n🏠 Conheça a página do lançamento e deixe seu contato que eu mesma retomo o atendimento: https://brfiacrminteligente.goskip.app/lancamento/vistage' +
+            '\n\nOs valores de referência variam todo mês, atualizados pelo CUB — te apresento a tabela vigente quando você responder por aqui. Caso prefira não receber mais novidades, responda NÃO.'
+          var campOutcome = sendPersistenceMarketingMessage(
+            sCust,
+            campMsg,
+            activeUserRecord,
+            'remarketing',
+            null,
+          )
+          if (campOutcome && campOutcome.ok) {
+            sCust.set('follow_up_step', 'd1')
+            sCust.set('follow_up_count', followUpCount + 1)
+            sCust.set('last_follow_up_at', nowIso)
+            sCust.set('next_follow_up_at', calculateNextFollowUp('remarketing'))
+            sCust.set('persistence_status', 'ativo')
+            app.saveNoValidate(sCust)
+            try {
+              recordCadenceAttempt({
+                customerId: sCustId,
+                userId: activeUserRecord ? activeUserRecord.id : '',
+                step: 'remarketing',
+                attemptNumber: 1,
+                maxAttempts: 1,
+                status: 'sent',
+                sentAt: nowIso,
+                nextAttemptAt: calculateNextFollowUp('remarketing'),
+                wamid: campOutcome.wamid || '',
+                messagePreview: campMsg.substring(0, 160),
+                details: { nextStep: 'd1', source: 'campaign_vistage' },
+              })
+            } catch (_) {}
+            executedCount++
+            console.log(
+              '[BIA_PERSISTENCE] Mensagem da CAMPANHA Vistage (landing + e-book) enviada para ' +
+                sCustId,
+            )
+          }
+          // CAMPANHA USA SOMENTE ESTE TEXTO — nunca cai na régua genérica abaixo
+          // (inclusive em caso de falha de envio: nada do texto antigo é gerado)
+          continue
+        }
+
         var launchInfo = resolveLaunchAndKnowledgeData(
           sCust,
           stepToExecute,

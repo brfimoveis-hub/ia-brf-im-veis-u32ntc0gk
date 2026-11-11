@@ -167,8 +167,39 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
     ctrl = null
   }
 
-  var conviteTextoVerbatim =
-    'Como você já está na nossa lista de contatos, tomamos a liberdade de enviar um convite para conhecer esse lançamento. Talvez seja o seu momento de investir ou adquirir seu primeiro imóvel.'
+  // FIX 11/11: mensagem da campanha no formato do parser da régua —
+  // saudação personalizada com o nome do cliente, nome correto do
+  // empreendimento ("Residencial Vistage Residence", JAMAIS "Barreiros -
+  // AJ Coelho"), link da landing page de PRODUÇÃO e o e-book oficial.
+  var VISTAGE_LANDING_URL = 'https://brfiacrminteligente.goskip.app/lancamento/vistage'
+  var VISTAGE_EBOOK_URL =
+    'https://drive.google.com/file/d/1w9GadvkqN4aILCYfcg_6-tN6qFbcsCeG/view?usp=sharing'
+
+  function buildConviteVistageMessage(customerName) {
+    var first =
+      String(customerName || '')
+        .trim()
+        .split(/\s+/)[0] || ''
+    var nowBr = new Date(new Date().getTime() - 3 * 3600000)
+    var periodo =
+      nowBr.getUTCHours() < 12 ? 'bom dia' : nowBr.getUTCHours() < 18 ? 'boa tarde' : 'boa noite'
+    var saudacao = first
+      ? 'Olá, ' + first + '! ' + periodo + ', tudo bem?'
+      : 'Olá! ' + periodo + ', tudo bem?'
+    return (
+      saudacao +
+      ' Sou a Bia, da BRF Imóveis.\n\n' +
+      'Como você já consta em nossos contatos, tomei a liberdade de trazer uma oportunidade: o Residencial Vistage Residence, o novo lançamento da AJ Coelho em Barreiros, em São José (SC).\n\n' +
+      '📖 Separei o e-book completo do empreendimento, com plantas e diferenciais: ' +
+      VISTAGE_EBOOK_URL +
+      '\n\n' +
+      '🏠 E montei uma página especial do lançamento — dá uma olhada e deixa seu contato por lá que eu mesma retomo o atendimento com você: ' +
+      VISTAGE_LANDING_URL +
+      '\n\n' +
+      'Por ser lançamento, os valores de referência variam todo mês, atualizados pelo CUB — te apresento a tabela vigente quando você me responder por aqui.\n\n' +
+      'Se não deseja mais receber novidades como esta, responda NÃO.'
+    )
+  }
 
   if (!ctrl) {
     try {
@@ -184,8 +215,9 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
       rec.set(
         'metadata',
         JSON.stringify({
-          mensagem: conviteTextoVerbatim,
-          link: 'https://ia-uazapi-6d79e--preview.goskip.app/lancamento/vistage',
+          mensagem:
+            'Mensagem da campanha gerada por buildConviteVistageMessage (parser da régua: saudação + Residencial Vistage Residence + e-book + landing page de produção).',
+          link: VISTAGE_LANDING_URL,
           cursor_nome: '',
           ultimo_enviado_nome: '',
           total_enviados: 0,
@@ -216,7 +248,9 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
   } catch (_) {
     meta = {}
   }
-  var landingLink = String(meta.link || '').trim()
+  // FIX 11/11: landing page de PRODUÇÃO sempre (metadados antigos guardavam
+  // o link de preview — por isso o link errado saía nas mensagens)
+  var landingLink = VISTAGE_LANDING_URL
   if (!landingLink) {
     console.warn('[CONVITE_VISTAGE] Ativo mas sem link da landing — saindo.')
     return
@@ -325,7 +359,7 @@ cronAdd('convite_vistage_disparo', '*/15 * * * *', () => {
       continue
     }
 
-    var msgFull = conviteTextoVerbatim + '\n\n' + landingLink
+    var msgFull = buildConviteVistageMessage(cust.getString('name'))
 
     var okSend = false
     var errorDetails = ''
