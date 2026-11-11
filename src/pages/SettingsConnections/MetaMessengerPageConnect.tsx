@@ -218,13 +218,16 @@ export function MetaMessengerPageConnect() {
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Aceita <strong>token de usuário OU token de Página</strong>: se for de usuário, o CRM
-            troca sozinho pelo token da Página via{' '}
+            Aceita <strong>token de usuário OU token de Página</strong>: se for de usuário, o CRM{' '}
+            <strong>estende sozinho para ~60 dias</strong> (Extend Token Access via{' '}
+            <code className="text-foreground">fb_exchange_token</code>), troca pelo{' '}
+            <strong>token da Página de longa duração</strong> via{' '}
             <code className="text-foreground">/me/accounts</code> e subscreve a Página
             automaticamente ao webhook (<code className="text-foreground">messages</code>,{' '}
             <code className="text-foreground">messaging_postbacks</code>,{' '}
-            <code className="text-foreground">messaging_referrals</code>). O token expira em ~1h,
-            mas o que fica salvo no CRM é o token da Página, que não expira com ele.
+            <code className="text-foreground">messaging_referrals</code>). O token de página
+            derivado de um token de usuário estendido <strong>não expira</strong> enquanto o usuário
+            não revogar o app ou trocar a senha do Facebook.
           </p>
         </div>
 
@@ -298,7 +301,8 @@ export function MetaMessengerPageConnect() {
               No seletor <strong>Token de Usuário ou Página</strong>, pode deixar como{' '}
               <strong>Usuário</strong> (padrão) ou escolher a Página{' '}
               <strong>www.brfimoveis.com.br (1401557100168686)</strong> — os dois funcionam: se for
-              token de usuário, o CRM troca automaticamente pelo token da Página.
+              token de usuário, o CRM estende para ~60 dias e troca automaticamente pelo token da
+              Página de longa duração.
             </li>
             <li>
               Em <strong>Permissões</strong>, adicione exatamente estas 4 permissões:
@@ -316,6 +320,24 @@ export function MetaMessengerPageConnect() {
                   instagram_manage_messages
                 </Badge>
               </div>
+            </li>
+            <li>
+              <strong>Extend Token Access (60 dias)</strong>: antes de colar, se preferir estender
+              manualmente, abra{' '}
+              <a
+                href="https://developers.facebook.com/tools/accesstoken/"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium underline inline-flex items-center gap-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400"
+              >
+                developers.facebook.com/tools/accesstoken{' '}
+                <ExternalLink className="h-3 w-3 inline" />
+              </a>{' '}
+              e clique em <strong>Estender token de acesso</strong> — ou simplesmente cole o token
+              curto no campo acima: o CRM faz a extensão (
+              <code className="text-foreground">fb_exchange_token</code>) automaticamente no
+              servidor e salva o <strong>token da Página de longa duração</strong>, que não expira
+              (só sai do ar se o token de usuário for revogado ou a senha trocada).
             </li>
             <li>
               Clique em <strong>Generate Access Token</strong>, confirme as permissões da Meta,

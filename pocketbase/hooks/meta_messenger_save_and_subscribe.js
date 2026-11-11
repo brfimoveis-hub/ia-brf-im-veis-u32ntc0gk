@@ -281,6 +281,75 @@ routerAdd(
     }
 
     // 2. AUTO-CONVERSÃO user→page
+    // Credenciais do app (BRF Imóveis 2): lidas do registro do usuário (migração
+    // 0125/0131) com fallback para as env vars do backend (META_APP_ID/META_APP_SECRET).
+    var appCredsUser = null
+    try {
+      appCredsUser = $app.findRecordById('users', userId)
+    } catch (_) {}
+    var appIdForExchange = appCredsUser ? (appCredsUser.getString('meta_app_id') || '').trim() : ''
+    var appSecretForExchange = appCredsUser
+      ? (appCredsUser.getString('meta_app_secret') || '').trim()
+      : ''
+    if (!appIdForExchange || !appSecretForExchange) {
+      try {
+        appIdForExchange = appIdForExchange || String($os.getenv('META_APP_ID') || '').trim()
+        appSecretForExchange =
+          appSecretForExchange || String($os.getenv('META_APP_SECRET') || '').trim()
+      } catch (_) {}
+    }
+    // Fallback adicional: credenciais Instagram salvas pelo fluxo OAuth (mesmo app)
+    if ((!appIdForExchange || !appSecretForExchange) && appCredsUser) {
+      appIdForExchange =
+        appIdForExchange || (appCredsUser.getString('meta_instagram_app_id') || '').trim()
+      appSecretForExchange =
+        appSecretForExchange || (appCredsUser.getString('meta_instagram_app_secret') || '').trim()
+    }
+
+    // 2a. Token de USUÁRIO de longa duração: fb_exchange_token (60 dias).
+    // Page token gerado a partir de user token estendido NÃO EXPIRA enquanto o
+    // usuário não revogar o app/trocar a senha — é isso que torna o token na
+    // prática permanente. Falha aqui não bloqueia: cai para o token original.
+    var tokenExtended = false
+    var tokenExpiresAt = 0
+    if (appIdForExchange && appSecretForExchange) {
+      try {
+        var exchRes = $http.send({
+          url:
+            'https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token' +
+            '&client_id=' +
+            encodeURIComponent(appIdForExchange) +
+            '&client_secret=' +
+            encodeURIComponent(appSecretForExchange) +
+            '&fb_exchange_token=' +
+            encodeURIComponent(token),
+          method: 'GET',
+          timeout: 15,
+        })
+        var exchData = exchRes && exchRes.json ? exchRes.json : {}
+        if (exchRes.statusCode >= 200 && exchRes.statusCode < 300 && exchData.access_token) {
+          token = String(exchData.access_token)
+          tokenExtended = true
+          console.log(
+            '[SAVE_SUBSCRIBE] Token de usuário estendido (fb_exchange_token OK, ~60 dias).',
+          )
+        } else {
+          console.warn(
+            '[SAVE_SUBSCRIBE] fb_exchange_token não aceito (HTTP ' +
+              (exchRes ? exchRes.statusCode : 0) +
+              '): ' +
+              JSON.stringify(exchData.error || exchData),
+          )
+        }
+      } catch (exchErr) {
+        console.warn('[SAVE_SUBSCRIBE] Erro de rede no fb_exchange_token: ' + String(exchErr))
+      }
+    } else {
+      console.warn(
+        '[SAVE_SUBSCRIBE] meta_app_id/meta_app_secret ausentes (usuário e env) — estender token não possível, seguindo com token curto.',
+      )
+    }
+
     if (tokenType === 'user') {
       var accountsRes = null
       var accountsErr = null
@@ -510,9 +579,27 @@ routerAdd(
       var user = $app.findRecordById('users', userId)
       user.set('meta_page_access_token', token)
       user.set('meta_instagram_page_token', token)
+      try {
+        user.set('meta_token_status', 'active')
+      } catch (_) {}
       $app.saveNoValidate(user)
     } catch (saveUserErr) {
       $app.logger().error('Falha ao salvar token no usuário', 'err', String(saveUserErr))
+    }
+
+    // 5a. Auditoria da extensão (fb_exchange_token) — visível no painel de logs
+    if (tokenExtended) {
+      try {
+        var extLog = new Record(sysLogsCol, {
+          user_id: userId,
+          type: 'meta_token_extended',
+          message:
+            'Token estendido via fb_exchange_token (longa duração ~60 dias) antes da conversão user→page. Page token gerado a partir dele não expira enquanto o usuário não revogar o app.',
+          details: 'Página ' + targetPageId + ' (' + targetPageName + ')',
+          payload: { page_id: targetPageId, extended: true },
+        })
+        $app.save(extLog)
+      } catch (_) {}
     }
 
     // 6. Registro de Auditoria em system_logs

@@ -837,8 +837,13 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     // Kill-switch global: se as automações / envios da Bia estiverem pausados em app_controls (regua_automations_active == false),
-    // a Bia suspende respostas automáticas imediatamente, conforme regra e solicitação urgente do Mauro.
+    // a Bia suspende o OUTBOUND (régua, campanhas, ebook) imediatamente, conforme regra do Mauro.
+    // REGRA 11/11: mensagens ENTRANTES (Direct do Instagram, Messenger e WhatsApp recebido agora)
+    // NUNCA são silenciadas pela régua de persistência — o botão Parar Envio governa disparo,
+    // não a resposta a um lead que acabou de escrever. A Bia responde entrantes 24/7.
     let globalAutomationsActive = true
+    const isInboundIncoming = sender === 'customer' || sender === 'lead' || sender === 'user'
+    let globalPausedForOutboundOnly = false
     try {
       if (typeof isReguaAutomationsActive === 'function') {
         globalAutomationsActive = isReguaAutomationsActive($app)
@@ -852,10 +857,23 @@ onRecordAfterCreateSuccess((e) => {
         }
       }
     } catch (_) {}
+    if (!globalAutomationsActive) {
+      if (isInboundIncoming) {
+        // REGRA 11/11: régua de persistência pausada governa OUTBOUND (campanha,
+        // ebook, disparos) — NUNCA a resposta a uma mensagem ENTRANTE que acabou
+        // de chegar no Direct/Messenger/WhatsApp. Bia responde entrantes 24/7.
+        console.log(
+          `[AI_REPLY] regua_automations_active=false, mas mensagem ENTRANTE (sender=${sender}): respondendo mesmo assim — régua não silencia resposta a entrantes`,
+        )
+        globalAutomationsActive = true
+      } else {
+        globalPausedForOutboundOnly = true
+      }
+    }
 
     if (!globalAutomationsActive) {
       console.log(
-        `[AI_REPLY] Message deferred: global automations/Bia paused (regua_automations_active=false)`,
+        `[AI_REPLY] Message deferred: global automations/Bia paused (regua_automations_active=false, outbound-only)`,
       )
       try {
         const logsCol = $app.findCollectionByNameOrId('system_logs')
@@ -6912,6 +6930,24 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                 }),
               )
               $app.saveNoValidate(igFailLog)
+              // Token IG/Página expirado (401 code=190): torna a pendência visível
+              // no painel (/configuracoes), não só nos logs do servidor.
+              try {
+                if (
+                  igSendRes.statusCode === 401 &&
+                  igErrObj.code === 190 &&
+                  (freshUserRecord ? freshUserRecord.id : userId)
+                ) {
+                  const tokUser = $app.findRecordById(
+                    'users',
+                    freshUserRecord ? freshUserRecord.id : userId,
+                  )
+                  if (tokUser) {
+                    tokUser.set('meta_token_status', 'expired')
+                    $app.saveNoValidate(tokUser)
+                  }
+                }
+              } catch (_) {}
             } catch (_) {}
           }
         } else if (!isWithin24h) {
