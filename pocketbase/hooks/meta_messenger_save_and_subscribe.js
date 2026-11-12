@@ -1,4 +1,7 @@
-// Hook para POST /backend/v1/meta_messenger/save_and_subscribe
+// Hook para POST /backend/v1/meta_messenger_save_and_subscribe
+// (rota única — a mesma chamada pelo front em src/services/meta_messenger.ts;
+// era registrada como /backend/v1/meta_messenger/save_and_subscribe e o front
+// recebia 404 "The requested resource wasn't found" ao validar o token.)
 // ORDEM OBRIGATÓRIA (correção da falha silenciosa da v0.0.1404):
 //   1. VALIDA o token colado (GET /me?fields=id,name — sem "category").
 //   2. ESTENDE para longa duração (~60 dias) via GET /oauth/access_token
@@ -25,7 +28,7 @@
 
 routerAdd(
   'POST',
-  '/backend/v1/meta_messenger/save_and_subscribe',
+  '/backend/v1/meta_messenger_save_and_subscribe',
   function (e) {
     var userId = e.auth ? e.auth.id : ''
     if (!userId) {
