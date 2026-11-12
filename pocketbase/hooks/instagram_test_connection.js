@@ -1190,7 +1190,11 @@ routerAdd(
 
       return e.json(200, {
         success: false,
-        status: 'configured_waiting_token',
+        // code 190 = token morto (expirado/invalidado) — status 'expired' para o
+        // cartão mostrar VERMELHO "Token expirado" (v0.0.1411).
+        status: errCode === 190 ? 'expired' : 'configured_waiting_token',
+        code: errCode === 190 ? 190 : 0,
+        subcode: errCode === 190 ? errSubcode || 0 : 0,
         message: tokenRejectionMsg,
         instructions: tokenRejectionMsg,
         token_source: tokenSource,

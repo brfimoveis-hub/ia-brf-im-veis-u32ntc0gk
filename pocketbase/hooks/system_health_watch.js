@@ -441,6 +441,27 @@ routerAdd('GET', '/backend/v1/system_health', (e) => {
     } catch (_) {}
   }
 
+  // Tradução dos códigos conhecidos da Meta para português — cópia da versão
+  // do cron, declarada DENTRO deste handler (regra v0.0.1399: handlers pb_hooks
+  // só podem referenciar funções declaradas dentro do próprio callback; a
+  // friendlyTokenMessage do cron pode sumir do bundle e gerava ReferenceError
+  // quando o endpoint GET /system_health era chamado).
+  function friendlyTokenMessage(errObj, fallbackMsg) {
+    var code = errObj && errObj.code !== undefined ? errObj.code : 0
+    var subcode = errObj && errObj.error_subcode !== undefined ? errObj.error_subcode : 0
+    var raw = errObj && errObj.message ? String(errObj.message) : ''
+    if (code === 190 && subcode === 467) {
+      return 'Sessão invalidada porque saíram do Facebook — gere o token novamente e NÃO saia da conta do Facebook depois de gerar o token (ou troque para um System User Token, que não expira e não depende de sessão).'
+    }
+    if (code === 190 && subcode === 463) {
+      return 'Token expirado — renove gerando um novo token em /configuracoes.'
+    }
+    if (code === 190) {
+      return 'Token expirado ou invalidado pela Meta (código 190) — Bernadete renovar em /configuracoes.'
+    }
+    return fallbackMsg || raw
+  }
+
   var payload = {
     service: 'brf-imoveis-crm',
     checked_at: nowIso,

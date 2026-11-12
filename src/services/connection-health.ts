@@ -3,9 +3,17 @@ import pb from '@/lib/pocketbase/client'
 export interface ConnectionHealthResult {
   name: string
   key: string
-  status: 'connected' | 'error' | 'warning' | 'not_configured'
+  status:
+    | 'connected'
+    | 'error'
+    | 'expired'
+    | 'warning'
+    | 'not_configured'
+    | 'configured_waiting_token'
   timestamp: string
   message: string
+  code?: number
+  subcode?: number
   details?: Record<string, any>
 }
 

@@ -1,400 +1,237 @@
-import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useEffect, useState } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import {
-  MessageSquare,
-  CheckCircle2,
-  AlertTriangle,
-  Loader2,
-  ExternalLink,
-  ShieldCheck,
-  Copy,
-  Info,
-  Sparkles,
-  RefreshCw,
-} from 'lucide-react'
-import { useAuth } from '@/hooks/use-auth'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
-import { saveAndSubscribeMessengerPage } from '@/services/meta_messenger'
+import { useAuth } from '@/hooks/use-auth'
+import { cn } from '@/lib/utils'
+import { KeyRound, CheckCircle2, XCircle, Loader2, Send } from 'lucide-react'
 import { TokenExpiryBanner, translateMetaTokenError } from './TokenExpiryBanner'
+import pb from '@/lib/pocketbase/client'
 
-const TARGET_PAGE_ID = '1401557100168686'
-const TARGET_PAGE_NAME = 'www.brfimoveis.com.br'
-const TARGET_BUSINESS_ID = '4184972131827155'
-const WEBHOOK_PUBLIC_URL =
-  'https://ia-uazapi-6d79e.shrd03.internal.goskip.dev/backend/v1/meta_messenger_webhook'
-const VERIFY_TOKEN = 'BRF IA CRM'
+// Permissões mínimas do System User Token (v0.0.1411) — as mesmas validadas
+// pelo hook meta_messenger_save_and_subscribe via debug_token.
+const SYSTEM_USER_PERMISSIONS = [
+  'pages_show_list',
+  'pages_messaging',
+  'pages_manage_metadata',
+  'instagram_basic',
+  'instagram_manage_messages',
+  'ads_read',
+  'ads_management',
+  'pages_manage_posts',
+  'instagram_content_publish',
+]
+
+const SYSTEM_USER_GUIDE_URL = 'https://business.facebook.com/latest/settings/system_users'
 
 export function MetaMessengerPageConnect() {
   const { user } = useAuth()
   const { toast } = useToast()
+  const [pageName, setPageName] = useState<string>('')
+  const [pageId, setPageId] = useState<string>('')
+  const [igAccount, setIgAccount] = useState<string>('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [tokenInput, setTokenInput] = useState('')
 
-  const [tokenInput, setTokenInput] = useState(user?.meta_page_access_token || '')
-  const [loading, setLoading] = useState(false)
-  const [lastResult, setLastResult] = useState<{
-    page_name?: string
-    page_id?: string
-    subscribed?: boolean
-    subscription_warning?: string | null
-    connected: boolean
-    error?: string
-    code?: number
-    subcode?: number
-    token_extended?: boolean
-    token_expires_in?: number
-  } | null>(() => {
-    if (user?.meta_page_access_token) {
-      return {
-        connected: true,
-        page_name: TARGET_PAGE_NAME,
-        page_id: TARGET_PAGE_ID,
-        subscribed: true,
+  useEffect(() => {
+    async function load() {
+      if (!user) return
+      setLoading(true)
+      try {
+        const savedPageId = (user.meta_messenger_page_id || '').trim()
+        const savedPageName = (user.meta_messenger_page_name || '').trim()
+        setPageName(savedPageName)
+        setPageId(savedPageId)
+        setIgAccount((user.instagram_username || '').trim())
+      } catch {
+        // silencioso
+      } finally {
+        setLoading(false)
       }
     }
-    return null
-  })
+    load()
+  }, [user])
 
-  const handleCopy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text)
-    toast({
-      title: 'Copiado para a área de transferência',
-      description: label,
-    })
-  }
-
-  // NUNCA "Conectado" quando o token está em erro/expirado (regra v0.0.1406):
-  // meta_token_status='expired' (gravado pela extensão obrigatória ou pelo
-  // vigia) força o badge de falha, mesmo que um token antigo esteja salvo.
-  const tokenStatusError = (user?.meta_token_status || '').toLowerCase() === 'expired'
-
+  // Salva e subscreve via hook server-side (valida token na Meta, deriva Page
+  // Token, subscreve a Página ao webhook e grava status/system_logs).
   const handleSaveAndSubscribe = async () => {
-    if (!tokenInput.trim()) {
+    const token = tokenInput.trim()
+    if (!token) {
       toast({
         variant: 'destructive',
         title: 'Token obrigatório',
-        description: 'Cole o Page Access Token gerado no Graph API Explorer.',
+        description: 'Cole o token antes de salvar.',
       })
       return
     }
-
-    setLoading(true)
+    setSaving(true)
     try {
-      // O backend aceita token de USUÁRIO (gerado com pages_show_list +
-      // pages_manage_metadata), ESTENDE para ~60 dias (fb_exchange_token) e só
-      // então deriva o Page Token long-lived. Falha de extensão = HTTP 400.
-      const res = await saveAndSubscribeMessengerPage(tokenInput, TARGET_PAGE_ID, TARGET_PAGE_NAME)
-      setLastResult({
-        connected: true,
-        page_name: res.page_name || TARGET_PAGE_NAME,
-        page_id: res.page_id || TARGET_PAGE_ID,
-        subscribed: res.subscribed,
-        subscription_warning: res.subscription_warning,
-        token_extended: res.token_extended,
-        token_expires_in: res.token_expires_in,
+      const res = await pb.send<{
+        success?: boolean
+        page_name?: string
+        page_id?: string
+        error?: string
+      }>('/backend/v1/meta_messenger_save_and_subscribe', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+        headers: { 'Content-Type': 'application/json' },
       })
-
-      if (res.subscribed) {
+      if (res?.success) {
         toast({
-          title: 'Conexão concluída com sucesso! 🎉',
+          title: 'Conectado!',
           description:
-            (res.token_extended
-              ? 'Token estendido para ~60 dias antes de derivar o token da Página. '
-              : '') + (res.message || 'Página conectada e subscrita ao webhook.'),
+            'Página ' +
+            (res.page_name || 'salva') +
+            ' conectada e subscrita ao webhook. Token permanente aceito.',
         })
+        setTokenInput('')
+        setPageName(res.page_name || '')
+        setPageId(res.page_id || '')
       } else {
         toast({
-          variant: 'default',
-          title: 'Página Conectada (com aviso)',
-          description:
-            res.subscription_warning ||
-            'Página validada. A subscrição automática aguarda aprovação de permissão na Meta.',
+          variant: 'destructive',
+          title: 'Falha ao validar token',
+          description: res?.error || 'A Meta rejeitou o token. Veja o passo a passo abaixo.',
         })
       }
     } catch (err: any) {
-      const rawMsg =
-        err?.data?.error ||
-        err?.message ||
-        'Não foi possível validar o token da Página. Verifique se o token é válido.'
-      const hint = translateMetaTokenError(
-        err?.data?.code ?? err?.data?.graph_code ?? null,
-        err?.data?.subcode ?? err?.data?.graph_subcode ?? null,
-      )
-      const errMsg = hint ? `${hint} (Meta: ${rawMsg})` : rawMsg
-      setLastResult({
-        connected: false,
-        error: errMsg,
-        code: err?.data?.code ?? err?.data?.graph_code,
-        subcode: err?.data?.subcode ?? err?.data?.graph_subcode,
-      })
       toast({
         variant: 'destructive',
-        title: 'Falha na conexão — o canal NÃO foi conectado',
-        description: errMsg,
+        title: 'Falha ao validar token',
+        description: err?.message || 'Erro de rede ao chamar o backend.',
       })
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
-  const isConnected = !!lastResult?.connected && !tokenStatusError
-  // Tradução do último erro conhecido (ex.: 190/467 salvo pelo vigia), usada
-  // para colorir o badge mesmo sem nova tentativa do usuário.
-  const tokenErrorHint = translateMetaTokenError(
-    lastResult?.code ?? null,
-    lastResult?.subcode ?? null,
-  )
+  const translated = translateMetaTokenError(user?.meta_token_code, user?.meta_token_subcode)
+
+  if (loading) return <Skeleton className="h-40 w-full rounded-lg" />
 
   return (
-    <Card className="border-border">
+    <Card>
       <CardHeader>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
-              <MessageSquare className="h-5 w-5" />
-            </div>
-            <div>
-              <CardTitle className="text-lg flex items-center gap-2">
-                Messenger & Instagram Direct (Página {TARGET_PAGE_NAME})
-                {isConnected ? (
-                  <Badge className="bg-emerald-600 text-white gap-1 text-[11px]">
-                    <CheckCircle2 className="h-3 w-3" /> Conectado
-                  </Badge>
-                ) : tokenErrorHint ? (
-                  <Badge variant="destructive" className="gap-1 text-[11px]">
-                    <AlertTriangle className="h-3 w-3" /> Falha no token
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant="outline"
-                    className="text-amber-600 border-amber-500/30 text-[11px]"
-                  >
-                    Aguardando Token
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Integração via Página ID{' '}
-                <span className="font-mono font-medium">{TARGET_PAGE_ID}</span> (Meta Business{' '}
-                <span className="font-mono">{TARGET_BUSINESS_ID}</span>). A conta do Instagram
-                @brf_imoveis_ já foi vinculada pela Bernadete.
-              </CardDescription>
-            </div>
-          </div>
-        </div>
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <Send className="h-4 w-4" />
+          Messenger — Página do Facebook
+        </CardTitle>
       </CardHeader>
-
-      <CardContent className="space-y-5">
-        {/* Vigia de token: data de expiração + avisos amarelo/vermelho */}
+      <CardContent className="space-y-4">
         <TokenExpiryBanner />
 
-        {/* Banner de status / confirmação */}
-        {isConnected ? (
-          <Alert className="border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            <AlertTitle className="text-sm font-semibold">
-              Página Confirmada: {lastResult?.page_name} (ID {lastResult?.page_id})
-            </AlertTitle>
-            <AlertDescription className="text-xs space-y-1">
-              <p>
-                Status: <strong className="text-emerald-600">Conectado e Ativo</strong>.
-                {lastResult?.subscribed ? (
-                  ' Subscrição do webhook (messages, messaging_postbacks, messaging_referrals) confirmada.'
-                ) : (
-                  <span className="text-amber-700 dark:text-amber-300">
-                    {' '}
-                    {lastResult?.subscription_warning ||
-                      'Aguardando aprovação de permissões de mensagem na Meta.'}
-                  </span>
-                )}
-              </p>
-            </AlertDescription>
-          </Alert>
-        ) : lastResult?.error ? (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle className="text-sm">Falha ao validar Token</AlertTitle>
-            <AlertDescription className="text-xs">{lastResult.error}</AlertDescription>
-          </Alert>
-        ) : null}
+        {pageName ? (
+          <div className="flex items-center gap-2 text-sm">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            <span>
+              Página conectada: <strong>{pageName}</strong>
+              {pageId ? ` (ID ${pageId})` : ''}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <XCircle className="h-4 w-4 text-muted-foreground" />
+            <span>Nenhuma Página conectada ainda.</span>
+          </div>
+        )}
+        {igAccount && (
+          <p className="text-xs text-muted-foreground">Instagram vinculado: @{igAccount}</p>
+        )}
 
-        {/* Campo de colar o Page Access Token */}
+        {translated && <p className="text-xs text-destructive">{translated}</p>}
+
         <div className="space-y-2">
-          <Label htmlFor="page_access_token_input" className="text-sm font-medium">
-            Page Access Token (Página {TARGET_PAGE_ID})
-          </Label>
-          <div className="flex gap-2">
-            <Input
-              id="page_access_token_input"
-              type="password"
-              placeholder="Cole aqui o Page Access Token (inicia com EAA...)"
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              className="font-mono text-xs"
-            />
-            <Button
-              onClick={handleSaveAndSubscribe}
-              disabled={loading || !tokenInput.trim()}
-              className="shrink-0 gap-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Validando...</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="h-4 w-4" />
-                  <span>Salvar e Subscrever</span>
-                </>
-              )}
-            </Button>
+          <label className="text-sm font-medium" htmlFor="messenger-token-input">
+            Token de acesso (System User Token recomendado — nunca expira)
+          </label>
+          <textarea
+            id="messenger-token-input"
+            value={tokenInput}
+            onChange={(e) => setTokenInput(e.target.value)}
+            placeholder="Cole aqui o token..."
+            rows={3}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <Button onClick={handleSaveAndSubscribe} disabled={saving} className="w-full sm:w-auto">
+            {saving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <KeyRound className="h-4 w-4 mr-2" />
+            )}
+            {saving ? 'Validando na Meta...' : 'Salvar e Assinar'}
+          </Button>
+        </div>
+
+        {/* RITO DO SYSTEM USER EM PORTUGUÊS (v0.0.1411) — passo a passo para a
+            Bernadete gerar o token permanente que não depende de sessão. */}
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 space-y-3 text-sm">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-blue-600 shrink-0" />
+            <h4 className="font-semibold text-blue-900 dark:text-blue-200">
+              Como gerar o System User Token (permanente, NUNCA expira)
+            </h4>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            Aceita <strong>token de usuário OU token de Página</strong>: se for de usuário, o CRM{' '}
-            <strong>estende sozinho para ~60 dias</strong> (Extend Token Access via{' '}
-            <code className="text-foreground">fb_exchange_token</code>), troca pelo{' '}
-            <strong>token da Página de longa duração</strong> via{' '}
-            <code className="text-foreground">/me/accounts</code> e subscreve a Página
-            automaticamente ao webhook (<code className="text-foreground">messages</code>,{' '}
-            <code className="text-foreground">messaging_postbacks</code>,{' '}
-            <code className="text-foreground">messaging_referrals</code>). O token de página
-            derivado de um token de usuário estendido <strong>não expira</strong> enquanto o usuário
-            não revogar o app ou trocar a senha do Facebook.
+          <p className="text-xs text-muted-foreground">
+            Recomendado para a Bernadete: este token não depende de sessão de login —{' '}
+            <strong>não precisa sair nem entrar do Facebook</strong>, e não morre com o erro 190/467
+            (&quot;saiu do Facebook&quot;). Requer acesso de administrador ao Business Manager da
+            imobiliária.
           </p>
-        </div>
-
-        {/* Dados do Webhook para configuração na Meta */}
-        <div className="rounded-lg border bg-muted/40 p-3.5 space-y-2.5">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-            <Info className="h-3.5 w-3.5 text-primary" />
-            <span>Configuração do Webhook da Página na Meta (developers.facebook.com):</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-            <div className="bg-background/80 p-2 rounded border space-y-1">
-              <span className="text-[11px] text-muted-foreground block">
-                Callback URL (Webhook do Messenger/Direct):
-              </span>
-              <div className="flex items-center justify-between gap-1 font-mono text-[11px] break-all">
-                <span>{WEBHOOK_PUBLIC_URL}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 shrink-0"
-                  onClick={() => handleCopy(WEBHOOK_PUBLIC_URL, 'Callback URL copiada')}
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-            <div className="bg-background/80 p-2 rounded border space-y-1">
-              <span className="text-[11px] text-muted-foreground block">
-                Token de Verificação (Verify Token):
-              </span>
-              <div className="flex items-center justify-between gap-1 font-mono text-[11px]">
-                <span className="font-semibold">{VERIFY_TOKEN}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 shrink-0"
-                  onClick={() => handleCopy(VERIFY_TOKEN, 'Verify Token copiado')}
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Instruções para a Bernadete gerar o token */}
-        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-blue-900 dark:text-blue-200">
-            <Sparkles className="h-4 w-4 text-blue-600 shrink-0" />
-            <span>Passo a passo para a Bernadete gerar o Page Access Token:</span>
-          </div>
-
-          <ol className="text-xs space-y-2 text-blue-950/90 dark:text-blue-100/90 list-decimal pl-4 leading-relaxed">
+          <ol className="list-decimal list-inside space-y-1.5 text-xs text-foreground/90">
             <li>
               Acesse{' '}
               <a
-                href="https://developers.facebook.com/tools/explorer/"
+                href={SYSTEM_USER_GUIDE_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="font-medium underline inline-flex items-center gap-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                className="text-blue-600 dark:text-blue-400 underline font-medium"
               >
-                developers.facebook.com/tools/explorer <ExternalLink className="h-3 w-3 inline" />
+                business.facebook.com/latest/settings/system_users
               </a>{' '}
-              com o perfil que tem acesso admin à Página 1401557100168686.
+              (logada como admin no Business Manager).
             </li>
             <li>
-              No canto superior direito, selecione o Aplicativo Meta: <strong>BRF Imóveis 2</strong>
-              .
+              Clique em <strong>Adicionar</strong> para criar um Usuário do Sistema, com a função{' '}
+              <strong>Admin</strong>.
             </li>
             <li>
-              No seletor <strong>Token de Usuário ou Página</strong>, pode deixar como{' '}
-              <strong>Usuário</strong> (padrão) ou escolher a Página{' '}
-              <strong>www.brfimoveis.com.br (1401557100168686)</strong> — os dois funcionam: se for
-              token de usuário, o CRM estende para ~60 dias e troca automaticamente pelo token da
-              Página de longa duração.
+              Com o usuário criado, clique em <strong>Gerar token</strong> e selecione o app{' '}
+              <strong>&quot;BRF Imóveis 2&quot;</strong>.
             </li>
             <li>
-              Em <strong>Permissões</strong>, adicione exatamente estas 4 permissões:
-              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                <Badge variant="secondary" className="font-mono text-[10px]">
-                  pages_show_list
-                </Badge>
-                <Badge variant="secondary" className="font-mono text-[10px]">
-                  pages_messaging
-                </Badge>
-                <Badge variant="secondary" className="font-mono text-[10px]">
-                  pages_manage_metadata
-                </Badge>
-                <Badge variant="secondary" className="font-mono text-[10px]">
-                  instagram_manage_messages
-                </Badge>
+              Marque <strong>token que nunca expira</strong> (validade &quot;Nunca&quot;) e
+              selecione TODAS estas permissões:
+              <div className="flex flex-wrap gap-1.5 pt-1.5 pl-1">
+                {SYSTEM_USER_PERMISSIONS.map((p) => (
+                  <span
+                    key={p}
+                    className={cn(
+                      'inline-flex items-center rounded border border-blue-500/40 bg-blue-500/10',
+                      'px-1.5 py-0.5 font-mono text-[10px] text-blue-800 dark:text-blue-300',
+                    )}
+                  >
+                    {p}
+                  </span>
+                ))}
               </div>
             </li>
+            <li>Copie o token gerado (só é exibido uma vez) e cole no campo acima.</li>
             <li>
-              <strong>Extend Token Access (60 dias)</strong>: antes de colar, se preferir estender
-              manualmente, abra{' '}
-              <a
-                href="https://developers.facebook.com/tools/accesstoken/"
-                target="_blank"
-                rel="noreferrer"
-                className="font-medium underline inline-flex items-center gap-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400"
-              >
-                developers.facebook.com/tools/accesstoken{' '}
-                <ExternalLink className="h-3 w-3 inline" />
-              </a>{' '}
-              e clique em <strong>Estender token de acesso</strong> — ou simplesmente cole o token
-              curto no campo acima: o CRM faz a extensão (
-              <code className="text-foreground">fb_exchange_token</code>) automaticamente no
-              servidor e salva o <strong>token da Página de longa duração</strong>, que não expira
-              (só sai do ar se o token de usuário for revogado ou a senha trocada).
-            </li>
-            <li>
-              Clique em <strong>Generate Access Token</strong>, confirme as permissões da Meta,
-              copie o token gerado e cole no campo acima.
+              Clique em <strong>Salvar e Assinar</strong> — o CRM valida na Meta, deriva o token de
+              Página e subscreve a Página ao webhook automaticamente.
             </li>
           </ol>
-
-          <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-950 dark:text-amber-100 text-xs mt-2 py-2">
-            <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-            <AlertDescription className="text-[11px] leading-tight">
-              <strong>Aviso sobre Aprovação da Meta:</strong> As permissões de envio/recebimento de
-              mensagens (<code className="text-foreground">pages_messaging</code>,{' '}
-              <code className="text-foreground">instagram_manage_messages</code>) para usuários
-              externos podem exigir que o App esteja em modo &quot;Em Produção&quot; ou com
-              permissões aprovadas na Meta. Para administradores e testadores do app, funciona
-              imediatamente. Se a subscrição retornar código 10, a conexão ficará salva como
-              &quot;pronta, aguardando liberação da Meta&quot;.
-            </AlertDescription>
-          </Alert>
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">
+            Importante: o System User Token não depende de sessão — não há risco de invalidá-lo ao
+            sair do Facebook. Se a Meta pedir atribuição de ativos, conceda ao usuário do sistema o
+            acesso à Página BRF Imóveis (Controle total).
+          </p>
         </div>
       </CardContent>
     </Card>
   )
 }
+
+export default MetaMessengerPageConnect

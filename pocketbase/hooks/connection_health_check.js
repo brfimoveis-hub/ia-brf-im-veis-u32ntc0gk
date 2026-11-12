@@ -712,16 +712,20 @@ routerAdd(
               'O token salvo foi rejeitado pela Meta: ' +
               errMsg +
               errCodeStr +
-              ' — reconecte via OAuth'
+              ' — reconecte via OAuth ou cole um System User Token em /configuracoes'
 
             results.push({
               name: 'Instagram Business',
               key: 'instagram',
-              status: 'configured_waiting_token',
+              // code 190 = token morto (expirado/invalidado) — status 'expired'
+              // para o cartão mostrar VERMELHO "Token expirado" (v0.0.1411).
+              status: errCode === 190 ? 'expired' : 'configured_waiting_token',
               timestamp: ts,
               message: detailMsg,
               app_id: igAppId,
               graph_error: savedGraphErr,
+              code: errCode === 190 ? 190 : 0,
+              subcode: errCode === 190 ? errSubcode || 0 : 0,
               token_identity: tokenIdentity,
               accessible_pages: accessiblePages,
               tested_tokens: testedTokens,
@@ -808,13 +812,19 @@ routerAdd(
             try {
               mErr = msgRes.json && msgRes.json.error ? msgRes.json.error : {}
             } catch (_) {}
+            var mCode = typeof mErr.code === 'number' ? mErr.code : 0
+            var mSubcode = typeof mErr.error_subcode === 'number' ? mErr.error_subcode : 0
             results.push({
               name: 'Messenger',
               key: 'messenger',
-              status: 'error',
+              // code 190 = token morto (expirado/invalidado) — status 'expired'
+              // para o cartão mostrar VERMELHO "Token expirado" (v0.0.1411).
+              status: mCode === 190 ? 'expired' : 'error',
               timestamp: ts,
               message:
                 mErr.message || 'Token inválido ou expirado (HTTP ' + msgRes.statusCode + ')',
+              code: mCode,
+              subcode: mSubcode,
             })
           }
         } catch (e5) {

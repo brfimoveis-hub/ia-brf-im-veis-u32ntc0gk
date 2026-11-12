@@ -65,6 +65,19 @@ export function VerifiableConnectionCard({
   )
   const [localPortfolioScanError, setLocalPortfolioScanError] = useState<string | null>(null)
 
+  // v0.0.1411 — CARTÕES HONESTOS: o status salvo no usuário ("tem token" =
+  // verde) não basta. Se o status inicial for "connected", verifica DE VERDADE
+  // na Meta ao montar (uma única vez): token morto (190) vira VERMELHO
+  // "Token expirado", igual ao cartão Meta WhatsApp API.
+  const [autoVerified, setAutoVerified] = useState(false)
+  useEffect(() => {
+    if (autoVerified) return
+    if ((status || '').toLowerCase() !== 'connected') return
+    setAutoVerified(true)
+    handleVerify()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, autoVerified])
+
   const handleVerify = async () => {
     setChecking(true)
     setLocalError('')
@@ -122,21 +135,27 @@ export function VerifiableConnectionCard({
           const result = res.results.find((r) => r.key === connectionKey)
           if (result) {
             setLastCheck(result.timestamp)
+            // v0.0.1411 — 'error' com token morto (190) é mapeado para
+            // 'expired' para o semáforo mostrar VERMELHO "Token expirado".
+            const isDead = result.status === 'error' && result.code === 190
+            const cardStatus = isDead ? 'expired' : result.status
             if (result.status === 'error' || result.status === 'not_configured') {
               setLocalError(result.message)
             } else {
               setLocalError('')
             }
-            onStatusChange?.(result.status, result.message)
+            onStatusChange?.(cardStatus, result.message)
             toast({
               title:
-                result.status === 'connected'
+                cardStatus === 'connected'
                   ? 'Conectado'
-                  : result.status === 'error'
-                    ? 'Erro'
-                    : result.status === 'not_configured'
-                      ? 'Não Configurado'
-                      : 'Verificado',
+                  : cardStatus === 'expired'
+                    ? 'Token expirado'
+                    : cardStatus === 'error'
+                      ? 'Erro'
+                      : cardStatus === 'not_configured'
+                        ? 'Não Configurado'
+                        : 'Verificado',
               description: result.message,
               variant: result.status === 'error' ? 'destructive' : 'default',
             })
