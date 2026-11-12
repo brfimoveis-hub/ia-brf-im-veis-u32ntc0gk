@@ -75,6 +75,24 @@ cronAdd('system_health_watch', '*/15 * * * *', () => {
     return { status: 'error', code: code }
   }
 
+  // Tradução dos códigos conhecidos da Meta para português (regra 11/11/26:
+  // 190/467 = sessão invalidada porque saíram do Facebook; 190/463 = expirado).
+  function friendlyTokenMessage(errObj, fallbackMsg) {
+    var code = errObj && errObj.code !== undefined ? errObj.code : 0
+    var subcode = errObj && errObj.error_subcode !== undefined ? errObj.error_subcode : 0
+    var raw = errObj && errObj.message ? String(errObj.message) : ''
+    if (code === 190 && subcode === 467) {
+      return 'Sessão invalidada porque saíram do Facebook — gere o token novamente e NÃO saia da conta do Facebook depois de gerar o token.'
+    }
+    if (code === 190 && subcode === 463) {
+      return 'Token expirado — renove gerando um novo token em /configuracoes.'
+    }
+    if (code === 190) {
+      return 'Token expirado ou invalidado pela Meta (código 190) — Bernadete renovar em /configuracoes.'
+    }
+    return fallbackMsg || raw
+  }
+
   function writeHealthLog(logType, level, message, details) {
     try {
       var logsCol = $app.findCollectionByNameOrId('system_logs')
@@ -107,14 +125,17 @@ cronAdd('system_health_watch', '*/15 * * * *', () => {
   }
 
   function tryFetchTokenExpiry(userRecord) {
-    // Só possível com META_APP_ID + META_APP_SECRET (debug_token). Se não houver,
-    // retorna null e o vigia usa apenas o status ao vivo.
-    var appId = ''
-    var appSecret = ''
-    try {
-      appId = $os.getenv('META_APP_ID') || ''
-      appSecret = $os.getenv('META_APP_SECRET') || ''
-    } catch (_) {}
+    // debug_token precisa de app id + app secret. Preferência: credenciais do
+    // app salvas no registro do usuário (meta_app_id/meta_app_secret); fallback
+    // para env vars do backend. Sem elas, retorna null.
+    var appId = (userRecord.getString('meta_app_id') || '').trim()
+    var appSecret = (userRecord.getString('meta_app_secret') || '').trim()
+    if (!appId || !appSecret) {
+      try {
+        appId = appId || ($os.getenv('META_APP_ID') || '').trim()
+        appSecret = appSecret || ($os.getenv('META_APP_SECRET') || '').trim()
+      } catch (_) {}
+    }
     if (!appId || !appSecret) return null
     var token =
       userRecord.getString('meta_page_access_token') ||
@@ -187,11 +208,15 @@ cronAdd('system_health_watch', '*/15 * * * *', () => {
         },
       )
     } else if (verdict.status === 'expired') {
+      var expSubcode = errObj.error_subcode !== undefined ? errObj.error_subcode : 0
+      var expFriendly = friendlyTokenMessage(errObj, 'Token inválido/expirado (OAuthException 190)')
       result.overall = 'expired'
       result.token = {
         status: 'expired',
         code: errObj.code !== undefined ? errObj.code : 190,
-        message: errObj.message || 'Token inválido/expirado (OAuthException 190)',
+        subcode: expSubcode,
+        message: expFriendly,
+        raw_message: errObj.message || null,
         checked_at: nowIso,
       }
       saveUserTokenStatus(userId, 'expired')
@@ -200,17 +225,26 @@ cronAdd('system_health_watch', '*/15 * * * *', () => {
         writeHealthLog(
           EXPIRED_ALERT_TYPE,
           'error',
-          'TOKEN META EXPIRADO - leads de anúncios podem se perder - Bernadete deve renovar em /configuracoes',
+          'TOKEN META EXPIRADO - leads de anúncios podem se perder - Bernadete deve renovar em /configuracoes. Motivo: ' +
+            expFriendly,
           {
             user_id: userId,
             graph_code: errObj.code !== undefined ? errObj.code : null,
-            graph_subcode: errObj.error_subcode !== undefined ? errObj.error_subcode : null,
+            graph_subcode: expSubcode,
             graph_message: errObj.message || null,
+            friendly_message: expFriendly,
             checked_at: nowIso,
           },
         )
       }
-      console.error('[SYSTEM_HEALTH] TOKEN META EXPIRADO (code=190) user=' + userId)
+      console.error(
+        '[SYSTEM_HEALTH] TOKEN META EXPIRADO (code=' +
+          (errObj.code || 190) +
+          ' subcode=' +
+          expSubcode +
+          ') user=' +
+          userId,
+      )
     } else {
       result.overall = 'error'
       result.token = {
@@ -427,28 +461,36 @@ routerAdd('GET', '/backend/v1/system_health', (e) => {
       var res = graphGet(GRAPH_V + '/me?fields=id,name', pageToken)
       var verdict = channelStatusFromGraph(res.statusCode, res.body)
       var errObj = res.body && res.body.error ? res.body.error : {}
+      var healthSubcode = errObj.error_subcode !== undefined ? errObj.error_subcode : 0
+      var healthFriendly = 'Token de Página expirado — Bernadete renovar em /configuracoes'
+      if (verdict.status === 'expired') {
+        healthFriendly = friendlyTokenMessage(errObj, healthFriendly)
+      } else if (verdict.status !== 'ok') {
+        healthFriendly = errObj.message || 'HTTP ' + res.statusCode
+      }
       tokenHealth = {
         status: verdict.status,
         page_name: res.body && res.body.name ? res.body.name : '',
         page_id: res.body && res.body.id ? res.body.id : '',
-        message:
-          verdict.status === 'ok'
-            ? ''
-            : verdict.status === 'expired'
-              ? 'Token de Página expirado — Bernadete renovar em /configuracoes'
-              : errObj.message || 'HTTP ' + res.statusCode,
+        code: verdict.status === 'ok' ? 0 : errObj.code !== undefined ? errObj.code : 0,
+        subcode: verdict.status === 'ok' ? 0 : healthSubcode,
+        message: healthFriendly,
+        raw_message: verdict.status === 'ok' ? '' : errObj.message || null,
         checked_at: nowIso,
       }
       payload.overall = verdict.status === 'ok' ? 'ok' : verdict.status
       saveUserTokenStatus(userId, verdict.status === 'expired' ? 'expired' : 'active')
 
-      // Data de expiração via debug_token (se app id/secret existirem).
-      var appId = ''
-      var appSecret = ''
-      try {
-        appId = $os.getenv('META_APP_ID') || ''
-        appSecret = $os.getenv('META_APP_SECRET') || ''
-      } catch (_) {}
+      // Data de expiração via debug_token — preferência pelas credenciais do app
+      // salvas no registro do usuário, com fallback para env vars do backend.
+      var appId = (user.getString('meta_app_id') || '').trim()
+      var appSecret = (user.getString('meta_app_secret') || '').trim()
+      if (!appId || !appSecret) {
+        try {
+          appId = appId || ($os.getenv('META_APP_ID') || '').trim()
+          appSecret = appSecret || ($os.getenv('META_APP_SECRET') || '').trim()
+        } catch (_) {}
+      }
       if (appId && appSecret) {
         var dbg = graphGet(
           GRAPH_V + '/debug_token?input_token=' + encodeURIComponent(pageToken),
@@ -518,10 +560,19 @@ routerAdd('GET', '/backend/v1/system_health', (e) => {
       msStatus === 'ok'
         ? 'Página conectada e token válido'
         : msStatus === 'expired'
-          ? 'Token de Página expirado — Bernadete renovar em /configuracoes'
+          ? (tokenHealth && tokenHealth.message) ||
+            'Token de Página expirado — Bernadete renovar em /configuracoes'
           : msStatus === 'not_configured'
             ? 'Nenhum token de Página salvo'
-            : 'Erro ao validar token de Página',
+            : (tokenHealth && tokenHealth.message) || 'Erro ao validar token de Página',
+    code:
+      msStatus === 'ok' || msStatus === 'not_configured'
+        ? 0
+        : (tokenHealth && tokenHealth.code) || 0,
+    subcode:
+      msStatus === 'ok' || msStatus === 'not_configured'
+        ? 0
+        : (tokenHealth && tokenHealth.subcode) || 0,
     last_inbound_at: countConversationsSince('messenger'),
     checked_at: nowIso,
   })
@@ -540,10 +591,19 @@ routerAdd('GET', '/backend/v1/system_health', (e) => {
       igStatus === 'ok'
         ? 'Instagram Direct conectado (token de Página válido)'
         : igStatus === 'expired'
-          ? 'Token Instagram/Página expirado — Bernadete renovar em /configuracoes'
+          ? (tokenHealth && tokenHealth.message) ||
+            'Token Instagram/Página expirado — Bernadete renovar em /configuracoes'
           : igStatus === 'not_configured'
             ? 'Nenhum token de Instagram/Página salvo'
-            : 'Erro ao validar token',
+            : (tokenHealth && tokenHealth.message) || 'Erro ao validar token',
+    code:
+      igStatus === 'ok' || igStatus === 'not_configured'
+        ? 0
+        : (tokenHealth && tokenHealth.code) || 0,
+    subcode:
+      igStatus === 'ok' || igStatus === 'not_configured'
+        ? 0
+        : (tokenHealth && tokenHealth.subcode) || 0,
     last_inbound_at: countConversationsSince('instagram'),
     checked_at: nowIso,
   })

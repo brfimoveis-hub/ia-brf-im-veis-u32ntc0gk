@@ -1,32 +1,26 @@
-import pb from '@/lib/pocketbase/client'
-
 export interface SaveAndSubscribeMessengerResult {
   success: boolean
-  page_id?: string
-  page_name?: string
-  subscribed?: boolean
-  subscription_warning?: string | null
-  message: string
-  error?: string
-  code?: number
-  subcode?: number
-  granted_permissions?: string[]
+  page_id: string
+  page_name: string
+  subscribed: boolean
+  subscription_warning?: string
+  message?: string
+  token_extended?: boolean
+  token_expires_in?: number
 }
 
 export async function saveAndSubscribeMessengerPage(
-  pageAccessToken: string,
-  pageId: string = '1401557100168686',
-  pageName: string = 'www.brfimoveis.com.br',
+  accessToken: string,
+  pageId: string,
+  pageName: string,
 ): Promise<SaveAndSubscribeMessengerResult> {
-  return pb.send('/backend/v1/meta_messenger/save_and_subscribe', {
-    method: 'POST',
-    body: JSON.stringify({
-      page_access_token: pageAccessToken.trim(),
-      page_id: pageId.trim(),
-      page_name: pageName.trim(),
-    }),
-    headers: {
-      'Content-Type': 'application/json',
+  const pb = (await import('@/lib/pocketbase/client')).default
+  const res = await pb.send<SaveAndSubscribeMessengerResult>(
+    `/backend/v1/meta_messenger_save_and_subscribe`,
+    {
+      method: 'POST',
+      body: { access_token: accessToken, page_id: pageId, page_name: pageName },
     },
-  })
+  )
+  return res
 }

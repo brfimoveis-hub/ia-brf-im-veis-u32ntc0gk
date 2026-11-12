@@ -20,7 +20,7 @@ import {
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import { saveAndSubscribeMessengerPage } from '@/services/meta_messenger'
-import { TokenExpiryBanner } from './TokenExpiryBanner'
+import { TokenExpiryBanner, translateMetaTokenError } from './TokenExpiryBanner'
 
 const TARGET_PAGE_ID = '1401557100168686'
 const TARGET_PAGE_NAME = 'www.brfimoveis.com.br'
@@ -42,6 +42,10 @@ export function MetaMessengerPageConnect() {
     subscription_warning?: string | null
     connected: boolean
     error?: string
+    code?: number
+    subcode?: number
+    token_extended?: boolean
+    token_expires_in?: number
   } | null>(() => {
     if (user?.meta_page_access_token) {
       return {
@@ -62,6 +66,11 @@ export function MetaMessengerPageConnect() {
     })
   }
 
+  // NUNCA "Conectado" quando o token está em erro/expirado (regra v0.0.1406):
+  // meta_token_status='expired' (gravado pela extensão obrigatória ou pelo
+  // vigia) força o badge de falha, mesmo que um token antigo esteja salvo.
+  const tokenStatusError = (user?.meta_token_status || '').toLowerCase() === 'expired'
+
   const handleSaveAndSubscribe = async () => {
     if (!tokenInput.trim()) {
       toast({
@@ -75,7 +84,8 @@ export function MetaMessengerPageConnect() {
     setLoading(true)
     try {
       // O backend aceita token de USUÁRIO (gerado com pages_show_list +
-      // pages_manage_metadata) e converte sozinho para o token da Página.
+      // pages_manage_metadata), ESTENDE para ~60 dias (fb_exchange_token) e só
+      // então deriva o Page Token long-lived. Falha de extensão = HTTP 400.
       const res = await saveAndSubscribeMessengerPage(tokenInput, TARGET_PAGE_ID, TARGET_PAGE_NAME)
       setLastResult({
         connected: true,
@@ -83,12 +93,17 @@ export function MetaMessengerPageConnect() {
         page_id: res.page_id || TARGET_PAGE_ID,
         subscribed: res.subscribed,
         subscription_warning: res.subscription_warning,
+        token_extended: res.token_extended,
+        token_expires_in: res.token_expires_in,
       })
 
       if (res.subscribed) {
         toast({
           title: 'Conexão concluída com sucesso! 🎉',
-          description: res.message || 'Página conectada e subscrita ao webhook.',
+          description:
+            (res.token_extended
+              ? 'Token estendido para ~60 dias antes de derivar o token da Página. '
+              : '') + (res.message || 'Página conectada e subscrita ao webhook.'),
         })
       } else {
         toast({
@@ -100,17 +115,24 @@ export function MetaMessengerPageConnect() {
         })
       }
     } catch (err: any) {
-      const errMsg =
+      const rawMsg =
         err?.data?.error ||
         err?.message ||
         'Não foi possível validar o token da Página. Verifique se o token é válido.'
+      const hint = translateMetaTokenError(
+        err?.data?.code ?? err?.data?.graph_code ?? null,
+        err?.data?.subcode ?? err?.data?.graph_subcode ?? null,
+      )
+      const errMsg = hint ? `${hint} (Meta: ${rawMsg})` : rawMsg
       setLastResult({
         connected: false,
         error: errMsg,
+        code: err?.data?.code ?? err?.data?.graph_code,
+        subcode: err?.data?.subcode ?? err?.data?.graph_subcode,
       })
       toast({
         variant: 'destructive',
-        title: 'Erro de validação do Token',
+        title: 'Falha na conexão — o canal NÃO foi conectado',
         description: errMsg,
       })
     } finally {
@@ -118,7 +140,13 @@ export function MetaMessengerPageConnect() {
     }
   }
 
-  const isConnected = !!lastResult?.connected
+  const isConnected = !!lastResult?.connected && !tokenStatusError
+  // Tradução do último erro conhecido (ex.: 190/467 salvo pelo vigia), usada
+  // para colorir o badge mesmo sem nova tentativa do usuário.
+  const tokenErrorHint = translateMetaTokenError(
+    lastResult?.code ?? null,
+    lastResult?.subcode ?? null,
+  )
 
   return (
     <Card className="border-border">
@@ -134,6 +162,10 @@ export function MetaMessengerPageConnect() {
                 {isConnected ? (
                   <Badge className="bg-emerald-600 text-white gap-1 text-[11px]">
                     <CheckCircle2 className="h-3 w-3" /> Conectado
+                  </Badge>
+                ) : tokenErrorHint ? (
+                  <Badge variant="destructive" className="gap-1 text-[11px]">
+                    <AlertTriangle className="h-3 w-3" /> Falha no token
                   </Badge>
                 ) : (
                   <Badge

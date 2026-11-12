@@ -1,19 +1,27 @@
 // Hook para POST /backend/v1/meta_messenger/save_and_subscribe
-// Valida o token colado, subscreve a Página ao Webhook via POST /{page-id}/subscribed_apps
-// e salva os dados na coleção users e grava auditoria completa em system_logs
+// ORDEM OBRIGATÓRIA (correção da falha silenciosa da v0.0.1404):
+//   1. VALIDA o token colado (GET /me?fields=id,name — sem "category").
+//   2. ESTENDE para longa duração (~60 dias) via GET /oauth/access_token
+//      (grant_type=fb_exchange_token, client_id=meta_app_id, client_secret=
+//      meta_app_secret, fb_exchange_token=token colado). Se falhar ou as
+//      credenciais do app faltarem, o fluxo PARA com erro: NUNCA salvamos o
+//      canal como "Conectado" com token de ~1 hora.
+//   3. SÓ ENTÃO deriva o Page Token (GET /me/accounts) a partir do token
+//      long-lived — token de página derivado de token de usuário estendido não
+//      expira enquanto o usuário não revogar o app.
+//   4. Subscreve a Página ao webhook e salva no usuário.
+// Cada etapa grava system_logs com resultado explícito.
 //
-// Robustez de tipo de token:
-// - O token colado no painel costuma ser um USER access token gerado no Graph API Explorer
-//   (como Bernadete). O hook detecta o tipo e converte sozinho: GET /me/accounts?fields=
-//   access_token,id,name localiza a Página alvo e prossegue com o PAGE access token dela.
-// - VALIDAÇÃO SEM CAMPO "category": esse campo é a única causa do erro #100
-//   ("Tried accessing nonexisting field (category)") — usuários não o possuem. Nenhuma
-//   consulta de validação pede "category".
-// - Validação da Página: GET /{page_id}?fields=id,name COM O PAGE TOKEN — se o id
-//   retornado for exatamente o da Página alvo, o token é da Página certa.
-// - Toda chamada depois da conversão usa o PAGE TOKEN (nenhum resquício de token de usuário).
-// - Se o page token não puder ser obtido (/me/accounts sem acesso à Página), a mensagem
-//   amigável orienta regerar no Graph API Explorer com "Token da Página".
+// Regras robustez de tipo de token:
+// - O token colado costuma ser USER token do Graph API Explorer (Bernadete). O
+//   /me de usuário não resolve no id da Página alvo (nem tem "category"):
+//   detectamos e seguimos o fluxo de conversão.
+// - VALIDAÇÃO SEM CAMPO "category" (única causa do erro #100 em usuários).
+// - Validação da Página: GET /{page_id}?fields=id,name COM o page token.
+//
+// REGRA DO PROJETO: handlers só referenciam funções/constantes declaradas
+// DENTRO deles mesmos (JSVM executa callbacks em pool separado — helpers
+// top-level somem do bundle deployado, v0.0.1399).
 
 routerAdd(
   'POST',
@@ -61,23 +69,46 @@ routerAdd(
 
     var friendlyTokenError = function (errObj, httpStatus) {
       var code = (errObj && errObj.code) || 0
+      var subcode = (errObj && errObj.error_subcode) || 0
       var raw = String((errObj && errObj.message) || '')
       var friendly = raw || 'Token inválido ou expirado pela Meta (HTTP ' + (httpStatus || 0) + ')'
-      if (code === 190) {
+      if (code === 190 && subcode === 467) {
         friendly =
-          'Token expirado ou inválido (código 190). Gere um novo Page Access Token no Graph API Explorer.'
+          'Sessão invalidada porque saíram do Facebook — gere o token novamente e NÃO saia da conta do Facebook depois de gerar o token.'
+      } else if (code === 190 && subcode === 463) {
+        friendly = 'Token expirado — renove gerando um novo token no Graph API Explorer.'
+      } else if (code === 190) {
+        friendly =
+          'Token expirado ou invalidado (código 190). Gere um novo token no Graph API Explorer e NÃO saia da conta do Facebook depois de gerar.'
       } else if (code === 10 || code === 200) {
         friendly =
           'Permissões insuficientes no token (código ' +
           code +
           '). Certifique-se de marcar pages_messaging, pages_manage_metadata, pages_show_list e instagram_manage_messages.'
       }
-      return {
-        friendly: friendly,
-        code: code,
-        raw: raw,
-        subcode: (errObj && errObj.error_subcode) || 0,
-      }
+      return { friendly: friendly, code: code, subcode: subcode, raw: raw }
+    }
+
+    // Salva status de erro no usuário (banner de /configuracoes fica vermelho)
+    var setUserTokenError = function (message, code, subcode) {
+      try {
+        var u = $app.findRecordById('users', userId)
+        u.set('meta_token_status', 'expired')
+        try {
+          u.set('meta_capi_error', String(message || '').slice(0, 500))
+        } catch (_) {}
+        $app.saveNoValidate(u)
+      } catch (_) {}
+      logErr(
+        'meta_messenger_extension_failed',
+        message,
+        'code=' + (code || 0) + ' subcode=' + (subcode || 0),
+        {
+          page_id: targetPageId,
+          graph_code: code || null,
+          graph_subcode: subcode || null,
+        },
+      )
     }
 
     // Consulta de validação da Página: GET /{page_id}?fields=id,name — SEM "category".
@@ -216,8 +247,10 @@ routerAdd(
       return null
     }
 
-    // Consulta de tipo de token: GET /me?fields=id,name — SEM "category",
-    // que não existe em objetos de usuário e é a causa do erro #100.
+    // ----------------------------------------------------------------------------
+    // PASSO 1 — VALIDAÇÃO INICIAL do token colado (GET /me?fields=id,name,
+    // SEM "category": campo que não existe em usuários e causa o erro #100).
+    // ----------------------------------------------------------------------------
     var meRes = null
     var meErr = null
     try {
@@ -249,7 +282,25 @@ routerAdd(
     var tokenConverted = false
     var pageTokenValidation = null
 
-    // 1. Detecção de tipo: erro #100 de "category" no /me, ou /me resolvendo num id
+    // Se o TOKEN COLADO já chega morto (190), não há nada a estender: erro
+    // amigável imediato, status de erro no usuário e nada salvo como conectado.
+    if (meErrObj && (meErrObj.code === 190 || (meRes && meRes.statusCode === 401))) {
+      var deadTok = friendlyTokenError(meErrObj, meRes ? meRes.statusCode : 0)
+      setUserTokenError(
+        'Token colado já rejeitado pela Meta: ' + deadTok.friendly,
+        deadTok.code,
+        deadTok.subcode,
+      )
+      return e.json(400, {
+        success: false,
+        error: deadTok.friendly,
+        code: deadTok.code,
+        subcode: deadTok.subcode,
+        raw_message: deadTok.raw,
+      })
+    }
+
+    // Detecção de tipo: erro #100 de "category" no /me, ou /me resolvendo num id
     // diferente da Página alvo (o /me de um usuário nunca é o id da Página).
     var isCategoryFieldError =
       meErrObj.code === 100 &&
@@ -272,7 +323,7 @@ routerAdd(
           user_id: userId,
           type: 'meta_messenger_token_type_detected',
           message:
-            'Token colado é do tipo USER (sem campo category). Iniciando conversão automática user→page.',
+            'Token colado é do tipo USER. Fluxo OBRIGATÓRIO: estender para ~60 dias (fb_exchange_token) ANTES de derivar o Page Token.',
           details: 'GET /me code=' + (meErrObj.code || 0) + ' | ' + String(meErrObj.message || ''),
           payload: { page_id: targetPageId, graph_error: meErrObj || null },
         })
@@ -280,43 +331,60 @@ routerAdd(
       } catch (_) {}
     }
 
-    // 2. AUTO-CONVERSÃO user→page
-    // Credenciais do app (BRF Imóveis 2): lidas do registro do usuário (migração
-    // 0125/0131) com fallback para as env vars do backend (META_APP_ID/META_APP_SECRET).
-    var appCredsUser = null
-    try {
-      appCredsUser = $app.findRecordById('users', userId)
-    } catch (_) {}
-    var appIdForExchange = appCredsUser ? (appCredsUser.getString('meta_app_id') || '').trim() : ''
-    var appSecretForExchange = appCredsUser
-      ? (appCredsUser.getString('meta_app_secret') || '').trim()
-      : ''
-    if (!appIdForExchange || !appSecretForExchange) {
-      try {
-        appIdForExchange = appIdForExchange || String($os.getenv('META_APP_ID') || '').trim()
-        appSecretForExchange =
-          appSecretForExchange || String($os.getenv('META_APP_SECRET') || '').trim()
-      } catch (_) {}
-    }
-    // Fallback adicional: credenciais Instagram salvas pelo fluxo OAuth (mesmo app)
-    if ((!appIdForExchange || !appSecretForExchange) && appCredsUser) {
-      appIdForExchange =
-        appIdForExchange || (appCredsUser.getString('meta_instagram_app_id') || '').trim()
-      appSecretForExchange =
-        appSecretForExchange || (appCredsUser.getString('meta_instagram_app_secret') || '').trim()
-    }
-
-    // 2a. Token de USUÁRIO de longa duração: fb_exchange_token (60 dias).
-    // Page token gerado a partir de user token estendido NÃO EXPIRA enquanto o
-    // usuário não revogar o app/trocar a senha — é isso que torna o token na
-    // prática permanente. Falha aqui não bloqueia: cai para o token original.
+    // ----------------------------------------------------------------------------
+    // PASSO 2 — EXTENSÃO OBRIGATÓRIA para longa duração (~60 dias) via
+    // fb_exchange_token. Credenciais do app (BRF Imóveis 2): lidas do registro
+    // do usuário (migração 0125/0131) com fallback para env vars do backend.
+    // Falha aqui = fluxo PARA (nunca seguir com token curto).
+    // ----------------------------------------------------------------------------
     var tokenExtended = false
-    var tokenExpiresAt = 0
-    if (appIdForExchange && appSecretForExchange) {
+    var tokenExpiresIn = 0
+
+    if (tokenType === 'user') {
+      var appCredsUser = null
       try {
-        var exchRes = $http.send({
+        appCredsUser = $app.findRecordById('users', userId)
+      } catch (_) {}
+      var appIdForExchange = appCredsUser
+        ? (appCredsUser.getString('meta_app_id') || '').trim()
+        : ''
+      var appSecretForExchange = appCredsUser
+        ? (appCredsUser.getString('meta_app_secret') || '').trim()
+        : ''
+      if (!appIdForExchange || !appSecretForExchange) {
+        try {
+          appIdForExchange = appIdForExchange || String($os.getenv('META_APP_ID') || '').trim()
+          appSecretForExchange =
+            appSecretForExchange || String($os.getenv('META_APP_SECRET') || '').trim()
+        } catch (_) {}
+      }
+      // Fallback adicional: credenciais Instagram salvas pelo fluxo OAuth (mesmo app)
+      if ((!appIdForExchange || !appSecretForExchange) && appCredsUser) {
+        appIdForExchange =
+          appIdForExchange || (appCredsUser.getString('meta_instagram_app_id') || '').trim()
+        appSecretForExchange =
+          appSecretForExchange || (appCredsUser.getString('meta_instagram_app_secret') || '').trim()
+      }
+
+      if (!appIdForExchange || !appSecretForExchange) {
+        var credsMsg =
+          'Extensão para ~60 dias NÃO foi possível: faltam as credenciais do app (meta_app_id / meta_app_secret). O token colado expira em ~1 hora. Salve as credenciais do app BRF Imóveis 2 no CRM ou renove o token pela ferramenta oficial de extensão da Meta antes de conectar.'
+        setUserTokenError(credsMsg, 0, 0)
+        return e.json(400, {
+          success: false,
+          error: credsMsg,
+          code: 0,
+          subcode: 0,
+          reason: 'missing_app_credentials',
+        })
+      }
+
+      var exchRes = null
+      var exchErr = null
+      try {
+        exchRes = $http.send({
           url:
-            'https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token' +
+            'https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token' +
             '&client_id=' +
             encodeURIComponent(appIdForExchange) +
             '&client_secret=' +
@@ -324,32 +392,79 @@ routerAdd(
             '&fb_exchange_token=' +
             encodeURIComponent(token),
           method: 'GET',
-          timeout: 15,
+          timeout: 20,
         })
-        var exchData = exchRes && exchRes.json ? exchRes.json : {}
-        if (exchRes.statusCode >= 200 && exchRes.statusCode < 300 && exchData.access_token) {
-          token = String(exchData.access_token)
-          tokenExtended = true
-          console.log(
-            '[SAVE_SUBSCRIBE] Token de usuário estendido (fb_exchange_token OK, ~60 dias).',
-          )
-        } else {
-          console.warn(
-            '[SAVE_SUBSCRIBE] fb_exchange_token não aceito (HTTP ' +
-              (exchRes ? exchRes.statusCode : 0) +
-              '): ' +
-              JSON.stringify(exchData.error || exchData),
-          )
-        }
-      } catch (exchErr) {
-        console.warn('[SAVE_SUBSCRIBE] Erro de rede no fb_exchange_token: ' + String(exchErr))
+      } catch (exchNetErr) {
+        exchErr = exchNetErr
       }
-    } else {
-      console.warn(
-        '[SAVE_SUBSCRIBE] meta_app_id/meta_app_secret ausentes (usuário e env) — estender token não possível, seguindo com token curto.',
-      )
+
+      if (exchErr) {
+        var netMsg =
+          'Extensão do token para ~60 dias FALHOU por erro de rede: ' +
+          String(exchErr.message || exchErr) +
+          '. Nada foi salvo — tente colar o token novamente.'
+        setUserTokenError(netMsg, 0, 0)
+        return e.json(400, { success: false, error: netMsg, reason: 'extension_network_error' })
+      }
+
+      var exchData = exchRes && exchRes.json ? exchRes.json : {}
+      var exchErrObj = exchData.error || {}
+      if (
+        exchRes &&
+        exchRes.statusCode >= 200 &&
+        exchRes.statusCode < 300 &&
+        exchData.access_token
+      ) {
+        token = String(exchData.access_token)
+        tokenExtended = true
+        tokenExpiresIn = Number(exchData.expires_in || 0) || 0
+        try {
+          var extOk = new Record(sysLogsCol, {
+            user_id: userId,
+            type: 'meta_token_extended',
+            message: tokenExpiresIn
+              ? 'Token de usuário estendido para longa duração: ' +
+                Math.round(tokenExpiresIn / 86400) +
+                ' dias (' +
+                tokenExpiresIn +
+                ' segundos). Page Token será derivado deste token long-lived.'
+              : 'Token de usuário estendido para longa duração (~60 dias). Page Token será derivado deste token long-lived.',
+            details:
+              'fb_exchange_token OK | app_id=' +
+              appIdForExchange +
+              (tokenExpiresIn ? ' | expires_in=' + tokenExpiresIn + 's' : ''),
+            payload: {
+              page_id: targetPageId,
+              extended: true,
+              expires_in: tokenExpiresIn || null,
+            },
+          })
+          $app.save(extOk)
+        } catch (_) {}
+      } else {
+        // Extensão FALHOU: registrar o erro bruto da Meta e PARAR.
+        var extFail = friendlyTokenError(exchErrObj, exchRes ? exchRes.statusCode : 0)
+        var failMsg =
+          'Extensão do token para ~60 dias FALHOU na Meta: ' +
+          extFail.friendly +
+          (extFail.raw ? ' (Meta: ' + extFail.raw + ')' : '') +
+          ' Nada foi salvo — o canal NÃO foi conectado.'
+        setUserTokenError(failMsg, extFail.code, extFail.subcode)
+        return e.json(400, {
+          success: false,
+          error: failMsg,
+          code: extFail.code,
+          subcode: extFail.subcode,
+          raw_message: extFail.raw,
+          reason: 'token_extension_failed',
+        })
+      }
     }
 
+    // ----------------------------------------------------------------------------
+    // PASSO 3 — CONVERSÃO user→page (só com token long-lived) ou validação do
+    // Page Token informado.
+    // ----------------------------------------------------------------------------
     if (tokenType === 'user') {
       var accountsRes = null
       var accountsErr = null
@@ -389,7 +504,7 @@ routerAdd(
         return e.json(400, {
           success: false,
           error:
-            'O token colado é de usuário e não conseguimos listar as Páginas dele. Gere novamente no Graph API Explorer escolhendo "Token da Página" → www.brfimoveis.com.br',
+            'O token de usuário (já estendido para ~60 dias) não conseguiu listar as Páginas dele. Gere novamente no Graph API Explorer escolhendo "Token da Página" → www.brfimoveis.com.br',
           code: accErrObj.code,
           raw_message: String(accErrObj.message || ''),
         })
@@ -413,7 +528,9 @@ routerAdd(
         logErr(
           'meta_messenger_token_validation_error',
           missingMsg ||
-            'Token de usuário sem acesso à Página ' + targetPageId + ' — não é possível converter',
+            'Token de usuário estendido sem acesso à Página ' +
+              targetPageId +
+              ' — não é possível converter',
           'Páginas visíveis: ' +
             pages.length +
             ' | permissões concedidas: ' +
@@ -430,7 +547,7 @@ routerAdd(
           success: false,
           error:
             missingMsg ||
-            'O token de usuário é válido e tem as permissões, mas a Página www.brfimoveis.com.br não apareceu em /me/accounts. Confirme que o perfil que gerou o token é admin da Página e gere o token novamente no Graph API Explorer (app BRF Imóveis 2).',
+            'O token de usuário estendido é válido e tem as permissões, mas a Página www.brfimoveis.com.br não apareceu em /me/accounts. Confirme que o perfil que gerou o token é admin da Página e gere o token novamente no Graph API Explorer (app BRF Imóveis 2).',
           granted_permissions: grantedList,
         })
       }
@@ -465,7 +582,7 @@ routerAdd(
         return e.json(400, {
           success: false,
           error:
-            'Conseguimos o token da Página www.brfimoveis.com.br, mas ele falhou na validação na Meta. Gere novamente no Graph API Explorer escolhendo "Token da Página" → www.brfimoveis.com.br',
+            'Conseguimos o token da Página www.brfimoveis.com.br (derivado do token estendido de ~60 dias), mas ele falhou na validação na Meta. Gere novamente no Graph API Explorer escolhendo "Token da Página" → www.brfimoveis.com.br',
           code: pgCheck.errObj.code || 0,
           raw_message: String(pgCheck.errObj.message || ''),
         })
@@ -480,24 +597,30 @@ routerAdd(
           user_id: userId,
           type: 'meta_messenger_token_converted',
           message:
-            'Token de usuário convertido automaticamente para o Page Token de ' +
+            'Page Token de ' +
             pageName +
             ' (' +
             targetPageId +
-            '). Fluxo segue normal.',
+            ') derivado do token de usuário LONG-LIVED (~60 dias). Token de página derivado de token estendido não expira enquanto o usuário não revogar o app.',
           details:
-            'Conversão user→page concluída | Página confirmada via GET /{page_id}: ' + targetPageId,
+            'Conversão user→page concluída | Página confirmada via GET /{page_id}: ' +
+            targetPageId +
+            (tokenExpiresIn
+              ? ' | token de usuário estendido com expires_in=' + tokenExpiresIn + 's'
+              : ''),
           payload: {
             page_id: targetPageId,
             page_name: pageName,
             page_token_validation: pageTokenValidation,
+            user_token_extended: tokenExtended,
+            user_token_expires_in: tokenExpiresIn || null,
           },
         })
         $app.save(conv)
       } catch (_) {}
     }
 
-    // 3. Token informado já é de Página: valida contra a Página alvo (sem "category")
+    // Token informado já é de Página: valida contra a Página alvo (sem "category")
     if (!tokenConverted) {
       var finalCheck = validatePageToken(token, targetPageId)
       if (finalCheck.netError) {
@@ -541,7 +664,9 @@ routerAdd(
     var detectedPageId = targetPageId
     var detectedPageName = meData.name || targetPageName
 
-    // 4. Subscrição da Página ao Webhook: POST /{page-id}/subscribed_apps
+    // ----------------------------------------------------------------------------
+    // PASSO 4 — Subscrição da Página ao Webhook: POST /{page-id}/subscribed_apps
+    // ----------------------------------------------------------------------------
     var subRes = null
     var subSuccess = false
     var subErrorMsg = ''
@@ -574,29 +699,44 @@ routerAdd(
       subErrorMsg = 'Erro de rede na subscrição: ' + String(subExc.message || subExc)
     }
 
-    // 5. Salva o TOKEN DA PÁGINA no registro do usuário (nunca o token de usuário)
+    // ----------------------------------------------------------------------------
+    // PASSO 5 — Salva o TOKEN DA PÁGINA long-lived no registro do usuário.
+    // Só chegamos aqui com a extensão concluída (user token) ou com um page
+    // token validado (colado como página).
+    // ----------------------------------------------------------------------------
     try {
       var user = $app.findRecordById('users', userId)
       user.set('meta_page_access_token', token)
       user.set('meta_instagram_page_token', token)
+      user.set('meta_token_status', 'active')
       try {
-        user.set('meta_token_status', 'active')
+        user.set('meta_capi_error', '')
       } catch (_) {}
       $app.saveNoValidate(user)
     } catch (saveUserErr) {
       $app.logger().error('Falha ao salvar token no usuário', 'err', String(saveUserErr))
     }
 
-    // 5a. Auditoria da extensão (fb_exchange_token) — visível no painel de logs
+    // 5a. Auditoria final da extensão (fb_exchange_token) — visível no painel de logs
     if (tokenExtended) {
       try {
         var extLog = new Record(sysLogsCol, {
           user_id: userId,
           type: 'meta_token_extended',
           message:
-            'Token estendido via fb_exchange_token (longa duração ~60 dias) antes da conversão user→page. Page token gerado a partir dele não expira enquanto o usuário não revogar o app.',
-          details: 'Página ' + targetPageId + ' (' + targetPageName + ')',
-          payload: { page_id: targetPageId, extended: true },
+            'Fluxo concluído: token estendido via fb_exchange_token (~60 dias) ANTES da conversão user→page. Page token derivado não expira enquanto o usuário não revogar o app.',
+          details:
+            'Página ' +
+            targetPageId +
+            ' (' +
+            targetPageName +
+            ')' +
+            (tokenExpiresIn ? ' | expires_in=' + tokenExpiresIn + 's' : ''),
+          payload: {
+            page_id: targetPageId,
+            extended: true,
+            expires_in: tokenExpiresIn || null,
+          },
         })
         $app.save(extLog)
       } catch (_) {}
@@ -629,7 +769,8 @@ routerAdd(
           GRAPH_FIELDS_SUBSCRIBE +
           ' | Status: ' +
           (subSuccess ? 'OK' : 'Pendente') +
-          (tokenConverted ? ' | Conversão user→page aplicada' : ''),
+          (tokenConverted ? ' | Conversão user→page aplicada' : '') +
+          (tokenExtended ? ' | Extensão ~60 dias aplicada ANTES da conversão' : ''),
         payload: {
           page_id: detectedPageId,
           page_name: detectedPageName,
@@ -638,6 +779,8 @@ routerAdd(
           sub_code: subErrorCode || null,
           token_type_detected: tokenType,
           token_converted: tokenConverted,
+          token_extended_before_conversion: tokenExtended,
+          user_token_expires_in: tokenExpiresIn || null,
           page_token_validation: pageTokenValidation,
           me_data: meData,
         },
@@ -653,10 +796,17 @@ routerAdd(
       subscription_warning: subSuccess ? null : subErrorMsg,
       token_type: tokenType,
       token_converted: tokenConverted,
+      token_extended: tokenExtended,
+      token_expires_in: tokenExpiresIn || null,
       page_validation: pageTokenValidation,
       message: subSuccess
-        ? 'Página "' + detectedPageName + '" conectada e subscrita com sucesso ao Webhook!'
-        : 'Página "' + detectedPageName + '" conectada! Aviso de subscrição: ' + subErrorMsg,
+        ? 'Página "' +
+          detectedPageName +
+          '" conectada com token de longa duração (~60 dias) e subscrita ao Webhook!'
+        : 'Página "' +
+          detectedPageName +
+          '" conectada com token de longa duração (~60 dias)! Aviso de subscrição: ' +
+          subErrorMsg,
     })
   },
   $apis.requireAuth(),

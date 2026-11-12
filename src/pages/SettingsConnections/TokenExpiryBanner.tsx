@@ -9,10 +9,28 @@ interface SystemHealthToken {
   status?: string
   page_name?: string
   page_id?: string
+  code?: number
+  subcode?: number
   message?: string
+  raw_message?: string | null
   expires_at?: string
   days_left?: number
   checked_at?: string
+}
+
+// Tradução dos códigos conhecidos da Meta para português (11/11/26):
+// 190/467 = sessão invalidada porque saíram do Facebook; 190/463 = token expirado.
+export function translateMetaTokenError(code?: number | null, subcode?: number | null): string {
+  if (code === 190 && subcode === 467) {
+    return 'Sessão invalidada porque saíram do Facebook — gere o token novamente e NÃO saia da conta do Facebook depois de gerar o token.'
+  }
+  if (code === 190 && subcode === 463) {
+    return 'Token expirado — renove gerando um novo token no Graph API Explorer.'
+  }
+  if (code === 190) {
+    return 'Token expirado ou invalidado pela Meta (código 190) — gere um novo token e cole no campo abaixo.'
+  }
+  return ''
 }
 
 interface SystemHealthResponse {
@@ -40,7 +58,9 @@ const formatExpiryDate = (iso?: string) => {
  * Banner de validade do token Meta salvo (Página/Messenger/Instagram).
  * Consome o endpoint do vigia GET /backend/v1/system_health (sem expor tokens)
  * e o campo users.meta_token_status gravado pelo cron system_health_watch:
- *  - VERMELHO: token expirado (status 'expired' na Graph API)
+ *  - VERMELHO: token expirado (status 'expired' na Graph API) ou erro salvo
+ *              pela extensão obrigatória de token (nunca "Conectado" com
+ *              token curto — v0.0.1406)
  *  - AMARELO : faltam menos de 7 dias para expirar
  *  - VERDE   : token válido
  */
@@ -48,6 +68,12 @@ export function TokenExpiryBanner() {
   const { user } = useAuth()
   const [health, setHealth] = useState<SystemHealthToken | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Erro gravado pela extensão obrigatória de token (save_and_subscribe):
+  // meta_capi_error guarda a mensagem amigável em português; se ainda houver um
+  // token salvo mas o status for de erro, o banner VERMELHO tem prioridade
+  // sobre qualquer "Conectado" (nunca "Conectado" com token curto).
+  const savedError = (user?.meta_capi_error || '').trim()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -73,23 +99,38 @@ export function TokenExpiryBanner() {
 
   const isExpired =
     health.status === 'expired' || (user?.meta_token_status || '').toLowerCase() === 'expired'
+  const errorCode = typeof health.code === 'number' ? health.code : null
+  const errorSubcode = typeof health.subcode === 'number' ? health.subcode : null
+  // Motivo em português: tradução dos códigos da Meta + mensagem salva pelo hook
+  const translated =
+    translateMetaTokenError(errorCode, errorSubcode) ||
+    (health.message || '').trim() ||
+    savedError ||
+    (isExpired ? 'Token de Página rejeitado pela Meta (código 190) — gere um novo token.' : '')
   const daysLeft = typeof health.days_left === 'number' ? health.days_left : null
   const expiringSoon = !isExpired && daysLeft !== null && daysLeft < 7
   const expiryFormatted = formatExpiryDate(health.expires_at)
 
   if (isExpired) {
+    const subcodeNote =
+      errorCode === 190 && errorSubcode === 467
+        ? ' (código 190, subcódigo 467 — sessão invalidada por logout do Facebook)'
+        : errorCode === 190 && errorSubcode === 463
+          ? ' (código 190, subcódigo 463 — expiração)'
+          : ''
     return (
       <Alert variant="destructive" className="border-red-500/40 bg-red-500/10">
         <ShieldAlert className="h-4 w-4 text-red-600" />
         <AlertTitle className="text-sm font-semibold text-red-900 dark:text-red-200">
-          Token Meta EXPIRADO — Bia não entrega mensagens até a renovação
+          {savedError
+            ? 'FALHA NA EXTENSÃO DO TOKEN — canal NÃO conectado'
+            : 'Token Meta EXPIRADO — Bia não entrega mensagens até a renovação'}
         </AlertTitle>
         <AlertDescription className="text-xs text-red-900/90 dark:text-red-100/90 space-y-1">
           <p>
-            {expiryFormatted
-              ? `O token expirou (validade vencida em ${expiryFormatted}).`
-              : 'O token de Página salvo foi rejeitado pela Meta (código 190).'}{' '}
-            A Bernadete deve gerar um novo token e colar no campo abaixo (passo a passo em azul).
+            {translated}
+            {subcodeNote} A Bernadete deve gerar um novo token e colar no campo abaixo (passo a
+            passo em azul).
           </p>
           <div className="flex items-center gap-2 pt-1">
             <Button variant="outline" size="sm" className="h-7 text-xs" onClick={load}>
@@ -132,6 +173,22 @@ export function TokenExpiryBanner() {
   }
 
   if (health.status === 'ok') {
+    // Defensivo: se o vigia marcou OK mas carrega um código de erro da Meta,
+    // mostramos o aviso traduzido em vez de "válido" (nunca verde com erro).
+    const okTranslated = translateMetaTokenError(health.code, health.subcode)
+    if (okTranslated) {
+      return (
+        <Alert variant="destructive" className="border-red-500/40 bg-red-500/10">
+          <ShieldAlert className="h-4 w-4 text-red-600" />
+          <AlertTitle className="text-sm font-semibold text-red-900 dark:text-red-200">
+            Atenção no token da Página
+          </AlertTitle>
+          <AlertDescription className="text-xs text-red-900/90 dark:text-red-100/90">
+            {okTranslated}
+          </AlertDescription>
+        </Alert>
+      )
+    }
     return (
       <Alert className="border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100 py-2.5">
         <ShieldCheck className="h-4 w-4 text-emerald-600" />
