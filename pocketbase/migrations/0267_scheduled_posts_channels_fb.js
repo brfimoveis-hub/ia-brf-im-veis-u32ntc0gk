@@ -21,12 +21,13 @@ migrate(
       }
     }
 
-    // 1. Campo channels (json): lista de canais, ex. ["facebook","instagram"]
+    // 1. Campo channels (json): lista de canais, ex. ["facebook","instagram"].
+    //    maxSize obrigatório — sem ele o PocketBase grava com MaxSize 0 e rejeita valores.
     if (!hasField(collection, 'channels')) {
       collection.fields.add(
-        new JsonField({
+        new JSONField({
           name: 'channels',
-          maxSelect: 1,
+          maxSize: 2000000,
           required: false,
         }),
       )

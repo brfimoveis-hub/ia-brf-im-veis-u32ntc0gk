@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T12:11:11.699Z",
+  "generatedAt": "2026-11-12T12:26:15.572Z",
   "collections": [
     {
       "name": "users",
@@ -2497,7 +2497,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["rascunho", "agendado", "publicado", "falhou"]
+          "selectValues": ["rascunho", "agendado", "publicado", "falhou", "cancelado"]
         },
         {
           "name": "error_message",

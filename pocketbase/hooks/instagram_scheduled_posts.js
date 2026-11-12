@@ -5,7 +5,7 @@
  *
  * Inclui:
  * 1. Cron de 5 minutos ('cron_publish_scheduled_posts') para publicar posts pendentes
- * 2. POST /backend/v1/posts/:id/publish_now - Publicação imediata sob demanda (canais do post)
+ * 2. POST /backend/v1/posts/{id}/publish_now - Publicação imediata sob demanda (canais do post)
  * 3. POST /backend/v1/posts/suggest_caption - Geração de legenda com a Bia ($ai.chat)
  * 4. GET /backend/v1/posts/instagram_status - Status da integração p/ banner
  * 5. system_logs: scheduled_post_published / scheduled_post_failed (nunca falha em silêncio)
@@ -475,7 +475,7 @@ cronAdd('cron_publish_scheduled_posts', '*/5 * * * *', () => {
 // 2. ENDPOINT: Publicar Agora sob demanda
 routerAdd(
   'POST',
-  '/backend/v1/posts/:id/publish_now',
+  '/backend/v1/posts/{id}/publish_now',
   (e) => {
     function buildFullCaption(caption, linkCta) {
       var full = (caption || '').trim()
@@ -962,25 +962,33 @@ routerAdd(
     var igUsername = (user.getString('instagram_username') || 'brf_imoveis_').trim()
     var tokenStatus = (user.getString('meta_token_status') || '').trim()
 
-    var hasAccount = !!igBizId
+    var pageId = (
+      user.getString('meta_page_id') ||
+      user.getString('meta_facebook_page_id') ||
+      ''
+    ).trim()
+    if (!pageId) pageId = '1401557100168686'
+
+    var hasIgAccount = !!igBizId
     var hasToken = !!(pageToken || oauthUserToken)
+    var isTokenExpired = tokenStatus === 'expired'
 
-    var canAutoPublish = hasAccount && hasToken && tokenStatus !== 'expired'
+    var canAutoPublish = hasIgAccount && hasToken && !isTokenExpired
     var degradedReason = ''
+    var fbDegradedReason = ''
 
-    if (tokenStatus === 'expired') {
+    if (isTokenExpired) {
       canAutoPublish = false
       degradedReason =
         'Token da Meta expirado — renove em Configurações (Conexões). A Bernadete precisa gerar um novo token.'
-    } else if (!hasAccount && !hasToken) {
-      degradedReason =
-        'Conta do Instagram e Página do Facebook ainda não vinculadas nas Conexões do CRM.'
-    } else if (!hasAccount) {
-      degradedReason =
-        'Conta profissional do Instagram não vinculada à Página da BRF Imóveis no Meta Business Suite (em processo de liberação).'
+      fbDegradedReason = degradedReason
     } else if (!hasToken) {
       degradedReason =
         'Token de acesso não disponível. Conecte sua conta em Configurações > Conexões.'
+      fbDegradedReason = degradedReason
+    } else if (!hasIgAccount) {
+      degradedReason =
+        'Conta profissional do Instagram não vinculada à Página da BRF Imóveis no Meta Business Suite (em processo de liberação).'
     }
 
     return e.json(200, {
@@ -989,6 +997,11 @@ routerAdd(
       instagram_username: igUsername,
       instagram_business_id: igBizId,
       degraded_reason: degradedReason,
+      facebook_page_id: pageId,
+      has_fb_token: hasToken,
+      has_ig_account: hasIgAccount,
+      token_expired: isTokenExpired,
+      fb_degraded_reason: fbDegradedReason,
     })
   },
   $apis.requireAuth(),

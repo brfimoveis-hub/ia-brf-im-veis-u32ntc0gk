@@ -205,12 +205,34 @@ function getCurrentAuthUserLabel(): string {
   return 'Mauro'
 }
 
+/**
+ * Normaliza a lista de canais do post. Legado sem channels → só Instagram
+ * (piloto original); valores 'fb'/'ig' aceitos como sinônimos.
+ */
+export function normalizePostChannels(
+  channels?: ScheduledPostChannel[] | string[] | null,
+): ScheduledPostChannel[] {
+  if (!channels || !Array.isArray(channels) || channels.length === 0) {
+    return ['instagram']
+  }
+  const out: ScheduledPostChannel[] = []
+  for (const raw of channels) {
+    const v = String(raw || '')
+      .trim()
+      .toLowerCase()
+    if ((v === 'facebook' || v === 'fb') && !out.includes('facebook')) out.push('facebook')
+    if ((v === 'instagram' || v === 'ig') && !out.includes('instagram')) out.push('instagram')
+  }
+  return out.length > 0 ? out : ['instagram']
+}
+
 export async function createScheduledPost(
   payload: CreateScheduledPostPayload,
 ): Promise<ScheduledPost> {
   const currentUserId = getCurrentAuthUserId()
   const sanitizedLaunch = sanitizeLaunchId(payload.launch)
   const sanitizedDate = sanitizeScheduledDate(payload.scheduled_at)
+  const channels = normalizePostChannels(payload.channels)
 
   // 1. Validar cota de armazenamento se arquivos forem enviados
   if (payload.image_files && payload.image_files.length > 0) {
@@ -227,6 +249,7 @@ export async function createScheduledPost(
     formData.append('status', payload.status || 'agendado')
     if (payload.link_cta) formData.append('link_cta', payload.link_cta)
     formData.append('created_by', payload.created_by || getCurrentAuthUserLabel())
+    formData.append('channels', JSON.stringify(channels))
     if (payload.image_urls && payload.image_urls.length > 0) {
       formData.append('image_urls', JSON.stringify(payload.image_urls))
     }
@@ -246,6 +269,7 @@ export async function createScheduledPost(
     status: payload.status || 'agendado',
     link_cta: payload.link_cta || '',
     created_by: payload.created_by || getCurrentAuthUserLabel(),
+    channels,
     image_urls: payload.image_urls || [],
   }
 
@@ -288,6 +312,8 @@ export async function updateScheduledPost(
     if (payload.link_cta !== undefined) formData.append('link_cta', payload.link_cta)
     if (payload.error_message !== undefined) formData.append('error_message', payload.error_message)
     if (payload.published_at !== undefined) formData.append('published_at', payload.published_at)
+    if (payload.channels !== undefined)
+      formData.append('channels', JSON.stringify(normalizePostChannels(payload.channels)))
     if (payload.image_urls !== undefined)
       formData.append('image_urls', JSON.stringify(payload.image_urls))
 
@@ -308,6 +334,7 @@ export async function updateScheduledPost(
   if (payload.link_cta !== undefined) cleanData.link_cta = payload.link_cta
   if (payload.error_message !== undefined) cleanData.error_message = payload.error_message
   if (payload.published_at !== undefined) cleanData.published_at = payload.published_at
+  if (payload.channels !== undefined) cleanData.channels = normalizePostChannels(payload.channels)
   if (payload.image_urls !== undefined) cleanData.image_urls = payload.image_urls
 
   return await pb.collection('scheduled_posts').update<ScheduledPost>(id, cleanData, {
@@ -347,6 +374,8 @@ export async function duplicateScheduledPost(
     created_by: getCurrentAuthUserLabel(),
   }
 
+  newPayload.channels = normalizePostChannels(post.channels)
+
   // Se tiver imagens nativas no PB, copia a referência de URLs públicas
   if (post.images && post.images.length > 0) {
     const pbBaseUrl = pb.baseUrl
@@ -360,11 +389,21 @@ export async function duplicateScheduledPost(
 }
 
 /**
- * Dispara publicação imediata no Instagram via endpoint backend
+ * Dispara publicação imediata no(s) canal(is) do post (Facebook/Instagram) via endpoint backend
  */
 export async function publishPostNow(id: string): Promise<PublishNowResponse> {
   return await pb.send<PublishNowResponse>(`/backend/v1/posts/${id}/publish_now`, {
     method: 'POST',
+  })
+}
+
+/**
+ * Cancela um post agendado: marca status 'cancelado' para o cron nunca publicá-lo.
+ */
+export async function cancelScheduledPost(id: string): Promise<ScheduledPost> {
+  return await updateScheduledPost(id, {
+    status: 'cancelado',
+    error_message: '',
   })
 }
 
