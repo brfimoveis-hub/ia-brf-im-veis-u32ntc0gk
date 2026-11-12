@@ -1,7 +1,9 @@
 import pb from '@/lib/pocketbase/client'
 import { assertCanUploadFiles } from './ai_knowledge_storage'
 
-export type ScheduledPostStatus = 'rascunho' | 'agendado' | 'publicado' | 'falhou'
+export type ScheduledPostStatus = 'rascunho' | 'agendado' | 'publicado' | 'falhou' | 'cancelado'
+
+export type ScheduledPostChannel = 'facebook' | 'instagram'
 
 export interface ScheduledPost {
   id: string
@@ -11,6 +13,12 @@ export interface ScheduledPost {
   images?: string[]
   scheduled_at: string
   status: ScheduledPostStatus
+  channels?: string[] | null
+  fb_post_id?: string
+  fb_permalink?: string
+  ig_post_id?: string
+  ig_permalink?: string
+  attempt_count?: number
   error_message?: string
   published_at?: string
   link_cta?: string
@@ -37,6 +45,7 @@ export interface CreateScheduledPostPayload {
   caption: string
   scheduled_at: string
   status?: ScheduledPostStatus
+  channels?: ScheduledPostChannel[]
   link_cta?: string
   image_files?: File[]
   image_urls?: string[]
@@ -48,6 +57,7 @@ export interface UpdateScheduledPostPayload {
   caption?: string
   scheduled_at?: string
   status?: ScheduledPostStatus
+  channels?: ScheduledPostChannel[]
   link_cta?: string
   image_files?: File[]
   image_urls?: string[]
