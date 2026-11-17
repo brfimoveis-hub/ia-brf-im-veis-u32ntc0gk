@@ -69,9 +69,9 @@ export function MetaMessengerPageConnect() {
     setSaving(true)
     try {
       // O hook espera o campo "page_access_token" (aceita também
-      // "meta_page_access_token" e "access_token"). Enviar o token com a chave
-      // certa é o que evita o erro "O Page Access Token é obrigatório." — o
-      // mesmo token serve para usuário comum e System User (o hook detecta).
+      // "meta_page_access_token"). Enviar o token com a chave certa é o que
+      // evita o erro "O Page Access Token é obrigatório." — o mesmo token
+      // serve para usuário comum e System User (o hook detecta o tipo).
       const res = await pb.send<{
         success?: boolean
         page_name?: string
