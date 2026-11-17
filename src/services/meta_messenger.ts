@@ -19,7 +19,14 @@ export async function saveAndSubscribeMessengerPage(
     `/backend/v1/meta_messenger_save_and_subscribe`,
     {
       method: 'POST',
-      body: { access_token: accessToken, page_id: pageId, page_name: pageName },
+      body: {
+        // O hook lê body.page_access_token (ou meta_page_access_token) — enviar
+        // com a chave certa evita o erro "O Page Access Token é obrigatório."
+        page_access_token: accessToken,
+        access_token: accessToken,
+        page_id: pageId,
+        page_name: pageName,
+      },
     },
   )
   return res
