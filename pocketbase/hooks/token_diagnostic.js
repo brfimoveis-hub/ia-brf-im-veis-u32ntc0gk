@@ -7,23 +7,42 @@ routerAdd('GET', '/backend/v1/instagram/token-diagnostic', (e) => {
   }
   const crmUser = userRecords[0]
 
-  const igAppId = (
-    crmUser.getString('meta_instagram_app_id') ||
-    crmUser.getString('meta_app_id') ||
-    '2442476629610638'
-  ).trim()
-  const metaAppSecret = (crmUser.getString('meta_app_secret') || '').trim()
-  const metaIgAppSecret = (crmUser.getString('meta_instagram_app_secret') || '').trim()
-
-  // Testa os dois secrets possíveis para montar appToken
-  const secretCandidates = []
-  if (metaAppSecret) secretCandidates.push(metaAppSecret)
-  if (metaIgAppSecret && metaIgAppSecret !== metaAppSecret) secretCandidates.push(metaIgAppSecret)
-  if (secretCandidates.indexOf('d085b85d8d534c682f60b6bde8043610') === -1) {
-    secretCandidates.push('d085b85d8d534c682f60b6bde8043610')
+  // Credenciais do app: prioridade para as env vars do backend (META_APP_ID /
+  // META_APP_SECRET), fallback para as salvas no registro do usuário. Sem elas
+  // o debug_token volta a falhar com "#100 You must provide an app access
+  // token" — nunca chamar o endpoint sem um app access token válido.
+  let igAppId = String($os.getenv('META_APP_ID') || '').trim()
+  let appSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+  if (!igAppId || !appSecret) {
+    const savedAppId = (
+      crmUser.getString('meta_instagram_app_id') ||
+      crmUser.getString('meta_app_id') ||
+      ''
+    ).trim()
+    const savedSecret = (crmUser.getString('meta_app_secret') || '').trim()
+    igAppId = igAppId || savedAppId || '2442476629610638'
+    appSecret = appSecret || savedSecret
   }
-  if (secretCandidates.indexOf('248ee93aa36d2e85bef72379753a9083') === -1) {
-    secretCandidates.push('248ee93aa36d2e85bef72379753a9083')
+  if (!igAppId || !appSecret) {
+    return e.json(503, {
+      success: false,
+      error:
+        'META_APP_ID/META_APP_SECRET não configurados no backend — impossível montar o app access token para o debug_token.',
+    })
+  }
+  const appAccessToken = igAppId + '|' + appSecret
+
+  // appsecret_proof = HMAC-SHA256 do access token usando o app secret.
+  // Obrigatório em toda chamada Graph com token de USUÁRIO (o app exige
+  // "Require App Secret"); sem ele a Meta devolve code 100 "appsecret_proof
+  // argument" mesmo com token válido — falsos negativos no diagnóstico.
+  const proofParam = function (accessToken) {
+    if (!accessToken) return ''
+    try {
+      return '&appsecret_proof=' + $security.hs256(String(accessToken), appSecret)
+    } catch (_) {
+      return ''
+    }
   }
 
   const igUserId = (crmUser.getString('meta_instagram_business_id') || '17841418593400936').trim()
@@ -93,49 +112,27 @@ routerAdd('GET', '/backend/v1/instagram/token-diagnostic', (e) => {
       missing_scopes: [],
     }
 
-    // 1. debug_token na Graph API testando com app access token e self token
-    // Primeiramente tenta com cada candidate app secret
+    // 1. debug_token com app access token "APP_ID|APP_SECRET" (user tokens e
+    //    page tokens são inspecionáveis por ele; nunca usar o próprio token
+    //    como access_token — a Meta devolve #100).
     let dbgData = null
     let dbgResLast = null
 
-    for (let scIdx = 0; scIdx < secretCandidates.length; scIdx++) {
-      const candidateAppToken = igAppId + '|' + secretCandidates[scIdx]
-      try {
-        const dbgRes = $http.send({
-          url:
-            'https://graph.facebook.com/debug_token?input_token=' +
-            encodeURIComponent(rawToken) +
-            '&access_token=' +
-            encodeURIComponent(candidateAppToken),
-          method: 'GET',
-          timeout: 10,
-        })
-        dbgResLast = dbgRes
-        if (dbgRes.statusCode === 200 && dbgRes.json && dbgRes.json.data) {
-          dbgData = dbgRes.json.data
-          break
-        }
-      } catch (_) {}
-    }
-
-    // Se ainda não conseguiu, tenta com o próprio token como access_token
-    if (!dbgData) {
-      try {
-        const selfDbgRes = $http.send({
-          url:
-            'https://graph.facebook.com/debug_token?input_token=' +
-            encodeURIComponent(rawToken) +
-            '&access_token=' +
-            encodeURIComponent(rawToken),
-          method: 'GET',
-          timeout: 10,
-        })
-        if (selfDbgRes.statusCode === 200 && selfDbgRes.json && selfDbgRes.json.data) {
-          dbgData = selfDbgRes.json.data
-          dbgResLast = selfDbgRes
-        }
-      } catch (_) {}
-    }
+    try {
+      const dbgRes = $http.send({
+        url:
+          'https://graph.facebook.com/debug_token?input_token=' +
+          encodeURIComponent(rawToken) +
+          '&access_token=' +
+          encodeURIComponent(appAccessToken),
+        method: 'GET',
+        timeout: 10,
+      })
+      dbgResLast = dbgRes
+      if (dbgRes.statusCode === 200 && dbgRes.json && dbgRes.json.data) {
+        dbgData = dbgRes.json.data
+      }
+    } catch (_) {}
 
     // Se ainda não conseguiu, tenta GET /v22.0/me/permissions diretamente com o token
     let permsData = []
@@ -143,7 +140,8 @@ routerAdd('GET', '/backend/v1/instagram/token-diagnostic', (e) => {
       const permRes = $http.send({
         url:
           'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
-          encodeURIComponent(rawToken),
+          encodeURIComponent(rawToken) +
+          proofParam(rawToken),
         method: 'GET',
         timeout: 10,
       })
@@ -204,7 +202,8 @@ routerAdd('GET', '/backend/v1/instagram/token-diagnostic', (e) => {
           'https://graph.facebook.com/v22.0/' +
           encodeURIComponent(igUserId) +
           '?fields=name,username&access_token=' +
-          encodeURIComponent(rawToken),
+          encodeURIComponent(rawToken) +
+          proofParam(rawToken),
         method: 'GET',
         timeout: 10,
       })
@@ -228,7 +227,8 @@ routerAdd('GET', '/backend/v1/instagram/token-diagnostic', (e) => {
           'https://graph.facebook.com/v22.0/' +
           encodeURIComponent(pageId) +
           '?fields=name,id&access_token=' +
-          encodeURIComponent(rawToken),
+          encodeURIComponent(rawToken) +
+          proofParam(rawToken),
         method: 'GET',
         timeout: 10,
       })
@@ -240,7 +240,8 @@ routerAdd('GET', '/backend/v1/instagram/token-diagnostic', (e) => {
             'https://graph.facebook.com/v22.0/' +
             encodeURIComponent(alternatePageId) +
             '?fields=name,id&access_token=' +
-            encodeURIComponent(rawToken),
+            encodeURIComponent(rawToken) +
+            proofParam(rawToken),
           method: 'GET',
           timeout: 10,
         })
