@@ -42,7 +42,15 @@ routerAdd('POST', '/backend/v1/subscribe_waba_app', (e) => {
   }
 
   const appId = userRecord.getString('meta_app_id') || '2442476629610638'
-  const appSecret = userRecord.getString('meta_app_secret') || 'd085b85d8d534c682f60b6bde8043610'
+  // Credenciais vindas SEMPRE do registro/env — sem segredo fixo em código
+  // (v0.0.1420: o fallback antigo guardava a secret do app anterior e
+  // invalidava o appsecret_proof de todas as chamadas Graph).
+  let appSecret = (userRecord.getString('meta_app_secret') || '').trim()
+  if (!appSecret) {
+    try {
+      appSecret = ($os.getenv('META_APP_SECRET') || '').trim()
+    } catch (_) {}
+  }
   const appAccessToken = appId + '|' + appSecret
 
   // Debug: inspecionar token (debug_token com app access token)

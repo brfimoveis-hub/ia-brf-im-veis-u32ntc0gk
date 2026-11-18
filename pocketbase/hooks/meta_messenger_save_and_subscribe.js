@@ -442,6 +442,28 @@ routerAdd(
           dbgRes = null
         }
         var dbgData = dbgRes && dbgRes.json && dbgRes.json.data ? dbgRes.json.data : null
+        if (!dbgData && token) {
+          // Fallback v0.0.1420 (prova [APP_SECRET_FIX] em system_logs): neste app
+          // o debug_token com app access token é recusado ("#100 You must
+          // provide an app access token...") MESMO com a secret certa — o app
+          // exige App Secret em TODAS as chamadas. A forma que funciona é
+          // autenticar com o PRÓPRIO token + appsecret_proof dele.
+          try {
+            var dbgSelf = $http.send({
+              url:
+                GRAPH_BASE +
+                'debug_token?input_token=' +
+                encodeURIComponent(token) +
+                '&access_token=' +
+                encodeURIComponent(token) +
+                '&appsecret_proof=' +
+                $security.hs256(String(token), dbgAppSecret),
+              method: 'GET',
+              timeout: 15,
+            })
+            if (dbgSelf.json && dbgSelf.json.data) dbgData = dbgSelf.json.data
+          } catch (_) {}
+        }
         sysUserScopes = dbgData && dbgData.scopes ? dbgData.scopes : []
         var hasScope = function (s) {
           return sysUserScopes.indexOf(s) !== -1

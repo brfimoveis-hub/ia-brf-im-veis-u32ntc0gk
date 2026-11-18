@@ -34,13 +34,26 @@ routerAdd(
         })
       } else {
         try {
-          // Não enviar appsecret_proof: a Graph API só exige quando habilitado explicitamente no app
-          // e o app_secret pode divergir do app criador do token, gerando "Invalid appsecret_proof".
+          // v0.0.1420 (prova [APP_SECRET_FIX]): o app exige App Secret em TODAS
+          // as chamadas de servidor — sem proof a Meta devolve code 100
+          // "API calls from the server require an appsecret_proof argument".
+          // O token WhatsApp é do app 2442476629610638, cuja secret correta
+          // (provada por /me + debug_token nos logs) está em meta_app_secret.
+          let waProof = ''
+          try {
+            const waSecret =
+              (userRecord.getString('meta_app_secret') || '').trim() ||
+              String($os.getenv('META_APP_SECRET') || '').trim()
+            if (waSecret) {
+              waProof = '&appsecret_proof=' + $security.hs256(String(token), waSecret)
+            }
+          } catch (_) {}
           const res = $http.send({
             url:
               'https://graph.facebook.com/v21.0/' +
               pnId +
-              '?fields=code_verification_status,quality_rating,status,verified_name,id,display_phone_number',
+              '?fields=code_verification_status,quality_rating,status,verified_name,id,display_phone_number' +
+              waProof,
             method: 'GET',
             headers: { Authorization: 'Bearer ' + token },
             timeout: 15,

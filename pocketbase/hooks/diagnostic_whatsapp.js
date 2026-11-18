@@ -33,8 +33,16 @@ routerAdd('POST', '/backend/v1/diagnostic_whatsapp', (e) => {
   }
 
   const wabaId = userRecord.getString('meta_whatsapp_business_id') || '3542548689255402'
+  // Credenciais vindas SEMPRE do registro/env — sem segredo fixo em código
+  // (v0.0.1420: o fallback antigo guardava a secret do app anterior e
+  // invalidava o appsecret_proof de todas as chamadas Graph).
   const appId = userRecord.getString('meta_app_id') || '2442476629610638'
-  const appSecret = userRecord.getString('meta_app_secret') || 'd085b85d8d534c682f60b6bde8043610'
+  let appSecret = (userRecord.getString('meta_app_secret') || '').trim()
+  if (!appSecret) {
+    try {
+      appSecret = ($os.getenv('META_APP_SECRET') || '').trim()
+    } catch (_) {}
+  }
 
   try {
     // 1. Consultar campos detalhados do número de telefone

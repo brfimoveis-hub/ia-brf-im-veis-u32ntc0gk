@@ -67,10 +67,6 @@ routerAdd(
           appSecret = appSecret || String($os.getenv('META_APP_SECRET') || '').trim()
         } catch (_) {}
       }
-      if (!appId || !appSecret) {
-        appId = appId || '2442476629610638'
-        appSecret = appSecret || 'd085b85d8d534c682f60b6bde8043610'
-      }
       return { id: appId, secret: appSecret }
     }
 

@@ -112,9 +112,10 @@ routerAdd('GET', '/backend/v1/instagram/token-diagnostic', (e) => {
       missing_scopes: [],
     }
 
-    // 1. debug_token com app access token "APP_ID|APP_SECRET" (user tokens e
-    //    page tokens são inspecionáveis por ele; nunca usar o próprio token
-    //    como access_token — a Meta devolve #100).
+    // 1. debug_token com app access token "APP_ID|APP_SECRET". Se a Meta
+    //    recusar (neste app ela recusa SEMPRE — prova [APP_SECRET_FIX]
+    //    v0.0.1420: exige App Secret em TODAS as chamadas), repete com o
+    //    PRÓPRIO token + appsecret_proof dele, que é a forma que funciona.
     let dbgData = null
     let dbgResLast = null
 
@@ -131,6 +132,29 @@ routerAdd('GET', '/backend/v1/instagram/token-diagnostic', (e) => {
       dbgResLast = dbgRes
       if (dbgRes.statusCode === 200 && dbgRes.json && dbgRes.json.data) {
         dbgData = dbgRes.json.data
+      }
+      if (!dbgData) {
+        // Fallback v0.0.1420 (prova [APP_SECRET_FIX]): neste app o debug_token
+        // com app access token é recusado ("#100 You must provide an app access
+        // token...") MESMO com a secret certa — o app exige App Secret em TODAS
+        // as chamadas. A forma que funciona é autenticar com o PRÓPRIO token +
+        // appsecret_proof dele.
+        try {
+          const dbgSelf = $http.send({
+            url:
+              'https://graph.facebook.com/debug_token?input_token=' +
+              encodeURIComponent(rawToken) +
+              '&access_token=' +
+              encodeURIComponent(rawToken) +
+              '&appsecret_proof=' +
+              $security.hs256(String(rawToken), appSecret),
+            method: 'GET',
+            timeout: 10,
+          })
+          if (dbgSelf.json && dbgSelf.json.data) {
+            dbgData = dbgSelf.json.data
+          }
+        } catch (_) {}
       }
     } catch (_) {}
 

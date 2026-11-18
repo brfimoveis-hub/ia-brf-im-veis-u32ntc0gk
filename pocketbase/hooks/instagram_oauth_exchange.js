@@ -57,11 +57,19 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
     } else if (clientAppIdHint === mainAppId && mainAppSecret) {
       candidateCredentials.push({ id: mainAppId, secret: mainAppSecret, tag: 'hint_main' })
     } else if (clientAppIdHint === '2442476629610638') {
-      candidateCredentials.push({
-        id: '2442476629610638',
-        secret: mainAppSecret || 'd085b85d8d534c682f60b6bde8043610',
-        tag: 'hint_2442476629610638',
-      })
+      if (mainAppSecret) {
+        candidateCredentials.push({
+          id: '2442476629610638',
+          secret: mainAppSecret,
+          tag: 'hint_main',
+        })
+      } else if (dedicatedAppSecret) {
+        candidateCredentials.push({
+          id: '2442476629610638',
+          secret: dedicatedAppSecret,
+          tag: 'hint_dedicated',
+        })
+      }
     }
   }
 
@@ -78,13 +86,6 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
       tag: 'dedicated_app',
     })
   }
-
-  // Fallback garantido para o app 2442476629610638 com o secret conhecido
-  candidateCredentials.push({
-    id: '2442476629610638',
-    secret: mainAppSecret || 'd085b85d8d534c682f60b6bde8043610',
-    tag: 'fallback_2442476629610638',
-  })
 
   // Remove duplicados de candidateCredentials
   const uniqueCredentials = []

@@ -49,11 +49,41 @@ cronAdd('system_health_watch', '*/15 * * * *', () => {
     return chosen
   }
 
+  // graphGet anexa appsecret_proof quando a Graph exige ("API calls from the
+  // server require an appsecret_proof argument", code 100 — vigia v0.0.1420).
+  // O proof é HMAC-SHA256 do token com o App Secret do app que o emitiu,
+  // lido do registro do usuário (meta_app_secret) ou das env do backend.
   function graphGet(url, token) {
     var out = { statusCode: 0, body: null }
     try {
+      var sep = url.indexOf('?') === -1 ? '?' : '&'
+      var proofUrl = url
+      try {
+        var secret = ($os.getenv('META_APP_SECRET') || '').trim()
+        if (!secret) {
+          try {
+            var sus = $app.findRecordsByFilter(
+              'users',
+              "meta_app_secret != '' || meta_instagram_app_secret != ''",
+              '-created',
+              1,
+              0,
+            )
+            if (sus && sus.length > 0) {
+              secret = (
+                sus[0].getString('meta_app_secret') ||
+                sus[0].getString('meta_instagram_app_secret') ||
+                ''
+              ).trim()
+            }
+          } catch (_) {}
+        }
+        if (secret) {
+          proofUrl = url + sep + 'appsecret_proof=' + $security.hs256(String(token), secret)
+        }
+      } catch (_) {}
       var res = $http.send({
-        url: url,
+        url: proofUrl,
         method: 'GET',
         headers: { Authorization: 'Bearer ' + token },
         timeout: 15,
@@ -389,11 +419,41 @@ routerAdd('GET', '/backend/v1/system_health', (e) => {
     return chosen
   }
 
+  // graphGet anexa appsecret_proof quando a Graph exige ("API calls from the
+  // server require an appsecret_proof argument", code 100 — vigia v0.0.1420).
+  // O proof é HMAC-SHA256 do token com o App Secret do app que o emitiu,
+  // lido do registro do usuário (meta_app_secret) ou das env do backend.
   function graphGet(url, token) {
     var out = { statusCode: 0, body: null }
     try {
+      var sep = url.indexOf('?') === -1 ? '?' : '&'
+      var proofUrl = url
+      try {
+        var secret = ($os.getenv('META_APP_SECRET') || '').trim()
+        if (!secret) {
+          try {
+            var sus = $app.findRecordsByFilter(
+              'users',
+              "meta_app_secret != '' || meta_instagram_app_secret != ''",
+              '-created',
+              1,
+              0,
+            )
+            if (sus && sus.length > 0) {
+              secret = (
+                sus[0].getString('meta_app_secret') ||
+                sus[0].getString('meta_instagram_app_secret') ||
+                ''
+              ).trim()
+            }
+          } catch (_) {}
+        }
+        if (secret) {
+          proofUrl = url + sep + 'appsecret_proof=' + $security.hs256(String(token), secret)
+        }
+      } catch (_) {}
       var res = $http.send({
-        url: url,
+        url: proofUrl,
         method: 'GET',
         headers: { Authorization: 'Bearer ' + token },
         timeout: 15,
