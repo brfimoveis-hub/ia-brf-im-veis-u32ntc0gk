@@ -2,14 +2,34 @@ routerAdd(
   'POST',
   '/backend/v1/instagram/test_connection',
   (e) => {
+    let user = null
+    try {
+      user = $app.findRecordById('users', userId)
+    } catch (_) {
+      return e.badRequestError('Usuário não encontrado')
+    }
+=======
+    }
+    if (!igBizId && !igToken) { catch (_) {
+      return e.badRequestError('Usuário não encontrado')
+    }
+=======
     const userId = e.auth ? e.auth.id : ''
     if (!userId) return e.unauthorizedError('auth required')
 
     let user = null
     try {
       user = $app.findRecordById('users', userId)
-
-    if (!igBizId && !igToken) {
+    } catch (_) {
+      return e.badRequestError('Usuário não encontrado')
+    }
+=======
+    let user = null
+    try {
+      user = $app.findRecordById('users', userId)
+    } catch (_) {
+      return e.badRequestError('Usuário não encontrado')
+    }
 =======
     }
     if (!igBizId && !igToken) { catch (_) {
@@ -46,10 +66,51 @@ routerAdd(
     // divergência de credencial do app).
     // Helper declarado DENTRO do handler (regra v0.0.1399).
     // -----------------------------------------------------------------------
+      try {
+        appId = (user.getString('meta_app_id') || '').trim()
+        appSecret = (user.getString('meta_app_secret') || '').trim()
+        if (!appId || !appSecret) {
+          appId = appId || (user.getString('meta_instagram_app_id') || '').trim()
+          appSecret = appSecret || (user.getString('meta_instagram_app_secret') || '').trim()
+        }
+      } catch (_) {}
+      if (!appId || !appSecret) {
+        try {
+          appId = appId || String($os.getenv('META_APP_ID') || '').trim()
+          appSecret = appSecret || String($os.getenv('META_APP_SECRET') || '').trim()
+        } catch (_) {}
+      }
+      if (!appId || !appSecret) {
+        appId = appId || '2442476629610638'
+        appSecret = appSecret || 'd085b85d8d534c682f60b6bde8043610'
+      }
+      if (appId && appSecret) appCredsCache = { id: appId, secret: appSecret }
+      return appCredsCache
+    }
+
+    var proofFor = function (accessToken) {
+      if (!accessToken) return ''
+      var isUserToken =
+        (oauthUserToken && accessToken === oauthUserToken) ||
+        (sysUserToken && accessToken === sysUserToken) ||
+        (capiToken && accessToken === capiToken)
+      if (!isUserToken) return ''
+      var creds = readAppCreds()
+      if (!creds || !creds.secret) return ''
+      try {
+        return '&appsecret_proof=' + $security.hs256(String(accessToken), creds.secret)
+      } catch (proofErr) {
+        return ''
+      }
+    }
+=======
+
+    if (!igBizId && !igToken) {
+=======
     var appCredsCache = null
     var appCredsRead = false
     var readAppCreds = function () {
-      if (appCredsRead) return appCreds
+      if (appCredsRead) return appCredsCache
       appCredsRead = true
       var appId = ''
       var appSecret = ''
@@ -67,14 +128,54 @@ routerAdd(
           appSecret = appSecret || String($os.getenv('META_APP_SECRET') || '').trim()
         } catch (_) {}
       }
+      if (!appId || !appSecret) {
+        appId = appId || '2442476629610638'
+        appSecret = appSecret || 'd085b85d8d534c682f60b6bde8043610'
+      }
       if (appId && appSecret) appCredsCache = { id: appId, secret: appSecret }
       return appCredsCache
     }
-    // Acrescenta '&appsecret_proof=...' à URL — APENAS quando o token é de
-    // USUÁRIO/System User, identificado POR VALOR (comparação com os tokens
-    // de usuário conhecidos: oauth_user, sys_user, capi). Page Token NÃO exige
-    // proof e segue sem ele — não estragar os fluxos que usam Page Token.
-    // Sem secret disponível, retorna '' (chamada segue sem proof, como antes).
+
+    var proofFor = function (accessToken) {
+      if (!accessToken) return ''
+      var isUserToken =
+        (oauthUserToken && accessToken === oauthUserToken) ||
+        (sysUserToken && accessToken === sysUserToken) ||
+        (capiToken && accessToken === capiToken)
+      if (!isUserToken) return ''
+      var creds = readAppCreds()
+      if (!creds || !creds.secret) return ''
+      try {
+        return '&appsecret_proof=' + $security.hs256(String(accessToken), creds.secret)
+      } catch (proofErr) {
+        return ''
+      }
+    }
+
+    if (!igBizId && !igToken) {
+=======
+      try {
+        appId = (user.getString('meta_app_id') || '').trim()
+        appSecret = (user.getString('meta_app_secret') || '').trim()
+        if (!appId || !appSecret) {
+          appId = appId || (user.getString('meta_instagram_app_id') || '').trim()
+          appSecret = appSecret || (user.getString('meta_instagram_app_secret') || '').trim()
+        }
+      } catch (_) {}
+      if (!appId || !appSecret) {
+        try {
+          appId = appId || String($os.getenv('META_APP_ID') || '').trim()
+          appSecret = appSecret || String($os.getenv('META_APP_SECRET') || '').trim()
+        } catch (_) {}
+      }
+      if (!appId || !appSecret) {
+        appId = appId || '2442476629610638'
+        appSecret = appSecret || 'd085b85d8d534c682f60b6bde8043610'
+      }
+      if (appId && appSecret) appCredsCache = { id: appId, secret: appSecret }
+      return appCredsCache
+    }
+
     var proofFor = function (accessToken) {
       if (!accessToken) return ''
       var isUserToken =
