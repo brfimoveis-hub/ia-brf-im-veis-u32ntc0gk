@@ -207,6 +207,21 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
     )
   }
 
+  // appsecret_proof = HMAC-SHA256 do access token usando o app secret do app
+  // cuja troca gerou o token. Obrigatório em toda chamada Graph com token de
+  // USUÁRIO (o app exige "Require App Secret"); sem ele a Meta devolve code 100
+  // "appsecret_proof argument" antes de avaliar o token. NUNCA anexar em token
+  // de Página. Helper declarado DENTRO do handler (regra v0.0.1399: funções
+  // top-level podem sumir do bundle deployado).
+  const proofParam = function (accessToken) {
+    if (!accessToken || !successfulCred || !successfulCred.secret) return ''
+    try {
+      return '&appsecret_proof=' + $security.hs256(String(accessToken), successfulCred.secret)
+    } catch (_) {
+      return ''
+    }
+  }
+
   const shortLivedToken = tokenRes.json.access_token
 
   // Troca o token de curta duração por um de longa duração (60 dias / perene)
@@ -240,7 +255,8 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
     const permRes = $http.send({
       url:
         'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
-        encodeURIComponent(longLivedToken),
+        encodeURIComponent(longLivedToken) +
+        proofParam(longLivedToken),
       method: 'GET',
       timeout: 10,
     })
@@ -266,7 +282,8 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
     const pagesRes = $http.send({
       url:
         'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&access_token=' +
-        encodeURIComponent(longLivedToken),
+        encodeURIComponent(longLivedToken) +
+        proofParam(longLivedToken),
       method: 'GET',
       timeout: 15,
     })
@@ -300,13 +317,16 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
       // Helper para resolver nó de IG diretamente se o username faltar
       function resolveIgUser(igId, token) {
         if (!igId || !token) return ''
+        // proof só quando o token em uso for o de usuário (longLivedToken)
+        const proof = token === longLivedToken ? proofParam(token) : ''
         try {
           const directRes = $http.send({
             url:
               'https://graph.facebook.com/v22.0/' +
               encodeURIComponent(igId) +
               '?fields=id,username,name&access_token=' +
-              encodeURIComponent(token),
+              encodeURIComponent(token) +
+              proof,
             method: 'GET',
             timeout: 8,
           })
@@ -337,7 +357,8 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
                 'https://graph.facebook.com/v22.0/' +
                 encodeURIComponent(pId) +
                 '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&access_token=' +
-                encodeURIComponent(pTok || longLivedToken),
+                encodeURIComponent(pTok || longLivedToken) +
+                (pTok ? '' : proofParam(longLivedToken)),
               method: 'GET',
               timeout: 10,
             })
@@ -430,7 +451,8 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
             'https://graph.facebook.com/v22.0/' +
             encodeURIComponent(pCandidateId) +
             '?fields=id,name,instagram_business_account{id,username,name}&access_token=' +
-            encodeURIComponent(longLivedToken),
+            encodeURIComponent(longLivedToken) +
+            proofParam(longLivedToken),
           method: 'GET',
           timeout: 10,
         })
@@ -477,7 +499,8 @@ routerAdd('POST', '/backend/v1/instagram/oauth/exchange', (e) => {
             'https://graph.facebook.com/v22.0/' +
             encodeURIComponent(candId) +
             '?fields=id,username,name&access_token=' +
-            encodeURIComponent(longLivedToken),
+            encodeURIComponent(longLivedToken) +
+            proofParam(longLivedToken),
           method: 'GET',
           timeout: 10,
         })

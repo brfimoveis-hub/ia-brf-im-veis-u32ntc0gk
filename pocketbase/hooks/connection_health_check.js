@@ -213,6 +213,126 @@ routerAdd(
       const sysUserToken = (userRecord.getString('meta_whatsapp_access_token') || '').trim()
       const capiToken = (userRecord.getString('meta_capi_token') || '').trim()
 
+      // appsecret_proof = HMAC-SHA256 do access token com o secret do app que
+      // EMITIU o token. Obrigatório em toda chamada Graph com token de USUÁRIO
+      // (o app exige "Require App Secret"); sem ele a Meta devolve code 100
+      // "appsecret_proof argument" antes de avaliar o token — "Páginas
+      // acessíveis: 0" falso. NUNCA anexar em token de Página: geraria
+      // "Invalid appsecret_proof".
+      // O par correto de App ID/Secret é descoberto empiricamente no
+      // debug_token: com par errado a Meta devolve 400 "Invalid OAuth access
+      // token signature". Candidatos: env (META_APP_ID/META_APP_SECRET), par
+      // principal salvo no usuário e app dedicado do Instagram. Helpers
+      // declarados DENTRO do handler (regra v0.0.1399: funções top-level podem
+      // sumir do bundle deployado).
+      const igCandidatePairs = []
+      const envAppId = String($os.getenv('META_APP_ID') || '').trim()
+      const envAppSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+      if (envAppId && envAppSecret) {
+        igCandidatePairs.push({ id: envAppId, secret: envAppSecret, tag: 'env' })
+      }
+      const savedMainId = (userRecord.getString('meta_app_id') || '').trim()
+      const savedMainSecret = (userRecord.getString('meta_app_secret') || '').trim()
+      if (savedMainId && savedMainSecret) {
+        igCandidatePairs.push({ id: savedMainId, secret: savedMainSecret, tag: 'main_app' })
+      }
+      const dedAppId = (userRecord.getString('meta_instagram_app_id') || '').trim()
+      const dedAppSecret = (userRecord.getString('meta_instagram_app_secret') || '').trim()
+      if (dedAppId && dedAppSecret) {
+        igCandidatePairs.push({ id: dedAppId, secret: dedAppSecret, tag: 'instagram_app' })
+      }
+      const seenIgPairs = {}
+      const igUniquePairs = []
+      for (let ip = 0; ip < igCandidatePairs.length; ip++) {
+        const cp = igCandidatePairs[ip]
+        const cpKey = cp.id + ':' + cp.secret
+        if (!seenIgPairs[cpKey]) {
+          seenIgPairs[cpKey] = true
+          igUniquePairs.push(cp)
+        }
+      }
+      let igWorkingPair = null
+      const resolveIgWorkingPair = function () {
+        if (igWorkingPair !== null) return igWorkingPair
+        igWorkingPair = false
+        // Passo A: par que inspeciona o token no debug_token
+        for (let p = 0; p < igUniquePairs.length; p++) {
+          const cp = igUniquePairs[p]
+          try {
+            const dbgTry = $http.send({
+              url:
+                'https://graph.facebook.com/debug_token?input_token=' +
+                encodeURIComponent(oauthUserToken) +
+                '&access_token=' +
+                encodeURIComponent(cp.id + '|' + cp.secret),
+              method: 'GET',
+              timeout: 10,
+            })
+            if (dbgTry.statusCode === 200 && dbgTry.json && dbgTry.json.data) {
+              igWorkingPair = cp
+              console.log(
+                '[INSTAGRAM_HEALTH] par App ID/Secret aceito pela Meta (debug_token): ' +
+                  cp.id +
+                  ' (' +
+                  cp.tag +
+                  ')',
+              )
+              break
+            }
+          } catch (_) {}
+        }
+        // Passo B: se nenhum par inspecionou o token, prova empiricamente qual
+        // secret valida o token no /me (par certo => 200; par errado => 400
+        // "Invalid appsecret_proof provided").
+        if (!igWorkingPair) {
+          for (let q = 0; q < igUniquePairs.length; q++) {
+            const cp2 = igUniquePairs[q]
+            try {
+              const proofTry = $security.hs256(String(oauthUserToken), cp2.secret)
+              const meTry = $http.send({
+                url:
+                  'https://graph.facebook.com/v22.0/me?fields=id&access_token=' +
+                  encodeURIComponent(oauthUserToken) +
+                  '&appsecret_proof=' +
+                  proofTry,
+                method: 'GET',
+                timeout: 10,
+              })
+              if (meTry.statusCode === 200 && meTry.json && meTry.json.id) {
+                igWorkingPair = cp2
+                console.log(
+                  '[INSTAGRAM_HEALTH] par App ID/Secret validado por proof no /me: ' +
+                    cp2.id +
+                    ' (' +
+                    cp2.tag +
+                    ')',
+                )
+                break
+              }
+            } catch (_) {}
+          }
+        }
+        if (!igWorkingPair) {
+          console.log(
+            '[INSTAGRAM_HEALTH] nenhum par App ID/Secret aceito pela Meta (' +
+              igUniquePairs.length +
+              ' candidatos) — proof não será anexado',
+          )
+        }
+        return igWorkingPair
+      }
+      // Só o token de usuário recebe proof; page tokens NUNCA.
+      const proofFor = function (tok) {
+        if (!tok || tok !== oauthUserToken) return ''
+        const cp = resolveIgWorkingPair()
+        if (!cp) return ''
+        try {
+          return '&appsecret_proof=' + $security.hs256(String(tok), cp.secret)
+        } catch (_) {
+          return ''
+        }
+      }
+
       function maskTok(tok) {
         if (!tok || typeof tok !== 'string') return ''
         var tr = tok.trim()
@@ -258,7 +378,7 @@ routerAdd(
           // Passo 0: Anatomia do token (/me e /me/accounts)
           try {
             const meRes = $http.send({
-              url: 'https://graph.facebook.com/v22.0/me?fields=id,name,type',
+              url: 'https://graph.facebook.com/v22.0/me?fields=id,name,type' + proofFor(igToken),
               method: 'GET',
               headers: { Authorization: 'Bearer ' + igToken },
               timeout: 10,
@@ -281,7 +401,7 @@ routerAdd(
               )
             } else {
               const meFallback = $http.send({
-                url: 'https://graph.facebook.com/v22.0/me?fields=id,name',
+                url: 'https://graph.facebook.com/v22.0/me?fields=id,name' + proofFor(igToken),
                 method: 'GET',
                 headers: { Authorization: 'Bearer ' + igToken },
                 timeout: 10,
@@ -308,7 +428,9 @@ routerAdd(
 
           try {
             const accRes = $http.send({
-              url: 'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,instagram_business_account{id,username,name}&limit=50',
+              url:
+                'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,instagram_business_account{id,username,name}&limit=50' +
+                proofFor(igToken),
               method: 'GET',
               headers: { Authorization: 'Bearer ' + igToken },
               timeout: 10,
@@ -333,7 +455,8 @@ routerAdd(
                         'https://graph.facebook.com/v22.0/' +
                         encodeURIComponent(rIgId) +
                         '?fields=username,name&access_token=' +
-                        encodeURIComponent(rPageTok || igToken),
+                        encodeURIComponent(rPageTok || igToken) +
+                        (rPageTok ? '' : proofFor(igToken)),
                       method: 'GET',
                       timeout: 8,
                     })
@@ -372,7 +495,8 @@ routerAdd(
                 url:
                   'https://graph.facebook.com/v22.0/' +
                   encodeURIComponent(pageCandidateId) +
-                  '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}',
+                  '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}' +
+                  proofFor(igToken),
                 method: 'GET',
                 headers: { Authorization: 'Bearer ' + igToken },
                 timeout: 10,
@@ -403,7 +527,8 @@ routerAdd(
                           'https://graph.facebook.com/v22.0/' +
                           encodeURIComponent(igObj.id) +
                           '?fields=username,name&access_token=' +
-                          encodeURIComponent(igToken),
+                          encodeURIComponent(igToken) +
+                          proofFor(igToken),
                         method: 'GET',
                         timeout: 8,
                       })
@@ -491,7 +616,8 @@ routerAdd(
                 url:
                   'https://graph.facebook.com/v22.0/' +
                   currentIgTarget +
-                  '?fields=id,name,username',
+                  '?fields=id,name,username' +
+                  proofFor(igToken),
                 method: 'GET',
                 headers: { Authorization: 'Bearer ' + igToken },
                 timeout: 15,
@@ -737,7 +863,8 @@ routerAdd(
               const pRes = $http.send({
                 url:
                   'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
-                  encodeURIComponent(oauthUserToken || sysUserToken || capiToken),
+                  encodeURIComponent(oauthUserToken || sysUserToken || capiToken) +
+                  (oauthUserToken ? proofParam(oauthUserToken) : ''),
                 method: 'GET',
                 timeout: 10,
               })
