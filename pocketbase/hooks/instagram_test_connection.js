@@ -8,7 +8,11 @@ routerAdd(
     let user = null
     try {
       user = $app.findRecordById('users', userId)
-    } catch (_) {
+
+    if (!igBizId && !igToken) {
+=======
+    }
+    if (!igBizId && !igToken) { catch (_) {
       return e.badRequestError('Usuário não encontrado')
     }
 
@@ -30,6 +34,63 @@ routerAdd(
     const igAppId = (user.getString('meta_instagram_app_id') || '2442476629610638').trim()
     const sysUserToken = (user.getString('meta_whatsapp_access_token') || '').trim()
     const capiToken = (user.getString('meta_capi_token') || '').trim()
+
+    // -----------------------------------------------------------------------
+    // APPSECRET_PROOF (v0.0.1416): a Meta EXIGE appsecret_proof em TODA chamada
+    // feita com token de usuário/System User (erro code=100 "API calls from the
+    // server require an appsecret_proof argument"). Proof = HMAC-SHA256 do
+    // access token usando o App Secret do app BRF Imóveis 2, em hex.
+    // Credenciais: meta_app_id/meta_app_secret do usuário (fallback
+    // meta_instagram_app_id/meta_instagram_app_secret, depois env do backend).
+    // Chamadas com token de PÁGINA não recebem proof (não é exigido e evita
+    // divergência de credencial do app).
+    // Helper declarado DENTRO do handler (regra v0.0.1399).
+    // -----------------------------------------------------------------------
+    var appCredsCache = null
+    var appCredsRead = false
+    var readAppCreds = function () {
+      if (appCredsRead) return appCreds
+      appCredsRead = true
+      var appId = ''
+      var appSecret = ''
+      try {
+        appId = (user.getString('meta_app_id') || '').trim()
+        appSecret = (user.getString('meta_app_secret') || '').trim()
+        if (!appId || !appSecret) {
+          appId = appId || (user.getString('meta_instagram_app_id') || '').trim()
+          appSecret = appSecret || (user.getString('meta_instagram_app_secret') || '').trim()
+        }
+      } catch (_) {}
+      if (!appId || !appSecret) {
+        try {
+          appId = appId || String($os.getenv('META_APP_ID') || '').trim()
+          appSecret = appSecret || String($os.getenv('META_APP_SECRET') || '').trim()
+        } catch (_) {}
+      }
+      if (appId && appSecret) appCredsCache = { id: appId, secret: appSecret }
+      return appCredsCache
+    }
+    // Acrescenta '&appsecret_proof=...' à URL — APENAS quando o token é de
+    // USUÁRIO/System User, identificado POR VALOR (comparação com os tokens
+    // de usuário conhecidos: oauth_user, sys_user, capi). Page Token NÃO exige
+    // proof e segue sem ele — não estragar os fluxos que usam Page Token.
+    // Sem secret disponível, retorna '' (chamada segue sem proof, como antes).
+    var proofFor = function (accessToken) {
+      if (!accessToken) return ''
+      var isUserToken =
+        (oauthUserToken && accessToken === oauthUserToken) ||
+        (sysUserToken && accessToken === sysUserToken) ||
+        (capiToken && accessToken === capiToken)
+      if (!isUserToken) return ''
+      var creds = readAppCreds()
+      if (!creds || !creds.secret) return ''
+      try {
+        return '&appsecret_proof=' + $security.hs256(String(accessToken), creds.secret)
+      } catch (proofErr) {
+        return ''
+      }
+    }
+=======
 
     if (!igBizId && !igToken) {
       return e.json(200, {
@@ -111,7 +172,17 @@ routerAdd(
             'https://graph.facebook.com/v22.0/' +
             encodeURIComponent(igId) +
             '?fields=username,name,profile_picture_url&access_token=' +
-            encodeURIComponent(tok)
+            encodeURIComponent(tok) +
+
+          var res = $http.send({
+=======
+
+          var sRes = $http.send({
+=======
+            proofFor(tok)
+          var sRes = $http.send({
+          var res = $http.send({
+=======
 
           var res = $http.send({
             url: directUrl,
@@ -189,7 +260,9 @@ routerAdd(
             'https://graph.facebook.com/v22.0/' +
             encodeURIComponent(igId) +
             '?fields=username&access_token=' +
-            encodeURIComponent(tok)
+            encodeURIComponent(tok) +
+            proofFor(tok)
+=======
 
           var sRes = $http.send({
             url: simpleUrl,
@@ -266,7 +339,13 @@ routerAdd(
             'https://graph.facebook.com/v22.0/' +
             encodeURIComponent(pageId) +
             '?fields=instagram_business_account{id,username,name},connected_instagram_account{id,username,name},page_backed_instagram_accounts{id,username}&access_token=' +
-            encodeURIComponent(actToken)
+            encodeURIComponent(actToken) +
+
+          var pRes = $http.send({
+=======
+            proofFor(actToken)
+          var pRes = $http.send({
+=======
 
           var pRes = $http.send({
             url: pUrl,
@@ -400,7 +479,13 @@ routerAdd(
         try {
           var scanUrl =
             'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&limit=100&access_token=' +
-            encodeURIComponent(scanToken)
+            encodeURIComponent(scanToken) +
+
+          var scanRes = $http.send({
+=======
+            proofFor(scanToken)
+          var scanRes = $http.send({
+=======
 
           var scanRes = $http.send({
             url: scanUrl,
@@ -680,11 +765,16 @@ routerAdd(
       // 0.a) GET /me para inspecionar identidade do token
       try {
         var meRes = $http.send({
-          url: 'https://graph.facebook.com/v22.0/me?fields=id,name,type',
+          url: 'https://graph.facebook.com/v22.0/me?fields=id,name,type' + proofFor(igToken),
           method: 'GET',
+
+        if (meRes.statusCode >= 200 && meRes.statusCode < 300 && meRes.json) {
+=======
           headers: { Authorization: 'Bearer ' + igToken },
           timeout: 12,
         })
+        if (meRes.statusCode >= 200 && meRes.statusCode < 300 && meRes.json) {
+=======
 
         if (meRes.statusCode >= 200 && meRes.statusCode < 300 && meRes.json) {
           tokenIdentity = {
@@ -705,8 +795,12 @@ routerAdd(
           )
         } else {
           var meFallback = $http.send({
-            url: 'https://graph.facebook.com/v22.0/me?fields=id,name',
+            headers: { Authorization: 'Bearer ' + igToken },
+=======
+            url: 'https://graph.facebook.com/v22.0/me?fields=id,name' + proofFor(igToken),
             method: 'GET',
+            headers: { Authorization: 'Bearer ' + igToken },
+=======
             headers: { Authorization: 'Bearer ' + igToken },
             timeout: 10,
           })
@@ -760,8 +854,12 @@ routerAdd(
       // 0.b) GET /me/accounts para listar as Páginas do Facebook acessíveis e contas IG vinculadas
       try {
         var accRes = $http.send({
-          url: 'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&limit=50',
+          headers: { Authorization: 'Bearer ' + igToken },
+=======
+          url: 'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&limit=50' + proofFor(igToken),
           method: 'GET',
+          headers: { Authorization: 'Bearer ' + igToken },
+=======
           headers: { Authorization: 'Bearer ' + igToken },
           timeout: 12,
         })
@@ -939,8 +1037,13 @@ routerAdd(
             'https://graph.facebook.com/v22.0/' +
             OFFICIAL_PAGE_ID +
             '?fields=id,name,instagram_business_account{id,username,name},connected_instagram_account{id,username,name}&access_token=' +
-            encodeURIComponent(optItem.token),
+            encodeURIComponent(optItem.token) +
+          timeout: 10,
+=======
+            proofFor(optItem.token),
           method: 'GET',
+          timeout: 10,
+=======
           timeout: 10,
         })
         if (optRes.statusCode >= 200 && optRes.statusCode < 300 && optRes.json) {
@@ -1064,8 +1167,13 @@ routerAdd(
             'https://graph.facebook.com/v22.0/' +
             targetIgId +
             '?fields=id,name,username,profile_picture_url&access_token=' +
-            encodeURIComponent(igToken),
+            encodeURIComponent(igToken) +
+          headers: { Authorization: 'Bearer ' + igToken },
+=======
+            proofFor(igToken),
           method: 'GET',
+          headers: { Authorization: 'Bearer ' + igToken },
+=======
           headers: { Authorization: 'Bearer ' + igToken },
           timeout: 15,
         })

@@ -55,6 +55,53 @@ routerAdd(
     var GRAPH_FIELDS_SUBSCRIBE = 'messages,messaging_postbacks,messaging_referrals'
     var GRAPH_GET_PAGE = 'GET /{page_id}?fields=id,name com page token'
 
+    // -----------------------------------------------------------------------
+    // APPSECRET_PROOF (v0.0.1416): a Meta EXIGE appsecret_proof em TODA chamada
+    // feita com token de usuário/System User (erro code=100 "API calls from
+    // the server require an appsecret_proof argument"). Proof = HMAC-SHA256 do
+    // access token usando o App Secret do app BRF Imóveis 2, em hex.
+    // Credenciais: meta_app_id/meta_app_secret do usuário (fallback
+    // meta_instagram_app_id/meta_instagram_app_secret, depois env do backend).
+    // Chamadas com token de PÁGINA ou app access token NÃO recebem proof.
+    // Helper declarado DENTRO do handler (regra v0.0.1399).
+    // -----------------------------------------------------------------------
+    var appCredsCache = null
+    var appCredsRead = false
+    var readAppCreds = function () {
+      if (appCredsRead) return appCreds
+      appCredsRead = true
+      var appId = ''
+      var appSecret = ''
+      try {
+        var credUser = $app.findRecordById('users', userId)
+        appId = (credUser.getString('meta_app_id') || '').trim()
+        appSecret = (credUser.getString('meta_app_secret') || '').trim()
+        if (!appId || !appSecret) {
+          appId = appId || (credUser.getString('meta_instagram_app_id') || '').trim()
+          appSecret = appSecret || (credUser.getString('meta_instagram_app_secret') || '').trim()
+        }
+      } catch (_) {}
+      if (!appId || !appSecret) {
+        try {
+          appId = appId || String($os.getenv('META_APP_ID') || '').trim()
+          appSecret = appSecret || String($os.getenv('META_APP_SECRET') || '').trim()
+        } catch (_) {}
+      }
+      if (appId && appSecret) appCredsCache = { id: appId, secret: appSecret }
+      return appCredsCache
+    }
+    // Acrescenta '&appsecret_proof=...' à URL quando houver App Secret salvo.
+    // Sem secret disponível, retorna '' (chamada segue sem proof, como antes).
+    var proofParam = function (accessToken) {
+      var creds = readAppCreds()
+      if (!creds || !creds.secret || !accessToken) return ''
+      try {
+        return '&appsecret_proof=' + $security.hs256(String(accessToken), creds.secret)
+      } catch (proofErr) {
+        return ''
+      }
+    }
+
     if (!token) {
       return e.badRequestError('O Page Access Token é obrigatório.')
     }
@@ -169,7 +216,7 @@ routerAdd(
       var res = null
       try {
         res = $http.send({
-          url: GRAPH_BASE + 'me/permissions',
+          url: GRAPH_BASE + 'me/permissions' + proofParam(accessToken),
           method: 'GET',
           headers: { Authorization: 'Bearer ' + accessToken },
           timeout: 15,
@@ -262,7 +309,7 @@ routerAdd(
     var meErr = null
     try {
       meRes = $http.send({
-        url: GRAPH_BASE + 'me?fields=id,name',
+        url: GRAPH_BASE + 'me?fields=id,name' + proofParam(token),
         method: 'GET',
         headers: { Authorization: 'Bearer ' + token },
         timeout: 15,
@@ -589,7 +636,7 @@ routerAdd(
       var accountsErr = null
       try {
         accountsRes = $http.send({
-          url: GRAPH_BASE + 'me/accounts?fields=access_token,id,name&limit=100',
+          url: GRAPH_BASE + 'me/accounts?fields=access_token,id,name&limit=100' + proofParam(token),
           method: 'GET',
           headers: { Authorization: 'Bearer ' + token },
           timeout: 15,
