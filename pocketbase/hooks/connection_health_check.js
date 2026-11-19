@@ -212,6 +212,25 @@ routerAdd(
       })
     }
 
+    // v0.0.1429 — healthSecret/proofFor movidos para o escopo do HANDLER
+    // (estavam declarados dentro do bloco do Instagram e o bloco do Messenger
+    // referenciava proofFor fora do escopo → ReferenceError "proofFor is not
+    // defined" capturado como "Erro de rede" no cartão do Messenger).
+    // Secret: meta_app_secret → meta_instagram_app_secret → env
+    // META_APP_SECRET (mesma precedência provada no save_and_subscribe).
+    const healthSecret =
+      (userRecord.getString('meta_app_secret') || '').trim() ||
+      (userRecord.getString('meta_instagram_app_secret') || '').trim() ||
+      String($os.getenv('META_APP_SECRET') || '').trim()
+    const proofFor = function (tok) {
+      if (!tok || !healthSecret) return ''
+      try {
+        return '&appsecret_proof=' + $security.hs256(String(tok), healthSecret)
+      } catch (_) {
+        return ''
+      }
+    }
+
     if (shouldCheck('instagram')) {
       let igBizId = (userRecord.getString('meta_instagram_business_id') || '').trim()
       const oauthUserToken = (userRecord.getString('meta_instagram_user_token') || '').trim()
@@ -229,24 +248,7 @@ routerAdd(
       const sysUserToken = (userRecord.getString('meta_whatsapp_access_token') || '').trim()
       const capiToken = (userRecord.getString('meta_capi_token') || '').trim()
 
-      // v0.0.1425 — proof em TODO token lido do banco, Page Token incluído: o
-      // app exige appsecret_proof em toda chamada de servidor (sem ele a Meta
-      // devolve code 100 "API calls from the server require an
-      // appsecret_proof argument", já provado nos logs com Page Token).
-      // Secret: meta_app_secret → meta_instagram_app_secret → env
-      // META_APP_SECRET (mesma precedência provada no save_and_subscribe).
-      const healthSecret =
-        (userRecord.getString('meta_app_secret') || '').trim() ||
-        (userRecord.getString('meta_instagram_app_secret') || '').trim() ||
-        String($os.getenv('META_APP_SECRET') || '').trim()
-      const proofFor = function (tok) {
-        if (!tok || !healthSecret) return ''
-        try {
-          return '&appsecret_proof=' + $security.hs256(String(tok), healthSecret)
-        } catch (_) {
-          return ''
-        }
-      }
+      // (proof/healthSecret agora no escopo do handler — v0.0.1429.)
 
       function maskTok(tok) {
         if (!tok || typeof tok !== 'string') return ''
