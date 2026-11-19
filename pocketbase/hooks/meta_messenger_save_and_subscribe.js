@@ -682,6 +682,31 @@ routerAdd(
 
       var accData = accountsRes && accountsRes.json ? accountsRes.json : {}
       var accErrObj = accData.error || {}
+      // Auditoria (exigência do dono): provar nos logs que /me/accounts foi
+      // chamada COM appsecret_proof e o que a Graph respondeu (sem tokens).
+      logErr(
+        'meta_messenger_accounts_response',
+        accErrObj && accErrObj.code
+          ? 'GET /me/accounts respondida pela Graph com erro: ' + String(accErrObj.message || '')
+          : 'GET /me/accounts respondida pela Graph com ' +
+              (accData.data || []).length +
+              ' Página(s) acessível(is) ao token',
+        'proof_enviado=' +
+          (proofParam(token) ? 'sim' : 'nao') +
+          ' | http=' +
+          (accountsRes ? accountsRes.statusCode : 0) +
+          ' | code=' +
+          ((accErrObj && accErrObj.code) || 0),
+        {
+          page_id: targetPageId,
+          proof_sent: !!proofParam(token),
+          http_status: accountsRes ? accountsRes.statusCode : 0,
+          graph_error: accErrObj || null,
+          visible_pages: (accData.data || []).map(function (p) {
+            return { id: p.id, name: p.name }
+          }),
+        },
+      )
       if (accErrObj && accErrObj.code) {
         logErr(
           'meta_messenger_token_validation_error',
@@ -709,6 +734,26 @@ routerAdd(
       }
 
       if (!pageToken) {
+        // Nenhuma Página alvo acessível: mensagem real e clara da Meta/Graph.
+        // Não é erro interno — é o resultado verdadeiro da chamada COM proof.
+        if (pages.length === 0) {
+          logErr(
+            'meta_messenger_token_validation_error',
+            'GET /me/accounts retornou 0 Páginas para este token (chamada feita com appsecret_proof). O usuário dono do token não é admin da Página ' +
+              targetPageId +
+              '.',
+            'http=' + (accountsRes ? accountsRes.statusCode : 0) + ' | proof_enviado=sim',
+            { page_id: targetPageId },
+          )
+          return e.json(400, {
+            success: false,
+            error:
+              'Nenhuma Página acessível a este token de usuário (GET /me/accounts = 0). Gere o token com o USUÁRIO DO SISTEMA Bia CRM no Business Manager, ou com um perfil que seja admin da Página www.brfimoveis.com.br, e cole novamente.',
+            code: 0,
+            subcode: 0,
+            reason: 'no_pages_accessible',
+          })
+        }
         // Consulta /me/permissions para dizer EXATAMENTE quais permissões faltam
         var permCheck = fetchGrantedPermissions(token)
         var grantedList = permCheck && permCheck.granted ? permCheck.granted : []
