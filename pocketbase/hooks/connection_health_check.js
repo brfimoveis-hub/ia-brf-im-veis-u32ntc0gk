@@ -220,127 +220,29 @@ routerAdd(
         userRecord.getString('meta_page_access_token') ||
         ''
       ).trim()
-      // Prioridade de token: novo token de usuário OAuth se disponível, senão token de página
-      let igToken = oauthUserToken || pageTokenCandidate
+      // v0.0.1425 — prioridade INVERTIDA: o Page Token gravado pelo "Salvar e
+      // Assinar" é o token que a Meta já aceitou (prova nos logs); o token de
+      // usuário OAuth antigo pode estar expirado e não pode pintar "0 páginas"
+      // no Painel de Saúde enquanto o cartão do Instagram está verde.
+      let igToken = pageTokenCandidate || oauthUserToken
       const igAppId = (userRecord.getString('meta_instagram_app_id') || '2442476629610638').trim()
       const sysUserToken = (userRecord.getString('meta_whatsapp_access_token') || '').trim()
       const capiToken = (userRecord.getString('meta_capi_token') || '').trim()
 
-      // appsecret_proof = HMAC-SHA256 do access token com o secret do app que
-      // EMITIU o token. Obrigatório em toda chamada Graph com token de USUÁRIO
-      // (o app exige "Require App Secret"); sem ele a Meta devolve code 100
-      // "appsecret_proof argument" antes de avaliar o token — "Páginas
-      // acessíveis: 0" falso. NUNCA anexar em token de Página: geraria
-      // "Invalid appsecret_proof".
-      // O par correto de App ID/Secret é descoberto empiricamente no
-      // debug_token: com par errado a Meta devolve 400 "Invalid OAuth access
-      // token signature". Candidatos: env (META_APP_ID/META_APP_SECRET), par
-      // principal salvo no usuário e app dedicado do Instagram. Helpers
-      // declarados DENTRO do handler (regra v0.0.1399: funções top-level podem
-      // sumir do bundle deployado).
-      const igCandidatePairs = []
-      const envAppId = String($os.getenv('META_APP_ID') || '').trim()
-      const envAppSecret = String($os.getenv('META_APP_SECRET') || '').trim()
-      if (envAppId && envAppSecret) {
-        igCandidatePairs.push({ id: envAppId, secret: envAppSecret, tag: 'env' })
-      }
-      const savedMainId = (userRecord.getString('meta_app_id') || '').trim()
-      const savedMainSecret = (userRecord.getString('meta_app_secret') || '').trim()
-      if (savedMainId && savedMainSecret) {
-        igCandidatePairs.push({ id: savedMainId, secret: savedMainSecret, tag: 'main_app' })
-      }
-      const dedAppId = (userRecord.getString('meta_instagram_app_id') || '').trim()
-      const dedAppSecret = (userRecord.getString('meta_instagram_app_secret') || '').trim()
-      if (dedAppId && dedAppSecret) {
-        igCandidatePairs.push({ id: dedAppId, secret: dedAppSecret, tag: 'instagram_app' })
-      }
-      const seenIgPairs = {}
-      const igUniquePairs = []
-      for (let ip = 0; ip < igCandidatePairs.length; ip++) {
-        const cp = igCandidatePairs[ip]
-        const cpKey = cp.id + ':' + cp.secret
-        if (!seenIgPairs[cpKey]) {
-          seenIgPairs[cpKey] = true
-          igUniquePairs.push(cp)
-        }
-      }
-      let igWorkingPair = null
-      const resolveIgWorkingPair = function () {
-        if (igWorkingPair !== null) return igWorkingPair
-        igWorkingPair = false
-        // Passo A: par que inspeciona o token no debug_token
-        for (let p = 0; p < igUniquePairs.length; p++) {
-          const cp = igUniquePairs[p]
-          try {
-            const dbgTry = $http.send({
-              url:
-                'https://graph.facebook.com/debug_token?input_token=' +
-                encodeURIComponent(oauthUserToken) +
-                '&access_token=' +
-                encodeURIComponent(cp.id + '|' + cp.secret),
-              method: 'GET',
-              timeout: 10,
-            })
-            if (dbgTry.statusCode === 200 && dbgTry.json && dbgTry.json.data) {
-              igWorkingPair = cp
-              console.log(
-                '[INSTAGRAM_HEALTH] par App ID/Secret aceito pela Meta (debug_token): ' +
-                  cp.id +
-                  ' (' +
-                  cp.tag +
-                  ')',
-              )
-              break
-            }
-          } catch (_) {}
-        }
-        // Passo B: se nenhum par inspecionou o token, prova empiricamente qual
-        // secret valida o token no /me (par certo => 200; par errado => 400
-        // "Invalid appsecret_proof provided").
-        if (!igWorkingPair) {
-          for (let q = 0; q < igUniquePairs.length; q++) {
-            const cp2 = igUniquePairs[q]
-            try {
-              const proofTry = $security.hs256(String(oauthUserToken), cp2.secret)
-              const meTry = $http.send({
-                url:
-                  'https://graph.facebook.com/v22.0/me?fields=id&access_token=' +
-                  encodeURIComponent(oauthUserToken) +
-                  '&appsecret_proof=' +
-                  proofTry,
-                method: 'GET',
-                timeout: 10,
-              })
-              if (meTry.statusCode === 200 && meTry.json && meTry.json.id) {
-                igWorkingPair = cp2
-                console.log(
-                  '[INSTAGRAM_HEALTH] par App ID/Secret validado por proof no /me: ' +
-                    cp2.id +
-                    ' (' +
-                    cp2.tag +
-                    ')',
-                )
-                break
-              }
-            } catch (_) {}
-          }
-        }
-        if (!igWorkingPair) {
-          console.log(
-            '[INSTAGRAM_HEALTH] nenhum par App ID/Secret aceito pela Meta (' +
-              igUniquePairs.length +
-              ' candidatos) — proof não será anexado',
-          )
-        }
-        return igWorkingPair
-      }
-      // Só o token de usuário recebe proof; page tokens NUNCA.
+      // v0.0.1425 — proof em TODO token lido do banco, Page Token incluído: o
+      // app exige appsecret_proof em toda chamada de servidor (sem ele a Meta
+      // devolve code 100 "API calls from the server require an
+      // appsecret_proof argument", já provado nos logs com Page Token).
+      // Secret: meta_app_secret → meta_instagram_app_secret → env
+      // META_APP_SECRET (mesma precedência provada no save_and_subscribe).
+      const healthSecret =
+        (userRecord.getString('meta_app_secret') || '').trim() ||
+        (userRecord.getString('meta_instagram_app_secret') || '').trim() ||
+        String($os.getenv('META_APP_SECRET') || '').trim()
       const proofFor = function (tok) {
-        if (!tok || tok !== oauthUserToken) return ''
-        const cp = resolveIgWorkingPair()
-        if (!cp) return ''
+        if (!tok || !healthSecret) return ''
         try {
-          return '&appsecret_proof=' + $security.hs256(String(tok), cp.secret)
+          return '&appsecret_proof=' + $security.hs256(String(tok), healthSecret)
         } catch (_) {
           return ''
         }
@@ -702,7 +604,8 @@ routerAdd(
                   'https://graph.facebook.com/v22.0/' +
                   igBizId +
                   '?fields=id,name,username&access_token=' +
-                  encodeURIComponent(cand),
+                  encodeURIComponent(cand) +
+                  proofFor(cand),
                 method: 'GET',
                 timeout: 10,
               })
@@ -743,7 +646,8 @@ routerAdd(
               const accRes = $http.send({
                 url:
                   'https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=' +
-                  encodeURIComponent(cand),
+                  encodeURIComponent(cand) +
+                  proofFor(cand),
                 method: 'GET',
                 timeout: 10,
               })
@@ -806,6 +710,41 @@ routerAdd(
           }
         }
 
+        // v0.0.1425 — sem contradição: se a leitura com proof confirmou a
+        // identidade /me do token como uma Página (mesmo com /me/accounts
+        // vazio, que é o normal para Page Token), o Painel de Saúde não pode
+        // pintar "0 páginas" — a Página confirmada entra como página
+        // acessível e o resultado segue connected.
+        if (
+          !connected &&
+          !(pageLinkedIg && pageLinkedIg.linked === false) &&
+          tokenIdentity &&
+          !tokenIdentity.error &&
+          tokenIdentity.id &&
+          (tokenIdentity.type || '').indexOf('page') !== -1
+        ) {
+          const alreadyListed = accessiblePages.some(function (pg) {
+            return String(pg.page_id) === String(tokenIdentity.id)
+          })
+          if (!alreadyListed) {
+            accessiblePages.push({
+              page_id: tokenIdentity.id,
+              page_name: tokenIdentity.name || 'Página do Token',
+              has_instagram: false,
+              ig_account_id: null,
+              ig_username: null,
+              matches_target_id: false,
+            })
+          }
+          connected = true
+          if (!currentIgTarget) {
+            userRecord.set('meta_instagram_business_id', tokenIdentity.id)
+            try {
+              $app.saveNoValidate(userRecord)
+            } catch (_) {}
+            currentIgTarget = tokenIdentity.id
+          }
+        }
         if (connected) {
           results.push({
             name: 'Instagram Business',
@@ -819,12 +758,39 @@ routerAdd(
             tested_tokens: testedTokens,
           })
         } else if (!(pageLinkedIg && pageLinkedIg.linked === false)) {
-          // Se o token foi conectado mas ainda não identificou uma conta ou se falhou, gera diagnóstico amigável
-          if (accessiblePages.length === 0) {
+          // v0.0.1425 — motivo REAL da Meta vem primeiro: erro de
+          // assinatura/permissão não pode virar "0 páginas" (a Graph falhou,
+          // não devolveu lista vazia).
+          if (savedGraphErr) {
+            const errCode = savedGraphErr.code
+            const errSubcode = savedGraphErr.subcode
+            const errMsg = savedGraphErr.message || 'Token rejeitado pela Meta Graph API'
+            const errCodeStr =
+              errCode !== null
+                ? ' (code ' + errCode + (errSubcode !== null ? ', subcode ' + errSubcode : '') + ')'
+                : ''
+
+            results.push({
+              name: 'Instagram Business',
+              key: 'instagram',
+              status: errCode === 190 ? 'expired' : 'configured_waiting_token',
+              timestamp: ts,
+              message:
+                'Leitura na Meta falhou: ' +
+                errMsg +
+                errCodeStr +
+                ' — a chamada não chegou a listar Páginas.',
+              app_id: igAppId,
+              graph_error: savedGraphErr,
+              code: errCode === 190 ? 190 : 0,
+              subcode: errCode === 190 ? errSubcode || 0 : 0,
+              token_identity: tokenIdentity,
+              accessible_pages: accessiblePages,
+              tested_tokens: testedTokens,
+            })
+          } else if (accessiblePages.length === 0) {
             const detailMsg =
-              'O novo token OAuth foi aceito pela Meta (App ' +
-              igAppId +
-              '), mas ainda não possui visibilidade de Páginas do Facebook (0 páginas retornadas em /me/accounts). Reconecte via OAuth com as permissões "pages_show_list" e "pages_read_engagement" selecionando a Página BRF Imóveis.'
+              'A Meta não retornou Páginas em /me/accounts para o token salvo. Reconecte via OAuth com as permissões "pages_show_list" e "pages_read_engagement" selecionando a Página BRF Imóveis.'
 
             results.push({
               name: 'Instagram Business',
@@ -838,37 +804,6 @@ routerAdd(
               accessible_pages: accessiblePages,
               tested_tokens: testedTokens,
             })
-          } else if (savedGraphErr) {
-            const errCode = savedGraphErr.code
-            const errSubcode = savedGraphErr.subcode
-            const errMsg = savedGraphErr.message || 'Token rejeitado pela Meta Graph API'
-            const errCodeStr =
-              errCode !== null
-                ? ' (code ' + errCode + (errSubcode !== null ? ', subcode ' + errSubcode : '') + ')'
-                : ''
-
-            const detailMsg =
-              'O token salvo foi rejeitado pela Meta: ' +
-              errMsg +
-              errCodeStr +
-              ' — reconecte via OAuth ou cole um System User Token em /configuracoes'
-
-            results.push({
-              name: 'Instagram Business',
-              key: 'instagram',
-              // code 190 = token morto (expirado/invalidado) — status 'expired'
-              // para o cartão mostrar VERMELHO "Token expirado" (v0.0.1411).
-              status: errCode === 190 ? 'expired' : 'configured_waiting_token',
-              timestamp: ts,
-              message: detailMsg,
-              app_id: igAppId,
-              graph_error: savedGraphErr,
-              code: errCode === 190 ? 190 : 0,
-              subcode: errCode === 190 ? errSubcode || 0 : 0,
-              token_identity: tokenIdentity,
-              accessible_pages: accessiblePages,
-              tested_tokens: testedTokens,
-            })
           } else {
             // Coletar permissões atuais apenas se não havia token salvo
             let missingPerms = []
@@ -877,7 +812,7 @@ routerAdd(
                 url:
                   'https://graph.facebook.com/v22.0/me/permissions?access_token=' +
                   encodeURIComponent(oauthUserToken || sysUserToken || capiToken) +
-                  (oauthUserToken ? proofParam(oauthUserToken) : ''),
+                  (oauthUserToken ? proofFor(oauthUserToken) : ''),
                 method: 'GET',
                 timeout: 10,
               })
@@ -931,7 +866,8 @@ routerAdd(
       } else {
         try {
           const msgRes = $http.send({
-            url: 'https://graph.facebook.com/v22.0/me?access_token=' + pageToken,
+            url:
+              'https://graph.facebook.com/v22.0/me?access_token=' + pageToken + proofFor(pageToken),
             method: 'GET',
             timeout: 15,
           })

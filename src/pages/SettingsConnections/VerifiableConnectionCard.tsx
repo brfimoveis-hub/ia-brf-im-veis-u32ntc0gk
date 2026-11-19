@@ -22,6 +22,7 @@ import {
   type InstagramAccessiblePage,
   type InstagramPageLinkedAccount,
   type InstagramPortfolioPage,
+  type InstagramGraphError,
 } from '@/services/instagram'
 import { InstagramPortfolioScan } from './InstagramPortfolioScan'
 import { useToast } from '@/hooks/use-toast'
@@ -64,6 +65,7 @@ export function VerifiableConnectionCard({
     null,
   )
   const [localPortfolioScanError, setLocalPortfolioScanError] = useState<string | null>(null)
+  const [localGraphError, setLocalGraphError] = useState<InstagramGraphError | null>(null)
 
   // v0.0.1411 — CARTÕES HONESTOS: o status salvo no usuário ("tem token" =
   // verde) não basta. Se o status inicial for "connected", verifica DE VERDADE
@@ -107,6 +109,13 @@ export function VerifiableConnectionCard({
         }
         if (igRes?.portfolio_scan_error !== undefined) {
           setLocalPortfolioScanError(igRes.portfolio_scan_error)
+        }
+        // v0.0.1425 — erro da Graph (assinatura/permissão) sobe como leitura
+        // falha: o cartão NÃO pode concluir "0 páginas" a partir de um erro.
+        if (igRes?.graph_error) {
+          setLocalGraphError(igRes.graph_error)
+        } else {
+          setLocalGraphError(null)
         }
 
         if (igRes?.status === 'connected') {
@@ -276,6 +285,14 @@ export function VerifiableConnectionCard({
                       </div>
                     ))}
                   </div>
+                ) : localGraphError ? (
+                  <p className="text-[11px] text-destructive font-medium">
+                    A leitura na Meta falhou antes de contar Páginas — motivo real da Meta:{' '}
+                    {localGraphError.message || 'erro desconhecido'}
+                    {localGraphError.code != null ? ' (code ' + localGraphError.code + ')' : ''}.
+                    Clique em Verificar Agora de novo; se persistir, confira o App Secret
+                    (meta_app_secret) e as permissões do token.
+                  </p>
                 ) : (
                   <p className="text-[11px] text-amber-700 font-medium">
                     O token NÃO enxerga nenhuma Página do Facebook — provável causa do erro 100/33.
