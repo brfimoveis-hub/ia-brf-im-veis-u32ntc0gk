@@ -159,8 +159,33 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se 
               if (cleanPhone.length === 10 || cleanPhone.length === 11) {
                 cleanPhone = '55' + cleanPhone
               }
+
+              // APPSECRET_PROOF (v0.0.1425): "Require App Secret" ativo no app Meta
+              // exige a assinatura em TODO POST de envio para a Cloud API.
+              // Credenciais: meta_app_secret do usuário -> meta_instagram_app_secret
+              // -> env META_APP_SECRET (mesmo rito de meta_messenger_save_and_subscribe).
+              let waSecret = ''
+              try {
+                waSecret = (userRecord.getString('meta_app_secret') || '').trim()
+                if (!waSecret)
+                  waSecret = (userRecord.getString('meta_instagram_app_secret') || '').trim()
+              } catch (_) {}
+              if (!waSecret) {
+                try {
+                  waSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+                } catch (_) {}
+              }
+              const waProof = (accessToken) => {
+                if (!waSecret || !accessToken) return ''
+                try {
+                  return '?appsecret_proof=' + $security.hs256(String(accessToken), waSecret)
+                } catch (_) {
+                  return ''
+                }
+              }
+
               $http.send({
-                url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProof(metaToken)}`,
                 method: 'POST',
                 headers: {
                   Authorization: `Bearer ${metaToken}`,

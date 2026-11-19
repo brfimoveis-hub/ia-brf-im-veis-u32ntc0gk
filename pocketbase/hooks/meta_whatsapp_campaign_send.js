@@ -43,6 +43,30 @@ routerAdd(
       )
     }
 
+    // APPSECRET_PROOF (v0.0.1425): com "Require App Secret" ativo no app Meta, todo
+    // POST de envio para a Cloud API precisa da assinatura HMAC-SHA256 do access
+    // token com o App Secret. Credenciais: meta_app_secret do usuário ->
+    // meta_instagram_app_secret -> env META_APP_SECRET (mesmo rito de
+    // meta_messenger_save_and_subscribe / meta_token_paths_probe).
+    let waSecret = ''
+    try {
+      waSecret = (user.getString('meta_app_secret') || '').trim()
+      if (!waSecret) waSecret = (user.getString('meta_instagram_app_secret') || '').trim()
+    } catch (_) {}
+    if (!waSecret) {
+      try {
+        waSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+      } catch (_) {}
+    }
+    const waProof = (accessTokenForProof) => {
+      if (!waSecret || !accessTokenForProof) return ''
+      try {
+        return '?appsecret_proof=' + $security.hs256(String(accessTokenForProof), waSecret)
+      } catch (_) {
+        return ''
+      }
+    }
+
     const campaignsCol = $app.findCollectionByNameOrId('remarketing_campaigns')
     const recipientsCol = $app.findCollectionByNameOrId('remarketing_recipients')
     const convCol = $app.findCollectionByNameOrId('conversations')
@@ -254,7 +278,11 @@ routerAdd(
 
       try {
         const res = $http.send({
-          url: 'https://graph.facebook.com/v21.0/' + phoneNumberId + '/messages',
+          url:
+            'https://graph.facebook.com/v21.0/' +
+            phoneNumberId +
+            '/messages' +
+            waProof(accessToken),
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -583,6 +611,28 @@ routerAdd(
       return e.badRequestError('Credenciais do WhatsApp Cloud API não configuradas no seu perfil')
     }
 
+    // APPSECRET_PROOF (v0.0.1425): "Require App Secret" ativo no app Meta exige a
+    // assinatura em TODO POST de envio para a Cloud API (mesmo rito de
+    // meta_messenger_save_and_subscribe: registro do usuário -> env).
+    let waSecret = ''
+    try {
+      waSecret = (user.getString('meta_app_secret') || '').trim()
+      if (!waSecret) waSecret = (user.getString('meta_instagram_app_secret') || '').trim()
+    } catch (_) {}
+    if (!waSecret) {
+      try {
+        waSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+      } catch (_) {}
+    }
+    const waProof = (accessTokenForProof) => {
+      if (!waSecret || !accessTokenForProof) return ''
+      try {
+        return '?appsecret_proof=' + $security.hs256(String(accessTokenForProof), waSecret)
+      } catch (_) {
+        return ''
+      }
+    }
+
     const templateName = campaign.getString('template_name')
     const templateLanguage = campaign.getString('template_language') || 'pt_BR'
     const messageTemplate = campaign.getString('message_text') || ''
@@ -762,7 +812,11 @@ routerAdd(
 
       try {
         const res = $http.send({
-          url: 'https://graph.facebook.com/v21.0/' + phoneNumberId + '/messages',
+          url:
+            'https://graph.facebook.com/v21.0/' +
+            phoneNumberId +
+            '/messages' +
+            waProof(accessToken),
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1064,6 +1118,28 @@ cronAdd('process_remarketing_batches_cron', '* * * * *', () => {
 
       const phoneNumberId = user.getString('meta_whatsapp_phone_number_id')
       const accessToken = user.getString('meta_whatsapp_access_token')
+
+      // APPSECRET_PROOF (v0.0.1425): "Require App Secret" ativo no app Meta exige a
+      // assinatura em TODO POST de envio para a Cloud API (mesmo rito de
+      // meta_messenger_save_and_subscribe: registro do usuário -> env).
+      let waSecret = ''
+      try {
+        waSecret = (user.getString('meta_app_secret') || '').trim()
+        if (!waSecret) waSecret = (user.getString('meta_instagram_app_secret') || '').trim()
+      } catch (_) {}
+      if (!waSecret) {
+        try {
+          waSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+        } catch (_) {}
+      }
+      const waProof = (accessTokenForProof) => {
+        if (!waSecret || !accessTokenForProof) return ''
+        try {
+          return '?appsecret_proof=' + $security.hs256(String(accessTokenForProof), waSecret)
+        } catch (_) {
+          return ''
+        }
+      }
       if (!phoneNumberId || !accessToken) {
         campaign.set('status', 'failed')
         campaign.set('last_error', 'Credenciais Meta ausentes')
@@ -1236,7 +1312,11 @@ cronAdd('process_remarketing_batches_cron', '* * * * *', () => {
 
         try {
           const res = $http.send({
-            url: 'https://graph.facebook.com/v21.0/' + phoneNumberId + '/messages',
+            url:
+              'https://graph.facebook.com/v21.0/' +
+              phoneNumberId +
+              '/messages' +
+              waProof(accessToken),
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

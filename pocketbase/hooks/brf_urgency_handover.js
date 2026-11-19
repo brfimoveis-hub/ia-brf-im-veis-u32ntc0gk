@@ -38,8 +38,32 @@ onRecordAfterUpdateSuccess((e) => {
       if (users.length > 0) {
         const metaToken = users[0].getString('meta_whatsapp_access_token')
         const metaPhoneId = users[0].getString('meta_whatsapp_phone_number_id')
+
+        // APPSECRET_PROOF (v0.0.1425): "Require App Secret" ativo no app Meta
+        // exige a assinatura em TODO POST de envio para a Cloud API.
+        // Credenciais: meta_app_secret do usuário -> meta_instagram_app_secret
+        // -> env META_APP_SECRET (mesmo rito de meta_messenger_save_and_subscribe).
+        let waSecret = ''
+        try {
+          waSecret = (users[0].getString('meta_app_secret') || '').trim()
+          if (!waSecret) waSecret = (users[0].getString('meta_instagram_app_secret') || '').trim()
+        } catch (_) {}
+        if (!waSecret) {
+          try {
+            waSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+          } catch (_) {}
+        }
+        const waProof = (accessToken) => {
+          if (!waSecret || !accessToken) return ''
+          try {
+            return '?appsecret_proof=' + $security.hs256(String(accessToken), waSecret)
+          } catch (_) {
+            return ''
+          }
+        }
+
         $http.send({
-          url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+          url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProof(metaToken)}`,
           method: 'POST',
           headers: { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -58,7 +82,7 @@ onRecordAfterUpdateSuccess((e) => {
             customerPhoneClean = '55' + customerPhoneClean
           }
           $http.send({
-            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProof(metaToken)}`,
             method: 'POST',
             headers: { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({

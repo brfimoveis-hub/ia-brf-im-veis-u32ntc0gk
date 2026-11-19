@@ -2946,7 +2946,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         if (toPhoneClean && metaWhatsappToken && metaPhoneId) {
           try {
             $http.send({
-              url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+              url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
               method: 'POST',
               headers: {
                 Authorization: `Bearer ${metaWhatsappToken}`,
@@ -3110,7 +3110,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         // (a) Envia frase curta humana de confirmação
         try {
           const txtRes = $http.send({
-            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
             method: 'POST',
             headers: {
               Authorization: `Bearer ${metaWhatsappToken}`,
@@ -3152,7 +3152,7 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         // (b) Envia documento do Ebook
         try {
           const docRes = $http.send({
-            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
             method: 'POST',
             headers: {
               Authorization: `Bearer ${metaWhatsappToken}`,
@@ -5982,7 +5982,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       )
 
       const sendRes = callMetaWithRetry(
-        `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+        `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
         'POST',
         { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
         JSON.stringify({
@@ -6110,7 +6110,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
               bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
 
               const mediaRes = callMetaWithRetry(
-                `https://graph.facebook.com/v21.0/${metaPhoneId}/media`,
+                `https://graph.facebook.com/v21.0/${metaPhoneId}/media${metaWhatsappProofParam(metaToken)}`,
                 'POST',
                 {
                   Authorization: `Bearer ${metaToken}`,
@@ -6121,7 +6121,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
 
               if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json && mediaRes.json.id) {
                 callMetaWithRetry(
-                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
                   'POST',
                   { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
                   JSON.stringify({
@@ -7085,7 +7085,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
 
         if (metaToken && metaPhoneId) {
           callMetaWithRetry(
-            `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+            `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
             'POST',
             { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
             JSON.stringify({

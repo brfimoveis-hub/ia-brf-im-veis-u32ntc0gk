@@ -323,6 +323,38 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
       return { ok: false, error: 'CREDENCIAIS_META_AUSENTES', wamid: '' }
     }
 
+    // APPSECRET_PROOF (v0.0.1425): com "Require App Secret" ativo no app Meta,
+    // todo POST de envio para a Cloud API precisa da assinatura HMAC-SHA256 do
+    // access token com o App Secret (erro code=100 "appsecret_proof is required
+    // but not provided" nos logs de 14:00). Credenciais: meta_app_secret do
+    // usuário -> meta_instagram_app_secret -> env META_APP_SECRET (mesmo rito
+    // dos hooks meta_messenger_save_and_subscribe e meta_token_paths_probe).
+    var waProofSecret = ''
+    try {
+      var proofUser =
+        userRecord ||
+        ($app.findRecordsByFilter('users', "meta_whatsapp_access_token != ''", '-updated', 1, 0) ||
+          [])[0]
+      if (proofUser) {
+        waProofSecret = (proofUser.getString('meta_app_secret') || '').trim()
+        if (!waProofSecret)
+          waProofSecret = (proofUser.getString('meta_instagram_app_secret') || '').trim()
+      }
+    } catch (_) {}
+    if (!waProofSecret) {
+      try {
+        waProofSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+      } catch (_) {}
+    }
+    var waProofParam = function (accessToken) {
+      if (!waProofSecret || !accessToken) return ''
+      try {
+        return '?appsecret_proof=' + $security.hs256(String(accessToken), waProofSecret)
+      } catch (_) {
+        return ''
+      }
+    }
+
     var normalizedCurrent = normalizeTextForDedup(cleaned)
 
     // Deduplicação estrita contra system_logs recentes de whatsapp_ai_send
@@ -380,7 +412,7 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
     // DISPARO HTTP DE TEXTO PARA A META GRAPH API v21.0
     // ATENÇÃO: NADA É GRAVADO EM CONVERSATIONS ANTES DO RETORNO DE SUCESSO!
     // =========================================================================
-    var url = 'https://graph.facebook.com/v21.0/' + phoneId + '/messages'
+    var url = 'https://graph.facebook.com/v21.0/' + phoneId + '/messages' + waProofParam(token)
     var isOk = false
     var sendRes = null
     var extractedWamid = ''
