@@ -28,7 +28,7 @@ routerAdd(
     var appCredsCache = null
     var appCredsRead = false
     var readAppCreds = function () {
-      if (appCredsRead) return appCreds
+      if (appCredsRead) return appCredsCache
       appCredsRead = true
       var appId = ''
       var appSecret = ''
