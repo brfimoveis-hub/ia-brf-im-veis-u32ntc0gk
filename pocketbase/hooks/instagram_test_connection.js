@@ -382,15 +382,20 @@ routerAdd(
     // sem quebrar nada. Falha aqui NÃO pinta graph_error do cartão —
     // vira aviso próprio + log type=page_webhook_subscription_audit.
     // ---------------------------------------------------------------
+    // v0.0.1430 (auditoria derradeira): lista validada contra a Meta em
+    // produção — o log page_webhook_subscription_audit de 21:51 de 19/11
+    // provou que `instagram_messages` (subscribed_fields[4]) é REJEITADO
+    // no nível da Página ("must be one of ...", doc oficial: campos de
+    // Instagram não são assináveis em /subscribed_apps; as mensagens do
+    // IG chegam pelo campo `messages` da Página vinculada). A lista agora
+    // é idêntica à do passo 4 do meta_messenger_save_and_subscribe, que
+    // a Meta aceitou (antes=[messages,messaging_postbacks,messaging_optins,
+    // messaging_referrals] em produção).
     const WEBHOOK_FIELDS = [
       'messages',
       'messaging_postbacks',
       'messaging_optins',
       'messaging_referrals',
-      'instagram_messages',
-      'instagram_messaging',
-      'feed',
-      'mentions',
     ]
     let webhookSub = null
     const subPageId = (tokenIdentity && !tokenIdentity.error && tokenIdentity.id) || savedPageId
