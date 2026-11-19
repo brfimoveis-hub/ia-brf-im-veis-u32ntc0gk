@@ -93,6 +93,23 @@ export function MetaMessengerPageConnect() {
         setTokenInput('')
         setPageName(res.page_name || '')
         setPageId(res.page_id || '')
+        // v0.0.1424: persiste page_id/nome no registro do usuário (o hook
+        // também grava server-side). Sem isso o campo "Página conectada"
+        // voltava em branco no próximo carregamento da tela.
+        if (user?.id) {
+          try {
+            const updated = await pb.collection('users').update(user.id, {
+              meta_messenger_page_id: res.page_id || '',
+              meta_messenger_page_name: res.page_name || '',
+            })
+            pb.authStore.save(pb.authStore.token, {
+              ...pb.authStore.record,
+              ...updated,
+            })
+          } catch {
+            // silencioso — o hook server-side já gravou os mesmos campos
+          }
+        }
       } else {
         toast({
           variant: 'destructive',

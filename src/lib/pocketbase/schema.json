@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-19T13:46:29.476Z",
+  "generatedAt": "2026-11-19T13:57:50.897Z",
   "collections": [
     {
       "name": "users",
@@ -227,6 +227,18 @@
         {
           "name": "posts_min_interval_minutes",
           "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_messenger_page_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_messenger_page_name",
+          "type": "text",
           "required": false,
           "system": false
         }

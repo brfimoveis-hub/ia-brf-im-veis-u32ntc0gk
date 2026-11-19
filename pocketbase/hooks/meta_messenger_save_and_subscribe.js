@@ -24,6 +24,14 @@
 // com "Require App Secret" ativo no app, a Meta exige a assinatura nas
 // chamadas com Page Token também (erro code=100 dos logs de 13:45).
 //
+// v0.0.1424: GET /{page_id} virou NÃO-BLOQUEANTE quando o acesso à Página já
+// foi comprovado por /me/accounts (HTTP 200 + proof + Página alvo na lista).
+// Se /me/accounts confirmar a Página mas o GET /{page_id} falhar, o hook
+// PROSSEGUE: salva o page token, assina subscribed_apps e grava log de aviso
+// com o graph_error — nunca retorna 400 por esse passo. Só bloqueia se
+// /me/accounts NÃO retornar a Página. No sucesso, page_id e nome da Página
+// também são persistidos no usuário (meta_messenger_page_id/name).
+//
 // Regras robustez de tipo de token:
 // - O token colado costuma ser USER token do Graph API Explorer (Bernadete). O
 //   /me de usuário não resolve no id da Página alvo (nem tem "category"):
@@ -798,45 +806,52 @@ routerAdd(
         })
       }
 
-      // Valida o PAGE TOKEN recém-obtido contra a Página alvo (sem "category")
+      // Valida o PAGE TOKEN recém-obtido contra a Página alvo (sem "category").
+      // v0.0.1424: NÃO-BLOQUEANTE — o acesso à Página já foi COMPROVADO por
+      // /me/accounts (HTTP 200 + proof + Página alvo na resposta). Se o
+      // GET /{page_id} falhar (ex.: code=100 appsecret_proof no ar), seguimos
+      // com aviso: salvamos o token, assinamos e registramos o graph_error.
       var pgCheck = validatePageToken(pageToken, targetPageId)
+      var pgWarning = ''
       if (pgCheck.netError) {
+        pgWarning = 'Validação GET /{page_id} falhou por rede: ' + pgCheck.netError
         logErr(
-          'meta_messenger_token_validation_error',
-          'Falha de rede ao validar o Page Token convertido',
-          '',
+          'meta_messenger_page_validation_warning',
+          'GET /{page_id} falhou por erro de rede, mas o acesso à Página já foi comprovado por /me/accounts — fluxo PROSSEGUE (token salvo + subscrição).',
+          pgWarning,
           { page_id: targetPageId, error: pgCheck.netError },
-        )
-        return e.badRequestError(
-          'Erro de conexão com a Meta Graph API ao validar o token da Página: ' + pgCheck.netError,
         )
       }
       pageTokenValidation = pgCheck.validation
 
       if (!pgCheck.ok) {
+        pgWarning =
+          'GET /{page_id} não confirmou a Página ' +
+          targetPageId +
+          ' (HTTP ' +
+          (pgCheck.httpStatus || 0) +
+          ', code=' +
+          ((pgCheck.errObj && pgCheck.errObj.code) || 0) +
+          '): ' +
+          String((pgCheck.errObj && pgCheck.errObj.message) || '')
+        // Aviso (não erro fatal): o fluxo continua — token é salvo e a
+        // subscrição é tentada mesmo assim.
         logErr(
-          'meta_messenger_token_validation_error',
-          'Page Token não confirmou a Página ' + targetPageId + ' via GET /{page_id}',
-          'HTTP ' +
-            pgCheck.httpStatus +
-            ' | code=' +
-            (pgCheck.errObj.code || 0) +
-            ' | id_retornado=' +
-            pgCheck.returnedId,
+          'meta_messenger_page_validation_warning',
+          'GET /{page_id} falhou APÓS /me/accounts confirmar a Página ' +
+            targetPageId +
+            ' — fluxo PROSSEGUE (token salvo + subscrição tentada).',
+          pgWarning,
           { page_id: targetPageId, page_token_validation: pageTokenValidation },
         )
-        return e.json(400, {
-          success: false,
-          error:
-            'Conseguimos o token da Página www.brfimoveis.com.br (derivado do token estendido de ~60 dias), mas ele falhou na validação na Meta. Gere novamente no Graph API Explorer escolhendo "Token da Página" → www.brfimoveis.com.br',
-          code: pgCheck.errObj.code || 0,
-          raw_message: String(pgCheck.errObj.message || ''),
-        })
       }
 
       token = pageToken
       tokenConverted = true
-      meData = { id: targetPageId, name: pgCheck.returnedName || pageName || targetPageName }
+      meData = {
+        id: targetPageId,
+        name: (pgCheck.ok && pgCheck.returnedName) || pageName || targetPageName,
+      }
 
       try {
         var conv = new Record(sysLogsCol, {
@@ -872,32 +887,36 @@ routerAdd(
       } catch (_) {}
     }
 
-    // Token informado já é de Página: valida contra a Página alvo (sem "category")
+    // Token informado já é de Página: valida contra a Página alvo (sem
+    // "category"). v0.0.1424: aqui NÃO há /me/accounts provando acesso, então
+    // bloqueamos só o essencial (token morto 190 ou token de OUTRA Página);
+    // demais falhas (ex.: code=100 appsecret_proof) viram aviso e o fluxo
+    // prossegue — salva, assina e registra o graph_error.
     if (!tokenConverted) {
       var finalCheck = validatePageToken(token, targetPageId)
-      if (finalCheck.netError) {
-        logErr(
-          'meta_messenger_token_validation_error',
-          'Falha de rede ao validar o Page Token informado',
-          '',
-          { page_id: targetPageId, error: finalCheck.netError },
-        )
-        return e.badRequestError(
-          'Erro de conexão com a Meta Graph API ao validar o token da Página: ' +
-            finalCheck.netError,
-        )
-      }
+      var fErr = finalCheck.netError
+        ? { friendly: 'Erro de rede: ' + finalCheck.netError, code: 0, subcode: 0, raw: '' }
+        : friendlyTokenError(finalCheck.errObj, finalCheck.httpStatus)
       pageTokenValidation = finalCheck.validation
 
-      if (!finalCheck.ok) {
-        var fErr = friendlyTokenError(finalCheck.errObj, finalCheck.httpStatus)
+      var idMismatch = !!(
+        finalCheck.ok === false &&
+        finalCheck.returnedId &&
+        finalCheck.returnedId !== targetPageId
+      )
+      var deadToken =
+        !finalCheck.netError && !!(finalCheck.errObj && finalCheck.errObj.code === 190)
+
+      if (deadToken || idMismatch) {
         logErr(
           'meta_messenger_token_validation_error',
-          'Falha ao validar Page Token: ' + fErr.friendly,
+          deadToken
+            ? 'Falha ao validar Page Token: ' + fErr.friendly
+            : 'Page Token resolvido para OUTRA Página (' + finalCheck.returnedId + ')',
           'HTTP ' + finalCheck.httpStatus + ' | Code: ' + fErr.code + ' | Subcode: ' + fErr.subcode,
           {
             page_id: targetPageId,
-            graph_error: finalCheck.errObj,
+            graph_error: finalCheck.errObj || null,
             page_token_validation: pageTokenValidation,
           },
         )
@@ -910,7 +929,26 @@ routerAdd(
         })
       }
 
-      meData = { id: targetPageId, name: finalCheck.returnedName || targetPageName }
+      if (!finalCheck.ok) {
+        // Aviso não-bloqueante: seguimos com o token informado (o dono colou
+        // explicitamente; a prova final será o próprio subscribed_apps).
+        pgWarning = 'Validação GET /{page_id} do token de Página colado falhou: ' + fErr.friendly
+        logErr(
+          'meta_messenger_page_validation_warning',
+          'Validação GET /{page_id} do token de Página colado falhou — fluxo PROSSEGUE.',
+          fErr.friendly,
+          {
+            page_id: targetPageId,
+            graph_error: finalCheck.errObj || null,
+            page_token_validation: pageTokenValidation,
+          },
+        )
+      }
+
+      meData = {
+        id: targetPageId,
+        name: (finalCheck.ok && finalCheck.returnedName) || targetPageName,
+      }
     }
 
     var detectedPageId = targetPageId
@@ -963,6 +1001,15 @@ routerAdd(
       user.set('meta_page_access_token', token)
       user.set('meta_instagram_page_token', token)
       user.set('meta_token_status', 'active')
+      // v0.0.1424: persiste também id e nome da Página — é isso que a tela de
+      // Conexões lê (user.meta_messenger_page_id/name); sem isso o campo
+      // "Página conectada" ficava sempre em branco.
+      try {
+        user.set('meta_messenger_page_id', detectedPageId)
+      } catch (_) {}
+      try {
+        user.set('meta_messenger_page_name', detectedPageName)
+      } catch (_) {}
       try {
         user.set('meta_capi_error', '')
       } catch (_) {}
@@ -1033,6 +1080,13 @@ routerAdd(
         payload: {
           page_id: detectedPageId,
           page_name: detectedPageName,
+          // v0.0.1424 auditoria explícita exigida pelo dono:
+          confirmed_page_id: detectedPageId,
+          proof_enviado:
+            pageTokenValidation && pageTokenValidation.proof_enviado
+              ? pageTokenValidation.proof_enviado
+              : 'sim',
+          subscribed_apps_result: subSuccess ? 'ok' : 'aviso: ' + subErrorMsg,
           subscribed: subSuccess,
           sub_error: subErrorMsg || null,
           sub_code: subErrorCode || null,
@@ -1042,6 +1096,7 @@ routerAdd(
           system_user_token: sysUserAccepted,
           user_token_expires_in: tokenExpiresIn || null,
           page_token_validation: pageTokenValidation,
+          page_validation_warning: pgWarning || null,
           me_data: meData,
         },
       })
