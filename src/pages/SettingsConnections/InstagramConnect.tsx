@@ -42,8 +42,11 @@ import {
   type InstagramAccessiblePage,
   type InstagramPageLinkedAccount,
   type InstagramPortfolioPage,
+  type InstagramWebhookSubscription,
+  type InstagramTestResult,
 } from '@/services/instagram'
 import { InstagramPortfolioScan } from './InstagramPortfolioScan'
+import { InstagramDiagExtras } from './InstagramDiagExtras'
 
 export function InstagramConnect() {
   const { user } = useAuth()
@@ -78,6 +81,8 @@ export function InstagramConnect() {
     portfolio_scan?: InstagramPortfolioPage[]
     portfolio_scan_error?: string | null
     tested_tokens?: InstagramTestedToken[]
+    webhook_subscription?: InstagramWebhookSubscription | null
+    pages_lookup?: InstagramTestResult['pages_lookup']
   } | null>(null)
   const hasIgId = !!(form.meta_instagram_business_id || user?.meta_instagram_business_id)
   const hasPageToken = !!(
@@ -297,6 +302,8 @@ export function InstagramConnect() {
         portfolio_scan: res?.portfolio_scan,
         portfolio_scan_error: res?.portfolio_scan_error,
         tested_tokens: res?.tested_tokens,
+        webhook_subscription: res?.webhook_subscription,
+        pages_lookup: res?.pages_lookup,
       })
 
       if (res?.auto_corrected && res?.instagram_business_id) {
@@ -1193,6 +1200,14 @@ export function InstagramConnect() {
                     targetUsername="brf_imoveis_"
                   />
                 )}
+
+                {/* v0.0.1428 — Vínculo IG↔Página (pages_lookup) + status da
+                   inscrição de webhook da Página (webhook_subscription) */}
+                <InstagramDiagExtras
+                  webhookSubscription={diagnosticResult.webhook_subscription}
+                  pagesLookup={diagnosticResult.pages_lookup}
+                  pageLinkedInstagram={diagnosticResult.page_linked_instagram}
+                />
               </div>
             )}
 
