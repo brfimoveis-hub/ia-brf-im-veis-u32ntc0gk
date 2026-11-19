@@ -31,6 +31,16 @@ export interface InstagramTestedToken {
   message?: string
 }
 
+export interface InstagramWebhookSubscription {
+  page_id?: string
+  before?: string[]
+  after?: string[]
+  missing_fields?: string[]
+  subscribed_now?: boolean
+  ok?: boolean
+  error?: InstagramGraphError | null
+}
+
 export interface InstagramTokenIdentity {
   id?: string
   name?: string
@@ -95,6 +105,16 @@ export interface InstagramTestResult {
   portfolio_scan?: InstagramPortfolioPage[]
   portfolio_scan_error?: string | null
   tested_tokens?: InstagramTestedToken[]
+  webhook_subscription?: InstagramWebhookSubscription | null
+  pages_lookup?: {
+    ok: boolean
+    attempted?: boolean
+    http_status?: number
+    proof_enviado?: string
+    error?: InstagramGraphError | null
+    skipped_reason?: string
+    via?: string
+  }
 }
 
 /**

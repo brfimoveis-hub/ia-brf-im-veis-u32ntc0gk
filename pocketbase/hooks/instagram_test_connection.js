@@ -225,89 +225,96 @@ routerAdd(
     // gravado no banco REALMENTE enxerga. Falha aqui NÃO significa
     // "0 páginas": volta como pages_lookup.ok=false com o erro da Meta.
     // ---------------------------------------------------------------
+    // v0.0.1426 — Page Token NÃO possui o campo "accounts": chamar /me/accounts
+    // com ele devolve (#100) "Tried accessing nonexisting field (accounts)" e
+    // esse erro ficava escondido no payload como graph_error. Para Page Token
+    // o diagnóstico valida via /me + GET /{page}?fields=instagram_business_account.
+    const isPageToken = primaryKind === 'saved_page_token'
     const pagesLookup = {
       ok: false,
-      attempted: true,
+      attempted: !isPageToken,
       http_status: 0,
       proof_enviado: proofParam(primaryToken) !== '' ? 'sim' : 'nao',
       error: null,
+      skipped_reason: isPageToken ? 'page_token_nao_possui_me_accounts' : '',
     }
     const accessiblePages = []
     const portfolioScan = []
-    try {
-      const accRes = $http.send({
-        url:
-          GRAPH_BASE +
-          'me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&limit=50' +
-          proofParam(primaryToken),
-        method: 'GET',
-        headers: { Authorization: 'Bearer ' + primaryToken },
-        timeout: 12,
-      })
-      pagesLookup.http_status = accRes.statusCode
-      if (
-        accRes.statusCode >= 200 &&
-        accRes.statusCode < 300 &&
-        accRes.json &&
-        Array.isArray(accRes.json.data)
-      ) {
-        pagesLookup.ok = true
-        for (let p = 0; p < accRes.json.data.length; p++) {
-          const pg = accRes.json.data[p]
-          const ig = pg.instagram_business_account || null
-          const item = {
-            page_id: String(pg.id || ''),
-            page_name: String(pg.name || ''),
-            has_instagram: !!(ig && ig.id),
-            ig_account_id: (ig && ig.id) || null,
-            ig_username: (ig && (ig.username || ig.name)) || null,
-            matches_saved_page_id: !!savedPageId && String(pg.id || '') === savedPageId,
+    if (pagesLookup.attempted)
+      try {
+        const accRes = $http.send({
+          url:
+            GRAPH_BASE +
+            'me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&limit=50' +
+            proofParam(primaryToken),
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + primaryToken },
+          timeout: 12,
+        })
+        pagesLookup.http_status = accRes.statusCode
+        if (
+          accRes.statusCode >= 200 &&
+          accRes.statusCode < 300 &&
+          accRes.json &&
+          Array.isArray(accRes.json.data)
+        ) {
+          pagesLookup.ok = true
+          for (let p = 0; p < accRes.json.data.length; p++) {
+            const pg = accRes.json.data[p]
+            const ig = pg.instagram_business_account || null
+            const item = {
+              page_id: String(pg.id || ''),
+              page_name: String(pg.name || ''),
+              has_instagram: !!(ig && ig.id),
+              ig_account_id: (ig && ig.id) || null,
+              ig_username: (ig && (ig.username || ig.name)) || null,
+              matches_saved_page_id: !!savedPageId && String(pg.id || '') === savedPageId,
+            }
+            accessiblePages.push(item)
+            portfolioScan.push({
+              page_id: item.page_id,
+              page_name: item.page_name,
+              has_ig: item.has_instagram,
+              ig_account_id: item.ig_account_id,
+              ig_username: item.ig_username,
+              ig_error: null,
+            })
           }
-          accessiblePages.push(item)
-          portfolioScan.push({
-            page_id: item.page_id,
-            page_name: item.page_name,
-            has_ig: item.has_instagram,
-            ig_account_id: item.ig_account_id,
-            ig_username: item.ig_username,
-            ig_error: null,
+          testedTokens.push({
+            type: primaryKind,
+            token_suffix: tokenSuffix,
+            check: 'me/accounts',
+            status: 'ok (' + accessiblePages.length + ' paginas)',
+            http_status: accRes.statusCode,
+            proof_enviado: pagesLookup.proof_enviado,
+          })
+        } else {
+          pagesLookup.error = extractErr(accRes.json, accRes.statusCode)
+          graphError = graphError || pagesLookup.error
+          testedTokens.push({
+            type: primaryKind,
+            token_suffix: tokenSuffix,
+            check: 'me/accounts',
+            status: 'failed',
+            http_status: pagesLookup.http_status,
+            graph_error: pagesLookup.error,
+            proof_enviado: pagesLookup.proof_enviado,
           })
         }
-        testedTokens.push({
-          type: primaryKind,
-          token_suffix: tokenSuffix,
-          check: 'me/accounts',
-          status: 'ok (' + accessiblePages.length + ' paginas)',
-          http_status: accRes.statusCode,
-          proof_enviado: pagesLookup.proof_enviado,
-        })
-      } else {
-        pagesLookup.error = extractErr(accRes.json, accRes.statusCode)
+      } catch (accNet) {
+        pagesLookup.error = {
+          http_status: 0,
+          message: 'Erro de rede: ' + String(accNet && accNet.message ? accNet.message : accNet),
+          code: null,
+          subcode: null,
+        }
         graphError = graphError || pagesLookup.error
         testedTokens.push({
           type: primaryKind,
-          token_suffix: tokenSuffix,
           check: 'me/accounts',
-          status: 'failed',
-          http_status: pagesLookup.http_status,
-          graph_error: pagesLookup.error,
-          proof_enviado: pagesLookup.proof_enviado,
+          status: 'network_error',
         })
       }
-    } catch (accNet) {
-      pagesLookup.error = {
-        http_status: 0,
-        message: 'Erro de rede: ' + String(accNet && accNet.message ? accNet.message : accNet),
-        code: null,
-        subcode: null,
-      }
-      graphError = graphError || pagesLookup.error
-      testedTokens.push({
-        type: primaryKind,
-        check: 'me/accounts',
-        status: 'network_error',
-      })
-    }
 
     // ---------------------------------------------------------------
     // Passo 2.5 — Page Token não lista Páginas em /me/accounts (a Meta
@@ -317,7 +324,6 @@ routerAdd(
     // ---------------------------------------------------------------
     if (
       primaryKind === 'saved_page_token' &&
-      accessiblePages.length === 0 &&
       tokenIdentity &&
       !tokenIdentity.error &&
       tokenIdentity.id
@@ -363,6 +369,135 @@ routerAdd(
             http_status: selfRes.statusCode,
             proof_enviado: pagesLookup.proof_enviado,
           })
+        }
+      } catch (_) {}
+    }
+
+    // ---------------------------------------------------------------
+    // Passo 2.7 — AUDITORIA + GARANTIA da inscrição de webhooks da
+    // Página no app (fields de mensagens). Idempotente: GET
+    // /{page}/subscribed_apps lista o que já está inscrito; se faltar
+    // field, POST /{page}/subscribed_apps (Page Token + appsecret_proof,
+    // mesma técnica $security.hs256 provada nos hooks de envio) reassina
+    // sem quebrar nada. Falha aqui NÃO pinta graph_error do cartão —
+    // vira aviso próprio + log type=page_webhook_subscription_audit.
+    // ---------------------------------------------------------------
+    const WEBHOOK_FIELDS = [
+      'messages',
+      'messaging_postbacks',
+      'messaging_optins',
+      'messaging_referrals',
+      'instagram_messages',
+      'instagram_messaging',
+      'feed',
+      'mentions',
+    ]
+    let webhookSub = null
+    const subPageId = (tokenIdentity && !tokenIdentity.error && tokenIdentity.id) || savedPageId
+    if (subPageId) {
+      webhookSub = {
+        page_id: subPageId,
+        before: [],
+        after: [],
+        missing_fields: [],
+        subscribed_now: false,
+        ok: false,
+        error: null,
+      }
+      var readSubscribedFields = function () {
+        const fields = []
+        try {
+          const gRes = $http.send({
+            url:
+              GRAPH_BASE +
+              encodeURIComponent(subPageId) +
+              '/subscribed_apps?fields=subscribed_fields' +
+              proofParam(primaryToken),
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + primaryToken },
+            timeout: 12,
+          })
+          if (
+            gRes.statusCode >= 200 &&
+            gRes.statusCode < 300 &&
+            gRes.json &&
+            Array.isArray(gRes.json.data)
+          ) {
+            for (let gi = 0; gi < gRes.json.data.length; gi++) {
+              const sf = (gRes.json.data[gi] && gRes.json.data[gi].subscribed_fields) || []
+              for (let gj = 0; gj < sf.length; gj++) {
+                if (fields.indexOf(String(sf[gj])) === -1) fields.push(String(sf[gj]))
+              }
+            }
+            return { ok: true, fields: fields }
+          }
+          if (gRes.json && gRes.json.error) {
+            webhookSub.error = extractErr(gRes.json, gRes.statusCode)
+          }
+          return { ok: false, fields: fields }
+        } catch (gNet) {
+          webhookSub.error = {
+            http_status: 0,
+            message: 'Erro de rede: ' + String(gNet && gNet.message ? gNet.message : gNet),
+          }
+          return { ok: false, fields: fields }
+        }
+      }
+      const beforeRead = readSubscribedFields()
+      webhookSub.before = beforeRead.fields
+      webhookSub.ok = beforeRead.ok
+      const missing = WEBHOOK_FIELDS.filter((f) => webhookSub.before.indexOf(f) === -1)
+      webhookSub.missing_fields = missing
+      if (webhookSub.ok && missing.length > 0) {
+        try {
+          const pRes = $http.send({
+            url:
+              GRAPH_BASE +
+              encodeURIComponent(subPageId) +
+              '/subscribed_apps?subscribed_fields=' +
+              encodeURIComponent(WEBHOOK_FIELDS.join(',')) +
+              proofParam(primaryToken),
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + primaryToken },
+            timeout: 12,
+          })
+          if (pRes.statusCode >= 200 && pRes.statusCode < 300 && pRes.json && pRes.json.success) {
+            webhookSub.subscribed_now = true
+            const afterRead = readSubscribedFields()
+            webhookSub.after = afterRead.fields
+          } else if (pRes.json && pRes.json.error) {
+            webhookSub.error = extractErr(pRes.json, pRes.statusCode)
+          }
+        } catch (pNet) {
+          webhookSub.error = {
+            http_status: 0,
+            message: 'Erro de rede: ' + String(pNet && pNet.message ? pNet.message : pNet),
+          }
+        }
+      } else if (webhookSub.ok) {
+        webhookSub.after = webhookSub.before.slice()
+      }
+      try {
+        if (sysLogsCol) {
+          const recSub = new Record(sysLogsCol, {
+            user_id: userId,
+            type: 'page_webhook_subscription_audit',
+            message:
+              'Inscrição de webhooks da Página ' +
+              subPageId +
+              ': antes=[' +
+              webhookSub.before.join(',') +
+              '] depois=[' +
+              webhookSub.after.join(',') +
+              '] reassinado=' +
+              (webhookSub.subscribed_now ? 'sim' : 'nao') +
+              (webhookSub.error ? ' erro=' + (webhookSub.error.message || '') : '') +
+              ' proof_enviado=' +
+              (proofParam(primaryToken) !== '' ? 'sim' : 'nao'),
+            details: '',
+            payload: webhookSub,
+          })
+          $app.save(recSub)
         }
       } catch (_) {}
     }
@@ -518,7 +653,17 @@ routerAdd(
         ')' +
         (pagesLookup.ok
           ? ' | Páginas visíveis: ' + accessiblePages.length + (pgList ? ' — ' + pgList : '')
-          : '')
+          : '') +
+        (webhookSub && webhookSub.ok
+          ? ' | Webhook inscrito: ' +
+            (webhookSub.after.length > 0
+              ? webhookSub.after.length +
+                ' fields' +
+                (webhookSub.subscribed_now ? ' (reassinado agora)' : '')
+              : 'nenhum field')
+          : webhookSub && webhookSub.error
+            ? ' | Webhook: ' + (webhookSub.error.message || 'falhou')
+            : '')
     } else if (errCode === 190) {
       status = 'expired'
       message =
@@ -565,6 +710,7 @@ routerAdd(
         name: p.page_name,
         ig: p.ig_username || null,
       })),
+      webhook_subscription: webhookSub,
       graph_error: graphError || null,
     })
 
@@ -584,6 +730,7 @@ routerAdd(
       portfolio_scan: portfolioScan,
       portfolio_scan_error: null,
       tested_tokens: testedTokens,
+      webhook_subscription: webhookSub,
       graph_error: graphError,
       granted_perms: grantedPerms,
       missing_perms: missingPerms,
