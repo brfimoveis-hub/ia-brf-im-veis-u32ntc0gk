@@ -19,6 +19,11 @@
 //   5. Subscreve a Página ao webhook e salva no usuário.
 // Cada etapa grava system_logs com resultado explícito.
 //
+// v0.0.1423: appsecret_proof adicionado à validação do Page Token
+// (GET /{page_id}) e à subscrição (POST /{page_id}/subscribed_apps) —
+// com "Require App Secret" ativo no app, a Meta exige a assinatura nas
+// chamadas com Page Token também (erro code=100 dos logs de 13:45).
+//
 // Regras robustez de tipo de token:
 // - O token colado costuma ser USER token do Graph API Explorer (Bernadete). O
 //   /me de usuário não resolve no id da Página alvo (nem tem "category"):
@@ -167,11 +172,16 @@ routerAdd(
 
     // Consulta de validação da Página: GET /{page_id}?fields=id,name — SEM "category".
     // Prova que o token é da Página certa conferindo o id retornado.
+    // v0.0.1423: com "Require App Secret" ativo no app, a Meta EXIGE
+    // appsecret_proof TAMBÉM nas chamadas feitas com Page Token (erro code=100
+    // "API calls from the server require an appsecret_proof argument" nos logs
+    // de 13:45). Mesma assinatura/credenciais (readAppCreds) das outras chamadas.
     var validatePageToken = function (pageToken, pageId) {
       var res = null
+      var proofSent = !!proofParam(pageToken)
       try {
         res = $http.send({
-          url: GRAPH_BASE + pageId + '?fields=id,name',
+          url: GRAPH_BASE + pageId + '?fields=id,name' + proofParam(pageToken),
           method: 'GET',
           headers: { Authorization: 'Bearer ' + pageToken },
           timeout: 15,
@@ -193,17 +203,20 @@ routerAdd(
         returnedName: String(data.name || ''),
         errObj: errObj,
         httpStatus: res ? res.statusCode : 0,
+        proofSent: proofSent,
         validation: ok
           ? {
               confirmed_page_id: pageId,
               returned_page_id: String(data.id || ''),
               returned_page_name: String(data.name || ''),
               method: GRAPH_GET_PAGE,
+              proof_enviado: proofSent ? 'sim' : 'nao',
             }
           : {
               confirmed_page_id: null,
               returned_page_id: String(data.id || ''),
               method: GRAPH_GET_PAGE,
+              proof_enviado: proofSent ? 'sim' : 'nao',
               graph_error: errObj || null,
               http_status: res ? res.statusCode : 0,
             },
@@ -917,7 +930,9 @@ routerAdd(
           GRAPH_BASE +
           detectedPageId +
           '/subscribed_apps?subscribed_fields=' +
-          GRAPH_FIELDS_SUBSCRIBE,
+          GRAPH_FIELDS_SUBSCRIBE +
+          '&appsecret_proof=' +
+          encodeURIComponent(proofParam(token).replace(/^&appsecret_proof=/, '')),
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token },
         timeout: 15,
