@@ -1868,8 +1868,10 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
         } else {
           var promCurAttempt = promAttemptInfo.attemptNumber
           var promMaxLimit = promAttemptInfo.maxAttempts || 3
-          var isPromPermanent = promCurAttempt >= promMaxLimit
           var promErrReason = (promOutcome && promOutcome.error) || 'FALHA_ENVIO_META'
+          // REGRA (Mauro, 20/11): DEDUP nunca marca permanent_failure — varia e reenvia
+          var isPromDedupError = promErrReason.indexOf('DEDUP_MENSAGEM_JA_ENVIADA') !== -1
+          var isPromPermanent = !isPromDedupError && promCurAttempt >= promMaxLimit
 
           if (isPromPermanent) {
             recordCadenceAttempt({
@@ -1886,7 +1888,7 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
             })
             console.error('[BIA_PERSISTENCE] Falha permanente em promessa para cliente ' + pCustId)
           } else {
-            var retryPromDelay = promCurAttempt === 1 ? 2 : 4
+            var retryPromDelay = isPromDedupError ? 4 : promCurAttempt === 1 ? 2 : 4
             var retryPromIso = computeNextBusinessWindowIso(retryPromDelay)
             pCust.set('next_follow_up_at', retryPromIso)
             app.saveNoValidate(pCust)
@@ -2203,8 +2205,13 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
           // Limite de 3 tentativas antes de marcar falha permanente visível.
           var currentAttemptNum = stepAttemptInfo.attemptNumber
           var maxAttemptsLimit = stepAttemptInfo.maxAttempts || 3
-          var isPermanent = currentAttemptNum >= maxAttemptsLimit
           var errReason = (sendOutcome && sendOutcome.error) || 'FALHA_ENVIO_META'
+          // REGRA (Mauro, 20/11): DEDUP_MENSAGEM_JA_ENVIADA NUNCA é falha permanente.
+          // O dedup de anti-spam da META é comportamento correto; o degrau deve VARIAR
+          // o texto (buildPersistenceMessageWithVariance roda de novo no próximo ciclo)
+          // e reenviar — status 'rescheduled', nunca 'permanent_failure'.
+          var isDedupError = errReason.indexOf('DEDUP_MENSAGEM_JA_ENVIADA') !== -1
+          var isPermanent = !isDedupError && currentAttemptNum >= maxAttemptsLimit
 
           if (isPermanent) {
             // (c) FALHA PERMANENTE VISÍVEL: status 'permanent_failure'
@@ -2242,7 +2249,7 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
           } else {
             // Reagendamento automático na janela comercial 8h-18h
             // Intervalo progressivo: 2h na 1ª falha, 4h na 2ª
-            var retryDelayHours = currentAttemptNum === 1 ? 2 : 4
+            var retryDelayHours = isDedupError ? 4 : currentAttemptNum === 1 ? 2 : 4
             var nextRetryIso = computeNextBusinessWindowIso(retryDelayHours)
             sCust.set('next_follow_up_at', nextRetryIso)
             app.saveNoValidate(sCust)
