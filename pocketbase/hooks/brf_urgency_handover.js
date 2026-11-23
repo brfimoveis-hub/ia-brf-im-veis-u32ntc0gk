@@ -6,6 +6,14 @@ onRecordAfterUpdateSuccess((e) => {
     const customerName = e.record.getString('name')
     const customerPhone = e.record.getString('phone')
 
+    // GUARDA: nunca agir sobre o próprio Mauro (contato 554899728050) — evita
+    // notificação de si mesmo e loop de auto-atendimento.
+    const isMauroSelf = (customerPhone || '').replace(/\D/g, '').endsWith('999728050')
+    if (isMauroSelf) {
+      console.log('[URGENCY_HANDOVER] Escalonamento ignorado: o contato é o próprio Mauro.')
+      return e.next()
+    }
+
     const summaryText = `*🚨 Lead Quente! (Urgência ${urgency}) 🚨*\n*Nome:* ${customerName}\n*Telefone:* ${customerPhone}\nSugestão: Realizar handover imediato e priorizar contato.`
 
     const slackWebhook = $secrets.get('SLACK_WEBHOOK_URL')
@@ -23,8 +31,12 @@ onRecordAfterUpdateSuccess((e) => {
 
     try {
       const brokerPhone = '554899728050'
+      // CORREÇÃO VAZA-TELEFONES (estrutural 1): o texto ao cliente NUNCA
+      // menciona o telefone pessoal do Mauro nem oferece contato direto.
+      // O escalonamento continua: o Mauro é notificado (mensagem somente dele)
+      // e o cliente recebe apenas um aviso neutro de que o corretor fará o contato.
       const offerText =
-        'Vou pedir para o corretor Mauro entrar em contato com o senhor, ou se preferir, pode chamá-lo pelo telefone (48) 99972-8050.'
+        'Vou pedir para o corretor Mauro entrar em contato com o senhor em breve. Enquanto isso, pode continuar falando comigo por aqui.'
 
       const users = $app.findRecordsByFilter(
         'users',
