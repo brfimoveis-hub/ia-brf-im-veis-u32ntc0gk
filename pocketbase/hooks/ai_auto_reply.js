@@ -2830,6 +2830,25 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
     const custIncomingMsg = (customerMessage || incomingCustMsgText || '').trim()
     const lowerCustIncoming = custIncomingMsg.toLowerCase()
 
+    // ======================================================================
+    // BIA PAUSADA NO CONTATO (escalada ao Mauro): enquanto a tag 'ai_paused'
+    // estiver presente (e não for opt_out), a Bia NÃO responde automaticamente
+    // — o contato fica retido até o Mauro assumir e remover a tag.
+    // ======================================================================
+    try {
+      const pausedTagsCheck = customer.get('tags')
+      if (
+        Array.isArray(pausedTagsCheck) &&
+        pausedTagsCheck.indexOf('ai_paused') !== -1 &&
+        pausedTagsCheck.indexOf('opt_out') === -1
+      ) {
+        console.log(
+          `[AI_REPLY] [BIA_PAUSED] Cliente ${customerId} está com a Bia pausada (escalado ao Mauro). Nenhuma resposta automática enviada.`,
+        )
+        return e.next()
+      }
+    } catch (_) {}
+
     // ----------------------------------------------------------------------
     // CANCELAR CONTINUIDADE AGENDADA CASO O CLIENTE RESPONDA ANTES DOS 10 MIN
     // Se o cliente respondeu qualquer coisa, a continuação automática é cancelada
@@ -3445,6 +3464,185 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
       } catch (rejErr) {
         console.warn(`[AI_REPLY] [PILAR_C] Erro ao registrar rejeição: ${String(rejErr)}`)
       }
+    }
+
+    // ======================================================================
+    // ESCALONAMENTO ESTRUTURAL AO MAURO (v0.0.1440) — genérico, vale para
+    // qualquer imóvel/campanha, sem configuração futura:
+    // (a) mesma pergunta ou insatisfação/confusão 2x sem a conversa avançar;
+    // (b) pedido explícito de humano/corretor;
+    // (c) intenção de fechamento que a Bia não resolve com os dados que tem.
+    // Em qualquer um: pausa a Bia no contato (tag 'ai_paused' +
+    // persistence_status 'pausado') e notifica Mauro no WhatsApp 5548999728050
+    // com resumo da conversa. NUNCA oferece o telefone do Mauro ao cliente e
+    // NUNCA pausa/notifica quando a conversa já é com o próprio Mauro.
+    // ======================================================================
+    try {
+      const mauroEscPhone = '5548999728050'
+      const custEscPhoneDigits = (customer.getString('phone') || '').replace(/\D/g, '')
+      const isSelfMauroChat =
+        custEscPhoneDigits === mauroEscPhone || custEscPhoneDigits.endsWith('48999728050')
+      const asksHumanEsc =
+        /\b(?:corretor|atendente|humano|pessoa\s+real|falar\s+com\s+algu[eé]m|quero\s+falar\s+com\s+(?:o\s+)?(?:mauro|corretor|algu[eé]m)|(?:telefone|n[uú]mero|whats)\s+do\s+(?:corretor|mauro))\b/i.test(
+          custIncomingMsg,
+        )
+      const dissatisfactionEsc =
+        /\b(?:voc[êe]\s+n[aã]o\s+(?:responde|respondeu|est[áa]\s+respondendo)|n[aã]o\s+respondeu\s+(?:minhas?\s+|as\s+)?pergunta|est[áa]\s+confusa|por\s+favor\s+responda|responde\s+(?:minhas?\s+)?perguntas?|mesma\s+resposta|t[áa]?\s+repetindo|repetiu\s+a\s+mesma|n[aã]o\s+[ée]\s+isso\s+que\s+(?:eu\s+)?perguntei)\b/i.test(
+          custIncomingMsg,
+        )
+      const closingIntentEsc =
+        /\b(?:fechar\s+hoje|comprar\s+hoje|quero\s+fechar|fazer\s+uma\s+proposta|minha\s+proposta|condi[cç][oõ]es\s+finais|fechar\s+neg[oó]cio)\b/i.test(
+          custIncomingMsg,
+        )
+
+      let prevSimilarCount = 0
+      let repeatedSimilarEsc = false
+      try {
+        const normCurEsc = custIncomingMsg
+          .toLowerCase()
+          .replace(/[^\w\s]/gi, '')
+          .trim()
+        if (normCurEsc.length >= 8) {
+          const prevEscMsgs = $app.findRecordsByFilter(
+            'conversations',
+            `customer_id = '${customerId}' && sender != 'ai'`,
+            '-created',
+            5,
+            0,
+          )
+          for (let pei = 0; pei < prevEscMsgs.length; pei++) {
+            const peTxt = (prevEscMsgs[pei].getString('content') || '')
+              .toLowerCase()
+              .replace(/[^\w\s]/gi, '')
+              .trim()
+            if (!peTxt) continue
+            if (pei === 0 && peTxt === normCurEsc) continue // é a própria mensagem atual
+            if (peTxt === normCurEsc || (normCurEsc.length > 12 && peTxt.includes(normCurEsc))) {
+              prevSimilarCount++
+              repeatedSimilarEsc = true
+            }
+          }
+        }
+      } catch (escHistErr) {
+        console.warn(`[AI_REPLY] [ESCALATION] Aviso ao ler histórico: ${String(escHistErr)}`)
+      }
+
+      const escDetected =
+        asksHumanEsc ||
+        closingIntentEsc ||
+        (prevSimilarCount >= 1 && (dissatisfactionEsc || repeatedSimilarEsc))
+
+      if (escDetected) {
+        const escReason = asksHumanEsc
+          ? 'pedido_explícito_de_humano_corretor'
+          : closingIntentEsc
+            ? 'intenção_de_fechamento_não_resolvida_pela_bia'
+            : 'mesma_pergunta_ou_insatisfação_2x_sem_avanço'
+        console.log(
+          `[AI_REPLY] [ESCALATION] Gatilho estrutural (${escReason}) para customer=${customerId} selfMauro=${isSelfMauroChat}`,
+        )
+
+        if (isSelfMauroChat) {
+          console.log(
+            '[AI_REPLY] [ESCALATION] Conversa já é com o próprio Mauro — apenas registro, sem pausar e sem notificar.',
+          )
+        } else {
+          // Pausa a Bia neste contato (sem apagar nada — reversível pelo Mauro)
+          try {
+            let escTags = []
+            const rawEscTags = customer.get('tags')
+            if (Array.isArray(rawEscTags)) escTags = rawEscTags.filter((t) => typeof t === 'string')
+            if (!escTags.includes('ai_paused')) escTags.push('ai_paused')
+            if (!escTags.includes('escalado_mauro')) escTags.push('escalado_mauro')
+            customer.set('tags', escTags)
+            customer.set('persistence_status', 'pausado')
+            $app.saveNoValidate(customer)
+            console.log(
+              `[AI_REPLY] [ESCALATION] Bia pausada no contato customer=${customerId} (tags ai_paused/escalado_mauro).`,
+            )
+          } catch (escPauseErr) {
+            console.warn(
+              `[AI_REPLY] [ESCALATION] Erro ao pausar Bia no contato: ${String(escPauseErr)}`,
+            )
+          }
+
+          // Resumo da conversa para o Mauro
+          const escSummaryLines = []
+          try {
+            const escRecent = $app.findRecordsByFilter(
+              'conversations',
+              `customer_id = '${customerId}'`,
+              '-created',
+              6,
+              0,
+            )
+            for (let ri = escRecent.length - 1; ri >= 0; ri--) {
+              const who = escRecent[ri].getString('sender') === 'ai' ? 'Bia' : 'Cliente'
+              escSummaryLines.push(
+                `${who}: ${(escRecent[ri].getString('content') || '').substring(0, 120)}`,
+              )
+            }
+          } catch (_) {}
+
+          // Notificação ao Mauro (nunca ao cliente) via WhatsApp
+          if (metaWhatsappToken && metaPhoneId) {
+            try {
+              const escNotifyText = `[ESCALONAMENTO BIA]\nMotivo: ${escReason.replace(/_/g, ' ')}\n\nCliente: ${customer.getString('name') || ''} (${custEscPhoneDigits})\nÚltima mensagem: "${custIncomingMsg.substring(0, 200)}"\n\nResumo:\n${escSummaryLines.join('\n').substring(0, 900)}\n\nA Bia foi pausada neste contato até você assumir.`
+              $http.send({
+                url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${metaWhatsappToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  recipient_type: 'individual',
+                  to: mauroEscPhone,
+                  type: 'text',
+                  text: { body: escNotifyText },
+                }),
+                timeout: 15,
+              })
+              console.log(
+                `[AI_REPLY] [ESCALATION] Mauro notificado no WhatsApp ${mauroEscPhone} para customer=${customerId}.`,
+              )
+            } catch (escSendErr) {
+              console.warn(
+                `[AI_REPLY] [ESCALATION] Falha ao notificar Mauro: ${String(escSendErr)}`,
+              )
+            }
+          }
+        }
+
+        // Prova da detecção em system_logs (nos dois casos)
+        try {
+          const escLogsCol = $app.findCollectionByNameOrId('system_logs')
+          const escLog = new Record(escLogsCol)
+          escLog.set('user_id', userId || '')
+          escLog.set('type', 'bia_escalation_mauro')
+          escLog.set(
+            'message',
+            `Escalonamento estrutural detectado (${escReason})${isSelfMauroChat ? ' — conversa já é com o Mauro, registro apenas' : ' — Bia pausada e Mauro notificado'}`,
+          )
+          escLog.set(
+            'details',
+            JSON.stringify({
+              customer_id: customerId,
+              customer_name: customer.getString('name') || '',
+              customer_phone: custEscPhoneDigits,
+              reason: escReason,
+              self_mauro_chat: isSelfMauroChat,
+              last_customer_message: custIncomingMsg.substring(0, 250),
+            }),
+          )
+          $app.saveNoValidate(escLog)
+        } catch (escLogErr) {
+          console.warn(`[AI_REPLY] [ESCALATION] Erro ao gravar log: ${String(escLogErr)}`)
+        }
+      }
+    } catch (escOuterErr) {
+      console.warn(`[AI_REPLY] [ESCALATION] Erro seguro no escalonamento: ${String(escOuterErr)}`)
     }
 
     // (c.1) Guarda de RECUSA CLARA (Decisão do Mauro):
@@ -5255,6 +5453,78 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       }
     }
     responseText = formatWhatsAppOutput(responseText)
+
+    // ======================================================================
+    // BARREIRA ÚNICA DE SAÍDA DA BIA (obrigatória, todos os canais) —
+    // última porta antes do envio: remove QUALQUER tag de máquina residual
+    // ([STATUS:...], [PHASE:...], [HANDOVER:...], etc.), placeholders de nome
+    // ("Lead", "Cliente", "[Nome]", "{Nome}") e termos internos expostos
+    // ("transbordo", "handover"). Se limpar algo, registra prova em
+    // system_logs (type=bia_output_barrier).
+    // ======================================================================
+    function biaOutputBarrier(txt) {
+      if (!txt) return { text: '', cleaned: false }
+      let out = String(txt)
+      const before = out
+      // 1) tags de máquina residuais (genérico + lista explícita)
+      out = out.replace(/\[[A-Z_]{3,20}:\s*[^\]]*\]/gi, '')
+      out = out.replace(
+        /\[(?:HANDOVER|STATUS|PHASE|FOLLOW_UP_STEP|PROMISE[A-Z_]*|PROFILE|PRICE_RANGE|NEIGHBORHOOD|URGENCY|EMAIL|PERMUTA|AUDIO|VIDEO)\]/gi,
+        '',
+      )
+      // 2) placeholders de nome — nunca saudar com nome vazio/suspeito
+      out = out.replace(/,\s*(?:Lead|Cliente)\b/gi, '')
+      out = out.replace(/\b(?:Lead|Cliente)\s*,/gi, '')
+      out = out.replace(/\{Nome\}/gi, '')
+      out = out.replace(/\[Nome\]/gi, '')
+      // 3) termos internos que nunca chegam ao cliente
+      out = out.replace(/\btransbordo\b/gi, 'atendimento especializado')
+      out = out.replace(/\btrasbordo\b/gi, 'atendimento especializado')
+      out = out.replace(/\bhandover\b/gi, 'atendimento especializado')
+      // limpeza final
+      out = out.replace(/\n{3,}/g, '\n\n')
+      out = out.replace(/^\s*[,;:]+/gm, '')
+      out = out.trim()
+      return { text: out, cleaned: out !== before.trim() }
+    }
+
+    const biaBarrierResult = biaOutputBarrier(responseText)
+    if (biaBarrierResult.cleaned) {
+      console.log(
+        `[AI_REPLY] [OUTPUT_BARRIER] Barreira única limpou saída para customer=${customerId}: "${responseText.substring(0, 120)}" -> "${biaBarrierResult.text.substring(0, 120)}"`,
+      )
+      try {
+        const barrierLogsCol = $app.findCollectionByNameOrId('system_logs')
+        const barrierLog = new Record(barrierLogsCol)
+        barrierLog.set('user_id', userId || '')
+        barrierLog.set('type', 'bia_output_barrier')
+        barrierLog.set(
+          'message',
+          'Barreira única de saída limpou tag/placeholder/termo interno da resposta da Bia',
+        )
+        barrierLog.set(
+          'details',
+          JSON.stringify({
+            customer_id: customerId,
+            channel: conversationChannel,
+            before_preview: responseText.substring(0, 300),
+            after_preview: biaBarrierResult.text.substring(0, 300),
+          }),
+        )
+        $app.saveNoValidate(barrierLog)
+      } catch (barrierLogErr) {
+        console.warn(
+          `[AI_REPLY] [OUTPUT_BARRIER] Erro ao gravar log da barreira: ${String(barrierLogErr)}`,
+        )
+      }
+      responseText = biaBarrierResult.text
+    }
+    if (!responseText) {
+      responseText = isFirstAiMessageOrAfter24h
+        ? buildTemporalGreeting(displayName, brHour) +
+          ' Sou a Bia, da BRF Imóveis. Como posso te ajudar?'
+        : 'Como posso te ajudar na sua busca hoje?'
+    }
 
     // Duplicate message final guard
     let isDuplicate = false
