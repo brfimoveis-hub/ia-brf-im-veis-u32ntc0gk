@@ -293,6 +293,33 @@ try {
           result.errors.length,
       )
       console.log('[WA_QUALITY_REPORT] FULL=' + JSON.stringify(result).substring(0, 2500))
+
+      // Persistência legível: 1 linha em system_logs (append-only, diagnóstico)
+      try {
+        var logsCol = $app.findCollectionByNameOrId('system_logs')
+        var newLog = new Record(logsCol)
+        newLog.set('type', 'whatsapp_quality_report')
+        newLog.set(
+          'message',
+          '[WA_QUALITY_REPORT] quality_rating=' +
+            rating +
+            ' | 14d enviadas=' +
+            sent +
+            ' entregues=' +
+            delivered +
+            ' lidas=' +
+            read +
+            ' | erros=' +
+            result.errors.length,
+        )
+        newLog.set('payload', JSON.stringify(result).substring(0, 8000))
+        newLog.set('details', '')
+        $app.saveNoValidate(newLog)
+        console.log('[WA_QUALITY_REPORT] Linha gravada em system_logs')
+      } catch (logErr) {
+        console.error('[WA_QUALITY_REPORT] system_logs save EXC: ' + logErr.message)
+      }
+
       console.log('[WA_QUALITY_REPORT] AUTO-DISPARO (cron 1x) concluído')
     } catch (errCron) {
       console.error('[WA_QUALITY_REPORT] AUTO-DISPARO EXC: ' + errCron.message)
