@@ -7893,6 +7893,15 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                     '").',
                 )
               } else {
+                // CORREÇÃO 3 (v0.0.1441): fallback de emergência TAMBÉM passa pela
+                // barreira única de saída da Bia — nenhuma porta de envio escapa.
+                var emBarrier = biaOutputBarrier(emergencyReply, {
+                  channel: 'whatsapp',
+                  origin: 'ai_auto_reply_emergency_fallback',
+                  customerId: customerId,
+                })
+                emergencyReply = emBarrier.text
+
                 var emSendRes = callMetaWithRetry(
                   'https://graph.facebook.com/v21.0/' + emPhoneId + '/messages',
                   'POST',

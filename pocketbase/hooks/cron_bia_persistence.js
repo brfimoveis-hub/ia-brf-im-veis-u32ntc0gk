@@ -2464,8 +2464,12 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
         } else {
           var idleCurAttempt = idleAttemptInfo.attemptNumber
           var idleMaxLimit = idleAttemptInfo.maxAttempts || 3
-          var isIdlePermanent = idleCurAttempt >= idleMaxLimit
           var idleErrReason = (entryOutcome && entryOutcome.error) || 'FALHA_ENVIO_META'
+          // REGRA (Mauro, 20/11): DEDUP NUNCA é falha permanente — o cliente repetido
+          // é REAGENDADO com mensagem variada (buildPersistenceMessageWithVariance roda
+          // de novo no próximo ciclo). Desistência só para erro irrecuperável de envio.
+          var isIdleDedupError = idleErrReason.indexOf('DEDUP_MENSAGEM_JA_ENVIADA') !== -1
+          var isIdlePermanent = !isIdleDedupError && idleCurAttempt >= idleMaxLimit
 
           if (isIdlePermanent) {
             iCust.set('follow_up_step', entryStep)
@@ -2498,7 +2502,7 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
                 idleErrReason,
             )
           } else {
-            var idleRetryDelay = idleCurAttempt === 1 ? 2 : 4
+            var idleRetryDelay = isIdleDedupError ? 4 : idleCurAttempt === 1 ? 2 : 4
             var idleRetryIso = computeNextBusinessWindowIso(idleRetryDelay)
             iCust.set('follow_up_step', entryStep)
             iCust.set('next_follow_up_at', idleRetryIso)
