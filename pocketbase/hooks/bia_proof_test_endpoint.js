@@ -1,94 +1,49 @@
-// ======================================================================
-// TEMPORÁRIO — PROVA VIVA "Bia não responde" (24/11).
-// Endpoint de teste único que regrava a última mensagem ENTRANTE REAL de um
-// cliente (sender='customer'), reativando o gatilho do motor ai_auto_reply.
-// Sem auth: URL interna + token único de uso. ESTE ARQUIVO SERÁ REMOVIDO
-// logo após a prova — NÃO vai no commit.
-// ======================================================================
-
+// ============================================================
+// TEMPORÁRIO — PROVA VIVA (remover antes do commit!)
+// GET /backend/v1/bia_proof_test?token=<token único>
+// Reproduz uma mensagem entrante real (IG, cliente w2by9dou6agtz6l)
+// regravando-a em conversations — o motor ai_auto_reply deve disparar.
+// ============================================================
 routerAdd('GET', '/backend/v1/bia_proof_test', (e) => {
+  var token = (e.requestInfo().query && e.requestInfo().query.token) || ''
+  if (token !== 'brf-proof-20261124-bia-x7k9q2') {
+    return e.unauthorizedError('token invalido')
+  }
+  var cid = (e.requestInfo().query && e.requestInfo().query.customer_id) || 'w2by9dou6agtz6l'
+  var content = (e.requestInfo().query && e.requestInfo().query.content) || 'Bom dia'
+  var channel = (e.requestInfo().query && e.requestInfo().query.channel) || 'instagram'
+
+  // Última mensagem do cliente para herdar user_id/sender
+  var last = null
   try {
-    let raw = ''
-    try {
-      raw = String(e.request && e.request.url ? e.request.url : '')
-    } catch (_) {}
-    let info = null
-    try {
-      info = e.requestInfo()
-    } catch (_) {}
-    function qp(name) {
-      try {
-        if (info && info.query && info.query[name] !== undefined) return String(info.query[name])
-      } catch (_) {}
-      const m = raw.match(new RegExp('[?&]' + name + '=([^&\\s]+)'))
-      return m ? decodeURIComponent(m[1]) : ''
-    }
-
-    const token = qp('token')
-    const customerId = qp('customer_id')
-    if (token !== 'bia-proof-20261124-x9k2') {
-      return e.json(403, { error: 'token invalido' })
-    }
-    if (!customerId) return e.json(400, { error: 'customer_id obrigatorio' })
-
-    // Modo leitura: devolve as últimas conversas do cliente (para prova sem db_query)
-    if (qp('mode') === 'read') {
-      const rows = $app.findRecordsByFilter(
-        'conversations',
-        'customer_id = {:cid}',
-        '-created',
-        8,
-        0,
-        { cid: customerId },
-      )
-      const out = []
-      for (let i = 0; i < rows.length; i++) {
-        out.push({
-          id: rows[i].id,
-          sender: rows[i].getString('sender'),
-          channel: rows[i].getString('channel'),
-          created: rows[i].getString('created'),
-          content: (rows[i].getString('content') || '').substring(0, 90),
-        })
-      }
-      return e.json(200, { customer_id: customerId, conversations: out })
-    }
-
-    const msgs = $app.findRecordsByFilter(
+    var arr = $app.findRecordsByFilter(
       'conversations',
-      "customer_id = {:cid} && (sender = 'customer' || sender = 'lead' || sender = 'user')",
+      "customer_id = '" + cid + "' && sender = 'customer'",
       '-created',
       1,
       0,
-      { cid: customerId },
     )
-    if (!msgs || msgs.length === 0) {
-      return e.json(404, { error: 'nenhuma mensagem entrante encontrada' })
-    }
-    const lastInbound = msgs[0]
-    const content = (lastInbound.getString('content') || '').trim()
-    if (!content) return e.json(400, { error: 'conteudo vazio' })
-
-    const convCol = $app.findCollectionByNameOrId('conversations')
-    const copy = new Record(convCol)
-    copy.set('customer_id', customerId)
-    copy.set('user_id', lastInbound.getString('user_id') || '')
-    copy.set('channel', lastInbound.getString('channel') || 'whatsapp')
-    copy.set('sender', 'customer')
-    copy.set('content', content)
-    $app.saveNoValidate(copy)
-
-    console.log('[BIA_PROOF_TEST] copy gravada customer=' + customerId + ' id=' + copy.id)
-
-    return e.json(200, {
-      ok: true,
-      proof_copy_id: copy.id,
-      customer_id: customerId,
-      channel: copy.getString('channel') || '',
-      content_preview: content.substring(0, 80),
-    })
+    if (arr.length > 0) last = arr[0]
   } catch (err) {
-    console.error('[BIA_PROOF_TEST] erro: ' + String(err && err.stack ? err.stack : err))
-    return e.json(500, { error: String(err && err.stack ? err.stack : err) })
+    return e.json(500, { error: String(err) })
   }
+  if (!last) return e.json(404, { error: 'nenhuma msg customer p/ cliente ' + cid })
+
+  var convCol = $app.findCollectionByNameOrId('conversations')
+  var copy = new Record(convCol)
+  copy.set('customer_id', cid)
+  copy.set('user_id', last.getString('user_id') || '')
+  copy.set('channel', channel)
+  copy.set('sender', 'customer')
+  copy.set('content', content)
+  $app.saveNoValidate(copy)
+
+  console.log('[PROOF_TEST] Mensagem entrante regravada: customer=' + cid + ' canal=' + channel)
+  return e.json(200, {
+    ok: true,
+    injected_content: content,
+    channel: channel,
+    customer_id: cid,
+    note: 'Motor ai_auto_reply deve disparar agora (aguarde [AI_REPLY] nos logs).',
+  })
 })

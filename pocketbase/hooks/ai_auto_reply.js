@@ -1,69 +1,12 @@
 // =====================================================================
-// BOOT GUARD + FUNÇÃO COMPARTILHADA (caçada definitiva "Bia não responde"):
-// O handler de eventos nem chegava a logar a 1ª linha — enquanto outros hooks
-// do MESMO evento (instagram_auto_reply) logavam normalmente. Agora o motor é
-// uma FUNÇÃO COMPARTILHADA (biaReplyProcessMessage) que:
-//   1) é registrada no evento onRecordAfterCreateSuccess via $app.once — com
-//      log de boot provando que o ARQUIVO CARREGOU e o REGISTRO aconteceu;
-//   2) pode ser chamada DIRETO por quem grava a mensagem (bia_reprocess),
-//      sem depender de o evento disparar (chamada explícita > evento).
-// Qualquer falha de load/registro loga [AI_REPLY][FATAL] — nunca mais morte
-// silenciosa por parse no JSVM.
+// MOTOR CENTRAL DA BIA (todas as origens: WhatsApp/Instagram/Messenger)
+// REGRA DE SCOPING DO JSVM: callbacks (inclusive handlers de evento) rodam em
+// pool de VM separado — NÃO podem referenciar declarações top-level. Por isso
+// o corpo INTEIRO do motor vive DENTRO do handler, registrado no topo do
+// arquivo (mesma forma dos hooks que funcionam, ex. instagram_auto_reply.js).
+// A auditoria da 1ª linha ([AI_REPLY] Trigger fired) prova que o handler rodou.
 // =====================================================================
-var biaReplyBootDone = false
-try {
-  $app.once(() => {
-    biaReplyBootDone = true
-    let colName = '?'
-    try {
-      colName = $app.findCollectionByNameOrId('conversations').name
-    } catch (bootErr) {
-      console.error(
-        '[AI_REPLY][FATAL] Bootstrap: coleção conversations indisponível: ' + String(bootErr),
-      )
-    }
-    console.log(
-      '[AI_REPLY] Arquivo carregado — registrando handler em conversations (col=' + colName + ')',
-    )
-    try {
-      onRecordAfterCreateSuccess(biaReplyProcessMessage, 'conversations')
-      console.log('[AI_REPLY] Handler onRecordAfterCreateSuccess registrado com sucesso')
-    } catch (regErr) {
-      console.error(
-        '[AI_REPLY][FATAL] Falha ao registrar onRecordAfterCreateSuccess: ' +
-          String(regErr && regErr.stack ? regErr.stack : regErr),
-      )
-      throw regErr
-    }
-    // Caminho redundante: se algum gravador ATUALIZAR (saveNoValidate em registro
-    // existente) em vez de CRIAR, o evento de create não dispara — ouvir também o
-    // update. O motor já é idempotente (trava ai_processing + guarda de última msg).
-    try {
-      onRecordAfterUpdateSuccess((eUp) => {
-        try {
-          console.log(
-            `[AI_REPLY] Update event fired: sender=${eUp.record.getString('sender')} id=${eUp.record.id}`,
-          )
-        } catch (_) {}
-        return biaReplyProcessMessage(eUp)
-      }, 'conversations')
-      console.log('[AI_REPLY] Handler onRecordAfterUpdateSuccess registrado com sucesso')
-    } catch (regUpErr) {
-      console.error(
-        '[AI_REPLY][FATAL] Falha ao registrar onRecordAfterUpdateSuccess: ' +
-          String(regUpErr && regUpErr.stack ? regUpErr.stack : regUpErr),
-      )
-   }
-  })
-} catch (bootFatal) {
-  console.error(
-    '[AI_REPLY][FATAL] Bootstrap falhou: ' +
-      String(bootFatal && bootFatal.stack ? bootFatal.stack : bootFatal),
-  )
-  throw bootFatal
-}
-
-function biaReplyProcessMessage(e) {
+onRecordAfterCreateSuccess(function (e) {
   // AUDITORIA (correção "Bia não responde"): log no PRIMEIRO instante do handler,
   // ANTES de qualquer guard — se este log não aparecer nos hooks, o handler não rodou
   // (arquivo com erro de parse/compilação no JSVM). Se aparecer sem o próximo, o
