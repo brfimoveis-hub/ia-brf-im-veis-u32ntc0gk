@@ -14,6 +14,7 @@ try {
     '[AI_REPLY] file loaded — ai_auto_reply.js registrado no after-create de conversations',
   )
 } catch (_) {}
+// PROBE_MARKER_LOAD_V1
 onRecordAfterCreateSuccess(function (e) {
   // AUDITORIA (correção "Bia não responde"): log no PRIMEIRO instante do handler,
   // ANTES de qualquer guard — se este log não aparecer nos hooks, o handler não rodou
