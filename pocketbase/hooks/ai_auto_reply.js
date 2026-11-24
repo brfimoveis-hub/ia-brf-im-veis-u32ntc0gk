@@ -6112,6 +6112,27 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       // Resolve WhatsApp Meta credentials
       let metaToken = userRecord ? userRecord.getString('meta_whatsapp_access_token') : ''
       let metaPhoneId = userRecord ? userRecord.getString('meta_whatsapp_phone_number_id') : ''
+      // APPSECRET_PROOF (v0.0.1455): secret para o rito provado no app Meta "BRF Imóveis 2"
+      // (meta_app_secret → meta_instagram_app_secret → env META_APP_SECRET), igual ao
+      // rito de connection_health_check.js / cron_bia_persistence.js / brf_urgency_handover.js.
+      let waProofSecret = ''
+      try {
+        waProofSecret = (userRecord ? userRecord.getString('meta_app_secret') : '') || ''
+        waProofSecret = waProofSecret.trim()
+        if (!waProofSecret && userRecord) {
+          waProofSecret = (userRecord.getString('meta_instagram_app_secret') || '').trim()
+        }
+        if (!waProofSecret) {
+          waProofSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+        }
+      } catch (waProofErr) {
+        console.warn(`[AI_REPLY] WhatsApp proof secret load failed: ${String(waProofErr)}`)
+      }
+      function waProofSuffix(accessToken) {
+        return waProofSecret
+          ? '?appsecret_proof=' + $security.hs256(String(accessToken), waProofSecret)
+          : ''
+      }
 
       if (!metaToken || !metaPhoneId) {
         try {
@@ -6349,7 +6370,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         )
 
         const sendRes = callMetaWithRetry(
-          `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
+          `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
           'POST',
           { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
           JSON.stringify({
@@ -6759,6 +6780,26 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             (freshUserForMessenger ? freshUserForMessenger.getString('meta_page_id') : '') ||
             '1343797128806374'
 
+          // APPSECRET_PROOF (v0.0.1455): rito do app Meta "BRF Imóveis 2" — prova
+          // obrigatória também nas chamadas Messenger (mesma causa dos logs 20:19).
+          let msgProofSecret = ''
+          try {
+            msgProofSecret = (
+              (freshUserForMessenger ? freshUserForMessenger.getString('meta_app_secret') : '') ||
+              ''
+            ).trim()
+            if (!msgProofSecret && freshUserForMessenger) {
+              msgProofSecret = (
+                freshUserForMessenger.getString('meta_instagram_app_secret') || ''
+              ).trim()
+            }
+            if (!msgProofSecret) {
+              msgProofSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+            }
+          } catch (_) {}
+          const msgProofSuffix = msgProofSecret
+            ? '?appsecret_proof=' + $security.hs256(String(pageToken), msgProofSecret)
+            : ''
           const messengerEndpointUrl = 'https://graph.facebook.com/v18.0/me/messages'
           const messengerPayloadObj = {
             recipient: { id: psid },
@@ -6771,7 +6812,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             )
 
             const messengerSendRes = callMetaWithRetry(
-              messengerEndpointUrl,
+              messengerEndpointUrl + msgProofSuffix,
               'POST',
               { Authorization: 'Bearer ' + pageToken, 'Content-Type': 'application/json' },
               JSON.stringify(messengerPayloadObj),
@@ -7082,9 +7123,33 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           }
 
           if (igSenderId && igToken && isWithin24h) {
+            // APPSECRET_PROOF (v0.0.1455): o app Meta "BRF Imóveis 2" exige App Secret em
+            // TODAS as chamadas Graph ("API calls from the server require an
+            // appsecret_proof argument", code=100 nos logs 20:19 do dia 24/11).
+            // Rito provado em connection_health_check.js / cron_bia_persistence.js:
+            // secret = meta_app_secret → meta_instagram_app_secret → env META_APP_SECRET.
+            let igProofSecret = ''
+            try {
+              igProofSecret = (
+                (freshUserRecord ? freshUserRecord.getString('meta_app_secret') : '') || ''
+              ).trim()
+              if (!igProofSecret && freshUserRecord) {
+                igProofSecret = (
+                  freshUserRecord.getString('meta_instagram_app_secret') || ''
+                ).trim()
+              }
+              if (!igProofSecret) {
+                igProofSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+              }
+            } catch (proofErr) {
+              console.warn(`[AI_REPLY] appsecret_proof secret load failed: ${String(proofErr)}`)
+            }
+            const igProofSuffix = igProofSecret
+              ? '&appsecret_proof=' + $security.hs256(String(igToken), igProofSecret)
+              : ''
             const igEndpointUrl = `https://graph.facebook.com/v22.0/${igRecipientTargetId}/messages`
             console.log(
-              `[AI_REPLY] Sending Instagram DM to recipient=${igSenderId} via target=${igRecipientTargetId} url=${igEndpointUrl} (token_prefix=${igToken.substring(0, 15)}... len=${igToken.length})`,
+              `[AI_REPLY] Sending Instagram DM to recipient=${igSenderId} via target=${igRecipientTargetId} url=${igEndpointUrl} (token_prefix=${igToken.substring(0, 15)}... len=${igToken.length} proof=${igProofSecret ? 'yes' : 'no'})`,
             )
             const igPayloadObj = {
               recipient: { id: igSenderId },
@@ -7097,7 +7162,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             )
 
             let igSendRes = callMetaWithRetry(
-              igEndpointUrl,
+              igEndpointUrl + igProofSuffix,
               'POST',
               { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
               JSON.stringify(igPayloadObj),
@@ -7123,7 +7188,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                   `[AI_REPLY] Retrying Instagram DM via page endpoint fallback: ${fallbackPageUrl}`,
                 )
                 const fallbackRes = callMetaWithRetry(
-                  fallbackPageUrl,
+                  fallbackPageUrl + igProofSuffix,
                   'POST',
                   { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
                   JSON.stringify(igPayloadObj),
@@ -7162,6 +7227,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                 JSON.stringify({
                   url: lastAttemptedUrl,
                   original_url: igEndpointUrl,
+                  appsecret_proof_attached: !!igProofSecret,
                   statusCode: igSendRes ? igSendRes.statusCode : null,
                   recipient_id: igSenderId || null,
                   target_id: igRecipientTargetId,
@@ -7199,6 +7265,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                   JSON.stringify({
                     url: lastAttemptedUrl,
                     original_url: igEndpointUrl,
+                    appsecret_proof_attached: !!igProofSecret,
                     statusCode: igSendRes ? igSendRes.statusCode : null,
                     code: igErrObj.code !== undefined ? igErrObj.code : null,
                     error_subcode:
@@ -7283,7 +7350,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
 
           if (metaToken && metaPhoneId) {
             callMetaWithRetry(
-              `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
+              `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
               'POST',
               { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
               JSON.stringify({
@@ -7409,7 +7476,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                 // 1. WhatsApp para Neuci
                 try {
                   const resNeuci = callMetaWithRetry(
-                    `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                    `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
                     'POST',
                     { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
                     JSON.stringify({
@@ -7440,7 +7507,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                 // 2. WhatsApp simultâneo para Mauro
                 try {
                   const resMauro = callMetaWithRetry(
-                    `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                    `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
                     'POST',
                     { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
                     JSON.stringify({
@@ -7834,8 +7901,26 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
                   })
                   emergencyReply = emBarrier.text
 
+                  var emProofSecret = ''
+                  try {
+                    var emCustSecretRec = safeFindRecordById('users', userId)
+                    if (emCustSecretRec) {
+                      emProofSecret = (emCustSecretRec.getString('meta_app_secret') || '').trim()
+                      if (!emProofSecret) {
+                        emProofSecret = (
+                          emCustSecretRec.getString('meta_instagram_app_secret') || ''
+                        ).trim()
+                      }
+                    }
+                    if (!emProofSecret) {
+                      emProofSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+                    }
+                  } catch (_) {}
+                  var emProofSuffix = emProofSecret
+                    ? '?appsecret_proof=' + $security.hs256(String(emMetaToken), emProofSecret)
+                    : ''
                   var emSendRes = callMetaWithRetry(
-                    'https://graph.facebook.com/v21.0/' + emPhoneId + '/messages',
+                    'https://graph.facebook.com/v21.0/' + emPhoneId + '/messages' + emProofSuffix,
                     'POST',
                     { Authorization: 'Bearer ' + emMetaToken, 'Content-Type': 'application/json' },
                     JSON.stringify({
