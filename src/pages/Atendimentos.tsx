@@ -33,6 +33,7 @@ import {
   Paperclip,
   Mail,
   Zap,
+  RotateCcw,
 } from 'lucide-react'
 import { WhatsAppAudioPlayer } from '@/components/chat/WhatsAppAudioPlayer'
 import { BiaAvatar } from '@/components/common/BiaAvatar'
@@ -52,6 +53,7 @@ import { BiaLearningsReviewPanel } from '@/components/chat/BiaLearningsReviewPan
 import { CadenceStepCircle, getStepRank } from '@/components/chat/CadenceStepCircle'
 import { recordCadenceStepAdvance, getTodayCadenceAdvancesCount } from '@/services/cadence_advances'
 import { sendManualReply } from '@/services/conversations'
+import { reprocessCustomerLastInbound } from '@/services/bia_reprocess'
 import { sendWhatsAppMessages } from '@/services/meta_whatsapp'
 import { toast } from '@/hooks/use-toast'
 
@@ -335,6 +337,18 @@ function Atendimentos() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [replyText, setReplyText] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
+  const [reprocessing, setReprocessing] = useState(false)
+
+  // Detecta "Bia calada": existe mensagem do cliente sem resposta da Bia/corretor depois dela
+  const lastInboundWithoutReply = useMemo(() => {
+    if (!messages.length) return null
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const s = messages[i].sender
+      if (s === 'ai' || s === 'agent') return null
+      if (s === 'customer' || s === 'lead') return messages[i]
+    }
+    return null
+  }, [messages])
 
   const [searchTerm, setSearchTerm] = useState('')
   const [channelFilter, setChannelFilter] = useState<
@@ -1691,6 +1705,58 @@ function Atendimentos() {
                   >
                     <Paperclip className="h-5 w-5" />
                   </Button>
+
+                  {/* Reprocessar: se a Bia ficou calada, reativa o gatilho do motor ai_auto_reply */}
+                  {lastInboundWithoutReply && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={reprocessing}
+                      className="h-9 w-9 text-amber-600 hover:bg-amber-100/60 dark:hover:bg-amber-900/30 shrink-0"
+                      title="A Bia ficou calada nesta conversa? Reenviar a última mensagem do cliente para reativar a resposta da IA."
+                      onClick={async () => {
+                        if (!selectedCustomerId || reprocessing) return
+                        setReprocessing(true)
+                        try {
+                          const r = await reprocessCustomerLastInbound(selectedCustomerId)
+                          if (r.reprocessed) {
+                            toast({
+                              title: 'Mensagem reenviada à Bia',
+                              description:
+                                r.content ||
+                                'O motor da Bia foi reativado; aguarde a resposta no WhatsApp.',
+                            })
+                          } else {
+                            toast({
+                              title: 'Nada a reprocessar',
+                              description: r.reason || 'A Bia já respondeu nesta conversa.',
+                            })
+                          }
+                          const msgs = await getConversations(selectedCustomerId).catch(() => [])
+                          setMessages(msgs)
+                          loadThreads(true)
+                        } catch (err: unknown) {
+                          toast({
+                            title: 'Erro ao reprocessar',
+                            description:
+                              err instanceof Error
+                                ? err.message
+                                : 'Não foi possível reenviar a mensagem.',
+                            variant: 'destructive',
+                          })
+                        } finally {
+                          setReprocessing(false)
+                        }
+                      }}
+                    >
+                      {reprocessing ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
 
                   <div className="flex-1 relative">
                     <Input
