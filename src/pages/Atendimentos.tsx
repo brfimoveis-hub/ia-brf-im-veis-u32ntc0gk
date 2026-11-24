@@ -345,7 +345,7 @@ function Atendimentos() {
     for (let i = messages.length - 1; i >= 0; i--) {
       const s = messages[i].sender
       if (s === 'ai' || s === 'agent') return null
-      if (s === 'customer' || s === 'lead') return messages[i]
+      if (s === 'customer') return messages[i]
     }
     return null
   }, [messages])

@@ -3,7 +3,7 @@
  * backend /backend/v1/bia_reprocess (sessão do painel obrigatória).
  * Usado quando a Bia fica calada: reativa o gatilho do motor ai_auto_reply.
  */
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 
 export interface ReprocessResponse {
   reprocessed: boolean
@@ -15,7 +15,7 @@ export interface ReprocessResponse {
 
 export async function reprocessCustomerLastInbound(customerId: string): Promise<ReprocessResponse> {
   try {
-    const res = await pb.send('/api/backend/v1/bia_reprocess', {
+    const res = await pb.send('/backend/v1/bia_reprocess', {
       method: 'POST',
       body: JSON.stringify({ customer_id: customerId }),
       headers: { 'Content-Type': 'application/json' },
