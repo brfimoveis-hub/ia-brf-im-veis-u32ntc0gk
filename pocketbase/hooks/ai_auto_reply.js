@@ -130,6 +130,12 @@ onRecordAfterCreateSuccess(function (e) {
       return res
     }
 
+    // Parâmetro opcional de proof das URLs da Graph (mantido como no-op: as versões
+    // v21/v22 da Cloud API não exigem proof nas chamadas /messages e /media).
+    function metaWhatsappProofParam(token) {
+      return ''
+    }
+
     let acquiredLock = false
     var matchedProps = []
     var detectedSpecificPropertyQuery = false
