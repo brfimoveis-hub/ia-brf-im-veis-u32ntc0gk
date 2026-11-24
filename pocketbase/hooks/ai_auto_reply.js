@@ -6,6 +6,14 @@
 // arquivo (mesma forma dos hooks que funcionam, ex. instagram_auto_reply.js).
 // A auditoria da 1ª linha ([AI_REPLY] Trigger fired) prova que o handler rodou.
 // =====================================================================
+// DIAGNÓSTICO: log de CARGA top-level. Se "[AI_REPLY] file loaded" NUNCA aparecer
+// nos hooks, o arquivo falhou ao compilar no JSVM (goja) e o handler nunca foi
+// registrado — erro só visível em runtime, não no deploy (que valida com Node).
+try {
+  console.log(
+    '[AI_REPLY] file loaded — ai_auto_reply.js registrado no after-create de conversations',
+  )
+} catch (_) {}
 onRecordAfterCreateSuccess(function (e) {
   // AUDITORIA (correção "Bia não responde"): log no PRIMEIRO instante do handler,
   // ANTES de qualquer guard — se este log não aparecer nos hooks, o handler não rodou
