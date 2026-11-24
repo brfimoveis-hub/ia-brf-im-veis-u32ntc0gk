@@ -180,6 +180,40 @@ function ChannelBadge({ channel }: { channel?: string }) {
   )
 }
 
+// Fuso oficial de exibição: America/Sao_Paulo. PocketBase grava UTC; o browser
+// do Mauro pode estar em outro fuso/idioma e exibir errado. Fixar o fuso garante
+// que o horário mostrado bata com a hora real da conversa.
+const TZ_BR = 'America/Sao_Paulo'
+
+function parseBrParts(d: Date) {
+  // Extrai as partes de data/hora JÁ convertidas para o fuso de São Paulo
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ_BR,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    weekday: 'short',
+  }).formatToParts(d)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value || ''
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: get('hour') === '24' ? '00' : get('hour'),
+    minute: get('minute'),
+    weekday: get('weekday'),
+  }
+}
+
+function brDateString(d: Date) {
+  const p = parseBrParts(d)
+  return `${p.year}-${p.month}-${p.day}`
+}
+
 function formatRelativeTime(dateString: string) {
   if (!dateString) return ''
   const date = new Date(dateString)
@@ -189,26 +223,29 @@ function formatRelativeTime(dateString: string) {
   const diffMs = now.getTime() - date.getTime()
   const diffMinutes = Math.floor(diffMs / (1000 * 60))
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
   if (diffMinutes < 1) return 'Agora'
   if (diffMinutes < 60) return `${diffMinutes}min`
   if (diffHours < 24) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const p = parseBrParts(date)
+    return `${p.hour}:${p.minute}`
   }
-  if (diffDays === 1) return 'Ontem'
-  if (diffDays < 7) {
+  if (brDateString(date) === brDateString(now)) return 'HOJE'
+  if (brDateString(date) === brDateString(new Date(now.getTime() - 86400000))) return 'Ontem'
+  if (diffHours < 24 * 7) {
     const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
     return days[date.getDay()]
   }
-  return date.toLocaleDateString([], { day: '2-digit', month: '2-digit' })
+  const p = parseBrParts(date)
+  return `${p.day}/${p.month}`
 }
 
 function formatMessageTime(dateString: string) {
   if (!dateString) return ''
   const date = new Date(dateString)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const p = parseBrParts(date)
+  return `${p.hour}:${p.minute}`
 }
 
 function formatDayDivider(dateString: string) {
@@ -216,18 +253,19 @@ function formatDayDivider(dateString: string) {
   const date = new Date(dateString)
   if (Number.isNaN(date.getTime())) return ''
 
-  const today = new Date()
-  const yesterday = new Date()
-  yesterday.setDate(today.getDate() - 1)
+  const now = new Date()
+  const p = parseBrParts(date)
+  const pNow = parseBrParts(now)
+  const brYesterday = parseBrParts(new Date(now.getTime() - 86400000))
 
-  if (date.toDateString() === today.toDateString()) {
+  if (p.day === pNow.day && p.month === pNow.month && p.year === pNow.year) {
     return 'HOJE'
   }
-  if (date.toDateString() === yesterday.toDateString()) {
+  if (p.day === brYesterday.day && p.month === brYesterday.month && p.year === brYesterday.year) {
     return 'ONTEM'
   }
 
-  const daysDiff = Math.round((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+  const daysDiff = Math.round((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
   if (daysDiff < 7) {
     const days = [
       'DOMINGO',
@@ -243,9 +281,10 @@ function formatDayDivider(dateString: string) {
 
   return date
     .toLocaleDateString('pt-BR', {
+      timeZone: TZ_BR,
       day: '2-digit',
       month: 'long',
-      year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+      year: p.year !== pNow.year ? 'numeric' : undefined,
     })
     .toUpperCase()
 }
@@ -929,7 +968,7 @@ function Atendimentos() {
 
     for (const msg of messages) {
       const d = msg.created ? new Date(msg.created) : new Date()
-      const key = !Number.isNaN(d.getTime()) ? d.toDateString() : 'unknown'
+      const key = !Number.isNaN(d.getTime()) ? brDateString(d) : 'unknown'
       if (key !== currentKey) {
         currentKey = key
         groups.push({

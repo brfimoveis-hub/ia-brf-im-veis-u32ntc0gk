@@ -12,1248 +12,1236 @@ onRecordAfterCreateSuccess((e) => {
     return e.next()
   }
 
-  const sender = e.record.getString('sender')
-
-  if (sender !== 'customer' && sender !== 'user' && sender !== 'lead') {
-    return e.next()
-  }
-
-  function callMetaWithRetry(url, method, headers, bodyData, maxRetries = 3) {
-    let attempt = 0
-    let res = null
-    const backoffs = [1000, 3000, 9000]
-    while (attempt <= maxRetries) {
-      try {
-        res = $http.send({
-          url,
-          method,
-          headers,
-          body: bodyData,
-          timeout: 20,
-        })
-        if (res && res.statusCode >= 200 && res.statusCode < 300) {
-          return res
-        }
-
-        // Diagnóstico completo e explícito de resposta non-2xx da Meta (sem truncamento)
-        const errObj = res && res.json && res.json.error ? res.json.error : {}
-        const errCode = errObj.code !== undefined ? errObj.code : 'none'
-        const errSubcode = errObj.error_subcode !== undefined ? errObj.error_subcode : 'none'
-        const errMsg =
-          errObj.message || (res ? (typeof res.body === 'string' ? res.body : '') : '') || 'none'
-        const errType = errObj.type || 'none'
-        const errTitle = errObj.error_user_title || 'none'
-        const errUserMsg = errObj.error_user_msg || errObj.error_user_message || 'none'
-        const fbtraceId = errObj.fbtrace_id || 'none'
-        const isTransient = errObj.is_transient !== undefined ? errObj.is_transient : 'none'
-
-        console.warn(
-          `[AI_REPLY] Meta HTTP non-2xx: status=${res ? res.statusCode : 'none'} attempt=${attempt + 1}/${maxRetries + 1} url=${url}`,
-        )
-        console.warn(
-          `[AI_REPLY] Meta Error Details: code=${errCode} subcode=${errSubcode} type="${errType}" fbtrace_id="${fbtraceId}" is_transient=${isTransient}`,
-        )
-        console.warn(`[AI_REPLY] Meta Error Message: "${errMsg}"`)
-        if (errTitle !== 'none' || errUserMsg !== 'none') {
-          console.warn(`[AI_REPLY] Meta User Message: title="${errTitle}" msg="${errUserMsg}"`)
-        }
-        console.warn(
-          `[AI_REPLY] Meta Full Response JSON: ${JSON.stringify(res ? res.json || res.body || '' : '')}`,
-        )
-      } catch (httpErr) {
-        console.error(`[AI_REPLY] Meta HTTP send exception: url=${url} error=${String(httpErr)}`)
-      }
-      if (attempt < maxRetries) {
-        const sleepMs = backoffs[attempt] || 9000
-        const start = new Date().getTime()
-        while (new Date().getTime() - start < sleepMs) {}
-      }
-      attempt++
-    }
-
-    try {
-      const errObj = res && res.json && res.json.error ? res.json.error : {}
-      const logsCol = $app.findCollectionByNameOrId('system_logs')
-      const newLog = new Record(logsCol)
-      newLog.set('type', 'api_failure')
-      newLog.set(
-        'message',
-        `Falha Meta API (${url}) após ${maxRetries} tentativas. code=${errObj.code !== undefined ? errObj.code : 'none'} subcode=${errObj.error_subcode !== undefined ? errObj.error_subcode : 'none'}: ${errObj.message || ''}`,
-      )
-      newLog.set(
-        'details',
-        JSON.stringify({
-          url: url,
-          method: method,
-          statusCode: res ? res.statusCode : null,
-          code: errObj.code !== undefined ? errObj.code : null,
-          error_subcode: errObj.error_subcode !== undefined ? errObj.error_subcode : null,
-          error_user_title: errObj.error_user_title || null,
-          error_user_message: errObj.error_user_msg || errObj.error_user_message || null,
-          fbtrace_id: errObj.fbtrace_id || null,
-          message: errObj.message || null,
-          type: errObj.type || null,
-          is_transient: errObj.is_transient !== undefined ? errObj.is_transient : null,
-        }),
-      )
-      newLog.set(
-        'payload',
-        JSON.stringify({
-          statusCode: res ? res.statusCode : null,
-          body: res ? res.json || res.body : null,
-        }),
-      )
-      $app.saveNoValidate(newLog)
-    } catch (_) {}
-
-    return res
-  }
-
-  let acquiredLock = false
-  var matchedProps = []
-  var detectedSpecificPropertyQuery = false
-  var targetSpecificProp = null
-  var hasFreeSearchIntent = false
-  function isFreeSearchIntent(text) {
-    if (!text || typeof text !== 'string') return false
-    return /\b(?:pesquisar(?:\s+para\s+mim)?|buscar(?:\s+para\s+mim)?|procurar(?:\s+para\s+mim)?|fazenda|área\s+rural|area\s+rural|sítio|sitio|chácara|chacara|terreno|rural)\b/i.test(
-      text,
-    )
-  }
-  const customerId = e.record.getString('customer_id')
-  const conversationChannel = e.record.getString('channel') || 'whatsapp'
-  const incomingMsgId = e.record.id
-  let userId = e.record.getString('user_id')
-
-  // Horário oficial de Brasília (UTC-3) disponível em todos os escopos (incluindo o catch de erro)
-  const now = new Date()
-  const brTime = new Date(now.getTime() - 3 * 3600 * 1000)
-  const brHour = brTime.getUTCHours()
-
-  // Regra de saudação temporal (America/Sao_Paulo):
-  // Bom dia até ~12h (0h..11h59), Boa tarde das 12h às 17h59, Boa noite a partir das 18h
-  function getTemporalGreetingWord(hour) {
-    const h = typeof hour === 'number' ? hour : brHour
-    if (h < 12) return 'Bom dia'
-    if (h < 18) return 'Boa tarde'
-    return 'Boa noite'
-  }
-
-  function buildTemporalGreeting(name, hour, withIdentity) {
-    const salutation = getTemporalGreetingWord(hour).toLowerCase()
-    if (withIdentity) {
-      if (name && name.trim()) {
-        return `Bia da BRF Imóveis — ${salutation}, ${name.trim()}, tudo bem?`
-      }
-      return `Bia da BRF Imóveis — ${salutation}, tudo bem?`
-    }
-    const capSalutation = getTemporalGreetingWord(hour)
-    if (name && name.trim()) {
-      return `${capSalutation}, ${name.trim()}!`
-    }
-    return `${capSalutation}!`
-  }
-
-  console.log(
-    `[AI_REPLY] Triggered for customer=${customerId} sender=${sender} channel=${conversationChannel} msgId=${incomingMsgId}`,
-  )
-
-  // Helper seguro para buscar registros sem estourar GoError quando a linha não existe
-  function safeFindRecordById(collectionName, recordId, appInstance) {
-    if (!collectionName || !recordId) return null
-    var app = appInstance || $app
-    try {
-      var records = app.findRecordsByFilter(collectionName, 'id = {:id}', '', 1, 0, {
-        id: recordId,
-      })
-      if (records && records.length > 0) {
-        return records[0]
-      }
-    } catch (_) {}
-    return null
-  }
-
-  // Release seguro e tolerante do lock de IA (idempotente)
-  function safeReleaseLock(targetCustomerId, appInstance) {
-    if (!targetCustomerId) return
-    var app = appInstance || $app
-
-    // 1. Liberação via coleção ai_locks se existir
-    try {
-      var lockRecords = app.findRecordsByFilter('ai_locks', 'customer_id = {:cid}', '', 1, 0, {
-        cid: targetCustomerId,
-      })
-      if (lockRecords && lockRecords.length > 0) {
-        for (var li = 0; li < lockRecords.length; li++) {
-          try {
-            app.delete(lockRecords[li])
-            console.log(`[AI_REPLY] ai_locks record deleted for customer=${targetCustomerId}`)
-          } catch (delErr) {
-            console.warn(`[AI_REPLY] Error deleting ai_locks record: ${String(delErr)}`)
-          }
-        }
-      }
-    } catch (_) {}
-
-    // 2. Liberação via tags do cliente (se o cliente existir)
-    try {
-      var targetCust = safeFindRecordById('customers', targetCustomerId, app)
-      if (targetCust) {
-        var rawTags = targetCust.get('tags')
-        var currentTags = []
-        if (Array.isArray(rawTags)) {
-          currentTags = rawTags.filter((t) => typeof t === 'string')
-        } else if (typeof rawTags === 'string') {
-          try {
-            var p = JSON.parse(rawTags)
-            if (Array.isArray(p)) currentTags = p.filter((t) => typeof t === 'string')
-          } catch (_) {}
-        }
-        var hasLockTag = currentTags.some(
-          (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
-        )
-        if (hasLockTag) {
-          targetCust.set(
-            'tags',
-            currentTags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
-          )
-          app.saveNoValidate(targetCust)
-          console.log(`[AI_REPLY] Lock tag released cleanly for customer=${targetCustomerId}`)
-        }
-      }
-    } catch (cleanLockErr) {
-      console.warn(
-        `[AI_REPLY] Error releasing lock tag for customer ${targetCustomerId}: ${String(cleanLockErr)}`,
-      )
-    }
-
-    // 3. Fallback SQL direto seguro (apenas se o customer existir no DB)
-    try {
-      app
-        .db()
-        .newQuery(
-          "UPDATE customers SET tags = (SELECT json_group_array(value) FROM json_each(customers.tags) WHERE value NOT LIKE 'ai_processing%') WHERE id = {:id}",
-        )
-        .bind({ id: targetCustomerId })
-        .execute()
-    } catch (_) {}
-  }
-
+  // BLINDAGEM ESTRUTURAL: qualquer exceção em QUALQUER ponto do motor é logada
+  // com [AI_REPLY][FATAL] — o motor nunca mais morre em silêncio.
   try {
-    let customerInitialCheck = safeFindRecordById('customers', customerId)
-    if (!customerInitialCheck) {
-      // Se não encontrou o cliente e o canal for instagram, tenta criar o cliente sob demanda
-      if (conversationChannel === 'instagram') {
+    const sender = e.record.getString('sender')
+
+    if (sender !== 'customer' && sender !== 'user' && sender !== 'lead') {
+      console.log(`[AI_REPLY][SKIP] motivo=sender_invalido sender=${sender} msgId=${e.record.id}`)
+      return e.next()
+    }
+
+    function callMetaWithRetry(url, method, headers, bodyData, maxRetries = 3) {
+      let attempt = 0
+      let res = null
+      const backoffs = [1000, 3000, 9000]
+      while (attempt <= maxRetries) {
         try {
-          console.log(
-            `[AI_REPLY] Customer ${customerId} não encontrado. Criando cliente novo com origem 'Instagram Direct'...`,
-          )
-          let targetUid = userId
-          if (!targetUid) {
-            try {
-              var igUsersList = $app.findRecordsByFilter(
-                'users',
-                "meta_instagram_business_id != '' || instagram_username != '' || meta_instagram_page_token != ''",
-                'created',
-                1,
-                0,
-              )
-              if (igUsersList && igUsersList.length > 0) {
-                targetUid = igUsersList[0].id
-              }
-            } catch (_) {}
-          }
-          if (!targetUid) {
-            try {
-              var anyUser = $app.findRecordsByFilter('users', "email != ''", 'created', 1, 0)
-              if (anyUser && anyUser.length > 0) targetUid = anyUser[0].id
-            } catch (_) {}
+          res = $http.send({
+            url,
+            method,
+            headers,
+            body: bodyData,
+            timeout: 20,
+          })
+          if (res && res.statusCode >= 200 && res.statusCode < 300) {
+            return res
           }
 
-          var custCol = $app.findCollectionByNameOrId('customers')
-          var newCustRec = new Record(custCol)
-          if (customerId && customerId.length >= 10 && customerId.length <= 15) {
-            newCustRec.setId(customerId)
+          // Diagnóstico completo e explícito de resposta non-2xx da Meta (sem truncamento)
+          const errObj = res && res.json && res.json.error ? res.json.error : {}
+          const errCode = errObj.code !== undefined ? errObj.code : 'none'
+          const errSubcode = errObj.error_subcode !== undefined ? errObj.error_subcode : 'none'
+          const errMsg =
+            errObj.message || (res ? (typeof res.body === 'string' ? res.body : '') : '') || 'none'
+          const errType = errObj.type || 'none'
+          const errTitle = errObj.error_user_title || 'none'
+          const errUserMsg = errObj.error_user_msg || errObj.error_user_message || 'none'
+          const fbtraceId = errObj.fbtrace_id || 'none'
+          const isTransient = errObj.is_transient !== undefined ? errObj.is_transient : 'none'
+
+          console.warn(
+            `[AI_REPLY] Meta HTTP non-2xx: status=${res ? res.statusCode : 'none'} attempt=${attempt + 1}/${maxRetries + 1} url=${url}`,
+          )
+          console.warn(
+            `[AI_REPLY] Meta Error Details: code=${errCode} subcode=${errSubcode} type="${errType}" fbtrace_id="${fbtraceId}" is_transient=${isTransient}`,
+          )
+          console.warn(`[AI_REPLY] Meta Error Message: "${errMsg}"`)
+          if (errTitle !== 'none' || errUserMsg !== 'none') {
+            console.warn(`[AI_REPLY] Meta User Message: title="${errTitle}" msg="${errUserMsg}"`)
           }
-          newCustRec.set('user_id', targetUid || '')
-          newCustRec.set('name', 'Lead Instagram (' + (customerId || 'Novo') + ')')
-          newCustRec.set('status', '1. Acolhimento')
-          newCustRec.set('source', 'Instagram Direct')
-          newCustRec.set('last_origin', 'Instagram Direct')
-          newCustRec.set('last_origin_at', new Date().toISOString())
-          newCustRec.set(
-            'notes',
-            '[Origem: Instagram Direct, ' +
-              new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) +
-              ']',
+          console.warn(
+            `[AI_REPLY] Meta Full Response JSON: ${JSON.stringify(res ? res.json || res.body || '' : '')}`,
           )
-          $app.save(newCustRec)
-          customerInitialCheck = newCustRec
-          console.log(
-            `[AI_REPLY] Cliente novo criado com sucesso no fluxo Instagram: ${newCustRec.id}`,
-          )
-        } catch (createCustErr) {
-          console.error(
-            `[AI_REPLY] Falha ao auto-criar cliente do Instagram: ${String(createCustErr)}`,
-          )
+        } catch (httpErr) {
+          console.error(`[AI_REPLY] Meta HTTP send exception: url=${url} error=${String(httpErr)}`)
         }
+        if (attempt < maxRetries) {
+          const sleepMs = backoffs[attempt] || 9000
+          const start = new Date().getTime()
+          while (new Date().getTime() - start < sleepMs) {}
+        }
+        attempt++
       }
 
-      if (!customerInitialCheck) {
-        console.log(
-          `[AI_REPLY_SKIP] Customer record ${customerId} not found in database. Aborting gracefully without throwing.`,
-        )
-        return e.next()
-      }
-    }
-    if (!userId) {
-      userId = customerInitialCheck.getString('user_id') || ''
-    }
-
-    if (customerInitialCheck.get('is_blocked') === true) {
-      console.log(`[AI_REPLY] Customer ${customerId} is blocked, skipping.`)
       try {
+        const errObj = res && res.json && res.json.error ? res.json.error : {}
         const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const blockLog = new Record(logsCol)
-        blockLog.set('user_id', userId || '')
-        blockLog.set('type', 'ai_reply_skipped')
-        blockLog.set('message', 'IA não respondeu: cliente bloqueado')
-        blockLog.set('details', 'Customer is blocked. AI auto-reply skipped.')
-        blockLog.set('payload', JSON.stringify({ customer_id: customerId }))
-        $app.saveNoValidate(blockLog)
+        const newLog = new Record(logsCol)
+        newLog.set('type', 'api_failure')
+        newLog.set(
+          'message',
+          `Falha Meta API (${url}) após ${maxRetries} tentativas. code=${errObj.code !== undefined ? errObj.code : 'none'} subcode=${errObj.error_subcode !== undefined ? errObj.error_subcode : 'none'}: ${errObj.message || ''}`,
+        )
+        newLog.set(
+          'details',
+          JSON.stringify({
+            url: url,
+            method: method,
+            statusCode: res ? res.statusCode : null,
+            code: errObj.code !== undefined ? errObj.code : null,
+            error_subcode: errObj.error_subcode !== undefined ? errObj.error_subcode : null,
+            error_user_title: errObj.error_user_title || null,
+            error_user_message: errObj.error_user_msg || errObj.error_user_message || null,
+            fbtrace_id: errObj.fbtrace_id || null,
+            message: errObj.message || null,
+            type: errObj.type || null,
+            is_transient: errObj.is_transient !== undefined ? errObj.is_transient : null,
+          }),
+        )
+        newLog.set(
+          'payload',
+          JSON.stringify({
+            statusCode: res ? res.statusCode : null,
+            body: res ? res.json || res.body : null,
+          }),
+        )
+        $app.saveNoValidate(newLog)
       } catch (_) {}
-      return e.next()
+
+      return res
     }
 
-    // Detecção e bloqueio de automação/mensagens de sistema, códigos de verificação e GUARDA ANTI-BOT
-    const incomingText = (e.record.getString('content') || '').trim()
-    const checkCustPhone = customerInitialCheck.getString('phone') || ''
-    const checkCustName = customerInitialCheck.getString('name') || ''
-    const isVerificationCodeMsg =
-      /\b(?:\d{4,8})\s+[ée]\s+o\s+teu\s+c[oó]digo/i.test(incomingText) ||
-      /\b(?:\d{4,8})\s+[ée]\s+o\s+seu\s+c[oó]digo/i.test(incomingText) ||
-      /\b(?:\d{4,8})\s+is\s+your\s+(?:Instagram|Facebook|WhatsApp|Meta|security|verification)\s+code/i.test(
-        incomingText,
-      ) ||
-      /(?:n[aã]o\s+o\s+partilhe|n[aã]o\s+compartilhe|do\s*not\s+share|don'?t\s+share|never\s+share)/i.test(
-        incomingText,
-      ) ||
-      /c[oó]digo\s+(?:do\s+instagram|do\s+whatsapp|do\s+facebook|da\s+meta|de\s+confirma[cç][aã]o|de\s+verifica[cç][aã]o|de\s+seguran[cç]a)/i.test(
-        incomingText,
-      ) ||
-      /^\s*\d{4,8}\s*[-:]?\s*(?:c[oó]digo|code|é o|is your)\b/i.test(incomingText) ||
-      incomingText === '[unsupported Recebida]' ||
-      incomingText.includes(
-        'este número é exclusivo para comunicados e novidades, sem atendimento humano',
+    let acquiredLock = false
+    var matchedProps = []
+    var detectedSpecificPropertyQuery = false
+    var targetSpecificProp = null
+    var hasFreeSearchIntent = false
+    function isFreeSearchIntent(text) {
+      if (!text || typeof text !== 'string') return false
+      return /\b(?:pesquisar(?:\s+para\s+mim)?|buscar(?:\s+para\s+mim)?|procurar(?:\s+para\s+mim)?|fazenda|área\s+rural|area\s+rural|sítio|sitio|chácara|chacara|terreno|rural)\b/i.test(
+        text,
       )
+    }
+    const customerId = e.record.getString('customer_id')
+    const conversationChannel = e.record.getString('channel') || 'whatsapp'
+    const incomingMsgId = e.record.id
+    let userId = e.record.getString('user_id')
 
-    const isSystemSenderNumber =
-      checkCustPhone.replace(/\D/g, '') === '447710173736' ||
-      checkCustPhone === '+44 7710 173736' ||
-      /^facebook\s+business$/i.test(checkCustName)
+    // Horário oficial de Brasília (UTC-3) disponível em todos os escopos (incluindo o catch de erro)
+    const now = new Date()
+    const brTime = new Date(now.getTime() - 3 * 3600 * 1000)
+    const brHour = brTime.getUTCHours()
 
-    // GUARDA ANTI-BOT: Detecção rigorosa de robôs, auto-respostas e assistentes virtuais de terceiros
-    const lowerCustName = checkCustName.toLowerCase()
-    const isBotSenderName =
-      lowerCustName.includes('bot') ||
-      lowerCustName.includes('auto reply') ||
-      lowerCustName.includes('resposta automática') ||
-      lowerCustName.includes('resposta automatica') ||
-      lowerCustName.includes('atendimento virtual') ||
-      lowerCustName.includes('meta business') ||
-      lowerCustName.includes('assistente virtual')
-
-    const lowerIncoming = incomingText.toLowerCase()
-    const isAutoReplyOrBotMessage =
-      lowerIncoming.includes('esta é uma mensagem automática') ||
-      lowerIncoming.includes('esta e uma mensagem automatica') ||
-      lowerIncoming.includes('essa é uma mensagem automática') ||
-      lowerIncoming.includes('essa e uma mensagem automatica') ||
-      lowerIncoming.includes('mensagem gravada automaticamente') ||
-      lowerIncoming.includes('resposta automática') ||
-      lowerIncoming.includes('resposta automatica') ||
-      lowerIncoming.includes('mensagem automática') ||
-      lowerIncoming.includes('mensagem automatica') ||
-      (lowerIncoming.includes('horário de atendimento') &&
-        (lowerIncoming.includes('retornaremos') || lowerIncoming.includes('estamos ausentes'))) ||
-      lowerIncoming.includes('não responda a este número') ||
-      lowerIncoming.includes('nao responda a este numero') ||
-      lowerIncoming.includes('digite 1 para') ||
-      lowerIncoming.includes('digite uma opção') ||
-      lowerIncoming.includes('digite uma opcao') ||
-      lowerIncoming.includes('escolha uma das opções') ||
-      lowerIncoming.includes('escolha uma das opcoes') ||
-      lowerIncoming.includes('protocolo de atendimento:') ||
-      lowerIncoming.includes('responda a pesquisa do meu atendimento') ||
-      lowerIncoming.includes('sua opinião é muito importante para nós') ||
-      lowerIncoming.includes('como você classifica nosso atendimento') ||
-      lowerIncoming.includes('continue setting up your account') ||
-      (lowerIncoming.includes('obrigado por entrar em contato') &&
-        lowerIncoming.includes('no momento')) ||
-      lowerIncoming.includes('agradecemos seu contato, no momento')
-
-    if (
-      isVerificationCodeMsg ||
-      isSystemSenderNumber ||
-      isBotSenderName ||
-      isAutoReplyOrBotMessage
-    ) {
-      console.log(
-        `[AI_REPLY] [ANTI-BOT] Mensagem de verificação, auto-resposta ou robô detectada para customer=${customerId} (name="${checkCustName}"). Resposta automática cancelada.`,
-      )
-      return e.next()
+    // Regra de saudação temporal (America/Sao_Paulo):
+    // Bom dia até ~12h (0h..11h59), Boa tarde das 12h às 17h59, Boa noite a partir das 18h
+    function getTemporalGreetingWord(hour) {
+      const h = typeof hour === 'number' ? hour : brHour
+      if (h < 12) return 'Bom dia'
+      if (h < 18) return 'Boa tarde'
+      return 'Boa noite'
     }
 
-    // Lock acquisition with 180s TTL (3 min). Trava com now - lockTime >= 180000 é expirada e sobrescrita.
-    // Tags sem timestamp (ai_processing legado) ou inválidas são expiradas imediatamente.
-    const lockTtlMs = 180000
-    try {
-      $app.runInTransaction((txApp) => {
-        const customer = safeFindRecordById('customers', customerId, txApp)
-        if (!customer) {
-          throw new Error('CUSTOMER_NOT_FOUND')
+    function buildTemporalGreeting(name, hour, withIdentity) {
+      const salutation = getTemporalGreetingWord(hour).toLowerCase()
+      if (withIdentity) {
+        if (name && name.trim()) {
+          return `Bia da BRF Imóveis — ${salutation}, ${name.trim()}, tudo bem?`
         }
-        let rawTags = customer.get('tags')
-        let tags = []
-        if (Array.isArray(rawTags)) {
-          tags = rawTags.filter((t) => typeof t === 'string')
-        } else if (typeof rawTags === 'string') {
-          try {
-            const parsed = JSON.parse(rawTags)
-            if (Array.isArray(parsed)) tags = parsed.filter((t) => typeof t === 'string')
-          } catch (_) {}
+        return `Bia da BRF Imóveis — ${salutation}, tudo bem?`
+      }
+      const capSalutation = getTemporalGreetingWord(hour)
+      if (name && name.trim()) {
+        return `${capSalutation}, ${name.trim()}!`
+      }
+      return `${capSalutation}!`
+    }
+
+    console.log(
+      `[AI_REPLY] Triggered for customer=${customerId} sender=${sender} channel=${conversationChannel} msgId=${incomingMsgId}`,
+    )
+
+    // Helper seguro para buscar registros sem estourar GoError quando a linha não existe
+    function safeFindRecordById(collectionName, recordId, appInstance) {
+      if (!collectionName || !recordId) return null
+      var app = appInstance || $app
+      try {
+        var records = app.findRecordsByFilter(collectionName, 'id = {:id}', '', 1, 0, {
+          id: recordId,
+        })
+        if (records && records.length > 0) {
+          return records[0]
         }
+      } catch (_) {}
+      return null
+    }
 
-        const nowMs = new Date().getTime()
-        const lockPrefix = 'ai_processing:'
-        let activeLock = false
+    // Release seguro e tolerante do lock de IA (idempotente)
+    function safeReleaseLock(targetCustomerId, appInstance) {
+      if (!targetCustomerId) return
+      var app = appInstance || $app
 
-        for (let i = 0; i < tags.length; i++) {
-          const t = tags[i]
-          if (t === 'ai_processing') {
-            // Tag legada sem timestamp numérico trava para sempre -> considerar expirada e limpar
-            activeLock = false
-            break
-          }
-          if (t.startsWith(lockPrefix)) {
-            const lockTimeStr = t.substring(lockPrefix.length)
-            const lockTime = parseInt(lockTimeStr, 10)
-            // Trava ativa apenas se tiver timestamp válido e não tiver completado 180.000ms (3 min)
-            if (!isNaN(lockTime) && nowMs - lockTime < lockTtlMs) {
-              activeLock = true
-              break
+      // 1. Liberação via coleção ai_locks se existir
+      try {
+        var lockRecords = app.findRecordsByFilter('ai_locks', 'customer_id = {:cid}', '', 1, 0, {
+          cid: targetCustomerId,
+        })
+        if (lockRecords && lockRecords.length > 0) {
+          for (var li = 0; li < lockRecords.length; li++) {
+            try {
+              app.delete(lockRecords[li])
+              console.log(`[AI_REPLY] ai_locks record deleted for customer=${targetCustomerId}`)
+            } catch (delErr) {
+              console.warn(`[AI_REPLY] Error deleting ai_locks record: ${String(delErr)}`)
             }
           }
         }
+      } catch (_) {}
 
-        // Se a trava estiver ativa há menos de 180s, respeitar rigorosamente a trava para evitar execuções paralelas concorrentes
-
-        if (activeLock) {
-          throw new Error('LOCKED')
+      // 2. Liberação via tags do cliente (se o cliente existir)
+      try {
+        var targetCust = safeFindRecordById('customers', targetCustomerId, app)
+        if (targetCust) {
+          var rawTags = targetCust.get('tags')
+          var currentTags = []
+          if (Array.isArray(rawTags)) {
+            currentTags = rawTags.filter((t) => typeof t === 'string')
+          } else if (typeof rawTags === 'string') {
+            try {
+              var p = JSON.parse(rawTags)
+              if (Array.isArray(p)) currentTags = p.filter((t) => typeof t === 'string')
+            } catch (_) {}
+          }
+          var hasLockTag = currentTags.some(
+            (t) => t === 'ai_processing' || t.startsWith('ai_processing:'),
+          )
+          if (hasLockTag) {
+            targetCust.set(
+              'tags',
+              currentTags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:')),
+            )
+            app.saveNoValidate(targetCust)
+            console.log(`[AI_REPLY] Lock tag released cleanly for customer=${targetCustomerId}`)
+          }
         }
+      } catch (cleanLockErr) {
+        console.warn(
+          `[AI_REPLY] Error releasing lock tag for customer ${targetCustomerId}: ${String(cleanLockErr)}`,
+        )
+      }
 
-        const newTags = tags.filter((t) => t !== 'ai_processing' && !t.startsWith('ai_processing:'))
-        newTags.push(`ai_processing:${nowMs}`)
-        customer.set('tags', newTags)
-        txApp.saveNoValidate(customer)
-        acquiredLock = true
-      })
-    } catch (err) {
-      if (err.message === 'CUSTOMER_NOT_FOUND') {
-        console.log(
-          `[AI_REPLY_SKIP] Customer ${customerId} not found during lock acquisition. Skipping.`,
-        )
-        return e.next()
-      }
-      if (err.message === 'LOCKED') {
-        console.log(
-          `[AI_REPLY] Customer ${customerId} already has active ai_processing lock (<180s), skipping.`,
-        )
-        return e.next()
-      }
-      console.error(`[AI_REPLY] Lock acquisition error for ${customerId}: ${String(err)}`)
-      return e.next()
+      // 3. Fallback SQL direto seguro (apenas se o customer existir no DB)
+      try {
+        app
+          .db()
+          .newQuery(
+            "UPDATE customers SET tags = (SELECT json_group_array(value) FROM json_each(customers.tags) WHERE value NOT LIKE 'ai_processing%') WHERE id = {:id}",
+          )
+          .bind({ id: targetCustomerId })
+          .execute()
+      } catch (_) {}
     }
 
-    console.log(`[AI_REPLY] Lock acquired successfully for customer=${customerId}`)
-
-    // Check if another message arrived and made this one obsolete
     try {
-      const latestMsgs = $app.findRecordsByFilter(
-        'conversations',
-        `customer_id = '${customerId}'`,
-        '-created',
-        1,
-        0,
-      )
-      if (latestMsgs.length > 0) {
-        const lastMsg = latestMsgs[0]
-        if (lastMsg.id !== incomingMsgId) {
+      let customerInitialCheck = safeFindRecordById('customers', customerId)
+      if (!customerInitialCheck) {
+        // Se não encontrou o cliente e o canal for instagram, tenta criar o cliente sob demanda
+        if (conversationChannel === 'instagram') {
+          try {
+            console.log(
+              `[AI_REPLY] Customer ${customerId} não encontrado. Criando cliente novo com origem 'Instagram Direct'...`,
+            )
+            let targetUid = userId
+            if (!targetUid) {
+              try {
+                var igUsersList = $app.findRecordsByFilter(
+                  'users',
+                  "meta_instagram_business_id != '' || instagram_username != '' || meta_instagram_page_token != ''",
+                  'created',
+                  1,
+                  0,
+                )
+                if (igUsersList && igUsersList.length > 0) {
+                  targetUid = igUsersList[0].id
+                }
+              } catch (_) {}
+            }
+            if (!targetUid) {
+              try {
+                var anyUser = $app.findRecordsByFilter('users', "email != ''", 'created', 1, 0)
+                if (anyUser && anyUser.length > 0) targetUid = anyUser[0].id
+              } catch (_) {}
+            }
+
+            var custCol = $app.findCollectionByNameOrId('customers')
+            var newCustRec = new Record(custCol)
+            if (customerId && customerId.length >= 10 && customerId.length <= 15) {
+              newCustRec.setId(customerId)
+            }
+            newCustRec.set('user_id', targetUid || '')
+            newCustRec.set('name', 'Lead Instagram (' + (customerId || 'Novo') + ')')
+            newCustRec.set('status', '1. Acolhimento')
+            newCustRec.set('source', 'Instagram Direct')
+            newCustRec.set('last_origin', 'Instagram Direct')
+            newCustRec.set('last_origin_at', new Date().toISOString())
+            newCustRec.set(
+              'notes',
+              '[Origem: Instagram Direct, ' +
+                new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) +
+                ']',
+            )
+            $app.save(newCustRec)
+            customerInitialCheck = newCustRec
+            console.log(
+              `[AI_REPLY] Cliente novo criado com sucesso no fluxo Instagram: ${newCustRec.id}`,
+            )
+          } catch (createCustErr) {
+            console.error(
+              `[AI_REPLY] Falha ao auto-criar cliente do Instagram: ${String(createCustErr)}`,
+            )
+          }
+        }
+
+        if (!customerInitialCheck) {
           console.log(
-            `[AI_REPLY] Skipping: incoming message ${incomingMsgId} is not the latest (latest=${lastMsg.id})`,
+            `[AI_REPLY_SKIP] Customer record ${customerId} not found in database. Aborting gracefully without throwing.`,
           )
           return e.next()
         }
-        const lastSender = lastMsg.getString('sender')
-        if (lastSender !== 'customer' && lastSender !== 'user' && lastSender !== 'lead') {
-          console.log(`[AI_REPLY] Skipping: last sender is '${lastSender}'`)
+      }
+      if (!userId) {
+        userId = customerInitialCheck.getString('user_id') || ''
+      }
+
+      if (customerInitialCheck.get('is_blocked') === true) {
+        console.log(`[AI_REPLY] Customer ${customerId} is blocked, skipping.`)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const blockLog = new Record(logsCol)
+          blockLog.set('user_id', userId || '')
+          blockLog.set('type', 'ai_reply_skipped')
+          blockLog.set('message', 'IA não respondeu: cliente bloqueado')
+          blockLog.set('details', 'Customer is blocked. AI auto-reply skipped.')
+          blockLog.set('payload', JSON.stringify({ customer_id: customerId }))
+          $app.saveNoValidate(blockLog)
+        } catch (_) {}
+        return e.next()
+      }
+
+      // Detecção e bloqueio de automação/mensagens de sistema, códigos de verificação e GUARDA ANTI-BOT
+      const incomingText = (e.record.getString('content') || '').trim()
+      const checkCustPhone = customerInitialCheck.getString('phone') || ''
+      const checkCustName = customerInitialCheck.getString('name') || ''
+      const isVerificationCodeMsg =
+        /\b(?:\d{4,8})\s+[ée]\s+o\s+teu\s+c[oó]digo/i.test(incomingText) ||
+        /\b(?:\d{4,8})\s+[ée]\s+o\s+seu\s+c[oó]digo/i.test(incomingText) ||
+        /\b(?:\d{4,8})\s+is\s+your\s+(?:Instagram|Facebook|WhatsApp|Meta|security|verification)\s+code/i.test(
+          incomingText,
+        ) ||
+        /(?:n[aã]o\s+o\s+partilhe|n[aã]o\s+compartilhe|do\s*not\s+share|don'?t\s+share|never\s+share)/i.test(
+          incomingText,
+        ) ||
+        /c[oó]digo\s+(?:do\s+instagram|do\s+whatsapp|do\s+facebook|da\s+meta|de\s+confirma[cç][aã]o|de\s+verifica[cç][aã]o|de\s+seguran[cç]a)/i.test(
+          incomingText,
+        ) ||
+        /^\s*\d{4,8}\s*[-:]?\s*(?:c[oó]digo|code|é o|is your)\b/i.test(incomingText) ||
+        incomingText === '[unsupported Recebida]' ||
+        incomingText.includes(
+          'este número é exclusivo para comunicados e novidades, sem atendimento humano',
+        )
+
+      const isSystemSenderNumber =
+        checkCustPhone.replace(/\D/g, '') === '447710173736' ||
+        checkCustPhone === '+44 7710 173736' ||
+        /^facebook\s+business$/i.test(checkCustName)
+
+      // GUARDA ANTI-BOT: Detecção rigorosa de robôs, auto-respostas e assistentes virtuais de terceiros
+      const lowerCustName = checkCustName.toLowerCase()
+      const isBotSenderName =
+        lowerCustName.includes('bot') ||
+        lowerCustName.includes('auto reply') ||
+        lowerCustName.includes('resposta automática') ||
+        lowerCustName.includes('resposta automatica') ||
+        lowerCustName.includes('atendimento virtual') ||
+        lowerCustName.includes('meta business') ||
+        lowerCustName.includes('assistente virtual')
+
+      const lowerIncoming = incomingText.toLowerCase()
+      const isAutoReplyOrBotMessage =
+        lowerIncoming.includes('esta é uma mensagem automática') ||
+        lowerIncoming.includes('esta e uma mensagem automatica') ||
+        lowerIncoming.includes('essa é uma mensagem automática') ||
+        lowerIncoming.includes('essa e uma mensagem automatica') ||
+        lowerIncoming.includes('mensagem gravada automaticamente') ||
+        lowerIncoming.includes('resposta automática') ||
+        lowerIncoming.includes('resposta automatica') ||
+        lowerIncoming.includes('mensagem automática') ||
+        lowerIncoming.includes('mensagem automatica') ||
+        (lowerIncoming.includes('horário de atendimento') &&
+          (lowerIncoming.includes('retornaremos') || lowerIncoming.includes('estamos ausentes'))) ||
+        lowerIncoming.includes('não responda a este número') ||
+        lowerIncoming.includes('nao responda a este numero') ||
+        lowerIncoming.includes('digite 1 para') ||
+        lowerIncoming.includes('digite uma opção') ||
+        lowerIncoming.includes('digite uma opcao') ||
+        lowerIncoming.includes('escolha uma das opções') ||
+        lowerIncoming.includes('escolha uma das opcoes') ||
+        lowerIncoming.includes('protocolo de atendimento:') ||
+        lowerIncoming.includes('responda a pesquisa do meu atendimento') ||
+        lowerIncoming.includes('sua opinião é muito importante para nós') ||
+        lowerIncoming.includes('como você classifica nosso atendimento') ||
+        lowerIncoming.includes('continue setting up your account') ||
+        (lowerIncoming.includes('obrigado por entrar em contato') &&
+          lowerIncoming.includes('no momento')) ||
+        lowerIncoming.includes('agradecemos seu contato, no momento')
+
+      if (
+        isVerificationCodeMsg ||
+        isSystemSenderNumber ||
+        isBotSenderName ||
+        isAutoReplyOrBotMessage
+      ) {
+        console.log(
+          `[AI_REPLY] [ANTI-BOT] Mensagem de verificação, auto-resposta ou robô detectada para customer=${customerId} (name="${checkCustName}"). Resposta automática cancelada.`,
+        )
+        return e.next()
+      }
+
+      // Lock acquisition with 180s TTL (3 min). Trava com now - lockTime >= 180000 é expirada e sobrescrita.
+      // Tags sem timestamp (ai_processing legado) ou inválidas são expiradas imediatamente.
+      const lockTtlMs = 180000
+      try {
+        $app.runInTransaction((txApp) => {
+          const customer = safeFindRecordById('customers', customerId, txApp)
+          if (!customer) {
+            throw new Error('CUSTOMER_NOT_FOUND')
+          }
+          let rawTags = customer.get('tags')
+          let tags = []
+          if (Array.isArray(rawTags)) {
+            tags = rawTags.filter((t) => typeof t === 'string')
+          } else if (typeof rawTags === 'string') {
+            try {
+              const parsed = JSON.parse(rawTags)
+              if (Array.isArray(parsed)) tags = parsed.filter((t) => typeof t === 'string')
+            } catch (_) {}
+          }
+
+          const nowMs = new Date().getTime()
+          const lockPrefix = 'ai_processing:'
+          let activeLock = false
+
+          for (let i = 0; i < tags.length; i++) {
+            const t = tags[i]
+            if (t === 'ai_processing') {
+              // Tag legada sem timestamp numérico trava para sempre -> considerar expirada e limpar
+              activeLock = false
+              break
+            }
+            if (t.startsWith(lockPrefix)) {
+              const lockTimeStr = t.substring(lockPrefix.length)
+              const lockTime = parseInt(lockTimeStr, 10)
+              // Trava ativa apenas se tiver timestamp válido e não tiver completado 180.000ms (3 min)
+              if (!isNaN(lockTime) && nowMs - lockTime < lockTtlMs) {
+                activeLock = true
+                break
+              }
+            }
+          }
+
+          // Se a trava estiver ativa há menos de 180s, respeitar rigorosamente a trava para evitar execuções paralelas concorrentes
+
+          if (activeLock) {
+            throw new Error('LOCKED')
+          }
+
+          const newTags = tags.filter(
+            (t) => t !== 'ai_processing' && !t.startsWith('ai_processing:'),
+          )
+          newTags.push(`ai_processing:${nowMs}`)
+          customer.set('tags', newTags)
+          txApp.saveNoValidate(customer)
+          acquiredLock = true
+        })
+      } catch (err) {
+        if (err.message === 'CUSTOMER_NOT_FOUND') {
+          console.log(
+            `[AI_REPLY_SKIP] Customer ${customerId} not found during lock acquisition. Skipping.`,
+          )
           return e.next()
         }
+        if (err.message === 'LOCKED') {
+          console.log(
+            `[AI_REPLY] Customer ${customerId} already has active ai_processing lock (<180s), skipping.`,
+          )
+          return e.next()
+        }
+        console.error(`[AI_REPLY] Lock acquisition error for ${customerId}: ${String(err)}`)
+        return e.next()
       }
-    } catch (err) {
-      console.warn(`[AI_REPLY] Check latest message failed (non-fatal): ${String(err)}`)
-    }
 
-    let userRecord = null
-    try {
-      if (userId) {
-        userRecord = safeFindRecordById('users', userId)
-      }
-    } catch (err) {
-      console.warn(`[AI_REPLY] Could not load user ${userId}: ${String(err)}`)
-    }
+      console.log(`[AI_REPLY] Lock acquired successfully for customer=${customerId}`)
 
-    if (!userRecord) {
+      // Check if another message arrived and made this one obsolete
       try {
-        const fallbackUsers = $app.findRecordsByFilter(
-          'users',
-          "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+        const latestMsgs = $app.findRecordsByFilter(
+          'conversations',
+          `customer_id = '${customerId}'`,
           '-created',
           1,
           0,
         )
-        if (fallbackUsers.length > 0) {
-          userRecord = fallbackUsers[0]
-          userId = userRecord.id
-          console.log(`[AI_REPLY] Resolved fallback user ${userId}`)
-        }
-      } catch (_) {}
-    }
-
-    let customer = safeFindRecordById('customers', customerId) || customerInitialCheck
-    if (!customer) {
-      console.log(`[AI_REPLY_SKIP] Customer ${customerId} disappeared before processing. Aborting.`)
-      return e.next()
-    }
-    let rawCustomerTags = customer.get('tags')
-    let tags = []
-    if (Array.isArray(rawCustomerTags)) {
-      tags = rawCustomerTags.filter((t) => typeof t === 'string')
-    }
-    const customerPhone = customer.getString('phone') || ''
-    const customerSource = customer.getString('source') || ''
-    const customerLastOrigin = (customer.getString('last_origin') || '').trim()
-    const customerNotes = (customer.getString('notes') || '').trim()
-    const effectiveOrigin = customerLastOrigin || customerSource || ''
-    const isAdReferral =
-      effectiveOrigin.toLowerCase().includes('anúncio') ||
-      effectiveOrigin.toLowerCase().includes('anuncio') ||
-      customerSource.toLowerCase().includes('anúncio') ||
-      customerSource.toLowerCase().includes('anuncio') ||
-      customerNotes.toLowerCase().includes('origem: anúncio') ||
-      customerNotes.toLowerCase().includes('origem: anuncio')
-
-    // PRE-DETECÇÃO DE DESENCAIXE IMPLÍCITO OU IMÓVEL ESPECÍFICO NA ÚLTIMA MENSAGEM DO LEAD (MÁXIMA PRIORIDADE):
-    const incomingCustMsgText = (e.record.getString('content') || '').trim()
-    let isMismatchDetected = false
-    let isCustomerExplicitRejection = false
-    let lastMsgSpecificPropertyRequested = false
-    let lastMsgPropertyCodeOrNum = ''
-    let isShortContinuationMsg = false
-
-    // Função utilitária para extrair código explícito de imóvel no texto
-    // Retorna { fullCode: "AP343", numOnly: "343" } ou null
-    function extractExplicitPropertyCode(txt) {
-      if (!txt || typeof txt !== 'string') return null
-      const cleaned = txt.trim()
-      if (!cleaned) return null
-
-      // 1. Slug de URL do site brfimoveis (ex: brfimoveis.com.br/343/..., /343/)
-      const urlMatch = cleaned.match(/(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/i)
-      if (urlMatch && urlMatch[1]) {
-        return { fullCode: urlMatch[1], numOnly: urlMatch[1] }
-      }
-
-      // 2. Hashtag com código ou número (ex: #AP343, #ap 343, #343, #ARU341, #341)
-      const hashMatch = cleaned.match(/#\s*([a-zA-Z]{0,4})\s*(\d{2,5})\b/i)
-      if (hashMatch && hashMatch[2]) {
-        const prefix = (hashMatch[1] || '').toUpperCase()
-        const numOnly = hashMatch[2]
-        return { fullCode: prefix ? `${prefix}${numOnly}` : numOnly, numOnly: numOnly }
-      }
-
-      // 3. Código padrão com prefixo real (ex: AP 343, AP343, ap 343, ARU 341, LM-344, CS 331, TR 338, COB 290)
-      const codeMatch = cleaned.match(/\b(AP|LM|CS|TR|ARU|COB|BRF)[-_\s]*(\d{2,5})\b/i)
-      if (codeMatch && codeMatch[2]) {
-        const prefix = codeMatch[1].toUpperCase()
-        const numOnly = codeMatch[2]
-        return { fullCode: `${prefix}${numOnly}`, numOnly: numOnly }
-      }
-
-      // 4. Termo com contexto imobiliário (ex: "imóvel 343", "apartamento 343", "código 343", "apto 343", "ref 343")
-      const numWithContext = cleaned.match(
-        /(?:im[oó]vel|imovel|apartamento|apto|fazenda|casa|terreno|c[oó]digo|codigo|cod|ref)\s*#?\s*([a-zA-Z]{0,4})\s*(\d{2,5})\b/i,
-      )
-      if (numWithContext && numWithContext[2]) {
-        const prefix = (numWithContext[1] || '').toUpperCase()
-        const numOnly = numWithContext[2]
-        return { fullCode: prefix ? `${prefix}${numOnly}` : numOnly, numOnly: numOnly }
-      }
-
-      // 5. Número isolado explícito de imóvel no texto (ex: "343", "o 343", "e o 343", "informações do 343")
-      // Ignora anos correntes ou valores arredondados genéricos
-      const bareNumMatch = cleaned.match(/\b(\d{3,4})\b/)
-      if (
-        bareNumMatch &&
-        bareNumMatch[1] &&
-        bareNumMatch[1] !== '2024' &&
-        bareNumMatch[1] !== '2025' &&
-        bareNumMatch[1] !== '2026' &&
-        bareNumMatch[1] !== '500' &&
-        bareNumMatch[1] !== '100' &&
-        bareNumMatch[1] !== '200'
-      ) {
-        return { fullCode: bareNumMatch[1], numOnly: bareNumMatch[1] }
-      }
-
-      return null
-    }
-
-    // ITEM 6: ANTI-INSISTÊNCIA — Detecção de recusa/frustração do cliente
-    if (incomingCustMsgText) {
-      const refusalRegex =
-        /\b(?:n[aã]o\s+é\s+nada\s+disso|n[aã]o\s+e\s+nada\s+disso|n[aã]o\s+[eé]\s+isso|n[aã]o\s+era\s+isso|voc[eê]\s+est[aá]\s+doida|voc[eê]\s+t[aá]\s+doida|t[aá]\s+me\s+fazendo\s+de\s+ot[aá]rio|t[aá]\s+me\s+fazendo\s+de\s+trouxa|est[aá]\s+me\s+fazendo\s+de\s+ot[aá]rio|parece\s+que\s+n[aã]o|estamos\s+falando\s+do\s+mesmo\s+im[oó]vel|n[aã]o\s+foi\s+isso(?:\s+que\s+eu\s+pedi)?|est[aá]\s+confundindo|est[aá]\s+me\s+confundindo|t[aá]\s+confundindo|t[aá]\s+me\s+confundindo|confundiu|n[aã]o\s+pedi\s+isso|n[aã]o\s+quero\s+esse|n[aã]o\s+é\s+esse|n[aã]o\s+e\s+esse|voc[eê]\s+trocou\s+de\s+im[oó]vel|trocou\s+o\s+im[oó]vel|im[oó]vel\s+errado)\b/i
-      if (refusalRegex.test(incomingCustMsgText)) {
-        isMismatchDetected = true
-        isCustomerExplicitRejection = true
-        console.log(
-          `[AI_REPLY] [ANTI-INSISTÊNCIA] Recusa/frustração explícita detectada para lead ${customerId}: "${incomingCustMsgText}".`,
-        )
-      }
-    }
-
-    // CORREÇÃO 2 — DETECÇÃO DE MENSAGENS CURTAS DE CONTINUIDADE
-    isShortContinuationMsg = (() => {
-      if (!incomingCustMsgText) return false
-      const cleanMsg = incomingCustMsgText
-        .trim()
-        .toLowerCase()
-        .replace(/[.!?,;:\-_~]+/g, '')
-      if (cleanMsg.length <= 4) {
-        if (/^(ok|sim|s|ta|tá|manda|ver|bom|oi|ola|olá|bora)$/.test(cleanMsg)) return true
-      }
-      return (
-        /^(aguardando|pois n[aã]o|pode mandar|pode mandar aqui|pode enviar|pode mandar por aqui|manda a[ií]|manda bala|manda ver|ebuk e tabela|e-?book e tabela|quero o e-?book|tabela e e-?book|quero a tabela|manda a tabela|mande a tabela|pode mandar a tabela|estou aguardando|no aguardo|com certeza|perfeito|combinado|show|beleza|tudo bem|vamos l[aá]|pode ser|claro)$/i.test(
-          cleanMsg,
-        ) ||
-        (/\b(?:ebuk|ebook|e-book)\b/i.test(cleanMsg) && cleanMsg.length <= 25)
-      )
-    })()
-
-    // ITEM 1: FOCO DEFINITIVO — Se a última mensagem contém código explícito, extrair com prioridade absoluta
-    if (incomingCustMsgText) {
-      const directCodeFound = extractExplicitPropertyCode(incomingCustMsgText)
-      if (directCodeFound) {
-        lastMsgSpecificPropertyRequested = true
-        lastMsgPropertyCodeOrNum = directCodeFound.fullCode
-        // Se a mensagem trouxe código explícito novo, ela re-alinha a conversa e supera recusa anterior
-        isMismatchDetected = false
-        console.log(
-          `[AI_REPLY] [FOCO EXPLÍCITO DETECTADO] Código "${directCodeFound.fullCode}" (num=${directCodeFound.numOnly}) encontrado na mensagem atual do lead.`,
-        )
-      }
-    }
-
-    // Procura por Dossiê de Lançamento publicado compatível (launches com status='publicado')
-    // SÓ vincula se a última mensagem do lead NÃO for sobre um imóvel específico diferente
-    let matchedLaunch = null
-    if (!lastMsgSpecificPropertyRequested) {
-      try {
-        const publishedLaunches = $app.findRecordsByFilter(
-          'launches',
-          "status = 'publicado'",
-          '-created',
-          50,
-          0,
-        )
-        const referralSearchText =
-          `${effectiveOrigin} ${customerSource} ${customerNotes} ${conversationChannel || ''}`.toLowerCase()
-
-        for (const lItem of publishedLaunches) {
-          const lName = (lItem.getString('name') || '').toLowerCase()
-          const lSlug = (lItem.getString('slug') || '').toLowerCase()
-          const lEnterprise = (lItem.getString('enterprise_name') || '').toLowerCase()
-
-          let keywords = lItem.get('keywords')
-          if (typeof keywords === 'string') {
-            try {
-              keywords = JSON.parse(keywords)
-            } catch (_) {
-              keywords = [keywords]
-            }
-          }
-
-          const matchTerms = [lName, lSlug, lEnterprise]
-          if (Array.isArray(keywords)) {
-            for (let kwIdx = 0; kwIdx < keywords.length; kwIdx++) {
-              matchTerms.push(keywords[kwIdx])
-            }
-          }
-
-          const hasMatch = matchTerms.some((term) => {
-            if (!term || typeof term !== 'string') return false
-            const t = term.trim().toLowerCase()
-            return t.length > 2 && referralSearchText.includes(t)
-          })
-
-          if (hasMatch) {
-            matchedLaunch = lItem
+        if (latestMsgs.length > 0) {
+          const lastMsg = latestMsgs[0]
+          if (lastMsg.id !== incomingMsgId) {
             console.log(
-              `[AI_REPLY] Matched published launch dossier: "${lItem.getString('name')}" (slug=${lSlug}, id=${lItem.id}) for customer=${customerId}`,
+              `[AI_REPLY] Skipping: incoming message ${incomingMsgId} is not the latest (latest=${lastMsg.id})`,
             )
-            break
+            return e.next()
+          }
+          const lastSender = lastMsg.getString('sender')
+          if (lastSender !== 'customer' && lastSender !== 'user' && lastSender !== 'lead') {
+            console.log(`[AI_REPLY] Skipping: last sender is '${lastSender}'`)
+            return e.next()
           }
         }
-      } catch (launchErr) {
-        console.warn(
-          `[AI_REPLY] Error checking published launches (non-fatal): ${String(launchErr)}`,
-        )
+      } catch (err) {
+        console.warn(`[AI_REPLY] Check latest message failed (non-fatal): ${String(err)}`)
       }
-    } else {
-      console.log(
-        `[AI_REPLY] Lead requested specific property (${lastMsgPropertyCodeOrNum}) in latest message. Suppressing historical matchedLaunch dossier to prevent cross-contamination.`,
-      )
-    }
 
-    // Procura por Playbook de Anúncio ativo compatível (ad_playbooks)
-    // SÓ vincula se a última mensagem do lead NÃO for sobre um imóvel específico diferente
-    let matchedPlaybook = null
-    if (!lastMsgSpecificPropertyRequested) {
+      let userRecord = null
       try {
-        const activePlaybooks = $app.findRecordsByFilter(
-          'ad_playbooks',
-          'active = true',
-          '-created',
-          50,
-          0,
-        )
-        const referralSearchText =
-          `${effectiveOrigin} ${customerSource} ${customerNotes}`.toLowerCase()
+        if (userId) {
+          userRecord = safeFindRecordById('users', userId)
+        }
+      } catch (err) {
+        console.warn(`[AI_REPLY] Could not load user ${userId}: ${String(err)}`)
+      }
 
-        for (const pbItem of activePlaybooks) {
-          let keywords = pbItem.get('match_keywords')
-          if (typeof keywords === 'string') {
-            try {
-              keywords = JSON.parse(keywords)
-            } catch (_) {
-              keywords = [keywords]
-            }
+      if (!userRecord) {
+        try {
+          const fallbackUsers = $app.findRecordsByFilter(
+            'users',
+            "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+            '-created',
+            1,
+            0,
+          )
+          if (fallbackUsers.length > 0) {
+            userRecord = fallbackUsers[0]
+            userId = userRecord.id
+            console.log(`[AI_REPLY] Resolved fallback user ${userId}`)
           }
-          if (Array.isArray(keywords)) {
-            const hasMatch = keywords.some((kw) => {
-              if (!kw || typeof kw !== 'string') return false
-              const trimmedKw = kw.trim().toLowerCase()
-              return trimmedKw.length > 0 && referralSearchText.includes(trimmedKw)
+        } catch (_) {}
+      }
+
+      let customer = safeFindRecordById('customers', customerId) || customerInitialCheck
+      if (!customer) {
+        console.log(
+          `[AI_REPLY_SKIP] Customer ${customerId} disappeared before processing. Aborting.`,
+        )
+        return e.next()
+      }
+      let rawCustomerTags = customer.get('tags')
+      let tags = []
+      if (Array.isArray(rawCustomerTags)) {
+        tags = rawCustomerTags.filter((t) => typeof t === 'string')
+      }
+      const customerPhone = customer.getString('phone') || ''
+      const customerSource = customer.getString('source') || ''
+      const customerLastOrigin = (customer.getString('last_origin') || '').trim()
+      const customerNotes = (customer.getString('notes') || '').trim()
+      const effectiveOrigin = customerLastOrigin || customerSource || ''
+      const isAdReferral =
+        effectiveOrigin.toLowerCase().includes('anúncio') ||
+        effectiveOrigin.toLowerCase().includes('anuncio') ||
+        customerSource.toLowerCase().includes('anúncio') ||
+        customerSource.toLowerCase().includes('anuncio') ||
+        customerNotes.toLowerCase().includes('origem: anúncio') ||
+        customerNotes.toLowerCase().includes('origem: anuncio')
+
+      // PRE-DETECÇÃO DE DESENCAIXE IMPLÍCITO OU IMÓVEL ESPECÍFICO NA ÚLTIMA MENSAGEM DO LEAD (MÁXIMA PRIORIDADE):
+      const incomingCustMsgText = (e.record.getString('content') || '').trim()
+      let isMismatchDetected = false
+      let isCustomerExplicitRejection = false
+      let lastMsgSpecificPropertyRequested = false
+      let lastMsgPropertyCodeOrNum = ''
+      let isShortContinuationMsg = false
+
+      // Função utilitária para extrair código explícito de imóvel no texto
+      // Retorna { fullCode: "AP343", numOnly: "343" } ou null
+      function extractExplicitPropertyCode(txt) {
+        if (!txt || typeof txt !== 'string') return null
+        const cleaned = txt.trim()
+        if (!cleaned) return null
+
+        // 1. Slug de URL do site brfimoveis (ex: brfimoveis.com.br/343/..., /343/)
+        const urlMatch = cleaned.match(/(?:brfimoveis\.com\.br\/|\/)(\d{1,6})\b/i)
+        if (urlMatch && urlMatch[1]) {
+          return { fullCode: urlMatch[1], numOnly: urlMatch[1] }
+        }
+
+        // 2. Hashtag com código ou número (ex: #AP343, #ap 343, #343, #ARU341, #341)
+        const hashMatch = cleaned.match(/#\s*([a-zA-Z]{0,4})\s*(\d{2,5})\b/i)
+        if (hashMatch && hashMatch[2]) {
+          const prefix = (hashMatch[1] || '').toUpperCase()
+          const numOnly = hashMatch[2]
+          return { fullCode: prefix ? `${prefix}${numOnly}` : numOnly, numOnly: numOnly }
+        }
+
+        // 3. Código padrão com prefixo real (ex: AP 343, AP343, ap 343, ARU 341, LM-344, CS 331, TR 338, COB 290)
+        const codeMatch = cleaned.match(/\b(AP|LM|CS|TR|ARU|COB|BRF)[-_\s]*(\d{2,5})\b/i)
+        if (codeMatch && codeMatch[2]) {
+          const prefix = codeMatch[1].toUpperCase()
+          const numOnly = codeMatch[2]
+          return { fullCode: `${prefix}${numOnly}`, numOnly: numOnly }
+        }
+
+        // 4. Termo com contexto imobiliário (ex: "imóvel 343", "apartamento 343", "código 343", "apto 343", "ref 343")
+        const numWithContext = cleaned.match(
+          /(?:im[oó]vel|imovel|apartamento|apto|fazenda|casa|terreno|c[oó]digo|codigo|cod|ref)\s*#?\s*([a-zA-Z]{0,4})\s*(\d{2,5})\b/i,
+        )
+        if (numWithContext && numWithContext[2]) {
+          const prefix = (numWithContext[1] || '').toUpperCase()
+          const numOnly = numWithContext[2]
+          return { fullCode: prefix ? `${prefix}${numOnly}` : numOnly, numOnly: numOnly }
+        }
+
+        // 5. Número isolado explícito de imóvel no texto (ex: "343", "o 343", "e o 343", "informações do 343")
+        // Ignora anos correntes ou valores arredondados genéricos
+        const bareNumMatch = cleaned.match(/\b(\d{3,4})\b/)
+        if (
+          bareNumMatch &&
+          bareNumMatch[1] &&
+          bareNumMatch[1] !== '2024' &&
+          bareNumMatch[1] !== '2025' &&
+          bareNumMatch[1] !== '2026' &&
+          bareNumMatch[1] !== '500' &&
+          bareNumMatch[1] !== '100' &&
+          bareNumMatch[1] !== '200'
+        ) {
+          return { fullCode: bareNumMatch[1], numOnly: bareNumMatch[1] }
+        }
+
+        return null
+      }
+
+      // ITEM 6: ANTI-INSISTÊNCIA — Detecção de recusa/frustração do cliente
+      if (incomingCustMsgText) {
+        const refusalRegex =
+          /\b(?:n[aã]o\s+é\s+nada\s+disso|n[aã]o\s+e\s+nada\s+disso|n[aã]o\s+[eé]\s+isso|n[aã]o\s+era\s+isso|voc[eê]\s+est[aá]\s+doida|voc[eê]\s+t[aá]\s+doida|t[aá]\s+me\s+fazendo\s+de\s+ot[aá]rio|t[aá]\s+me\s+fazendo\s+de\s+trouxa|est[aá]\s+me\s+fazendo\s+de\s+ot[aá]rio|parece\s+que\s+n[aã]o|estamos\s+falando\s+do\s+mesmo\s+im[oó]vel|n[aã]o\s+foi\s+isso(?:\s+que\s+eu\s+pedi)?|est[aá]\s+confundindo|est[aá]\s+me\s+confundindo|t[aá]\s+confundindo|t[aá]\s+me\s+confundindo|confundiu|n[aã]o\s+pedi\s+isso|n[aã]o\s+quero\s+esse|n[aã]o\s+é\s+esse|n[aã]o\s+e\s+esse|voc[eê]\s+trocou\s+de\s+im[oó]vel|trocou\s+o\s+im[oó]vel|im[oó]vel\s+errado)\b/i
+        if (refusalRegex.test(incomingCustMsgText)) {
+          isMismatchDetected = true
+          isCustomerExplicitRejection = true
+          console.log(
+            `[AI_REPLY] [ANTI-INSISTÊNCIA] Recusa/frustração explícita detectada para lead ${customerId}: "${incomingCustMsgText}".`,
+          )
+        }
+      }
+
+      // CORREÇÃO 2 — DETECÇÃO DE MENSAGENS CURTAS DE CONTINUIDADE
+      isShortContinuationMsg = (() => {
+        if (!incomingCustMsgText) return false
+        const cleanMsg = incomingCustMsgText
+          .trim()
+          .toLowerCase()
+          .replace(/[.!?,;:\-_~]+/g, '')
+        if (cleanMsg.length <= 4) {
+          if (/^(ok|sim|s|ta|tá|manda|ver|bom|oi|ola|olá|bora)$/.test(cleanMsg)) return true
+        }
+        return (
+          /^(aguardando|pois n[aã]o|pode mandar|pode mandar aqui|pode enviar|pode mandar por aqui|manda a[ií]|manda bala|manda ver|ebuk e tabela|e-?book e tabela|quero o e-?book|tabela e e-?book|quero a tabela|manda a tabela|mande a tabela|pode mandar a tabela|estou aguardando|no aguardo|com certeza|perfeito|combinado|show|beleza|tudo bem|vamos l[aá]|pode ser|claro)$/i.test(
+            cleanMsg,
+          ) ||
+          (/\b(?:ebuk|ebook|e-book)\b/i.test(cleanMsg) && cleanMsg.length <= 25)
+        )
+      })()
+
+      // ITEM 1: FOCO DEFINITIVO — Se a última mensagem contém código explícito, extrair com prioridade absoluta
+      if (incomingCustMsgText) {
+        const directCodeFound = extractExplicitPropertyCode(incomingCustMsgText)
+        if (directCodeFound) {
+          lastMsgSpecificPropertyRequested = true
+          lastMsgPropertyCodeOrNum = directCodeFound.fullCode
+          // Se a mensagem trouxe código explícito novo, ela re-alinha a conversa e supera recusa anterior
+          isMismatchDetected = false
+          console.log(
+            `[AI_REPLY] [FOCO EXPLÍCITO DETECTADO] Código "${directCodeFound.fullCode}" (num=${directCodeFound.numOnly}) encontrado na mensagem atual do lead.`,
+          )
+        }
+      }
+
+      // Procura por Dossiê de Lançamento publicado compatível (launches com status='publicado')
+      // SÓ vincula se a última mensagem do lead NÃO for sobre um imóvel específico diferente
+      let matchedLaunch = null
+      if (!lastMsgSpecificPropertyRequested) {
+        try {
+          const publishedLaunches = $app.findRecordsByFilter(
+            'launches',
+            "status = 'publicado'",
+            '-created',
+            50,
+            0,
+          )
+          const referralSearchText =
+            `${effectiveOrigin} ${customerSource} ${customerNotes} ${conversationChannel || ''}`.toLowerCase()
+
+          for (const lItem of publishedLaunches) {
+            const lName = (lItem.getString('name') || '').toLowerCase()
+            const lSlug = (lItem.getString('slug') || '').toLowerCase()
+            const lEnterprise = (lItem.getString('enterprise_name') || '').toLowerCase()
+
+            let keywords = lItem.get('keywords')
+            if (typeof keywords === 'string') {
+              try {
+                keywords = JSON.parse(keywords)
+              } catch (_) {
+                keywords = [keywords]
+              }
+            }
+
+            const matchTerms = [lName, lSlug, lEnterprise]
+            if (Array.isArray(keywords)) {
+              for (let kwIdx = 0; kwIdx < keywords.length; kwIdx++) {
+                matchTerms.push(keywords[kwIdx])
+              }
+            }
+
+            const hasMatch = matchTerms.some((term) => {
+              if (!term || typeof term !== 'string') return false
+              const t = term.trim().toLowerCase()
+              return t.length > 2 && referralSearchText.includes(t)
             })
+
             if (hasMatch) {
-              matchedPlaybook = pbItem
+              matchedLaunch = lItem
               console.log(
-                `[AI_REPLY] Matched ad playbook: "${pbItem.getString('name')}" (id=${pbItem.id}) for customer=${customerId}`,
+                `[AI_REPLY] Matched published launch dossier: "${lItem.getString('name')}" (slug=${lSlug}, id=${lItem.id}) for customer=${customerId}`,
               )
               break
             }
           }
+        } catch (launchErr) {
+          console.warn(
+            `[AI_REPLY] Error checking published launches (non-fatal): ${String(launchErr)}`,
+          )
         }
-      } catch (pbErr) {
-        console.warn(`[AI_REPLY] Error checking ad_playbooks (non-fatal): ${String(pbErr)}`)
-      }
-    } else {
-      console.log(
-        `[AI_REPLY] Lead requested specific property (${lastMsgPropertyCodeOrNum}) in latest message. Suppressing historical ad_playbook to prevent cross-contamination.`,
-      )
-    }
-    const customerName = (customer.getString('name') || '').trim()
-    const customerFirstName = (customer.getString('first_name') || '').trim()
-
-    // Validação estrita do nome do cliente:
-    // Extrai o primeiro nome real do lead a partir de customer first_name ou name.
-    // "Mauro Maurício" vira "Mauro" (jamais string vazia ou descarte).
-    // Se parecer suspeito, incompleto, telefone, e-mail ou não confiável, retorna vazio.
-    function cleanAndValidateLeadName(firstName, fullName) {
-      const candidate = (firstName || '').trim() || (fullName || '').trim()
-      if (!candidate) return ''
-
-      // Ignora telefones, números, símbolos ou formatos de contato
-      if (candidate.includes('+') || candidate.includes('@') || /^\d+$/.test(candidate)) return ''
-      if (
-        /^(lead|cliente|contato|teste|whatsapp|meta|novo|usuario|usuário|imóvel|imovel)\b/i.test(
-          candidate,
-        )
-      )
-        return ''
-
-      // Se for apenas o primeiro nome
-      const parts = candidate.split(/\s+/).filter(Boolean)
-      const firstPart = parts[0]
-
-      // Se o primeiro nome tem menos de 2 letras ou contém caracteres especiais estranhos
-      if (!firstPart || firstPart.length < 2 || /[0-9_#\*\/\\]/.test(firstPart)) return ''
-
-      // Capitalização bonita do primeiro nome
-      return firstPart.charAt(0).toUpperCase() + firstPart.slice(1).toLowerCase()
-    }
-
-    let displayName = cleanAndValidateLeadName(customerFirstName, customerName)
-
-    let receiverPhone = ''
-    const sourceMatch = customerSource.match(/Meta\s*-\s*(\d+)/)
-    if (sourceMatch) {
-      receiverPhone = sourceMatch[1]
-    } else if (customerPhone.includes('48992098050') || customerSource.includes('48992098050')) {
-      receiverPhone = '48992098050'
-    } else if (customerPhone.includes('48991828050') || customerSource.includes('48991828050')) {
-      receiverPhone = '48991828050'
-    }
-    const isTargetLead =
-      customerPhone.includes('48992098050') ||
-      customerPhone.includes('4899728050') ||
-      customerPhone.includes('99728050') ||
-      customerSource.includes('48992098050') ||
-      customerSource.includes('4899728050')
-
-    const deliveryEnabled = userRecord ? userRecord.get('delivery_enabled') !== false : true
-    const deliveryStart = userRecord
-      ? userRecord.getString('delivery_start_time') || '09:00'
-      : '09:00'
-    const deliveryEnd = userRecord ? userRecord.getString('delivery_end_time') || '18:00' : '18:00'
-    let deliveryDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
-    if (userRecord && userRecord.get('delivery_days')) {
-      try {
-        const parsed = userRecord.get('delivery_days')
-        if (Array.isArray(parsed) && parsed.length > 0) deliveryDays = parsed
-      } catch (_) {}
-    }
-
-    const dayOfWeek = brTime.getUTCDay()
-    const daysMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-    const currentDay = daysMap[dayOfWeek]
-
-    let hoursStr = brHour.toString()
-    if (hoursStr.length < 2) hoursStr = '0' + hoursStr
-    let minutesStr = brTime.getUTCMinutes().toString()
-    if (minutesStr.length < 2) minutesStr = '0' + minutesStr
-    const currentTimeStr = `${hoursStr}:${minutesStr}`
-
-    if (!deliveryEnabled) {
-      console.log(`[AI_REPLY] Message deferred: delivery disabled for user ${userId}`)
-      return e.next()
-    }
-
-    // Kill-switch global: se as automações / envios da Bia estiverem pausados em app_controls (regua_automations_active == false),
-    // a Bia suspende o OUTBOUND (régua, campanhas, ebook) imediatamente, conforme regra do Mauro.
-    // REGRA 11/11: mensagens ENTRANTES (Direct do Instagram, Messenger e WhatsApp recebido agora)
-    // NUNCA são silenciadas pela régua de persistência — o botão Parar Envio governa disparo,
-    // não a resposta a um lead que acabou de escrever. A Bia responde entrantes 24/7.
-    let globalAutomationsActive = true
-    const isInboundIncoming = sender === 'customer' || sender === 'lead' || sender === 'user'
-    let globalPausedForOutboundOnly = false
-    try {
-      if (typeof isReguaAutomationsActive === 'function') {
-        globalAutomationsActive = isReguaAutomationsActive($app)
       } else {
-        const ctrl = $app.findFirstRecordByFilter(
-          'app_controls',
-          "key = 'regua_automations_active'",
-        )
-        if (ctrl) {
-          globalAutomationsActive = !!ctrl.getBool('is_active')
-        }
-      }
-    } catch (_) {}
-    if (!globalAutomationsActive) {
-      if (isInboundIncoming) {
-        // REGRA 11/11: régua de persistência pausada governa OUTBOUND (campanha,
-        // ebook, disparos) — NUNCA a resposta a uma mensagem ENTRANTE que acabou
-        // de chegar no Direct/Messenger/WhatsApp. Bia responde entrantes 24/7.
         console.log(
-          `[AI_REPLY] regua_automations_active=false, mas mensagem ENTRANTE (sender=${sender}): respondendo mesmo assim — régua não silencia resposta a entrantes`,
+          `[AI_REPLY] Lead requested specific property (${lastMsgPropertyCodeOrNum}) in latest message. Suppressing historical matchedLaunch dossier to prevent cross-contamination.`,
         )
-        globalAutomationsActive = true
-      } else {
-        globalPausedForOutboundOnly = true
       }
-    }
 
-    if (!globalAutomationsActive) {
-      console.log(
-        `[AI_REPLY] Message deferred: global automations/Bia paused (regua_automations_active=false, outbound-only)`,
-      )
+      // Procura por Playbook de Anúncio ativo compatível (ad_playbooks)
+      // SÓ vincula se a última mensagem do lead NÃO for sobre um imóvel específico diferente
+      let matchedPlaybook = null
+      if (!lastMsgSpecificPropertyRequested) {
+        try {
+          const activePlaybooks = $app.findRecordsByFilter(
+            'ad_playbooks',
+            'active = true',
+            '-created',
+            50,
+            0,
+          )
+          const referralSearchText =
+            `${effectiveOrigin} ${customerSource} ${customerNotes}`.toLowerCase()
+
+          for (const pbItem of activePlaybooks) {
+            let keywords = pbItem.get('match_keywords')
+            if (typeof keywords === 'string') {
+              try {
+                keywords = JSON.parse(keywords)
+              } catch (_) {
+                keywords = [keywords]
+              }
+            }
+            if (Array.isArray(keywords)) {
+              const hasMatch = keywords.some((kw) => {
+                if (!kw || typeof kw !== 'string') return false
+                const trimmedKw = kw.trim().toLowerCase()
+                return trimmedKw.length > 0 && referralSearchText.includes(trimmedKw)
+              })
+              if (hasMatch) {
+                matchedPlaybook = pbItem
+                console.log(
+                  `[AI_REPLY] Matched ad playbook: "${pbItem.getString('name')}" (id=${pbItem.id}) for customer=${customerId}`,
+                )
+                break
+              }
+            }
+          }
+        } catch (pbErr) {
+          console.warn(`[AI_REPLY] Error checking ad_playbooks (non-fatal): ${String(pbErr)}`)
+        }
+      } else {
+        console.log(
+          `[AI_REPLY] Lead requested specific property (${lastMsgPropertyCodeOrNum}) in latest message. Suppressing historical ad_playbook to prevent cross-contamination.`,
+        )
+      }
+      const customerName = (customer.getString('name') || '').trim()
+      const customerFirstName = (customer.getString('first_name') || '').trim()
+
+      // Validação estrita do nome do cliente:
+      // Extrai o primeiro nome real do lead a partir de customer first_name ou name.
+      // "Mauro Maurício" vira "Mauro" (jamais string vazia ou descarte).
+      // Se parecer suspeito, incompleto, telefone, e-mail ou não confiável, retorna vazio.
+      function cleanAndValidateLeadName(firstName, fullName) {
+        const candidate = (firstName || '').trim() || (fullName || '').trim()
+        if (!candidate) return ''
+
+        // Ignora telefones, números, símbolos ou formatos de contato
+        if (candidate.includes('+') || candidate.includes('@') || /^\d+$/.test(candidate)) return ''
+        if (
+          /^(lead|cliente|contato|teste|whatsapp|meta|novo|usuario|usuário|imóvel|imovel)\b/i.test(
+            candidate,
+          )
+        )
+          return ''
+
+        // Se for apenas o primeiro nome
+        const parts = candidate.split(/\s+/).filter(Boolean)
+        const firstPart = parts[0]
+
+        // Se o primeiro nome tem menos de 2 letras ou contém caracteres especiais estranhos
+        if (!firstPart || firstPart.length < 2 || /[0-9_#\*\/\\]/.test(firstPart)) return ''
+
+        // Capitalização bonita do primeiro nome
+        return firstPart.charAt(0).toUpperCase() + firstPart.slice(1).toLowerCase()
+      }
+
+      let displayName = cleanAndValidateLeadName(customerFirstName, customerName)
+
+      let receiverPhone = ''
+      const sourceMatch = customerSource.match(/Meta\s*-\s*(\d+)/)
+      if (sourceMatch) {
+        receiverPhone = sourceMatch[1]
+      } else if (customerPhone.includes('48992098050') || customerSource.includes('48992098050')) {
+        receiverPhone = '48992098050'
+      } else if (customerPhone.includes('48991828050') || customerSource.includes('48991828050')) {
+        receiverPhone = '48991828050'
+      }
+      const isTargetLead =
+        customerPhone.includes('48992098050') ||
+        customerPhone.includes('4899728050') ||
+        customerPhone.includes('99728050') ||
+        customerSource.includes('48992098050') ||
+        customerSource.includes('4899728050')
+
+      const deliveryEnabled = userRecord ? userRecord.get('delivery_enabled') !== false : true
+      const deliveryStart = userRecord
+        ? userRecord.getString('delivery_start_time') || '09:00'
+        : '09:00'
+      const deliveryEnd = userRecord
+        ? userRecord.getString('delivery_end_time') || '18:00'
+        : '18:00'
+      let deliveryDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+      if (userRecord && userRecord.get('delivery_days')) {
+        try {
+          const parsed = userRecord.get('delivery_days')
+          if (Array.isArray(parsed) && parsed.length > 0) deliveryDays = parsed
+        } catch (_) {}
+      }
+
+      const dayOfWeek = brTime.getUTCDay()
+      const daysMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+      const currentDay = daysMap[dayOfWeek]
+
+      let hoursStr = brHour.toString()
+      if (hoursStr.length < 2) hoursStr = '0' + hoursStr
+      let minutesStr = brTime.getUTCMinutes().toString()
+      if (minutesStr.length < 2) minutesStr = '0' + minutesStr
+      const currentTimeStr = `${hoursStr}:${minutesStr}`
+
+      if (!deliveryEnabled) {
+        console.log(
+          `[AI_REPLY][SKIP] motivo=delivery_enabled=false user=${userId} customer=${customerId}`,
+        )
+        return e.next()
+      }
+
+      // Kill-switch global: se as automações / envios da Bia estiverem pausados em app_controls (regua_automations_active == false),
+      // a Bia suspende o OUTBOUND (régua, campanhas, ebook) imediatamente, conforme regra do Mauro.
+      // REGRA 11/11: mensagens ENTRANTES (Direct do Instagram, Messenger e WhatsApp recebido agora)
+      // NUNCA são silenciadas pela régua de persistência — o botão Parar Envio governa disparo,
+      // não a resposta a um lead que acabou de escrever. A Bia responde entrantes 24/7.
+      let globalAutomationsActive = true
+      const isInboundIncoming = sender === 'customer' || sender === 'lead' || sender === 'user'
+      let globalPausedForOutboundOnly = false
       try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const log = new Record(logsCol)
-        log.set('user_id', userId || '')
-        log.set('type', 'ai_reply_deferred_global_paused')
-        log.set(
-          'message',
-          'Bia em pausa: botão Parar Envio ativo (app_controls.regua_automations_active = false)',
-        )
-        log.set(
-          'details',
-          `Mensagem de ${customerPhone} adiada enquanto o envio da Bia estiver pausado. Fila preservada.`,
-        )
-        log.set('payload', JSON.stringify({ customer_id: customerId }))
-        $app.saveNoValidate(log)
+        if (typeof isReguaAutomationsActive === 'function') {
+          globalAutomationsActive = isReguaAutomationsActive($app)
+        } else {
+          const ctrl = $app.findFirstRecordByFilter(
+            'app_controls',
+            "key = 'regua_automations_active'",
+          )
+          if (ctrl) {
+            globalAutomationsActive = !!ctrl.getBool('is_active')
+          }
+        }
       } catch (_) {}
-      return e.next()
-    }
+      if (!globalAutomationsActive) {
+        if (isInboundIncoming) {
+          // REGRA 11/11: régua de persistência pausada governa OUTBOUND (campanha,
+          // ebook, disparos) — NUNCA a resposta a uma mensagem ENTRANTE que acabou
+          // de chegar no Direct/Messenger/WhatsApp. Bia responde entrantes 24/7.
+          console.log(
+            `[AI_REPLY] regua_automations_active=false, mas mensagem ENTRANTE (sender=${sender}): respondendo mesmo assim — régua não silencia resposta a entrantes`,
+          )
+          globalAutomationsActive = true
+        } else {
+          globalPausedForOutboundOnly = true
+        }
+      }
 
-    const isWhatsAppDirect = conversationChannel === 'whatsapp' || !conversationChannel
-    const isMessengerChannel = conversationChannel === 'messenger'
-    const isInstagramChannel = conversationChannel === 'instagram'
-    // Regra oficial do Mauro: a Bia SEMPRE gera/processa resposta 24h por dia em todos os canais.
-    // Qualquer restrição de expediente se aplica exclusivamente ao envio outbound se configurado, nunca à geração da IA.
-    const is24_7Flow =
-      receiverPhone.includes('992098050') ||
-      isTargetLead ||
-      isWhatsAppDirect ||
-      isMessengerChannel ||
-      isInstagramChannel
-
-    if (!is24_7Flow) {
-      if (
-        !deliveryDays.includes(currentDay) ||
-        currentTimeStr < deliveryStart ||
-        currentTimeStr > deliveryEnd
-      ) {
-        console.log(`[AI_REPLY] Message deferred: outside business hours (${currentTimeStr})`)
+      if (!globalAutomationsActive) {
+        console.log(
+          `[AI_REPLY][SKIP] motivo=régua_pausada_outbound_only (regua_automations_active=false) customer=${customerId}`,
+        )
         try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const log = new Record(logsCol)
           log.set('user_id', userId || '')
-          log.set('type', 'ai_reply_deferred')
-          log.set('message', 'IA adiada: fora do horário de atendimento')
+          log.set('type', 'ai_reply_deferred_global_paused')
+          log.set(
+            'message',
+            'Bia em pausa: botão Parar Envio ativo (app_controls.regua_automations_active = false)',
+          )
           log.set(
             'details',
-            `Horário atual: ${currentTimeStr}, expediente: ${deliveryStart}-${deliveryEnd}`,
+            `Mensagem de ${customerPhone} adiada enquanto o envio da Bia estiver pausado. Fila preservada.`,
           )
           log.set('payload', JSON.stringify({ customer_id: customerId }))
           $app.saveNoValidate(log)
         } catch (_) {}
         return e.next()
       }
-    }
 
-    // Variáveis hoistadas no topo do hook para evitar ReferenceError em Goja
-    matchedProps = []
-    detectedSpecificPropertyQuery = false
-    targetSpecificProp = null
-    hasFreeSearchIntent = false
+      const isWhatsAppDirect = conversationChannel === 'whatsapp' || !conversationChannel
+      const isMessengerChannel = conversationChannel === 'messenger'
+      const isInstagramChannel = conversationChannel === 'instagram'
+      // Regra oficial do Mauro: a Bia SEMPRE gera/processa resposta 24h por dia em todos os canais.
+      // Qualquer restrição de expediente se aplica exclusivamente ao envio outbound se configurado, nunca à geração da IA.
+      const is24_7Flow =
+        receiverPhone.includes('992098050') ||
+        isTargetLead ||
+        isWhatsAppDirect ||
+        isMessengerChannel ||
+        isInstagramChannel
 
-    // Anti-flood com DEBOUNCE ACUMULATIVO (remover descarte silencioso <5s).
-    // Caso real: se nova mensagem do lead chega logo após resposta da IA ou em sequência,
-    // jamais descartar com return e.next(). Buscar mensagens do lead dos últimos 30s,
-    // concatenar o conteúdo e processar o conjunto priorizando a mensagem mais recente.
-    let customerMessage = (e.record.getString('content') || '').trim()
-    try {
-      const thirtySecondsAgoIso = new Date(now.getTime() - 30000)
-        .toISOString()
-        .replace('T', ' ')
-        .substring(0, 19)
-      const recentCustMsgs = $app.findRecordsByFilter(
-        'conversations',
-        `customer_id = '${customerId}' && (sender = 'customer' || sender = 'user' || sender = 'lead') && created >= '${thirtySecondsAgoIso}'`,
-        'created',
-        20,
-        0,
-      )
-      if (recentCustMsgs && recentCustMsgs.length > 1) {
-        const aggregatedParts = []
-        for (let i = 0; i < recentCustMsgs.length; i++) {
-          const mTxt = (recentCustMsgs[i].getString('content') || '').trim()
-          if (mTxt && aggregatedParts.indexOf(mTxt) === -1) {
-            aggregatedParts.push(mTxt)
-          }
-        }
-        if (aggregatedParts.length > 1) {
-          // Processar conjunto priorizando a mais recente no final
-          customerMessage = aggregatedParts.join(' | ')
-          console.log(
-            `[AI_REPLY] Anti-flood debounce acumulativo ativado (30s): agrupadas ${aggregatedParts.length} mensagens para customer ${customerId}: "${customerMessage.substring(0, 100)}"`,
-          )
-        }
-      }
-    } catch (debounceErr) {
-      console.warn(`[AI_REPLY] Debounce check warning (non-fatal): ${String(debounceErr)}`)
-    }
-
-    if (tags.includes('ai_paused')) {
-      console.log(`[AI_REPLY] AI paused for customer ${customerId}`)
-      return e.next()
-    }
-
-    const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
-    const biaInstructions = userRecord ? userRecord.getString('bia_instructions') : ''
-    const motherAiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
-
-    // Carregar Caderno de Aprendizados da Bia (Constituição v4.0 Soberana + Lições Vivas Aprovadas/Erros)
-    let biaLearningsText = ''
-    let liveLessonsText = ''
-    try {
-      const allActiveLearnings = $app.findRecordsByFilter(
-        'bia_learnings',
-        'is_active = true',
-        '-priority,-created',
-        60,
-        0,
-      )
-
-      if (allActiveLearnings && allActiveLearnings.length > 0) {
-        // 1. Identificar Constituição v4.0 (prioridade >= 1000 ou título com Constituição)
-        const constitutionRec = allActiveLearnings.find((r) => {
-          const prio = r.getInt('priority') || 0
-          const tit = (r.getString('title') || '').toLowerCase()
-          return prio >= 1000 || tit.includes('constituição') || tit.includes('constituicao')
-        })
-
-        if (constitutionRec) {
-          const cTitle = (constitutionRec.getString('title') || 'CONSTITUIÇÃO V4.0').trim()
-          const cText = (constitutionRec.getString('rule_text') || '').trim()
-          biaLearningsText = `\n### ${cTitle} (AUTORIDADE MÁXIMA E INTOCADA):\n${cText}\n`
-        }
-
-        // 2. Filtro e montagem do bloco "LIÇÕES VIVAS" (limite rígido <= 1500 caracteres, anti-contradição e dedup)
-        // Pedido Mauro: lições do tipo ERRO ou ACERTO/OBJECOES aprovadas entram na base viva
-        const candidateLessons = allActiveLearnings.filter((r) => {
-          if (constitutionRec && r.id === constitutionRec.id) return false
-          const lStatus = (r.getString('status') || 'aprovado').toLowerCase()
-          const lType = (r.getString('learning_type') || '').toUpperCase()
-          // Lições descartadas não entram
-          if (lStatus === 'descartado') return false
-          // Lições do tipo ERRO entram mesmo se pendentes ("aprende a não errar mais da próxima vez")
-          if (lType === 'ERRO') return true
-          // Demais categorias entram se aprovadas ou ativas sem rejeição
-          return lStatus === 'aprovado' || !lStatus
-        })
-
-        // Verificador de contradição com a Constituição v4.0
-        // Regras pétreas da Constituição: 1 pergunta por mensagem, nunca dar preço cheio antes de valorizar,
-        // apenas vendas (nunca locação), transbordo pro Mauro 99972-8050, nunca negar imóvel do catálogo.
-        const checkConflictWithConstitution = (text) => {
-          if (!text) return false
-          const low = text.toLowerCase()
-          if (
-            low.includes('pode fazer 2 perguntas') ||
-            low.includes('faça várias perguntas') ||
-            low.includes('trabalhamos com aluguel') ||
-            low.includes('trabalhamos com locação') ||
-            low.includes('passar número da bia') ||
-            low.includes('diga que não temos o imóvel') ||
-            low.includes('tabela markdown') ||
-            low.includes('enviar link logo na primeira frase')
-          ) {
-            return true
-          }
-          return false
-        }
-
-        // Deduplicação semântica simples (por palavras-chave e tokens normalizados)
-        const selectedLessons = []
-        const seenSignatures = []
-        let currentChars = 0
-        const MAX_LESSONS_CHARS = 1450 // Limite rígido seguro abaixo de 1.500 chars
-
-        for (const lesson of candidateLessons) {
-          const lTitle = (lesson.getString('title') || '').trim()
-          const lText = (lesson.getString('rule_text') || '').trim()
-          const lType = (lesson.getString('learning_type') || 'ACERTO').toUpperCase()
-          const fullLessonContent = `${lTitle} ${lText}`.toLowerCase()
-
-          // Se contradisser a Constituição, marca para revisão e pula
-          if (checkConflictWithConstitution(fullLessonContent)) {
-            console.warn(
-              `[BIA_LEARNING_LOOP] Lição "${lTitle}" [${lesson.id}] contradiz a Constituição v4.0! Bloqueada do contexto e marcada para revisão.`,
+      if (!is24_7Flow) {
+        if (
+          !deliveryDays.includes(currentDay) ||
+          currentTimeStr < deliveryStart ||
+          currentTimeStr > deliveryEnd
+        ) {
+          console.log(`[AI_REPLY] Message deferred: outside business hours (${currentTimeStr})`)
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const log = new Record(logsCol)
+            log.set('user_id', userId || '')
+            log.set('type', 'ai_reply_deferred')
+            log.set('message', 'IA adiada: fora do horário de atendimento')
+            log.set(
+              'details',
+              `Horário atual: ${currentTimeStr}, expediente: ${deliveryStart}-${deliveryEnd}`,
             )
-            try {
-              if (
-                lesson.getString('status') !== 'em_revisao' ||
-                !lesson.getString('conflict_flag')
-              ) {
-                lesson.set('status', 'em_revisao')
-                lesson.set('conflict_flag', 'Contradição detectada com a Constituição v4.0')
-                $app.saveNoValidate(lesson)
-              }
-            } catch (_) {}
-            continue
-          }
-
-          // Anti-duplicação: calcula assinatura de 3 palavras-chave principais
-          const words = fullLessonContent
-            .replace(/[^\w\s]/gi, '')
-            .split(/\s+/)
-            .filter((w) => w.length > 4)
-          const signature = words.slice(0, 4).join('_')
-          if (signature && seenSignatures.includes(signature)) {
-            continue
-          }
-          seenSignatures.push(signature)
-
-          const formattedLine = `• [${lType}] ${lTitle ? `*${lTitle}*: ` : ''}${lText}`
-          if (currentChars + formattedLine.length + 10 <= MAX_LESSONS_CHARS) {
-            selectedLessons.push(formattedLine)
-            currentChars += formattedLine.length + 2
-          } else {
-            // Limite de 1.500 caracteres atingido
-            break
-          }
-        }
-
-        if (selectedLessons.length > 0) {
-          liveLessonsText =
-            `\n### LIÇÕES VIVAS (LOOP DE APRENDIZADO - MEMÓRIA DE EXPERTS E ATENDIMENTOS):\n` +
-            selectedLessons.join('\n') +
-            `\n`
-          console.log(
-            `[BIA_LEARNING_LOOP] Injetadas ${selectedLessons.length} Lições Vivas (${currentChars} caracteres, limite 1.500).`,
-          )
+            log.set('payload', JSON.stringify({ customer_id: customerId }))
+            $app.saveNoValidate(log)
+          } catch (_) {}
+          return e.next()
         }
       }
-    } catch (learningsErr) {
-      console.warn(`[AI_REPLY] Error loading bia_learnings (non-fatal): ${String(learningsErr)}`)
+
+      // Variáveis hoistadas no topo do hook para evitar ReferenceError em Goja
+      matchedProps = []
+      detectedSpecificPropertyQuery = false
+      targetSpecificProp = null
+      hasFreeSearchIntent = false
+
+      // Anti-flood com DEBOUNCE ACUMULATIVO (remover descarte silencioso <5s).
+      // Caso real: se nova mensagem do lead chega logo após resposta da IA ou em sequência,
+      // jamais descartar com return e.next(). Buscar mensagens do lead dos últimos 30s,
+      // concatenar o conteúdo e processar o conjunto priorizando a mensagem mais recente.
+      let customerMessage = (e.record.getString('content') || '').trim()
       try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const learnErrLog = new Record(logsCol)
-        learnErrLog.set('user_id', userId || '')
-        learnErrLog.set('type', 'bia_learnings_lookup_error')
-        learnErrLog.set('message', 'Erro não-fatal ao carregar bia_learnings')
-        learnErrLog.set('details', String(learningsErr))
-        $app.saveNoValidate(learnErrLog)
-      } catch (_) {}
-    }
+        const thirtySecondsAgoIso = new Date(now.getTime() - 30000)
+          .toISOString()
+          .replace('T', ' ')
+          .substring(0, 19)
+        const recentCustMsgs = $app.findRecordsByFilter(
+          'conversations',
+          `customer_id = '${customerId}' && (sender = 'customer' || sender = 'user' || sender = 'lead') && created >= '${thirtySecondsAgoIso}'`,
+          'created',
+          20,
+          0,
+        )
+        if (recentCustMsgs && recentCustMsgs.length > 1) {
+          const aggregatedParts = []
+          for (let i = 0; i < recentCustMsgs.length; i++) {
+            const mTxt = (recentCustMsgs[i].getString('content') || '').trim()
+            if (mTxt && aggregatedParts.indexOf(mTxt) === -1) {
+              aggregatedParts.push(mTxt)
+            }
+          }
+          if (aggregatedParts.length > 1) {
+            // Processar conjunto priorizando a mais recente no final
+            customerMessage = aggregatedParts.join(' | ')
+            console.log(
+              `[AI_REPLY] Anti-flood debounce acumulativo ativado (30s): agrupadas ${aggregatedParts.length} mensagens para customer ${customerId}: "${customerMessage.substring(0, 100)}"`,
+            )
+          }
+        }
+      } catch (debounceErr) {
+        console.warn(`[AI_REPLY] Debounce check warning (non-fatal): ${String(debounceErr)}`)
+      }
 
-    // Clean persona, mother and cadence instructions from canned loop phrase with unicode / hyphen tolerance
-    const cleanInstructionText = (txt) => {
-      if (!txt) return ''
-      return txt
-        .replace(/3\.\s*Gestão de Interrupções:.*?\(Retorno à Cadência 2\)\.?/gi, '')
-        .replace(
-          /1\.\s*GESTÃO DE INTERRUPÇÕES\s*[\u2010-\u2015\-—].*?sem confrontar o cliente\.?/gi,
-          '',
-        )
-        .replace(
-          /responda\s+(?:EXATAMENTE\s*:\s*)?["'“«]Com certeza,\s*vou te passar os valores agora mesmo.*?["'”»]/gi,
-          'apresente os imóveis e valores do catálogo imediatamente com os links oficiais.',
-        )
-        .replace(
-          /Com certeza,\s*vou te passar os valores agora mesmo[.\s]*Apenas para eu te enviar a unidade com o melhor custo[\u2010-\u2015\-]benefício para o seu perfil,?\s*o que é mais importante para você além do valor\??/gi,
-          'Apresente os imóveis e valores reais do catálogo imediatamente com os links oficiais.',
-        )
-    }
+      if (tags.includes('ai_paused')) {
+        console.log(`[AI_REPLY] AI paused for customer ${customerId}`)
+        return e.next()
+      }
 
-    const defaultBiaPersonaFallback = `Você é a Bia, consultora da BRF Imóveis (www.brfimoveis.com.br).
+      const aiName = userRecord ? userRecord.getString('ai_name') || 'Bia' : 'Bia'
+      const biaInstructions = userRecord ? userRecord.getString('bia_instructions') : ''
+      const motherAiInstructions = userRecord ? userRecord.getString('ai_instructions') : ''
+
+      // Carregar Caderno de Aprendizados da Bia (Constituição v4.0 Soberana + Lições Vivas Aprovadas/Erros)
+      let biaLearningsText = ''
+      let liveLessonsText = ''
+      try {
+        const allActiveLearnings = $app.findRecordsByFilter(
+          'bia_learnings',
+          'is_active = true',
+          '-priority,-created',
+          60,
+          0,
+        )
+
+        if (allActiveLearnings && allActiveLearnings.length > 0) {
+          // 1. Identificar Constituição v4.0 (prioridade >= 1000 ou título com Constituição)
+          const constitutionRec = allActiveLearnings.find((r) => {
+            const prio = r.getInt('priority') || 0
+            const tit = (r.getString('title') || '').toLowerCase()
+            return prio >= 1000 || tit.includes('constituição') || tit.includes('constituicao')
+          })
+
+          if (constitutionRec) {
+            const cTitle = (constitutionRec.getString('title') || 'CONSTITUIÇÃO V4.0').trim()
+            const cText = (constitutionRec.getString('rule_text') || '').trim()
+            biaLearningsText = `\n### ${cTitle} (AUTORIDADE MÁXIMA E INTOCADA):\n${cText}\n`
+          }
+
+          // 2. Filtro e montagem do bloco "LIÇÕES VIVAS" (limite rígido <= 1500 caracteres, anti-contradição e dedup)
+          // Pedido Mauro: lições do tipo ERRO ou ACERTO/OBJECOES aprovadas entram na base viva
+          const candidateLessons = allActiveLearnings.filter((r) => {
+            if (constitutionRec && r.id === constitutionRec.id) return false
+            const lStatus = (r.getString('status') || 'aprovado').toLowerCase()
+            const lType = (r.getString('learning_type') || '').toUpperCase()
+            // Lições descartadas não entram
+            if (lStatus === 'descartado') return false
+            // Lições do tipo ERRO entram mesmo se pendentes ("aprende a não errar mais da próxima vez")
+            if (lType === 'ERRO') return true
+            // Demais categorias entram se aprovadas ou ativas sem rejeição
+            return lStatus === 'aprovado' || !lStatus
+          })
+
+          // Verificador de contradição com a Constituição v4.0
+          // Regras pétreas da Constituição: 1 pergunta por mensagem, nunca dar preço cheio antes de valorizar,
+          // apenas vendas (nunca locação), transbordo pro Mauro 99972-8050, nunca negar imóvel do catálogo.
+          const checkConflictWithConstitution = (text) => {
+            if (!text) return false
+            const low = text.toLowerCase()
+            if (
+              low.includes('pode fazer 2 perguntas') ||
+              low.includes('faça várias perguntas') ||
+              low.includes('trabalhamos com aluguel') ||
+              low.includes('trabalhamos com locação') ||
+              low.includes('passar número da bia') ||
+              low.includes('diga que não temos o imóvel') ||
+              low.includes('tabela markdown') ||
+              low.includes('enviar link logo na primeira frase')
+            ) {
+              return true
+            }
+            return false
+          }
+
+          // Deduplicação semântica simples (por palavras-chave e tokens normalizados)
+          const selectedLessons = []
+          const seenSignatures = []
+          let currentChars = 0
+          const MAX_LESSONS_CHARS = 1450 // Limite rígido seguro abaixo de 1.500 chars
+
+          for (const lesson of candidateLessons) {
+            const lTitle = (lesson.getString('title') || '').trim()
+            const lText = (lesson.getString('rule_text') || '').trim()
+            const lType = (lesson.getString('learning_type') || 'ACERTO').toUpperCase()
+            const fullLessonContent = `${lTitle} ${lText}`.toLowerCase()
+
+            // Se contradisser a Constituição, marca para revisão e pula
+            if (checkConflictWithConstitution(fullLessonContent)) {
+              console.warn(
+                `[BIA_LEARNING_LOOP] Lição "${lTitle}" [${lesson.id}] contradiz a Constituição v4.0! Bloqueada do contexto e marcada para revisão.`,
+              )
+              try {
+                if (
+                  lesson.getString('status') !== 'em_revisao' ||
+                  !lesson.getString('conflict_flag')
+                ) {
+                  lesson.set('status', 'em_revisao')
+                  lesson.set('conflict_flag', 'Contradição detectada com a Constituição v4.0')
+                  $app.saveNoValidate(lesson)
+                }
+              } catch (_) {}
+              continue
+            }
+
+            // Anti-duplicação: calcula assinatura de 3 palavras-chave principais
+            const words = fullLessonContent
+              .replace(/[^\w\s]/gi, '')
+              .split(/\s+/)
+              .filter((w) => w.length > 4)
+            const signature = words.slice(0, 4).join('_')
+            if (signature && seenSignatures.includes(signature)) {
+              continue
+            }
+            seenSignatures.push(signature)
+
+            const formattedLine = `• [${lType}] ${lTitle ? `*${lTitle}*: ` : ''}${lText}`
+            if (currentChars + formattedLine.length + 10 <= MAX_LESSONS_CHARS) {
+              selectedLessons.push(formattedLine)
+              currentChars += formattedLine.length + 2
+            } else {
+              // Limite de 1.500 caracteres atingido
+              break
+            }
+          }
+
+          if (selectedLessons.length > 0) {
+            liveLessonsText =
+              `\n### LIÇÕES VIVAS (LOOP DE APRENDIZADO - MEMÓRIA DE EXPERTS E ATENDIMENTOS):\n` +
+              selectedLessons.join('\n') +
+              `\n`
+            console.log(
+              `[BIA_LEARNING_LOOP] Injetadas ${selectedLessons.length} Lições Vivas (${currentChars} caracteres, limite 1.500).`,
+            )
+          }
+        }
+      } catch (learningsErr) {
+        console.warn(`[AI_REPLY] Error loading bia_learnings (non-fatal): ${String(learningsErr)}`)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const learnErrLog = new Record(logsCol)
+          learnErrLog.set('user_id', userId || '')
+          learnErrLog.set('type', 'bia_learnings_lookup_error')
+          learnErrLog.set('message', 'Erro não-fatal ao carregar bia_learnings')
+          learnErrLog.set('details', String(learningsErr))
+          $app.saveNoValidate(learnErrLog)
+        } catch (_) {}
+      }
+
+      // Clean persona, mother and cadence instructions from canned loop phrase with unicode / hyphen tolerance
+      const cleanInstructionText = (txt) => {
+        if (!txt) return ''
+        return txt
+          .replace(/3\.\s*Gestão de Interrupções:.*?\(Retorno à Cadência 2\)\.?/gi, '')
+          .replace(
+            /1\.\s*GESTÃO DE INTERRUPÇÕES\s*[\u2010-\u2015\-—].*?sem confrontar o cliente\.?/gi,
+            '',
+          )
+          .replace(
+            /responda\s+(?:EXATAMENTE\s*:\s*)?["'“«]Com certeza,\s*vou te passar os valores agora mesmo.*?["'”»]/gi,
+            'apresente os imóveis e valores do catálogo imediatamente com os links oficiais.',
+          )
+          .replace(
+            /Com certeza,\s*vou te passar os valores agora mesmo[.\s]*Apenas para eu te enviar a unidade com o melhor custo[\u2010-\u2015\-]benefício para o seu perfil,?\s*o que é mais importante para você além do valor\??/gi,
+            'Apresente os imóveis e valores reais do catálogo imediatamente com os links oficiais.',
+          )
+      }
+
+      const defaultBiaPersonaFallback = `Você é a Bia, consultora da BRF Imóveis (www.brfimoveis.com.br).
 Sua missão e conduta são regidas EXCLUSIVAMENTE pelo TEXTO ÚNICO DA BIA — v3.0 gravado no Caderno de Aprendizados (bia_learnings prioridade máxima).`
 
-    const personaInstructions = cleanInstructionText(
-      biaInstructions.trim() ? biaInstructions : defaultBiaPersonaFallback,
-    )
-    const cleanMotherAiInstructions = cleanInstructionText(motherAiInstructions)
-
-    if (!customerMessage) {
-      customerMessage = (e.record.getString('content') || '').trim()
-    }
-
-    // O contextText e as instruções de comportamento vêm exclusivamente do bia_learnings ativo (TEXTO ÚNICO DA BIA - v3.0)
-    let contextText = ''
-
-    let historyRecords = []
-    let fullCustomerHistory = []
-    try {
-      // Carrega até 40 mensagens do histórico para extrair dados consolidados e evitar loops
-      fullCustomerHistory = $app.findRecordsByFilter(
-        'conversations',
-        `customer_id = '${customerId}'`,
-        '-created',
-        40,
-        0,
+      const personaInstructions = cleanInstructionText(
+        biaInstructions.trim() ? biaInstructions : defaultBiaPersonaFallback,
       )
-      fullCustomerHistory.reverse()
-      // Mantém as últimas 12 no contexto direto de chat
-      historyRecords = fullCustomerHistory.slice(-12)
-    } catch (_) {}
+      const cleanMotherAiInstructions = cleanInstructionText(motherAiInstructions)
 
-    // ======================================================================
-    // EXTRAÇÃO E CONSOLIDAÇÃO DE DADOS JÁ RESPONDIDOS PELO LEAD (ANTI-LOOP)
-    // ======================================================================
-    const collectedLeadData = {
-      name: '',
-      purpose: '', // compra / venda / locação / permuta
-      payment: '', // à vista / financiamento / FGTS
-      typology: '', // casa / apto / studio / dormitórios / suítes
-      location: '', // bairro / cidade
-      priceRange: '', // faixa de preço
-      specificPropertyInterests: [], // links ou referências de imóveis específicos do anúncio/portal
-    }
-
-    // Inicializa com dados já existentes no registro do customer
-    const existingCustName = customer.getString('name') || customer.getString('first_name') || ''
-    if (existingCustName && !existingCustName.includes('+') && !/^\d+$/.test(existingCustName)) {
-      const cleaned = cleanAndValidateLeadName('', existingCustName)
-      if (cleaned) collectedLeadData.name = cleaned
-    }
-    if (customer.getString('price_range')) {
-      collectedLeadData.priceRange = customer.getString('price_range')
-    }
-    if (customer.getString('neighborhood')) {
-      collectedLeadData.location = customer.getString('neighborhood')
-    }
-
-    // Varrer mensagens do cliente no histórico completo para extrair dados fornecidos
-    try {
-      const allCustMsgs = (fullCustomerHistory.length > 0 ? fullCustomerHistory : historyRecords)
-        .filter((m) => {
-          const s = m.getString('sender')
-          return s === 'customer' || s === 'user' || s === 'lead'
-        })
-        .map((m) => (m.getString('content') || '').trim())
-
-      // Inclui também a mensagem atual
-      if (customerMessage && !allCustMsgs.includes(customerMessage.trim())) {
-        allCustMsgs.push(customerMessage.trim())
+      if (!customerMessage) {
+        customerMessage = (e.record.getString('content') || '').trim()
       }
 
-      for (const text of allCustMsgs) {
-        const lower = text.toLowerCase()
+      // O contextText e as instruções de comportamento vêm exclusivamente do bia_learnings ativo (TEXTO ÚNICO DA BIA - v3.0)
+      let contextText = ''
 
-        // 1. Nome do lead (ex: "me chamo Marcia mendes", "sou a Marcia", "meu nome é Marcia", ou resposta curta "Marcia")
-        const nameMatch = text.match(
-          /(?:me\s+chamo|meu\s+nome\s+[ée]|sou\s+(?:o|a)?)\s+([A-Za-zÀ-ÿ]{2,25}(?:\s+[A-Za-zÀ-ÿ]{2,25})*)/i,
+      let historyRecords = []
+      let fullCustomerHistory = []
+      try {
+        // Carrega até 40 mensagens do histórico para extrair dados consolidados e evitar loops
+        fullCustomerHistory = $app.findRecordsByFilter(
+          'conversations',
+          `customer_id = '${customerId}'`,
+          '-created',
+          40,
+          0,
         )
-        if (nameMatch && nameMatch[1]) {
-          const cand = nameMatch[1].trim()
-          const valid = cleanAndValidateLeadName('', cand)
-          if (valid) {
-            collectedLeadData.name = valid
-            try {
-              const fName = valid.split(' ')[0]
-              if (
-                fName &&
-                fName.length > 1 &&
-                (!customer.getString('name') ||
-                  customer.getString('name').includes('❤️') ||
-                  customer.getString('name').startsWith('+'))
-              ) {
-                customer.set('name', valid)
-                customer.set('first_name', fName)
-                $app.saveNoValidate(customer)
-              }
-            } catch (_) {}
-          }
-        } else if (!collectedLeadData.name && /^[A-Za-zÀ-ÿ]{2,18}$/.test(text.trim())) {
-          // Se for resposta de uma palavra que seja um nome válido
-          const word = text.trim()
-          if (
-            !/^(sim|nao|não|quero|ok|ola|olá|bom|boa|casa|apto|vista|compra|venda)$/i.test(word)
-          ) {
-            const valid = cleanAndValidateLeadName('', word)
+        fullCustomerHistory.reverse()
+        // Mantém as últimas 12 no contexto direto de chat
+        historyRecords = fullCustomerHistory.slice(-12)
+      } catch (_) {}
+
+      // ======================================================================
+      // EXTRAÇÃO E CONSOLIDAÇÃO DE DADOS JÁ RESPONDIDOS PELO LEAD (ANTI-LOOP)
+      // ======================================================================
+      const collectedLeadData = {
+        name: '',
+        purpose: '', // compra / venda / locação / permuta
+        payment: '', // à vista / financiamento / FGTS
+        typology: '', // casa / apto / studio / dormitórios / suítes
+        location: '', // bairro / cidade
+        priceRange: '', // faixa de preço
+        specificPropertyInterests: [], // links ou referências de imóveis específicos do anúncio/portal
+      }
+
+      // Inicializa com dados já existentes no registro do customer
+      const existingCustName = customer.getString('name') || customer.getString('first_name') || ''
+      if (existingCustName && !existingCustName.includes('+') && !/^\d+$/.test(existingCustName)) {
+        const cleaned = cleanAndValidateLeadName('', existingCustName)
+        if (cleaned) collectedLeadData.name = cleaned
+      }
+      if (customer.getString('price_range')) {
+        collectedLeadData.priceRange = customer.getString('price_range')
+      }
+      if (customer.getString('neighborhood')) {
+        collectedLeadData.location = customer.getString('neighborhood')
+      }
+
+      // Varrer mensagens do cliente no histórico completo para extrair dados fornecidos
+      try {
+        const allCustMsgs = (fullCustomerHistory.length > 0 ? fullCustomerHistory : historyRecords)
+          .filter((m) => {
+            const s = m.getString('sender')
+            return s === 'customer' || s === 'user' || s === 'lead'
+          })
+          .map((m) => (m.getString('content') || '').trim())
+
+        // Inclui também a mensagem atual
+        if (customerMessage && !allCustMsgs.includes(customerMessage.trim())) {
+          allCustMsgs.push(customerMessage.trim())
+        }
+
+        for (const text of allCustMsgs) {
+          const lower = text.toLowerCase()
+
+          // 1. Nome do lead (ex: "me chamo Marcia mendes", "sou a Marcia", "meu nome é Marcia", ou resposta curta "Marcia")
+          const nameMatch = text.match(
+            /(?:me\s+chamo|meu\s+nome\s+[ée]|sou\s+(?:o|a)?)\s+([A-Za-zÀ-ÿ]{2,25}(?:\s+[A-Za-zÀ-ÿ]{2,25})*)/i,
+          )
+          if (nameMatch && nameMatch[1]) {
+            const cand = nameMatch[1].trim()
+            const valid = cleanAndValidateLeadName('', cand)
             if (valid) {
               collectedLeadData.name = valid
               try {
@@ -1271,222 +1259,249 @@ Sua missão e conduta são regidas EXCLUSIVAMENTE pelo TEXTO ÚNICO DA BIA — v
                 }
               } catch (_) {}
             }
-          }
-        }
-
-        // 2. Finalidade e Perfil do Lead (Compra, Investimento vs Moradia, Venda, Permuta, Aluguel)
-        if (
-          lower.includes('investir') ||
-          lower.includes('investimento') ||
-          lower.includes('para investimento') ||
-          lower.includes('pra investimento') ||
-          lower.includes('rentabilidade') ||
-          lower.includes('revenda') ||
-          lower.includes('locacao por temporada') ||
-          lower.includes('locação por temporada') ||
-          lower.includes('airbnb')
-        ) {
-          collectedLeadData.purpose = 'Compra para Investimento'
-          collectedLeadData.profile = 'Investidor'
-          // Atualiza automaticamente no customer no banco se ainda não estiver gravado
-          try {
-            if (customer.getString('lead_profile') !== 'Investidor') {
-              customer.set('lead_profile', 'Investidor')
-              $app.saveNoValidate(customer)
-              console.log(
-                `[AI_REPLY] Atualizado lead_profile para "Investidor" para o cliente ${customerId} com base na mensagem do lead`,
-              )
-            }
-          } catch (_) {}
-        } else if (
-          lower.includes('morar') ||
-          lower.includes('moradia') ||
-          lower.includes('minha família') ||
-          lower.includes('minha familia') ||
-          lower.includes('para morar') ||
-          lower.includes('pra morar')
-        ) {
-          collectedLeadData.purpose = 'Compra para Moradia'
-          collectedLeadData.profile = 'Morador'
-          try {
+          } else if (!collectedLeadData.name && /^[A-Za-zÀ-ÿ]{2,18}$/.test(text.trim())) {
+            // Se for resposta de uma palavra que seja um nome válido
+            const word = text.trim()
             if (
-              customer.getString('lead_profile') !== 'Morador' &&
-              !customer.getString('lead_profile')
+              !/^(sim|nao|não|quero|ok|ola|olá|bom|boa|casa|apto|vista|compra|venda)$/i.test(word)
             ) {
-              customer.set('lead_profile', 'Morador')
+              const valid = cleanAndValidateLeadName('', word)
+              if (valid) {
+                collectedLeadData.name = valid
+                try {
+                  const fName = valid.split(' ')[0]
+                  if (
+                    fName &&
+                    fName.length > 1 &&
+                    (!customer.getString('name') ||
+                      customer.getString('name').includes('❤️') ||
+                      customer.getString('name').startsWith('+'))
+                  ) {
+                    customer.set('name', valid)
+                    customer.set('first_name', fName)
+                    $app.saveNoValidate(customer)
+                  }
+                } catch (_) {}
+              }
+            }
+          }
+
+          // 2. Finalidade e Perfil do Lead (Compra, Investimento vs Moradia, Venda, Permuta, Aluguel)
+          if (
+            lower.includes('investir') ||
+            lower.includes('investimento') ||
+            lower.includes('para investimento') ||
+            lower.includes('pra investimento') ||
+            lower.includes('rentabilidade') ||
+            lower.includes('revenda') ||
+            lower.includes('locacao por temporada') ||
+            lower.includes('locação por temporada') ||
+            lower.includes('airbnb')
+          ) {
+            collectedLeadData.purpose = 'Compra para Investimento'
+            collectedLeadData.profile = 'Investidor'
+            // Atualiza automaticamente no customer no banco se ainda não estiver gravado
+            try {
+              if (customer.getString('lead_profile') !== 'Investidor') {
+                customer.set('lead_profile', 'Investidor')
+                $app.saveNoValidate(customer)
+                console.log(
+                  `[AI_REPLY] Atualizado lead_profile para "Investidor" para o cliente ${customerId} com base na mensagem do lead`,
+                )
+              }
+            } catch (_) {}
+          } else if (
+            lower.includes('morar') ||
+            lower.includes('moradia') ||
+            lower.includes('minha família') ||
+            lower.includes('minha familia') ||
+            lower.includes('para morar') ||
+            lower.includes('pra morar')
+          ) {
+            collectedLeadData.purpose = 'Compra para Moradia'
+            collectedLeadData.profile = 'Morador'
+            try {
+              if (
+                customer.getString('lead_profile') !== 'Morador' &&
+                !customer.getString('lead_profile')
+              ) {
+                customer.set('lead_profile', 'Morador')
+                $app.saveNoValidate(customer)
+              }
+            } catch (_) {}
+          } else if (
+            lower.includes('compra') ||
+            lower.includes('comprar') ||
+            lower.includes('adquirir')
+          ) {
+            collectedLeadData.purpose = 'Compra'
+          } else if (
+            lower.includes('venda') ||
+            lower.includes('vender') ||
+            lower.includes('anunciar')
+          ) {
+            collectedLeadData.purpose = 'Venda de imóvel próprio'
+          } else if (lower.includes('permuta') || lower.includes('troca')) {
+            collectedLeadData.purpose = 'Permuta / Troca'
+          } else if (
+            lower.includes('aluguel') ||
+            lower.includes('locação') ||
+            lower.includes('locacao')
+          ) {
+            collectedLeadData.purpose = 'Locação / Aluguel'
+          }
+
+          // 3. Pagamento (à vista, financiamento, carta de crédito, FGTS)
+          if (
+            /\b(a\s+vista|[aà]\s*vista|recursos\s+pr[oó]prios|dinheiro)\b/i.test(lower) ||
+            lower.includes('pagar a vista') ||
+            lower.includes('pagar à vista') ||
+            lower.includes('vou pagar a vista') ||
+            lower.includes('vou pagar à vista')
+          ) {
+            collectedLeadData.payment = 'À vista (recursos próprios)'
+          } else if (
+            /\b(financiad[ao]|financiamento|financiar|carta\s+de\s+cr[eé]dito|fgts|banco|caixa|itau|bradesco|santander)\b/i.test(
+              lower,
+            )
+          ) {
+            collectedLeadData.payment = 'Financiamento bancário'
+            if (lower.includes('fgts')) {
+              collectedLeadData.payment += ' (com uso de FGTS)'
+            }
+          }
+
+          // 4. Tipologia e dormitórios (casa, apartamento, cobertura, suítes, dorms)
+          let typologyParts = []
+          if (lower.includes('casa')) typologyParts.push('Casa')
+          if (lower.includes('apartamento') || lower.includes('apto'))
+            typologyParts.push('Apartamento')
+          if (lower.includes('sobrado')) typologyParts.push('Sobrado')
+          if (lower.includes('cobertura')) typologyParts.push('Cobertura')
+          if (lower.includes('studio') || lower.includes('kitnet')) typologyParts.push('Studio')
+
+          const suiteMatch =
+            text.match(/(\d+)\s*su[ií]tes?/i) ||
+            (/tr[eê]s\s+su[ií]tes?/i.test(lower) ? [null, '3'] : null) ||
+            (/duas\s+su[ií]tes?/i.test(lower) ? [null, '2'] : null)
+          if (suiteMatch) {
+            typologyParts.push(`${suiteMatch[1]} suíte(s)`)
+          }
+
+          const dormMatch =
+            text.match(/(\d+)\s*(?:dormit[oó]rios?|quartos?|dorms?)/i) ||
+            (/tr[eê]s\s+(?:dorm|quarto)/i.test(lower) ? [null, '3'] : null) ||
+            (/dois\s+(?:dorm|quarto)/i.test(lower) ? [null, '2'] : null)
+          if (dormMatch && !suiteMatch) {
+            typologyParts.push(`${dormMatch[1]} dormitório(s)`)
+          }
+
+          if (typologyParts.length > 0) {
+            const currentTypo = typologyParts.join(', ')
+            // Prefere descrições mais completas (ex: "Casa, 3 suíte(s)")
+            if (
+              !collectedLeadData.typology ||
+              currentTypo.length >= collectedLeadData.typology.length
+            ) {
+              collectedLeadData.typology = currentTypo
+            }
+          }
+
+          // 5. Localização / Bairro
+          if (lower.includes('ingleses'))
+            collectedLeadData.location = 'Ingleses do Rio Vermelho, Florianópolis'
+          else if (lower.includes('canasvieiras'))
+            collectedLeadData.location = 'Canasvieiras, Florianópolis'
+          else if (lower.includes('jurerê') || lower.includes('jurere'))
+            collectedLeadData.location = 'Jurerê, Florianópolis'
+          else if (lower.includes('trindade'))
+            collectedLeadData.location = 'Trindade, Florianópolis'
+          else if (lower.includes('campeche'))
+            collectedLeadData.location = 'Campeche, Florianópolis'
+          else if (lower.includes('capoeiras'))
+            collectedLeadData.location = 'Capoeiras, Florianópolis'
+          else if (lower.includes('estreito'))
+            collectedLeadData.location = 'Estreito, Florianópolis'
+          else if (lower.includes('coqueiros'))
+            collectedLeadData.location = 'Coqueiros, Florianópolis'
+          else if (lower.includes('são josé') || lower.includes('sao jose'))
+            collectedLeadData.location = 'São José'
+          else if (lower.includes('palhoça') || lower.includes('palhoca'))
+            collectedLeadData.location = 'Palhoça'
+          else if (lower.includes('biguaçu') || lower.includes('biguacu'))
+            collectedLeadData.location = 'Biguaçu'
+
+          // 6. Faixa de preço (se mencionada)
+          const prMatch = text.match(
+            /(?:at[eé]|faixa|or[cç]amento|valor|pre[cç]o)\s*(?:de|r\$)?\s*(\d+[\.,]?\d*)\s*(k|mil|milh[oõ]es|milhao|milhão)?/i,
+          )
+          if (prMatch) {
+            collectedLeadData.priceRange = prMatch[0].trim()
+          }
+
+          // 7. Links ou referências de portal / anúncio (Chaves na Mão, VivaReal, Zap, brfimoveis, etc.)
+          const portalUrlMatch = text.match(/https?:\/\/[^\s\)\>\"\'\`]+/gi)
+          if (portalUrlMatch) {
+            for (const u of portalUrlMatch) {
+              if (!collectedLeadData.specificPropertyInterests.includes(u)) {
+                collectedLeadData.specificPropertyInterests.push(u)
+              }
+            }
+          }
+        }
+      } catch (parseHistErr) {
+        console.warn(
+          `[AI_REPLY] Error compiling customer history data (non-fatal): ${String(parseHistErr)}`,
+        )
+      }
+
+      // Se o nome foi descoberto pelo histórico, atualizar displayName e persistir imediatamente no customer
+      if (collectedLeadData.name) {
+        try {
+          const fName = collectedLeadData.name.split(' ')[0]
+          if (fName && fName.length > 1) {
+            const currentName = customer.getString('name') || ''
+            const currentFirstName = customer.getString('first_name') || ''
+            if (
+              !currentName ||
+              currentName.includes('❤️') ||
+              currentName.startsWith('+') ||
+              !currentFirstName ||
+              currentFirstName.includes('❤️')
+            ) {
+              customer.set('name', collectedLeadData.name)
+              customer.set('first_name', fName)
               $app.saveNoValidate(customer)
             }
-          } catch (_) {}
-        } else if (
-          lower.includes('compra') ||
-          lower.includes('comprar') ||
-          lower.includes('adquirir')
-        ) {
-          collectedLeadData.purpose = 'Compra'
-        } else if (
-          lower.includes('venda') ||
-          lower.includes('vender') ||
-          lower.includes('anunciar')
-        ) {
-          collectedLeadData.purpose = 'Venda de imóvel próprio'
-        } else if (lower.includes('permuta') || lower.includes('troca')) {
-          collectedLeadData.purpose = 'Permuta / Troca'
-        } else if (
-          lower.includes('aluguel') ||
-          lower.includes('locação') ||
-          lower.includes('locacao')
-        ) {
-          collectedLeadData.purpose = 'Locação / Aluguel'
-        }
-
-        // 3. Pagamento (à vista, financiamento, carta de crédito, FGTS)
-        if (
-          /\b(a\s+vista|[aà]\s*vista|recursos\s+pr[oó]prios|dinheiro)\b/i.test(lower) ||
-          lower.includes('pagar a vista') ||
-          lower.includes('pagar à vista') ||
-          lower.includes('vou pagar a vista') ||
-          lower.includes('vou pagar à vista')
-        ) {
-          collectedLeadData.payment = 'À vista (recursos próprios)'
-        } else if (
-          /\b(financiad[ao]|financiamento|financiar|carta\s+de\s+cr[eé]dito|fgts|banco|caixa|itau|bradesco|santander)\b/i.test(
-            lower,
-          )
-        ) {
-          collectedLeadData.payment = 'Financiamento bancário'
-          if (lower.includes('fgts')) {
-            collectedLeadData.payment += ' (com uso de FGTS)'
           }
-        }
-
-        // 4. Tipologia e dormitórios (casa, apartamento, cobertura, suítes, dorms)
-        let typologyParts = []
-        if (lower.includes('casa')) typologyParts.push('Casa')
-        if (lower.includes('apartamento') || lower.includes('apto'))
-          typologyParts.push('Apartamento')
-        if (lower.includes('sobrado')) typologyParts.push('Sobrado')
-        if (lower.includes('cobertura')) typologyParts.push('Cobertura')
-        if (lower.includes('studio') || lower.includes('kitnet')) typologyParts.push('Studio')
-
-        const suiteMatch =
-          text.match(/(\d+)\s*su[ií]tes?/i) ||
-          (/tr[eê]s\s+su[ií]tes?/i.test(lower) ? [null, '3'] : null) ||
-          (/duas\s+su[ií]tes?/i.test(lower) ? [null, '2'] : null)
-        if (suiteMatch) {
-          typologyParts.push(`${suiteMatch[1]} suíte(s)`)
-        }
-
-        const dormMatch =
-          text.match(/(\d+)\s*(?:dormit[oó]rios?|quartos?|dorms?)/i) ||
-          (/tr[eê]s\s+(?:dorm|quarto)/i.test(lower) ? [null, '3'] : null) ||
-          (/dois\s+(?:dorm|quarto)/i.test(lower) ? [null, '2'] : null)
-        if (dormMatch && !suiteMatch) {
-          typologyParts.push(`${dormMatch[1]} dormitório(s)`)
-        }
-
-        if (typologyParts.length > 0) {
-          const currentTypo = typologyParts.join(', ')
-          // Prefere descrições mais completas (ex: "Casa, 3 suíte(s)")
-          if (
-            !collectedLeadData.typology ||
-            currentTypo.length >= collectedLeadData.typology.length
-          ) {
-            collectedLeadData.typology = currentTypo
-          }
-        }
-
-        // 5. Localização / Bairro
-        if (lower.includes('ingleses'))
-          collectedLeadData.location = 'Ingleses do Rio Vermelho, Florianópolis'
-        else if (lower.includes('canasvieiras'))
-          collectedLeadData.location = 'Canasvieiras, Florianópolis'
-        else if (lower.includes('jurerê') || lower.includes('jurere'))
-          collectedLeadData.location = 'Jurerê, Florianópolis'
-        else if (lower.includes('trindade')) collectedLeadData.location = 'Trindade, Florianópolis'
-        else if (lower.includes('campeche')) collectedLeadData.location = 'Campeche, Florianópolis'
-        else if (lower.includes('capoeiras'))
-          collectedLeadData.location = 'Capoeiras, Florianópolis'
-        else if (lower.includes('estreito')) collectedLeadData.location = 'Estreito, Florianópolis'
-        else if (lower.includes('coqueiros'))
-          collectedLeadData.location = 'Coqueiros, Florianópolis'
-        else if (lower.includes('são josé') || lower.includes('sao jose'))
-          collectedLeadData.location = 'São José'
-        else if (lower.includes('palhoça') || lower.includes('palhoca'))
-          collectedLeadData.location = 'Palhoça'
-        else if (lower.includes('biguaçu') || lower.includes('biguacu'))
-          collectedLeadData.location = 'Biguaçu'
-
-        // 6. Faixa de preço (se mencionada)
-        const prMatch = text.match(
-          /(?:at[eé]|faixa|or[cç]amento|valor|pre[cç]o)\s*(?:de|r\$)?\s*(\d+[\.,]?\d*)\s*(k|mil|milh[oõ]es|milhao|milhão)?/i,
-        )
-        if (prMatch) {
-          collectedLeadData.priceRange = prMatch[0].trim()
-        }
-
-        // 7. Links ou referências de portal / anúncio (Chaves na Mão, VivaReal, Zap, brfimoveis, etc.)
-        const portalUrlMatch = text.match(/https?:\/\/[^\s\)\>\"\'\`]+/gi)
-        if (portalUrlMatch) {
-          for (const u of portalUrlMatch) {
-            if (!collectedLeadData.specificPropertyInterests.includes(u)) {
-              collectedLeadData.specificPropertyInterests.push(u)
-            }
-          }
+        } catch (_) {}
+        if (!displayName) {
+          displayName = collectedLeadData.name.split(' ')[0]
         }
       }
-    } catch (parseHistErr) {
-      console.warn(
-        `[AI_REPLY] Error compiling customer history data (non-fatal): ${String(parseHistErr)}`,
-      )
-    }
 
-    // Se o nome foi descoberto pelo histórico, atualizar displayName e persistir imediatamente no customer
-    if (collectedLeadData.name) {
-      try {
-        const fName = collectedLeadData.name.split(' ')[0]
-        if (fName && fName.length > 1) {
-          const currentName = customer.getString('name') || ''
-          const currentFirstName = customer.getString('first_name') || ''
-          if (
-            !currentName ||
-            currentName.includes('❤️') ||
-            currentName.startsWith('+') ||
-            !currentFirstName ||
-            currentFirstName.includes('❤️')
-          ) {
-            customer.set('name', collectedLeadData.name)
-            customer.set('first_name', fName)
-            $app.saveNoValidate(customer)
-          }
-        }
-      } catch (_) {}
-      if (!displayName) {
-        displayName = collectedLeadData.name.split(' ')[0]
-      }
-    }
+      // Detecção de interesse explícito no imóvel do anúncio/portal ("gostei dessa", "tenho interesse neste imóvel", link enviado)
+      const lowerCustMsg = customerMessage.toLowerCase()
+      const isExplicitSpecificPropertyInterest =
+        lowerCustMsg.includes('gostei dessa') ||
+        lowerCustMsg.includes('gostei desse') ||
+        lowerCustMsg.includes('gostei deste') ||
+        lowerCustMsg.includes('tenho interesse neste imóvel') ||
+        lowerCustMsg.includes('tenho interesse nesse imóvel') ||
+        lowerCustMsg.includes('tenho interesse neste imovel') ||
+        lowerCustMsg.includes('tenho interesse nesse imovel') ||
+        lowerCustMsg.includes('chaves na mão') ||
+        lowerCustMsg.includes('chavesnamao') ||
+        lowerCustMsg.includes('vivareal') ||
+        lowerCustMsg.includes('zapimoveis') ||
+        lowerCustMsg.includes('zap imóveis') ||
+        (lowerCustMsg.includes('esse imóvel') && lowerCustMsg.includes('fotos')) ||
+        (lowerCustMsg.includes('este imóvel') && lowerCustMsg.includes('fotos'))
 
-    // Detecção de interesse explícito no imóvel do anúncio/portal ("gostei dessa", "tenho interesse neste imóvel", link enviado)
-    const lowerCustMsg = customerMessage.toLowerCase()
-    const isExplicitSpecificPropertyInterest =
-      lowerCustMsg.includes('gostei dessa') ||
-      lowerCustMsg.includes('gostei desse') ||
-      lowerCustMsg.includes('gostei deste') ||
-      lowerCustMsg.includes('tenho interesse neste imóvel') ||
-      lowerCustMsg.includes('tenho interesse nesse imóvel') ||
-      lowerCustMsg.includes('tenho interesse neste imovel') ||
-      lowerCustMsg.includes('tenho interesse nesse imovel') ||
-      lowerCustMsg.includes('chaves na mão') ||
-      lowerCustMsg.includes('chavesnamao') ||
-      lowerCustMsg.includes('vivareal') ||
-      lowerCustMsg.includes('zapimoveis') ||
-      lowerCustMsg.includes('zap imóveis') ||
-      (lowerCustMsg.includes('esse imóvel') && lowerCustMsg.includes('fotos')) ||
-      (lowerCustMsg.includes('este imóvel') && lowerCustMsg.includes('fotos'))
-
-    const effectiveLeadProfile =
-      customer.getString('lead_profile') || collectedLeadData.profile || ''
-    const isNameAlreadyKnown = !!(collectedLeadData.name || displayName)
-    let collectedDataSummary = `### RESUMO DE DADOS JÁ COLETADOS DESTE CLIENTE (NÃO REPETIR ESTAS PERGUNTAS):
+      const effectiveLeadProfile =
+        customer.getString('lead_profile') || collectedLeadData.profile || ''
+      const isNameAlreadyKnown = !!(collectedLeadData.name || displayName)
+      let collectedDataSummary = `### RESUMO DE DADOS JÁ COLETADOS DESTE CLIENTE (NÃO REPETIR ESTAS PERGUNTAS):
 - Nome do cliente: ${collectedLeadData.name || displayName || 'Não informado ainda'}
 - Perfil do Lead: ${effectiveLeadProfile || 'Não informado'}
 - Finalidade: ${collectedLeadData.purpose || (effectiveLeadProfile === 'Investidor' ? 'Investimento' : effectiveLeadProfile === 'Morador' ? 'Moradia' : 'Não informada ainda')}
@@ -1511,1255 +1526,1271 @@ ${
 2. INTERESSE EM IMÓVEL ESPECÍFICO (ANÚNCIO / LINK DE PORTAL):
    ${isExplicitSpecificPropertyInterest ? `* ATENÇÃO MÁXIMA: O lead acabou de demonstrar interesse direto no imóvel específico do anúncio/portal ("${customerMessage.substring(0, 80)}")! NÃO continue com questionário nem perguntas burocráticas! Apresente imediatamente esse imóvel ou opções compatíveis do catálogo BRF (nome, diferenciais, localização, valor e link oficial), parabenize a escolha e pergunte se quer ver as fotos e agendar visita.` : '* Se o lead demonstrar interesse num imóvel específico (link/mensagem de portal/anúncio), apresente esse imóvel (nome, preço, localização, link oficial) em vez de continuar o questionário.'}`
 
-    // Regra permanente de saudação temporal (Mauro): em TODA resposta a Bia saúda com bom dia/boa tarde/boa noite + nome
-    let hoursSinceLastAiMsg = null
-    try {
-      const prevAiMsgs = $app.findRecordsByFilter(
-        'conversations',
-        `customer_id = '${customerId}' && sender = 'ai'`,
-        '-created',
-        1,
-        0,
-      )
-      if (prevAiMsgs.length > 0) {
-        const lastCreatedStr = prevAiMsgs[0].getString('created')
-        const lastCreatedDate = new Date(lastCreatedStr)
-        const diffMs = now.getTime() - lastCreatedDate.getTime()
-        hoursSinceLastAiMsg = diffMs / (3600 * 1000)
-      }
-    } catch (_) {}
-
-    let channelContext = ''
-    if (receiverPhone.includes('991828050')) {
-      channelContext = `\n[PERFIL DE ATENDIMENTO: REMARKETING]\nO cliente veio de uma campanha de remarketing (já nos conhece ou interagiu antes).\nDIRETRIZES DE REMARKETING:\n- Aborde de forma mais direta, focando em reengajamento.\n- Trabalhe ativamente objeções.\n`
-    } else {
-      channelContext = `\n[PERFIL DE ATENDIMENTO: GERAL]\nO cliente é um lead novo (primeiro contato).\nDIRETRIZES GERAIS:\n- Faça a qualificação inicial.\n`
-    }
-
-    // Real Estate Properties Catalog from Database (brfimoveis.com.br)
-    let propertyContext = ''
-    let isRequestingOptions = false
-    let extractedMaxPrice = 0
-    let extractedBedrooms = 0
-    let extractedLocation = ''
-    let matchedLocFilter = ''
-    const matchedIdsMap = {}
-    matchedProps = []
-    detectedSpecificPropertyQuery = false
-    targetSpecificProp = null
-    hasFreeSearchIntent = false
-
-    try {
-      // Build search text using current customer message AND recent customer messages
-      let customerHistoryTexts = [customerMessage.toLowerCase()]
-      if (historyRecords && historyRecords.length > 0) {
-        historyRecords.forEach((h) => {
-          const s = h.getString('sender')
-          if (s === 'customer' || s === 'user' || s === 'lead') {
-            customerHistoryTexts.push((h.getString('content') || '').toLowerCase())
-          }
-        })
-      }
-      const combinedCustText = customerHistoryTexts.join(' ')
-
-      // Detect if user is asking for options / listings / links
-      const optionTriggers = [
-        'opções',
-        'opcoes',
-        'opção',
-        'opcao',
-        'links',
-        'link',
-        'imóveis',
-        'imoveis',
-        'o que vc tem',
-        'o que você tem',
-        'o que voce tem',
-        'o que tem',
-        'quais imóveis',
-        'quais imoveis',
-        'quais apartamentos',
-        'quais aptos',
-        'tem algo',
-        'me passa',
-        'manda os link',
-        'manda as opções',
-        'manda opcoes',
-        'manda opções',
-        'apresentar opções',
-        'apresentar opcoes',
-        'mostrar',
-        'fotos',
-        'catalogo',
-        'catálogo',
-      ]
-      isRequestingOptions = optionTriggers.some((trig) =>
-        customerMessage.toLowerCase().includes(trig),
-      )
-
-      // Extract price filter (e.g. "até 500k", "500 k", "até 500 mil", "500000", "400k", "1 milhão")
-      const priceKMatch = combinedCustText.match(
-        /(?:até|ate|maximo|máximo|de|por)?\s*(\d+[\.,]?\d*)\s*(?:k|mil(?:hões|hoes|hao|hão)?)/i,
-      )
-      if (priceKMatch) {
-        let numVal = parseFloat(priceKMatch[1].replace(',', '.'))
-        if (/milh/i.test(priceKMatch[0])) {
-          extractedMaxPrice = numVal * 1000000
-        } else {
-          // e.g. 500k or 500 mil
-          extractedMaxPrice = numVal < 10000 ? numVal * 1000 : numVal
-        }
-      } else {
-        const rawNumMatch = combinedCustText.match(
-          /(?:até|ate|valor|preço|preco)\s*(?:de|r\$)?\s*(\d{3,7})/i,
+      // Regra permanente de saudação temporal (Mauro): em TODA resposta a Bia saúda com bom dia/boa tarde/boa noite + nome
+      let hoursSinceLastAiMsg = null
+      try {
+        const prevAiMsgs = $app.findRecordsByFilter(
+          'conversations',
+          `customer_id = '${customerId}' && sender = 'ai'`,
+          '-created',
+          1,
+          0,
         )
-        if (rawNumMatch) {
-          extractedMaxPrice = parseFloat(rawNumMatch[1])
+        if (prevAiMsgs.length > 0) {
+          const lastCreatedStr = prevAiMsgs[0].getString('created')
+          const lastCreatedDate = new Date(lastCreatedStr)
+          const diffMs = now.getTime() - lastCreatedDate.getTime()
+          hoursSinceLastAiMsg = diffMs / (3600 * 1000)
         }
+      } catch (_) {}
+
+      let channelContext = ''
+      if (receiverPhone.includes('991828050')) {
+        channelContext = `\n[PERFIL DE ATENDIMENTO: REMARKETING]\nO cliente veio de uma campanha de remarketing (já nos conhece ou interagiu antes).\nDIRETRIZES DE REMARKETING:\n- Aborde de forma mais direta, focando em reengajamento.\n- Trabalhe ativamente objeções.\n`
+      } else {
+        channelContext = `\n[PERFIL DE ATENDIMENTO: GERAL]\nO cliente é um lead novo (primeiro contato).\nDIRETRIZES GERAIS:\n- Faça a qualificação inicial.\n`
       }
 
-      // Extract bedrooms filter (e.g. "2 dorms", "2 dormitórios", "2 quartos", "3 dorm", "1 quarto")
-      const bedMatch = combinedCustText.match(/(\d+)\s*(?:dorm|quarto|suite|suíte)/i)
-      if (bedMatch) {
-        extractedBedrooms = parseInt(bedMatch[1], 10)
-      } else if (
-        combinedCustText.includes('dois dorm') ||
-        combinedCustText.includes('dois quarto')
-      ) {
-        extractedBedrooms = 2
-      } else if (
-        combinedCustText.includes('tres dorm') ||
-        combinedCustText.includes('três dorm') ||
-        combinedCustText.includes('tres quarto')
-      ) {
-        extractedBedrooms = 3
-      } else if (combinedCustText.includes('um dorm') || combinedCustText.includes('um quarto')) {
-        extractedBedrooms = 1
-      }
+      // Real Estate Properties Catalog from Database (brfimoveis.com.br)
+      let propertyContext = ''
+      let isRequestingOptions = false
+      let extractedMaxPrice = 0
+      let extractedBedrooms = 0
+      let extractedLocation = ''
+      let matchedLocFilter = ''
+      const matchedIdsMap = {}
+      matchedProps = []
+      detectedSpecificPropertyQuery = false
+      targetSpecificProp = null
+      hasFreeSearchIntent = false
 
-      // Extract location / city / neighborhood / continente
-      const locationsMap = [
-        {
-          key: 'continente',
-          filter:
-            "city ~ 'São José' || city ~ 'Sao Jose' || neighborhood ~ 'Capoeiras' || neighborhood ~ 'Estreito' || neighborhood ~ 'Coqueiros' || neighborhood ~ 'Balneário' || neighborhood ~ 'Barreiros' || neighborhood ~ 'Continente'",
-        },
-        {
-          key: 'perto a ilha',
-          filter:
-            "neighborhood ~ 'Capoeiras' || neighborhood ~ 'Estreito' || neighborhood ~ 'Coqueiros' || neighborhood ~ 'Balneário'",
-        },
-        {
-          key: 'perto da ilha',
-          filter:
-            "neighborhood ~ 'Capoeiras' || neighborhood ~ 'Estreito' || neighborhood ~ 'Coqueiros' || neighborhood ~ 'Balneário'",
-        },
-        { key: 'capoeiras', filter: "neighborhood ~ 'Capoeiras'" },
-        { key: 'coqueiros', filter: "neighborhood ~ 'Coqueiros'" },
-        { key: 'estreito', filter: "neighborhood ~ 'Estreito' || neighborhood ~ 'Balneário'" },
-        { key: 'balneário', filter: "neighborhood ~ 'Balneário'" },
-        { key: 'balneario', filter: "neighborhood ~ 'Balneário'" },
-        { key: 'areias', filter: "neighborhood ~ 'Areias'" },
-        { key: 'barreiros', filter: "neighborhood ~ 'Barreiros'" },
-        { key: 'floresta', filter: "neighborhood ~ 'Floresta'" },
-        { key: 'são josé', filter: "city ~ 'São José' || city ~ 'Sao Jose'" },
-        { key: 'sao jose', filter: "city ~ 'São José' || city ~ 'Sao Jose'" },
-        { key: 'palhoça', filter: "city ~ 'Palhoça' || city ~ 'Palhoca'" },
-        { key: 'palhoca', filter: "city ~ 'Palhoça' || city ~ 'Palhoca'" },
-        { key: 'biguaçu', filter: "city ~ 'Biguaçu' || city ~ 'Biguacu'" },
-        { key: 'biguacu', filter: "city ~ 'Biguaçu' || city ~ 'Biguacu'" },
-        { key: 'trindade', filter: "neighborhood ~ 'Trindade'" },
-        { key: 'canasvieiras', filter: "neighborhood ~ 'Canasvieiras'" },
-        { key: 'canas vieiras', filter: "neighborhood ~ 'Canasvieiras' || title ~ 'Canasvieiras'" },
-        { key: 'ingleses', filter: "neighborhood ~ 'Ingleses'" },
-        { key: 'jurere', filter: "neighborhood ~ 'Jurerê' || title ~ 'Jurerê'" },
-        { key: 'jurerê', filter: "neighborhood ~ 'Jurerê' || title ~ 'Jurerê'" },
-        {
-          key: 'açores',
-          filter: "neighborhood ~ 'Açores' || title ~ 'Açores' || title ~ 'Acores'",
-        },
-        {
-          key: 'acores',
-          filter: "neighborhood ~ 'Açores' || title ~ 'Açores' || title ~ 'Acores'",
-        },
-        {
-          key: 'rio caveiras',
-          filter: "neighborhood ~ 'Rio Caveiras' || city ~ 'Biguaçu' || city ~ 'Biguacu'",
-        },
-      ]
-
-      for (const locItem of locationsMap) {
-        if (combinedCustText.includes(locItem.key)) {
-          matchedLocFilter = locItem.filter
-          extractedLocation = locItem.key
-          break
-        }
-      }
-
-      // 0. Priorizar busca do empreendimento do Playbook ativo quando houver match
-      if (matchedPlaybook) {
-        const pbEmpreendimento = (matchedPlaybook.getString('empreendimento') || '').trim()
-        const pbName = (matchedPlaybook.getString('name') || '').trim()
-        let pbKeywords = matchedPlaybook.get('match_keywords') || []
-        if (typeof pbKeywords === 'string') {
-          try {
-            pbKeywords = JSON.parse(pbKeywords)
-          } catch (_) {
-            pbKeywords = [pbKeywords]
-          }
-        }
-
-        const playbookTerms = [pbEmpreendimento, pbName]
-        if (Array.isArray(pbKeywords)) {
-          for (let pkIdx = 0; pkIdx < pbKeywords.length; pkIdx++) {
-            playbookTerms.push(pbKeywords[pkIdx])
-          }
-        }
-        const filteredPlaybookTerms = playbookTerms
-          .filter(Boolean)
-          .map((t) => String(t).trim())
-          .filter((t) => t.length > 2)
-
-        for (const term of filteredPlaybookTerms) {
-          const safeTerm = term.replace(/'/g, "''")
-          try {
-            const pbProps = $app.findRecordsByFilter(
-              'properties',
-              `is_active = true && (title ~ '${safeTerm}' || features ~ '${safeTerm}' || description ~ '${safeTerm}' || code ~ '${safeTerm}' || neighborhood ~ '${safeTerm}')`,
-              '-created',
-              3,
-              0,
-            )
-            for (let pbIdx = 0; pbIdx < pbProps.length; pbIdx++) {
-              const pr = pbProps[pbIdx]
-              if (!matchedIdsMap[pr.id]) {
-                matchedIdsMap[pr.id] = true
-                matchedProps.push(pr)
-              }
+      try {
+        // Build search text using current customer message AND recent customer messages
+        let customerHistoryTexts = [customerMessage.toLowerCase()]
+        if (historyRecords && historyRecords.length > 0) {
+          historyRecords.forEach((h) => {
+            const s = h.getString('sender')
+            if (s === 'customer' || s === 'user' || s === 'lead') {
+              customerHistoryTexts.push((h.getString('content') || '').toLowerCase())
             }
-          } catch (_) {}
-          if (matchedProps.length >= 3) break
+          })
         }
-      }
+        const combinedCustText = customerHistoryTexts.join(' ')
 
-      // 1. Check if customer mentioned known projects / launches (can match MULTIPLE projects at once)
-      // REGRA ITEM 1: Se o lead pediu código explícito, herança direta nesta sessão ou se há imóvel em foco (targetSpecificProp),
-      // NÃO executar knownProjects para não contaminar matchedProps com lançamentos genéricos (ex: Colinas, Neo, Terrá)
-      // Alternativas/outros projetos SOMENTE em pivô de recusa.
-      const combinedCustAndAdText = `${combinedCustText} ${customerSource.toLowerCase()} ${customerNotes.toLowerCase()}`
+        // Detect if user is asking for options / listings / links
+        const optionTriggers = [
+          'opções',
+          'opcoes',
+          'opção',
+          'opcao',
+          'links',
+          'link',
+          'imóveis',
+          'imoveis',
+          'o que vc tem',
+          'o que você tem',
+          'o que voce tem',
+          'o que tem',
+          'quais imóveis',
+          'quais imoveis',
+          'quais apartamentos',
+          'quais aptos',
+          'tem algo',
+          'me passa',
+          'manda os link',
+          'manda as opções',
+          'manda opcoes',
+          'manda opções',
+          'apresentar opções',
+          'apresentar opcoes',
+          'mostrar',
+          'fotos',
+          'catalogo',
+          'catálogo',
+        ]
+        isRequestingOptions = optionTriggers.some((trig) =>
+          customerMessage.toLowerCase().includes(trig),
+        )
 
-      if (!lastMsgSpecificPropertyRequested && !isShortContinuationMsg && !targetSpecificProp) {
-        const knownProjects = [
+        // Extract price filter (e.g. "até 500k", "500 k", "até 500 mil", "500000", "400k", "1 milhão")
+        const priceKMatch = combinedCustText.match(
+          /(?:até|ate|maximo|máximo|de|por)?\s*(\d+[\.,]?\d*)\s*(?:k|mil(?:hões|hoes|hao|hão)?)/i,
+        )
+        if (priceKMatch) {
+          let numVal = parseFloat(priceKMatch[1].replace(',', '.'))
+          if (/milh/i.test(priceKMatch[0])) {
+            extractedMaxPrice = numVal * 1000000
+          } else {
+            // e.g. 500k or 500 mil
+            extractedMaxPrice = numVal < 10000 ? numVal * 1000 : numVal
+          }
+        } else {
+          const rawNumMatch = combinedCustText.match(
+            /(?:até|ate|valor|preço|preco)\s*(?:de|r\$)?\s*(\d{3,7})/i,
+          )
+          if (rawNumMatch) {
+            extractedMaxPrice = parseFloat(rawNumMatch[1])
+          }
+        }
+
+        // Extract bedrooms filter (e.g. "2 dorms", "2 dormitórios", "2 quartos", "3 dorm", "1 quarto")
+        const bedMatch = combinedCustText.match(/(\d+)\s*(?:dorm|quarto|suite|suíte)/i)
+        if (bedMatch) {
+          extractedBedrooms = parseInt(bedMatch[1], 10)
+        } else if (
+          combinedCustText.includes('dois dorm') ||
+          combinedCustText.includes('dois quarto')
+        ) {
+          extractedBedrooms = 2
+        } else if (
+          combinedCustText.includes('tres dorm') ||
+          combinedCustText.includes('três dorm') ||
+          combinedCustText.includes('tres quarto')
+        ) {
+          extractedBedrooms = 3
+        } else if (combinedCustText.includes('um dorm') || combinedCustText.includes('um quarto')) {
+          extractedBedrooms = 1
+        }
+
+        // Extract location / city / neighborhood / continente
+        const locationsMap = [
           {
-            regex: /terr[aá]/i,
+            key: 'continente',
             filter:
-              "is_active = true && (title ~ 'Terrá' || title ~ 'Terra' || features ~ 'Terrá' || code ~ '329')",
+              "city ~ 'São José' || city ~ 'Sao Jose' || neighborhood ~ 'Capoeiras' || neighborhood ~ 'Estreito' || neighborhood ~ 'Coqueiros' || neighborhood ~ 'Balneário' || neighborhood ~ 'Barreiros' || neighborhood ~ 'Continente'",
           },
           {
-            regex: /viva\s*trindade/i,
+            key: 'perto a ilha',
             filter:
-              "is_active = true && (title ~ 'Viva Trindade' || features ~ 'Viva Trindade' || code ~ '301')",
+              "neighborhood ~ 'Capoeiras' || neighborhood ~ 'Estreito' || neighborhood ~ 'Coqueiros' || neighborhood ~ 'Balneário'",
           },
           {
-            regex: /villa\s*(?:dos\s*)?ac[oó]rdes|villa\s*(?:dos\s*)?a[cç][oó]res/i,
+            key: 'perto da ilha',
             filter:
-              "is_active = true && (title ~ 'Acordes' || title ~ 'Açores' || title ~ 'Acores' || features ~ 'Villa dos Acordes' || features ~ 'Villa dos Açores' || code ~ '280')",
+              "neighborhood ~ 'Capoeiras' || neighborhood ~ 'Estreito' || neighborhood ~ 'Coqueiros' || neighborhood ~ 'Balneário'",
+          },
+          { key: 'capoeiras', filter: "neighborhood ~ 'Capoeiras'" },
+          { key: 'coqueiros', filter: "neighborhood ~ 'Coqueiros'" },
+          { key: 'estreito', filter: "neighborhood ~ 'Estreito' || neighborhood ~ 'Balneário'" },
+          { key: 'balneário', filter: "neighborhood ~ 'Balneário'" },
+          { key: 'balneario', filter: "neighborhood ~ 'Balneário'" },
+          { key: 'areias', filter: "neighborhood ~ 'Areias'" },
+          { key: 'barreiros', filter: "neighborhood ~ 'Barreiros'" },
+          { key: 'floresta', filter: "neighborhood ~ 'Floresta'" },
+          { key: 'são josé', filter: "city ~ 'São José' || city ~ 'Sao Jose'" },
+          { key: 'sao jose', filter: "city ~ 'São José' || city ~ 'Sao Jose'" },
+          { key: 'palhoça', filter: "city ~ 'Palhoça' || city ~ 'Palhoca'" },
+          { key: 'palhoca', filter: "city ~ 'Palhoça' || city ~ 'Palhoca'" },
+          { key: 'biguaçu', filter: "city ~ 'Biguaçu' || city ~ 'Biguacu'" },
+          { key: 'biguacu', filter: "city ~ 'Biguaçu' || city ~ 'Biguacu'" },
+          { key: 'trindade', filter: "neighborhood ~ 'Trindade'" },
+          { key: 'canasvieiras', filter: "neighborhood ~ 'Canasvieiras'" },
+          {
+            key: 'canas vieiras',
+            filter: "neighborhood ~ 'Canasvieiras' || title ~ 'Canasvieiras'",
+          },
+          { key: 'ingleses', filter: "neighborhood ~ 'Ingleses'" },
+          { key: 'jurere', filter: "neighborhood ~ 'Jurerê' || title ~ 'Jurerê'" },
+          { key: 'jurerê', filter: "neighborhood ~ 'Jurerê' || title ~ 'Jurerê'" },
+          {
+            key: 'açores',
+            filter: "neighborhood ~ 'Açores' || title ~ 'Açores' || title ~ 'Acores'",
           },
           {
-            regex: /villa\s*areias|residencial\s*areias/i,
-            filter:
-              "is_active = true && (title ~ 'Areias' || features ~ 'Villa Areias' || features ~ 'Residencial Areias' || code ~ '295')",
+            key: 'acores',
+            filter: "neighborhood ~ 'Açores' || title ~ 'Açores' || title ~ 'Acores'",
           },
           {
-            regex: /canasvieiras|canas\s*vieiras|studios?\s*canas|studios?\s*vista\s*mar/i,
-            filter:
-              "is_active = true && (features ~ 'Canasvieiras' || features ~ 'Studios' || title ~ 'Canasvieiras' || code ~ '330')",
-          },
-          {
-            regex: /viva\s*balne[aá]rio/i,
-            filter:
-              "is_active = true && (title ~ 'Viva Balneário' || title ~ 'Viva Balneario' || features ~ 'Viva Balneário' || code ~ '342')",
-          },
-          {
-            regex: /colinas\s*(?:de\s*)?s[aã]o\s*pedro/i,
-            filter:
-              "is_active = true && (title ~ 'Colinas' || features ~ 'Colinas de São Pedro' || code ~ '326' || code ~ '337' || code ~ '333')",
-          },
-          {
-            regex: /solar\s*(?:di\s*)?plaza/i,
-            filter:
-              "is_active = true && (title ~ 'Solar' || features ~ 'Solar Di Plaza' || code ~ '327')",
-          },
-          {
-            regex: /neo\s*continente/i,
-            filter:
-              "is_active = true && (title ~ 'Neo Continente' || features ~ 'Neo Continente' || code ~ '289')",
-          },
-          {
-            regex: /biguacu\s*rio\s*caveiras|rio\s*caveiras/i,
-            filter:
-              "is_active = true && (features ~ 'Rio Caveiras' || neighborhood ~ 'Rio Caveiras' || code ~ '310' || code ~ '280')",
-          },
-          {
-            regex: /opus|agron[oô]mica\s*opus/i,
-            filter: "is_active = true && (features ~ 'Opus' || code ~ '311')",
+            key: 'rio caveiras',
+            filter: "neighborhood ~ 'Rio Caveiras' || city ~ 'Biguaçu' || city ~ 'Biguacu'",
           },
         ]
 
-        for (let i = 0; i < knownProjects.length; i++) {
-          const proj = knownProjects[i]
-          if (proj.regex.test(combinedCustAndAdText)) {
-            const projResults = $app.findRecordsByFilter(
+        for (const locItem of locationsMap) {
+          if (combinedCustText.includes(locItem.key)) {
+            matchedLocFilter = locItem.filter
+            extractedLocation = locItem.key
+            break
+          }
+        }
+
+        // 0. Priorizar busca do empreendimento do Playbook ativo quando houver match
+        if (matchedPlaybook) {
+          const pbEmpreendimento = (matchedPlaybook.getString('empreendimento') || '').trim()
+          const pbName = (matchedPlaybook.getString('name') || '').trim()
+          let pbKeywords = matchedPlaybook.get('match_keywords') || []
+          if (typeof pbKeywords === 'string') {
+            try {
+              pbKeywords = JSON.parse(pbKeywords)
+            } catch (_) {
+              pbKeywords = [pbKeywords]
+            }
+          }
+
+          const playbookTerms = [pbEmpreendimento, pbName]
+          if (Array.isArray(pbKeywords)) {
+            for (let pkIdx = 0; pkIdx < pbKeywords.length; pkIdx++) {
+              playbookTerms.push(pbKeywords[pkIdx])
+            }
+          }
+          const filteredPlaybookTerms = playbookTerms
+            .filter(Boolean)
+            .map((t) => String(t).trim())
+            .filter((t) => t.length > 2)
+
+          for (const term of filteredPlaybookTerms) {
+            const safeTerm = term.replace(/'/g, "''")
+            try {
+              const pbProps = $app.findRecordsByFilter(
+                'properties',
+                `is_active = true && (title ~ '${safeTerm}' || features ~ '${safeTerm}' || description ~ '${safeTerm}' || code ~ '${safeTerm}' || neighborhood ~ '${safeTerm}')`,
+                '-created',
+                3,
+                0,
+              )
+              for (let pbIdx = 0; pbIdx < pbProps.length; pbIdx++) {
+                const pr = pbProps[pbIdx]
+                if (!matchedIdsMap[pr.id]) {
+                  matchedIdsMap[pr.id] = true
+                  matchedProps.push(pr)
+                }
+              }
+            } catch (_) {}
+            if (matchedProps.length >= 3) break
+          }
+        }
+
+        // 1. Check if customer mentioned known projects / launches (can match MULTIPLE projects at once)
+        // REGRA ITEM 1: Se o lead pediu código explícito, herança direta nesta sessão ou se há imóvel em foco (targetSpecificProp),
+        // NÃO executar knownProjects para não contaminar matchedProps com lançamentos genéricos (ex: Colinas, Neo, Terrá)
+        // Alternativas/outros projetos SOMENTE em pivô de recusa.
+        const combinedCustAndAdText = `${combinedCustText} ${customerSource.toLowerCase()} ${customerNotes.toLowerCase()}`
+
+        if (!lastMsgSpecificPropertyRequested && !isShortContinuationMsg && !targetSpecificProp) {
+          const knownProjects = [
+            {
+              regex: /terr[aá]/i,
+              filter:
+                "is_active = true && (title ~ 'Terrá' || title ~ 'Terra' || features ~ 'Terrá' || code ~ '329')",
+            },
+            {
+              regex: /viva\s*trindade/i,
+              filter:
+                "is_active = true && (title ~ 'Viva Trindade' || features ~ 'Viva Trindade' || code ~ '301')",
+            },
+            {
+              regex: /villa\s*(?:dos\s*)?ac[oó]rdes|villa\s*(?:dos\s*)?a[cç][oó]res/i,
+              filter:
+                "is_active = true && (title ~ 'Acordes' || title ~ 'Açores' || title ~ 'Acores' || features ~ 'Villa dos Acordes' || features ~ 'Villa dos Açores' || code ~ '280')",
+            },
+            {
+              regex: /villa\s*areias|residencial\s*areias/i,
+              filter:
+                "is_active = true && (title ~ 'Areias' || features ~ 'Villa Areias' || features ~ 'Residencial Areias' || code ~ '295')",
+            },
+            {
+              regex: /canasvieiras|canas\s*vieiras|studios?\s*canas|studios?\s*vista\s*mar/i,
+              filter:
+                "is_active = true && (features ~ 'Canasvieiras' || features ~ 'Studios' || title ~ 'Canasvieiras' || code ~ '330')",
+            },
+            {
+              regex: /viva\s*balne[aá]rio/i,
+              filter:
+                "is_active = true && (title ~ 'Viva Balneário' || title ~ 'Viva Balneario' || features ~ 'Viva Balneário' || code ~ '342')",
+            },
+            {
+              regex: /colinas\s*(?:de\s*)?s[aã]o\s*pedro/i,
+              filter:
+                "is_active = true && (title ~ 'Colinas' || features ~ 'Colinas de São Pedro' || code ~ '326' || code ~ '337' || code ~ '333')",
+            },
+            {
+              regex: /solar\s*(?:di\s*)?plaza/i,
+              filter:
+                "is_active = true && (title ~ 'Solar' || features ~ 'Solar Di Plaza' || code ~ '327')",
+            },
+            {
+              regex: /neo\s*continente/i,
+              filter:
+                "is_active = true && (title ~ 'Neo Continente' || features ~ 'Neo Continente' || code ~ '289')",
+            },
+            {
+              regex: /biguacu\s*rio\s*caveiras|rio\s*caveiras/i,
+              filter:
+                "is_active = true && (features ~ 'Rio Caveiras' || neighborhood ~ 'Rio Caveiras' || code ~ '310' || code ~ '280')",
+            },
+            {
+              regex: /opus|agron[oô]mica\s*opus/i,
+              filter: "is_active = true && (features ~ 'Opus' || code ~ '311')",
+            },
+          ]
+
+          for (let i = 0; i < knownProjects.length; i++) {
+            const proj = knownProjects[i]
+            if (proj.regex.test(combinedCustAndAdText)) {
+              const projResults = $app.findRecordsByFilter(
+                'properties',
+                proj.filter,
+                '-created',
+                3,
+                0,
+              )
+              for (let j = 0; j < projResults.length; j++) {
+                const pr = projResults[j]
+                if (!matchedIdsMap[pr.id]) {
+                  matchedIdsMap[pr.id] = true
+                  matchedProps.push(pr)
+                }
+              }
+            }
+          }
+        }
+        // 1b. Extração ampla de códigos de imóveis e busca exata normalizada
+        // Helper estrito: normalizar código sem espaços, hífens ou letras minúsculas (ex: "AP 343" -> "AP343", "343" -> "343")
+        function normalizeCodeStrict(c) {
+          if (!c) return ''
+          return String(c)
+            .replace(/[-_\s]+/g, '')
+            .toUpperCase()
+        }
+
+        // Helper estrito: extrai apenas os dígitos finais
+        function extractCodeDigits(c) {
+          if (!c) return ''
+          const m = String(c).match(/\d{2,5}/)
+          return m ? m[0] : ''
+        }
+
+        // Helper estrito de busca exata em properties
+        // Proibido fuzzy por prefixo: 343 NUNCA deve retornar 333 ou 337
+        function findPropertyByExactCode(targetCodeStr) {
+          if (!targetCodeStr) return null
+          const normTarget = normalizeCodeStrict(targetCodeStr)
+          const digits = extractCodeDigits(targetCodeStr)
+          if (!digits) return null
+
+          try {
+            // Busca no banco por aproximação inicial apenas para os dígitos exatos
+            const candidates = $app.findRecordsByFilter(
               'properties',
-              proj.filter,
+              `code ~ '${digits}' || url ~ '/${digits}/'`,
               '-created',
-              3,
+              20,
               0,
             )
-            for (let j = 0; j < projResults.length; j++) {
-              const pr = projResults[j]
-              if (!matchedIdsMap[pr.id]) {
-                matchedIdsMap[pr.id] = true
-                matchedProps.push(pr)
+
+            // 1º passo: correspondência idêntica no código normalizado sem espaços
+            for (let ci = 0; ci < candidates.length; ci++) {
+              const cand = candidates[ci]
+              const candCodeNorm = normalizeCodeStrict(cand.getString('code'))
+              if (candCodeNorm === normTarget) {
+                return cand
               }
             }
-          }
-        }
-      }
-      // 1b. Extração ampla de códigos de imóveis e busca exata normalizada
-      // Helper estrito: normalizar código sem espaços, hífens ou letras minúsculas (ex: "AP 343" -> "AP343", "343" -> "343")
-      function normalizeCodeStrict(c) {
-        if (!c) return ''
-        return String(c)
-          .replace(/[-_\s]+/g, '')
-          .toUpperCase()
-      }
 
-      // Helper estrito: extrai apenas os dígitos finais
-      function extractCodeDigits(c) {
-        if (!c) return ''
-        const m = String(c).match(/\d{2,5}/)
-        return m ? m[0] : ''
-      }
-
-      // Helper estrito de busca exata em properties
-      // Proibido fuzzy por prefixo: 343 NUNCA deve retornar 333 ou 337
-      function findPropertyByExactCode(targetCodeStr) {
-        if (!targetCodeStr) return null
-        const normTarget = normalizeCodeStrict(targetCodeStr)
-        const digits = extractCodeDigits(targetCodeStr)
-        if (!digits) return null
-
-        try {
-          // Busca no banco por aproximação inicial apenas para os dígitos exatos
-          const candidates = $app.findRecordsByFilter(
-            'properties',
-            `code ~ '${digits}' || url ~ '/${digits}/'`,
-            '-created',
-            20,
-            0,
-          )
-
-          // 1º passo: correspondência idêntica no código normalizado sem espaços
-          for (let ci = 0; ci < candidates.length; ci++) {
-            const cand = candidates[ci]
-            const candCodeNorm = normalizeCodeStrict(cand.getString('code'))
-            if (candCodeNorm === normTarget) {
-              return cand
-            }
-          }
-
-          // 2º passo: correspondência idêntica nos dígitos numéricos (ex: lead pediu '343' e cadastro é 'AP 343' ou 'AP343')
-          for (let ci = 0; ci < candidates.length; ci++) {
-            const cand = candidates[ci]
-            const candDigits = extractCodeDigits(cand.getString('code'))
-            if (candDigits === digits) {
-              return cand
-            }
-          }
-
-          // 3º passo: conferência na URL oficial (ex: brfimoveis.com.br/343/...)
-          for (let ci = 0; ci < candidates.length; ci++) {
-            const cand = candidates[ci]
-            const candUrl = cand.getString('url') || ''
-            if (candUrl.includes(`/${digits}/`) || candUrl.endsWith(`/${digits}`)) {
-              return cand
-            }
-          }
-        } catch (lookupEx) {
-          console.warn(
-            `[AI_REPLY] Erro ao buscar código exato ${targetCodeStr}: ${String(lookupEx)}`,
-          )
-        }
-        return null
-      }
-
-      // ITEM 1 & 6: FOCO DEFINITIVO
-      // Se a última mensagem contém código explícito (AP343/ap 343/#AP343/"343"):
-      // esse imóvel vence TUDO: limpar matchedProps, ignorar knownProjects/matchedLaunch/matchedPlaybook/histórico.
-      if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
-        const exactMatchProp = findPropertyByExactCode(lastMsgPropertyCodeOrNum)
-        if (exactMatchProp) {
-          matchedProps = [exactMatchProp]
-          for (const k in matchedIdsMap) delete matchedIdsMap[k]
-          matchedIdsMap[exactMatchProp.id] = true
-          targetSpecificProp = exactMatchProp
-          detectedSpecificPropertyQuery = true
-          matchedLaunch = null
-          matchedPlaybook = null
-          console.log(
-            `[AI_REPLY] [FOCO FINAL] ${lastMsgPropertyCodeOrNum} → ${exactMatchProp.id} (code="${exactMatchProp.getString('code')}", price="${exactMatchProp.getString('price_formatted')}")`,
-          )
-        } else {
-          // Se nenhum imóvel corresponde exatamente, NÃO inferir outro! Proibido fuzzy por prefixo.
-          matchedProps = []
-          for (const k in matchedIdsMap) delete matchedIdsMap[k]
-          targetSpecificProp = null
-          detectedSpecificPropertyQuery = true
-          matchedLaunch = null
-          matchedPlaybook = null
-          console.log(
-            `[AI_REPLY] [FOCO FINAL] ${lastMsgPropertyCodeOrNum} → NÃO ENCONTRADO (nenhum imóvel inferido por aproximação).`,
-          )
-        }
-      } else if (isShortContinuationMsg) {
-        // Mensagens curtas de continuação ("pode mandar aqui", "ok", "manda") herdam o foco FINAL da última mensagem com código da sessão
-        let inheritedProp = null
-        try {
-          const recentSessionMsgs = (
-            fullCustomerHistory && fullCustomerHistory.length > 0
-              ? fullCustomerHistory
-              : historyRecords || []
-          ).slice(-8)
-
-          // Varrer de trás para frente procurando a mensagem mais recente com código explícito
-          for (let hIdx = recentSessionMsgs.length - 1; hIdx >= 0; hIdx--) {
-            const hMsg = recentSessionMsgs[hIdx]
-            const hTxt = hMsg.getString('content') || ''
-            const parsedCode = extractExplicitPropertyCode(hTxt)
-            if (parsedCode && parsedCode.fullCode) {
-              const candProp = findPropertyByExactCode(parsedCode.fullCode)
-              if (candProp) {
-                inheritedProp = candProp
-                break
+            // 2º passo: correspondência idêntica nos dígitos numéricos (ex: lead pediu '343' e cadastro é 'AP 343' ou 'AP343')
+            for (let ci = 0; ci < candidates.length; ci++) {
+              const cand = candidates[ci]
+              const candDigits = extractCodeDigits(cand.getString('code'))
+              if (candDigits === digits) {
+                return cand
               }
             }
+
+            // 3º passo: conferência na URL oficial (ex: brfimoveis.com.br/343/...)
+            for (let ci = 0; ci < candidates.length; ci++) {
+              const cand = candidates[ci]
+              const candUrl = cand.getString('url') || ''
+              if (candUrl.includes(`/${digits}/`) || candUrl.endsWith(`/${digits}`)) {
+                return cand
+              }
+            }
+          } catch (lookupEx) {
+            console.warn(
+              `[AI_REPLY] Erro ao buscar código exato ${targetCodeStr}: ${String(lookupEx)}`,
+            )
           }
-        } catch (heritErr) {
-          console.warn(`[AI_REPLY] Erro ao buscar herança de sessão: ${String(heritErr)}`)
+          return null
         }
 
-        if (inheritedProp) {
-          matchedProps = [inheritedProp]
-          for (const k in matchedIdsMap) delete matchedIdsMap[k]
-          matchedIdsMap[inheritedProp.id] = true
-          targetSpecificProp = inheritedProp
-          detectedSpecificPropertyQuery = true
-          matchedLaunch = null
-          matchedPlaybook = null
+        // ITEM 1 & 6: FOCO DEFINITIVO
+        // Se a última mensagem contém código explícito (AP343/ap 343/#AP343/"343"):
+        // esse imóvel vence TUDO: limpar matchedProps, ignorar knownProjects/matchedLaunch/matchedPlaybook/histórico.
+        if (lastMsgSpecificPropertyRequested && lastMsgPropertyCodeOrNum) {
+          const exactMatchProp = findPropertyByExactCode(lastMsgPropertyCodeOrNum)
+          if (exactMatchProp) {
+            matchedProps = [exactMatchProp]
+            for (const k in matchedIdsMap) delete matchedIdsMap[k]
+            matchedIdsMap[exactMatchProp.id] = true
+            targetSpecificProp = exactMatchProp
+            detectedSpecificPropertyQuery = true
+            matchedLaunch = null
+            matchedPlaybook = null
+            console.log(
+              `[AI_REPLY] [FOCO FINAL] ${lastMsgPropertyCodeOrNum} → ${exactMatchProp.id} (code="${exactMatchProp.getString('code')}", price="${exactMatchProp.getString('price_formatted')}")`,
+            )
+          } else {
+            // Se nenhum imóvel corresponde exatamente, NÃO inferir outro! Proibido fuzzy por prefixo.
+            matchedProps = []
+            for (const k in matchedIdsMap) delete matchedIdsMap[k]
+            targetSpecificProp = null
+            detectedSpecificPropertyQuery = true
+            matchedLaunch = null
+            matchedPlaybook = null
+            console.log(
+              `[AI_REPLY] [FOCO FINAL] ${lastMsgPropertyCodeOrNum} → NÃO ENCONTRADO (nenhum imóvel inferido por aproximação).`,
+            )
+          }
+        } else if (isShortContinuationMsg) {
+          // Mensagens curtas de continuação ("pode mandar aqui", "ok", "manda") herdam o foco FINAL da última mensagem com código da sessão
+          let inheritedProp = null
+          try {
+            const recentSessionMsgs = (
+              fullCustomerHistory && fullCustomerHistory.length > 0
+                ? fullCustomerHistory
+                : historyRecords || []
+            ).slice(-8)
+
+            // Varrer de trás para frente procurando a mensagem mais recente com código explícito
+            for (let hIdx = recentSessionMsgs.length - 1; hIdx >= 0; hIdx--) {
+              const hMsg = recentSessionMsgs[hIdx]
+              const hTxt = hMsg.getString('content') || ''
+              const parsedCode = extractExplicitPropertyCode(hTxt)
+              if (parsedCode && parsedCode.fullCode) {
+                const candProp = findPropertyByExactCode(parsedCode.fullCode)
+                if (candProp) {
+                  inheritedProp = candProp
+                  break
+                }
+              }
+            }
+          } catch (heritErr) {
+            console.warn(`[AI_REPLY] Erro ao buscar herança de sessão: ${String(heritErr)}`)
+          }
+
+          if (inheritedProp) {
+            matchedProps = [inheritedProp]
+            for (const k in matchedIdsMap) delete matchedIdsMap[k]
+            matchedIdsMap[inheritedProp.id] = true
+            targetSpecificProp = inheritedProp
+            detectedSpecificPropertyQuery = true
+            matchedLaunch = null
+            matchedPlaybook = null
+            console.log(
+              `[AI_REPLY] [FOCO FINAL] Herança de sessão ativa → ${inheritedProp.id} (code="${inheritedProp.getString('code')}", price="${inheritedProp.getString('price_formatted')}")`,
+            )
+          }
+        } else if (!isMismatchDetected) {
+          // REGRA DE MÁQUINA 2: FOCO ÚNICO
+          // Código digitado pelo cliente vence tudo. Caminho sliceForPropertyScan/histCodeRegex DESATIVADO
+          // para nunca ressuscitar códigos antigos do histórico e sobrescrever o foco atual.
           console.log(
-            `[AI_REPLY] [FOCO FINAL] Herança de sessão ativa → ${inheritedProp.id} (code="${inheritedProp.getString('code')}", price="${inheritedProp.getString('price_formatted')}")`,
+            '[AI_REPLY] [FOCO ÚNICO] sliceForPropertyScan desativado para proteger o foco atual.',
           )
-        }
-      } else if (!isMismatchDetected) {
-        // REGRA DE MÁQUINA 2: FOCO ÚNICO
-        // Código digitado pelo cliente vence tudo. Caminho sliceForPropertyScan/histCodeRegex DESATIVADO
-        // para nunca ressuscitar códigos antigos do histórico e sobrescrever o foco atual.
-        console.log(
-          '[AI_REPLY] [FOCO ÚNICO] sliceForPropertyScan desativado para proteger o foco atual.',
-        )
-        if (matchedProps.length > 0 && !targetSpecificProp) {
-          targetSpecificProp = matchedProps[0]
-        }
-      }
-
-      const hasFoundLeadSpecificProperty = detectedSpecificPropertyQuery && matchedProps.length > 0
-      const leadRequestedPropertyMissing =
-        detectedSpecificPropertyQuery && matchedProps.length === 0
-      // 2. Filter by criteria (Price <= X, Bedrooms >= Y, Location)
-      if (
-        matchedProps.length === 0 &&
-        (extractedMaxPrice > 0 || extractedBedrooms > 0 || matchedLocFilter)
-      ) {
-        let filterParts = ['is_active = true']
-        if (extractedMaxPrice > 0) {
-          filterParts.push(`price <= ${extractedMaxPrice}`)
-        }
-        if (extractedBedrooms > 0) {
-          filterParts.push(`bedrooms >= ${extractedBedrooms}`)
-        }
-        if (matchedLocFilter) {
-          filterParts.push(`(${matchedLocFilter})`)
+          if (matchedProps.length > 0 && !targetSpecificProp) {
+            targetSpecificProp = matchedProps[0]
+          }
         }
 
-        const criteriaFilter = filterParts.join(' && ')
-        console.log(`[AI_REPLY] Searching properties by criteria: ${criteriaFilter}`)
-        let criteriaResults = $app.findRecordsByFilter('properties', criteriaFilter, 'price', 6, 0)
-
-        // If location made criteria too strict, fallback to price + bedrooms
+        const hasFoundLeadSpecificProperty =
+          detectedSpecificPropertyQuery && matchedProps.length > 0
+        const leadRequestedPropertyMissing =
+          detectedSpecificPropertyQuery && matchedProps.length === 0
+        // 2. Filter by criteria (Price <= X, Bedrooms >= Y, Location)
         if (
-          criteriaResults.length === 0 &&
-          matchedLocFilter &&
-          (extractedMaxPrice > 0 || extractedBedrooms > 0)
+          matchedProps.length === 0 &&
+          (extractedMaxPrice > 0 || extractedBedrooms > 0 || matchedLocFilter)
         ) {
-          let relaxedParts = ['is_active = true']
-          if (extractedMaxPrice > 0) relaxedParts.push(`price <= ${extractedMaxPrice}`)
-          if (extractedBedrooms > 0) relaxedParts.push(`bedrooms >= ${extractedBedrooms}`)
-          console.log(`[AI_REPLY] Relaxing location filter: ${relaxedParts.join(' && ')}`)
-          criteriaResults = $app.findRecordsByFilter(
+          let filterParts = ['is_active = true']
+          if (extractedMaxPrice > 0) {
+            filterParts.push(`price <= ${extractedMaxPrice}`)
+          }
+          if (extractedBedrooms > 0) {
+            filterParts.push(`bedrooms >= ${extractedBedrooms}`)
+          }
+          if (matchedLocFilter) {
+            filterParts.push(`(${matchedLocFilter})`)
+          }
+
+          const criteriaFilter = filterParts.join(' && ')
+          console.log(`[AI_REPLY] Searching properties by criteria: ${criteriaFilter}`)
+          let criteriaResults = $app.findRecordsByFilter(
             'properties',
-            relaxedParts.join(' && '),
+            criteriaFilter,
             'price',
             6,
             0,
           )
-        }
 
-        if (criteriaResults.length > 0) {
-          for (let crIdx = 0; crIdx < criteriaResults.length; crIdx++) {
-            const cr = criteriaResults[crIdx]
-            if (!matchedIdsMap[cr.id]) {
-              matchedIdsMap[cr.id] = true
-              matchedProps.push(cr)
-            }
-          }
-        }
-      }
-
-      // CORREÇÃO C: BUSCA LIVRE SEM CÓDIGO ("pesquisar para mim", "fazenda em Urubici", "área rural", "casa em Florianópolis", etc.)
-      hasFreeSearchIntent = isFreeSearchIntent(combinedCustAndAdText)
-
-      if (matchedProps.length === 0 && !detectedSpecificPropertyQuery && hasFreeSearchIntent) {
-        // Extrai termos-chave para busca textual em properties (tipo, cidade, título)
-        const ruralKeywords = ['rural', 'fazenda', 'sitio', 'sítio', 'chacara', 'chácara']
-        const isRuralQuery = ruralKeywords.some((k) =>
-          combinedCustAndAdText.toLowerCase().includes(k),
-        )
-
-        try {
-          let freeResults = []
-          if (isRuralQuery) {
-            // Busca propriedades rurais cadastradas com filtro expandido (property_type, description, title, code)
-            freeResults = $app.findRecordsByFilter(
+          // If location made criteria too strict, fallback to price + bedrooms
+          if (
+            criteriaResults.length === 0 &&
+            matchedLocFilter &&
+            (extractedMaxPrice > 0 || extractedBedrooms > 0)
+          ) {
+            let relaxedParts = ['is_active = true']
+            if (extractedMaxPrice > 0) relaxedParts.push(`price <= ${extractedMaxPrice}`)
+            if (extractedBedrooms > 0) relaxedParts.push(`bedrooms >= ${extractedBedrooms}`)
+            console.log(`[AI_REPLY] Relaxing location filter: ${relaxedParts.join(' && ')}`)
+            criteriaResults = $app.findRecordsByFilter(
               'properties',
-              "is_active = true && (property_type ~ 'Rural' || property_type ~ 'Fazenda' || title ~ 'Rural' || title ~ 'Fazenda' || description ~ 'rural' || description ~ 'fazenda' || description ~ 'hectares' || code ~ 'ARU')",
-              '-created',
-              4,
+              relaxedParts.join(' && '),
+              'price',
+              6,
               0,
             )
-          } else {
-            // Busca genérica por palavras de localização ou tipo (incluindo property_type ~ term e description ~ term)
-            const searchTerms = []
-            if (/urubici/i.test(combinedCustAndAdText)) {
-              searchTerms.push("city ~ 'Urubici' || title ~ 'Urubici' || description ~ 'Urubici'")
-              // Se pediu Urubici / Serra Catarinense, busca também na macrorregião (São Joaquim, Lages)
-              searchTerms.push(
-                "city ~ 'São Joaquim' || description ~ 'vinícolas' || description ~ 'vinicolas' || description ~ 'Serra'",
-              )
-            }
-            if (/s[aã]o\s+joaquim/i.test(combinedCustAndAdText))
-              searchTerms.push(
-                "city ~ 'São Joaquim' || title ~ 'São Joaquim' || description ~ 'São Joaquim'",
-              )
-            if (/lages/i.test(combinedCustAndAdText))
-              searchTerms.push("city ~ 'Lages' || title ~ 'Lages' || description ~ 'Lages'")
-            if (/florian[oó]polis/i.test(combinedCustAndAdText))
-              searchTerms.push(
-                "city ~ 'Florianópolis' || title ~ 'Florianópolis' || description ~ 'Florianópolis'",
-              )
-            if (/s[aã]o\s+jos[eé]/i.test(combinedCustAndAdText))
-              searchTerms.push(
-                "city ~ 'São José' || title ~ 'São José' || description ~ 'São José'",
-              )
-            if (/palho[cç]a/i.test(combinedCustAndAdText))
-              searchTerms.push("city ~ 'Palhoça' || title ~ 'Palhoça' || description ~ 'Palhoça'")
-            if (/bigua[cç]u/i.test(combinedCustAndAdText))
-              searchTerms.push("city ~ 'Biguaçu' || title ~ 'Biguaçu' || description ~ 'Biguaçu'")
-            if (/barreiros/i.test(combinedCustAndAdText))
-              searchTerms.push(
-                "neighborhood ~ 'Barreiros' || title ~ 'Barreiros' || description ~ 'Barreiros'",
-              )
-            if (/jurer[eê]/i.test(combinedCustAndAdText))
-              searchTerms.push(
-                "neighborhood ~ 'Jurerê' || title ~ 'Jurerê' || description ~ 'Jurerê'",
-              )
-
-            if (/apartamento|apto/i.test(combinedCustAndAdText))
-              searchTerms.push("property_type ~ 'Apartamento' || description ~ 'apartamento'")
-            if (/casa/i.test(combinedCustAndAdText))
-              searchTerms.push("property_type ~ 'Casa' || description ~ 'casa'")
-            if (/terreno|lote/i.test(combinedCustAndAdText))
-              searchTerms.push("property_type ~ 'Terreno' || description ~ 'terreno'")
-            if (/studio/i.test(combinedCustAndAdText))
-              searchTerms.push("property_type ~ 'Studio' || description ~ 'studio'")
-            if (/cobertura/i.test(combinedCustAndAdText))
-              searchTerms.push("property_type ~ 'Cobertura' || description ~ 'cobertura'")
-
-            if (searchTerms.length > 0) {
-              const freeFilter = `is_active = true && (${searchTerms.join(' || ')})`
-              freeResults = $app.findRecordsByFilter('properties', freeFilter, '-created', 4, 0)
-            }
           }
 
-          for (let frIdx = 0; frIdx < freeResults.length; frIdx++) {
-            const fr = freeResults[frIdx]
-            if (!matchedIdsMap[fr.id]) {
-              matchedIdsMap[fr.id] = true
-              matchedProps.push(fr)
+          if (criteriaResults.length > 0) {
+            for (let crIdx = 0; crIdx < criteriaResults.length; crIdx++) {
+              const cr = criteriaResults[crIdx]
+              if (!matchedIdsMap[cr.id]) {
+                matchedIdsMap[cr.id] = true
+                matchedProps.push(cr)
+              }
             }
-          }
-          if (matchedProps.length > 0) {
-            console.log(
-              `[AI_REPLY] BUSCA LIVRE LOCALIZOU ${matchedProps.length} imóvel(is) compatível(is): ${matchedProps.map((m) => m.getString('code')).join(', ')}`,
-            )
-          } else {
-            console.log(
-              `[AI_REPLY] BUSCA LIVRE NÃO localizou imóveis exatos para "${combinedCustAndAdText}". PROIBIDO injetar lançamentos aleatórios.`,
-            )
-          }
-        } catch (freeErr) {
-          console.warn(`[AI_REPLY] Erro na busca livre de imóveis: ${String(freeErr)}`)
-        }
-      }
-
-      // 3. Fallback: SE e SOMENTE SE o lead não estiver em busca de imóvel específico nem em busca livre pontual
-      // REGRA CRÍTICA B & C: Se o lead perguntou sobre um imóvel específico (código, link ou número) ou fez busca livre específica e não achou,
-      // É TERMINANTEMENTE PROIBIDO preencher o catálogo com outros lançamentos ou imóveis alternativos (nem Vistage nem code ~ 'LM').
-      if (
-        matchedProps.length === 0 &&
-        !detectedSpecificPropertyQuery &&
-        !hasFreeSearchIntent &&
-        !isMismatchDetected
-      ) {
-        const topLaunches = $app.findRecordsByFilter(
-          'properties',
-          "is_active = true && code ~ 'LM'",
-          '-created',
-          4,
-          0,
-        )
-        for (let tlIdx = 0; tlIdx < topLaunches.length; tlIdx++) {
-          const tl = topLaunches[tlIdx]
-          if (!matchedIdsMap[tl.id]) {
-            matchedIdsMap[tl.id] = true
-            matchedProps.push(tl)
           }
         }
-        if (matchedProps.length < 4) {
-          const generalProps = $app.findRecordsByFilter(
+
+        // CORREÇÃO C: BUSCA LIVRE SEM CÓDIGO ("pesquisar para mim", "fazenda em Urubici", "área rural", "casa em Florianópolis", etc.)
+        hasFreeSearchIntent = isFreeSearchIntent(combinedCustAndAdText)
+
+        if (matchedProps.length === 0 && !detectedSpecificPropertyQuery && hasFreeSearchIntent) {
+          // Extrai termos-chave para busca textual em properties (tipo, cidade, título)
+          const ruralKeywords = ['rural', 'fazenda', 'sitio', 'sítio', 'chacara', 'chácara']
+          const isRuralQuery = ruralKeywords.some((k) =>
+            combinedCustAndAdText.toLowerCase().includes(k),
+          )
+
+          try {
+            let freeResults = []
+            if (isRuralQuery) {
+              // Busca propriedades rurais cadastradas com filtro expandido (property_type, description, title, code)
+              freeResults = $app.findRecordsByFilter(
+                'properties',
+                "is_active = true && (property_type ~ 'Rural' || property_type ~ 'Fazenda' || title ~ 'Rural' || title ~ 'Fazenda' || description ~ 'rural' || description ~ 'fazenda' || description ~ 'hectares' || code ~ 'ARU')",
+                '-created',
+                4,
+                0,
+              )
+            } else {
+              // Busca genérica por palavras de localização ou tipo (incluindo property_type ~ term e description ~ term)
+              const searchTerms = []
+              if (/urubici/i.test(combinedCustAndAdText)) {
+                searchTerms.push("city ~ 'Urubici' || title ~ 'Urubici' || description ~ 'Urubici'")
+                // Se pediu Urubici / Serra Catarinense, busca também na macrorregião (São Joaquim, Lages)
+                searchTerms.push(
+                  "city ~ 'São Joaquim' || description ~ 'vinícolas' || description ~ 'vinicolas' || description ~ 'Serra'",
+                )
+              }
+              if (/s[aã]o\s+joaquim/i.test(combinedCustAndAdText))
+                searchTerms.push(
+                  "city ~ 'São Joaquim' || title ~ 'São Joaquim' || description ~ 'São Joaquim'",
+                )
+              if (/lages/i.test(combinedCustAndAdText))
+                searchTerms.push("city ~ 'Lages' || title ~ 'Lages' || description ~ 'Lages'")
+              if (/florian[oó]polis/i.test(combinedCustAndAdText))
+                searchTerms.push(
+                  "city ~ 'Florianópolis' || title ~ 'Florianópolis' || description ~ 'Florianópolis'",
+                )
+              if (/s[aã]o\s+jos[eé]/i.test(combinedCustAndAdText))
+                searchTerms.push(
+                  "city ~ 'São José' || title ~ 'São José' || description ~ 'São José'",
+                )
+              if (/palho[cç]a/i.test(combinedCustAndAdText))
+                searchTerms.push("city ~ 'Palhoça' || title ~ 'Palhoça' || description ~ 'Palhoça'")
+              if (/bigua[cç]u/i.test(combinedCustAndAdText))
+                searchTerms.push("city ~ 'Biguaçu' || title ~ 'Biguaçu' || description ~ 'Biguaçu'")
+              if (/barreiros/i.test(combinedCustAndAdText))
+                searchTerms.push(
+                  "neighborhood ~ 'Barreiros' || title ~ 'Barreiros' || description ~ 'Barreiros'",
+                )
+              if (/jurer[eê]/i.test(combinedCustAndAdText))
+                searchTerms.push(
+                  "neighborhood ~ 'Jurerê' || title ~ 'Jurerê' || description ~ 'Jurerê'",
+                )
+
+              if (/apartamento|apto/i.test(combinedCustAndAdText))
+                searchTerms.push("property_type ~ 'Apartamento' || description ~ 'apartamento'")
+              if (/casa/i.test(combinedCustAndAdText))
+                searchTerms.push("property_type ~ 'Casa' || description ~ 'casa'")
+              if (/terreno|lote/i.test(combinedCustAndAdText))
+                searchTerms.push("property_type ~ 'Terreno' || description ~ 'terreno'")
+              if (/studio/i.test(combinedCustAndAdText))
+                searchTerms.push("property_type ~ 'Studio' || description ~ 'studio'")
+              if (/cobertura/i.test(combinedCustAndAdText))
+                searchTerms.push("property_type ~ 'Cobertura' || description ~ 'cobertura'")
+
+              if (searchTerms.length > 0) {
+                const freeFilter = `is_active = true && (${searchTerms.join(' || ')})`
+                freeResults = $app.findRecordsByFilter('properties', freeFilter, '-created', 4, 0)
+              }
+            }
+
+            for (let frIdx = 0; frIdx < freeResults.length; frIdx++) {
+              const fr = freeResults[frIdx]
+              if (!matchedIdsMap[fr.id]) {
+                matchedIdsMap[fr.id] = true
+                matchedProps.push(fr)
+              }
+            }
+            if (matchedProps.length > 0) {
+              console.log(
+                `[AI_REPLY] BUSCA LIVRE LOCALIZOU ${matchedProps.length} imóvel(is) compatível(is): ${matchedProps.map((m) => m.getString('code')).join(', ')}`,
+              )
+            } else {
+              console.log(
+                `[AI_REPLY] BUSCA LIVRE NÃO localizou imóveis exatos para "${combinedCustAndAdText}". PROIBIDO injetar lançamentos aleatórios.`,
+              )
+            }
+          } catch (freeErr) {
+            console.warn(`[AI_REPLY] Erro na busca livre de imóveis: ${String(freeErr)}`)
+          }
+        }
+
+        // 3. Fallback: SE e SOMENTE SE o lead não estiver em busca de imóvel específico nem em busca livre pontual
+        // REGRA CRÍTICA B & C: Se o lead perguntou sobre um imóvel específico (código, link ou número) ou fez busca livre específica e não achou,
+        // É TERMINANTEMENTE PROIBIDO preencher o catálogo com outros lançamentos ou imóveis alternativos (nem Vistage nem code ~ 'LM').
+        if (
+          matchedProps.length === 0 &&
+          !detectedSpecificPropertyQuery &&
+          !hasFreeSearchIntent &&
+          !isMismatchDetected
+        ) {
+          const topLaunches = $app.findRecordsByFilter(
             'properties',
-            'is_active = true',
-            'price',
+            "is_active = true && code ~ 'LM'",
+            '-created',
             4,
             0,
           )
-          for (let gpIdx = 0; gpIdx < generalProps.length; gpIdx++) {
-            const gp = generalProps[gpIdx]
-            if (!matchedIdsMap[gp.id] && matchedProps.length < 6) {
-              matchedIdsMap[gp.id] = true
-              matchedProps.push(gp)
+          for (let tlIdx = 0; tlIdx < topLaunches.length; tlIdx++) {
+            const tl = topLaunches[tlIdx]
+            if (!matchedIdsMap[tl.id]) {
+              matchedIdsMap[tl.id] = true
+              matchedProps.push(tl)
+            }
+          }
+          if (matchedProps.length < 4) {
+            const generalProps = $app.findRecordsByFilter(
+              'properties',
+              'is_active = true',
+              'price',
+              4,
+              0,
+            )
+            for (let gpIdx = 0; gpIdx < generalProps.length; gpIdx++) {
+              const gp = generalProps[gpIdx]
+              if (!matchedIdsMap[gp.id] && matchedProps.length < 6) {
+                matchedIdsMap[gp.id] = true
+                matchedProps.push(gp)
+              }
             }
           }
         }
-      }
-      if (matchedProps.length > 0) {
-        propertyContext = '\n[CATÁLOGO DE IMÓVEIS REAIS - BRF IMÓVEIS (www.brfimoveis.com.br)]\n'
-        propertyContext +=
-          'ESTES IMÓVEIS ESTÃO CONFIRMADOS E DISPONÍVEIS NO CATÁLOGO. Se o cliente perguntou por eles ou por opções semelhantes, CONFIRME que temos sim disponíveis e apresente as informações e links oficiais abaixo:\n\n'
+        if (matchedProps.length > 0) {
+          propertyContext = '\n[CATÁLOGO DE IMÓVEIS REAIS - BRF IMÓVEIS (www.brfimoveis.com.br)]\n'
+          propertyContext +=
+            'ESTES IMÓVEIS ESTÃO CONFIRMADOS E DISPONÍVEIS NO CATÁLOGO. Se o cliente perguntou por eles ou por opções semelhantes, CONFIRME que temos sim disponíveis e apresente as informações e links oficiais abaixo:\n\n'
 
-        matchedProps.forEach((p, idx) => {
-          const pCode = (p.getString('code') || '').trim()
-          const pTitle = p.getString('title')
-          const pUrl = p.getString('url')
-          const pCity = p.getString('city')
-          const pNeigh = p.getString('neighborhood')
-          const pPrice = p.getString('price_formatted')
-          const pBeds = p.getInt('bedrooms')
-          const pSuites = p.getInt('suites')
-          const pBaths = p.getInt('bathrooms')
-          const pParking = p.getInt('parking_spaces')
-          const pArea = p.getFloat('area_privativa')
-          const pDesc = p.getString('description')
-          const isLaunchLm = /^LM/i.test(pCode.replace(/[-_\s]+/g, ''))
+          matchedProps.forEach((p, idx) => {
+            const pCode = (p.getString('code') || '').trim()
+            const pTitle = p.getString('title')
+            const pUrl = p.getString('url')
+            const pCity = p.getString('city')
+            const pNeigh = p.getString('neighborhood')
+            const pPrice = p.getString('price_formatted')
+            const pBeds = p.getInt('bedrooms')
+            const pSuites = p.getInt('suites')
+            const pBaths = p.getInt('bathrooms')
+            const pParking = p.getInt('parking_spaces')
+            const pArea = p.getFloat('area_privativa')
+            const pDesc = p.getString('description')
+            const isLaunchLm = /^LM/i.test(pCode.replace(/[-_\s]+/g, ''))
 
-          propertyContext += `--- IMÓVEL ${idx + 1} ---\n`
-          propertyContext += `Código: ${pCode}\n`
-          propertyContext += `Título: ${pTitle}\n`
-          propertyContext += `Link Oficial do Imóvel: ${pUrl}\n`
-          propertyContext += `Localização: ${pNeigh ? pNeigh + ', ' : ''}${pCity}\n`
-          propertyContext += `Valor: ${pPrice}\n`
-          if (!isLaunchLm) {
-            propertyContext += `FONTE ÚNICA E EXCLUSIVA DE VALOR: ${pPrice || 'Valor sob consulta no link oficial'}. Imóvel de TERCEIROS — proibido citar valores de lançamentos.\n`
-          }
-          propertyContext += `Sinal de visita = FECHAMENTO: celebrar, pedir dia e período de preferência, confirmar que o Mauro conduzirá no local. Nunca pedir para o cliente ligar.\n`
-          if (pBeds > 0)
-            propertyContext += `Dormitórios: ${pBeds}${pSuites > 0 ? ` (${pSuites} suítes)` : ''}\n`
-          if (pBaths > 0) propertyContext += `Banheiros: ${pBaths}\n`
-          if (pParking > 0) propertyContext += `Vagas de garagem: ${pParking}\n`
-          if (pArea > 0) propertyContext += `Área Privativa: ${pArea} m²\n`
-          if (pDesc) propertyContext += `Destaques: ${pDesc}\n`
-          propertyContext += '\n'
-        })
+            propertyContext += `--- IMÓVEL ${idx + 1} ---\n`
+            propertyContext += `Código: ${pCode}\n`
+            propertyContext += `Título: ${pTitle}\n`
+            propertyContext += `Link Oficial do Imóvel: ${pUrl}\n`
+            propertyContext += `Localização: ${pNeigh ? pNeigh + ', ' : ''}${pCity}\n`
+            propertyContext += `Valor: ${pPrice}\n`
+            if (!isLaunchLm) {
+              propertyContext += `FONTE ÚNICA E EXCLUSIVA DE VALOR: ${pPrice || 'Valor sob consulta no link oficial'}. Imóvel de TERCEIROS — proibido citar valores de lançamentos.\n`
+            }
+            propertyContext += `Sinal de visita = FECHAMENTO: celebrar, pedir dia e período de preferência, confirmar que o Mauro conduzirá no local. Nunca pedir para o cliente ligar.\n`
+            if (pBeds > 0)
+              propertyContext += `Dormitórios: ${pBeds}${pSuites > 0 ? ` (${pSuites} suítes)` : ''}\n`
+            if (pBaths > 0) propertyContext += `Banheiros: ${pBaths}\n`
+            if (pParking > 0) propertyContext += `Vagas de garagem: ${pParking}\n`
+            if (pArea > 0) propertyContext += `Área Privativa: ${pArea} m²\n`
+            if (pDesc) propertyContext += `Destaques: ${pDesc}\n`
+            propertyContext += '\n'
+          })
+        }
+      } catch (propErr) {
+        console.warn(`[AI_REPLY] Error querying properties catalog (non-fatal): ${String(propErr)}`)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const pErrLog = new Record(logsCol)
+          pErrLog.set('user_id', userId || '')
+          pErrLog.set('type', 'properties_lookup_error')
+          pErrLog.set('message', 'Erro não-fatal ao buscar imóveis para o contexto da IA')
+          pErrLog.set('details', String(propErr))
+          $app.saveNoValidate(pErrLog)
+        } catch (_) {}
       }
-    } catch (propErr) {
-      console.warn(`[AI_REPLY] Error querying properties catalog (non-fatal): ${String(propErr)}`)
+
+      if (!propertyContext) {
+        propertyContext =
+          '\n[CATÁLOGO DE IMÓVEIS]\nSite oficial: https://www.brfimoveis.com.br\nPara opções personalizadas e agendamento de visita, informe o perfil desejado que a equipe BRF conduzirá seu atendimento exclusivo.\nSinal de visita = FECHAMENTO: celebrar, pedir dia e período de preferência, confirmar que o Mauro conduzirá no local. Nunca pedir para o cliente ligar.\n'
+      }
+
+      // 0. Obter índices de mercado vigentes e MEMOS DE MERCADO por bairro (Constituição v2.0 Art. 10)
+      let indicesContextText = ''
       try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const pErrLog = new Record(logsCol)
-        pErrLog.set('user_id', userId || '')
-        pErrLog.set('type', 'properties_lookup_error')
-        pErrLog.set('message', 'Erro não-fatal ao buscar imóveis para o contexto da IA')
-        pErrLog.set('details', String(propErr))
-        $app.saveNoValidate(pErrLog)
-      } catch (_) {}
-    }
+        const latestIndices = $app.findRecordsByFilter('market_indices', '', '-created', 10, 0)
+        if (latestIndices && latestIndices.length > 0) {
+          const inccRec = latestIndices.find((r) =>
+            (r.getString('name') || '').toUpperCase().includes('INCC'),
+          )
+          const igpmRec = latestIndices.find((r) =>
+            (r.getString('name') || '').toUpperCase().includes('IGP-M'),
+          )
 
-    if (!propertyContext) {
-      propertyContext =
-        '\n[CATÁLOGO DE IMÓVEIS]\nSite oficial: https://www.brfimoveis.com.br\nPara opções personalizadas e agendamento de visita, informe o perfil desejado que a equipe BRF conduzirá seu atendimento exclusivo.\nSinal de visita = FECHAMENTO: celebrar, pedir dia e período de preferência, confirmar que o Mauro conduzirá no local. Nunca pedir para o cliente ligar.\n'
-    }
-
-    // 0. Obter índices de mercado vigentes e MEMOS DE MERCADO por bairro (Constituição v2.0 Art. 10)
-    let indicesContextText = ''
-    try {
-      const latestIndices = $app.findRecordsByFilter('market_indices', '', '-created', 10, 0)
-      if (latestIndices && latestIndices.length > 0) {
-        const inccRec = latestIndices.find((r) =>
-          (r.getString('name') || '').toUpperCase().includes('INCC'),
-        )
-        const igpmRec = latestIndices.find((r) =>
-          (r.getString('name') || '').toUpperCase().includes('IGP-M'),
-        )
-
-        indicesContextText +=
-          '\n[ÍNDICES ECONÔMICOS DE MERCADO VIGENTES - ATUALIZAÇÃO AUTOMÁTICA]\n'
-        if (inccRec) {
-          indicesContextText += `- INCC-M: ${inccRec.get('value')}% no mês de referência ${inccRec.getString('reference_month')} (Fonte: ${inccRec.getString('source') || 'BCB/FGV'})\n`
+          indicesContextText +=
+            '\n[ÍNDICES ECONÔMICOS DE MERCADO VIGENTES - ATUALIZAÇÃO AUTOMÁTICA]\n'
+          if (inccRec) {
+            indicesContextText += `- INCC-M: ${inccRec.get('value')}% no mês de referência ${inccRec.getString('reference_month')} (Fonte: ${inccRec.getString('source') || 'BCB/FGV'})\n`
+          }
+          if (igpmRec) {
+            indicesContextText += `- IGP-M: ${igpmRec.get('value')}% no mês de referência ${igpmRec.getString('reference_month')} (Fonte: ${igpmRec.getString('source') || 'BCB/FGV'})\n`
+          }
+          indicesContextText += `INSTRUÇÃO DE ATUALIZAÇÃO E REAJUSTE DE PREÇOS:\n`
+          indicesContextText += `1. Ao citar valores de tabelas de pagamento, verifique sempre o mês de referência da tabela no cabeçalho do documento.\n`
+          indicesContextText += `2. Se a tabela for de meses anteriores ao mês vigente, informe ao cliente com clareza e transparência que os valores e parcelas estão sujeitos ao reajuste contratual do INCC e/ou IGP-M acumulado.\n`
+          indicesContextText += `3. Se houver mais de uma tabela do mesmo empreendimento, use EXCLUSIVAMENTE a tabela com a data mais recente.\n\n`
         }
-        if (igpmRec) {
-          indicesContextText += `- IGP-M: ${igpmRec.get('value')}% no mês de referência ${igpmRec.getString('reference_month')} (Fonte: ${igpmRec.getString('source') || 'BCB/FGV'})\n`
-        }
-        indicesContextText += `INSTRUÇÃO DE ATUALIZAÇÃO E REAJUSTE DE PREÇOS:\n`
-        indicesContextText += `1. Ao citar valores de tabelas de pagamento, verifique sempre o mês de referência da tabela no cabeçalho do documento.\n`
-        indicesContextText += `2. Se a tabela for de meses anteriores ao mês vigente, informe ao cliente com clareza e transparência que os valores e parcelas estão sujeitos ao reajuste contratual do INCC e/ou IGP-M acumulado.\n`
-        indicesContextText += `3. Se houver mais de uma tabela do mesmo empreendimento, use EXCLUSIVAMENTE a tabela com a data mais recente.\n\n`
+      } catch (indErr) {
+        console.warn(`[AI_REPLY] Error loading market_indices (non-fatal): ${String(indErr)}`)
       }
-    } catch (indErr) {
-      console.warn(`[AI_REPLY] Error loading market_indices (non-fatal): ${String(indErr)}`)
-    }
 
-    // Injeção de Memos de Inteligência de Mercado por bairro (Art. 10 da Constituição v2.0)
-    try {
-      const activeMemos = $app.findRecordsByFilter('market_memos', '', '-created', 20, 0)
-      if (activeMemos && activeMemos.length > 0) {
-        indicesContextText += `\n[MEMO DE INTELIGÊNCIA DE MERCADO OFICIAL DO DIA - CONSTITUIÇÃO v2.0 ART. 10]:\n`
-        indicesContextText += `REGRA INVIOLÁVEL: A Bia domina por bairro o valor do m², a valorização anual e o comparativo imobiliário x investimento bancário (poupança). Todo número citado DEVE vir estritamente dos memos abaixo (com fonte e data de referência). NUNCA invente estatísticas de mercado.\n`
-        for (let mIdx = 0; mIdx < activeMemos.length; mIdx++) {
-          const mRec = activeMemos[mIdx]
-          indicesContextText += `• Bairro: ${mRec.getString('neighborhood')} (${mRec.getString('city') || 'Grande Fpolis'}) — m²: R$ ${mRec.get('avg_price_m2')} | Valorização anual: ${mRec.get('annual_appreciation_pct')}% | Poupança ref: ${mRec.get('benchmark_savings_pct')}% | Memo: "${mRec.getString('memo_text')}" (Fonte: ${mRec.getString('source')} - Data: ${mRec.getString('reference_date')})\n`
+      // Injeção de Memos de Inteligência de Mercado por bairro (Art. 10 da Constituição v2.0)
+      try {
+        const activeMemos = $app.findRecordsByFilter('market_memos', '', '-created', 20, 0)
+        if (activeMemos && activeMemos.length > 0) {
+          indicesContextText += `\n[MEMO DE INTELIGÊNCIA DE MERCADO OFICIAL DO DIA - CONSTITUIÇÃO v2.0 ART. 10]:\n`
+          indicesContextText += `REGRA INVIOLÁVEL: A Bia domina por bairro o valor do m², a valorização anual e o comparativo imobiliário x investimento bancário (poupança). Todo número citado DEVE vir estritamente dos memos abaixo (com fonte e data de referência). NUNCA invente estatísticas de mercado.\n`
+          for (let mIdx = 0; mIdx < activeMemos.length; mIdx++) {
+            const mRec = activeMemos[mIdx]
+            indicesContextText += `• Bairro: ${mRec.getString('neighborhood')} (${mRec.getString('city') || 'Grande Fpolis'}) — m²: R$ ${mRec.get('avg_price_m2')} | Valorização anual: ${mRec.get('annual_appreciation_pct')}% | Poupança ref: ${mRec.get('benchmark_savings_pct')}% | Memo: "${mRec.getString('memo_text')}" (Fonte: ${mRec.getString('source')} - Data: ${mRec.getString('reference_date')})\n`
+          }
+          indicesContextText += `\n`
         }
-        indicesContextText += `\n`
+      } catch (memoErr) {
+        console.warn(`[AI_REPLY] Error loading market_memos (non-fatal): ${String(memoErr)}`)
       }
-    } catch (memoErr) {
-      console.warn(`[AI_REPLY] Error loading market_memos (non-fatal): ${String(memoErr)}`)
-    }
 
-    // Injeção de Dados Brutos do Memo Diário de Financiamento Imobiliário (Banco Central / Principais Bancos)
-    try {
-      const latestFinMemos = $app.findRecordsByFilter('financing_memos', '', '-created', 1, 0)
-      if (latestFinMemos && latestFinMemos.length > 0) {
-        const finRec = latestFinMemos[0]
-        const refDateStr = finRec.getString('reference_date') || ''
-        const sourceStr =
-          finRec.getString('source') || 'Banco Central do Brasil / Portais Oficiais dos Bancos'
-        const isPartial = finRec.get('is_partial') === true
+      // Injeção de Dados Brutos do Memo Diário de Financiamento Imobiliário (Banco Central / Principais Bancos)
+      try {
+        const latestFinMemos = $app.findRecordsByFilter('financing_memos', '', '-created', 1, 0)
+        if (latestFinMemos && latestFinMemos.length > 0) {
+          const finRec = latestFinMemos[0]
+          const refDateStr = finRec.getString('reference_date') || ''
+          const sourceStr =
+            finRec.getString('source') || 'Banco Central do Brasil / Portais Oficiais dos Bancos'
+          const isPartial = finRec.get('is_partial') === true
 
-        // Calcular defasagem da data de referência
-        let isStale = false
-        if (refDateStr) {
+          // Calcular defasagem da data de referência
+          let isStale = false
+          if (refDateStr) {
+            try {
+              const refTime = new Date(refDateStr).getTime()
+              const nowTime = new Date().getTime()
+              const diffHours = (nowTime - refTime) / (1000 * 60 * 60)
+              if (diffHours > 48) {
+                isStale = true
+              }
+            } catch (_) {}
+          }
+
+          indicesContextText += `\n[DADOS BRUTOS OFICIAIS - MEMO DIÁRIO DE FINANCIAMENTO IMOBILIÁRIO]:\n`
+          indicesContextText += `Data do Memo: ${refDateStr || 'Recente'} | Fonte: ${sourceStr}${isPartial ? ' (Dados parciais auditados)' : ''}\n`
+          if (isStale) {
+            indicesContextText += `AVISO DE VIGÊNCIA: Dados do dia ${refDateStr} — confirmar antes de citar números exatos ao cliente.\n`
+          }
+
+          // Tenta desempacotar dados estruturados por banco
+          let banksList = []
           try {
-            const refTime = new Date(refDateStr).getTime()
-            const nowTime = new Date().getTime()
-            const diffHours = (nowTime - refTime) / (1000 * 60 * 60)
-            if (diffHours > 48) {
-              isStale = true
+            const rawBanks = finRec.get('banks_data')
+            if (Array.isArray(rawBanks)) {
+              banksList = rawBanks
+            } else if (typeof rawBanks === 'string') {
+              banksList = JSON.parse(rawBanks)
             }
           } catch (_) {}
-        }
 
-        indicesContextText += `\n[DADOS BRUTOS OFICIAIS - MEMO DIÁRIO DE FINANCIAMENTO IMOBILIÁRIO]:\n`
-        indicesContextText += `Data do Memo: ${refDateStr || 'Recente'} | Fonte: ${sourceStr}${isPartial ? ' (Dados parciais auditados)' : ''}\n`
-        if (isStale) {
-          indicesContextText += `AVISO DE VIGÊNCIA: Dados do dia ${refDateStr} — confirmar antes de citar números exatos ao cliente.\n`
-        }
+          if (Array.isArray(banksList) && banksList.length > 0) {
+            indicesContextText += `CONDIÇÕES VIGENTES POR BANCO (FINANCIAMENTO RESIDENCIAL):\n`
+            for (let bIdx = 0; bIdx < banksList.length; bIdx++) {
+              const b = banksList[bIdx]
+              const bName = b.bank_name || b.bank_code || 'Banco'
+              const minEntrada =
+                b.min_down_payment_pct != null ? `${b.min_down_payment_pct}%` : '20%'
+              const maxFin = b.max_financing_pct != null ? `${b.max_financing_pct}%` : '80%'
+              const taxaStr =
+                b.rate_details ||
+                (b.rate_effective_annual_pct
+                  ? `${b.rate_effective_annual_pct}% a.a.`
+                  : 'Sob consulta')
+              const compRenda =
+                b.max_income_commitment_pct != null ? `${b.max_income_commitment_pct}%` : '30%'
+              const prazo = b.max_term_months
+                ? `${b.max_term_months} meses (${Math.round(b.max_term_months / 12)} anos)`
+                : '420 meses (35 anos)'
+              const regras = b.special_rules ? ` Regras: ${b.special_rules}` : ''
+              const fgtsStr = b.fgts_accepted ? ' Aceita FGTS.' : ''
 
-        // Tenta desempacotar dados estruturados por banco
-        let banksList = []
-        try {
-          const rawBanks = finRec.get('banks_data')
-          if (Array.isArray(rawBanks)) {
-            banksList = rawBanks
-          } else if (typeof rawBanks === 'string') {
-            banksList = JSON.parse(rawBanks)
-          }
-        } catch (_) {}
-
-        if (Array.isArray(banksList) && banksList.length > 0) {
-          indicesContextText += `CONDIÇÕES VIGENTES POR BANCO (FINANCIAMENTO RESIDENCIAL):\n`
-          for (let bIdx = 0; bIdx < banksList.length; bIdx++) {
-            const b = banksList[bIdx]
-            const bName = b.bank_name || b.bank_code || 'Banco'
-            const minEntrada = b.min_down_payment_pct != null ? `${b.min_down_payment_pct}%` : '20%'
-            const maxFin = b.max_financing_pct != null ? `${b.max_financing_pct}%` : '80%'
-            const taxaStr =
-              b.rate_details ||
-              (b.rate_effective_annual_pct
-                ? `${b.rate_effective_annual_pct}% a.a.`
-                : 'Sob consulta')
-            const compRenda =
-              b.max_income_commitment_pct != null ? `${b.max_income_commitment_pct}%` : '30%'
-            const prazo = b.max_term_months
-              ? `${b.max_term_months} meses (${Math.round(b.max_term_months / 12)} anos)`
-              : '420 meses (35 anos)'
-            const regras = b.special_rules ? ` Regras: ${b.special_rules}` : ''
-            const fgtsStr = b.fgts_accepted ? ' Aceita FGTS.' : ''
-
-            indicesContextText += `• ${bName}: Entrada mínima de ${minEntrada} (financia até ${maxFin}). Taxa anual: ${taxaStr}. Comprometimento máximo de renda: até ${compRenda} da renda bruta. Prazo máximo: ${prazo}.${fgtsStr}${regras}\n`
-          }
-          indicesContextText += `• REGRA PRÁTICA DE RENDA BRUTA EXIGIDA (30% da renda): Renda bruta familiar recomendada = Parcela pretendida ÷ 0,30 (exemplo: parcela de R$ 3.000 exige renda bruta aproximada de R$ 10.000).\n`
-
-          // Injeta o bloco do Minha Casa Minha Vida e demais seções presentes no summary_text
-          const sumText = finRec.getString('summary_text')
-          if (sumText && sumText.includes('MINHA CASA MINHA VIDA')) {
-            const mcmvStartIndex = sumText.indexOf('MINHA CASA MINHA VIDA')
-            indicesContextText += `\n${sumText.substring(mcmvStartIndex)}\n`
-          }
-        } else {
-          // Fallback para summary_text caso banks_data não esteja em formato de array
-          const sumText = finRec.getString('summary_text')
-          if (sumText) {
-            indicesContextText += `${sumText}\n`
-          }
-        }
-        indicesContextText += `\n`
-      }
-    } catch (finErr) {
-      console.warn(`[AI_REPLY] Error loading financing_memos (non-fatal): ${String(finErr)}`)
-    }
-
-    let filesContextText = indicesContextText
-    // 1. Arquivos da coleção dedicada ai_knowledge_files (com texto extraído de PDF/DOCX/TXT/MD/XLSX) agrupados por Empreendimento
-    try {
-      const activeKnowledgeRecords = $app.findRecordsByFilter(
-        'ai_knowledge_files',
-        `user_id = '${userId}' && is_active != false`,
-        '-created',
-        100,
-        0,
-      )
-      if (activeKnowledgeRecords.length > 0) {
-        // Mapear termos da conversa atual e histórico do lead para scoring de relevância
-        const leadTextForRelevance =
-          `${customerMessage} ${customerSource} ${customerNotes} ${effectiveOrigin}`.toLowerCase()
-
-        // Filtrar para usar SEMPRE a tabela mais recente por empreendimento (ignorando tabelas antigas)
-        const enterpriseLatestTable = {}
-        for (const kf of activeKnowledgeRecords) {
-          const entName = (kf.getString('enterprise') || '').trim() || 'Geral / Institucional'
-          const docTitle = (kf.getString('name') || kf.getString('file') || '').toLowerCase()
-          const isTable =
-            docTitle.includes('tabela') || docTitle.includes('cotas') || docTitle.includes('custo')
-          if (isTable) {
-            // Como ordenação é -created, o primeiro encontrado é o mais recente
-            if (!enterpriseLatestTable[entName]) {
-              enterpriseLatestTable[entName] = kf.id
+              indicesContextText += `• ${bName}: Entrada mínima de ${minEntrada} (financia até ${maxFin}). Taxa anual: ${taxaStr}. Comprometimento máximo de renda: até ${compRenda} da renda bruta. Prazo máximo: ${prazo}.${fgtsStr}${regras}\n`
             }
-          }
-        }
+            indicesContextText += `• REGRA PRÁTICA DE RENDA BRUTA EXIGIDA (30% da renda): Renda bruta familiar recomendada = Parcela pretendida ÷ 0,30 (exemplo: parcela de R$ 3.000 exige renda bruta aproximada de R$ 10.000).\n`
 
-        // Agrupar documentos por empreendimento
-        const groupedFiles = {}
-        for (const kf of activeKnowledgeRecords) {
-          const enterpriseName =
-            (kf.getString('enterprise') || '').trim() || 'Geral / Institucional'
-
-          const docTitle = kf.getString('name') || kf.getString('file')
-          const lowerTitle = docTitle.toLowerCase()
-          const isTable =
-            lowerTitle.includes('tabela') ||
-            lowerTitle.includes('cotas') ||
-            lowerTitle.includes('custo')
-
-          // Se for tabela antiga descartada em prol de uma mais recente do mesmo empreendimento, ignorar
-          if (
-            isTable &&
-            enterpriseLatestTable[enterpriseName] &&
-            enterpriseLatestTable[enterpriseName] !== kf.id
-          ) {
-            continue
-          }
-
-          if (!groupedFiles[enterpriseName]) {
-            groupedFiles[enterpriseName] = []
-          }
-
-          let extracted = (kf.getString('extracted_text') || '').trim()
-
-          // Se ainda não tiver texto extraído mas houver o arquivo, tenta extrair em runtime
-          if (!extracted) {
-            const rawFileName = kf.getString('file')
-            const lowerF = (docTitle || rawFileName).toLowerCase()
-            if (lowerF.endsWith('.pdf') || lowerF.endsWith('.docx') || lowerF.endsWith('.xlsx')) {
-              try {
-                const docRes = $documents.toMarkdown({ record: kf, field: 'file' })
-                if (docRes && docRes.markdown) {
-                  extracted = docRes.markdown
-                  kf.set('extracted_text', extracted)
-                  $app.saveNoValidate(kf)
-                }
-              } catch (_) {}
-            } else if (
-              lowerF.endsWith('.txt') ||
-              lowerF.endsWith('.md') ||
-              lowerF.endsWith('.csv')
-            ) {
-              try {
-                const pbUrl = $os.getenv('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
-                const fileUrl = `${pbUrl}/api/files/${kf.collectionId}/${kf.id}/${rawFileName}`
-                const fileRes = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
-                if (fileRes && fileRes.statusCode === 200 && fileRes.body) {
-                  extracted = String.fromCharCode.apply(null, fileRes.body)
-                  kf.set('extracted_text', extracted)
-                  $app.saveNoValidate(kf)
-                }
-              } catch (_) {}
+            // Injeta o bloco do Minha Casa Minha Vida e demais seções presentes no summary_text
+            const sumText = finRec.getString('summary_text')
+            if (sumText && sumText.includes('MINHA CASA MINHA VIDA')) {
+              const mcmvStartIndex = sumText.indexOf('MINHA CASA MINHA VIDA')
+              indicesContextText += `\n${sumText.substring(mcmvStartIndex)}\n`
             }
-          }
-
-          if (extracted) {
-            // Truncamento inteligente e pontuação de relevância:
-            // Documentos do empreendimento mencionado pelo lead recebem até 25.000 caracteres;
-            // Outros documentos recebem até 12.000 caracteres ou resumo dos primeiros parágrafos.
-            const isRelevantEnterprise =
-              enterpriseName !== 'Geral / Institucional' &&
-              leadTextForRelevance.includes(enterpriseName.toLowerCase())
-
-            const maxChars = isRelevantEnterprise ? 25000 : 12000
-            let safeText = extracted
-            if (extracted.length > maxChars) {
-              // Trunca no final de sentença ou parágrafo mais próximo para manter integridade
-              const cutPoint = extracted.lastIndexOf('\n\n', maxChars)
-              const safeCut = cutPoint > maxChars * 0.7 ? cutPoint : maxChars
-              safeText =
-                extracted.substring(0, safeCut) +
-                '\n... [conteúdo adicional truncado para brevidade]'
-            }
-
-            const rawFileField = kf.getString('file')
-            let fileDownloadUrl = ''
-            if (rawFileField) {
-              const pbPublicBase =
-                $os.getenv('PB_PUBLIC_URL') ||
-                $os.getenv('PUBLIC_URL') ||
-                $os.getenv('PB_INSTANCE_URL') ||
-                'https://crm.brfimoveis.com.br'
-              fileDownloadUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/${kf.collectionId}/${kf.id}/${rawFileField}`
-            }
-
-            groupedFiles[enterpriseName].push({
-              id: kf.id,
-              title: docTitle,
-              content: safeText,
-              isRelevant: isRelevantEnterprise,
-              property_id: kf.getString('property_id') || '',
-              file_name: rawFileField || '',
-              download_url: fileDownloadUrl,
-            })
-          }
-        }
-
-        let enterpriseKeys = Object.keys(groupedFiles)
-        if (enterpriseKeys.length > 0) {
-          // =========================================================================================
-          // ISOLAMENTO DE RAG / PROMPT (ANTI-CONTAMINAÇÃO CRUZADA):
-          // Se há um imóvel ou lançamento em foco exclusivo:
-          // 1. Se o lead citou um imóvel específico (lastMsgSpecificPropertyRequested ou targetSpecificProp),
-          //    NÃO injetar documentos de outros lançamentos (Vistage, Viva Balneário, etc.)!
-          //    Injetar apenas "Geral / Institucional" ou documentos explicitamente vinculados àquele imóvel.
-          // 2. Se há um matchedLaunch ou matchedPlaybook em foco (sem conflito de imóvel específico),
-          //    injetar APENAS os documentos dele e institucionais.
-          // =========================================================================================
-          // CORREÇÃO B: ISOLAMENTO RAG SEM FALLBACK CRUZADO:
-          // Se há imóvel em foco (targetSpecificProp ou lastMsgSpecificPropertyRequested):
-          // Dossiê vem ESTRITAMENTE do registro em properties.
-          // Se enterpriseKeys ficar sem pasta do imóvel, PROIBIDO injetar outros lançamentos (nem Vistage nem code~'LM').
-          // Injetar APENAS os dados do cadastro do imóvel + arquivos "Geral / Institucional".
-          if (lastMsgSpecificPropertyRequested || targetSpecificProp) {
-            const propTitle = targetSpecificProp
-              ? (targetSpecificProp.getString('title') || '').toLowerCase()
-              : ''
-            const propCode = targetSpecificProp
-              ? (targetSpecificProp.getString('code') || '').toLowerCase()
-              : ''
-            const propId = targetSpecificProp ? targetSpecificProp.id : ''
-
-            // CORREÇÃO 2 — Prioridade máxima aos documentos do empreendimento atualmente em pauta no RAG:
-            // isComparingInRag só deve ser true se houver intenção explícita de comparação fresca (!isShortContinuationMsg)
-            const isComparingInRag =
-              !isShortContinuationMsg &&
-              typeof isComparisonIntent !== 'undefined' &&
-              isComparisonIntent &&
-              Array.isArray(matchedProps) &&
-              matchedProps.length > 1
-
-            enterpriseKeys = enterpriseKeys.filter((entKey) => {
-              if (entKey === 'Geral / Institucional') return true
-              const entLower = entKey.toLowerCase()
-              const groupDocs = groupedFiles[entKey] || []
-
-              if (isComparingInRag && Array.isArray(matchedProps)) {
-                for (var mpI = 0; mpI < matchedProps.length; mpI++) {
-                  var mpT = (matchedProps[mpI].getString('title') || '').toLowerCase()
-                  var mpC = (matchedProps[mpI].getString('code') || '').toLowerCase()
-                  var mpId = matchedProps[mpI].id
-                  // Verifica se algum arquivo deste grupo tem property_id igual ao imóvel
-                  for (var gdi = 0; gdi < groupDocs.length; gdi++) {
-                    if (groupDocs[gdi].property_id && groupDocs[gdi].property_id === mpId) {
-                      return true
-                    }
-                  }
-                  // Corrigido: NUNCA liberar indiscriminadamente pastas sem correspondência real ao imóvel em foco
-                  if (
-                    (mpT && mpT.includes(entLower)) ||
-                    (mpC && mpC.includes(entLower)) ||
-                    (mpT.includes('vistage') && entLower.includes('vistage'))
-                  ) {
-                    return true
-                  }
-                }
-                return false
-              }
-
-              // Checagem estrita para o imóvel atualmente em foco:
-              // 1. Se os arquivos do grupo têm property_id correspondente
-              if (propId) {
-                for (var gsi = 0; gsi < groupDocs.length; gsi++) {
-                  if (groupDocs[gsi].property_id && groupDocs[gsi].property_id === propId) {
-                    return true
-                  }
-                }
-              }
-
-              // 2. Ou se o título/código do imóvel em foco casa diretamente com a chave do empreendimento
-              const titleMatches =
-                propTitle && (propTitle.includes(entLower) || entLower.includes(propTitle))
-              const codeMatches =
-                propCode && (propCode.includes(entLower) || entLower.includes(propCode))
-              return titleMatches || codeMatches
-            })
-            // Se não encontrou pasta dedicada para este imóvel específico, MANTER APENAS "Geral / Institucional"
-            // NUNCA re-injetar outros lançamentos como fallback!
-            if (enterpriseKeys.length === 0 && groupedFiles['Geral / Institucional']) {
-              enterpriseKeys = ['Geral / Institucional']
-            }
-            console.log(
-              `[AI_REPLY] ISOLAMENTO RAG: lead em foco no imóvel específico (${propCode || lastMsgPropertyCodeOrNum}, comparing=${isComparingInRag}). Chaves de documentos permitidas: ${enterpriseKeys.join(', ')}`,
-            )
-          } else if (matchedLaunch || matchedPlaybook) {
-            const launchName = (matchedLaunch ? matchedLaunch.getString('name') : '').toLowerCase()
-            const pbName = (
-              matchedPlaybook
-                ? matchedPlaybook.getString('empreendimento') || matchedPlaybook.getString('name')
-                : ''
-            ).toLowerCase()
-
-            enterpriseKeys = enterpriseKeys.filter((entKey) => {
-              if (entKey === 'Geral / Institucional') return true
-              const entLower = entKey.toLowerCase()
-              return (
-                (launchName && (launchName.includes(entLower) || entLower.includes(launchName))) ||
-                (pbName && (pbName.includes(entLower) || entLower.includes(pbName)))
-              )
-            })
-            console.log(
-              `[AI_REPLY] ISOLAMENTO RAG: lead em foco no lançamento/playbook (${launchName || pbName}). Chaves de documentos permitidas: ${enterpriseKeys.join(', ')}`,
-            )
           } else {
-            // Ordena colocando os empreendimentos mais relevantes para o lead primeiro
-            enterpriseKeys.sort((a, b) => {
-              const aRelevant = groupedFiles[a].some((d) => d.isRelevant)
-              const bRelevant = groupedFiles[b].some((d) => d.isRelevant)
-              if (aRelevant && !bRelevant) return -1
-              if (!aRelevant && bRelevant) return 1
-              if (a === 'Geral / Institucional') return 1
-              if (b === 'Geral / Institucional') return -1
-              return a.localeCompare(b)
-            })
+            // Fallback para summary_text caso banks_data não esteja em formato de array
+            const sumText = finRec.getString('summary_text')
+            if (sumText) {
+              indicesContextText += `${sumText}\n`
+            }
           }
+          indicesContextText += `\n`
+        }
+      } catch (finErr) {
+        console.warn(`[AI_REPLY] Error loading financing_memos (non-fatal): ${String(finErr)}`)
+      }
 
-          if (enterpriseKeys.length > 0) {
-            filesContextText +=
-              '\n[DOCUMENTOS E BASE DE CONHECIMENTO ORGANIZADOS POR EMPREENDIMENTO]\n'
-            filesContextText +=
-              'INSTRUÇÃO DE EMPREENDIMENTO: Identifique sobre qual empreendimento o lead está falando ou perguntando. Priorize e utilize com destaque as informações específicas do empreendimento correspondente abaixo.\n\n'
+      let filesContextText = indicesContextText
+      // 1. Arquivos da coleção dedicada ai_knowledge_files (com texto extraído de PDF/DOCX/TXT/MD/XLSX) agrupados por Empreendimento
+      try {
+        const activeKnowledgeRecords = $app.findRecordsByFilter(
+          'ai_knowledge_files',
+          `user_id = '${userId}' && is_active != false`,
+          '-created',
+          100,
+          0,
+        )
+        if (activeKnowledgeRecords.length > 0) {
+          // Mapear termos da conversa atual e histórico do lead para scoring de relevância
+          const leadTextForRelevance =
+            `${customerMessage} ${customerSource} ${customerNotes} ${effectiveOrigin}`.toLowerCase()
 
-            for (const entKey of enterpriseKeys) {
-              if (groupedFiles[entKey]) {
-                filesContextText += `=====================================================\n`
-                filesContextText += `EMPREENDIMENTO: ${entKey.toUpperCase()}\n`
-                filesContextText += `=====================================================\n`
-                for (const doc of groupedFiles[entKey]) {
-                  filesContextText += `\n--- DOCUMENTO (${entKey}): ${doc.title} ---\n`
-                  if (doc.download_url) {
-                    filesContextText += `documento oficial disponível: ${doc.title} — ${doc.download_url}\n`
-                  }
-                  filesContextText += `${doc.content}\n`
-                }
-                filesContextText += '\n'
+          // Filtrar para usar SEMPRE a tabela mais recente por empreendimento (ignorando tabelas antigas)
+          const enterpriseLatestTable = {}
+          for (const kf of activeKnowledgeRecords) {
+            const entName = (kf.getString('enterprise') || '').trim() || 'Geral / Institucional'
+            const docTitle = (kf.getString('name') || kf.getString('file') || '').toLowerCase()
+            const isTable =
+              docTitle.includes('tabela') ||
+              docTitle.includes('cotas') ||
+              docTitle.includes('custo')
+            if (isTable) {
+              // Como ordenação é -created, o primeiro encontrado é o mais recente
+              if (!enterpriseLatestTable[entName]) {
+                enterpriseLatestTable[entName] = kf.id
               }
             }
           }
-        }
-      }
-    } catch (kfErr) {
-      console.warn(`[AI_REPLY] Error loading ai_knowledge_files (non-fatal): ${String(kfErr)}`)
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const kfErrLog = new Record(logsCol)
-        kfErrLog.set('user_id', userId || '')
-        kfErrLog.set('type', 'ai_knowledge_files_error')
-        kfErrLog.set('message', 'Erro não-fatal ao carregar ai_knowledge_files')
-        kfErrLog.set('details', String(kfErr))
-        $app.saveNoValidate(kfErrLog)
-      } catch (_) {}
-    }
 
-    // 2. Compatibilidade legada com ai_knowledge_files armazenados diretamente no registro do usuário
-    if (userRecord) {
-      try {
-        const files = userRecord.get('ai_knowledge_files') || []
-        if (Array.isArray(files) && files.length > 0) {
-          const pbUrl = $os.getenv('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
-          files.forEach((f) => {
-            if (typeof f === 'string') {
-              const lower = f.toLowerCase()
-              if (lower.endsWith('.txt') || lower.endsWith('.csv') || lower.endsWith('.md')) {
-                const fileUrl = `${pbUrl}/api/files/${userRecord.collectionId}/${userRecord.id}/${f}`
+          // Agrupar documentos por empreendimento
+          const groupedFiles = {}
+          for (const kf of activeKnowledgeRecords) {
+            const enterpriseName =
+              (kf.getString('enterprise') || '').trim() || 'Geral / Institucional'
+
+            const docTitle = kf.getString('name') || kf.getString('file')
+            const lowerTitle = docTitle.toLowerCase()
+            const isTable =
+              lowerTitle.includes('tabela') ||
+              lowerTitle.includes('cotas') ||
+              lowerTitle.includes('custo')
+
+            // Se for tabela antiga descartada em prol de uma mais recente do mesmo empreendimento, ignorar
+            if (
+              isTable &&
+              enterpriseLatestTable[enterpriseName] &&
+              enterpriseLatestTable[enterpriseName] !== kf.id
+            ) {
+              continue
+            }
+
+            if (!groupedFiles[enterpriseName]) {
+              groupedFiles[enterpriseName] = []
+            }
+
+            let extracted = (kf.getString('extracted_text') || '').trim()
+
+            // Se ainda não tiver texto extraído mas houver o arquivo, tenta extrair em runtime
+            if (!extracted) {
+              const rawFileName = kf.getString('file')
+              const lowerF = (docTitle || rawFileName).toLowerCase()
+              if (lowerF.endsWith('.pdf') || lowerF.endsWith('.docx') || lowerF.endsWith('.xlsx')) {
                 try {
-                  const fRes = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
-                  if (fRes && fRes.statusCode === 200 && fRes.body) {
-                    const str = String.fromCharCode.apply(null, fRes.body)
-                    filesContextText += `\n--- Arquivo Legado: ${f} ---\n${str}\n`
+                  const docRes = $documents.toMarkdown({ record: kf, field: 'file' })
+                  if (docRes && docRes.markdown) {
+                    extracted = docRes.markdown
+                    kf.set('extracted_text', extracted)
+                    $app.saveNoValidate(kf)
                   }
                 } catch (_) {}
               } else if (
-                lower.endsWith('.pdf') ||
-                lower.endsWith('.docx') ||
-                lower.endsWith('.xlsx')
+                lowerF.endsWith('.txt') ||
+                lowerF.endsWith('.md') ||
+                lowerF.endsWith('.csv')
               ) {
                 try {
-                  const docRes = $documents.toMarkdown({
-                    record: userRecord,
-                    field: 'ai_knowledge_files',
-                  })
-                  if (docRes && docRes.markdown) {
-                    filesContextText += `\n--- Arquivo Legado: ${f} ---\n${docRes.markdown}\n`
+                  const pbUrl = $os.getenv('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
+                  const fileUrl = `${pbUrl}/api/files/${kf.collectionId}/${kf.id}/${rawFileName}`
+                  const fileRes = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
+                  if (fileRes && fileRes.statusCode === 200 && fileRes.body) {
+                    extracted = String.fromCharCode.apply(null, fileRes.body)
+                    kf.set('extracted_text', extracted)
+                    $app.saveNoValidate(kf)
                   }
                 } catch (_) {}
               }
             }
-          })
+
+            if (extracted) {
+              // Truncamento inteligente e pontuação de relevância:
+              // Documentos do empreendimento mencionado pelo lead recebem até 25.000 caracteres;
+              // Outros documentos recebem até 12.000 caracteres ou resumo dos primeiros parágrafos.
+              const isRelevantEnterprise =
+                enterpriseName !== 'Geral / Institucional' &&
+                leadTextForRelevance.includes(enterpriseName.toLowerCase())
+
+              const maxChars = isRelevantEnterprise ? 25000 : 12000
+              let safeText = extracted
+              if (extracted.length > maxChars) {
+                // Trunca no final de sentença ou parágrafo mais próximo para manter integridade
+                const cutPoint = extracted.lastIndexOf('\n\n', maxChars)
+                const safeCut = cutPoint > maxChars * 0.7 ? cutPoint : maxChars
+                safeText =
+                  extracted.substring(0, safeCut) +
+                  '\n... [conteúdo adicional truncado para brevidade]'
+              }
+
+              const rawFileField = kf.getString('file')
+              let fileDownloadUrl = ''
+              if (rawFileField) {
+                const pbPublicBase =
+                  $os.getenv('PB_PUBLIC_URL') ||
+                  $os.getenv('PUBLIC_URL') ||
+                  $os.getenv('PB_INSTANCE_URL') ||
+                  'https://crm.brfimoveis.com.br'
+                fileDownloadUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/${kf.collectionId}/${kf.id}/${rawFileField}`
+              }
+
+              groupedFiles[enterpriseName].push({
+                id: kf.id,
+                title: docTitle,
+                content: safeText,
+                isRelevant: isRelevantEnterprise,
+                property_id: kf.getString('property_id') || '',
+                file_name: rawFileField || '',
+                download_url: fileDownloadUrl,
+              })
+            }
+          }
+
+          let enterpriseKeys = Object.keys(groupedFiles)
+          if (enterpriseKeys.length > 0) {
+            // =========================================================================================
+            // ISOLAMENTO DE RAG / PROMPT (ANTI-CONTAMINAÇÃO CRUZADA):
+            // Se há um imóvel ou lançamento em foco exclusivo:
+            // 1. Se o lead citou um imóvel específico (lastMsgSpecificPropertyRequested ou targetSpecificProp),
+            //    NÃO injetar documentos de outros lançamentos (Vistage, Viva Balneário, etc.)!
+            //    Injetar apenas "Geral / Institucional" ou documentos explicitamente vinculados àquele imóvel.
+            // 2. Se há um matchedLaunch ou matchedPlaybook em foco (sem conflito de imóvel específico),
+            //    injetar APENAS os documentos dele e institucionais.
+            // =========================================================================================
+            // CORREÇÃO B: ISOLAMENTO RAG SEM FALLBACK CRUZADO:
+            // Se há imóvel em foco (targetSpecificProp ou lastMsgSpecificPropertyRequested):
+            // Dossiê vem ESTRITAMENTE do registro em properties.
+            // Se enterpriseKeys ficar sem pasta do imóvel, PROIBIDO injetar outros lançamentos (nem Vistage nem code~'LM').
+            // Injetar APENAS os dados do cadastro do imóvel + arquivos "Geral / Institucional".
+            if (lastMsgSpecificPropertyRequested || targetSpecificProp) {
+              const propTitle = targetSpecificProp
+                ? (targetSpecificProp.getString('title') || '').toLowerCase()
+                : ''
+              const propCode = targetSpecificProp
+                ? (targetSpecificProp.getString('code') || '').toLowerCase()
+                : ''
+              const propId = targetSpecificProp ? targetSpecificProp.id : ''
+
+              // CORREÇÃO 2 — Prioridade máxima aos documentos do empreendimento atualmente em pauta no RAG:
+              // isComparingInRag só deve ser true se houver intenção explícita de comparação fresca (!isShortContinuationMsg)
+              const isComparingInRag =
+                !isShortContinuationMsg &&
+                typeof isComparisonIntent !== 'undefined' &&
+                isComparisonIntent &&
+                Array.isArray(matchedProps) &&
+                matchedProps.length > 1
+
+              enterpriseKeys = enterpriseKeys.filter((entKey) => {
+                if (entKey === 'Geral / Institucional') return true
+                const entLower = entKey.toLowerCase()
+                const groupDocs = groupedFiles[entKey] || []
+
+                if (isComparingInRag && Array.isArray(matchedProps)) {
+                  for (var mpI = 0; mpI < matchedProps.length; mpI++) {
+                    var mpT = (matchedProps[mpI].getString('title') || '').toLowerCase()
+                    var mpC = (matchedProps[mpI].getString('code') || '').toLowerCase()
+                    var mpId = matchedProps[mpI].id
+                    // Verifica se algum arquivo deste grupo tem property_id igual ao imóvel
+                    for (var gdi = 0; gdi < groupDocs.length; gdi++) {
+                      if (groupDocs[gdi].property_id && groupDocs[gdi].property_id === mpId) {
+                        return true
+                      }
+                    }
+                    // Corrigido: NUNCA liberar indiscriminadamente pastas sem correspondência real ao imóvel em foco
+                    if (
+                      (mpT && mpT.includes(entLower)) ||
+                      (mpC && mpC.includes(entLower)) ||
+                      (mpT.includes('vistage') && entLower.includes('vistage'))
+                    ) {
+                      return true
+                    }
+                  }
+                  return false
+                }
+
+                // Checagem estrita para o imóvel atualmente em foco:
+                // 1. Se os arquivos do grupo têm property_id correspondente
+                if (propId) {
+                  for (var gsi = 0; gsi < groupDocs.length; gsi++) {
+                    if (groupDocs[gsi].property_id && groupDocs[gsi].property_id === propId) {
+                      return true
+                    }
+                  }
+                }
+
+                // 2. Ou se o título/código do imóvel em foco casa diretamente com a chave do empreendimento
+                const titleMatches =
+                  propTitle && (propTitle.includes(entLower) || entLower.includes(propTitle))
+                const codeMatches =
+                  propCode && (propCode.includes(entLower) || entLower.includes(propCode))
+                return titleMatches || codeMatches
+              })
+              // Se não encontrou pasta dedicada para este imóvel específico, MANTER APENAS "Geral / Institucional"
+              // NUNCA re-injetar outros lançamentos como fallback!
+              if (enterpriseKeys.length === 0 && groupedFiles['Geral / Institucional']) {
+                enterpriseKeys = ['Geral / Institucional']
+              }
+              console.log(
+                `[AI_REPLY] ISOLAMENTO RAG: lead em foco no imóvel específico (${propCode || lastMsgPropertyCodeOrNum}, comparing=${isComparingInRag}). Chaves de documentos permitidas: ${enterpriseKeys.join(', ')}`,
+              )
+            } else if (matchedLaunch || matchedPlaybook) {
+              const launchName = (
+                matchedLaunch ? matchedLaunch.getString('name') : ''
+              ).toLowerCase()
+              const pbName = (
+                matchedPlaybook
+                  ? matchedPlaybook.getString('empreendimento') || matchedPlaybook.getString('name')
+                  : ''
+              ).toLowerCase()
+
+              enterpriseKeys = enterpriseKeys.filter((entKey) => {
+                if (entKey === 'Geral / Institucional') return true
+                const entLower = entKey.toLowerCase()
+                return (
+                  (launchName &&
+                    (launchName.includes(entLower) || entLower.includes(launchName))) ||
+                  (pbName && (pbName.includes(entLower) || entLower.includes(pbName)))
+                )
+              })
+              console.log(
+                `[AI_REPLY] ISOLAMENTO RAG: lead em foco no lançamento/playbook (${launchName || pbName}). Chaves de documentos permitidas: ${enterpriseKeys.join(', ')}`,
+              )
+            } else {
+              // Ordena colocando os empreendimentos mais relevantes para o lead primeiro
+              enterpriseKeys.sort((a, b) => {
+                const aRelevant = groupedFiles[a].some((d) => d.isRelevant)
+                const bRelevant = groupedFiles[b].some((d) => d.isRelevant)
+                if (aRelevant && !bRelevant) return -1
+                if (!aRelevant && bRelevant) return 1
+                if (a === 'Geral / Institucional') return 1
+                if (b === 'Geral / Institucional') return -1
+                return a.localeCompare(b)
+              })
+            }
+
+            if (enterpriseKeys.length > 0) {
+              filesContextText +=
+                '\n[DOCUMENTOS E BASE DE CONHECIMENTO ORGANIZADOS POR EMPREENDIMENTO]\n'
+              filesContextText +=
+                'INSTRUÇÃO DE EMPREENDIMENTO: Identifique sobre qual empreendimento o lead está falando ou perguntando. Priorize e utilize com destaque as informações específicas do empreendimento correspondente abaixo.\n\n'
+
+              for (const entKey of enterpriseKeys) {
+                if (groupedFiles[entKey]) {
+                  filesContextText += `=====================================================\n`
+                  filesContextText += `EMPREENDIMENTO: ${entKey.toUpperCase()}\n`
+                  filesContextText += `=====================================================\n`
+                  for (const doc of groupedFiles[entKey]) {
+                    filesContextText += `\n--- DOCUMENTO (${entKey}): ${doc.title} ---\n`
+                    if (doc.download_url) {
+                      filesContextText += `documento oficial disponível: ${doc.title} — ${doc.download_url}\n`
+                    }
+                    filesContextText += `${doc.content}\n`
+                  }
+                  filesContextText += '\n'
+                }
+              }
+            }
+          }
         }
-      } catch (_) {}
-    }
+      } catch (kfErr) {
+        console.warn(`[AI_REPLY] Error loading ai_knowledge_files (non-fatal): ${String(kfErr)}`)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const kfErrLog = new Record(logsCol)
+          kfErrLog.set('user_id', userId || '')
+          kfErrLog.set('type', 'ai_knowledge_files_error')
+          kfErrLog.set('message', 'Erro não-fatal ao carregar ai_knowledge_files')
+          kfErrLog.set('details', String(kfErr))
+          $app.saveNoValidate(kfErrLog)
+        } catch (_) {}
+      }
 
-    const combinedContextText = `${contextText}\n${filesContextText}`.trim()
+      // 2. Compatibilidade legada com ai_knowledge_files armazenados diretamente no registro do usuário
+      if (userRecord) {
+        try {
+          const files = userRecord.get('ai_knowledge_files') || []
+          if (Array.isArray(files) && files.length > 0) {
+            const pbUrl = $os.getenv('PB_INSTANCE_URL') || 'http://127.0.0.1:8090'
+            files.forEach((f) => {
+              if (typeof f === 'string') {
+                const lower = f.toLowerCase()
+                if (lower.endsWith('.txt') || lower.endsWith('.csv') || lower.endsWith('.md')) {
+                  const fileUrl = `${pbUrl}/api/files/${userRecord.collectionId}/${userRecord.id}/${f}`
+                  try {
+                    const fRes = $http.send({ url: fileUrl, method: 'GET', timeout: 5 })
+                    if (fRes && fRes.statusCode === 200 && fRes.body) {
+                      const str = String.fromCharCode.apply(null, fRes.body)
+                      filesContextText += `\n--- Arquivo Legado: ${f} ---\n${str}\n`
+                    }
+                  } catch (_) {}
+                } else if (
+                  lower.endsWith('.pdf') ||
+                  lower.endsWith('.docx') ||
+                  lower.endsWith('.xlsx')
+                ) {
+                  try {
+                    const docRes = $documents.toMarkdown({
+                      record: userRecord,
+                      field: 'ai_knowledge_files',
+                    })
+                    if (docRes && docRes.markdown) {
+                      filesContextText += `\n--- Arquivo Legado: ${f} ---\n${docRes.markdown}\n`
+                    }
+                  } catch (_) {}
+                }
+              }
+            })
+          }
+        } catch (_) {}
+      }
 
-    const messages = []
-    let clientContext = displayName
-      ? `\n[DADOS DO CLIENTE]\nNome do cliente: ${displayName}\n(Importante: Chame o cliente pelo primeiro nome de forma natural. NUNCA mencione nem explique de onde veio o nome nem cite campos de cadastro/CRM se o cliente perguntar.)\n`
-      : `\n[DADOS DO CLIENTE]\nCliente sem nome confiável definido. Cumprimente com simpatia de forma genérica (ex: "Olá! Tudo bem?") sem inventar nomes nem usar placeholders.\n`
+      const combinedContextText = `${contextText}\n${filesContextText}`.trim()
 
-    // Detect lead origin type (Trilha A: Lead de Anúncio vs Trilha B: Lead de Imóvel de Terceiros)
-    const isMetaAdSource =
-      isAdReferral ||
-      /meta|facebook|fb|instagram|ig|an[uú]ncio|ads|click[- ]to[- ]whatsapp|campanha|google ads|gads/i.test(
-        effectiveOrigin || customerSource || '',
-      )
+      const messages = []
+      let clientContext = displayName
+        ? `\n[DADOS DO CLIENTE]\nNome do cliente: ${displayName}\n(Importante: Chame o cliente pelo primeiro nome de forma natural. NUNCA mencione nem explique de onde veio o nome nem cite campos de cadastro/CRM se o cliente perguntar.)\n`
+        : `\n[DADOS DO CLIENTE]\nCliente sem nome confiável definido. Cumprimente com simpatia de forma genérica (ex: "Olá! Tudo bem?") sem inventar nomes nem usar placeholders.\n`
 
-    if (effectiveOrigin || customerSource) {
-      const displayOrigin = effectiveOrigin || customerSource
-      if (isMetaAdSource) {
-        clientContext += `Origem / Canal de Entrada: "${displayOrigin}"\n`
+      // Detect lead origin type (Trilha A: Lead de Anúncio vs Trilha B: Lead de Imóvel de Terceiros)
+      const isMetaAdSource =
+        isAdReferral ||
+        /meta|facebook|fb|instagram|ig|an[uú]ncio|ads|click[- ]to[- ]whatsapp|campanha|google ads|gads/i.test(
+          effectiveOrigin || customerSource || '',
+        )
+
+      if (effectiveOrigin || customerSource) {
+        const displayOrigin = effectiveOrigin || customerSource
+        if (isMetaAdSource) {
+          clientContext += `Origem / Canal de Entrada: "${displayOrigin}"\n`
+        } else {
+          clientContext += `Origem / Canal de Entrada: "${displayOrigin}" (Origem orgânica / terceiros / indicação)\n`
+        }
+        clientContext += `- DIRETRIZ DE CONEXÃO POR ORIGEM: Quando for a mensagem inicial ou fizer sentido contextual, cite com simpatia e naturalidade a origem pela qual o cliente chegou (exemplo: "vi que você veio pelo anúncio do Villa dos Açores", "vi que você acessou a página do nosso lançamento", "vi que você veio pelo Instagram da BRF"). Não soe robótico ou invasivo — use como gancho acolhedor de boas-vindas.\n`
       } else {
-        clientContext += `Origem / Canal de Entrada: "${displayOrigin}" (Origem orgânica / terceiros / indicação)\n`
+        clientContext += `Origem / Canal: Origem não especificada (Tratar pela Trilha B ou conforme demanda)\n`
       }
-      clientContext += `- DIRETRIZ DE CONEXÃO POR ORIGEM: Quando for a mensagem inicial ou fizer sentido contextual, cite com simpatia e naturalidade a origem pela qual o cliente chegou (exemplo: "vi que você veio pelo anúncio do Villa dos Açores", "vi que você acessou a página do nosso lançamento", "vi que você veio pelo Instagram da BRF"). Não soe robótico ou invasivo — use como gancho acolhedor de boas-vindas.\n`
-    } else {
-      clientContext += `Origem / Canal: Origem não especificada (Tratar pela Trilha B ou conforme demanda)\n`
-    }
 
-    if (customerNotes) {
-      clientContext += `Observações / Histórico: ${customerNotes}\n`
-    }
+      if (customerNotes) {
+        clientContext += `Observações / Histórico: ${customerNotes}\n`
+      }
 
-    // Detect if customer mentions intention to sell, rent out, or trade their own property
-    const combinedCustText = `${customerMessage} ${customerNotes}`.toLowerCase()
-    const ownerIntentRegex =
-      /quero vender|tenho um (?:imóvel|apartamento|apto|casa|terreno|imovel)|tenho uma (?:casa|cobertura|sala)|por quanto vendo|colocar (?:à|a) venda|colocar para vender|quero alugar meu|quero anunciar|anunciar meu|administrar meu|captar|avaliação do meu|quanto vale meu/i
-    const isOwnerCaptureLead = ownerIntentRegex.test(combinedCustText)
+      // Detect if customer mentions intention to sell, rent out, or trade their own property
+      const combinedCustText = `${customerMessage} ${customerNotes}`.toLowerCase()
+      const ownerIntentRegex =
+        /quero vender|tenho um (?:imóvel|apartamento|apto|casa|terreno|imovel)|tenho uma (?:casa|cobertura|sala)|por quanto vendo|colocar (?:à|a) venda|colocar para vender|quero alugar meu|quero anunciar|anunciar meu|administrar meu|captar|avaliação do meu|quanto vale meu/i
+      const isOwnerCaptureLead = ownerIntentRegex.test(combinedCustText)
 
-    const targetIsThirdParty =
-      targetSpecificProp &&
-      !/^LM/i.test((targetSpecificProp.getString('code') || '').replace(/[-_\s]+/g, ''))
+      const targetIsThirdParty =
+        targetSpecificProp &&
+        !/^LM/i.test((targetSpecificProp.getString('code') || '').replace(/[-_\s]+/g, ''))
 
-    if (matchedLaunch && !isOwnerCaptureLead && !targetIsThirdParty) {
-      const lName = matchedLaunch.getString('name') || 'Lançamento'
-      const lEnterprise = matchedLaunch.getString('enterprise_name') || lName
-      const lHeadline = matchedLaunch.getString('headline') || ''
-      const lDesc = matchedLaunch.getString('description') || ''
-      const lLocation = matchedLaunch.getString('location') || ''
-      const lPayment = matchedLaunch.getString('payment_terms') || ''
-      const lArguments = matchedLaunch.getString('sales_arguments') || ''
-      const lSlug = matchedLaunch.getString('slug') || ''
-      const lCtaMsg = matchedLaunch.getString('cta_default_message') || ''
-      const lWebsiteUrl = (matchedLaunch.getString('website_url') || '').trim()
-      // Prioridade absoluta: link oficial no site da BRF (ex: https://www.brfimoveis.com.br/vistage), fallback landing interna CRM
-      const lOfficialLink =
-        lWebsiteUrl ||
-        (lSlug ? `https://crm.brfimoveis.com.br/l/${lSlug}` : 'https://www.brfimoveis.com.br')
+      if (matchedLaunch && !isOwnerCaptureLead && !targetIsThirdParty) {
+        const lName = matchedLaunch.getString('name') || 'Lançamento'
+        const lEnterprise = matchedLaunch.getString('enterprise_name') || lName
+        const lHeadline = matchedLaunch.getString('headline') || ''
+        const lDesc = matchedLaunch.getString('description') || ''
+        const lLocation = matchedLaunch.getString('location') || ''
+        const lPayment = matchedLaunch.getString('payment_terms') || ''
+        const lArguments = matchedLaunch.getString('sales_arguments') || ''
+        const lSlug = matchedLaunch.getString('slug') || ''
+        const lCtaMsg = matchedLaunch.getString('cta_default_message') || ''
+        const lWebsiteUrl = (matchedLaunch.getString('website_url') || '').trim()
+        // Prioridade absoluta: link oficial no site da BRF (ex: https://www.brfimoveis.com.br/vistage), fallback landing interna CRM
+        const lOfficialLink =
+          lWebsiteUrl ||
+          (lSlug ? `https://crm.brfimoveis.com.br/l/${lSlug}` : 'https://www.brfimoveis.com.br')
 
-      let lUnits = matchedLaunch.get('units') || []
-      if (typeof lUnits === 'string') {
-        try {
-          lUnits = JSON.parse(lUnits)
-        } catch (_) {
-          lUnits = []
+        let lUnits = matchedLaunch.get('units') || []
+        if (typeof lUnits === 'string') {
+          try {
+            lUnits = JSON.parse(lUnits)
+          } catch (_) {
+            lUnits = []
+          }
         }
-      }
-      let unitsSummary = ''
-      if (Array.isArray(lUnits) && lUnits.length > 0) {
-        unitsSummary = lUnits
-          .map((u, i) => {
-            const typ = u.typology || u.tipo || 'Unidade'
-            const area = u.area || ''
-            const pr = u.price || u.valor || ''
-            const avail = u.available !== false ? 'Disponível' : 'Reservada'
-            return `  ${i + 1}. ${typ} - ${area} | Valor: ${pr} (${avail})`
-          })
-          .join('\n')
-      }
-      let lDiffs = matchedLaunch.get('differentials') || []
-      if (typeof lDiffs === 'string') {
-        try {
-          lDiffs = JSON.parse(lDiffs)
-        } catch (_) {
-          lDiffs = []
+        let unitsSummary = ''
+        if (Array.isArray(lUnits) && lUnits.length > 0) {
+          unitsSummary = lUnits
+            .map((u, i) => {
+              const typ = u.typology || u.tipo || 'Unidade'
+              const area = u.area || ''
+              const pr = u.price || u.valor || ''
+              const avail = u.available !== false ? 'Disponível' : 'Reservada'
+              return `  ${i + 1}. ${typ} - ${area} | Valor: ${pr} (${avail})`
+            })
+            .join('\n')
         }
-      }
-      let diffsSummary = Array.isArray(lDiffs) ? lDiffs.join('; ') : ''
+        let lDiffs = matchedLaunch.get('differentials') || []
+        if (typeof lDiffs === 'string') {
+          try {
+            lDiffs = JSON.parse(lDiffs)
+          } catch (_) {
+            lDiffs = []
+          }
+        }
+        let diffsSummary = Array.isArray(lDiffs) ? lDiffs.join('; ') : ''
 
-      clientContext += `\n[ROTEAMENTO: TRILHA LANÇAMENTO ESPECÍFICO — DOSSIÊ PUBLICADO "${lName}"] (MÁXIMA PRIORIDADE):
+        clientContext += `\n[ROTEAMENTO: TRILHA LANÇAMENTO ESPECÍFICO — DOSSIÊ PUBLICADO "${lName}"] (MÁXIMA PRIORIDADE):
 Você está atendendo um lead com interesse específico no lançamento: ${lEnterprise} (${lLocation}).
 DOSSIÊ OFICIAL DO LANÇAMENTO:
 Headline: ${lHeadline}
@@ -2775,17 +2806,17 @@ DIRETRIZ DE FOCO NO LANÇAMENTO:
 - Destaque as unidades, valores e diferenciais específicos do ${lName}.
 - Página oficial do lançamento: ${lOfficialLink} (você pode enviar para o cliente ver fotos, plantas e detalhes oficiais).
 - Se o cliente avançar para reserva, visita ao decorado ou proposta: TRATE COMO FECHAMENTO (Art. 3, item 6 da Constituição v2.0), NUNCA COMO TRANSBORDO. Confirme com entusiasmo o interesse e registre para condução do fechamento. É PROIBIDO dizer "vou pedir para o corretor entrar em contato".\n`
-    } else if (matchedPlaybook && !isOwnerCaptureLead) {
-      const pbName = matchedPlaybook.getString('name') || 'Anúncio'
-      const pbEmpreendimento =
-        matchedPlaybook.getString('empreendimento') || 'Empreendimento Anunciado'
-      const pbPitch = matchedPlaybook.getString('pitch') || ''
-      const pbObjective =
-        matchedPlaybook.getString('objective') || 'levar para fechamento e agendamento'
-      const pbQualifying = matchedPlaybook.getString('qualifying_questions') || ''
-      const pbCta = matchedPlaybook.getString('cta_message') || ''
+      } else if (matchedPlaybook && !isOwnerCaptureLead) {
+        const pbName = matchedPlaybook.getString('name') || 'Anúncio'
+        const pbEmpreendimento =
+          matchedPlaybook.getString('empreendimento') || 'Empreendimento Anunciado'
+        const pbPitch = matchedPlaybook.getString('pitch') || ''
+        const pbObjective =
+          matchedPlaybook.getString('objective') || 'levar para fechamento e agendamento'
+        const pbQualifying = matchedPlaybook.getString('qualifying_questions') || ''
+        const pbCta = matchedPlaybook.getString('cta_message') || ''
 
-      clientContext += `\n[ROTEAMENTO: TRILHA A — PLAYBOOK DE VENDA FOCADA — ANÚNCIO "${customerSource || pbName}"] (MÁXIMA PRIORIDADE):
+        clientContext += `\n[ROTEAMENTO: TRILHA A — PLAYBOOK DE VENDA FOCADA — ANÚNCIO "${customerSource || pbName}"] (MÁXIMA PRIORIDADE):
 Você está atendendo um lead que veio do anúncio do empreendimento ${pbEmpreendimento}.
 SIGA RIGOROSAMENTE A TRILHA A:
 ROTEIRO / PITCH COMERCIAL:
@@ -2801,8 +2832,8 @@ ${pbQualifying}
 DIRETRIZ DE FOCO TOTAL:
 Conduza a conversa exclusivamente para este empreendimento e para o objetivo acima — NÃO ofereça outros imóveis do catálogo, NÃO mude de assunto, NÃO responda perguntas sobre outros empreendimentos a não ser que o cliente pergunte diretamente (nesse caso responda brevemente e retome o foco para este empreendimento).
 Ao detectar interesse ou avançar na conversa, conduza para o fechamento com o seguinte CTA: "${pbCta}".\n`
-    } else if (isOwnerCaptureLead) {
-      clientContext += `\n[ROTEAMENTO: TRILHA B — DETECÇÃO DE PROPRIETÁRIO / CAPTAÇÃO DE IMÓVEL PRÓPRIO] (PRIORIDADE ABSOLUTA):
+      } else if (isOwnerCaptureLead) {
+        clientContext += `\n[ROTEAMENTO: TRILHA B — DETECÇÃO DE PROPRIETÁRIO / CAPTAÇÃO DE IMÓVEL PRÓPRIO] (PRIORIDADE ABSOLUTA):
 O cliente manifestou intenção de vender, alugar ou avaliar um imóvel próprio!
 Siga IMEDIATAMENTE as diretrizes da TRILHA B:
 1. Parabenize pela excelente decisão de comercializar o imóvel com a BRF Imóveis.
@@ -2810,174 +2841,338 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
 3. Mapeie os dados essenciais com naturalidade: tipo do imóvel, bairro/cidade, metragem privativa, dormitórios/suítes, vagas, valor pretendido e urgência.
 4. NUNCA passe avaliação ou preço fechado sem vistoria e análise técnica. Sinalize que a BRF realiza estudo mercadológico gratuito.
 5. Conduza ao fechamento da Trilha B: parabenize, colete os dados básicos e registre no CRM para o Mauro conduzir a captação.\n`
-    } else if (isMetaAdSource) {
-      clientContext += `\n[ROTEAMENTO: TRILHA A — LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
-      clientContext += `- Este lead veio de anúncio Meta: "${customerSource}".\n`
-      clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA: Ao iniciar a conversa ou recepcionar o lead, mencione cordialmente o empreendimento ou anúncio de origem de forma calorosa e concisa (exemplo: "Que ótimo que você viu o nosso lançamento!"). Faça apenas UMA pergunta por vez para mapear o perfil e qualificação financeira antes de enviar preços ou links.\n`
-    } else {
-      clientContext += `\n[ROTEAMENTO: TRILHA B — LEAD DE IMÓVEL DE TERCEIROS / DEMANDA GERAL]:\n`
-      clientContext += `- SEPARAÇÃO ESTRITA: Imóvel de terceiros (prefixos AP, CA, CS, TR, FA, COB, ARU ou qualquer outro sem LM). NUNCA misturar com lançamentos na planta nem usar tabela de pagamento de construtora.\n`
-      clientContext += `- DADOS OFICIAIS: Utilize estritamente os dados do link oficial brfimoveis.com.br e do catálogo BRF.\n`
-      clientContext += `- SIMILARES: Recomende apenas similares de terceiros do mesmo bairro ou, se não houver, de bairros vizinhos.\n`
-      clientContext += `- VISITA É FECHAMENTO: Trate confirmação de visita como fechamento e vitória registrada no CRM. Não diga que corretor vai entrar em contato.\n`
-      clientContext += `- Se quer vender imóvel próprio: mapear características (tipo, bairro, metragem, dorms, valor pretendido) e agendar avaliação.\n`
-      clientContext += `- Se quer comprar imóvel de terceiros fora do catálogo: acolher com honestidade e apresentar alternativas de terceiros compatíveis.\n`
-    }
+      } else if (isMetaAdSource) {
+        clientContext += `\n[ROTEAMENTO: TRILHA A — LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
+        clientContext += `- Este lead veio de anúncio Meta: "${customerSource}".\n`
+        clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA: Ao iniciar a conversa ou recepcionar o lead, mencione cordialmente o empreendimento ou anúncio de origem de forma calorosa e concisa (exemplo: "Que ótimo que você viu o nosso lançamento!"). Faça apenas UMA pergunta por vez para mapear o perfil e qualificação financeira antes de enviar preços ou links.\n`
+      } else {
+        clientContext += `\n[ROTEAMENTO: TRILHA B — LEAD DE IMÓVEL DE TERCEIROS / DEMANDA GERAL]:\n`
+        clientContext += `- SEPARAÇÃO ESTRITA: Imóvel de terceiros (prefixos AP, CA, CS, TR, FA, COB, ARU ou qualquer outro sem LM). NUNCA misturar com lançamentos na planta nem usar tabela de pagamento de construtora.\n`
+        clientContext += `- DADOS OFICIAIS: Utilize estritamente os dados do link oficial brfimoveis.com.br e do catálogo BRF.\n`
+        clientContext += `- SIMILARES: Recomende apenas similares de terceiros do mesmo bairro ou, se não houver, de bairros vizinhos.\n`
+        clientContext += `- VISITA É FECHAMENTO: Trate confirmação de visita como fechamento e vitória registrada no CRM. Não diga que corretor vai entrar em contato.\n`
+        clientContext += `- Se quer vender imóvel próprio: mapear características (tipo, bairro, metragem, dorms, valor pretendido) e agendar avaliação.\n`
+        clientContext += `- Se quer comprar imóvel de terceiros fora do catálogo: acolher com honestidade e apresentar alternativas de terceiros compatíveis.\n`
+      }
 
-    const isFirstAiMessageOrAfter24h = hoursSinceLastAiMsg === null || hoursSinceLastAiMsg >= 24
-    const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour, true)
-    const timeGreetingRule = isFirstAiMessageOrAfter24h
-      ? `REGRA DE SAUDAÇÃO COM IDENTIFICAÇÃO (PRIMEIRA MENSAGEM OU APÓS 24H DE SILÊNCIO):
+      const isFirstAiMessageOrAfter24h = hoursSinceLastAiMsg === null || hoursSinceLastAiMsg >= 24
+      const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour, true)
+      const timeGreetingRule = isFirstAiMessageOrAfter24h
+        ? `REGRA DE SAUDAÇÃO COM IDENTIFICAÇÃO (PRIMEIRA MENSAGEM OU APÓS 24H DE SILÊNCIO):
 - Horário local oficial de envio (America/Sao_Paulo): ${currentTimeStr} (${getTemporalGreetingWord(brHour)}).
 - Como este é o primeiro contato da Bia, uma retomada ou nova conversa após janela de 24h, a Bia DEVE se identificar com clareza: "${temporalGreetingSuggestion}".
 - Se o lead não tiver nome confiável no cadastro, use apenas "Bia da BRF Imóveis — ${getTemporalGreetingWord(brHour).toLowerCase()}, tudo bem?" sem inventar nome.
 - Em diálogo contínuo (janela de 24h em andamento), NÃO repita a identificação nem a saudação.
 - Nunca repita perguntas já respondidas.`
-      : `REGRA DE CONTINUIDADE DO DIÁLOGO (CONVERSA EM ANDAMENTO):
+        : `REGRA DE CONTINUIDADE DO DIÁLOGO (CONVERSA EM ANDAMENTO):
 - O diálogo com o cliente já está em andamento (última interação há menos de 24h).
 - NÃO repita a identificação ("Bia da BRF Imóveis") nem saudações temporais/formais ("Bom dia/Boa tarde/Boa noite/Olá/Oi"). Vá direto ao ponto, respondendo ou avançando com foco na demanda do cliente de forma consultiva e acolhedora.`
 
-    // ======================================================================
-    // PILAR C: DETECÇÃO DE PERFIL, PIVÔ NA REJEIÇÃO E GUARDA DE RECUSA
-    // ======================================================================
-    const custIncomingMsg = (customerMessage || incomingCustMsgText || '').trim()
-    const lowerCustIncoming = custIncomingMsg.toLowerCase()
+      // ======================================================================
+      // PILAR C: DETECÇÃO DE PERFIL, PIVÔ NA REJEIÇÃO E GUARDA DE RECUSA
+      // ======================================================================
+      const custIncomingMsg = (customerMessage || incomingCustMsgText || '').trim()
+      const lowerCustIncoming = custIncomingMsg.toLowerCase()
 
-    // ======================================================================
-    // BIA PAUSADA NO CONTATO (escalada ao Mauro): enquanto a tag 'ai_paused'
-    // estiver presente (e não for opt_out), a Bia NÃO responde automaticamente
-    // — o contato fica retido até o Mauro assumir e remover a tag.
-    // ======================================================================
-    try {
-      const pausedTagsCheck = customer.get('tags')
-      if (
-        Array.isArray(pausedTagsCheck) &&
-        pausedTagsCheck.indexOf('ai_paused') !== -1 &&
-        pausedTagsCheck.indexOf('opt_out') === -1
-      ) {
-        console.log(
-          `[AI_REPLY] [BIA_PAUSED] Cliente ${customerId} está com a Bia pausada (escalado ao Mauro). Nenhuma resposta automática enviada.`,
-        )
-        return e.next()
-      }
-    } catch (_) {}
-
-    // ----------------------------------------------------------------------
-    // CANCELAR CONTINUIDADE AGENDADA CASO O CLIENTE RESPONDA ANTES DOS 10 MIN
-    // Se o cliente respondeu qualquer coisa, a continuação automática é cancelada
-    // e o fluxo cai na IA da Bia ou no interceptor adequado.
-    // ----------------------------------------------------------------------
-    try {
-      const pendingContTasks = $app.findRecordsByFilter(
-        'regua_ok_tasks',
-        `customer_id = '${customerId}' && task_type = 'continuidade' && status = 'pending'`,
-        '-created',
-        5,
-        0,
-      )
-      if (pendingContTasks && pendingContTasks.length > 0) {
-        const nowCancelIso = new Date().toISOString().replace('T', ' ').substring(0, 19)
-        for (let cti = 0; cti < pendingContTasks.length; cti++) {
-          const ct = pendingContTasks[cti]
-          ct.set('status', 'canceled')
-          ct.set(
-            'last_error',
-            `Cancelado por resposta antecipada do cliente: "${custIncomingMsg.substring(0, 100)}"`,
-          )
-          ct.set('sent_at', nowCancelIso)
-          $app.saveNoValidate(ct)
-        }
-        console.log(
-          `[AI_REPLY] Continuidade agendada cancelada para customer=${customerId} por resposta do cliente: "${custIncomingMsg}"`,
-        )
-      }
-    } catch (cancelErr) {
-      console.warn(`[AI_REPLY] Aviso ao cancelar continuidade agendada: ${String(cancelErr)}`)
-    }
-
-    // ----------------------------------------------------------------------
-    // GUARDA DE RECUSA / OPT-OUT IMEDIATO ("NÃO" / "NAO") (MAURO - REGRA DA RÉGUA)
-    // "Se não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro."
-    // ----------------------------------------------------------------------
-    const normalizedExactOptOut = lowerCustIncoming
-      .replace(/[.,!?;:\"'“”\s\-_]/g, '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-
-    const isExactNao =
-      normalizedExactOptOut === 'nao' ||
-      normalizedExactOptOut === 'n' ||
-      normalizedExactOptOut === 'nn' ||
-      normalizedExactOptOut === 'naoquero' ||
-      normalizedExactOptOut === 'naotenhointeresse'
-
-    if (isExactNao) {
-      console.log(
-        `[AI_REPLY] [OPT_OUT_NAO] Cliente respondeu "${custIncomingMsg}". Executando opt-out imediato da régua para customer=${customerId}...`,
-      )
+      // ======================================================================
+      // BIA PAUSADA NO CONTATO (escalada ao Mauro): enquanto a tag 'ai_paused'
+      // estiver presente (e não for opt_out), a Bia NÃO responde automaticamente
+      // — o contato fica retido até o Mauro assumir e remover a tag.
+      // ======================================================================
       try {
-        let currentCustTags = []
-        const rawCustTags = customer.get('tags')
-        if (Array.isArray(rawCustTags)) {
-          currentCustTags = rawCustTags.filter((t) => typeof t === 'string')
+        const pausedTagsCheck = customer.get('tags')
+        if (
+          Array.isArray(pausedTagsCheck) &&
+          pausedTagsCheck.indexOf('ai_paused') !== -1 &&
+          pausedTagsCheck.indexOf('opt_out') === -1
+        ) {
+          console.log(
+            `[AI_REPLY] [BIA_PAUSED] Cliente ${customerId} está com a Bia pausada (escalado ao Mauro). Nenhuma resposta automática enviada.`,
+          )
+          return e.next()
         }
-        if (!currentCustTags.includes('opt_out')) currentCustTags.push('opt_out')
-        if (!currentCustTags.includes('não é o momento')) currentCustTags.push('não é o momento')
-        if (!currentCustTags.includes('frio')) currentCustTags.push('frio')
-        if (!currentCustTags.includes('ai_paused')) currentCustTags.push('ai_paused')
+      } catch (_) {}
 
-        customer.set('tags', currentCustTags)
-        customer.set('persistence_status', 'pausado')
-        customer.set('follow_up_step', 'finalizado')
-        customer.set('next_follow_up_at', '')
-        customer.set(
-          'notes',
-          (customer.getString('notes') || '') + ' [Opt-out imediato via resposta NÃO na régua]',
+      // ----------------------------------------------------------------------
+      // CANCELAR CONTINUIDADE AGENDADA CASO O CLIENTE RESPONDA ANTES DOS 10 MIN
+      // Se o cliente respondeu qualquer coisa, a continuação automática é cancelada
+      // e o fluxo cai na IA da Bia ou no interceptor adequado.
+      // ----------------------------------------------------------------------
+      try {
+        const pendingContTasks = $app.findRecordsByFilter(
+          'regua_ok_tasks',
+          `customer_id = '${customerId}' && task_type = 'continuidade' && status = 'pending'`,
+          '-created',
+          5,
+          0,
         )
-        $app.saveNoValidate(customer)
+        if (pendingContTasks && pendingContTasks.length > 0) {
+          const nowCancelIso = new Date().toISOString().replace('T', ' ').substring(0, 19)
+          for (let cti = 0; cti < pendingContTasks.length; cti++) {
+            const ct = pendingContTasks[cti]
+            ct.set('status', 'canceled')
+            ct.set(
+              'last_error',
+              `Cancelado por resposta antecipada do cliente: "${custIncomingMsg.substring(0, 100)}"`,
+            )
+            ct.set('sent_at', nowCancelIso)
+            $app.saveNoValidate(ct)
+          }
+          console.log(
+            `[AI_REPLY] Continuidade agendada cancelada para customer=${customerId} por resposta do cliente: "${custIncomingMsg}"`,
+          )
+        }
+      } catch (cancelErr) {
+        console.warn(`[AI_REPLY] Aviso ao cancelar continuidade agendada: ${String(cancelErr)}`)
+      }
 
-        // Registrar no system_logs
+      // ----------------------------------------------------------------------
+      // GUARDA DE RECUSA / OPT-OUT IMEDIATO ("NÃO" / "NAO") (MAURO - REGRA DA RÉGUA)
+      // "Se não deseja mais receber outras oportunidades como esta, responda NÃO e excluiremos imediatamente você do nosso cadastro."
+      // ----------------------------------------------------------------------
+      const normalizedExactOptOut = lowerCustIncoming
+        .replace(/[.,!?;:\"'“”\s\-_]/g, '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+
+      const isExactNao =
+        normalizedExactOptOut === 'nao' ||
+        normalizedExactOptOut === 'n' ||
+        normalizedExactOptOut === 'nn' ||
+        normalizedExactOptOut === 'naoquero' ||
+        normalizedExactOptOut === 'naotenhointeresse'
+
+      if (isExactNao) {
+        console.log(
+          `[AI_REPLY] [OPT_OUT_NAO] Cliente respondeu "${custIncomingMsg}". Executando opt-out imediato da régua para customer=${customerId}...`,
+        )
         try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const optOutLog = new Record(logsCol)
-          optOutLog.set('user_id', userId || '')
-          optOutLog.set('type', 'regua_opt_out_nao')
-          optOutLog.set(
-            'message',
-            `Cliente respondeu "${custIncomingMsg}" e optou por sair da régua. Descadastrado imediatamente.`,
-          )
-          optOutLog.set(
-            'details',
-            JSON.stringify({
-              customer_id: customerId,
-              customer_name: customer.getString('name') || '',
-              customer_phone: customer.getString('phone') || '',
-              incoming_message: custIncomingMsg,
-            }),
-          )
-          $app.saveNoValidate(optOutLog)
-        } catch (_) {}
+          let currentCustTags = []
+          const rawCustTags = customer.get('tags')
+          if (Array.isArray(rawCustTags)) {
+            currentCustTags = rawCustTags.filter((t) => typeof t === 'string')
+          }
+          if (!currentCustTags.includes('opt_out')) currentCustTags.push('opt_out')
+          if (!currentCustTags.includes('não é o momento')) currentCustTags.push('não é o momento')
+          if (!currentCustTags.includes('frio')) currentCustTags.push('frio')
+          if (!currentCustTags.includes('ai_paused')) currentCustTags.push('ai_paused')
 
-        // Registrar conversa curta confirmando exclusão
-        try {
-          const convCol = $app.findCollectionByNameOrId('conversations')
-          const optOutConv = new Record(convCol)
-          optOutConv.set('customer_id', customerId)
-          optOutConv.set('user_id', userId || '')
-          optOutConv.set('channel', 'whatsapp')
-          optOutConv.set('sender', 'ai')
-          optOutConv.set(
-            'content',
-            'Compreendido perfeitamente. Seu contato foi retirado da nossa lista de oportunidades. Desejamos muito sucesso!',
+          customer.set('tags', currentCustTags)
+          customer.set('persistence_status', 'pausado')
+          customer.set('follow_up_step', 'finalizado')
+          customer.set('next_follow_up_at', '')
+          customer.set(
+            'notes',
+            (customer.getString('notes') || '') + ' [Opt-out imediato via resposta NÃO na régua]',
           )
-          $app.saveNoValidate(optOutConv)
-        } catch (_) {}
+          $app.saveNoValidate(customer)
 
-        // Envia mensagem educada via WhatsApp confirmando o descadastro
-        const toPhoneClean = (customer.getString('phone') || '').replace(/\D/g, '')
-        if (toPhoneClean && metaWhatsappToken && metaPhoneId) {
+          // Registrar no system_logs
           try {
-            $http.send({
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const optOutLog = new Record(logsCol)
+            optOutLog.set('user_id', userId || '')
+            optOutLog.set('type', 'regua_opt_out_nao')
+            optOutLog.set(
+              'message',
+              `Cliente respondeu "${custIncomingMsg}" e optou por sair da régua. Descadastrado imediatamente.`,
+            )
+            optOutLog.set(
+              'details',
+              JSON.stringify({
+                customer_id: customerId,
+                customer_name: customer.getString('name') || '',
+                customer_phone: customer.getString('phone') || '',
+                incoming_message: custIncomingMsg,
+              }),
+            )
+            $app.saveNoValidate(optOutLog)
+          } catch (_) {}
+
+          // Registrar conversa curta confirmando exclusão
+          try {
+            const convCol = $app.findCollectionByNameOrId('conversations')
+            const optOutConv = new Record(convCol)
+            optOutConv.set('customer_id', customerId)
+            optOutConv.set('user_id', userId || '')
+            optOutConv.set('channel', 'whatsapp')
+            optOutConv.set('sender', 'ai')
+            optOutConv.set(
+              'content',
+              'Compreendido perfeitamente. Seu contato foi retirado da nossa lista de oportunidades. Desejamos muito sucesso!',
+            )
+            $app.saveNoValidate(optOutConv)
+          } catch (_) {}
+
+          // Envia mensagem educada via WhatsApp confirmando o descadastro
+          const toPhoneClean = (customer.getString('phone') || '').replace(/\D/g, '')
+          if (toPhoneClean && metaWhatsappToken && metaPhoneId) {
+            try {
+              $http.send({
+                url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${metaWhatsappToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  recipient_type: 'individual',
+                  to: toPhoneClean,
+                  type: 'text',
+                  text: {
+                    body: 'Compreendido perfeitamente. Seu contato foi retirado da nossa lista de oportunidades. Desejamos muito sucesso!',
+                  },
+                }),
+                timeout: 15,
+              })
+            } catch (_) {}
+          }
+
+          console.log(`[AI_REPLY] [OPT_OUT_NAO] Opt-out concluído para customer=${customerId}.`)
+          return e.next()
+        } catch (optErr) {
+          console.warn(`[AI_REPLY] [OPT_OUT_NAO] Erro ao processar opt-out: ${String(optErr)}`)
+        }
+      }
+
+      // ======================================================================
+      // GATILHO "OK" / "SIM" -> EBOOK IMEDIATO + CONTINUIDADE (MAURO)
+      // Aceita variações simples: OK, Ok, ok, "quero", "sim", "manda", "pode mandar"
+      // Não dispara se 'ok' fizer parte de outra palavra (ex.: look, estoque).
+      // ======================================================================
+      const normalizedInputTokens = lowerCustIncoming
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .split(/[\s,.;:!?\-_"'“”()]+/)
+        .filter((t) => t.length > 0)
+
+      const isOkToken = normalizedInputTokens.some(
+        (tok) => tok === 'ok' || tok === 'okk' || tok === 'oq',
+      )
+      const isSimToken = normalizedInputTokens.some(
+        (tok) =>
+          tok === 'sim' ||
+          tok === 'si' ||
+          tok === 'ss' ||
+          tok === 'claro' ||
+          tok === 'quero' ||
+          tok === 'manda' ||
+          tok === 'mande',
+      )
+      const isShortAffirmative =
+        /^(?:ok|ok\!|ok\.|sim|sim\!|quero|quero\s*sim|pode\s*mandar|pode\s*enviar|manda|mande|manda\s*o\s*ebook|envia|enviar|com\s*certeza|por\s*favor)$/i.test(
+          custIncomingMsg.trim(),
+        )
+
+      const isOkResponse =
+        (isOkToken && normalizedInputTokens.length <= 4) ||
+        (isSimToken && normalizedInputTokens.length <= 4) ||
+        isShortAffirmative
+
+      let lastAiMsgWasRegua = false
+      try {
+        const recentOutbounds = $app.findRecordsByFilter(
+          'conversations',
+          `customer_id = '${customerId}' && sender = 'ai'`,
+          '-created',
+          2,
+          0,
+        )
+        if (recentOutbounds && recentOutbounds.length > 0) {
+          const lastOutText = recentOutbounds[0].getString('content') || ''
+          if (
+            lastOutText.includes('Vistage Residence') ||
+            lastOutText.includes('guardei o Vistage') ||
+            lastOutText.includes('separei o Vistage') ||
+            lastOutText.includes('separei uma oportunidade que poucos') ||
+            lastOutText.includes('basta responder OK') ||
+            lastOutText.includes('responder OK') ||
+            lastOutText.includes('Responda "Sim"') ||
+            lastOutText.includes('responda "Sim"') ||
+            lastOutText.includes('ebook completo') ||
+            lastOutText.includes('ebook exclusivo')
+          ) {
+            lastAiMsgWasRegua = true
+          }
+        }
+      } catch (_) {}
+
+      if (isOkResponse && (lastAiMsgWasRegua || isOkResponse)) {
+        console.log(
+          `[AI_REPLY] [GATILHO_OK] Interceptor acionado para customer=${customerId} ("${custIncomingMsg}"). Executando entrega do ebook Vistage...`,
+        )
+
+        // Recupera o primeiro nome do cliente de forma humanizada
+        let rawCustName = (customer.getString('name') || '').trim()
+        let clientFirstName = ''
+        if (
+          rawCustName &&
+          !rawCustName.toLowerCase().startsWith('contato') &&
+          !/^\+?\d+$/.test(rawCustName)
+        ) {
+          clientFirstName = rawCustName.split(' ')[0]
+        }
+
+        // Frase curta de confirmação antes do ebook
+        const confirmShortMsg = clientFirstName
+          ? `Prontinho, ${clientFirstName}! Ebook a caminho. Em minutos te faço uma pergunta rápida para eu te indicar a planta certa 😉`
+          : `Prontinho! Ebook a caminho. Em minutos te faço uma pergunta rápida para eu te indicar a planta certa 😉`
+
+        const pbPublicBase =
+          $os.getenv('PUBLIC_URL') ||
+          $os.getenv('PB_PUBLIC_URL') ||
+          $os.getenv('POCKETBASE_URL') ||
+          $os.getenv('VITE_POCKETBASE_URL') ||
+          $os.getenv('PB_INSTANCE_URL') ||
+          'https://crm.brfimoveis.com.br'
+
+        let ebookKnowledgeRec = null
+        try {
+          ebookKnowledgeRec = $app.findRecordById('ai_knowledge_files', 'fcvyoatlxt56do2')
+        } catch (_) {
+          try {
+            const matchedFiles = $app.findRecordsByFilter(
+              'ai_knowledge_files',
+              "is_active = true && (name ~ 'BOOK VISTAGE' || name ~ 'VISTAGE RESIDENCE') && file ~ '.pdf'",
+              '-created',
+              1,
+              0,
+            )
+            if (matchedFiles && matchedFiles.length > 0) {
+              ebookKnowledgeRec = matchedFiles[0]
+            }
+          } catch (_) {}
+        }
+
+        let ebookFileUrl = ''
+        let ebookFileName = 'BOOK VISTAGE RESIDENCE.pdf'
+        if (ebookKnowledgeRec) {
+          const rawFileName =
+            ebookKnowledgeRec.getString('file') || 'book_vistage_residence_alxnfnhjlr.pdf'
+          const colIdentifier =
+            ebookKnowledgeRec.collectionId ||
+            (typeof ebookKnowledgeRec.collectionName === 'function'
+              ? ebookKnowledgeRec.collectionName()
+              : ebookKnowledgeRec.collectionName) ||
+            'ai_knowledge_files'
+          ebookFileUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/${colIdentifier}/${ebookKnowledgeRec.id}/${rawFileName}`
+          ebookFileName = ebookKnowledgeRec.getString('name') || 'BOOK VISTAGE RESIDENCE.pdf'
+          if (!ebookFileName.toLowerCase().endsWith('.pdf')) {
+            ebookFileName += '.pdf'
+          }
+        } else {
+          ebookFileUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/ai_knowledge_files/fcvyoatlxt56do2/book_vistage_residence_alxnfnhjlr.pdf`
+        }
+
+        const toPhoneClean = (customer.getString('phone') || '').replace(/\D/g, '')
+        let docSendSuccess = false
+        let docWamid = ''
+
+        if (toPhoneClean && metaWhatsappToken && metaPhoneId) {
+          // (a) Envia frase curta humana de confirmação
+          try {
+            const txtRes = $http.send({
               url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
               method: 'POST',
               headers: {
@@ -2989,855 +3184,697 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
                 recipient_type: 'individual',
                 to: toPhoneClean,
                 type: 'text',
-                text: {
-                  body: 'Compreendido perfeitamente. Seu contato foi retirado da nossa lista de oportunidades. Desejamos muito sucesso!',
-                },
+                text: { body: confirmShortMsg },
               }),
               timeout: 15,
             })
+            if (txtRes && txtRes.statusCode >= 200 && txtRes.statusCode < 300) {
+              try {
+                const b = JSON.parse(txtRes.raw || '{}')
+                const w = b.messages && b.messages[0] ? b.messages[0].id : ''
+                const logsCol = $app.findCollectionByNameOrId('system_logs')
+                const l = new Record(logsCol)
+                l.set('user_id', userId || '')
+                l.set('type', 'whatsapp_ai_send')
+                l.set('message', 'Frase de confirmação pós-OK entregue')
+                l.set(
+                  'details',
+                  JSON.stringify({
+                    customer_id: customerId,
+                    phone: toPhoneClean,
+                    wamid: w,
+                    status: 'sent',
+                    task_type: 'confirm_text',
+                  }),
+                )
+                $app.saveNoValidate(l)
+              } catch (_) {}
+            }
           } catch (_) {}
-        }
 
-        console.log(`[AI_REPLY] [OPT_OUT_NAO] Opt-out concluído para customer=${customerId}.`)
-        return e.next()
-      } catch (optErr) {
-        console.warn(`[AI_REPLY] [OPT_OUT_NAO] Erro ao processar opt-out: ${String(optErr)}`)
-      }
-    }
-
-    // ======================================================================
-    // GATILHO "OK" / "SIM" -> EBOOK IMEDIATO + CONTINUIDADE (MAURO)
-    // Aceita variações simples: OK, Ok, ok, "quero", "sim", "manda", "pode mandar"
-    // Não dispara se 'ok' fizer parte de outra palavra (ex.: look, estoque).
-    // ======================================================================
-    const normalizedInputTokens = lowerCustIncoming
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .split(/[\s,.;:!?\-_"'“”()]+/)
-      .filter((t) => t.length > 0)
-
-    const isOkToken = normalizedInputTokens.some(
-      (tok) => tok === 'ok' || tok === 'okk' || tok === 'oq',
-    )
-    const isSimToken = normalizedInputTokens.some(
-      (tok) =>
-        tok === 'sim' ||
-        tok === 'si' ||
-        tok === 'ss' ||
-        tok === 'claro' ||
-        tok === 'quero' ||
-        tok === 'manda' ||
-        tok === 'mande',
-    )
-    const isShortAffirmative =
-      /^(?:ok|ok\!|ok\.|sim|sim\!|quero|quero\s*sim|pode\s*mandar|pode\s*enviar|manda|mande|manda\s*o\s*ebook|envia|enviar|com\s*certeza|por\s*favor)$/i.test(
-        custIncomingMsg.trim(),
-      )
-
-    const isOkResponse =
-      (isOkToken && normalizedInputTokens.length <= 4) ||
-      (isSimToken && normalizedInputTokens.length <= 4) ||
-      isShortAffirmative
-
-    let lastAiMsgWasRegua = false
-    try {
-      const recentOutbounds = $app.findRecordsByFilter(
-        'conversations',
-        `customer_id = '${customerId}' && sender = 'ai'`,
-        '-created',
-        2,
-        0,
-      )
-      if (recentOutbounds && recentOutbounds.length > 0) {
-        const lastOutText = recentOutbounds[0].getString('content') || ''
-        if (
-          lastOutText.includes('Vistage Residence') ||
-          lastOutText.includes('guardei o Vistage') ||
-          lastOutText.includes('separei o Vistage') ||
-          lastOutText.includes('separei uma oportunidade que poucos') ||
-          lastOutText.includes('basta responder OK') ||
-          lastOutText.includes('responder OK') ||
-          lastOutText.includes('Responda "Sim"') ||
-          lastOutText.includes('responda "Sim"') ||
-          lastOutText.includes('ebook completo') ||
-          lastOutText.includes('ebook exclusivo')
-        ) {
-          lastAiMsgWasRegua = true
-        }
-      }
-    } catch (_) {}
-
-    if (isOkResponse && (lastAiMsgWasRegua || isOkResponse)) {
-      console.log(
-        `[AI_REPLY] [GATILHO_OK] Interceptor acionado para customer=${customerId} ("${custIncomingMsg}"). Executando entrega do ebook Vistage...`,
-      )
-
-      // Recupera o primeiro nome do cliente de forma humanizada
-      let rawCustName = (customer.getString('name') || '').trim()
-      let clientFirstName = ''
-      if (
-        rawCustName &&
-        !rawCustName.toLowerCase().startsWith('contato') &&
-        !/^\+?\d+$/.test(rawCustName)
-      ) {
-        clientFirstName = rawCustName.split(' ')[0]
-      }
-
-      // Frase curta de confirmação antes do ebook
-      const confirmShortMsg = clientFirstName
-        ? `Prontinho, ${clientFirstName}! Ebook a caminho. Em minutos te faço uma pergunta rápida para eu te indicar a planta certa 😉`
-        : `Prontinho! Ebook a caminho. Em minutos te faço uma pergunta rápida para eu te indicar a planta certa 😉`
-
-      const pbPublicBase =
-        $os.getenv('PUBLIC_URL') ||
-        $os.getenv('PB_PUBLIC_URL') ||
-        $os.getenv('POCKETBASE_URL') ||
-        $os.getenv('VITE_POCKETBASE_URL') ||
-        $os.getenv('PB_INSTANCE_URL') ||
-        'https://crm.brfimoveis.com.br'
-
-      let ebookKnowledgeRec = null
-      try {
-        ebookKnowledgeRec = $app.findRecordById('ai_knowledge_files', 'fcvyoatlxt56do2')
-      } catch (_) {
-        try {
-          const matchedFiles = $app.findRecordsByFilter(
-            'ai_knowledge_files',
-            "is_active = true && (name ~ 'BOOK VISTAGE' || name ~ 'VISTAGE RESIDENCE') && file ~ '.pdf'",
-            '-created',
-            1,
-            0,
-          )
-          if (matchedFiles && matchedFiles.length > 0) {
-            ebookKnowledgeRec = matchedFiles[0]
-          }
-        } catch (_) {}
-      }
-
-      let ebookFileUrl = ''
-      let ebookFileName = 'BOOK VISTAGE RESIDENCE.pdf'
-      if (ebookKnowledgeRec) {
-        const rawFileName =
-          ebookKnowledgeRec.getString('file') || 'book_vistage_residence_alxnfnhjlr.pdf'
-        const colIdentifier =
-          ebookKnowledgeRec.collectionId ||
-          (typeof ebookKnowledgeRec.collectionName === 'function'
-            ? ebookKnowledgeRec.collectionName()
-            : ebookKnowledgeRec.collectionName) ||
-          'ai_knowledge_files'
-        ebookFileUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/${colIdentifier}/${ebookKnowledgeRec.id}/${rawFileName}`
-        ebookFileName = ebookKnowledgeRec.getString('name') || 'BOOK VISTAGE RESIDENCE.pdf'
-        if (!ebookFileName.toLowerCase().endsWith('.pdf')) {
-          ebookFileName += '.pdf'
-        }
-      } else {
-        ebookFileUrl = `${pbPublicBase.replace(/\/$/, '')}/api/files/ai_knowledge_files/fcvyoatlxt56do2/book_vistage_residence_alxnfnhjlr.pdf`
-      }
-
-      const toPhoneClean = (customer.getString('phone') || '').replace(/\D/g, '')
-      let docSendSuccess = false
-      let docWamid = ''
-
-      if (toPhoneClean && metaWhatsappToken && metaPhoneId) {
-        // (a) Envia frase curta humana de confirmação
-        try {
-          const txtRes = $http.send({
-            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${metaWhatsappToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              messaging_product: 'whatsapp',
-              recipient_type: 'individual',
-              to: toPhoneClean,
-              type: 'text',
-              text: { body: confirmShortMsg },
-            }),
-            timeout: 15,
-          })
-          if (txtRes && txtRes.statusCode >= 200 && txtRes.statusCode < 300) {
-            try {
-              const b = JSON.parse(txtRes.raw || '{}')
-              const w = b.messages && b.messages[0] ? b.messages[0].id : ''
-              const logsCol = $app.findCollectionByNameOrId('system_logs')
-              const l = new Record(logsCol)
-              l.set('user_id', userId || '')
-              l.set('type', 'whatsapp_ai_send')
-              l.set('message', 'Frase de confirmação pós-OK entregue')
-              l.set(
-                'details',
-                JSON.stringify({
-                  customer_id: customerId,
-                  phone: toPhoneClean,
-                  wamid: w,
-                  status: 'sent',
-                  task_type: 'confirm_text',
-                }),
-              )
-              $app.saveNoValidate(l)
-            } catch (_) {}
-          }
-        } catch (_) {}
-
-        // (b) Envia documento do Ebook
-        try {
-          const docRes = $http.send({
-            url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${metaWhatsappToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              messaging_product: 'whatsapp',
-              recipient_type: 'individual',
-              to: toPhoneClean,
-              type: 'document',
-              document: {
-                link: ebookFileUrl,
-                filename: ebookFileName,
-                caption: 'BOOK VISTAGE RESIDENCE — BRF Imóveis',
+          // (b) Envia documento do Ebook
+          try {
+            const docRes = $http.send({
+              url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${metaWhatsappToken}`,
+                'Content-Type': 'application/json',
               },
-            }),
-            timeout: 25,
-          })
-          if (docRes && docRes.statusCode >= 200 && docRes.statusCode < 300) {
-            docSendSuccess = true
-            try {
-              const b = JSON.parse(docRes.raw || '{}')
-              if (b.messages && b.messages[0]) docWamid = b.messages[0].id
-            } catch (_) {}
-          }
-        } catch (docErr) {
-          console.warn(`[AI_REPLY] [GATILHO_OK] Erro no envio do documento: ${String(docErr)}`)
-        }
-      }
-
-      // Registro de estatística do ebook para o painel /atendimentos
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRec = new Record(logsCol)
-        logRec.set('user_id', userId || '')
-        logRec.set('type', 'whatsapp_ai_send')
-        logRec.set(
-          'message',
-          docSendSuccess
-            ? 'Documento Ebook Vistage entregue com sucesso via WhatsApp'
-            : 'Falha no envio do documento Ebook Vistage; agendado retry em 2min',
-        )
-        logRec.set(
-          'details',
-          JSON.stringify({
-            customer_id: customerId,
-            customer_name: customer.getString('name') || '',
-            phone: toPhoneClean,
-            wamid: docWamid,
-            status: docSendSuccess ? 'sent' : 'failed',
-            task_type: 'ebook_send',
-          }),
-        )
-        $app.saveNoValidate(logRec)
-      } catch (_) {}
-
-      // Se falhou o envio do anexo, cria tarefa de retry em ~2 minutos na fila
-      if (!docSendSuccess) {
-        try {
-          const tasksCol = $app.findCollectionByNameOrId('regua_ok_tasks')
-          const retryTask = new Record(tasksCol)
-          retryTask.set('customer_id', customerId)
-          retryTask.set('user_id', userId || '')
-          retryTask.set('task_type', 'ebook_retry')
-          retryTask.set('status', 'pending')
-          retryTask.set(
-            'scheduled_at',
-            new Date(Date.now() + 2 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19),
-          )
-          retryTask.set('attempts', 1)
-          retryTask.set('last_error', 'Falha no envio inicial do documento via WhatsApp')
-          $app.saveNoValidate(retryTask)
-          console.log(
-            `[AI_REPLY] [GATILHO_OK] Tarefa de retry do ebook agendada em 2min para customer=${customerId}`,
-          )
-        } catch (tErr) {
-          console.warn(`[AI_REPLY] [GATILHO_OK] Erro ao agendar ebook_retry: ${String(tErr)}`)
-        }
-      } else {
-        // Se sucesso confirmado, agenda a continuidade para daqui a ~10 minutos
-        try {
-          const tasksCol = $app.findCollectionByNameOrId('regua_ok_tasks')
-          const contTask = new Record(tasksCol)
-          contTask.set('customer_id', customerId)
-          contTask.set('user_id', userId || '')
-          contTask.set('task_type', 'continuidade')
-          contTask.set('status', 'pending')
-
-          // Regra do Mauro: envio somente na janela 8h-18h (Brasília)
-          const nowUtc = new Date()
-          const brDate = new Date(nowUtc.getTime() - 3 * 3600 * 1000)
-          const brHour = brDate.getUTCHours()
-          let schedIso = ''
-          if (brHour >= 8 && brHour < 18) {
-            schedIso = new Date(Date.now() + 10 * 60 * 1000)
-              .toISOString()
-              .replace('T', ' ')
-              .substring(0, 19)
-          } else {
-            const nextDay = new Date(Date.now() + 24 * 3600 * 1000)
-            nextDay.setUTCHours(11, 0, 0, 0) // 08:00 BRT
-            schedIso = nextDay.toISOString().replace('T', ' ').substring(0, 19)
-          }
-
-          contTask.set('scheduled_at', schedIso)
-          contTask.set('attempts', 0)
-          $app.saveNoValidate(contTask)
-          console.log(
-            `[AI_REPLY] [GATILHO_OK] Continuidade agendada para customer=${customerId} em ${schedIso}`,
-          )
-        } catch (cErr) {
-          console.warn(`[AI_REPLY] [GATILHO_OK] Erro ao agendar continuidade: ${String(cErr)}`)
-        }
-      }
-
-      // Registro da conversa no histórico
-      try {
-        const convCol = $app.findCollectionByNameOrId('conversations')
-        const convRec = new Record(convCol)
-        convRec.set('customer_id', customerId)
-        convRec.set('user_id', userId || '')
-        convRec.set('channel', 'whatsapp')
-        convRec.set('sender', 'ai')
-        convRec.set(
-          'content',
-          `${confirmShortMsg}\n\n[EBOOK VISTAGE RESIDENCE ENTREGUE]\nArquivo: ${ebookFileName}\nLink: ${ebookFileUrl}`,
-        )
-        $app.saveNoValidate(convRec)
-      } catch (_) {}
-
-      // Atualiza o cliente: avança para estágio de Apresentação (3), tira da régua e marca respondido
-      try {
-        const nowIsoDate = new Date().toISOString().replace('T', ' ').substring(0, 19)
-        customer.set('status', 'apresentacao')
-        customer.set('phase', 'apresentacao')
-        customer.set('follow_up_step', 'd1')
-        customer.set('persistence_status', 'respondido')
-        customer.set('last_contact_at', nowIsoDate)
-        customer.set('last_sent_at', nowIsoDate)
-        // Próximo toque de segurança em 24h
-        const nextFollowUpIso = new Date(Date.now() + 24 * 3600 * 1000)
-          .toISOString()
-          .replace('T', ' ')
-          .substring(0, 19)
-        customer.set('next_follow_up_at', nextFollowUpIso)
-        $app.saveNoValidate(customer)
-      } catch (_) {}
-
-      // Encerra interceptor sem passar pelo LLM
-      return e.next()
-    }
-
-    // (a) Extração de perfil por Regex simples:
-    // Faixa de valor: "até 1.000.000", "900 mil", "2 milhões", "até 500k", etc.
-    let extractedPillarPriceRange = ''
-    const valMatch = custIncomingMsg.match(
-      /(?:at[eé]|faixa|or[cç]amento|valor|pre[cç]o|at[eé]\s*r\$|r\$)?\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?|\d+)\s*(k|mil|milh[oõ]es|milhao|milhão)\b/i,
-    )
-    if (valMatch) {
-      extractedPillarPriceRange = valMatch[0].trim()
-    } else {
-      const bareValMatch = custIncomingMsg.match(
-        /\b(?:at[eé]|valor\s*de|or[cç]amento\s*de|pre[cç]o\s*de)?\s*r\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?|\d{5,8})\b/i,
-      )
-      if (bareValMatch) extractedPillarPriceRange = bareValMatch[0].trim()
-    }
-
-    // Forma de pagamento: "à vista", "financiado", "parcelado"
-    let extractedPillarPayment = ''
-    if (/\b(?:[aà]\s*vista|recursos\s+pr[oó]prios|dinheiro)\b/i.test(lowerCustIncoming)) {
-      extractedPillarPayment = 'à vista'
-    } else if (
-      /\b(?:financiad[ao]|financiamento|financiar|carta\s+de\s+cr[eé]dito|fgts|banco|caixa)\b/i.test(
-        lowerCustIncoming,
-      )
-    ) {
-      extractedPillarPayment = 'financiado'
-    } else if (
-      /\b(?:parcelad[ao]|parcelamento|parcelar|direto\s+com\s+a\s+construtora|entrada\s*\+\s*parcelas)\b/i.test(
-        lowerCustIncoming,
-      )
-    ) {
-      extractedPillarPayment = 'parcelado'
-    }
-
-    // Objetivo: "morar", "investir"
-    let extractedPillarObjective = ''
-    if (
-      /\b(?:investir|investimento|rentabilidade|revenda|renda|airbnb|loca[cç][aã]o)\b/i.test(
-        lowerCustIncoming,
-      )
-    ) {
-      extractedPillarObjective = 'investir'
-    } else if (
-      /\b(?:morar|moradia|minha\s+fam[ií]lia|minha\s+resor|resid[eê]ncia)\b/i.test(
-        lowerCustIncoming,
-      )
-    ) {
-      extractedPillarObjective = 'morar'
-    }
-
-    // Carregar e fazer merge no lead_profile_json do customer
-    try {
-      let currentProfileJson = {}
-      try {
-        const rawProfileJson = customer.get('lead_profile_json')
-        if (rawProfileJson) {
-          if (typeof rawProfileJson === 'string') {
-            try {
-              currentProfileJson = JSON.parse(rawProfileJson)
-            } catch (_) {
-              currentProfileJson = {}
-            }
-          } else if (typeof rawProfileJson === 'object') {
-            try {
-              currentProfileJson = JSON.parse(JSON.stringify(rawProfileJson))
-            } catch (_) {
-              currentProfileJson = {}
-            }
-          }
-        }
-      } catch (_) {
-        currentProfileJson = {}
-      }
-
-      // Se lead_profile_json vier como Array ou nulo/não-objeto, recriar como objeto ({})
-      if (
-        !currentProfileJson ||
-        Array.isArray(currentProfileJson) ||
-        typeof currentProfileJson !== 'object'
-      ) {
-        currentProfileJson = {}
-      }
-
-      let profileJsonChanged = false
-      if (
-        extractedPillarPriceRange &&
-        currentProfileJson.price_range !== extractedPillarPriceRange
-      ) {
-        currentProfileJson.price_range = extractedPillarPriceRange
-        profileJsonChanged = true
-      }
-      if (extractedPillarPayment && currentProfileJson.payment_method !== extractedPillarPayment) {
-        currentProfileJson.payment_method = extractedPillarPayment
-        profileJsonChanged = true
-      }
-      if (extractedPillarObjective && currentProfileJson.objective !== extractedPillarObjective) {
-        currentProfileJson.objective = extractedPillarObjective
-        profileJsonChanged = true
-      }
-
-      if (profileJsonChanged) {
-        try {
-          customer.set('lead_profile_json', currentProfileJson)
-          $app.saveNoValidate(customer)
-          console.log(
-            `[AI_REPLY] [PILAR_C] lead_profile_json atualizado para customer=${customerId}: ${JSON.stringify(currentProfileJson)}`,
-          )
-        } catch (profErr) {
-          console.warn(`[AI_REPLY] [PILAR_C] Erro ao salvar lead_profile_json: ${String(profErr)}`)
-        }
-      }
-    } catch (mergeErr) {
-      console.warn(
-        `[AI_REPLY] [PILAR_C] Erro seguro no bloco lead_profile_json: ${String(mergeErr)}`,
-      )
-    }
-
-    // (b) Pivô na rejeição:
-    // "não é isso que procuro" / "não é isso" / "outro"
-    const isRejectionPivot =
-      /\b(?:n[aã]o\s+[ée]\s+isso(?:\s+que\s+(?:eu\s+)?procuro)?|n[aã]o\s+e\s+isso(?:\s+que\s+(?:eu\s+)?procuro)?|outro(?:\s+im[oó]vel|\s+tipo|\s+bairro|\s+lan[cç]amento)?|outra\s+op[cç][aã]o|n[aã]o\s+gostei(?:\s+desse|\s+deste|\s+dessa)?|n[aã]o\s+me\s+agradou|procuro\s+outro|quero\s+outro)\b/i.test(
-        lowerCustIncoming,
-      )
-
-    let currentRejectionCount = 0
-    try {
-      currentRejectionCount = customer.getInt('rejection_count') || 0
-    } catch (_) {}
-
-    if (isRejectionPivot) {
-      currentRejectionCount++
-      try {
-        customer.set('rejection_count', currentRejectionCount)
-        customer.set('last_rejection_reason', custIncomingMsg.substring(0, 200))
-        $app.saveNoValidate(customer)
-        console.log(
-          `[AI_REPLY] [PILAR_C] Pivô na rejeição acionado para customer=${customerId}. rejection_count=${currentRejectionCount}`,
-        )
-      } catch (rejErr) {
-        console.warn(`[AI_REPLY] [PILAR_C] Erro ao registrar rejeição: ${String(rejErr)}`)
-      }
-    }
-
-    // ======================================================================
-    // ESCALONAMENTO ESTRUTURAL AO MAURO (v0.0.1440) — genérico, vale para
-    // qualquer imóvel/campanha, sem configuração futura:
-    // (a) mesma pergunta ou insatisfação/confusão 2x sem a conversa avançar;
-    // (b) pedido explícito de humano/corretor;
-    // (c) intenção de fechamento que a Bia não resolve com os dados que tem.
-    // Em qualquer um: pausa a Bia no contato (tag 'ai_paused' +
-    // persistence_status 'pausado') e notifica Mauro no WhatsApp 5548999728050
-    // com resumo da conversa. NUNCA oferece o telefone do Mauro ao cliente e
-    // NUNCA pausa/notifica quando a conversa já é com o próprio Mauro.
-    // ======================================================================
-    try {
-      const mauroEscPhone = '5548999728050'
-      const custEscPhoneDigits = (customer.getString('phone') || '').replace(/\D/g, '')
-      const isSelfMauroChat =
-        custEscPhoneDigits === mauroEscPhone || custEscPhoneDigits.endsWith('48999728050')
-      const asksHumanEsc =
-        /\b(?:corretor|atendente|humano|pessoa\s+real|falar\s+com\s+algu[eé]m|quero\s+falar\s+com\s+(?:o\s+)?(?:mauro|corretor|algu[eé]m)|(?:telefone|n[uú]mero|whats)\s+do\s+(?:corretor|mauro))\b/i.test(
-          custIncomingMsg,
-        )
-      const dissatisfactionEsc =
-        /\b(?:voc[êe]\s+n[aã]o\s+(?:responde|respondeu|est[áa]\s+respondendo)|n[aã]o\s+respondeu\s+(?:minhas?\s+|as\s+)?pergunta|est[áa]\s+confusa|por\s+favor\s+responda|responde\s+(?:minhas?\s+)?perguntas?|mesma\s+resposta|t[áa]?\s+repetindo|repetiu\s+a\s+mesma|n[aã]o\s+[ée]\s+isso\s+que\s+(?:eu\s+)?perguntei)\b/i.test(
-          custIncomingMsg,
-        )
-      const closingIntentEsc =
-        /\b(?:fechar\s+hoje|comprar\s+hoje|quero\s+fechar|fazer\s+uma\s+proposta|minha\s+proposta|condi[cç][oõ]es\s+finais|fechar\s+neg[oó]cio)\b/i.test(
-          custIncomingMsg,
-        )
-
-      let prevSimilarCount = 0
-      let repeatedSimilarEsc = false
-      try {
-        const normCurEsc = custIncomingMsg
-          .toLowerCase()
-          .replace(/[^\w\s]/gi, '')
-          .trim()
-        if (normCurEsc.length >= 8) {
-          const prevEscMsgs = $app.findRecordsByFilter(
-            'conversations',
-            `customer_id = '${customerId}' && sender != 'ai'`,
-            '-created',
-            5,
-            0,
-          )
-          for (let pei = 0; pei < prevEscMsgs.length; pei++) {
-            const peTxt = (prevEscMsgs[pei].getString('content') || '')
-              .toLowerCase()
-              .replace(/[^\w\s]/gi, '')
-              .trim()
-            if (!peTxt) continue
-            if (pei === 0 && peTxt === normCurEsc) continue // é a própria mensagem atual
-            if (peTxt === normCurEsc || (normCurEsc.length > 12 && peTxt.includes(normCurEsc))) {
-              prevSimilarCount++
-              repeatedSimilarEsc = true
-            }
-          }
-        }
-      } catch (escHistErr) {
-        console.warn(`[AI_REPLY] [ESCALATION] Aviso ao ler histórico: ${String(escHistErr)}`)
-      }
-
-      const escDetected =
-        asksHumanEsc ||
-        closingIntentEsc ||
-        (prevSimilarCount >= 1 && (dissatisfactionEsc || repeatedSimilarEsc))
-
-      if (escDetected) {
-        const escReason = asksHumanEsc
-          ? 'pedido_explícito_de_humano_corretor'
-          : closingIntentEsc
-            ? 'intenção_de_fechamento_não_resolvida_pela_bia'
-            : 'mesma_pergunta_ou_insatisfação_2x_sem_avanço'
-        console.log(
-          `[AI_REPLY] [ESCALATION] Gatilho estrutural (${escReason}) para customer=${customerId} selfMauro=${isSelfMauroChat}`,
-        )
-
-        if (isSelfMauroChat) {
-          console.log(
-            '[AI_REPLY] [ESCALATION] Conversa já é com o próprio Mauro — apenas registro, sem pausar e sem notificar.',
-          )
-        } else {
-          // Pausa a Bia neste contato (sem apagar nada — reversível pelo Mauro)
-          try {
-            let escTags = []
-            const rawEscTags = customer.get('tags')
-            if (Array.isArray(rawEscTags)) escTags = rawEscTags.filter((t) => typeof t === 'string')
-            if (!escTags.includes('ai_paused')) escTags.push('ai_paused')
-            if (!escTags.includes('escalado_mauro')) escTags.push('escalado_mauro')
-            customer.set('tags', escTags)
-            customer.set('persistence_status', 'pausado')
-            $app.saveNoValidate(customer)
-            console.log(
-              `[AI_REPLY] [ESCALATION] Bia pausada no contato customer=${customerId} (tags ai_paused/escalado_mauro).`,
-            )
-          } catch (escPauseErr) {
-            console.warn(
-              `[AI_REPLY] [ESCALATION] Erro ao pausar Bia no contato: ${String(escPauseErr)}`,
-            )
-          }
-
-          // Resumo da conversa para o Mauro
-          const escSummaryLines = []
-          try {
-            const escRecent = $app.findRecordsByFilter(
-              'conversations',
-              `customer_id = '${customerId}'`,
-              '-created',
-              6,
-              0,
-            )
-            for (let ri = escRecent.length - 1; ri >= 0; ri--) {
-              const who = escRecent[ri].getString('sender') === 'ai' ? 'Bia' : 'Cliente'
-              escSummaryLines.push(
-                `${who}: ${(escRecent[ri].getString('content') || '').substring(0, 120)}`,
-              )
-            }
-          } catch (_) {}
-
-          // Notificação ao Mauro (nunca ao cliente) via WhatsApp
-          if (metaWhatsappToken && metaPhoneId) {
-            try {
-              const escNotifyText = `[ESCALONAMENTO BIA]\nMotivo: ${escReason.replace(/_/g, ' ')}\n\nCliente: ${customer.getString('name') || ''} (${custEscPhoneDigits})\nÚltima mensagem: "${custIncomingMsg.substring(0, 200)}"\n\nResumo:\n${escSummaryLines.join('\n').substring(0, 900)}\n\nA Bia foi pausada neste contato até você assumir.`
-              $http.send({
-                url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${metaWhatsappToken}`,
-                  'Content-Type': 'application/json',
+              body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: toPhoneClean,
+                type: 'document',
+                document: {
+                  link: ebookFileUrl,
+                  filename: ebookFileName,
+                  caption: 'BOOK VISTAGE RESIDENCE — BRF Imóveis',
                 },
-                body: JSON.stringify({
-                  messaging_product: 'whatsapp',
-                  recipient_type: 'individual',
-                  to: mauroEscPhone,
-                  type: 'text',
-                  text: { body: escNotifyText },
-                }),
-                timeout: 15,
-              })
-              console.log(
-                `[AI_REPLY] [ESCALATION] Mauro notificado no WhatsApp ${mauroEscPhone} para customer=${customerId}.`,
-              )
-            } catch (escSendErr) {
-              console.warn(
-                `[AI_REPLY] [ESCALATION] Falha ao notificar Mauro: ${String(escSendErr)}`,
-              )
+              }),
+              timeout: 25,
+            })
+            if (docRes && docRes.statusCode >= 200 && docRes.statusCode < 300) {
+              docSendSuccess = true
+              try {
+                const b = JSON.parse(docRes.raw || '{}')
+                if (b.messages && b.messages[0]) docWamid = b.messages[0].id
+              } catch (_) {}
             }
+          } catch (docErr) {
+            console.warn(`[AI_REPLY] [GATILHO_OK] Erro no envio do documento: ${String(docErr)}`)
           }
         }
 
-        // Prova da detecção em system_logs (nos dois casos)
-        try {
-          const escLogsCol = $app.findCollectionByNameOrId('system_logs')
-          const escLog = new Record(escLogsCol)
-          escLog.set('user_id', userId || '')
-          escLog.set('type', 'bia_escalation_mauro')
-          escLog.set(
-            'message',
-            `Escalonamento estrutural detectado (${escReason})${isSelfMauroChat ? ' — conversa já é com o Mauro, registro apenas' : ' — Bia pausada e Mauro notificado'}`,
-          )
-          escLog.set(
-            'details',
-            JSON.stringify({
-              customer_id: customerId,
-              customer_name: customer.getString('name') || '',
-              customer_phone: custEscPhoneDigits,
-              reason: escReason,
-              self_mauro_chat: isSelfMauroChat,
-              last_customer_message: custIncomingMsg.substring(0, 250),
-            }),
-          )
-          $app.saveNoValidate(escLog)
-        } catch (escLogErr) {
-          console.warn(`[AI_REPLY] [ESCALATION] Erro ao gravar log: ${String(escLogErr)}`)
-        }
-      }
-    } catch (escOuterErr) {
-      console.warn(`[AI_REPLY] [ESCALATION] Erro seguro no escalonamento: ${String(escOuterErr)}`)
-    }
-
-    // (c.1) Guarda de RECUSA CLARA (Decisão do Mauro):
-    // "não é o momento", "não tenho interesse", "para de me chamar", "não quero", "favor não mandar mais mensagem", etc.
-    // Para a régua de persistência IMEDIATAMENTE: tag "não é o momento" + "frio", persistence_status 'pausado', follow_up_step 'finalizado', next_follow_up_at vazio.
-    const isClearDisinterestOrRefusal =
-      /\b(?:n[aã]o\s+[eé]\s+o\s+momento|n[aã]o\s+tenho\s+interesse|sem\s+interesse|n[aã]o\s+quero(?:\s+mais)?|n[aã]o\s+estou\s+interessad[ao]|pare\s+de\s+me\s+chamar|para\s+de\s+me\s+chamar|n[aã]o\s+me\s+chame(?:\s+mais)?|n[aã]o\s+me\s+mande(?:\s+mais)?|n[aã]o\s+precisa\s+(?:mais\s+)?chamar|favor\s+n[aã]o\s+(?:mandar|chamar|enviar)|tira\s+(?:meu\s+)?(?:nome|n[uú]mero|contato)|retire\s+(?:meu\s+)?(?:nome|n[uú]mero|contato)|n[aã]o\s+entrar\s+em\s+contato|j[aá]\s+comprei|j[aá]\s+fechei(?:\s+outro)?|j[aá]\s+adquiri|desisti(?:\s+da\s+compra)?)\b/i.test(
-        lowerCustIncoming,
-      )
-
-    if (isClearDisinterestOrRefusal) {
-      try {
-        let currentCustTags = []
-        const rawCustTags = customer.get('tags')
-        if (Array.isArray(rawCustTags)) {
-          currentCustTags = rawCustTags.filter((t) => typeof t === 'string')
-        }
-        if (!currentCustTags.includes('não é o momento')) {
-          currentCustTags.push('não é o momento')
-        }
-        if (!currentCustTags.includes('frio')) {
-          currentCustTags.push('frio')
-        }
-        customer.set('tags', currentCustTags)
-        customer.set('persistence_status', 'pausado')
-        customer.set('follow_up_step', 'finalizado')
-        customer.set('next_follow_up_at', '')
-        $app.saveNoValidate(customer)
-
+        // Registro de estatística do ebook para o painel /atendimentos
         try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const logRefusal = new Record(logsCol)
-          logRefusal.set('user_id', userId || '')
-          logRefusal.set('type', 'persistence_stopped_by_customer')
-          logRefusal.set(
+          const logRec = new Record(logsCol)
+          logRec.set('user_id', userId || '')
+          logRec.set('type', 'whatsapp_ai_send')
+          logRec.set(
             'message',
-            'Cliente expressou recusa clara / não é o momento. Régua de persistência parada definitivamente.',
+            docSendSuccess
+              ? 'Documento Ebook Vistage entregue com sucesso via WhatsApp'
+              : 'Falha no envio do documento Ebook Vistage; agendado retry em 2min',
           )
-          logRefusal.set(
+          logRec.set(
             'details',
             JSON.stringify({
               customer_id: customerId,
               customer_name: customer.getString('name') || '',
-              customer_phone: customer.getString('phone') || '',
-              incoming_message: custIncomingMsg.substring(0, 250),
+              phone: toPhoneClean,
+              wamid: docWamid,
+              status: docSendSuccess ? 'sent' : 'failed',
+              task_type: 'ebook_send',
             }),
           )
-          $app.saveNoValidate(logRefusal)
+          $app.saveNoValidate(logRec)
         } catch (_) {}
 
-        console.log(
-          `[AI_REPLY] [PERSISTENCE_STOP] Recusa clara detectada para customer=${customerId}. tags=['não é o momento', 'frio'], persistence_status='pausado', follow_up_step='finalizado'`,
-        )
-      } catch (refClearErr) {
-        console.warn(
-          `[AI_REPLY] [PERSISTENCE_STOP] Erro ao gravar recusa clara: ${String(refClearErr)}`,
-        )
-      }
-    } else {
-      // (c.2) Guarda de recusa polida temporária ("não obrigada" / "já sei" / "vou pensar" / "no momento não"):
-      // Mantém espaçamento curto para checagem futura sem pausar definitivamente
-      const isPoliteRefusal =
-        /\b(?:n[aã]o\s+obrigad[ao]|n[aã]o\,\s*obrigad[ao]|j[aá]\s+sei|vou\s+pensar|deixa\s+pra\s+depois|depois\s+eu\s+vejo|qualquer\s+coisa\s+te\s+chamo|no\s+momento\s+n[aã]o)\b/i.test(
-          lowerCustIncoming,
-        )
+        // Se falhou o envio do anexo, cria tarefa de retry em ~2 minutos na fila
+        if (!docSendSuccess) {
+          try {
+            const tasksCol = $app.findCollectionByNameOrId('regua_ok_tasks')
+            const retryTask = new Record(tasksCol)
+            retryTask.set('customer_id', customerId)
+            retryTask.set('user_id', userId || '')
+            retryTask.set('task_type', 'ebook_retry')
+            retryTask.set('status', 'pending')
+            retryTask.set(
+              'scheduled_at',
+              new Date(Date.now() + 2 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19),
+            )
+            retryTask.set('attempts', 1)
+            retryTask.set('last_error', 'Falha no envio inicial do documento via WhatsApp')
+            $app.saveNoValidate(retryTask)
+            console.log(
+              `[AI_REPLY] [GATILHO_OK] Tarefa de retry do ebook agendada em 2min para customer=${customerId}`,
+            )
+          } catch (tErr) {
+            console.warn(`[AI_REPLY] [GATILHO_OK] Erro ao agendar ebook_retry: ${String(tErr)}`)
+          }
+        } else {
+          // Se sucesso confirmado, agenda a continuidade para daqui a ~10 minutos
+          try {
+            const tasksCol = $app.findCollectionByNameOrId('regua_ok_tasks')
+            const contTask = new Record(tasksCol)
+            contTask.set('customer_id', customerId)
+            contTask.set('user_id', userId || '')
+            contTask.set('task_type', 'continuidade')
+            contTask.set('status', 'pending')
 
-      if (isPoliteRefusal) {
+            // Regra do Mauro: envio somente na janela 8h-18h (Brasília)
+            const nowUtc = new Date()
+            const brDate = new Date(nowUtc.getTime() - 3 * 3600 * 1000)
+            const brHour = brDate.getUTCHours()
+            let schedIso = ''
+            if (brHour >= 8 && brHour < 18) {
+              schedIso = new Date(Date.now() + 10 * 60 * 1000)
+                .toISOString()
+                .replace('T', ' ')
+                .substring(0, 19)
+            } else {
+              const nextDay = new Date(Date.now() + 24 * 3600 * 1000)
+              nextDay.setUTCHours(11, 0, 0, 0) // 08:00 BRT
+              schedIso = nextDay.toISOString().replace('T', ' ').substring(0, 19)
+            }
+
+            contTask.set('scheduled_at', schedIso)
+            contTask.set('attempts', 0)
+            $app.saveNoValidate(contTask)
+            console.log(
+              `[AI_REPLY] [GATILHO_OK] Continuidade agendada para customer=${customerId} em ${schedIso}`,
+            )
+          } catch (cErr) {
+            console.warn(`[AI_REPLY] [GATILHO_OK] Erro ao agendar continuidade: ${String(cErr)}`)
+          }
+        }
+
+        // Registro da conversa no histórico
         try {
-          const tomorrowIso = new Date(now.getTime() + 24 * 3600 * 1000)
+          const convCol = $app.findCollectionByNameOrId('conversations')
+          const convRec = new Record(convCol)
+          convRec.set('customer_id', customerId)
+          convRec.set('user_id', userId || '')
+          convRec.set('channel', 'whatsapp')
+          convRec.set('sender', 'ai')
+          convRec.set(
+            'content',
+            `${confirmShortMsg}\n\n[EBOOK VISTAGE RESIDENCE ENTREGUE]\nArquivo: ${ebookFileName}\nLink: ${ebookFileUrl}`,
+          )
+          $app.saveNoValidate(convRec)
+        } catch (_) {}
+
+        // Atualiza o cliente: avança para estágio de Apresentação (3), tira da régua e marca respondido
+        try {
+          const nowIsoDate = new Date().toISOString().replace('T', ' ').substring(0, 19)
+          customer.set('status', 'apresentacao')
+          customer.set('phase', 'apresentacao')
+          customer.set('follow_up_step', 'd1')
+          customer.set('persistence_status', 'respondido')
+          customer.set('last_contact_at', nowIsoDate)
+          customer.set('last_sent_at', nowIsoDate)
+          // Próximo toque de segurança em 24h
+          const nextFollowUpIso = new Date(Date.now() + 24 * 3600 * 1000)
             .toISOString()
             .replace('T', ' ')
             .substring(0, 19)
-          customer.set('persistence_status', 'aguardando_momento')
-          customer.set('follow_up_step', 'd1')
-          customer.set('next_follow_up_at', tomorrowIso)
+          customer.set('next_follow_up_at', nextFollowUpIso)
           $app.saveNoValidate(customer)
-          console.log(
-            `[AI_REPLY] [PILAR_C] Guarda de recusa polida gravada: persistence_status='aguardando_momento', follow_up_step='d1', next_follow_up_at=${tomorrowIso}`,
-          )
-        } catch (refErr) {
-          console.warn(
-            `[AI_REPLY] [PILAR_C] Erro ao gravar guarda de recusa polida: ${String(refErr)}`,
-          )
-        }
+        } catch (_) {}
+
+        // Encerra interceptor sem passar pelo LLM
+        return e.next()
       }
-    }
 
-    // ======================================================================
-    // RESOLUÇÃO GENÉRICA DE PREÇOS: TIPOLOGIAS E UNIDADES ESPECÍFICAS
-    // (Frente 2: Regra permanente do usuário — genérico para qualquer lançamento com dossiê)
-    // ======================================================================
-    let unitTypologyPriceResolution = ''
-    try {
-      if (matchedLaunch) {
-        let launchUnitsList = matchedLaunch.get('units') || []
-        if (typeof launchUnitsList === 'string') {
-          try {
-            launchUnitsList = JSON.parse(launchUnitsList)
-          } catch (_) {
-            launchUnitsList = []
-          }
-        }
-        if (Array.isArray(launchUnitsList) && launchUnitsList.length > 0) {
-          // Detecta perguntas de valor/preço na mensagem do cliente
-          const isAskingPriceOrValue =
-            /\b(?:qual|quanto|valor|pre[cç]o|custa|sai|tabela|investimento|condi[cç][aã]o|entrada)\b/i.test(
-              custIncomingMsg,
-            )
+      // (a) Extração de perfil por Regex simples:
+      // Faixa de valor: "até 1.000.000", "900 mil", "2 milhões", "até 500k", etc.
+      let extractedPillarPriceRange = ''
+      const valMatch = custIncomingMsg.match(
+        /(?:at[eé]|faixa|or[cç]amento|valor|pre[cç]o|at[eé]\s*r\$|r\$)?\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?|\d+)\s*(k|mil|milh[oõ]es|milhao|milhão)\b/i,
+      )
+      if (valMatch) {
+        extractedPillarPriceRange = valMatch[0].trim()
+      } else {
+        const bareValMatch = custIncomingMsg.match(
+          /\b(?:at[eé]|valor\s*de|or[cç]amento\s*de|pre[cç]o\s*de)?\s*r\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?|\d{5,8})\b/i,
+        )
+        if (bareValMatch) extractedPillarPriceRange = bareValMatch[0].trim()
+      }
 
-          // Detecta se perguntou por unidade específica (ex: "AP 302", "apto 101", "unidade 501", "302", etc.)
-          const unitMatch =
-            custIncomingMsg.match(
-              /\b(?:ap|apto|apartamento|unidade|bloco\s*[a-z0-9]+\s*ap|unid)\s*#?\s*(\d{2,4}[a-z]?)\b/i,
-            ) || custIncomingMsg.match(/\b#(\d{2,4})\b/)
+      // Forma de pagamento: "à vista", "financiado", "parcelado"
+      let extractedPillarPayment = ''
+      if (/\b(?:[aà]\s*vista|recursos\s+pr[oó]prios|dinheiro)\b/i.test(lowerCustIncoming)) {
+        extractedPillarPayment = 'à vista'
+      } else if (
+        /\b(?:financiad[ao]|financiamento|financiar|carta\s+de\s+cr[eé]dito|fgts|banco|caixa)\b/i.test(
+          lowerCustIncoming,
+        )
+      ) {
+        extractedPillarPayment = 'financiado'
+      } else if (
+        /\b(?:parcelad[ao]|parcelamento|parcelar|direto\s+com\s+a\s+construtora|entrada\s*\+\s*parcelas)\b/i.test(
+          lowerCustIncoming,
+        )
+      ) {
+        extractedPillarPayment = 'parcelado'
+      }
 
-          // Detecta se perguntou por tipologia direta (ex: "2 dorm", "3 dorm", "garden", "cobertura", "2 quartos")
-          const isAsking2Dorm = /\b2\s*(?:dorm|quartos?|dormit[oó]rios?|suite)\b/i.test(
-            custIncomingMsg,
-          )
-          const isAsking3Dorm = /\b3\s*(?:dorm|quartos?|dormit[oó]rios?|suites?)\b/i.test(
-            custIncomingMsg,
-          )
-          const isAskingGarden = /\bgarden\b/i.test(custIncomingMsg)
-          const isAskingCobertura = /\bcobertura\b/i.test(custIncomingMsg)
+      // Objetivo: "morar", "investir"
+      let extractedPillarObjective = ''
+      if (
+        /\b(?:investir|investimento|rentabilidade|revenda|renda|airbnb|loca[cç][aã]o)\b/i.test(
+          lowerCustIncoming,
+        )
+      ) {
+        extractedPillarObjective = 'investir'
+      } else if (
+        /\b(?:morar|moradia|minha\s+fam[ií]lia|minha\s+resor|resid[eê]ncia)\b/i.test(
+          lowerCustIncoming,
+        )
+      ) {
+        extractedPillarObjective = 'morar'
+      }
 
-          if (isAskingPriceOrValue) {
-            const lEnterpriseName =
-              matchedLaunch.getString('enterprise_name') ||
-              matchedLaunch.getString('name') ||
-              'Lançamento em foco'
-
-            // Mapa de tipologias do dossiê (com valores "a partir de")
-            const typologiesMap = {}
-            for (let uIdx = 0; uIdx < launchUnitsList.length; uIdx++) {
-              const uObj = launchUnitsList[uIdx]
-              if (!uObj) continue
-              const tName = (uObj.typology || uObj.tipo || 'Unidade').trim()
-              const uPrice = (uObj.price || uObj.valor || '').trim()
-              const uCode = (uObj.code || uObj.unit || uObj.numero || uObj.unidade || '')
-                .toString()
-                .trim()
-              if (!typologiesMap[tName]) {
-                typologiesMap[tName] = { minPrice: uPrice, units: [] }
+      // Carregar e fazer merge no lead_profile_json do customer
+      try {
+        let currentProfileJson = {}
+        try {
+          const rawProfileJson = customer.get('lead_profile_json')
+          if (rawProfileJson) {
+            if (typeof rawProfileJson === 'string') {
+              try {
+                currentProfileJson = JSON.parse(rawProfileJson)
+              } catch (_) {
+                currentProfileJson = {}
               }
-              if (uCode) {
-                typologiesMap[tName].units.push({ code: uCode, price: uPrice })
+            } else if (typeof rawProfileJson === 'object') {
+              try {
+                currentProfileJson = JSON.parse(JSON.stringify(rawProfileJson))
+              } catch (_) {
+                currentProfileJson = {}
               }
             }
+          }
+        } catch (_) {
+          currentProfileJson = {}
+        }
 
-            const typologiesSummaryLines = Object.keys(typologiesMap).map((tKey) => {
-              const info = typologiesMap[tKey]
-              return `  - ${tKey}: a partir de ${info.minPrice || 'sob consulta'}`
-            })
+        // Se lead_profile_json vier como Array ou nulo/não-objeto, recriar como objeto ({})
+        if (
+          !currentProfileJson ||
+          Array.isArray(currentProfileJson) ||
+          typeof currentProfileJson !== 'object'
+        ) {
+          currentProfileJson = {}
+        }
 
-            if (unitMatch && unitMatch[1]) {
-              const queriedUnitNum = unitMatch[1].toUpperCase()
-              // Procura correspondência precisa de numeração no dossiê
-              let exactMatchedUnit = null
-              let exactMatchedTypology = ''
+        let profileJsonChanged = false
+        if (
+          extractedPillarPriceRange &&
+          currentProfileJson.price_range !== extractedPillarPriceRange
+        ) {
+          currentProfileJson.price_range = extractedPillarPriceRange
+          profileJsonChanged = true
+        }
+        if (
+          extractedPillarPayment &&
+          currentProfileJson.payment_method !== extractedPillarPayment
+        ) {
+          currentProfileJson.payment_method = extractedPillarPayment
+          profileJsonChanged = true
+        }
+        if (extractedPillarObjective && currentProfileJson.objective !== extractedPillarObjective) {
+          currentProfileJson.objective = extractedPillarObjective
+          profileJsonChanged = true
+        }
 
+        if (profileJsonChanged) {
+          try {
+            customer.set('lead_profile_json', currentProfileJson)
+            $app.saveNoValidate(customer)
+            console.log(
+              `[AI_REPLY] [PILAR_C] lead_profile_json atualizado para customer=${customerId}: ${JSON.stringify(currentProfileJson)}`,
+            )
+          } catch (profErr) {
+            console.warn(
+              `[AI_REPLY] [PILAR_C] Erro ao salvar lead_profile_json: ${String(profErr)}`,
+            )
+          }
+        }
+      } catch (mergeErr) {
+        console.warn(
+          `[AI_REPLY] [PILAR_C] Erro seguro no bloco lead_profile_json: ${String(mergeErr)}`,
+        )
+      }
+
+      // (b) Pivô na rejeição:
+      // "não é isso que procuro" / "não é isso" / "outro"
+      const isRejectionPivot =
+        /\b(?:n[aã]o\s+[ée]\s+isso(?:\s+que\s+(?:eu\s+)?procuro)?|n[aã]o\s+e\s+isso(?:\s+que\s+(?:eu\s+)?procuro)?|outro(?:\s+im[oó]vel|\s+tipo|\s+bairro|\s+lan[cç]amento)?|outra\s+op[cç][aã]o|n[aã]o\s+gostei(?:\s+desse|\s+deste|\s+dessa)?|n[aã]o\s+me\s+agradou|procuro\s+outro|quero\s+outro)\b/i.test(
+          lowerCustIncoming,
+        )
+
+      let currentRejectionCount = 0
+      try {
+        currentRejectionCount = customer.getInt('rejection_count') || 0
+      } catch (_) {}
+
+      if (isRejectionPivot) {
+        currentRejectionCount++
+        try {
+          customer.set('rejection_count', currentRejectionCount)
+          customer.set('last_rejection_reason', custIncomingMsg.substring(0, 200))
+          $app.saveNoValidate(customer)
+          console.log(
+            `[AI_REPLY] [PILAR_C] Pivô na rejeição acionado para customer=${customerId}. rejection_count=${currentRejectionCount}`,
+          )
+        } catch (rejErr) {
+          console.warn(`[AI_REPLY] [PILAR_C] Erro ao registrar rejeição: ${String(rejErr)}`)
+        }
+      }
+
+      // ======================================================================
+      // ESCALONAMENTO ESTRUTURAL AO MAURO (v0.0.1440) — genérico, vale para
+      // qualquer imóvel/campanha, sem configuração futura:
+      // (a) mesma pergunta ou insatisfação/confusão 2x sem a conversa avançar;
+      // (b) pedido explícito de humano/corretor;
+      // (c) intenção de fechamento que a Bia não resolve com os dados que tem.
+      // Em qualquer um: pausa a Bia no contato (tag 'ai_paused' +
+      // persistence_status 'pausado') e notifica Mauro no WhatsApp 5548999728050
+      // com resumo da conversa. NUNCA oferece o telefone do Mauro ao cliente e
+      // NUNCA pausa/notifica quando a conversa já é com o próprio Mauro.
+      // ======================================================================
+      try {
+        const mauroEscPhone = '5548999728050'
+        const custEscPhoneDigits = (customer.getString('phone') || '').replace(/\D/g, '')
+        const isSelfMauroChat =
+          custEscPhoneDigits === mauroEscPhone || custEscPhoneDigits.endsWith('48999728050')
+        const asksHumanEsc =
+          /\b(?:corretor|atendente|humano|pessoa\s+real|falar\s+com\s+algu[eé]m|quero\s+falar\s+com\s+(?:o\s+)?(?:mauro|corretor|algu[eé]m)|(?:telefone|n[uú]mero|whats)\s+do\s+(?:corretor|mauro))\b/i.test(
+            custIncomingMsg,
+          )
+        const dissatisfactionEsc =
+          /\b(?:voc[êe]\s+n[aã]o\s+(?:responde|respondeu|est[áa]\s+respondendo)|n[aã]o\s+respondeu\s+(?:minhas?\s+|as\s+)?pergunta|est[áa]\s+confusa|por\s+favor\s+responda|responde\s+(?:minhas?\s+)?perguntas?|mesma\s+resposta|t[áa]?\s+repetindo|repetiu\s+a\s+mesma|n[aã]o\s+[ée]\s+isso\s+que\s+(?:eu\s+)?perguntei)\b/i.test(
+            custIncomingMsg,
+          )
+        const closingIntentEsc =
+          /\b(?:fechar\s+hoje|comprar\s+hoje|quero\s+fechar|fazer\s+uma\s+proposta|minha\s+proposta|condi[cç][oõ]es\s+finais|fechar\s+neg[oó]cio)\b/i.test(
+            custIncomingMsg,
+          )
+
+        let prevSimilarCount = 0
+        let repeatedSimilarEsc = false
+        try {
+          const normCurEsc = custIncomingMsg
+            .toLowerCase()
+            .replace(/[^\w\s]/gi, '')
+            .trim()
+          if (normCurEsc.length >= 8) {
+            const prevEscMsgs = $app.findRecordsByFilter(
+              'conversations',
+              `customer_id = '${customerId}' && sender != 'ai'`,
+              '-created',
+              5,
+              0,
+            )
+            for (let pei = 0; pei < prevEscMsgs.length; pei++) {
+              const peTxt = (prevEscMsgs[pei].getString('content') || '')
+                .toLowerCase()
+                .replace(/[^\w\s]/gi, '')
+                .trim()
+              if (!peTxt) continue
+              if (pei === 0 && peTxt === normCurEsc) continue // é a própria mensagem atual
+              if (peTxt === normCurEsc || (normCurEsc.length > 12 && peTxt.includes(normCurEsc))) {
+                prevSimilarCount++
+                repeatedSimilarEsc = true
+              }
+            }
+          }
+        } catch (escHistErr) {
+          console.warn(`[AI_REPLY] [ESCALATION] Aviso ao ler histórico: ${String(escHistErr)}`)
+        }
+
+        const escDetected =
+          asksHumanEsc ||
+          closingIntentEsc ||
+          (prevSimilarCount >= 1 && (dissatisfactionEsc || repeatedSimilarEsc))
+
+        if (escDetected) {
+          const escReason = asksHumanEsc
+            ? 'pedido_explícito_de_humano_corretor'
+            : closingIntentEsc
+              ? 'intenção_de_fechamento_não_resolvida_pela_bia'
+              : 'mesma_pergunta_ou_insatisfação_2x_sem_avanço'
+          console.log(
+            `[AI_REPLY] [ESCALATION] Gatilho estrutural (${escReason}) para customer=${customerId} selfMauro=${isSelfMauroChat}`,
+          )
+
+          if (isSelfMauroChat) {
+            console.log(
+              '[AI_REPLY] [ESCALATION] Conversa já é com o próprio Mauro — apenas registro, sem pausar e sem notificar.',
+            )
+          } else {
+            // Pausa a Bia neste contato (sem apagar nada — reversível pelo Mauro)
+            try {
+              let escTags = []
+              const rawEscTags = customer.get('tags')
+              if (Array.isArray(rawEscTags))
+                escTags = rawEscTags.filter((t) => typeof t === 'string')
+              if (!escTags.includes('ai_paused')) escTags.push('ai_paused')
+              if (!escTags.includes('escalado_mauro')) escTags.push('escalado_mauro')
+              customer.set('tags', escTags)
+              customer.set('persistence_status', 'pausado')
+              $app.saveNoValidate(customer)
+              console.log(
+                `[AI_REPLY] [ESCALATION] Bia pausada no contato customer=${customerId} (tags ai_paused/escalado_mauro).`,
+              )
+            } catch (escPauseErr) {
+              console.warn(
+                `[AI_REPLY] [ESCALATION] Erro ao pausar Bia no contato: ${String(escPauseErr)}`,
+              )
+            }
+
+            // Resumo da conversa para o Mauro
+            const escSummaryLines = []
+            try {
+              const escRecent = $app.findRecordsByFilter(
+                'conversations',
+                `customer_id = '${customerId}'`,
+                '-created',
+                6,
+                0,
+              )
+              for (let ri = escRecent.length - 1; ri >= 0; ri--) {
+                const who = escRecent[ri].getString('sender') === 'ai' ? 'Bia' : 'Cliente'
+                escSummaryLines.push(
+                  `${who}: ${(escRecent[ri].getString('content') || '').substring(0, 120)}`,
+                )
+              }
+            } catch (_) {}
+
+            // Notificação ao Mauro (nunca ao cliente) via WhatsApp
+            if (metaWhatsappToken && metaPhoneId) {
+              try {
+                const escNotifyText = `[ESCALONAMENTO BIA]\nMotivo: ${escReason.replace(/_/g, ' ')}\n\nCliente: ${customer.getString('name') || ''} (${custEscPhoneDigits})\nÚltima mensagem: "${custIncomingMsg.substring(0, 200)}"\n\nResumo:\n${escSummaryLines.join('\n').substring(0, 900)}\n\nA Bia foi pausada neste contato até você assumir.`
+                $http.send({
+                  url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaWhatsappToken)}`,
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${metaWhatsappToken}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    recipient_type: 'individual',
+                    to: mauroEscPhone,
+                    type: 'text',
+                    text: { body: escNotifyText },
+                  }),
+                  timeout: 15,
+                })
+                console.log(
+                  `[AI_REPLY] [ESCALATION] Mauro notificado no WhatsApp ${mauroEscPhone} para customer=${customerId}.`,
+                )
+              } catch (escSendErr) {
+                console.warn(
+                  `[AI_REPLY] [ESCALATION] Falha ao notificar Mauro: ${String(escSendErr)}`,
+                )
+              }
+            }
+          }
+
+          // Prova da detecção em system_logs (nos dois casos)
+          try {
+            const escLogsCol = $app.findCollectionByNameOrId('system_logs')
+            const escLog = new Record(escLogsCol)
+            escLog.set('user_id', userId || '')
+            escLog.set('type', 'bia_escalation_mauro')
+            escLog.set(
+              'message',
+              `Escalonamento estrutural detectado (${escReason})${isSelfMauroChat ? ' — conversa já é com o Mauro, registro apenas' : ' — Bia pausada e Mauro notificado'}`,
+            )
+            escLog.set(
+              'details',
+              JSON.stringify({
+                customer_id: customerId,
+                customer_name: customer.getString('name') || '',
+                customer_phone: custEscPhoneDigits,
+                reason: escReason,
+                self_mauro_chat: isSelfMauroChat,
+                last_customer_message: custIncomingMsg.substring(0, 250),
+              }),
+            )
+            $app.saveNoValidate(escLog)
+          } catch (escLogErr) {
+            console.warn(`[AI_REPLY] [ESCALATION] Erro ao gravar log: ${String(escLogErr)}`)
+          }
+        }
+      } catch (escOuterErr) {
+        console.warn(`[AI_REPLY] [ESCALATION] Erro seguro no escalonamento: ${String(escOuterErr)}`)
+      }
+
+      // (c.1) Guarda de RECUSA CLARA (Decisão do Mauro):
+      // "não é o momento", "não tenho interesse", "para de me chamar", "não quero", "favor não mandar mais mensagem", etc.
+      // Para a régua de persistência IMEDIATAMENTE: tag "não é o momento" + "frio", persistence_status 'pausado', follow_up_step 'finalizado', next_follow_up_at vazio.
+      const isClearDisinterestOrRefusal =
+        /\b(?:n[aã]o\s+[eé]\s+o\s+momento|n[aã]o\s+tenho\s+interesse|sem\s+interesse|n[aã]o\s+quero(?:\s+mais)?|n[aã]o\s+estou\s+interessad[ao]|pare\s+de\s+me\s+chamar|para\s+de\s+me\s+chamar|n[aã]o\s+me\s+chame(?:\s+mais)?|n[aã]o\s+me\s+mande(?:\s+mais)?|n[aã]o\s+precisa\s+(?:mais\s+)?chamar|favor\s+n[aã]o\s+(?:mandar|chamar|enviar)|tira\s+(?:meu\s+)?(?:nome|n[uú]mero|contato)|retire\s+(?:meu\s+)?(?:nome|n[uú]mero|contato)|n[aã]o\s+entrar\s+em\s+contato|j[aá]\s+comprei|j[aá]\s+fechei(?:\s+outro)?|j[aá]\s+adquiri|desisti(?:\s+da\s+compra)?)\b/i.test(
+          lowerCustIncoming,
+        )
+
+      if (isClearDisinterestOrRefusal) {
+        try {
+          let currentCustTags = []
+          const rawCustTags = customer.get('tags')
+          if (Array.isArray(rawCustTags)) {
+            currentCustTags = rawCustTags.filter((t) => typeof t === 'string')
+          }
+          if (!currentCustTags.includes('não é o momento')) {
+            currentCustTags.push('não é o momento')
+          }
+          if (!currentCustTags.includes('frio')) {
+            currentCustTags.push('frio')
+          }
+          customer.set('tags', currentCustTags)
+          customer.set('persistence_status', 'pausado')
+          customer.set('follow_up_step', 'finalizado')
+          customer.set('next_follow_up_at', '')
+          $app.saveNoValidate(customer)
+
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const logRefusal = new Record(logsCol)
+            logRefusal.set('user_id', userId || '')
+            logRefusal.set('type', 'persistence_stopped_by_customer')
+            logRefusal.set(
+              'message',
+              'Cliente expressou recusa clara / não é o momento. Régua de persistência parada definitivamente.',
+            )
+            logRefusal.set(
+              'details',
+              JSON.stringify({
+                customer_id: customerId,
+                customer_name: customer.getString('name') || '',
+                customer_phone: customer.getString('phone') || '',
+                incoming_message: custIncomingMsg.substring(0, 250),
+              }),
+            )
+            $app.saveNoValidate(logRefusal)
+          } catch (_) {}
+
+          console.log(
+            `[AI_REPLY] [PERSISTENCE_STOP] Recusa clara detectada para customer=${customerId}. tags=['não é o momento', 'frio'], persistence_status='pausado', follow_up_step='finalizado'`,
+          )
+        } catch (refClearErr) {
+          console.warn(
+            `[AI_REPLY] [PERSISTENCE_STOP] Erro ao gravar recusa clara: ${String(refClearErr)}`,
+          )
+        }
+      } else {
+        // (c.2) Guarda de recusa polida temporária ("não obrigada" / "já sei" / "vou pensar" / "no momento não"):
+        // Mantém espaçamento curto para checagem futura sem pausar definitivamente
+        const isPoliteRefusal =
+          /\b(?:n[aã]o\s+obrigad[ao]|n[aã]o\,\s*obrigad[ao]|j[aá]\s+sei|vou\s+pensar|deixa\s+pra\s+depois|depois\s+eu\s+vejo|qualquer\s+coisa\s+te\s+chamo|no\s+momento\s+n[aã]o)\b/i.test(
+            lowerCustIncoming,
+          )
+
+        if (isPoliteRefusal) {
+          try {
+            const tomorrowIso = new Date(now.getTime() + 24 * 3600 * 1000)
+              .toISOString()
+              .replace('T', ' ')
+              .substring(0, 19)
+            customer.set('persistence_status', 'aguardando_momento')
+            customer.set('follow_up_step', 'd1')
+            customer.set('next_follow_up_at', tomorrowIso)
+            $app.saveNoValidate(customer)
+            console.log(
+              `[AI_REPLY] [PILAR_C] Guarda de recusa polida gravada: persistence_status='aguardando_momento', follow_up_step='d1', next_follow_up_at=${tomorrowIso}`,
+            )
+          } catch (refErr) {
+            console.warn(
+              `[AI_REPLY] [PILAR_C] Erro ao gravar guarda de recusa polida: ${String(refErr)}`,
+            )
+          }
+        }
+      }
+
+      // ======================================================================
+      // RESOLUÇÃO GENÉRICA DE PREÇOS: TIPOLOGIAS E UNIDADES ESPECÍFICAS
+      // (Frente 2: Regra permanente do usuário — genérico para qualquer lançamento com dossiê)
+      // ======================================================================
+      let unitTypologyPriceResolution = ''
+      try {
+        if (matchedLaunch) {
+          let launchUnitsList = matchedLaunch.get('units') || []
+          if (typeof launchUnitsList === 'string') {
+            try {
+              launchUnitsList = JSON.parse(launchUnitsList)
+            } catch (_) {
+              launchUnitsList = []
+            }
+          }
+          if (Array.isArray(launchUnitsList) && launchUnitsList.length > 0) {
+            // Detecta perguntas de valor/preço na mensagem do cliente
+            const isAskingPriceOrValue =
+              /\b(?:qual|quanto|valor|pre[cç]o|custa|sai|tabela|investimento|condi[cç][aã]o|entrada)\b/i.test(
+                custIncomingMsg,
+              )
+
+            // Detecta se perguntou por unidade específica (ex: "AP 302", "apto 101", "unidade 501", "302", etc.)
+            const unitMatch =
+              custIncomingMsg.match(
+                /\b(?:ap|apto|apartamento|unidade|bloco\s*[a-z0-9]+\s*ap|unid)\s*#?\s*(\d{2,4}[a-z]?)\b/i,
+              ) || custIncomingMsg.match(/\b#(\d{2,4})\b/)
+
+            // Detecta se perguntou por tipologia direta (ex: "2 dorm", "3 dorm", "garden", "cobertura", "2 quartos")
+            const isAsking2Dorm = /\b2\s*(?:dorm|quartos?|dormit[oó]rios?|suite)\b/i.test(
+              custIncomingMsg,
+            )
+            const isAsking3Dorm = /\b3\s*(?:dorm|quartos?|dormit[oó]rios?|suites?)\b/i.test(
+              custIncomingMsg,
+            )
+            const isAskingGarden = /\bgarden\b/i.test(custIncomingMsg)
+            const isAskingCobertura = /\bcobertura\b/i.test(custIncomingMsg)
+
+            if (isAskingPriceOrValue) {
+              const lEnterpriseName =
+                matchedLaunch.getString('enterprise_name') ||
+                matchedLaunch.getString('name') ||
+                'Lançamento em foco'
+
+              // Mapa de tipologias do dossiê (com valores "a partir de")
+              const typologiesMap = {}
               for (let uIdx = 0; uIdx < launchUnitsList.length; uIdx++) {
                 const uObj = launchUnitsList[uIdx]
                 if (!uObj) continue
+                const tName = (uObj.typology || uObj.tipo || 'Unidade').trim()
+                const uPrice = (uObj.price || uObj.valor || '').trim()
                 const uCode = (uObj.code || uObj.unit || uObj.numero || uObj.unidade || '')
                   .toString()
                   .trim()
-                  .toUpperCase()
-                if (uCode && (uCode === queriedUnitNum || uCode.endsWith(queriedUnitNum))) {
-                  exactMatchedUnit = uObj
-                  exactMatchedTypology = (uObj.typology || uObj.tipo || '').trim()
-                  break
+                if (!typologiesMap[tName]) {
+                  typologiesMap[tName] = { minPrice: uPrice, units: [] }
+                }
+                if (uCode) {
+                  typologiesMap[tName].units.push({ code: uCode, price: uPrice })
                 }
               }
 
-              if (exactMatchedUnit) {
-                const uPr = exactMatchedUnit.price || exactMatchedUnit.valor || ''
-                unitTypologyPriceResolution = `\n[RESOLUÇÃO DE UNIDADE ESPECÍFICA — ${lEnterpriseName}]:
+              const typologiesSummaryLines = Object.keys(typologiesMap).map((tKey) => {
+                const info = typologiesMap[tKey]
+                return `  - ${tKey}: a partir de ${info.minPrice || 'sob consulta'}`
+              })
+
+              if (unitMatch && unitMatch[1]) {
+                const queriedUnitNum = unitMatch[1].toUpperCase()
+                // Procura correspondência precisa de numeração no dossiê
+                let exactMatchedUnit = null
+                let exactMatchedTypology = ''
+
+                for (let uIdx = 0; uIdx < launchUnitsList.length; uIdx++) {
+                  const uObj = launchUnitsList[uIdx]
+                  if (!uObj) continue
+                  const uCode = (uObj.code || uObj.unit || uObj.numero || uObj.unidade || '')
+                    .toString()
+                    .trim()
+                    .toUpperCase()
+                  if (uCode && (uCode === queriedUnitNum || uCode.endsWith(queriedUnitNum))) {
+                    exactMatchedUnit = uObj
+                    exactMatchedTypology = (uObj.typology || uObj.tipo || '').trim()
+                    break
+                  }
+                }
+
+                if (exactMatchedUnit) {
+                  const uPr = exactMatchedUnit.price || exactMatchedUnit.valor || ''
+                  unitTypologyPriceResolution = `\n[RESOLUÇÃO DE UNIDADE ESPECÍFICA — ${lEnterpriseName}]:
 O cliente perguntou sobre a unidade "${queriedUnitNum}".
 Correspondência encontrada no dossiê: Tipologia "${exactMatchedTypology}", Valor: "${uPr}".
 DIRETRIZ OBRIGATÓRIA: Responda informando a tipologia da unidade (${exactMatchedTypology}) e seu valor oficial (${uPr}) conforme o dossiê vigente. NUNCA cite valor incompatível.`
-              } else {
-                unitTypologyPriceResolution = `\n[RESOLUÇÃO DE UNIDADE ESPECÍFICA — ${lEnterpriseName}]:
+                } else {
+                  unitTypologyPriceResolution = `\n[RESOLUÇÃO DE UNIDADE ESPECÍFICA — ${lEnterpriseName}]:
 O cliente perguntou sobre a unidade "${queriedUnitNum}", cuja tipologia exata não está discriminada individualmente pelo número no dossiê.
 TABELA OFICIAL DE VALORES POR TIPOLOGIA DO DOSSIÊ:
 ${typologiesSummaryLines.join('\n')}
@@ -3845,83 +3882,85 @@ DIRETRIZ OBRIGATÓRIA:
 1. Apresente os valores-base das tipologias disponíveis acima (ex.: 2 dormitórios a partir de R$ 596 mil, 3 dormitórios a partir de R$ 890 mil, Garden R$ 980 mil).
 2. Pergunte com naturalidade ao lead se a unidade de interesse dele (${queriedUnitNum}) é de 2 ou de 3 dormitórios (ou garden), para passar a condição exata.
 3. NUNCA invente valor nem chute preço!`
-              }
-            } else if (isAsking2Dorm || isAsking3Dorm || isAskingGarden || isAskingCobertura) {
-              let matchedTargetTypology = ''
-              let matchedTargetPrice = ''
-              if (isAsking2Dorm) {
-                for (const tKey of Object.keys(typologiesMap)) {
-                  if (/2\s*dorm|2\s*quarto/i.test(tKey)) {
-                    matchedTargetTypology = tKey
-                    matchedTargetPrice = typologiesMap[tKey].minPrice
-                    break
+                }
+              } else if (isAsking2Dorm || isAsking3Dorm || isAskingGarden || isAskingCobertura) {
+                let matchedTargetTypology = ''
+                let matchedTargetPrice = ''
+                if (isAsking2Dorm) {
+                  for (const tKey of Object.keys(typologiesMap)) {
+                    if (/2\s*dorm|2\s*quarto/i.test(tKey)) {
+                      matchedTargetTypology = tKey
+                      matchedTargetPrice = typologiesMap[tKey].minPrice
+                      break
+                    }
+                  }
+                } else if (isAsking3Dorm) {
+                  for (const tKey of Object.keys(typologiesMap)) {
+                    if (/3\s*dorm|3\s*quarto/i.test(tKey)) {
+                      matchedTargetTypology = tKey
+                      matchedTargetPrice = typologiesMap[tKey].minPrice
+                      break
+                    }
+                  }
+                } else if (isAskingGarden) {
+                  for (const tKey of Object.keys(typologiesMap)) {
+                    if (/garden/i.test(tKey)) {
+                      matchedTargetTypology = tKey
+                      matchedTargetPrice = typologiesMap[tKey].minPrice
+                      break
+                    }
+                  }
+                } else if (isAskingCobertura) {
+                  for (const tKey of Object.keys(typologiesMap)) {
+                    if (/cobertura/i.test(tKey)) {
+                      matchedTargetTypology = tKey
+                      matchedTargetPrice = typologiesMap[tKey].minPrice
+                      break
+                    }
                   }
                 }
-              } else if (isAsking3Dorm) {
-                for (const tKey of Object.keys(typologiesMap)) {
-                  if (/3\s*dorm|3\s*quarto/i.test(tKey)) {
-                    matchedTargetTypology = tKey
-                    matchedTargetPrice = typologiesMap[tKey].minPrice
-                    break
-                  }
-                }
-              } else if (isAskingGarden) {
-                for (const tKey of Object.keys(typologiesMap)) {
-                  if (/garden/i.test(tKey)) {
-                    matchedTargetTypology = tKey
-                    matchedTargetPrice = typologiesMap[tKey].minPrice
-                    break
-                  }
-                }
-              } else if (isAskingCobertura) {
-                for (const tKey of Object.keys(typologiesMap)) {
-                  if (/cobertura/i.test(tKey)) {
-                    matchedTargetTypology = tKey
-                    matchedTargetPrice = typologiesMap[tKey].minPrice
-                    break
-                  }
-                }
-              }
 
-              if (matchedTargetTypology && matchedTargetPrice) {
-                unitTypologyPriceResolution = `\n[RESOLUÇÃO DE TIPOLOGIA ESPECÍFICA — ${lEnterpriseName}]:
+                if (matchedTargetTypology && matchedTargetPrice) {
+                  unitTypologyPriceResolution = `\n[RESOLUÇÃO DE TIPOLOGIA ESPECÍFICA — ${lEnterpriseName}]:
 O cliente perguntou pelo valor da tipologia "${matchedTargetTypology}".
 Valor oficial na tabela vigente do dossiê: a partir de "${matchedTargetPrice}".
 DIRETRIZ OBRIGATÓRIA: Responda informando o valor "a partir de ${matchedTargetPrice}" para ${matchedTargetTypology} e faça UMA pergunta engajadora (ex.: se prefere detalhes da planta ou se gostaria de conhecer as opções de fluxo de pagamento). NUNCA utilize valores de kits de anúncio desatualizados.`
+                }
               }
             }
           }
         }
+      } catch (resErr) {
+        console.warn(`[AI_REPLY] Aviso na resolução de tipologias/unidades: ${String(resErr)}`)
       }
-    } catch (resErr) {
-      console.warn(`[AI_REPLY] Aviso na resolução de tipologias/unidades: ${String(resErr)}`)
-    }
 
-    // (1.b) Limitação de blocos de contexto para evitar erro 413
-    const safeIndicesContextText =
-      (indicesContextText || '').length > 1200
-        ? (indicesContextText || '').substring(0, 1200) + '\n... [memo truncado a 1200 caracteres]'
-        : indicesContextText || ''
-    const safeCombinedContextText =
-      (combinedContextText || '').length > 1500
-        ? (combinedContextText || '').substring(0, 1500) +
-          '\n... [contexto RAG truncado a 1500 caracteres]'
-        : combinedContextText || ''
-    const safePropertyContext =
-      (propertyContext || '').length > 1200
-        ? (propertyContext || '').substring(0, 1200) + '\n... [catálogo truncado a 1200 caracteres]'
-        : propertyContext || ''
+      // (1.b) Limitação de blocos de contexto para evitar erro 413
+      const safeIndicesContextText =
+        (indicesContextText || '').length > 1200
+          ? (indicesContextText || '').substring(0, 1200) +
+            '\n... [memo truncado a 1200 caracteres]'
+          : indicesContextText || ''
+      const safeCombinedContextText =
+        (combinedContextText || '').length > 1500
+          ? (combinedContextText || '').substring(0, 1500) +
+            '\n... [contexto RAG truncado a 1500 caracteres]'
+          : combinedContextText || ''
+      const safePropertyContext =
+        (propertyContext || '').length > 1200
+          ? (propertyContext || '').substring(0, 1200) +
+            '\n... [catálogo truncado a 1200 caracteres]'
+          : propertyContext || ''
 
-    // REGRA DE CADÊNCIA UNIVERSAL: As cadências de movimentação são ÚNICAS para todo e qualquer atendimento,
-    // sem separar lançamento e clientes de terceiros. A trilha afeta o conteúdo da conversa, mas o mapa de estágios é um só.
-    const universalCadenceInstruction = `[REGRA DE CADÊNCIA ÚNICA E UNIVERSAL]:
+      // REGRA DE CADÊNCIA UNIVERSAL: As cadências de movimentação são ÚNICAS para todo e qualquer atendimento,
+      // sem separar lançamento e clientes de terceiros. A trilha afeta o conteúdo da conversa, mas o mapa de estágios é um só.
+      const universalCadenceInstruction = `[REGRA DE CADÊNCIA ÚNICA E UNIVERSAL]:
 A progressão de estágios é rigorosamente ÚNICA e idêntica para todo e qualquer lead (lançamentos na planta ou imóveis de terceiros).
 Emita sempre as tags canônicas de estágio [STATUS: 1. Acolhimento .. 10. Pós-venda e Indicação] conforme a evolução do contato, sem bifurcar ou criar trilhas alternativas de funil.`
 
-    // O comportamento da Bia é regido EXCLUSIVAMENTE pela diretriz soberana ativa (TEXTO ÚNICO DA BIA - v3.0/v3.1)
-    // Mantém no systemPrompt apenas: dados dos imóveis (propertyContext), resumo de dados coletados (collectedDataSummary),
-    // índices de mercado/memos (indicesContextText) e a persona soberana ativa (biaLearningsText).
-    const systemPrompt = `Você é ${aiName}, da BRF Imóveis (www.brfimoveis.com.br).
+      // O comportamento da Bia é regido EXCLUSIVAMENTE pela diretriz soberana ativa (TEXTO ÚNICO DA BIA - v3.0/v3.1)
+      // Mantém no systemPrompt apenas: dados dos imóveis (propertyContext), resumo de dados coletados (collectedDataSummary),
+      // índices de mercado/memos (indicesContextText) e a persona soberana ativa (biaLearningsText).
+      const systemPrompt = `Você é ${aiName}, da BRF Imóveis (www.brfimoveis.com.br).
 
 DIRETRIZ MESTRA E SOBERANA DE ATENDIMENTO:
 ${biaLearningsText}
@@ -3939,521 +3978,526 @@ ${safeIndicesContextText ? `DADOS DE MERCADO E VALORIZAÇÃO:\n${safeIndicesCont
 
 CONTEXTO RECUPERADO:
 ${safeCombinedContextText || '(Nenhum contexto adicional na base)'}`
-    messages.push({ role: 'system', content: systemPrompt })
+      messages.push({ role: 'system', content: systemPrompt })
 
-    // (1.a) Limitar o histórico enviado a no máximo 10 mensagens, truncando antigas a ~300 chars e removendo vazias/duplicadas
-    if (historyRecords && historyRecords.length > 0) {
-      const sanitizedHistory = []
-      const seenContents = {}
-      historyRecords.forEach((msg) => {
-        const msgSender = msg.getString('sender')
-        if (msgSender === 'system') return
-        const role = msgSender === 'ai' || msgSender === 'agent' ? 'assistant' : 'user'
-        if (msg.id !== incomingMsgId) {
-          const rawContent = (msg.getString('content') || '').trim()
-          if (!rawContent) return
-          // Anti-duplicação simples
-          const contentKey = `${role}:${rawContent}`
-          if (seenContents[contentKey]) return
-          seenContents[contentKey] = true
-          sanitizedHistory.push({ role: role, content: rawContent })
-        }
-      })
+      // (1.a) Limitar o histórico enviado a no máximo 10 mensagens, truncando antigas a ~300 chars e removendo vazias/duplicadas
+      if (historyRecords && historyRecords.length > 0) {
+        const sanitizedHistory = []
+        const seenContents = {}
+        historyRecords.forEach((msg) => {
+          const msgSender = msg.getString('sender')
+          if (msgSender === 'system') return
+          const role = msgSender === 'ai' || msgSender === 'agent' ? 'assistant' : 'user'
+          if (msg.id !== incomingMsgId) {
+            const rawContent = (msg.getString('content') || '').trim()
+            if (!rawContent) return
+            // Anti-duplicação simples
+            const contentKey = `${role}:${rawContent}`
+            if (seenContents[contentKey]) return
+            seenContents[contentKey] = true
+            sanitizedHistory.push({ role: role, content: rawContent })
+          }
+        })
 
-      // Pegar no máximo 10 mensagens mais recentes do histórico
-      const maxHistoryCount = 10
-      const recentSlice = sanitizedHistory.slice(-maxHistoryCount)
-      recentSlice.forEach((hItem, hIdx) => {
-        let content = hItem.content
-        // Truncar mensagens antigas (todas exceto as 2 mais recentes) a ~300 caracteres
-        if (hIdx < recentSlice.length - 2 && content.length > 300) {
-          content = content.substring(0, 300) + '...'
-        }
-        messages.push({ role: hItem.role, content: content })
-      })
-    }
-
-    messages.push({ role: 'user', content: customerMessage })
-
-    console.log(`[AI_REPLY] Calling $ai.chat (model=fast) with ${messages.length} messages...`)
-
-    let responseText = ''
-    let detectedStatus = ''
-    let detectedPhase = ''
-    let detectedFollowUpStep = ''
-    let detectedPromiseContext = ''
-    let detectedPromisePending = false
-    let detectedPromiseExplicitFalse = false
-    let detectedHandover = ''
-    let detectedProfile = ''
-    let detectedPriceRange = ''
-    let detectedNeighborhood = ''
-    let detectedUrgency = 0
-    let detectedPermuta = false
-    let detectedEmail = ''
-
-    try {
-      const chatRes = $ai.chat({
-        model: 'fast',
-        messages: messages,
-      })
-      if (chatRes && chatRes.choices && chatRes.choices[0] && chatRes.choices[0].message) {
-        responseText = (chatRes.choices[0].message.content || '').trim()
-        console.log(
-          `[AI_REPLY] $ai.chat response received (len=${responseText.length}): "${responseText.substring(0, 80)}..."`,
-        )
-      } else {
-        console.warn(`[AI_REPLY] $ai.chat returned unexpected shape: ${JSON.stringify(chatRes)}`)
+        // Pegar no máximo 10 mensagens mais recentes do histórico
+        const maxHistoryCount = 10
+        const recentSlice = sanitizedHistory.slice(-maxHistoryCount)
+        recentSlice.forEach((hItem, hIdx) => {
+          let content = hItem.content
+          // Truncar mensagens antigas (todas exceto as 2 mais recentes) a ~300 caracteres
+          if (hIdx < recentSlice.length - 2 && content.length > 300) {
+            content = content.substring(0, 300) + '...'
+          }
+          messages.push({ role: hItem.role, content: content })
+        })
       }
-    } catch (err) {
-      const errStr = String(err)
-      console.error(`[AI_REPLY] Skip AI Chat exception: ${errStr}`)
 
-      // (1.c) Retry automático com payload mínimo se for erro 413 / Too Large
-      const is413OrTooLarge =
-        errStr.includes('413') ||
-        /too\s*large/i.test(errStr) ||
-        /entity\s*too\s*large/i.test(errStr)
-      if (is413OrTooLarge) {
-        console.warn('[AI_REPLY] Gateway 413 detectado! Tentando retry com payload mínimo...')
-        try {
-          const minimalSystemPrompt = `Você é ${aiName}, da BRF Imóveis.
+      messages.push({ role: 'user', content: customerMessage })
+
+      console.log(`[AI_REPLY] Calling $ai.chat (model=fast) with ${messages.length} messages...`)
+
+      let responseText = ''
+      let detectedStatus = ''
+      let detectedPhase = ''
+      let detectedFollowUpStep = ''
+      let detectedPromiseContext = ''
+      let detectedPromisePending = false
+      let detectedPromiseExplicitFalse = false
+      let detectedHandover = ''
+      let detectedProfile = ''
+      let detectedPriceRange = ''
+      let detectedNeighborhood = ''
+      let detectedUrgency = 0
+      let detectedPermuta = false
+      let detectedEmail = ''
+
+      try {
+        const chatRes = $ai.chat({
+          model: 'fast',
+          messages: messages,
+        })
+        if (chatRes && chatRes.choices && chatRes.choices[0] && chatRes.choices[0].message) {
+          responseText = (chatRes.choices[0].message.content || '').trim()
+          console.log(
+            `[AI_REPLY] $ai.chat response received (len=${responseText.length}): "${responseText.substring(0, 80)}..."`,
+          )
+        } else {
+          console.warn(`[AI_REPLY] $ai.chat returned unexpected shape: ${JSON.stringify(chatRes)}`)
+        }
+      } catch (err) {
+        const errStr = String(err)
+        console.error(`[AI_REPLY] Skip AI Chat exception: ${errStr}`)
+
+        // (1.c) Retry automático com payload mínimo se for erro 413 / Too Large
+        const is413OrTooLarge =
+          errStr.includes('413') ||
+          /too\s*large/i.test(errStr) ||
+          /entity\s*too\s*large/i.test(errStr)
+        if (is413OrTooLarge) {
+          console.warn('[AI_REPLY] Gateway 413 detectado! Tentando retry com payload mínimo...')
+          try {
+            const minimalSystemPrompt = `Você é ${aiName}, da BRF Imóveis.
 DIRETRIZ SOBERANA:
 ${biaLearningsText}
 ${liveLessonsText ? `${liveLessonsText}\n` : ''}
 ${safePropertyContext}`
 
-          const minimalMessages = [
-            { role: 'system', content: minimalSystemPrompt },
-            { role: 'user', content: customerMessage },
-          ]
-          const retryRes = $ai.chat({
-            model: 'fast',
-            messages: minimalMessages,
-          })
-          if (retryRes && retryRes.choices && retryRes.choices[0] && retryRes.choices[0].message) {
-            responseText = (retryRes.choices[0].message.content || '').trim()
-            console.log(
-              `[AI_REPLY] $ai.chat 413-retry SUCCESS (len=${responseText.length}): "${responseText.substring(0, 80)}..."`,
-            )
+            const minimalMessages = [
+              { role: 'system', content: minimalSystemPrompt },
+              { role: 'user', content: customerMessage },
+            ]
+            const retryRes = $ai.chat({
+              model: 'fast',
+              messages: minimalMessages,
+            })
+            if (
+              retryRes &&
+              retryRes.choices &&
+              retryRes.choices[0] &&
+              retryRes.choices[0].message
+            ) {
+              responseText = (retryRes.choices[0].message.content || '').trim()
+              console.log(
+                `[AI_REPLY] $ai.chat 413-retry SUCCESS (len=${responseText.length}): "${responseText.substring(0, 80)}..."`,
+              )
+            }
+          } catch (retryErr) {
+            console.error(`[AI_REPLY] 413-retry também falhou: ${String(retryErr)}`)
           }
-        } catch (retryErr) {
-          console.error(`[AI_REPLY] 413-retry também falhou: ${String(retryErr)}`)
+        }
+
+        if (!responseText) {
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const aiErrLog = new Record(logsCol)
+            aiErrLog.set('user_id', userId || '')
+            aiErrLog.set('type', 'whatsapp_ai_reply_error')
+            aiErrLog.set('message', 'Erro ao chamar $ai.chat')
+            aiErrLog.set('details', errStr)
+            aiErrLog.set('payload', JSON.stringify({ customer_id: customerId, error: errStr }))
+            $app.saveNoValidate(aiErrLog)
+          } catch (_) {}
         }
       }
 
       if (!responseText) {
-        try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const aiErrLog = new Record(logsCol)
-          aiErrLog.set('user_id', userId || '')
-          aiErrLog.set('type', 'whatsapp_ai_reply_error')
-          aiErrLog.set('message', 'Erro ao chamar $ai.chat')
-          aiErrLog.set('details', errStr)
-          aiErrLog.set('payload', JSON.stringify({ customer_id: customerId, error: errStr }))
-          $app.saveNoValidate(aiErrLog)
-        } catch (_) {}
+        const safeGreeting = buildTemporalGreeting(displayName, brHour)
+        responseText = `${safeGreeting} Que bom ter você aqui na BRF Imóveis. Vi seu interesse e quero te ajudar a encontrar o imóvel ideal. Podemos falar sobre o que você procura?`
+        console.log(`[AI_REPLY] Using safe fallback response (len=${responseText.length})`)
       }
-    }
 
-    if (!responseText) {
-      const safeGreeting = buildTemporalGreeting(displayName, brHour)
-      responseText = `${safeGreeting} Que bom ter você aqui na BRF Imóveis. Vi seu interesse e quero te ajudar a encontrar o imóvel ideal. Podemos falar sobre o que você procura?`
-      console.log(`[AI_REPLY] Using safe fallback response (len=${responseText.length})`)
-    }
+      // Hard Anti-Repetition & Canned Response Overhaul (handles all Unicode hyphens U+2010..U+2015, non-breaking spaces, punctuation, accents)
+      function isCannedValuesSentence(txt) {
+        if (!txt) return false
+        // Normalize hyphens and dashes (including U+2010..U+2015, non-breaking hyphen U+2011) to standard '-'
+        // Also normalize non-breaking spaces (\u00A0, \u202F) to normal space
+        const normalized = txt
+          .toLowerCase()
+          .replace(/[\u2010-\u2015\u2212\uFE63\uFF0D]/g, '-')
+          .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+          .replace(/\s+/g, ' ')
 
-    // Hard Anti-Repetition & Canned Response Overhaul (handles all Unicode hyphens U+2010..U+2015, non-breaking spaces, punctuation, accents)
-    function isCannedValuesSentence(txt) {
-      if (!txt) return false
-      // Normalize hyphens and dashes (including U+2010..U+2015, non-breaking hyphen U+2011) to standard '-'
-      // Also normalize non-breaking spaces (\u00A0, \u202F) to normal space
-      const normalized = txt
-        .toLowerCase()
-        .replace(/[\u2010-\u2015\u2212\uFE63\uFF0D]/g, '-')
-        .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
-        .replace(/\s+/g, ' ')
+        return (
+          normalized.includes('vou te passar os valores') ||
+          normalized.includes('passar os valores agora mesmo') ||
+          normalized.includes('passar os valores agora') ||
+          (normalized.includes('custo-beneficio') && normalized.includes('alem do valor')) ||
+          (normalized.includes('custo-benefício') && normalized.includes('além do valor')) ||
+          (normalized.includes('custobeneficio') && normalized.includes('alem do valor')) ||
+          (normalized.includes('melhor custo') && normalized.includes('alem do valor')) ||
+          (normalized.includes('melhor custo') && normalized.includes('além do valor')) ||
+          (normalized.includes('melhor custo') &&
+            normalized.includes('o que é mais importante para você além do valor')) ||
+          (normalized.includes('unidade com o melhor') && normalized.includes('além do valor')) ||
+          (normalized.includes('unidade com o melhor') && normalized.includes('alem do valor')) ||
+          (normalized.includes('unidade com o melhor custo') && normalized.includes('perfil'))
+        )
+      }
 
-      return (
-        normalized.includes('vou te passar os valores') ||
-        normalized.includes('passar os valores agora mesmo') ||
-        normalized.includes('passar os valores agora') ||
-        (normalized.includes('custo-beneficio') && normalized.includes('alem do valor')) ||
-        (normalized.includes('custo-benefício') && normalized.includes('além do valor')) ||
-        (normalized.includes('custobeneficio') && normalized.includes('alem do valor')) ||
-        (normalized.includes('melhor custo') && normalized.includes('alem do valor')) ||
-        (normalized.includes('melhor custo') && normalized.includes('além do valor')) ||
-        (normalized.includes('melhor custo') &&
-          normalized.includes('o que é mais importante para você além do valor')) ||
-        (normalized.includes('unidade com o melhor') && normalized.includes('além do valor')) ||
-        (normalized.includes('unidade com o melhor') && normalized.includes('alem do valor')) ||
-        (normalized.includes('unidade com o melhor custo') && normalized.includes('perfil'))
-      )
-    }
+      // Function to thoroughly clean internal LLM / supervisor / prompt artifacts
+      function sanitizeAiResponse(raw) {
+        if (!raw) return ''
+        let clean = raw.trim()
 
-    // Function to thoroughly clean internal LLM / supervisor / prompt artifacts
-    function sanitizeAiResponse(raw) {
-      if (!raw) return ''
-      let clean = raw.trim()
-
-      // 1. Remove supervisor delimiters: "Reescrita corrigida --- [conteúdo]" or "*** ---"
-      // Split on sequences of hyphens/em-dashes (2 or more)
-      if (/[-—–]{2,}/.test(clean)) {
-        const parts = clean.split(/\s*[-—–]{2,}\s*/)
-        if (parts.length > 1) {
-          // If first part has supervisor markers, take remainder
-          if (
-            /aprovado|reescrita|mensagem|corrigida|supervisor|avalia|cadência|cadencia/i.test(
-              parts[0],
-            )
-          ) {
-            clean = parts.slice(1).join(' ').trim()
+        // 1. Remove supervisor delimiters: "Reescrita corrigida --- [conteúdo]" or "*** ---"
+        // Split on sequences of hyphens/em-dashes (2 or more)
+        if (/[-—–]{2,}/.test(clean)) {
+          const parts = clean.split(/\s*[-—–]{2,}\s*/)
+          if (parts.length > 1) {
+            // If first part has supervisor markers, take remainder
+            if (
+              /aprovado|reescrita|mensagem|corrigida|supervisor|avalia|cadência|cadencia/i.test(
+                parts[0],
+              )
+            ) {
+              clean = parts.slice(1).join(' ').trim()
+            }
           }
         }
-      }
 
-      // 2. Aggressive regex removal of leading review / rewrite / approval prefixes
-      // Matches e.g.: "**Reescrita corrigida**", "*Reescrita*", "APROVADO:", "Reescrita:", "Mensagem corrigida:", etc.
-      const leadingArtifacts = [
-        /^(\*\*|\*|#+|\s)*APROVADO(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
-        /^(\*\*|\*|#+|\s)*REPROVADO(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
-        /^(\*\*|\*|#+|\s)*Reescrita(\s+corrigida|\s+sugerida)?(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
-        /^(\*\*|\*|#+|\s)*Mensagem\s*(corrigida|reescrita|ajustada)(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
-        /^(\*\*|\*|#+|\s)*Resposta\s*(da\s*IA|sugerida|corrigida)?(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
-        /^(\*\*|\*|#+|\s)*Versão\s*(corrigida|final)(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
-        /^A\s*mensagem\s*foi\s*reescrita\s*para.*?:?\s*(\n+|$)/i,
-        /^Aqui\s*(está|vai)\s*a\s*(mensagem|resposta)\s*(corrigida|reescrita|ajustada):?\s*(\n+|$)/i,
-      ]
+        // 2. Aggressive regex removal of leading review / rewrite / approval prefixes
+        // Matches e.g.: "**Reescrita corrigida**", "*Reescrita*", "APROVADO:", "Reescrita:", "Mensagem corrigida:", etc.
+        const leadingArtifacts = [
+          /^(\*\*|\*|#+|\s)*APROVADO(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+          /^(\*\*|\*|#+|\s)*REPROVADO(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+          /^(\*\*|\*|#+|\s)*Reescrita(\s+corrigida|\s+sugerida)?(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+          /^(\*\*|\*|#+|\s)*Mensagem\s*(corrigida|reescrita|ajustada)(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+          /^(\*\*|\*|#+|\s)*Resposta\s*(da\s*IA|sugerida|corrigida)?(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+          /^(\*\*|\*|#+|\s)*Versão\s*(corrigida|final)(\*\*|\*|#+|\s)*\s*[-–—:]*\s*/i,
+          /^A\s*mensagem\s*foi\s*reescrita\s*para.*?:?\s*(\n+|$)/i,
+          /^Aqui\s*(está|vai)\s*a\s*(mensagem|resposta)\s*(corrigida|reescrita|ajustada):?\s*(\n+|$)/i,
+        ]
 
-      let changed = true
-      while (changed) {
-        changed = false
-        for (const pattern of leadingArtifacts) {
-          if (pattern.test(clean)) {
-            clean = clean.replace(pattern, '').trim()
+        let changed = true
+        while (changed) {
+          changed = false
+          for (const pattern of leadingArtifacts) {
+            if (pattern.test(clean)) {
+              clean = clean.replace(pattern, '').trim()
+              changed = true
+            }
+          }
+          // Also strip any residual leading separators like "---", "–-", "—"
+          if (/^[-—–\s*#]+$/.test(clean)) {
+            clean = ''
+            break
+          }
+          if (/^[-—–]+\s*/.test(clean)) {
+            clean = clean.replace(/^[-—–]+\s*/, '').trim()
             changed = true
           }
         }
-        // Also strip any residual leading separators like "---", "–-", "—"
-        if (/^[-—–\s*#]+$/.test(clean)) {
-          clean = ''
-          break
+
+        // 3. Remove lines that are purely supervisor commentary
+        const lines = clean.split('\n')
+        const filteredLines = []
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (
+            /^(\*\*|\*)?(APROVADO|REPROVADO|Reescrita corrigida|Mensagem corrigida|Versão corrigida)(\*\*|\*)?$/i.test(
+              trimmed,
+            ) ||
+            /^(\*\*|\*)?Cadência\s*\d+/i.test(trimmed) ||
+            /A mensagem foi reescrita para obedecer/i.test(trimmed) ||
+            /^[-—–=]{2,}$/.test(trimmed)
+          ) {
+            continue
+          }
+          filteredLines.push(line)
         }
-        if (/^[-—–]+\s*/.test(clean)) {
-          clean = clean.replace(/^[-—–]+\s*/, '').trim()
-          changed = true
-        }
+        clean = filteredLines.join('\n').trim()
+
+        return clean
       }
 
-      // 3. Remove lines that are purely supervisor commentary
-      const lines = clean.split('\n')
-      const filteredLines = []
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (
-          /^(\*\*|\*)?(APROVADO|REPROVADO|Reescrita corrigida|Mensagem corrigida|Versão corrigida)(\*\*|\*)?$/i.test(
-            trimmed,
-          ) ||
-          /^(\*\*|\*)?Cadência\s*\d+/i.test(trimmed) ||
-          /A mensagem foi reescrita para obedecer/i.test(trimmed) ||
-          /^[-—–=]{2,}$/.test(trimmed)
-        ) {
-          continue
-        }
-        filteredLines.push(line)
-      }
-      clean = filteredLines.join('\n').trim()
+      // Detect explicit request for ebook, brochure or price table
+      const isEbookOrTableRequested =
+        /\b(?:ebook|e-book|livro|apostila|apresenta[cç][aã]o|cat[aá]logo|material|tabela|tabela\s+e\s+e-?book|tabela\s+de\s+condi[cç][oõ]es|condi[cç][oõ]es\s+de\s+pagamento)\b/i.test(
+          custIncomingMsg,
+        )
 
-      return clean
-    }
-
-    // Detect explicit request for ebook, brochure or price table
-    const isEbookOrTableRequested =
-      /\b(?:ebook|e-book|livro|apostila|apresenta[cç][aã]o|cat[aá]logo|material|tabela|tabela\s+e\s+e-?book|tabela\s+de\s+condi[cç][oõ]es|condi[cç][oõ]es\s+de\s+pagamento)\b/i.test(
-        custIncomingMsg,
-      )
-
-    // Intercept canned phrase if generated by primary model before Mother AI
-    if (isCannedValuesSentence(responseText)) {
-      console.warn(
-        '[AI_REPLY] Primary model generated canned phrase, triggering fallback generation early.',
-      )
-      const earlyFallback = generateCatalogFallbackMessage(matchedProps)
-      if (earlyFallback && earlyFallback.trim()) {
-        responseText = earlyFallback
-      }
-    }
-
-    // Helper neutro para extrair link oficial do lançamento em foco
-    function resolveLaunchOfficialLink(launchRec) {
-      if (!launchRec) return 'https://www.brfimoveis.com.br'
-      const webUrl = (launchRec.getString('website_url') || '').trim()
-      if (webUrl) return webUrl
-      const slug = (launchRec.getString('slug') || '').trim()
-      return slug ? `https://crm.brfimoveis.com.br/l/${slug}` : 'https://www.brfimoveis.com.br'
-    }
-
-    // Helper neutro para gerar apresentação baseada no dossiê do lançamento em foco (sem hardcode)
-    function generateFocusLaunchConsultativeMessage(launchRec) {
-      if (!launchRec) return ''
-      const lName =
-        launchRec.getString('enterprise_name') || launchRec.getString('name') || 'Lançamento'
-      const lLoc = launchRec.getString('location') || ''
-      const lLink = resolveLaunchOfficialLink(launchRec)
-      const lHeadline = launchRec.getString('headline') || ''
-
-      let lUnits = launchRec.get('units') || []
-      if (typeof lUnits === 'string') {
-        try {
-          lUnits = JSON.parse(lUnits)
-        } catch (_) {
-          lUnits = []
+      // Intercept canned phrase if generated by primary model before Mother AI
+      if (isCannedValuesSentence(responseText)) {
+        console.warn(
+          '[AI_REPLY] Primary model generated canned phrase, triggering fallback generation early.',
+        )
+        const earlyFallback = generateCatalogFallbackMessage(matchedProps)
+        if (earlyFallback && earlyFallback.trim()) {
+          responseText = earlyFallback
         }
       }
 
-      let priceSnippet = ''
-      if (Array.isArray(lUnits) && lUnits.length > 0) {
-        const availableUnits = lUnits.filter((u) => u && u.available !== false)
-        const sampleUnits = (availableUnits.length > 0 ? availableUnits : lUnits).slice(0, 2)
-        const parts = sampleUnits.map((u) => {
-          const typ = u.typology || u.tipo || 'Unidade'
-          const pr = u.price || u.valor || ''
-          return pr ? `${typ} a partir de ${pr}` : typ
-        })
-        if (parts.length > 0) {
-          priceSnippet = ` Temos opções de ${parts.join(' e ')}.`
+      // Helper neutro para extrair link oficial do lançamento em foco
+      function resolveLaunchOfficialLink(launchRec) {
+        if (!launchRec) return 'https://www.brfimoveis.com.br'
+        const webUrl = (launchRec.getString('website_url') || '').trim()
+        if (webUrl) return webUrl
+        const slug = (launchRec.getString('slug') || '').trim()
+        return slug ? `https://crm.brfimoveis.com.br/l/${slug}` : 'https://www.brfimoveis.com.br'
+      }
+
+      // Helper neutro para gerar apresentação baseada no dossiê do lançamento em foco (sem hardcode)
+      function generateFocusLaunchConsultativeMessage(launchRec) {
+        if (!launchRec) return ''
+        const lName =
+          launchRec.getString('enterprise_name') || launchRec.getString('name') || 'Lançamento'
+        const lLoc = launchRec.getString('location') || ''
+        const lLink = resolveLaunchOfficialLink(launchRec)
+        const lHeadline = launchRec.getString('headline') || ''
+
+        let lUnits = launchRec.get('units') || []
+        if (typeof lUnits === 'string') {
+          try {
+            lUnits = JSON.parse(lUnits)
+          } catch (_) {
+            lUnits = []
+          }
         }
+
+        let priceSnippet = ''
+        if (Array.isArray(lUnits) && lUnits.length > 0) {
+          const availableUnits = lUnits.filter((u) => u && u.available !== false)
+          const sampleUnits = (availableUnits.length > 0 ? availableUnits : lUnits).slice(0, 2)
+          const parts = sampleUnits.map((u) => {
+            const typ = u.typology || u.tipo || 'Unidade'
+            const pr = u.price || u.valor || ''
+            return pr ? `${typ} a partir de ${pr}` : typ
+          })
+          if (parts.length > 0) {
+            priceSnippet = ` Temos opções de ${parts.join(' e ')}.`
+          }
+        }
+
+        let msg = `Com certeza! O ${lName} é uma excelente oportunidade`
+        if (lLoc) msg += ` em ${lLoc}`
+        if (lHeadline) msg += ` (${lHeadline})`
+        msg += `.${priceSnippet} Você pode conferir todas as plantas, fotos e detalhes oficiais na página: ${lLink}. Gostaria de conhecer mais detalhes de alguma planta específica?`
+        return msg.trim()
       }
 
-      let msg = `Com certeza! O ${lName} é uma excelente oportunidade`
-      if (lLoc) msg += ` em ${lLoc}`
-      if (lHeadline) msg += ` (${lHeadline})`
-      msg += `.${priceSnippet} Você pode conferir todas as plantas, fotos e detalhes oficiais na página: ${lLink}. Gostaria de conhecer mais detalhes de alguma planta específica?`
-      return msg.trim()
-    }
-
-    // Intercept false negative if model says requested launches/properties are not in catalog when matchedProps actually has them!
-    const claimsCatalogUnavailable =
-      /não estão disponíveis no (?:nosso )?cat[aá]logo|n[aã]o constam? no cat[aá]logo|n[aã]o temos ess(?:es|e|a) (?:empreendimentos?|im[oó]ve(?:l|is)|opç[aã]o|opçõ?es)? no cat[aá]logo|ainda n[aã]o est[aã]o? dispon[ií]ve(?:l|is)|nenhum desses empreendimentos constam|infelizmente n[aã]o (?:temos|possu[ií]mos|encontrei|consta)|n[aã]o trabalhamos com esse|trabalhamos apenas com/i.test(
-        responseText,
-      )
-    if (
-      claimsCatalogUnavailable &&
-      ((Array.isArray(matchedProps) && matchedProps.length > 0) || matchedLaunch)
-    ) {
-      console.warn(
-        '[AI_REPLY] Model falsely claimed properties are not in catalog even though matchedProps/launch found! Triggering consultative presentation fallback.',
-      )
-      if (matchedLaunch) {
-        responseText = generateFocusLaunchConsultativeMessage(matchedLaunch)
-      } else if (Array.isArray(matchedProps) && matchedProps.length > 0) {
-        const primaryProp = matchedProps[0]
-        const pTitle = (primaryProp.getString('title') || '').trim()
-        const pCode = (primaryProp.getString('code') || '').trim()
-        const pNeigh = (primaryProp.getString('neighborhood') || '').trim()
-        const pCity = (primaryProp.getString('city') || '').trim()
-        const pPrice = (primaryProp.getString('price_formatted') || '').trim()
-        const pUrl = (primaryProp.getString('url') || '').trim()
-        const locStr = [pNeigh, pCity].filter(Boolean).join(', ')
-
-        let correctedCatalogMsg = `Temos sim essa opção no nosso portfólio oficial! `
-        correctedCatalogMsg += `Sobre o imóvel ${pCode ? `*${pCode}*` : ''}${pTitle ? ` (${pTitle})` : ''}`
-        if (locStr) correctedCatalogMsg += ` em ${locStr}`
-        if (pPrice) correctedCatalogMsg += `, ele está disponível por *${pPrice}*`
-        correctedCatalogMsg += `.`
-        if (pUrl) correctedCatalogMsg += ` Você pode conferir os detalhes aqui: ${pUrl}`
-        correctedCatalogMsg += `\n\nPosso te ajudar com alguma informação específica dele ou gostaria de agendar uma visita?`
-        responseText = correctedCatalogMsg.trim()
-      }
-    }
-
-    // Intercept when customer explicitly asks for ebook/table but primary model denied or failed to deliver
-    const deniedEbookOrDocs =
-      /n[aã]o (?:possuo|tenho|encontrei|disponibilizo|consigo|trabalhamos com|temos) (?:o |esse |o acesso ao )?(?:e-?book|tabela|livro|material|apostila|cat[aá]logo|documentos?)/i.test(
-        responseText,
-      ) || /trabalhamos apenas com documentos referentes/i.test(responseText)
-
-    if (isEbookOrTableRequested && deniedEbookOrDocs) {
-      console.warn(
-        '[AI_REPLY] Model denied ebook/table requested by customer. Overriding with official launch/property delivery...',
-      )
-      if (matchedLaunch) {
-        responseText = generateFocusLaunchConsultativeMessage(matchedLaunch)
-      } else if (targetSpecificProp) {
-        const pCode = (targetSpecificProp.getString('code') || '').trim()
-        const pUrl = (targetSpecificProp.getString('url') || '').trim()
-        responseText = `Com certeza! As fotos, detalhes e condições completas do imóvel ${pCode ? `*${pCode}*` : ''} estão disponíveis na página oficial: ${pUrl}. Posso te ajudar com mais detalhes ou agendamos uma visita?`
-      }
-    }
-
-    // Função para detectar se um texto é parecer/relatório de avaliação interna em vez de mensagem ao cliente
-    function isInternalEvaluationText(txt) {
-      if (!txt || typeof txt !== 'string') return false
-      const lower = txt.toLowerCase()
-
-      // Marcadores explícitos de avaliação/parecer de conformidade
+      // Intercept false negative if model says requested launches/properties are not in catalog when matchedProps actually has them!
+      const claimsCatalogUnavailable =
+        /não estão disponíveis no (?:nosso )?cat[aá]logo|n[aã]o constam? no cat[aá]logo|n[aã]o temos ess(?:es|e|a) (?:empreendimentos?|im[oó]ve(?:l|is)|opç[aã]o|opçõ?es)? no cat[aá]logo|ainda n[aã]o est[aã]o? dispon[ií]ve(?:l|is)|nenhum desses empreendimentos constam|infelizmente n[aã]o (?:temos|possu[ií]mos|encontrei|consta)|n[aã]o trabalhamos com esse|trabalhamos apenas com/i.test(
+          responseText,
+        )
       if (
-        lower.includes('avaliação de conformidade') ||
-        lower.includes('avaliacao de conformidade') ||
-        lower.includes('motivos da não aprovação') ||
-        lower.includes('motivos da nao aprovacao') ||
-        lower.includes('motivos de não aprovação') ||
-        lower.includes('motivos de reprovação') ||
-        lower.includes('motivo da reprovação') ||
-        lower.includes('não approvado') ||
-        lower.includes('nao approvado') ||
-        lower.includes('não aprovado') ||
-        lower.includes('nao aprovado') ||
-        lower.includes('não aprovada') ||
-        lower.includes('nao aprovada') ||
-        lower.includes('reprovado') ||
-        lower.includes('reprovada')
+        claimsCatalogUnavailable &&
+        ((Array.isArray(matchedProps) && matchedProps.length > 0) || matchedLaunch)
       ) {
-        // Se contiver marcadores em formato de relatório ou análise técnica
+        console.warn(
+          '[AI_REPLY] Model falsely claimed properties are not in catalog even though matchedProps/launch found! Triggering consultative presentation fallback.',
+        )
+        if (matchedLaunch) {
+          responseText = generateFocusLaunchConsultativeMessage(matchedLaunch)
+        } else if (Array.isArray(matchedProps) && matchedProps.length > 0) {
+          const primaryProp = matchedProps[0]
+          const pTitle = (primaryProp.getString('title') || '').trim()
+          const pCode = (primaryProp.getString('code') || '').trim()
+          const pNeigh = (primaryProp.getString('neighborhood') || '').trim()
+          const pCity = (primaryProp.getString('city') || '').trim()
+          const pPrice = (primaryProp.getString('price_formatted') || '').trim()
+          const pUrl = (primaryProp.getString('url') || '').trim()
+          const locStr = [pNeigh, pCity].filter(Boolean).join(', ')
+
+          let correctedCatalogMsg = `Temos sim essa opção no nosso portfólio oficial! `
+          correctedCatalogMsg += `Sobre o imóvel ${pCode ? `*${pCode}*` : ''}${pTitle ? ` (${pTitle})` : ''}`
+          if (locStr) correctedCatalogMsg += ` em ${locStr}`
+          if (pPrice) correctedCatalogMsg += `, ele está disponível por *${pPrice}*`
+          correctedCatalogMsg += `.`
+          if (pUrl) correctedCatalogMsg += ` Você pode conferir os detalhes aqui: ${pUrl}`
+          correctedCatalogMsg += `\n\nPosso te ajudar com alguma informação específica dele ou gostaria de agendar uma visita?`
+          responseText = correctedCatalogMsg.trim()
+        }
+      }
+
+      // Intercept when customer explicitly asks for ebook/table but primary model denied or failed to deliver
+      const deniedEbookOrDocs =
+        /n[aã]o (?:possuo|tenho|encontrei|disponibilizo|consigo|trabalhamos com|temos) (?:o |esse |o acesso ao )?(?:e-?book|tabela|livro|material|apostila|cat[aá]logo|documentos?)/i.test(
+          responseText,
+        ) || /trabalhamos apenas com documentos referentes/i.test(responseText)
+
+      if (isEbookOrTableRequested && deniedEbookOrDocs) {
+        console.warn(
+          '[AI_REPLY] Model denied ebook/table requested by customer. Overriding with official launch/property delivery...',
+        )
+        if (matchedLaunch) {
+          responseText = generateFocusLaunchConsultativeMessage(matchedLaunch)
+        } else if (targetSpecificProp) {
+          const pCode = (targetSpecificProp.getString('code') || '').trim()
+          const pUrl = (targetSpecificProp.getString('url') || '').trim()
+          responseText = `Com certeza! As fotos, detalhes e condições completas do imóvel ${pCode ? `*${pCode}*` : ''} estão disponíveis na página oficial: ${pUrl}. Posso te ajudar com mais detalhes ou agendamos uma visita?`
+        }
+      }
+
+      // Função para detectar se um texto é parecer/relatório de avaliação interna em vez de mensagem ao cliente
+      function isInternalEvaluationText(txt) {
+        if (!txt || typeof txt !== 'string') return false
+        const lower = txt.toLowerCase()
+
+        // Marcadores explícitos de avaliação/parecer de conformidade
         if (
-          lower.includes('conformidade') ||
-          lower.includes('motivos') ||
-          lower.includes('saudação temporal ausente') ||
-          lower.includes('identificação padrão') ||
-          lower.includes('regra de não inventar') ||
-          lower.includes('não contém a identificação') ||
-          lower.includes('violando a regra') ||
-          lower.includes('infringindo a regra') ||
-          lower.includes('não obedece') ||
-          lower.includes('critérios') ||
-          lower.includes('parecer') ||
-          /^\s*(\*\*|\*|#+|\s)*(não aprovad[ao]|reprovad[ao])/i.test(txt)
+          lower.includes('avaliação de conformidade') ||
+          lower.includes('avaliacao de conformidade') ||
+          lower.includes('motivos da não aprovação') ||
+          lower.includes('motivos da nao aprovacao') ||
+          lower.includes('motivos de não aprovação') ||
+          lower.includes('motivos de reprovação') ||
+          lower.includes('motivo da reprovação') ||
+          lower.includes('não approvado') ||
+          lower.includes('nao approvado') ||
+          lower.includes('não aprovado') ||
+          lower.includes('nao aprovado') ||
+          lower.includes('não aprovada') ||
+          lower.includes('nao aprovada') ||
+          lower.includes('reprovado') ||
+          lower.includes('reprovada')
+        ) {
+          // Se contiver marcadores em formato de relatório ou análise técnica
+          if (
+            lower.includes('conformidade') ||
+            lower.includes('motivos') ||
+            lower.includes('saudação temporal ausente') ||
+            lower.includes('identificação padrão') ||
+            lower.includes('regra de não inventar') ||
+            lower.includes('não contém a identificação') ||
+            lower.includes('violando a regra') ||
+            lower.includes('infringindo a regra') ||
+            lower.includes('não obedece') ||
+            lower.includes('critérios') ||
+            lower.includes('parecer') ||
+            /^\s*(\*\*|\*|#+|\s)*(não aprovad[ao]|reprovad[ao])/i.test(txt)
+          ) {
+            return true
+          }
+        }
+
+        // Marcadores com padrão estruturado de avaliação (ex: "1. Saudação...", "2. Identificação...")
+        if (
+          /(\bavalia[cç][aã]o\b|\bparecer\b|\bconformidade\b)/i.test(txt) &&
+          /(\bn[aã]o\s+aprovad[ao]\b|\breprovad[ao]\b)/i.test(txt)
         ) {
           return true
         }
-      }
 
-      // Marcadores com padrão estruturado de avaliação (ex: "1. Saudação...", "2. Identificação...")
-      if (
-        /(\bavalia[cç][aã]o\b|\bparecer\b|\bconformidade\b)/i.test(txt) &&
-        /(\bn[aã]o\s+aprovad[ao]\b|\breprovad[ao]\b)/i.test(txt)
-      ) {
-        return true
-      }
-
-      // Se começar diretamente com "Não aprovada – a mensagem..." ou similar
-      if (/^\s*(\*\*|\*)?n[aã]o\s+aprovad[ao]\s*[-–—:]/i.test(txt)) {
-        return true
-      }
-
-      return false
-    }
-
-    // REGRAS DE MÁQUINA 3 & 6 (EXTRAÇÃO PRECOCE DAS TAGS DO CRM ANTES DE QUALQUER EXPURGO):
-    // Extrai TODAS as tags emitidas pelo modelo ([STATUS], [PHASE], [FOLLOW_UP_STEP], [PROMISE], [PERMUTA], [HANDOVER], perfil/faixa/bairro/urgência)
-    // As variáveis são preservadas em memória para persistência no CRM e log estruturado.
-    const earlyStatusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
-    if (earlyStatusMatch && earlyStatusMatch[1]) {
-      detectedStatus = earlyStatusMatch[1].trim()
-    }
-
-    const earlyPhaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
-    if (earlyPhaseMatch && earlyPhaseMatch[1]) {
-      detectedPhase = earlyPhaseMatch[1].trim()
-    }
-
-    const earlyFollowUpStepMatch = responseText.match(/\[FOLLOW_UP_STEP:\s*(.*?)\]/i)
-    if (earlyFollowUpStepMatch && earlyFollowUpStepMatch[1]) {
-      detectedFollowUpStep = earlyFollowUpStepMatch[1].trim()
-    }
-
-    const earlyPromiseCtxMatch = responseText.match(/\[PROMISE_CONTEXT:\s*(.*?)\]/i)
-    if (earlyPromiseCtxMatch && earlyPromiseCtxMatch[1]) {
-      detectedPromiseContext = earlyPromiseCtxMatch[1].trim()
-      detectedPromisePending = true
-    }
-
-    const earlyPromisePendingMatch = responseText.match(
-      /\[PROMISE_PENDING:\s*(true|false|sim|não|nao)\]/i,
-    )
-    if (earlyPromisePendingMatch && earlyPromisePendingMatch[1]) {
-      const pVal = earlyPromisePendingMatch[1].toLowerCase()
-      detectedPromisePending = pVal === 'true' || pVal === 'sim'
-      if (pVal === 'false' || pVal === 'não' || pVal === 'nao') {
-        detectedPromiseExplicitFalse = true
-      }
-    }
-
-    const earlyHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
-    if (earlyHandoverMatch && earlyHandoverMatch[1]) {
-      detectedHandover = earlyHandoverMatch[1].trim()
-    }
-
-    const earlyProfileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
-    if (earlyProfileMatch && earlyProfileMatch[1]) {
-      detectedProfile = earlyProfileMatch[1].trim()
-    }
-
-    const earlyPriceRangeMatch = responseText.match(/\[PRICE_RANGE:\s*(.*?)\]/i)
-    if (earlyPriceRangeMatch && earlyPriceRangeMatch[1]) {
-      detectedPriceRange = earlyPriceRangeMatch[1].trim()
-    }
-
-    const earlyNeighborhoodMatch = responseText.match(/\[NEIGHBORHOOD:\s*(.*?)\]/i)
-    if (earlyNeighborhoodMatch && earlyNeighborhoodMatch[1]) {
-      detectedNeighborhood = earlyNeighborhoodMatch[1].trim()
-    }
-
-    const earlyUrgencyMatch = responseText.match(/\[URGENCY:\s*(\d+)\]/i)
-    if (earlyUrgencyMatch && earlyUrgencyMatch[1]) {
-      const uNum = parseInt(earlyUrgencyMatch[1], 10)
-      if (!isNaN(uNum) && uNum >= 1 && uNum <= 5) {
-        detectedUrgency = uNum
-      }
-    }
-
-    if (responseText.includes('[PERMUTA]')) {
-      detectedPermuta = true
-    }
-
-    const earlyEmailMatch = responseText.match(/\[EMAIL:\s*([^\s\]]+@[^\s\]]+)\]/i)
-    if (earlyEmailMatch && earlyEmailMatch[1]) {
-      detectedEmail = earlyEmailMatch[1].trim().toLowerCase()
-    }
-
-    // Função centralizada para remoção completa das tags de máquina do texto
-    function stripAllMachineTags(rawText) {
-      if (!rawText) return ''
-      let out = String(rawText)
-      out = out.replace(/\[HANDOVER:[^\]]*\]/gi, '')
-      out = out.replace(/\[STATUS:\s*.*?\]/gi, '')
-      out = out.replace(/\[PHASE:\s*.*?\]/gi, '')
-      out = out.replace(/\[FOLLOW_UP_STEP:\s*.*?\]/gi, '')
-      out = out.replace(/\[PROMISE_CONTEXT:\s*.*?\]/gi, '')
-      out = out.replace(/\[PROMISE_PENDING:\s*.*?\]/gi, '')
-      out = out.replace(/\[PROFILE:\s*.*?\]/gi, '')
-      out = out.replace(/\[PRICE_RANGE:\s*.*?\]/gi, '')
-      out = out.replace(/\[NEIGHBORHOOD:\s*.*?\]/gi, '')
-      out = out.replace(/\[URGENCY:\s*.*?\]/gi, '')
-      out = out.replace(/\[EMAIL:\s*.*?\]/gi, '')
-      out = out.replace(/\[PERMUTA\]/gi, '')
-      out = out.replace(/\[AUDIO\]/gi, '')
-      out = out.replace(/\[VIDEO\]/gi, '')
-      return out.trim()
-    }
-
-    // Remove tags da cópia que vai para validação da Mãe IA / RAG
-    responseText = stripAllMachineTags(responseText)
-    responseText = sanitizeAiResponse(responseText)
-
-    // Optional Mother AI supervisor validation & Regeneration Flow
-    if (motherAiInstructions && responseText.length > 0) {
-      try {
-        const clientFirstName = (displayName || '').split(/\s+/)[0] || ''
-
-        // REGRA DE MÁQUINA 1: Mãe IA valida preço e dados estritamente contra o dossiê do imóvel em foco
-        let focusPropValidationInfo = ''
-        if (targetSpecificProp) {
-          focusPropValidationInfo = `\n[IMÓVEL EM FOCO]: Código ${targetSpecificProp.getString('code')}, Título "${targetSpecificProp.getString('title')}", Valor ${targetSpecificProp.getString('price_formatted')}, Localização: ${targetSpecificProp.getString('neighborhood')}, ${targetSpecificProp.getString('city')}. Link: ${targetSpecificProp.getString('url')}.\nAVALIE O PREÇO E DADOS CONTRA ESTE IMÓVEL EM FOCO — NUNCA CONTRA TABELAS DE OUTROS LANÇAMENTOS!\n`
-        } else if (matchedLaunch) {
-          focusPropValidationInfo = `\n[LANÇAMENTO EM FOCO]: ${matchedLaunch.getString('name')} (${matchedLaunch.getString('enterprise_name')}). AVALIE PREÇO E DADOS CONTRA O DOSSIÊ DESTE LANÇAMENTO ESPECÍFICO — NUNCA CONTRA OUTROS LANÇAMENTOS!\n`
+        // Se começar diretamente com "Não aprovada – a mensagem..." ou similar
+        if (/^\s*(\*\*|\*)?n[aã]o\s+aprovad[ao]\s*[-–—:]/i.test(txt)) {
+          return true
         }
 
-        const evalPrompt = `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie a resposta da Bia sob a CONSTITUIÇÃO DA BIA v2.0:
+        return false
+      }
+
+      // REGRAS DE MÁQUINA 3 & 6 (EXTRAÇÃO PRECOCE DAS TAGS DO CRM ANTES DE QUALQUER EXPURGO):
+      // Extrai TODAS as tags emitidas pelo modelo ([STATUS], [PHASE], [FOLLOW_UP_STEP], [PROMISE], [PERMUTA], [HANDOVER], perfil/faixa/bairro/urgência)
+      // As variáveis são preservadas em memória para persistência no CRM e log estruturado.
+      const earlyStatusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
+      if (earlyStatusMatch && earlyStatusMatch[1]) {
+        detectedStatus = earlyStatusMatch[1].trim()
+      }
+
+      const earlyPhaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
+      if (earlyPhaseMatch && earlyPhaseMatch[1]) {
+        detectedPhase = earlyPhaseMatch[1].trim()
+      }
+
+      const earlyFollowUpStepMatch = responseText.match(/\[FOLLOW_UP_STEP:\s*(.*?)\]/i)
+      if (earlyFollowUpStepMatch && earlyFollowUpStepMatch[1]) {
+        detectedFollowUpStep = earlyFollowUpStepMatch[1].trim()
+      }
+
+      const earlyPromiseCtxMatch = responseText.match(/\[PROMISE_CONTEXT:\s*(.*?)\]/i)
+      if (earlyPromiseCtxMatch && earlyPromiseCtxMatch[1]) {
+        detectedPromiseContext = earlyPromiseCtxMatch[1].trim()
+        detectedPromisePending = true
+      }
+
+      const earlyPromisePendingMatch = responseText.match(
+        /\[PROMISE_PENDING:\s*(true|false|sim|não|nao)\]/i,
+      )
+      if (earlyPromisePendingMatch && earlyPromisePendingMatch[1]) {
+        const pVal = earlyPromisePendingMatch[1].toLowerCase()
+        detectedPromisePending = pVal === 'true' || pVal === 'sim'
+        if (pVal === 'false' || pVal === 'não' || pVal === 'nao') {
+          detectedPromiseExplicitFalse = true
+        }
+      }
+
+      const earlyHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
+      if (earlyHandoverMatch && earlyHandoverMatch[1]) {
+        detectedHandover = earlyHandoverMatch[1].trim()
+      }
+
+      const earlyProfileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
+      if (earlyProfileMatch && earlyProfileMatch[1]) {
+        detectedProfile = earlyProfileMatch[1].trim()
+      }
+
+      const earlyPriceRangeMatch = responseText.match(/\[PRICE_RANGE:\s*(.*?)\]/i)
+      if (earlyPriceRangeMatch && earlyPriceRangeMatch[1]) {
+        detectedPriceRange = earlyPriceRangeMatch[1].trim()
+      }
+
+      const earlyNeighborhoodMatch = responseText.match(/\[NEIGHBORHOOD:\s*(.*?)\]/i)
+      if (earlyNeighborhoodMatch && earlyNeighborhoodMatch[1]) {
+        detectedNeighborhood = earlyNeighborhoodMatch[1].trim()
+      }
+
+      const earlyUrgencyMatch = responseText.match(/\[URGENCY:\s*(\d+)\]/i)
+      if (earlyUrgencyMatch && earlyUrgencyMatch[1]) {
+        const uNum = parseInt(earlyUrgencyMatch[1], 10)
+        if (!isNaN(uNum) && uNum >= 1 && uNum <= 5) {
+          detectedUrgency = uNum
+        }
+      }
+
+      if (responseText.includes('[PERMUTA]')) {
+        detectedPermuta = true
+      }
+
+      const earlyEmailMatch = responseText.match(/\[EMAIL:\s*([^\s\]]+@[^\s\]]+)\]/i)
+      if (earlyEmailMatch && earlyEmailMatch[1]) {
+        detectedEmail = earlyEmailMatch[1].trim().toLowerCase()
+      }
+
+      // Função centralizada para remoção completa das tags de máquina do texto
+      function stripAllMachineTags(rawText) {
+        if (!rawText) return ''
+        let out = String(rawText)
+        out = out.replace(/\[HANDOVER:[^\]]*\]/gi, '')
+        out = out.replace(/\[STATUS:\s*.*?\]/gi, '')
+        out = out.replace(/\[PHASE:\s*.*?\]/gi, '')
+        out = out.replace(/\[FOLLOW_UP_STEP:\s*.*?\]/gi, '')
+        out = out.replace(/\[PROMISE_CONTEXT:\s*.*?\]/gi, '')
+        out = out.replace(/\[PROMISE_PENDING:\s*.*?\]/gi, '')
+        out = out.replace(/\[PROFILE:\s*.*?\]/gi, '')
+        out = out.replace(/\[PRICE_RANGE:\s*.*?\]/gi, '')
+        out = out.replace(/\[NEIGHBORHOOD:\s*.*?\]/gi, '')
+        out = out.replace(/\[URGENCY:\s*.*?\]/gi, '')
+        out = out.replace(/\[EMAIL:\s*.*?\]/gi, '')
+        out = out.replace(/\[PERMUTA\]/gi, '')
+        out = out.replace(/\[AUDIO\]/gi, '')
+        out = out.replace(/\[VIDEO\]/gi, '')
+        return out.trim()
+      }
+
+      // Remove tags da cópia que vai para validação da Mãe IA / RAG
+      responseText = stripAllMachineTags(responseText)
+      responseText = sanitizeAiResponse(responseText)
+
+      // Optional Mother AI supervisor validation & Regeneration Flow
+      if (motherAiInstructions && responseText.length > 0) {
+        try {
+          const clientFirstName = (displayName || '').split(/\s+/)[0] || ''
+
+          // REGRA DE MÁQUINA 1: Mãe IA valida preço e dados estritamente contra o dossiê do imóvel em foco
+          let focusPropValidationInfo = ''
+          if (targetSpecificProp) {
+            focusPropValidationInfo = `\n[IMÓVEL EM FOCO]: Código ${targetSpecificProp.getString('code')}, Título "${targetSpecificProp.getString('title')}", Valor ${targetSpecificProp.getString('price_formatted')}, Localização: ${targetSpecificProp.getString('neighborhood')}, ${targetSpecificProp.getString('city')}. Link: ${targetSpecificProp.getString('url')}.\nAVALIE O PREÇO E DADOS CONTRA ESTE IMÓVEL EM FOCO — NUNCA CONTRA TABELAS DE OUTROS LANÇAMENTOS!\n`
+          } else if (matchedLaunch) {
+            focusPropValidationInfo = `\n[LANÇAMENTO EM FOCO]: ${matchedLaunch.getString('name')} (${matchedLaunch.getString('enterprise_name')}). AVALIE PREÇO E DADOS CONTRA O DOSSIÊ DESTE LANÇAMENTO ESPECÍFICO — NUNCA CONTRA OUTROS LANÇAMENTOS!\n`
+          }
+
+          const evalPrompt = `Você é a IA Mãe, supervisora da BRF Imóveis. Avalie a resposta da Bia sob a CONSTITUIÇÃO DA BIA v2.0:
 Critérios essenciais e regras obrigatórias de avaliação:
 ${focusPropValidationInfo}
 1. VALIDAÇÃO DE PREÇO E DADOS: Valide sempre e exclusivamente contra o dossiê e cadastro do imóvel/lançamento em foco acima! NUNCA compare com tabela de outro lançamento nem com Vistage global quando o foco for outro imóvel.
@@ -4476,3527 +4520,3565 @@ FORMATO ESTRITO DA RESPOSTA:
 REPROVADO
 Motivos: <descreva sucintamente em 1 a 2 linhas o que corrigir>`
 
-        const validationRes = $ai.chat({
-          model: 'fast',
-          messages: [
-            { role: 'system', content: evalPrompt },
-            { role: 'user', content: `Mensagem candidata da Bia:\n"""\n${responseText}\n"""` },
-          ],
-        })
+          const validationRes = $ai.chat({
+            model: 'fast',
+            messages: [
+              { role: 'system', content: evalPrompt },
+              { role: 'user', content: `Mensagem candidata da Bia:\n"""\n${responseText}\n"""` },
+            ],
+          })
 
-        if (
-          validationRes &&
-          validationRes.choices &&
-          validationRes.choices[0] &&
-          validationRes.choices[0].message
-        ) {
-          let motherFeedback = (validationRes.choices[0].message.content || '').trim()
-          console.log(
-            `[AI_REPLY] Mother AI check raw feedback: "${motherFeedback.substring(0, 100)}..."`,
-          )
-
-          let isApproved =
-            motherFeedback === 'APROVADO' ||
-            /^(\*\*|\*)?APROVADO(\*\*|\*)?$/i.test(motherFeedback) ||
-            motherFeedback.toLowerCase().startsWith('aprovado')
-
-          // GUARDA 0 — ATENDIMENTO A PEDIDO DE EBOOK/TABELA/MATERIAL COM DADOS VÁLIDOS:
           if (
-            !isApproved &&
-            isEbookOrTableRequested &&
-            (responseText.includes('brfimoveis.com.br') ||
-              (matchedLaunch &&
-                responseText.includes(
-                  matchedLaunch.getString('enterprise_name') ||
-                    matchedLaunch.getString('name') ||
-                    '',
-                )))
+            validationRes &&
+            validationRes.choices &&
+            validationRes.choices[0] &&
+            validationRes.choices[0].message
           ) {
+            let motherFeedback = (validationRes.choices[0].message.content || '').trim()
             console.log(
-              '[AI_REPLY] [MÃE IA] Anulando reprovação: resposta entrega dados/link oficial do imóvel/lançamento em foco solicitado pelo cliente.',
+              `[AI_REPLY] Mother AI check raw feedback: "${motherFeedback.substring(0, 100)}..."`,
             )
-            isApproved = true
-          }
 
-          // GUARDA 1 — CONFUSÃO CLIENTE / CORRETOR / USO DO NOME DO CLIENTE OU MAURO:
-          // Se o motivo da reprovação mencionar confusão entre cliente e corretor, citar o corretor Mauro ou uso legítimo do nome do cliente, ANULAR reprovação!
-          if (!isApproved) {
-            const lowerFb = motherFeedback.toLowerCase()
-            const hasClientBrokerConfusion =
-              lowerFb.includes('corretor') ||
-              lowerFb.includes('mauro') ||
-              lowerFb.includes('confund') ||
-              lowerFb.includes('nome do cliente') ||
-              lowerFb.includes('chamar pelo nome') ||
-              (clientFirstName && lowerFb.includes(clientFirstName.toLowerCase()))
+            let isApproved =
+              motherFeedback === 'APROVADO' ||
+              /^(\*\*|\*)?APROVADO(\*\*|\*)?$/i.test(motherFeedback) ||
+              motherFeedback.toLowerCase().startsWith('aprovado')
 
-            const isHardViolation =
-              lowerFb.includes('alucin') ||
-              lowerFb.includes('fora do catálogo') ||
-              lowerFb.includes('fora do catalogo') ||
-              lowerFb.includes('link inválido') ||
-              lowerFb.includes('link invalido')
-
-            if (hasClientBrokerConfusion && !isHardViolation) {
+            // GUARDA 0 — ATENDIMENTO A PEDIDO DE EBOOK/TABELA/MATERIAL COM DADOS VÁLIDOS:
+            if (
+              !isApproved &&
+              isEbookOrTableRequested &&
+              (responseText.includes('brfimoveis.com.br') ||
+                (matchedLaunch &&
+                  responseText.includes(
+                    matchedLaunch.getString('enterprise_name') ||
+                      matchedLaunch.getString('name') ||
+                      '',
+                  )))
+            ) {
               console.log(
-                `[AI_REPLY] IA Mãe reprovou por suposta confusao corretor/cliente ou uso de nome ("${motherFeedback.substring(0, 80)}..."). Anulando reprovacao (isApproved=true) e enviando.`,
+                '[AI_REPLY] [MÃE IA] Anulando reprovação: resposta entrega dados/link oficial do imóvel/lançamento em foco solicitado pelo cliente.',
               )
               isApproved = true
             }
-          }
 
-          // GUARDA 2 — ANTI-REPROVAÇÃO FALSA NO MEIO DO DIÁLOGO:
-          // Se a conversa já está em andamento (!isFirstAiMessageOrAfter24h) e o motivo da reprovação contiver falta de saudação ou apresentação/identificação "Bia, da BRF Imóveis",
-          // anular definitivamente a reprovação por falta de saudação/apresentação (só vale na primeira mensagem).
-          if (!isApproved && !isFirstAiMessageOrAfter24h) {
-            const lowerFb = motherFeedback.toLowerCase()
-            const hasGreetingOrIntroComplaint =
-              lowerFb.includes('saudação') ||
-              lowerFb.includes('saudacao') ||
-              lowerFb.includes('identificação') ||
-              lowerFb.includes('identificacao') ||
-              lowerFb.includes('apresentação') ||
-              lowerFb.includes('apresentacao') ||
-              lowerFb.includes('se apresentar') ||
-              lowerFb.includes('bia, da brf') ||
-              lowerFb.includes('brf imóveis') ||
-              lowerFb.includes('bom dia') ||
-              lowerFb.includes('boa tarde') ||
-              lowerFb.includes('boa noite')
+            // GUARDA 1 — CONFUSÃO CLIENTE / CORRETOR / USO DO NOME DO CLIENTE OU MAURO:
+            // Se o motivo da reprovação mencionar confusão entre cliente e corretor, citar o corretor Mauro ou uso legítimo do nome do cliente, ANULAR reprovação!
+            if (!isApproved) {
+              const lowerFb = motherFeedback.toLowerCase()
+              const hasClientBrokerConfusion =
+                lowerFb.includes('corretor') ||
+                lowerFb.includes('mauro') ||
+                lowerFb.includes('confund') ||
+                lowerFb.includes('nome do cliente') ||
+                lowerFb.includes('chamar pelo nome') ||
+                (clientFirstName && lowerFb.includes(clientFirstName.toLowerCase()))
 
-            const isHardViolation =
-              lowerFb.includes('alucin') ||
-              lowerFb.includes('fora do catálogo') ||
-              lowerFb.includes('fora do catalogo') ||
-              lowerFb.includes('link inválido') ||
-              lowerFb.includes('link invalido')
+              const isHardViolation =
+                lowerFb.includes('alucin') ||
+                lowerFb.includes('fora do catálogo') ||
+                lowerFb.includes('fora do catalogo') ||
+                lowerFb.includes('link inválido') ||
+                lowerFb.includes('link invalido')
 
-            if (hasGreetingOrIntroComplaint && !isHardViolation) {
-              console.log(
-                `[AI_REPLY] IA Mãe reprovou por saudação/identificação no meio do diálogo contínuo. Anulando reprovação definitivamente (isApproved=true) e mantendo resposta da Bia.`,
-              )
-              isApproved = true
-            }
-          }
-
-          if (!isApproved) {
-            console.warn(`[AI_REPLY] Mother AI REJECTED message. Reason: ${motherFeedback}`)
-            // NUNCA enviar o texto de avaliação/reprovação!
-            // REGENERAR a mensagem da Bia com base nos motivos apontados
-            let regenInstructions = motherFeedback
-              .replace(/^(\*\*|\*)?REPROVADO(\*\*|\*)?\s*/i, '')
-              .trim()
-            if (!regenInstructions) {
-              regenInstructions =
-                'Use a identificação "Bia, da BRF Imóveis" (se for se apresentar), mantenha continuidade sem saudações repetidas e faça apenas uma pergunta por vez sem inventar imóveis.'
+              if (hasClientBrokerConfusion && !isHardViolation) {
+                console.log(
+                  `[AI_REPLY] IA Mãe reprovou por suposta confusao corretor/cliente ou uso de nome ("${motherFeedback.substring(0, 80)}..."). Anulando reprovacao (isApproved=true) e enviando.`,
+                )
+                isApproved = true
+              }
             }
 
-            try {
-              const regenMessages = messages.slice(0)
-              regenMessages.push({
-                role: 'assistant',
-                content: responseText,
-              })
-              regenMessages.push({
-                role: 'user',
-                content: `[SUPERVISÃO INTERNA - CORREÇÃO OBRIGATÓRIA]: A mensagem anterior precisa de correção pelos seguintes motivos: ${regenInstructions}.
+            // GUARDA 2 — ANTI-REPROVAÇÃO FALSA NO MEIO DO DIÁLOGO:
+            // Se a conversa já está em andamento (!isFirstAiMessageOrAfter24h) e o motivo da reprovação contiver falta de saudação ou apresentação/identificação "Bia, da BRF Imóveis",
+            // anular definitivamente a reprovação por falta de saudação/apresentação (só vale na primeira mensagem).
+            if (!isApproved && !isFirstAiMessageOrAfter24h) {
+              const lowerFb = motherFeedback.toLowerCase()
+              const hasGreetingOrIntroComplaint =
+                lowerFb.includes('saudação') ||
+                lowerFb.includes('saudacao') ||
+                lowerFb.includes('identificação') ||
+                lowerFb.includes('identificacao') ||
+                lowerFb.includes('apresentação') ||
+                lowerFb.includes('apresentacao') ||
+                lowerFb.includes('se apresentar') ||
+                lowerFb.includes('bia, da brf') ||
+                lowerFb.includes('brf imóveis') ||
+                lowerFb.includes('bom dia') ||
+                lowerFb.includes('boa tarde') ||
+                lowerFb.includes('boa noite')
+
+              const isHardViolation =
+                lowerFb.includes('alucin') ||
+                lowerFb.includes('fora do catálogo') ||
+                lowerFb.includes('fora do catalogo') ||
+                lowerFb.includes('link inválido') ||
+                lowerFb.includes('link invalido')
+
+              if (hasGreetingOrIntroComplaint && !isHardViolation) {
+                console.log(
+                  `[AI_REPLY] IA Mãe reprovou por saudação/identificação no meio do diálogo contínuo. Anulando reprovação definitivamente (isApproved=true) e mantendo resposta da Bia.`,
+                )
+                isApproved = true
+              }
+            }
+
+            if (!isApproved) {
+              console.warn(`[AI_REPLY] Mother AI REJECTED message. Reason: ${motherFeedback}`)
+              // NUNCA enviar o texto de avaliação/reprovação!
+              // REGENERAR a mensagem da Bia com base nos motivos apontados
+              let regenInstructions = motherFeedback
+                .replace(/^(\*\*|\*)?REPROVADO(\*\*|\*)?\s*/i, '')
+                .trim()
+              if (!regenInstructions) {
+                regenInstructions =
+                  'Use a identificação "Bia, da BRF Imóveis" (se for se apresentar), mantenha continuidade sem saudações repetidas e faça apenas uma pergunta por vez sem inventar imóveis.'
+              }
+
+              try {
+                const regenMessages = messages.slice(0)
+                regenMessages.push({
+                  role: 'assistant',
+                  content: responseText,
+                })
+                regenMessages.push({
+                  role: 'user',
+                  content: `[SUPERVISÃO INTERNA - CORREÇÃO OBRIGATÓRIA]: A mensagem anterior precisa de correção pelos seguintes motivos: ${regenInstructions}.
 Gere agora a resposta FINAL definitiva da Bia para o WhatsApp do cliente corrigindo esses pontos.
 IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, consultivo, 2 a 4 linhas, apenas uma pergunta por vez). NUNCA inclua pareceres, notas, cabeçalhos ou comentários de avaliação.`,
-              })
+                })
 
-              const regenRes = $ai.chat({
-                model: 'fast',
-                messages: regenMessages,
-              })
-
-              if (
-                regenRes &&
-                regenRes.choices &&
-                regenRes.choices[0] &&
-                regenRes.choices[0].message
-              ) {
-                let regeneratedText = (regenRes.choices[0].message.content || '').trim()
-                regeneratedText = sanitizeAiResponse(regeneratedText)
+                const regenRes = $ai.chat({
+                  model: 'fast',
+                  messages: regenMessages,
+                })
 
                 if (
-                  regeneratedText &&
-                  !isInternalEvaluationText(regeneratedText) &&
-                  !isCannedValuesSentence(regeneratedText)
+                  regenRes &&
+                  regenRes.choices &&
+                  regenRes.choices[0] &&
+                  regenRes.choices[0].message
                 ) {
-                  console.log(
-                    `[AI_REPLY] Successfully regenerated corrected message (len=${regeneratedText.length})`,
-                  )
-                  responseText = regeneratedText
-                } else {
-                  console.warn(
-                    `[AI_REPLY] Regenerated text was invalid or contained evaluation markers.`,
-                  )
-                  if (detectedSpecificPropertyQuery) {
-                    if (matchedProps && matchedProps.length > 0) {
-                      const tp = matchedProps[0]
-                      responseText = `Sobre o imóvel ${tp.getString('code')} (${tp.getString('title')}): ele está disponível por ${tp.getString('price_formatted')}. Confira os detalhes: ${tp.getString('url')}. Como posso te ajudar com ele?`
-                    } else {
-                      responseText = `Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes dele junto ao Mauro e já te retorno com as informações completas.`
-                    }
+                  let regeneratedText = (regenRes.choices[0].message.content || '').trim()
+                  regeneratedText = sanitizeAiResponse(regeneratedText)
+
+                  if (
+                    regeneratedText &&
+                    !isInternalEvaluationText(regeneratedText) &&
+                    !isCannedValuesSentence(regeneratedText)
+                  ) {
+                    console.log(
+                      `[AI_REPLY] Successfully regenerated corrected message (len=${regeneratedText.length})`,
+                    )
+                    responseText = regeneratedText
                   } else {
-                    const catFb = generateCatalogFallbackMessage(matchedProps)
-                    if (catFb) responseText = catFb
+                    console.warn(
+                      `[AI_REPLY] Regenerated text was invalid or contained evaluation markers.`,
+                    )
+                    if (detectedSpecificPropertyQuery) {
+                      if (matchedProps && matchedProps.length > 0) {
+                        const tp = matchedProps[0]
+                        responseText = `Sobre o imóvel ${tp.getString('code')} (${tp.getString('title')}): ele está disponível por ${tp.getString('price_formatted')}. Confira os detalhes: ${tp.getString('url')}. Como posso te ajudar com ele?`
+                      } else {
+                        responseText = `Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes dele junto ao Mauro e já te retorno com as informações completas.`
+                      }
+                    } else {
+                      const catFb = generateCatalogFallbackMessage(matchedProps)
+                      if (catFb) responseText = catFb
+                    }
                   }
                 }
+              } catch (regenErr) {
+                console.error(
+                  `[AI_REPLY] Failed to regenerate message after rejection: ${String(regenErr)}`,
+                )
               }
-            } catch (regenErr) {
-              console.error(
-                `[AI_REPLY] Failed to regenerate message after rejection: ${String(regenErr)}`,
-              )
+            }
+          }
+        } catch (err) {
+          console.warn(`[AI_REPLY] Mother AI validation non-fatal error: ${String(err)}`)
+        }
+      }
+
+      // Strict validation of properties mentioned in AI response against properties collection
+      function validateAndSanitizePropertiesInOutput(text) {
+        if (!text) return { sanitizedText: '', removedBlocks: [], hadHallucinatedProperty: false }
+
+        let activeCatalogProps = []
+        try {
+          activeCatalogProps = $app.findRecordsByFilter(
+            'properties',
+            'is_active = true',
+            'price',
+            100,
+            0,
+          )
+        } catch (e) {
+          console.warn(`[AI_PROPERTY_VALIDATION] Failed to load catalog: ${String(e)}`)
+        }
+
+        const activeCodesMap = {}
+        const activeUrlsMap = {}
+        const activeUrlNumbersMap = {}
+        const activeCodesList = []
+
+        const addActiveCode = (c) => {
+          if (c && !activeCodesMap[c]) {
+            activeCodesMap[c] = true
+            activeCodesList.push(c)
+          }
+        }
+
+        for (let pIdx = 0; pIdx < activeCatalogProps.length; pIdx++) {
+          const p = activeCatalogProps[pIdx]
+          const c = (p.getString('code') || '').trim().toUpperCase()
+          if (c) {
+            addActiveCode(c)
+            addActiveCode(c.replace(/\s+/g, ''))
+            addActiveCode(c.replace(/[-_\s]+/g, ''))
+            // Extrai dígitos numéricos do código (ex: AP-344 -> 344)
+            const cNum = c.replace(/\D/g, '')
+            if (cNum) {
+              activeUrlNumbersMap[cNum] = true
+              addActiveCode(cNum)
+              // Permite variações de prefixos no mesmo número (ex: LM344, AP344)
+              addActiveCode(`LM${cNum}`)
+              addActiveCode(`AP${cNum}`)
+              addActiveCode(`LM-${cNum}`)
+              addActiveCode(`AP-${cNum}`)
+            }
+          }
+          const u = (p.getString('url') || '').trim().toLowerCase()
+          if (u) {
+            activeUrlsMap[u] = true
+            const numMatch = u.match(/brfimoveis\.com\.br\/(\d+)/i)
+            if (numMatch) {
+              activeUrlNumbersMap[numMatch[1]] = true
+              addActiveCode(numMatch[1])
+              addActiveCode(`AP${numMatch[1]}`)
+              addActiveCode(`LM${numMatch[1]}`)
+              addActiveCode(`AP-${numMatch[1]}`)
+              addActiveCode(`LM-${numMatch[1]}`)
             }
           }
         }
-      } catch (err) {
-        console.warn(`[AI_REPLY] Mother AI validation non-fatal error: ${String(err)}`)
-      }
-    }
+        // Split text into blocks / paragraphs (separated by double newlines or list items / tables)
+        // Check each block: does it cite a property code or a brfimoveis link?
+        const rawBlocks = text.split(/\n\s*\n/)
+        const validBlocks = []
+        const removedBlocks = []
+        let hadHallucinatedProperty = false
 
-    // Strict validation of properties mentioned in AI response against properties collection
-    function validateAndSanitizePropertiesInOutput(text) {
-      if (!text) return { sanitizedText: '', removedBlocks: [], hadHallucinatedProperty: false }
+        for (let bIdx = 0; bIdx < rawBlocks.length; bIdx++) {
+          const block = rawBlocks[bIdx]
+          const trimmedBlock = block.trim()
+          if (!trimmedBlock) continue
 
-      let activeCatalogProps = []
-      try {
-        activeCatalogProps = $app.findRecordsByFilter(
-          'properties',
-          'is_active = true',
-          'price',
-          100,
-          0,
-        )
-      } catch (e) {
-        console.warn(`[AI_PROPERTY_VALIDATION] Failed to load catalog: ${String(e)}`)
-      }
+          // Extract any brfimoveis.com.br or external URLs in this block
+          const urlMatches = trimmedBlock.match(/https?:\/\/[^\s\)\>\"\'\`]+/gi) || []
+          let hasInvalidUrl = false
+          if (urlMatches.length > 0) {
+            for (let uIdx = 0; uIdx < urlMatches.length; uIdx++) {
+              const rawUrl = urlMatches[uIdx]
+              const cleanUrl = rawUrl.toLowerCase().replace(/[\.,;:!\?]+$/, '')
 
-      const activeCodesMap = {}
-      const activeUrlsMap = {}
-      const activeUrlNumbersMap = {}
-      const activeCodesList = []
-
-      const addActiveCode = (c) => {
-        if (c && !activeCodesMap[c]) {
-          activeCodesMap[c] = true
-          activeCodesList.push(c)
-        }
-      }
-
-      for (let pIdx = 0; pIdx < activeCatalogProps.length; pIdx++) {
-        const p = activeCatalogProps[pIdx]
-        const c = (p.getString('code') || '').trim().toUpperCase()
-        if (c) {
-          addActiveCode(c)
-          addActiveCode(c.replace(/\s+/g, ''))
-          addActiveCode(c.replace(/[-_\s]+/g, ''))
-          // Extrai dígitos numéricos do código (ex: AP-344 -> 344)
-          const cNum = c.replace(/\D/g, '')
-          if (cNum) {
-            activeUrlNumbersMap[cNum] = true
-            addActiveCode(cNum)
-            // Permite variações de prefixos no mesmo número (ex: LM344, AP344)
-            addActiveCode(`LM${cNum}`)
-            addActiveCode(`AP${cNum}`)
-            addActiveCode(`LM-${cNum}`)
-            addActiveCode(`AP-${cNum}`)
-          }
-        }
-        const u = (p.getString('url') || '').trim().toLowerCase()
-        if (u) {
-          activeUrlsMap[u] = true
-          const numMatch = u.match(/brfimoveis\.com\.br\/(\d+)/i)
-          if (numMatch) {
-            activeUrlNumbersMap[numMatch[1]] = true
-            addActiveCode(numMatch[1])
-            addActiveCode(`AP${numMatch[1]}`)
-            addActiveCode(`LM${numMatch[1]}`)
-            addActiveCode(`AP-${numMatch[1]}`)
-            addActiveCode(`LM-${numMatch[1]}`)
-          }
-        }
-      }
-      // Split text into blocks / paragraphs (separated by double newlines or list items / tables)
-      // Check each block: does it cite a property code or a brfimoveis link?
-      const rawBlocks = text.split(/\n\s*\n/)
-      const validBlocks = []
-      const removedBlocks = []
-      let hadHallucinatedProperty = false
-
-      for (let bIdx = 0; bIdx < rawBlocks.length; bIdx++) {
-        const block = rawBlocks[bIdx]
-        const trimmedBlock = block.trim()
-        if (!trimmedBlock) continue
-
-        // Extract any brfimoveis.com.br or external URLs in this block
-        const urlMatches = trimmedBlock.match(/https?:\/\/[^\s\)\>\"\'\`]+/gi) || []
-        let hasInvalidUrl = false
-        if (urlMatches.length > 0) {
-          for (let uIdx = 0; uIdx < urlMatches.length; uIdx++) {
-            const rawUrl = urlMatches[uIdx]
-            const cleanUrl = rawUrl.toLowerCase().replace(/[\.,;:!\?]+$/, '')
-
-            // ALLOWLIST: Legitimate non-property links (YouTube channel BRF, WhatsApp, social networks, PocketBase file downloads)
-            const isAllowlistedUrl =
-              cleanUrl.includes('/api/files/') ||
-              cleanUrl.includes('youtube.com/channel/uca2jsoitvtf8vkgwg65yh_g') ||
-              cleanUrl.includes('youtube.com/@maurofenglerbrf') ||
-              cleanUrl.includes('youtube.com/@brfimoveis') ||
-              cleanUrl.includes('youtube.com/@brfimoveiseirelime') ||
-              cleanUrl.includes('youtube.com/channel/') ||
-              cleanUrl.includes('youtube.com/c/') ||
-              cleanUrl.includes('youtube.com/@') ||
-              cleanUrl.includes('youtube.com/watch') ||
-              cleanUrl.includes('youtube.com/embed') ||
-              cleanUrl.includes('youtu.be/') ||
-              cleanUrl.includes('wa.me/') ||
-              cleanUrl.includes('api.whatsapp.com/') ||
-              cleanUrl.includes('instagram.com/mauro.brfimoveis') ||
-              cleanUrl.includes('instagram.com/brfimoveis')
-
-            if (isAllowlistedUrl) {
-              continue
-            }
-
-            // Only check domain brfimoveis.com.br for catalog property validation
-            if (cleanUrl.includes('brfimoveis.com.br')) {
-              // Check if it matches an active property url or valid static page
-              const isCatalogStaticPage =
+              // ALLOWLIST: Legitimate non-property links (YouTube channel BRF, WhatsApp, social networks, PocketBase file downloads)
+              const isAllowlistedUrl =
                 cleanUrl.includes('/api/files/') ||
-                cleanUrl.includes('/vistage') ||
-                cleanUrl.includes('/imoveis') ||
-                cleanUrl.includes('/venda') ||
-                cleanUrl.endsWith('brfimoveis.com.br') ||
-                cleanUrl.endsWith('brfimoveis.com.br/')
-              const numMatch = cleanUrl.match(/brfimoveis\.com\.br\/(\d+)/i)
-              if (numMatch) {
-                const urlNum = numMatch[1]
-                if (!activeUrlNumbersMap[urlNum]) {
+                cleanUrl.includes('youtube.com/channel/uca2jsoitvtf8vkgwg65yh_g') ||
+                cleanUrl.includes('youtube.com/@maurofenglerbrf') ||
+                cleanUrl.includes('youtube.com/@brfimoveis') ||
+                cleanUrl.includes('youtube.com/@brfimoveiseirelime') ||
+                cleanUrl.includes('youtube.com/channel/') ||
+                cleanUrl.includes('youtube.com/c/') ||
+                cleanUrl.includes('youtube.com/@') ||
+                cleanUrl.includes('youtube.com/watch') ||
+                cleanUrl.includes('youtube.com/embed') ||
+                cleanUrl.includes('youtu.be/') ||
+                cleanUrl.includes('wa.me/') ||
+                cleanUrl.includes('api.whatsapp.com/') ||
+                cleanUrl.includes('instagram.com/mauro.brfimoveis') ||
+                cleanUrl.includes('instagram.com/brfimoveis')
+
+              if (isAllowlistedUrl) {
+                continue
+              }
+
+              // Only check domain brfimoveis.com.br for catalog property validation
+              if (cleanUrl.includes('brfimoveis.com.br')) {
+                // Check if it matches an active property url or valid static page
+                const isCatalogStaticPage =
+                  cleanUrl.includes('/api/files/') ||
+                  cleanUrl.includes('/vistage') ||
+                  cleanUrl.includes('/imoveis') ||
+                  cleanUrl.includes('/venda') ||
+                  cleanUrl.endsWith('brfimoveis.com.br') ||
+                  cleanUrl.endsWith('brfimoveis.com.br/')
+                const numMatch = cleanUrl.match(/brfimoveis\.com\.br\/(\d+)/i)
+                if (numMatch) {
+                  const urlNum = numMatch[1]
+                  if (!activeUrlNumbersMap[urlNum]) {
+                    hasInvalidUrl = true
+                    console.warn(
+                      `[AI_PROPERTY_VALIDATION] Invalid/Hallucinated property URL detected: ${rawUrl}`,
+                    )
+                    break
+                  }
+                } else if (!isCatalogStaticPage && !activeUrlsMap[cleanUrl]) {
                   hasInvalidUrl = true
                   console.warn(
-                    `[AI_PROPERTY_VALIDATION] Invalid/Hallucinated property URL detected: ${rawUrl}`,
+                    `[AI_PROPERTY_VALIDATION] Non-existent specific URL detected: ${rawUrl}`,
                   )
                   break
                 }
-              } else if (!isCatalogStaticPage && !activeUrlsMap[cleanUrl]) {
+              } else {
+                // Other untrusted unknown domains - flag as invalid url
                 hasInvalidUrl = true
                 console.warn(
-                  `[AI_PROPERTY_VALIDATION] Non-existent specific URL detected: ${rawUrl}`,
+                  `[AI_PROPERTY_VALIDATION] Unrecognized external URL detected: ${rawUrl}`,
                 )
                 break
               }
-            } else {
-              // Other untrusted unknown domains - flag as invalid url
-              hasInvalidUrl = true
-              console.warn(`[AI_PROPERTY_VALIDATION] Unrecognized external URL detected: ${rawUrl}`)
-              break
             }
           }
-        }
 
-        // Extract property code patterns: e.g. AB 101, AP 343, AP343, CS331, LM326, TR338, ARU341, BRF-101
-        // Look for typical property identifiers like "**AB 101**", "Código: AP-320", "📍 AP343", "*AP 343*"
-        let hasInvalidCode = false
-        const realPrefixes = ['LM', 'AP', 'CS', 'TR', 'ARU', 'BRF', 'COB']
-        const blacklistWordsMap = {
-          TEM: true,
-          COM: true,
-          SÃO: true,
-          SAO: true,
-          ATE: true,
-          ATÉ: true,
-          POR: true,
-          VALOR: true,
-          LOTE: true,
-          APTO: true,
-          SALA: true,
-          CASA: true,
-          FAIXA: true,
-          TOTAL: true,
-          DE: true,
-          EM: true,
-          SEM: true,
-          SOB: true,
-          PRA: true,
-          PARA: true,
-          MAS: true,
-          MAIS: true,
-          OU: true,
-          E: true,
-        }
-
-        const codeRegex =
-          /(?:(#|código|cod|cód\.?|ref\.?)\s*[*_`]*([A-Z]{2,4}\s*[-_]?\s*\d{2,4})|(?:\b)([A-Z]{2,4}\s*[-_]?\s*\d{2,4}))(?:\s*([a-z²\d]+))?[*_`]*/gi
-        let matchResult
-        while ((matchResult = codeRegex.exec(trimmedBlock)) !== null) {
-          const prefixTrigger = matchResult[1] || '' // '#', 'código', 'ref', etc.
-          const rawCandidate = matchResult[2] || matchResult[3] || ''
-          const followingWord = (matchResult[4] || '').toLowerCase()
-
-          if (!rawCandidate) continue
-
-          const prefixLetters = rawCandidate.replace(/[^A-Za-z]/g, '').toUpperCase()
-          const digitsOnly = rawCandidate.replace(/\D/g, '')
-
-          // (b) Blacklist de palavras comuns pt-BR (ex: "TEM 82", "COM 3", "ATE 500")
-          if (blacklistWordsMap[prefixLetters]) {
-            continue
+          // Extract property code patterns: e.g. AB 101, AP 343, AP343, CS331, LM326, TR338, ARU341, BRF-101
+          // Look for typical property identifiers like "**AB 101**", "Código: AP-320", "📍 AP343", "*AP 343*"
+          let hasInvalidCode = false
+          const realPrefixes = ['LM', 'AP', 'CS', 'TR', 'ARU', 'BRF', 'COB']
+          const blacklistWordsMap = {
+            TEM: true,
+            COM: true,
+            SÃO: true,
+            SAO: true,
+            ATE: true,
+            ATÉ: true,
+            POR: true,
+            VALOR: true,
+            LOTE: true,
+            APTO: true,
+            SALA: true,
+            CASA: true,
+            FAIXA: true,
+            TOTAL: true,
+            DE: true,
+            EM: true,
+            SEM: true,
+            SOB: true,
+            PRA: true,
+            PARA: true,
+            MAS: true,
+            MAIS: true,
+            OU: true,
+            E: true,
           }
 
-          // (c) Descartar matches seguidos de unidade de medida (ex: "82 m²", "82 m2", "metros", "dorms", "suítes")
-          if (
-            followingWord === 'm²' ||
-            followingWord === 'm2' ||
-            followingWord === 'metros' ||
-            followingWord === 'metro' ||
-            followingWord === 'dorm' ||
-            followingWord === 'dorms' ||
-            followingWord === 'dormitórios' ||
-            followingWord === 'dormitorios' ||
-            followingWord === 'quartos' ||
-            followingWord === 'quarto' ||
-            followingWord === 'suíte' ||
-            followingWord === 'suite' ||
-            followingWord === 'suítes' ||
-            followingWord === 'suites' ||
-            followingWord === 'vagas' ||
-            followingWord === 'vaga'
-          ) {
-            continue
-          }
+          const codeRegex =
+            /(?:(#|código|cod|cód\.?|ref\.?)\s*[*_`]*([A-Z]{2,4}\s*[-_]?\s*\d{2,4})|(?:\b)([A-Z]{2,4}\s*[-_]?\s*\d{2,4}))(?:\s*([a-z²\d]+))?[*_`]*/gi
+          let matchResult
+          while ((matchResult = codeRegex.exec(trimmedBlock)) !== null) {
+            const prefixTrigger = matchResult[1] || '' // '#', 'código', 'ref', etc.
+            const rawCandidate = matchResult[2] || matchResult[3] || ''
+            const followingWord = (matchResult[4] || '').toLowerCase()
 
-          // (a) Match sem prefixo trigger ('#', 'código', 'ref') só conta se o prefixo é um prefixo REAL do catálogo
-          const hasExplicitTrigger = !!prefixTrigger
-          const isRealPrefix = realPrefixes.indexOf(prefixLetters) !== -1
-          if (!hasExplicitTrigger && !isRealPrefix) {
-            // Palavra genérica não precedida de código/# e sem prefixo de catálogo conhecido -> não é código de imóvel
-            continue
-          }
+            if (!rawCandidate) continue
 
-          const extracted = rawCandidate.toUpperCase().trim()
-          const normExtracted = extracted.replace(/\s+/g, '').replace(/[-_]/g, '')
+            const prefixLetters = rawCandidate.replace(/[^A-Za-z]/g, '').toUpperCase()
+            const digitsOnly = rawCandidate.replace(/\D/g, '')
 
-          // Exclude generic numbers or dates
-          if (
-            normExtracted.length >= 3 &&
-            !normExtracted.startsWith('R$') &&
-            !normExtracted.startsWith('BR101')
-          ) {
-            // Check if this code belongs to active properties
-            let existsInCatalog = false
-            for (let acIdx = 0; acIdx < activeCodesList.length; acIdx++) {
-              const ac = activeCodesList[acIdx]
-              if (
-                ac === extracted ||
-                ac === normExtracted ||
-                normExtracted.includes(ac) ||
-                ac.includes(normExtracted)
-              ) {
-                existsInCatalog = true
+            // (b) Blacklist de palavras comuns pt-BR (ex: "TEM 82", "COM 3", "ATE 500")
+            if (blacklistWordsMap[prefixLetters]) {
+              continue
+            }
+
+            // (c) Descartar matches seguidos de unidade de medida (ex: "82 m²", "82 m2", "metros", "dorms", "suítes")
+            if (
+              followingWord === 'm²' ||
+              followingWord === 'm2' ||
+              followingWord === 'metros' ||
+              followingWord === 'metro' ||
+              followingWord === 'dorm' ||
+              followingWord === 'dorms' ||
+              followingWord === 'dormitórios' ||
+              followingWord === 'dormitorios' ||
+              followingWord === 'quartos' ||
+              followingWord === 'quarto' ||
+              followingWord === 'suíte' ||
+              followingWord === 'suite' ||
+              followingWord === 'suítes' ||
+              followingWord === 'suites' ||
+              followingWord === 'vagas' ||
+              followingWord === 'vaga'
+            ) {
+              continue
+            }
+
+            // (a) Match sem prefixo trigger ('#', 'código', 'ref') só conta se o prefixo é um prefixo REAL do catálogo
+            const hasExplicitTrigger = !!prefixTrigger
+            const isRealPrefix = realPrefixes.indexOf(prefixLetters) !== -1
+            if (!hasExplicitTrigger && !isRealPrefix) {
+              // Palavra genérica não precedida de código/# e sem prefixo de catálogo conhecido -> não é código de imóvel
+              continue
+            }
+
+            const extracted = rawCandidate.toUpperCase().trim()
+            const normExtracted = extracted.replace(/\s+/g, '').replace(/[-_]/g, '')
+
+            // Exclude generic numbers or dates
+            if (
+              normExtracted.length >= 3 &&
+              !normExtracted.startsWith('R$') &&
+              !normExtracted.startsWith('BR101')
+            ) {
+              // Check if this code belongs to active properties
+              let existsInCatalog = false
+              for (let acIdx = 0; acIdx < activeCodesList.length; acIdx++) {
+                const ac = activeCodesList[acIdx]
+                if (
+                  ac === extracted ||
+                  ac === normExtracted ||
+                  normExtracted.includes(ac) ||
+                  ac.includes(normExtracted)
+                ) {
+                  existsInCatalog = true
+                  break
+                }
+              }
+              if (!existsInCatalog) {
+                // Extra check: maybe it's just mentioning BR-101 highway
+                if (/BR[-\s]?101/i.test(extracted)) {
+                  continue
+                }
+                hasInvalidCode = true
+                console.warn(
+                  `[AI_PROPERTY_VALIDATION] Invalid/Hallucinated property code detected: ${extracted} in block: "${trimmedBlock.substring(0, 60)}"`,
+                )
                 break
               }
             }
-            if (!existsInCatalog) {
-              // Extra check: maybe it's just mentioning BR-101 highway
-              if (/BR[-\s]?101/i.test(extracted)) {
-                continue
-              }
-              hasInvalidCode = true
-              console.warn(
-                `[AI_PROPERTY_VALIDATION] Invalid/Hallucinated property code detected: ${extracted} in block: "${trimmedBlock.substring(0, 60)}"`,
-              )
-              break
-            }
           }
-        }
 
-        if (hasInvalidUrl || hasInvalidCode) {
-          hadHallucinatedProperty = true
-          removedBlocks.push(trimmedBlock)
-          console.log(
-            `[AI_PROPERTY_VALIDATION] Removing hallucinated property block: "${trimmedBlock.substring(0, 100)}..."`,
-          )
-        } else {
-          validBlocks.push(trimmedBlock)
-        }
-      }
-
-      const sanitizedText = validBlocks.join('\n\n').trim()
-      return { sanitizedText, removedBlocks, hadHallucinatedProperty }
-    }
-
-    responseText = sanitizeAiResponse(responseText)
-
-    // Run hard property validation on the generated response
-    const validationResult = validateAndSanitizePropertiesInOutput(responseText)
-    if (validationResult.hadHallucinatedProperty) {
-      console.warn(
-        `[AI_PROPERTY_VALIDATION] Hallucinated content detected! Removed ${validationResult.removedBlocks.length} block(s).`,
-      )
-      responseText = validationResult.sanitizedText
-
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const valLog = new Record(logsCol)
-        valLog.set('user_id', userId || '')
-        valLog.set('type', 'ai_property_validation')
-        valLog.set(
-          'message',
-          `IA alucinou imóvel/link fora do catálogo. ${validationResult.removedBlocks.length} bloco(s) removido(s) antes do envio.`,
-        )
-        valLog.set(
-          'details',
-          JSON.stringify({
-            removed_blocks: validationResult.removedBlocks,
-            customer_id: customerId,
-          }),
-        )
-        valLog.set(
-          'payload',
-          JSON.stringify({
-            removed_count: validationResult.removedBlocks.length,
-            preview_removed: validationResult.removedBlocks.map((b) => b.substring(0, 120)),
-          }),
-        )
-        $app.saveNoValidate(valLog)
-      } catch (logErr) {
-        console.warn(`[AI_PROPERTY_VALIDATION] Log write failed: ${String(logErr)}`)
-      }
-    }
-
-    // Secondary check: caso o modelo tenha sido regenerado pela Mãe IA ou fallback e inserido tags novas
-    const lateStatusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
-    if (lateStatusMatch && lateStatusMatch[1]) {
-      detectedStatus = lateStatusMatch[1].trim()
-    }
-
-    const latePhaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
-    if (latePhaseMatch && latePhaseMatch[1]) {
-      detectedPhase = latePhaseMatch[1].trim()
-    }
-
-    const lateFollowUpStepMatch = responseText.match(/\[FOLLOW_UP_STEP:\s*(.*?)\]/i)
-    if (lateFollowUpStepMatch && lateFollowUpStepMatch[1]) {
-      detectedFollowUpStep = lateFollowUpStepMatch[1].trim()
-    }
-
-    const latePromiseCtxMatch = responseText.match(/\[PROMISE_CONTEXT:\s*(.*?)\]/i)
-    if (latePromiseCtxMatch && latePromiseCtxMatch[1]) {
-      detectedPromiseContext = latePromiseCtxMatch[1].trim()
-      detectedPromisePending = true
-    }
-
-    const latePromisePendingMatch = responseText.match(
-      /\[PROMISE_PENDING:\s*(true|false|sim|não|nao)\]/i,
-    )
-    if (latePromisePendingMatch && latePromisePendingMatch[1]) {
-      const pVal = latePromisePendingMatch[1].toLowerCase()
-      detectedPromisePending = pVal === 'true' || pVal === 'sim'
-      if (pVal === 'false' || pVal === 'não' || pVal === 'nao') {
-        detectedPromiseExplicitFalse = true
-      }
-    }
-
-    const lateHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
-    if (lateHandoverMatch && lateHandoverMatch[1]) {
-      detectedHandover = lateHandoverMatch[1].trim()
-    }
-
-    const lateProfileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
-    if (lateProfileMatch && lateProfileMatch[1]) {
-      detectedProfile = lateProfileMatch[1].trim()
-    }
-
-    const latePriceRangeMatch = responseText.match(/\[PRICE_RANGE:\s*(.*?)\]/i)
-    if (latePriceRangeMatch && latePriceRangeMatch[1]) {
-      detectedPriceRange = latePriceRangeMatch[1].trim()
-    }
-
-    const lateNeighborhoodMatch = responseText.match(/\[NEIGHBORHOOD:\s*(.*?)\]/i)
-    if (lateNeighborhoodMatch && lateNeighborhoodMatch[1]) {
-      detectedNeighborhood = lateNeighborhoodMatch[1].trim()
-    }
-
-    const lateUrgencyMatch = responseText.match(/\[URGENCY:\s*(\d+)\]/i)
-    if (lateUrgencyMatch && lateUrgencyMatch[1]) {
-      const uNum = parseInt(lateUrgencyMatch[1], 10)
-      if (!isNaN(uNum) && uNum >= 1 && uNum <= 5) {
-        detectedUrgency = uNum
-      }
-    }
-
-    if (responseText.includes('[PERMUTA]')) {
-      detectedPermuta = true
-    }
-
-    const lateEmailMatch = responseText.match(/\[EMAIL:\s*([^\s\]]+@[^\s\]]+)\]/i)
-    if (lateEmailMatch && lateEmailMatch[1]) {
-      detectedEmail = lateEmailMatch[1].trim().toLowerCase()
-    }
-
-    // Higieniza completamente qualquer resquício de tags
-    if (typeof stripAllMachineTags === 'function') {
-      responseText = stripAllMachineTags(responseText)
-    }
-
-    responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
-    responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
-    responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
-
-    if (displayName) {
-      responseText = responseText.replace(/\[Nome\]/gi, displayName)
-      responseText = responseText.replace(/\{Nome\}/gi, displayName)
-    } else {
-      responseText = responseText.replace(/,\s*\[Nome\]/gi, '')
-      responseText = responseText.replace(/\[Nome\]/gi, '')
-      responseText = responseText.replace(/,\s*\{Nome\}/gi, '')
-      responseText = responseText.replace(/\{Nome\}/gi, '')
-    }
-
-    responseText = sanitizeAiResponse(responseText)
-
-    // Check recent AI messages sent to this customer
-    let recentAiMessages = []
-    try {
-      const recentAiRecords = $app.findRecordsByFilter(
-        'conversations',
-        `customer_id = '${customerId}' && sender = 'ai'`,
-        '-created',
-        5,
-        0,
-      )
-      recentAiMessages = recentAiRecords.map((r) => (r.getString('content') || '').trim())
-    } catch (_) {}
-
-    let isTooSimilar = false
-    const normResp = responseText
-      .trim()
-      .toLowerCase()
-      .replace(/[^\w\s]/gi, '')
-
-    if (recentAiMessages.length > 0) {
-      const lastAiMsg = recentAiMessages[0]
-      const normLast = lastAiMsg.toLowerCase().replace(/[^\w\s]/gi, '')
-
-      // Check if identical or canned
-      if (
-        normResp === normLast ||
-        (normResp.length > 30 && normLast.includes(normResp)) ||
-        isCannedValuesSentence(responseText)
-      ) {
-        isTooSimilar = true
-      }
-    }
-
-    const cannedDetected = isCannedValuesSentence(responseText)
-
-    // Fallback function to generate consultative real estate presentation from properties collection
-    function generateCatalogFallbackMessage(propsCandidateList) {
-      let activeProps = []
-
-      // 1. Check passed candidates or outer matchedProps safely
-      const candidates =
-        Array.isArray(propsCandidateList) && propsCandidateList.length > 0
-          ? propsCandidateList
-          : typeof matchedProps !== 'undefined' &&
-              Array.isArray(matchedProps) &&
-              matchedProps.length > 0
-            ? matchedProps
-            : []
-
-      if (candidates.length > 0) {
-        activeProps = candidates.filter((p) => {
-          try {
-            return (
-              p &&
-              (p.get('is_active') === true ||
-                (typeof p.getBool === 'function' ? p.getBool('is_active') : p.get('is_active')) ===
-                  true)
+          if (hasInvalidUrl || hasInvalidCode) {
+            hadHallucinatedProperty = true
+            removedBlocks.push(trimmedBlock)
+            console.log(
+              `[AI_PROPERTY_VALIDATION] Removing hallucinated property block: "${trimmedBlock.substring(0, 100)}..."`,
             )
-          } catch (_) {
-            return true
-          }
-        })
-      }
-
-      // 2. If candidates list is empty or had no active items, query the catalog directly
-      if (activeProps.length === 0) {
-        try {
-          let filterParts = ['is_active = true']
-          if (typeof extractedMaxPrice === 'number' && extractedMaxPrice > 0) {
-            filterParts.push(`price <= ${extractedMaxPrice}`)
-          }
-          if (typeof extractedBedrooms === 'number' && extractedBedrooms > 0) {
-            filterParts.push(`bedrooms >= ${extractedBedrooms}`)
-          }
-          if (typeof matchedLocFilter === 'string' && matchedLocFilter) {
-            filterParts.push(`(${matchedLocFilter})`)
-          }
-
-          if (filterParts.length > 1) {
-            activeProps = $app.findRecordsByFilter(
-              'properties',
-              filterParts.join(' && '),
-              'price',
-              3,
-              0,
-            )
-          }
-
-          if (
-            activeProps.length === 0 &&
-            typeof matchedLocFilter === 'string' &&
-            matchedLocFilter &&
-            (extractedMaxPrice > 0 || extractedBedrooms > 0)
-          ) {
-            let relaxed = ['is_active = true']
-            if (extractedMaxPrice > 0) relaxed.push(`price <= ${extractedMaxPrice}`)
-            if (extractedBedrooms > 0) relaxed.push(`bedrooms >= ${extractedBedrooms}`)
-            activeProps = $app.findRecordsByFilter(
-              'properties',
-              relaxed.join(' && '),
-              'price',
-              3,
-              0,
-            )
-          }
-
-          if (activeProps.length === 0) {
-            activeProps = $app.findRecordsByFilter('properties', 'is_active = true', 'price', 3, 0)
-          }
-        } catch (dbErr) {
-          console.warn(`[AI_REPLY] Error querying properties for fallback: ${String(dbErr)}`)
-        }
-      }
-
-      if (activeProps && activeProps.length > 0) {
-        const topProp = activeProps[0]
-        const pTitle = (topProp.getString('title') || '').trim()
-        const pCity = (topProp.getString('city') || '').trim()
-        const pNeigh = (topProp.getString('neighborhood') || '').trim()
-        const pBeds = topProp.getInt('bedrooms')
-        const pSuites = topProp.getInt('suites')
-        const loc = [pNeigh, pCity].filter(Boolean).join(', ')
-
-        let greeting = buildTemporalGreeting(displayName, brHour) + ' '
-        let consultMsg = `${greeting}Temos uma excelente oportunidade que se encaixa muito bem no que você procura: o *${pTitle}*`
-        if (loc) consultMsg += ` em ${loc}`
-        if (pBeds > 0) {
-          consultMsg += `, com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}${pSuites > 0 ? ` (${pSuites} suíte${pSuites > 1 ? 's' : ''})` : ''}`
-        }
-        // Se a forma de pagamento já for conhecida (ex: à vista), não perguntar de novo!
-        if (collectedLeadData && collectedLeadData.payment) {
-          consultMsg += `.\n\nQuer que eu te envie as fotos e a tabela de valores dessa opção?`
-        } else {
-          consultMsg += `.\n\nVocê pretende adquirir à vista ou vai utilizar financiamento bancário? Quer que eu te mande as fotos e a tabela de valores?`
-        }
-        return consultMsg
-      }
-
-      const greeting = buildTemporalGreeting(displayName, brHour) + ' '
-      if (collectedLeadData && collectedLeadData.payment) {
-        return `${greeting}Temos excelentes opções na região que atendem ao seu perfil. Gostaria de receber fotos e detalhes das unidades disponíveis?`
-      }
-      return `${greeting}Temos excelentes opções na região que atendem ao seu perfil. Você pretende fazer a compra à vista ou vai financiar? Posso te apresentar as melhores unidades.`
-    }
-
-    // Check if after sanitation the response became empty or had hallucinated properties
-    const needsCatalogFallback =
-      !responseText.trim() || (validationResult.hadHallucinatedProperty && responseText.length < 30)
-
-    // REGRA DE NEGÓCIO DE FOCO ABSOLUTO NO IMÓVEL DO LEAD & DESENCAIXE / BUSCA LIVRE (CORREÇÕES A, B, C, D):
-    if (cannedDetected || isTooSimilar || needsCatalogFallback) {
-      if (isMismatchDetected) {
-        console.log(
-          `[AI_REPLY] Desencaixe implícito ativo no fallback: pedindo confirmação sem empurrar imóvel.`,
-        )
-        responseText = `Peço desculpas pela confusão! Você poderia me confirmar o código (ex: #ARU341, #AP343) ou o link do imóvel que você gostaria de ver? Assim localizo exatamente a opção correta para você.`
-      } else if (hasFreeSearchIntent && matchedProps.length === 0) {
-        console.log(
-          `[AI_REPLY] Busca livre sem match no fallback: informando transparência sem empurrar lançamentos.`,
-        )
-        responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique na nossa carteira de parceiros?`
-      } else if (detectedSpecificPropertyQuery) {
-        console.log(
-          `[AI_REPLY] Specific property query detected for customer ${customerId}. Enforcing strict focus on requested property. Suppressing generic launch fallback.`,
-        )
-        const greeting = buildTemporalGreeting(displayName, brHour) + ' '
-        if (matchedProps && matchedProps.length > 0) {
-          const targetProp = matchedProps[0]
-          const pTitle = (targetProp.getString('title') || '').trim()
-          const pCode = (targetProp.getString('code') || '').trim()
-          const pPrice = (targetProp.getString('price_formatted') || '').trim()
-          const pNeigh = (targetProp.getString('neighborhood') || '').trim()
-          const pCity = (targetProp.getString('city') || '').trim()
-          const pBeds = targetProp.getInt('bedrooms')
-          const pUrl = (targetProp.getString('url') || '').trim()
-
-          let msg = `${greeting}Com certeza! Sobre o imóvel ${pCode ? `*${pCode}*` : ''}${pTitle ? ` (${pTitle})` : ''}`
-          if (pNeigh || pCity) {
-            msg += ` localizado em ${[pNeigh, pCity].filter(Boolean).join(', ')}`
-          }
-          if (pPrice) {
-            msg += `, ele está disponível pelo valor de *${pPrice}*`
-          }
-          if (pBeds > 0) {
-            msg += ` e conta com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}`
-          }
-          msg += `.\n\n`
-          if (pUrl) {
-            msg += `Você pode conferir as fotos e a ficha completa aqui: ${pUrl}\n\n`
-          }
-          msg += `Quer que eu tire alguma dúvida específica sobre ele ou prefere agendar uma visita?`
-          responseText = msg
-        } else {
-          // Imóvel citado NÃO foi encontrado na base
-          responseText = `${greeting}Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes e a disponibilidade atualizada dele junto ao Mauro e já te retorno com as informações completas. Um instante, por favor!`
-        }
-      } else {
-        console.log(
-          `[AI_REPLY] Overriding with real catalog fallback for customer ${customerId} (canned=${cannedDetected}, similar=${isTooSimilar}, needsFallback=${needsCatalogFallback}).`,
-        )
-        try {
-          const catalogMsg = generateCatalogFallbackMessage(matchedProps)
-          if (catalogMsg && catalogMsg.trim()) {
-            responseText = catalogMsg
-          }
-        } catch (fbErr) {
-          console.error(`[AI_REPLY] generateCatalogFallbackMessage error: ${String(fbErr)}`)
-          try {
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const fbErrLog = new Record(logsCol)
-            fbErrLog.set('user_id', userId || '')
-            fbErrLog.set('type', 'whatsapp_ai_reply_error')
-            fbErrLog.set(
-              'message',
-              `Erro no generateCatalogFallbackMessage: ${fbErr.message || String(fbErr)}`,
-            )
-            fbErrLog.set('details', String(fbErr.stack || fbErr))
-            fbErrLog.set(
-              'payload',
-              JSON.stringify({ customer_id: customerId, error: String(fbErr) }),
-            )
-            $app.saveNoValidate(fbErrLog)
-          } catch (_) {}
-        }
-      }
-    }
-
-    // FINAL DEFENSIVE BARRIER — PREVENT INTERNAL EVALUATION / SUPERVISOR LEAKS
-    // Checagem rigorosa antes de salvar e enviar: se contiver marcadores de avaliação interna,
-    // descarta, gera log em system_logs (ai_self_check_blocked) e substitui por mensagem segura da Bia.
-    if (isInternalEvaluationText(responseText)) {
-      console.error(
-        `[AI_REPLY] [DEFENSIVE BARRIER] Blocked internal evaluation text from leaking to customer ${customerId}! Preview: "${responseText.substring(0, 140)}"`,
-      )
-
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const blockLog = new Record(logsCol)
-        blockLog.set('user_id', userId || '')
-        blockLog.set('type', 'ai_self_check_blocked')
-        blockLog.set(
-          'message',
-          'Barreira defensiva abortou vazamento de avaliação de conformidade interna da IA para o cliente',
-        )
-        blockLog.set(
-          'details',
-          JSON.stringify({
-            customer_id: customerId,
-            blocked_text_full: responseText,
-            blocked_preview: responseText.substring(0, 300),
-          }),
-        )
-        blockLog.set(
-          'payload',
-          JSON.stringify({
-            customer_id: customerId,
-            preview: responseText.substring(0, 150),
-          }),
-        )
-        $app.saveNoValidate(blockLog)
-      } catch (logBlockErr) {
-        console.warn(`[AI_REPLY] Error recording ai_self_check_blocked log: ${String(logBlockErr)}`)
-      }
-
-      // Substituição por fallback seguro: saudação temporal + identificação padrão "Bia, da BRF Imóveis" + pedido de perdão curto e continuidade
-      if (isFirstAiMessageOrAfter24h) {
-        const safeSalutation = buildTemporalGreeting(displayName, brHour)
-        responseText = `${safeSalutation} Bia, da BRF Imóveis aqui. Peço desculpas pela mensagem anterior! Estou aqui para te ajudar a encontrar o imóvel ideal. Podemos continuar nossa conversa?`
-      } else {
-        responseText = `Peço desculpas pela mensagem anterior! Estou aqui para te ajudar a encontrar o imóvel ideal na BRF Imóveis. Podemos continuar nossa conversa?`
-      }
-    }
-
-    // SANITIZAÇÃO WHATSAPP NA FUNÇÃO DE SAÍDA:
-    // 1. Remove [HANDOVER: ...]
-    // 2. **negrito** -> *negrito* (asterisco simples)
-    // 3. headers ### removidos
-    // 4. tabelas markdown -> linhas com "• campo — valor"
-    // 5. colapsar 3+ quebras de linha em no máximo 2
-    // 6. limitar ~900-950 chars com quebra amigável
-    function formatWhatsAppOutput(txt) {
-      if (!txt) return ''
-      let formatted = txt
-
-      // Remove handover tags e termos de transbordo
-      formatted = formatted.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
-      formatted = formatted.replace(/\btransbordo\b/gi, 'atendimento especializado')
-      formatted = formatted.replace(/\btrasbordo\b/gi, 'atendimento especializado')
-
-      // Remove headers markdown (###, ##, #)
-      formatted = formatted.replace(/^#{1,6}\s*(.*?)$/gm, '$1')
-
-      // Converte tabelas markdown em linhas com bullet "• campo — valor"
-      // Detecta bloco de tabela com | ... | ... |
-      const lines = formatted.split('\n')
-      const newLines = []
-      let tableHeader = []
-      let inTable = false
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim()
-        if (line.startsWith('|') && line.endsWith('|')) {
-          const cells = line
-            .slice(1, -1)
-            .split('|')
-            .map(function (c) {
-              return c.trim()
-            })
-
-          // Linha separadora |---|---|
-          if (
-            cells.every(function (c) {
-              return /^[-:\s]+$/.test(c)
-            })
-          ) {
-            inTable = true
-            continue
-          }
-
-          if (!inTable) {
-            tableHeader = cells
-            inTable = true
           } else {
-            // Linha de dados: associa ao header correspondente
-            const rowPairs = []
-            for (let c = 0; c < cells.length; c++) {
-              const hName = tableHeader[c] || `Item ${c + 1}`
-              const val = cells[c]
-              if (val) {
-                rowPairs.push(`${hName}: ${val}`)
-              }
-            }
-            if (rowPairs.length > 0) {
-              newLines.push(`• ${rowPairs.join(' — ')}`)
-            }
+            validBlocks.push(trimmedBlock)
           }
-        } else {
-          inTable = false
-          tableHeader = []
-          newLines.push(lines[i])
         }
-      }
-      formatted = newLines.join('\n')
 
-      // Converte **negrito** em *negrito* (WhatsApp usa asterisco simples para negrito)
-      formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '*$1*')
-
-      // Colapsa 3 ou mais quebras de linha em no máximo 2
-      formatted = formatted.replace(/\n{3,}/g, '\n\n')
-
-      // Limitar a ~900-950 chars com quebra amigável no final de frase ou parágrafo
-      if (formatted.length > 950) {
-        let cutPoint = formatted.lastIndexOf('\n\n', 950)
-        if (cutPoint < 650) {
-          cutPoint = formatted.lastIndexOf('. ', 950)
-        }
-        if (cutPoint < 650) {
-          cutPoint = formatted.lastIndexOf('! ', 950)
-        }
-        if (cutPoint < 650) {
-          cutPoint = formatted.lastIndexOf('? ', 950)
-        }
-        if (cutPoint > 500) {
-          formatted = formatted.substring(0, cutPoint + 1).trim()
-        } else {
-          formatted = formatted.substring(0, 950).trim() + '...'
-        }
+        const sanitizedText = validBlocks.join('\n\n').trim()
+        return { sanitizedText, removedBlocks, hadHallucinatedProperty }
       }
 
-      return formatted.trim()
-    }
-
-    // FINAL UNCONDITIONAL SANITIZATION & CANNED INTERCEPTION
-    // Guarantee that no supervisor metadata, headers, or canned sentences can slip through to WhatsApp
-    responseText = sanitizeAiResponse(responseText)
-    responseText = formatWhatsAppOutput(responseText)
-    if (isCannedValuesSentence(responseText)) {
-      console.warn('[AI_REPLY] Final check detected canned sentence')
-      if (isMismatchDetected) {
-        responseText = `Peço desculpas pela confusão! Você poderia me confirmar o código (ex: #ARU341, #AP343) ou o link do imóvel que você gostaria de ver? Assim localizo exatamente o que você procura.`
-      } else if (hasFreeSearchIntent && matchedProps.length === 0) {
-        responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique na nossa carteira de parceiros?`
-      } else if (detectedSpecificPropertyQuery) {
-        if (matchedProps && matchedProps.length > 0) {
-          const targetProp = matchedProps[0]
-          const pTitle = (targetProp.getString('title') || '').trim()
-          const pCode = (targetProp.getString('code') || '').trim()
-          const pPrice = (targetProp.getString('price_formatted') || '').trim()
-          const pUrl = (targetProp.getString('url') || '').trim()
-          responseText = `Sobre o imóvel ${pCode ? `*${pCode}*` : ''}${pTitle ? ` (${pTitle})` : ''}: ele está disponível por *${pPrice}*. Confira os detalhes em: ${pUrl}. Posso tirar alguma dúvida específica para você?`
-        } else {
-          responseText = `Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes dele junto ao Mauro e já te retorno com as informações completas.`
-        }
-      } else {
-        responseText = generateCatalogFallbackMessage(matchedProps)
-      }
       responseText = sanitizeAiResponse(responseText)
-    }
 
-    // Secondary defensive re-check on sanitized text
-    if (isInternalEvaluationText(responseText)) {
-      if (isFirstAiMessageOrAfter24h) {
-        const safeSalutation = buildTemporalGreeting(displayName, brHour)
-        responseText = `${safeSalutation} Bia, da BRF Imóveis. Como posso te ajudar na sua busca hoje?`
-      } else {
-        responseText = `Como posso te ajudar na sua busca hoje na BRF Imóveis?`
-      }
-    }
-    responseText = formatWhatsAppOutput(responseText)
-
-    // ======================================================================
-    // BARREIRA ÚNICA DE SAÍDA DA BIA (obrigatória, todos os canais) —
-    // última porta antes do envio: remove QUALQUER tag de máquina residual
-    // ([STATUS:...], [PHASE:...], [HANDOVER:...], etc.), placeholders de nome
-    // ("Lead", "Cliente", "[Nome]", "{Nome}") e termos internos expostos
-    // ("transbordo", "handover"). Se limpar algo, registra prova em
-    // system_logs (type=bia_output_barrier).
-    // ======================================================================
-    function biaOutputBarrier(txt) {
-      if (!txt) return { text: '', cleaned: false }
-      let out = String(txt)
-      const before = out
-      // 1) tags de máquina residuais (genérico + lista explícita)
-      out = out.replace(/\[[A-Z_]{3,20}:\s*[^\]]*\]/gi, '')
-      out = out.replace(
-        /\[(?:HANDOVER|STATUS|PHASE|FOLLOW_UP_STEP|PROMISE[A-Z_]*|PROFILE|PRICE_RANGE|NEIGHBORHOOD|URGENCY|EMAIL|PERMUTA|AUDIO|VIDEO)\]/gi,
-        '',
-      )
-      // 2) placeholders de nome — nunca saudar com nome vazio/suspeito
-      out = out.replace(/,\s*(?:Lead|Cliente)\b/gi, '')
-      out = out.replace(/\b(?:Lead|Cliente)\s*,/gi, '')
-      out = out.replace(/\{Nome\}/gi, '')
-      out = out.replace(/\[Nome\]/gi, '')
-      // 3) termos internos que nunca chegam ao cliente
-      out = out.replace(/\btransbordo\b/gi, 'atendimento especializado')
-      out = out.replace(/\btrasbordo\b/gi, 'atendimento especializado')
-      out = out.replace(/\bhandover\b/gi, 'atendimento especializado')
-      // limpeza final
-      out = out.replace(/\n{3,}/g, '\n\n')
-      out = out.replace(/^\s*[,;:]+/gm, '')
-      out = out.trim()
-      return { text: out, cleaned: out !== before.trim() }
-    }
-
-    const biaBarrierResult = biaOutputBarrier(responseText)
-    if (biaBarrierResult.cleaned) {
-      console.log(
-        `[AI_REPLY] [OUTPUT_BARRIER] Barreira única limpou saída para customer=${customerId}: "${responseText.substring(0, 120)}" -> "${biaBarrierResult.text.substring(0, 120)}"`,
-      )
-      try {
-        const barrierLogsCol = $app.findCollectionByNameOrId('system_logs')
-        const barrierLog = new Record(barrierLogsCol)
-        barrierLog.set('user_id', userId || '')
-        barrierLog.set('type', 'bia_output_barrier')
-        barrierLog.set(
-          'message',
-          'Barreira única de saída limpou tag/placeholder/termo interno da resposta da Bia',
-        )
-        barrierLog.set(
-          'details',
-          JSON.stringify({
-            customer_id: customerId,
-            channel: conversationChannel,
-            before_preview: responseText.substring(0, 300),
-            after_preview: biaBarrierResult.text.substring(0, 300),
-          }),
-        )
-        $app.saveNoValidate(barrierLog)
-      } catch (barrierLogErr) {
+      // Run hard property validation on the generated response
+      const validationResult = validateAndSanitizePropertiesInOutput(responseText)
+      if (validationResult.hadHallucinatedProperty) {
         console.warn(
-          `[AI_REPLY] [OUTPUT_BARRIER] Erro ao gravar log da barreira: ${String(barrierLogErr)}`,
+          `[AI_PROPERTY_VALIDATION] Hallucinated content detected! Removed ${validationResult.removedBlocks.length} block(s).`,
         )
-      }
-      responseText = biaBarrierResult.text
-    }
-    if (!responseText) {
-      responseText = isFirstAiMessageOrAfter24h
-        ? buildTemporalGreeting(displayName, brHour) +
-          ' Sou a Bia, da BRF Imóveis. Como posso te ajudar?'
-        : 'Como posso te ajudar na sua busca hoje?'
-    }
+        responseText = validationResult.sanitizedText
 
-    // Duplicate message final guard
-    let isDuplicate = false
-    try {
-      const currentLastMsgs = $app.findRecordsByFilter(
-        'conversations',
-        `customer_id = '${customerId}'`,
-        '-created',
-        1,
-        0,
-      )
-
-      if (currentLastMsgs.length > 0) {
-        const lastMsg = currentLastMsgs[0]
-        if (lastMsg.id !== incomingMsgId && lastMsg.getString('sender') === 'ai') {
-          const lastContent = (lastMsg.getString('content') || '').trim().toLowerCase()
-          if (lastContent === responseText.trim().toLowerCase()) {
-            isDuplicate = true
-          }
-        }
-      }
-    } catch (_) {}
-
-    if (isDuplicate) {
-      console.log(
-        `[AI_REPLY] Duplicate response detected for customer ${customerId}, skipping send.`,
-      )
-      return e.next()
-    }
-
-    let sendAudio = false
-    let sendVideo = false
-    if (responseText.includes('[AUDIO]')) {
-      sendAudio = true
-      responseText = responseText.replace(/\[AUDIO\]/gi, '').trim()
-    }
-    if (responseText.includes('[VIDEO]')) {
-      sendVideo = true
-      responseText = responseText.replace(/\[VIDEO\]/gi, '').trim()
-    }
-
-    // Garantir saudação condicional com identificação: apenas na 1ª mensagem da IA ou quando hoursSinceLastAiMsg >= 24
-    function ensureGreetingAtBeginning(txt, name, hour) {
-      if (!txt) return buildTemporalGreeting(name, hour, true)
-      var trimmed = txt.trim()
-      var targetGreeting = buildTemporalGreeting(name, hour, true)
-      var salutationWord = getTemporalGreetingWord(hour)
-
-      // Se já começa exatamente ou de forma equivalente com a identificação da Bia
-      if (/^(?:Bia\s+da\s+BRF\s+Im[oó]veis\s*[-—–]\s*)/i.test(trimmed)) {
-        return trimmed
-      }
-
-      // Regex para identificar se já começa com saudação temporal comum ou genérica (com ou sem nome/pontuação)
-      var greetingStartRegex = new RegExp(
-        '^(?:\\*\\*)?(?:' + salutationWord + '|Olá|Ola|Oi)\\b[^\\n.!?]*[.!?,]?\\s*',
-        'i',
-      )
-
-      if (greetingStartRegex.test(trimmed)) {
-        // Já tem alguma saudação no início: substituir pela saudação padrão com identificação
-        var rest = trimmed.replace(greetingStartRegex, '').trim()
-        return rest ? targetGreeting + ' ' + rest : targetGreeting
-      }
-
-      // Não tem saudação: prefixar
-      return targetGreeting + ' ' + trimmed
-    }
-
-    function removeLeadingGreeting(txt) {
-      if (!txt) return ''
-      var trimmed = txt.trim()
-      // Remove identificação repetida se houver no meio de diálogo contínuo
-      trimmed = trimmed.replace(/^(?:Bia\s+da\s+BRF\s+Im[oó]veis\s*[-—–]\s*)/i, '').trim()
-      var greetingRegex =
-        /^(?:\*\*)?(?:Bom dia|Boa tarde|Boa noite|Olá|Ola|Oi)\b[^\\n.!?]*[.!?,]?\s*/i
-      return trimmed.replace(greetingRegex, '').trim()
-    }
-
-    // Se o cliente enviou áudio/voz (WhatsApp, Messenger ou Instagram Direct), responder com áudio (voz)
-    const isCustomerVoice =
-      customerMessage.startsWith('[Áudio do cliente]') ||
-      customerMessage.startsWith('[Áudio transcrevido]') ||
-      customerMessage.startsWith('[Áudio Recebido') ||
-      incomingText.startsWith('[Áudio do cliente]') ||
-      incomingText.startsWith('[Áudio transcrevido]') ||
-      incomingText.startsWith('[Áudio Recebido')
-    const isAudioTranscriptionFailure =
-      customerMessage.includes('[Áudio Recebido - não foi possível transcrever]') ||
-      incomingText.includes('[Áudio Recebido - não foi possível transcrever]')
-
-    // Se a transcrição do áudio falhou, responder com pedido educado para escrever
-    if (isAudioTranscriptionFailure) {
-      const audioFallbackGreeting = isFirstAiMessageOrAfter24h
-        ? buildTemporalGreeting(displayName, brHour, true) + ' '
-        : ''
-      responseText = `${audioFallbackGreeting}Não consegui ouvir o seu áudio com clareza por aqui. Você poderia escrever por mensagem de texto ou mandar novamente? Assim consigo te atender perfeitamente!`
-    } else if (isFirstAiMessageOrAfter24h) {
-      // 1ª mensagem ou após 24h: assegurar saudação no início
-      responseText = ensureGreetingAtBeginning(responseText, displayName, brHour)
-    } else {
-      // Meio do diálogo contínuo (<24h): remover saudações redundantes do início
-      const cleanedGreeting = removeLeadingGreeting(responseText)
-      if (cleanedGreeting) {
-        responseText = cleanedGreeting
-      }
-    }
-
-    if (isCustomerVoice && !sendAudio) {
-      sendAudio = true
-    }
-
-    // Save reply to conversations table
-    try {
-      const reply = new Record($app.findCollectionByNameOrId('conversations'))
-      reply.set('user_id', userId || '')
-      reply.set('customer_id', customerId)
-      reply.set('sender', 'ai')
-      reply.set('content', responseText)
-      reply.set('channel', conversationChannel)
-      $app.save(reply)
-      console.log(`[AI_REPLY] Saved AI conversation record for customer=${customerId}`)
-    } catch (saveConvErr) {
-      console.error(`[AI_REPLY] Failed to save conversation record: ${String(saveConvErr)}`)
-    }
-
-    // Update customer CRM status / stage — 10 Estágios Canônicos da Constituição v3.1
-    try {
-      const custToUpdate = safeFindRecordById('customers', customerId)
-      if (!custToUpdate) {
-        console.warn(`[AI_REPLY] Customer ${customerId} not found for CRM update.`)
-        return e.next()
-      }
-      const currentCustStatus = custToUpdate.getString('status') || ''
-
-      // Função canônica bidirecional para normalizar qualquer status / tag [STATUS: ...] emitida pela Bia ou legada
-      function normalizeCanonicalStatus(rawStatus) {
-        if (!rawStatus) return ''
-        const s = String(rawStatus).trim().toLowerCase()
-
-        // 1. Acolhimento
-        if (
-          s === '1. acolhimento' ||
-          s === 'acolhimento' ||
-          s === '1' ||
-          s.startsWith('1.') ||
-          s === 'captura + identificação' ||
-          s === 'captura + identificacao' ||
-          s === 'novo' ||
-          s === 'lead' ||
-          s === 'lead novo' ||
-          s === 'base de clientes/novo lyd' ||
-          s === 'd0 - contato imediato' ||
-          s === 'contato inicial' ||
-          s === 'contact'
-        ) {
-          return '1. Acolhimento'
-        }
-
-        // 2. Qualificação
-        if (
-          s === '2. qualificação' ||
-          s === '2. qualificacao' ||
-          s === 'qualificação' ||
-          s === 'qualificacao' ||
-          s === '2' ||
-          s.startsWith('2.') ||
-          s === 'validação no crm' ||
-          s === 'validacao no crm'
-        ) {
-          return '2. Qualificação'
-        }
-
-        // 3. Apresentação Consultiva
-        if (
-          s === '3. apresentação consultiva' ||
-          s === '3. apresentacao consultiva' ||
-          s === 'apresentação consultiva' ||
-          s === 'apresentacao consultiva' ||
-          s === '3' ||
-          s.startsWith('3.') ||
-          s === 'contato personalizado'
-        ) {
-          return '3. Apresentação Consultiva'
-        }
-
-        // 4. Sondagem Financeira
-        if (
-          s === '4. sondagem financeira' ||
-          s === 'sondagem financeira' ||
-          s === '4' ||
-          s.startsWith('4.') ||
-          s === 'mapeamento de perfil'
-        ) {
-          return '4. Sondagem Financeira'
-        }
-
-        // 5. Nutrição de Interesse
-        if (
-          s === '5. nutrição de interesse' ||
-          s === '5. nutricao de interesse' ||
-          s === 'nutrição de interesse' ||
-          s === 'nutricao de interesse' ||
-          s === '5' ||
-          s.startsWith('5.') ||
-          s === 'nutrição automática' ||
-          s === 'nutricao automatica' ||
-          s === 'engajamento' ||
-          /^d[1-4]\b/i.test(s)
-        ) {
-          return '5. Nutrição de Interesse'
-        }
-
-        // 6. Convite de Visita
-        if (
-          s === '6. convite de visita' ||
-          s === 'convite de visita' ||
-          s === '6' ||
-          s.startsWith('6.') ||
-          s === 'agendamento de visita' ||
-          s === 'demo realiz.' ||
-          /^d[5-9]\b/i.test(s)
-        ) {
-          return '6. Convite de Visita'
-        }
-
-        // 7. Confirmação e Rota
-        if (
-          s === '7. confirmação e rota' ||
-          s === '7. confirmacao e rota' ||
-          s === 'confirmação e rota' ||
-          s === 'confirmacao e rota' ||
-          s === '7' ||
-          s.startsWith('7.') ||
-          s === 'pré-visita' ||
-          s === 'pre-visita'
-        ) {
-          return '7. Confirmação e Rota'
-        }
-
-        // 8. Feedback da Visita
-        if (
-          s === '8. feedback da visita' ||
-          s === 'feedback da visita' ||
-          s === '8' ||
-          s.startsWith('8.') ||
-          s === 'pós-visita' ||
-          s === 'pos-visita' ||
-          s === 'visita'
-        ) {
-          return '8. Feedback da Visita'
-        }
-
-        // 9. Proposta e Condições
-        if (
-          s === '9. proposta e condições' ||
-          s === '9. proposta e condicoes' ||
-          s === 'proposta e condições' ||
-          s === 'proposta e condicoes' ||
-          s === '9' ||
-          s.startsWith('9.') ||
-          s === 'proposta e negociação' ||
-          s === 'proposta e negociacao' ||
-          s === 'proposta'
-        ) {
-          return '9. Proposta e Condições'
-        }
-
-        // 10. Pós-venda e Indicação
-        if (
-          s === '10. pós-venda e indicação' ||
-          s === '10. pos-venda e indicacao' ||
-          s === 'pós-venda e indicação' ||
-          s === 'pos-venda e indicacao' ||
-          s === '10' ||
-          s.startsWith('10.') ||
-          s === 'fechamento e pós-venda' ||
-          s === 'fechamento e pos-venda' ||
-          s === 'fechamento' ||
-          s === 'closed'
-        ) {
-          return '10. Pós-venda e Indicação'
-        }
-
-        return ''
-      }
-
-      let targetStatus = ''
-      if (detectedStatus) {
-        targetStatus = normalizeCanonicalStatus(detectedStatus)
-      }
-
-      // Se o cliente não tem status ou veio sem estágio definido, inicializa no canônico "1. Acolhimento"
-      if (
-        !targetStatus &&
-        (!currentCustStatus || normalizeCanonicalStatus(currentCustStatus) === '1. Acolhimento')
-      ) {
-        if (!currentCustStatus) {
-          targetStatus = '1. Acolhimento'
-        }
-      }
-
-      let crmUpdated = false
-      let stageMoved = false
-      const oldStatusBeforeMove = currentCustStatus
-
-      if (targetStatus && targetStatus !== currentCustStatus) {
-        custToUpdate.set('status', targetStatus)
-        crmUpdated = true
-        stageMoved = true
-      }
-
-      // Mapeamento canônico do status para as fases clássicas do pipeline ('Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento')
-      const effectiveStatus =
-        targetStatus || normalizeCanonicalStatus(currentCustStatus) || currentCustStatus
-      const validPhases = ['Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento']
-      let targetPhase = ''
-
-      if (detectedPhase && validPhases.includes(detectedPhase)) {
-        targetPhase = detectedPhase
-      } else if (effectiveStatus === '10. Pós-venda e Indicação') {
-        targetPhase = 'Fechamento'
-      } else if (effectiveStatus === '9. Proposta e Condições') {
-        targetPhase = 'Proposta'
-      } else if (
-        effectiveStatus === '6. Convite de Visita' ||
-        effectiveStatus === '7. Confirmação e Rota' ||
-        effectiveStatus === '8. Feedback da Visita'
-      ) {
-        targetPhase = 'Visita'
-      } else if (
-        effectiveStatus === '3. Apresentação Consultiva' ||
-        effectiveStatus === '4. Sondagem Financeira' ||
-        effectiveStatus === '5. Nutrição de Interesse'
-      ) {
-        targetPhase = 'Atendimento'
-      } else if (effectiveStatus === '1. Acolhimento' || effectiveStatus === '2. Qualificação') {
-        targetPhase = 'Lead'
-      }
-
-      if (targetPhase && custToUpdate.getString('phase') !== targetPhase) {
-        custToUpdate.set('phase', targetPhase)
-        crmUpdated = true
-      }
-
-      if (detectedFollowUpStep) {
-        custToUpdate.set('follow_up_step', detectedFollowUpStep)
-        const curCount = custToUpdate.getInt('follow_up_count') || 0
-        custToUpdate.set('follow_up_count', curCount + 1)
-        crmUpdated = true
-      }
-
-      if (detectedPromisePending) {
-        custToUpdate.set('promise_pending', true)
-        if (detectedPromiseContext) {
-          custToUpdate.set('promise_context', detectedPromiseContext)
-        }
-        crmUpdated = true
-      } else if (detectedPromiseExplicitFalse) {
-        custToUpdate.set('promise_pending', false)
-        crmUpdated = true
-      }
-
-      if (detectedPermuta) {
-        const currentNotes = custToUpdate.getString('notes') || ''
-        if (!currentNotes.includes('[INTERESSE EM PERMUTA]')) {
-          custToUpdate.set('notes', `[INTERESSE EM PERMUTA] ${currentNotes}`.trim())
-          crmUpdated = true
-          detectedHandover = detectedHandover || 'Mauro'
-        }
-      }
-
-      if (detectedProfile) {
-        const validProfiles = ['Investidor', 'Morador', 'Primeiro Imóvel', 'Veranista']
-        if (validProfiles.includes(detectedProfile)) {
-          custToUpdate.set('lead_profile', detectedProfile)
-          crmUpdated = true
-        }
-      }
-
-      if (detectedPriceRange) {
-        custToUpdate.set('price_range', detectedPriceRange)
-        crmUpdated = true
-      }
-
-      if (detectedNeighborhood) {
-        custToUpdate.set('neighborhood', detectedNeighborhood)
-        crmUpdated = true
-      }
-
-      if (detectedUrgency > 0) {
-        custToUpdate.set('urgency', detectedUrgency)
-        crmUpdated = true
-      }
-
-      // CAPTURA E PERSISTÊNCIA DO E-MAIL DO CLIENTE (Pedido Mauro):
-      // Verifica tag [EMAIL: ...] da Bia ou extração direta por Regex da mensagem recebida do cliente
-      let capturedEmail = detectedEmail
-      if (!capturedEmail && custIncomingMsg) {
-        // Validação simples e robusta de formato de e-mail na mensagem do cliente
-        const directEmailMatch = custIncomingMsg.match(
-          /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/,
-        )
-        if (directEmailMatch) {
-          capturedEmail = directEmailMatch[0].trim().toLowerCase()
-        }
-      }
-
-      if (capturedEmail) {
-        // Sanitiza o formato
-        const cleanCapturedEmail = capturedEmail
-          .replace(/[,;]+$/, '')
-          .trim()
-          .toLowerCase()
-        const currentCustEmail = (custToUpdate.getString('email') || '').trim().toLowerCase()
-        if (cleanCapturedEmail && cleanCapturedEmail !== currentCustEmail) {
-          custToUpdate.set('email', cleanCapturedEmail)
-          if (!custToUpdate.getString('email_1_value')) {
-            custToUpdate.set('email_1_value', cleanCapturedEmail)
-          }
-          crmUpdated = true
-          console.log(
-            `[AI_REPLY] [EMAIL_CAPTURED] E-mail do cliente capturado e gravado no CRM: "${cleanCapturedEmail}" (customer=${customerId})`,
-          )
-        }
-      }
-
-      if (detectedHandover) {
-        let custTags = custToUpdate.get('tags')
-        if (!Array.isArray(custTags)) custTags = []
-        if (!custTags.includes('ai_paused')) {
-          custTags.push('ai_paused')
-          custToUpdate.set('tags', custTags)
-          crmUpdated = true
-        }
-      }
-
-      if (crmUpdated) {
-        $app.saveNoValidate(custToUpdate)
-        console.log(
-          `[AI_REPLY] CRM updated for customer=${customerId} (status=${targetStatus || 'unchanged'})`,
-        )
-      }
-
-      // Registro obrigatório de movimentação de estágio em system_logs (tipo lead_stage_movement)
-      if (stageMoved && targetStatus) {
         try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const moveLog = new Record(logsCol)
-          moveLog.set('user_id', userId || '')
-          moveLog.set('type', 'lead_stage_movement')
-          moveLog.set(
+          const valLog = new Record(logsCol)
+          valLog.set('user_id', userId || '')
+          valLog.set('type', 'ai_property_validation')
+          valLog.set(
             'message',
-            `Lead movimentado pela Bia: "${oldStatusBeforeMove || 'Sem estágio'}" -> "${targetStatus}"`,
+            `IA alucinou imóvel/link fora do catálogo. ${validationResult.removedBlocks.length} bloco(s) removido(s) antes do envio.`,
           )
-          moveLog.set(
+          valLog.set(
             'details',
             JSON.stringify({
-              moved_by: 'Bia',
-              from_status: oldStatusBeforeMove || '',
-              to_status: targetStatus,
-              phase: targetPhase || custToUpdate.getString('phase') || '',
-              follow_up_step:
-                detectedFollowUpStep || custToUpdate.getString('follow_up_step') || '',
+              removed_blocks: validationResult.removedBlocks,
               customer_id: customerId,
-              customer_name: displayName || custToUpdate.getString('name') || '',
-              customer_phone: customerPhone || custToUpdate.getString('phone') || '',
             }),
           )
-          moveLog.set(
+          valLog.set(
             'payload',
             JSON.stringify({
-              moved_by: 'Bia',
-              from_status: oldStatusBeforeMove || '',
-              to_status: targetStatus,
-              customer_id: customerId,
+              removed_count: validationResult.removedBlocks.length,
+              preview_removed: validationResult.removedBlocks.map((b) => b.substring(0, 120)),
             }),
           )
-          $app.saveNoValidate(moveLog)
-          console.log(
-            `[AI_REPLY] [LEAD_STAGE_MOVEMENT] Log gravado: "${oldStatusBeforeMove}" -> "${targetStatus}" (customer=${customerId})`,
-          )
-        } catch (logMoveErr) {
-          console.warn(
-            `[AI_REPLY] Falha ao registrar log lead_stage_movement: ${String(logMoveErr)}`,
-          )
+          $app.saveNoValidate(valLog)
+        } catch (logErr) {
+          console.warn(`[AI_PROPERTY_VALIDATION] Log write failed: ${String(logErr)}`)
         }
       }
-    } catch (crmErr) {
-      console.warn(`[AI_REPLY] CRM status update non-fatal error: ${String(crmErr)}`)
-    }
 
-    // Resolve WhatsApp Meta credentials
-    let metaToken = userRecord ? userRecord.getString('meta_whatsapp_access_token') : ''
-    let metaPhoneId = userRecord ? userRecord.getString('meta_whatsapp_phone_number_id') : ''
+      // Secondary check: caso o modelo tenha sido regenerado pela Mãe IA ou fallback e inserido tags novas
+      const lateStatusMatch = responseText.match(/\[STATUS:\s*(.*?)\]/i)
+      if (lateStatusMatch && lateStatusMatch[1]) {
+        detectedStatus = lateStatusMatch[1].trim()
+      }
 
-    if (!metaToken || !metaPhoneId) {
+      const latePhaseMatch = responseText.match(/\[PHASE:\s*(.*?)\]/i)
+      if (latePhaseMatch && latePhaseMatch[1]) {
+        detectedPhase = latePhaseMatch[1].trim()
+      }
+
+      const lateFollowUpStepMatch = responseText.match(/\[FOLLOW_UP_STEP:\s*(.*?)\]/i)
+      if (lateFollowUpStepMatch && lateFollowUpStepMatch[1]) {
+        detectedFollowUpStep = lateFollowUpStepMatch[1].trim()
+      }
+
+      const latePromiseCtxMatch = responseText.match(/\[PROMISE_CONTEXT:\s*(.*?)\]/i)
+      if (latePromiseCtxMatch && latePromiseCtxMatch[1]) {
+        detectedPromiseContext = latePromiseCtxMatch[1].trim()
+        detectedPromisePending = true
+      }
+
+      const latePromisePendingMatch = responseText.match(
+        /\[PROMISE_PENDING:\s*(true|false|sim|não|nao)\]/i,
+      )
+      if (latePromisePendingMatch && latePromisePendingMatch[1]) {
+        const pVal = latePromisePendingMatch[1].toLowerCase()
+        detectedPromisePending = pVal === 'true' || pVal === 'sim'
+        if (pVal === 'false' || pVal === 'não' || pVal === 'nao') {
+          detectedPromiseExplicitFalse = true
+        }
+      }
+
+      const lateHandoverMatch = responseText.match(/\[HANDOVER:\s*(.*?)\]/i)
+      if (lateHandoverMatch && lateHandoverMatch[1]) {
+        detectedHandover = lateHandoverMatch[1].trim()
+      }
+
+      const lateProfileMatch = responseText.match(/\[PROFILE:\s*(.*?)\]/i)
+      if (lateProfileMatch && lateProfileMatch[1]) {
+        detectedProfile = lateProfileMatch[1].trim()
+      }
+
+      const latePriceRangeMatch = responseText.match(/\[PRICE_RANGE:\s*(.*?)\]/i)
+      if (latePriceRangeMatch && latePriceRangeMatch[1]) {
+        detectedPriceRange = latePriceRangeMatch[1].trim()
+      }
+
+      const lateNeighborhoodMatch = responseText.match(/\[NEIGHBORHOOD:\s*(.*?)\]/i)
+      if (lateNeighborhoodMatch && lateNeighborhoodMatch[1]) {
+        detectedNeighborhood = lateNeighborhoodMatch[1].trim()
+      }
+
+      const lateUrgencyMatch = responseText.match(/\[URGENCY:\s*(\d+)\]/i)
+      if (lateUrgencyMatch && lateUrgencyMatch[1]) {
+        const uNum = parseInt(lateUrgencyMatch[1], 10)
+        if (!isNaN(uNum) && uNum >= 1 && uNum <= 5) {
+          detectedUrgency = uNum
+        }
+      }
+
+      if (responseText.includes('[PERMUTA]')) {
+        detectedPermuta = true
+      }
+
+      const lateEmailMatch = responseText.match(/\[EMAIL:\s*([^\s\]]+@[^\s\]]+)\]/i)
+      if (lateEmailMatch && lateEmailMatch[1]) {
+        detectedEmail = lateEmailMatch[1].trim().toLowerCase()
+      }
+
+      // Higieniza completamente qualquer resquício de tags
+      if (typeof stripAllMachineTags === 'function') {
+        responseText = stripAllMachineTags(responseText)
+      }
+
+      responseText = responseText.replace(/^[\[\(].*?[\]\)]\s*/gm, '').trim()
+      responseText = responseText.replace(/(\(Aplicando.*?\))|(\[Aplicando.*?\])/gi, '').trim()
+      responseText = responseText.replace(/(\(Com base.*?\))|(\[Com base.*?\])/gi, '').trim()
+
+      if (displayName) {
+        responseText = responseText.replace(/\[Nome\]/gi, displayName)
+        responseText = responseText.replace(/\{Nome\}/gi, displayName)
+      } else {
+        responseText = responseText.replace(/,\s*\[Nome\]/gi, '')
+        responseText = responseText.replace(/\[Nome\]/gi, '')
+        responseText = responseText.replace(/,\s*\{Nome\}/gi, '')
+        responseText = responseText.replace(/\{Nome\}/gi, '')
+      }
+
+      responseText = sanitizeAiResponse(responseText)
+
+      // Check recent AI messages sent to this customer
+      let recentAiMessages = []
       try {
-        const usersWithMeta = $app.findRecordsByFilter(
-          'users',
-          "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+        const recentAiRecords = $app.findRecordsByFilter(
+          'conversations',
+          `customer_id = '${customerId}' && sender = 'ai'`,
+          '-created',
+          5,
+          0,
+        )
+        recentAiMessages = recentAiRecords.map((r) => (r.getString('content') || '').trim())
+      } catch (_) {}
+
+      let isTooSimilar = false
+      const normResp = responseText
+        .trim()
+        .toLowerCase()
+        .replace(/[^\w\s]/gi, '')
+
+      if (recentAiMessages.length > 0) {
+        const lastAiMsg = recentAiMessages[0]
+        const normLast = lastAiMsg.toLowerCase().replace(/[^\w\s]/gi, '')
+
+        // Check if identical or canned
+        if (
+          normResp === normLast ||
+          (normResp.length > 30 && normLast.includes(normResp)) ||
+          isCannedValuesSentence(responseText)
+        ) {
+          isTooSimilar = true
+        }
+      }
+
+      const cannedDetected = isCannedValuesSentence(responseText)
+
+      // Fallback function to generate consultative real estate presentation from properties collection
+      function generateCatalogFallbackMessage(propsCandidateList) {
+        let activeProps = []
+
+        // 1. Check passed candidates or outer matchedProps safely
+        const candidates =
+          Array.isArray(propsCandidateList) && propsCandidateList.length > 0
+            ? propsCandidateList
+            : typeof matchedProps !== 'undefined' &&
+                Array.isArray(matchedProps) &&
+                matchedProps.length > 0
+              ? matchedProps
+              : []
+
+        if (candidates.length > 0) {
+          activeProps = candidates.filter((p) => {
+            try {
+              return (
+                p &&
+                (p.get('is_active') === true ||
+                  (typeof p.getBool === 'function'
+                    ? p.getBool('is_active')
+                    : p.get('is_active')) === true)
+              )
+            } catch (_) {
+              return true
+            }
+          })
+        }
+
+        // 2. If candidates list is empty or had no active items, query the catalog directly
+        if (activeProps.length === 0) {
+          try {
+            let filterParts = ['is_active = true']
+            if (typeof extractedMaxPrice === 'number' && extractedMaxPrice > 0) {
+              filterParts.push(`price <= ${extractedMaxPrice}`)
+            }
+            if (typeof extractedBedrooms === 'number' && extractedBedrooms > 0) {
+              filterParts.push(`bedrooms >= ${extractedBedrooms}`)
+            }
+            if (typeof matchedLocFilter === 'string' && matchedLocFilter) {
+              filterParts.push(`(${matchedLocFilter})`)
+            }
+
+            if (filterParts.length > 1) {
+              activeProps = $app.findRecordsByFilter(
+                'properties',
+                filterParts.join(' && '),
+                'price',
+                3,
+                0,
+              )
+            }
+
+            if (
+              activeProps.length === 0 &&
+              typeof matchedLocFilter === 'string' &&
+              matchedLocFilter &&
+              (extractedMaxPrice > 0 || extractedBedrooms > 0)
+            ) {
+              let relaxed = ['is_active = true']
+              if (extractedMaxPrice > 0) relaxed.push(`price <= ${extractedMaxPrice}`)
+              if (extractedBedrooms > 0) relaxed.push(`bedrooms >= ${extractedBedrooms}`)
+              activeProps = $app.findRecordsByFilter(
+                'properties',
+                relaxed.join(' && '),
+                'price',
+                3,
+                0,
+              )
+            }
+
+            if (activeProps.length === 0) {
+              activeProps = $app.findRecordsByFilter(
+                'properties',
+                'is_active = true',
+                'price',
+                3,
+                0,
+              )
+            }
+          } catch (dbErr) {
+            console.warn(`[AI_REPLY] Error querying properties for fallback: ${String(dbErr)}`)
+          }
+        }
+
+        if (activeProps && activeProps.length > 0) {
+          const topProp = activeProps[0]
+          const pTitle = (topProp.getString('title') || '').trim()
+          const pCity = (topProp.getString('city') || '').trim()
+          const pNeigh = (topProp.getString('neighborhood') || '').trim()
+          const pBeds = topProp.getInt('bedrooms')
+          const pSuites = topProp.getInt('suites')
+          const loc = [pNeigh, pCity].filter(Boolean).join(', ')
+
+          let greeting = buildTemporalGreeting(displayName, brHour) + ' '
+          let consultMsg = `${greeting}Temos uma excelente oportunidade que se encaixa muito bem no que você procura: o *${pTitle}*`
+          if (loc) consultMsg += ` em ${loc}`
+          if (pBeds > 0) {
+            consultMsg += `, com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}${pSuites > 0 ? ` (${pSuites} suíte${pSuites > 1 ? 's' : ''})` : ''}`
+          }
+          // Se a forma de pagamento já for conhecida (ex: à vista), não perguntar de novo!
+          if (collectedLeadData && collectedLeadData.payment) {
+            consultMsg += `.\n\nQuer que eu te envie as fotos e a tabela de valores dessa opção?`
+          } else {
+            consultMsg += `.\n\nVocê pretende adquirir à vista ou vai utilizar financiamento bancário? Quer que eu te mande as fotos e a tabela de valores?`
+          }
+          return consultMsg
+        }
+
+        const greeting = buildTemporalGreeting(displayName, brHour) + ' '
+        if (collectedLeadData && collectedLeadData.payment) {
+          return `${greeting}Temos excelentes opções na região que atendem ao seu perfil. Gostaria de receber fotos e detalhes das unidades disponíveis?`
+        }
+        return `${greeting}Temos excelentes opções na região que atendem ao seu perfil. Você pretende fazer a compra à vista ou vai financiar? Posso te apresentar as melhores unidades.`
+      }
+
+      // Check if after sanitation the response became empty or had hallucinated properties
+      const needsCatalogFallback =
+        !responseText.trim() ||
+        (validationResult.hadHallucinatedProperty && responseText.length < 30)
+
+      // REGRA DE NEGÓCIO DE FOCO ABSOLUTO NO IMÓVEL DO LEAD & DESENCAIXE / BUSCA LIVRE (CORREÇÕES A, B, C, D):
+      if (cannedDetected || isTooSimilar || needsCatalogFallback) {
+        if (isMismatchDetected) {
+          console.log(
+            `[AI_REPLY] Desencaixe implícito ativo no fallback: pedindo confirmação sem empurrar imóvel.`,
+          )
+          responseText = `Peço desculpas pela confusão! Você poderia me confirmar o código (ex: #ARU341, #AP343) ou o link do imóvel que você gostaria de ver? Assim localizo exatamente a opção correta para você.`
+        } else if (hasFreeSearchIntent && matchedProps.length === 0) {
+          console.log(
+            `[AI_REPLY] Busca livre sem match no fallback: informando transparência sem empurrar lançamentos.`,
+          )
+          responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique na nossa carteira de parceiros?`
+        } else if (detectedSpecificPropertyQuery) {
+          console.log(
+            `[AI_REPLY] Specific property query detected for customer ${customerId}. Enforcing strict focus on requested property. Suppressing generic launch fallback.`,
+          )
+          const greeting = buildTemporalGreeting(displayName, brHour) + ' '
+          if (matchedProps && matchedProps.length > 0) {
+            const targetProp = matchedProps[0]
+            const pTitle = (targetProp.getString('title') || '').trim()
+            const pCode = (targetProp.getString('code') || '').trim()
+            const pPrice = (targetProp.getString('price_formatted') || '').trim()
+            const pNeigh = (targetProp.getString('neighborhood') || '').trim()
+            const pCity = (targetProp.getString('city') || '').trim()
+            const pBeds = targetProp.getInt('bedrooms')
+            const pUrl = (targetProp.getString('url') || '').trim()
+
+            let msg = `${greeting}Com certeza! Sobre o imóvel ${pCode ? `*${pCode}*` : ''}${pTitle ? ` (${pTitle})` : ''}`
+            if (pNeigh || pCity) {
+              msg += ` localizado em ${[pNeigh, pCity].filter(Boolean).join(', ')}`
+            }
+            if (pPrice) {
+              msg += `, ele está disponível pelo valor de *${pPrice}*`
+            }
+            if (pBeds > 0) {
+              msg += ` e conta com ${pBeds} dormitório${pBeds > 1 ? 's' : ''}`
+            }
+            msg += `.\n\n`
+            if (pUrl) {
+              msg += `Você pode conferir as fotos e a ficha completa aqui: ${pUrl}\n\n`
+            }
+            msg += `Quer que eu tire alguma dúvida específica sobre ele ou prefere agendar uma visita?`
+            responseText = msg
+          } else {
+            // Imóvel citado NÃO foi encontrado na base
+            responseText = `${greeting}Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes e a disponibilidade atualizada dele junto ao Mauro e já te retorno com as informações completas. Um instante, por favor!`
+          }
+        } else {
+          console.log(
+            `[AI_REPLY] Overriding with real catalog fallback for customer ${customerId} (canned=${cannedDetected}, similar=${isTooSimilar}, needsFallback=${needsCatalogFallback}).`,
+          )
+          try {
+            const catalogMsg = generateCatalogFallbackMessage(matchedProps)
+            if (catalogMsg && catalogMsg.trim()) {
+              responseText = catalogMsg
+            }
+          } catch (fbErr) {
+            console.error(`[AI_REPLY] generateCatalogFallbackMessage error: ${String(fbErr)}`)
+            try {
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const fbErrLog = new Record(logsCol)
+              fbErrLog.set('user_id', userId || '')
+              fbErrLog.set('type', 'whatsapp_ai_reply_error')
+              fbErrLog.set(
+                'message',
+                `Erro no generateCatalogFallbackMessage: ${fbErr.message || String(fbErr)}`,
+              )
+              fbErrLog.set('details', String(fbErr.stack || fbErr))
+              fbErrLog.set(
+                'payload',
+                JSON.stringify({ customer_id: customerId, error: String(fbErr) }),
+              )
+              $app.saveNoValidate(fbErrLog)
+            } catch (_) {}
+          }
+        }
+      }
+
+      // FINAL DEFENSIVE BARRIER — PREVENT INTERNAL EVALUATION / SUPERVISOR LEAKS
+      // Checagem rigorosa antes de salvar e enviar: se contiver marcadores de avaliação interna,
+      // descarta, gera log em system_logs (ai_self_check_blocked) e substitui por mensagem segura da Bia.
+      if (isInternalEvaluationText(responseText)) {
+        console.error(
+          `[AI_REPLY] [DEFENSIVE BARRIER] Blocked internal evaluation text from leaking to customer ${customerId}! Preview: "${responseText.substring(0, 140)}"`,
+        )
+
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const blockLog = new Record(logsCol)
+          blockLog.set('user_id', userId || '')
+          blockLog.set('type', 'ai_self_check_blocked')
+          blockLog.set(
+            'message',
+            'Barreira defensiva abortou vazamento de avaliação de conformidade interna da IA para o cliente',
+          )
+          blockLog.set(
+            'details',
+            JSON.stringify({
+              customer_id: customerId,
+              blocked_text_full: responseText,
+              blocked_preview: responseText.substring(0, 300),
+            }),
+          )
+          blockLog.set(
+            'payload',
+            JSON.stringify({
+              customer_id: customerId,
+              preview: responseText.substring(0, 150),
+            }),
+          )
+          $app.saveNoValidate(blockLog)
+        } catch (logBlockErr) {
+          console.warn(
+            `[AI_REPLY] Error recording ai_self_check_blocked log: ${String(logBlockErr)}`,
+          )
+        }
+
+        // Substituição por fallback seguro: saudação temporal + identificação padrão "Bia, da BRF Imóveis" + pedido de perdão curto e continuidade
+        if (isFirstAiMessageOrAfter24h) {
+          const safeSalutation = buildTemporalGreeting(displayName, brHour)
+          responseText = `${safeSalutation} Bia, da BRF Imóveis aqui. Peço desculpas pela mensagem anterior! Estou aqui para te ajudar a encontrar o imóvel ideal. Podemos continuar nossa conversa?`
+        } else {
+          responseText = `Peço desculpas pela mensagem anterior! Estou aqui para te ajudar a encontrar o imóvel ideal na BRF Imóveis. Podemos continuar nossa conversa?`
+        }
+      }
+
+      // SANITIZAÇÃO WHATSAPP NA FUNÇÃO DE SAÍDA:
+      // 1. Remove [HANDOVER: ...]
+      // 2. **negrito** -> *negrito* (asterisco simples)
+      // 3. headers ### removidos
+      // 4. tabelas markdown -> linhas com "• campo — valor"
+      // 5. colapsar 3+ quebras de linha em no máximo 2
+      // 6. limitar ~900-950 chars com quebra amigável
+      function formatWhatsAppOutput(txt) {
+        if (!txt) return ''
+        let formatted = txt
+
+        // Remove handover tags e termos de transbordo
+        formatted = formatted.replace(/\[HANDOVER:[^\]]*\]/gi, '').trim()
+        formatted = formatted.replace(/\btransbordo\b/gi, 'atendimento especializado')
+        formatted = formatted.replace(/\btrasbordo\b/gi, 'atendimento especializado')
+
+        // Remove headers markdown (###, ##, #)
+        formatted = formatted.replace(/^#{1,6}\s*(.*?)$/gm, '$1')
+
+        // Converte tabelas markdown em linhas com bullet "• campo — valor"
+        // Detecta bloco de tabela com | ... | ... |
+        const lines = formatted.split('\n')
+        const newLines = []
+        let tableHeader = []
+        let inTable = false
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim()
+          if (line.startsWith('|') && line.endsWith('|')) {
+            const cells = line
+              .slice(1, -1)
+              .split('|')
+              .map(function (c) {
+                return c.trim()
+              })
+
+            // Linha separadora |---|---|
+            if (
+              cells.every(function (c) {
+                return /^[-:\s]+$/.test(c)
+              })
+            ) {
+              inTable = true
+              continue
+            }
+
+            if (!inTable) {
+              tableHeader = cells
+              inTable = true
+            } else {
+              // Linha de dados: associa ao header correspondente
+              const rowPairs = []
+              for (let c = 0; c < cells.length; c++) {
+                const hName = tableHeader[c] || `Item ${c + 1}`
+                const val = cells[c]
+                if (val) {
+                  rowPairs.push(`${hName}: ${val}`)
+                }
+              }
+              if (rowPairs.length > 0) {
+                newLines.push(`• ${rowPairs.join(' — ')}`)
+              }
+            }
+          } else {
+            inTable = false
+            tableHeader = []
+            newLines.push(lines[i])
+          }
+        }
+        formatted = newLines.join('\n')
+
+        // Converte **negrito** em *negrito* (WhatsApp usa asterisco simples para negrito)
+        formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '*$1*')
+
+        // Colapsa 3 ou mais quebras de linha em no máximo 2
+        formatted = formatted.replace(/\n{3,}/g, '\n\n')
+
+        // Limitar a ~900-950 chars com quebra amigável no final de frase ou parágrafo
+        if (formatted.length > 950) {
+          let cutPoint = formatted.lastIndexOf('\n\n', 950)
+          if (cutPoint < 650) {
+            cutPoint = formatted.lastIndexOf('. ', 950)
+          }
+          if (cutPoint < 650) {
+            cutPoint = formatted.lastIndexOf('! ', 950)
+          }
+          if (cutPoint < 650) {
+            cutPoint = formatted.lastIndexOf('? ', 950)
+          }
+          if (cutPoint > 500) {
+            formatted = formatted.substring(0, cutPoint + 1).trim()
+          } else {
+            formatted = formatted.substring(0, 950).trim() + '...'
+          }
+        }
+
+        return formatted.trim()
+      }
+
+      // FINAL UNCONDITIONAL SANITIZATION & CANNED INTERCEPTION
+      // Guarantee that no supervisor metadata, headers, or canned sentences can slip through to WhatsApp
+      responseText = sanitizeAiResponse(responseText)
+      responseText = formatWhatsAppOutput(responseText)
+      if (isCannedValuesSentence(responseText)) {
+        console.warn('[AI_REPLY] Final check detected canned sentence')
+        if (isMismatchDetected) {
+          responseText = `Peço desculpas pela confusão! Você poderia me confirmar o código (ex: #ARU341, #AP343) ou o link do imóvel que você gostaria de ver? Assim localizo exatamente o que você procura.`
+        } else if (hasFreeSearchIntent && matchedProps.length === 0) {
+          responseText = `No momento não localizei imóveis disponíveis com essas características exatas na região solicitada. Você aceitaria opções em regiões próximas, ou prefere que eu verifique na nossa carteira de parceiros?`
+        } else if (detectedSpecificPropertyQuery) {
+          if (matchedProps && matchedProps.length > 0) {
+            const targetProp = matchedProps[0]
+            const pTitle = (targetProp.getString('title') || '').trim()
+            const pCode = (targetProp.getString('code') || '').trim()
+            const pPrice = (targetProp.getString('price_formatted') || '').trim()
+            const pUrl = (targetProp.getString('url') || '').trim()
+            responseText = `Sobre o imóvel ${pCode ? `*${pCode}*` : ''}${pTitle ? ` (${pTitle})` : ''}: ele está disponível por *${pPrice}*. Confira os detalhes em: ${pUrl}. Posso tirar alguma dúvida específica para você?`
+          } else {
+            responseText = `Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes dele junto ao Mauro e já te retorno com as informações completas.`
+          }
+        } else {
+          responseText = generateCatalogFallbackMessage(matchedProps)
+        }
+        responseText = sanitizeAiResponse(responseText)
+      }
+
+      // Secondary defensive re-check on sanitized text
+      if (isInternalEvaluationText(responseText)) {
+        if (isFirstAiMessageOrAfter24h) {
+          const safeSalutation = buildTemporalGreeting(displayName, brHour)
+          responseText = `${safeSalutation} Bia, da BRF Imóveis. Como posso te ajudar na sua busca hoje?`
+        } else {
+          responseText = `Como posso te ajudar na sua busca hoje na BRF Imóveis?`
+        }
+      }
+      responseText = formatWhatsAppOutput(responseText)
+
+      // ======================================================================
+      // BARREIRA ÚNICA DE SAÍDA DA BIA (obrigatória, todos os canais) —
+      // última porta antes do envio: remove QUALQUER tag de máquina residual
+      // ([STATUS:...], [PHASE:...], [HANDOVER:...], etc.), placeholders de nome
+      // ("Lead", "Cliente", "[Nome]", "{Nome}") e termos internos expostos
+      // ("transbordo", "handover"). Se limpar algo, registra prova em
+      // system_logs (type=bia_output_barrier).
+      // ======================================================================
+      function biaOutputBarrier(txt) {
+        if (!txt) return { text: '', cleaned: false }
+        let out = String(txt)
+        const before = out
+        // 1) tags de máquina residuais (genérico + lista explícita)
+        out = out.replace(/\[[A-Z_]{3,20}:\s*[^\]]*\]/gi, '')
+        out = out.replace(
+          /\[(?:HANDOVER|STATUS|PHASE|FOLLOW_UP_STEP|PROMISE[A-Z_]*|PROFILE|PRICE_RANGE|NEIGHBORHOOD|URGENCY|EMAIL|PERMUTA|AUDIO|VIDEO)\]/gi,
+          '',
+        )
+        // 2) placeholders de nome — nunca saudar com nome vazio/suspeito
+        out = out.replace(/,\s*(?:Lead|Cliente)\b/gi, '')
+        out = out.replace(/\b(?:Lead|Cliente)\s*,/gi, '')
+        out = out.replace(/\{Nome\}/gi, '')
+        out = out.replace(/\[Nome\]/gi, '')
+        // 3) termos internos que nunca chegam ao cliente
+        out = out.replace(/\btransbordo\b/gi, 'atendimento especializado')
+        out = out.replace(/\btrasbordo\b/gi, 'atendimento especializado')
+        out = out.replace(/\bhandover\b/gi, 'atendimento especializado')
+        // limpeza final
+        out = out.replace(/\n{3,}/g, '\n\n')
+        out = out.replace(/^\s*[,;:]+/gm, '')
+        out = out.trim()
+        return { text: out, cleaned: out !== before.trim() }
+      }
+
+      const biaBarrierResult = biaOutputBarrier(responseText)
+      if (biaBarrierResult.cleaned) {
+        console.log(
+          `[AI_REPLY] [OUTPUT_BARRIER] Barreira única limpou saída para customer=${customerId}: "${responseText.substring(0, 120)}" -> "${biaBarrierResult.text.substring(0, 120)}"`,
+        )
+        try {
+          const barrierLogsCol = $app.findCollectionByNameOrId('system_logs')
+          const barrierLog = new Record(barrierLogsCol)
+          barrierLog.set('user_id', userId || '')
+          barrierLog.set('type', 'bia_output_barrier')
+          barrierLog.set(
+            'message',
+            'Barreira única de saída limpou tag/placeholder/termo interno da resposta da Bia',
+          )
+          barrierLog.set(
+            'details',
+            JSON.stringify({
+              customer_id: customerId,
+              channel: conversationChannel,
+              before_preview: responseText.substring(0, 300),
+              after_preview: biaBarrierResult.text.substring(0, 300),
+            }),
+          )
+          $app.saveNoValidate(barrierLog)
+        } catch (barrierLogErr) {
+          console.warn(
+            `[AI_REPLY] [OUTPUT_BARRIER] Erro ao gravar log da barreira: ${String(barrierLogErr)}`,
+          )
+        }
+        responseText = biaBarrierResult.text
+      }
+      if (!responseText) {
+        responseText = isFirstAiMessageOrAfter24h
+          ? buildTemporalGreeting(displayName, brHour) +
+            ' Sou a Bia, da BRF Imóveis. Como posso te ajudar?'
+          : 'Como posso te ajudar na sua busca hoje?'
+      }
+
+      // Duplicate message final guard
+      let isDuplicate = false
+      try {
+        const currentLastMsgs = $app.findRecordsByFilter(
+          'conversations',
+          `customer_id = '${customerId}'`,
           '-created',
           1,
           0,
         )
-        if (usersWithMeta.length > 0) {
-          metaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
-          metaPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
+
+        if (currentLastMsgs.length > 0) {
+          const lastMsg = currentLastMsgs[0]
+          if (lastMsg.id !== incomingMsgId && lastMsg.getString('sender') === 'ai') {
+            const lastContent = (lastMsg.getString('content') || '').trim().toLowerCase()
+            if (lastContent === responseText.trim().toLowerCase()) {
+              isDuplicate = true
+            }
+          }
         }
       } catch (_) {}
-    }
 
-    let cleanPhone = customerPhone.replace(/\D/g, '')
-    if (cleanPhone.length === 10 || cleanPhone.length === 11) {
-      cleanPhone = '55' + cleanPhone
-    }
+      if (isDuplicate) {
+        console.log(
+          `[AI_REPLY] Duplicate response detected for customer ${customerId}, skipping send.`,
+        )
+        return e.next()
+      }
 
-    // CORREÇÃO 1 — DEDUP POR CONTEÚDO NORMALIZADO (SUBSTITUINDO O DEDUP TEMPORAL DE 45s)
-    // Normalizar texto (trim + colapsar espaços/quebras repetidas) e comparar com a última mensagem 'ai'
-    // REALMENTE ENVIADA ao WhatsApp registrada nos logs da Meta (status=200/ok=true).
-    // Bloquear APENAS se o conteúdo for idêntico. Mensagens regeneradas ou corrigidas DEVEM SEMPRE ser enviadas!
-    function normalizeMsgContent(txt) {
-      if (!txt) return ''
-      return String(txt).replace(/\s+/g, ' ').trim().toLowerCase()
-    }
+      let sendAudio = false
+      let sendVideo = false
+      if (responseText.includes('[AUDIO]')) {
+        sendAudio = true
+        responseText = responseText.replace(/\[AUDIO\]/gi, '').trim()
+      }
+      if (responseText.includes('[VIDEO]')) {
+        sendVideo = true
+        responseText = responseText.replace(/\[VIDEO\]/gi, '').trim()
+      }
 
-    const normalizedCurrentResponse = normalizeMsgContent(responseText)
-    let isContentIdenticalToLastSent = false
-    let lastSentPreviewLogged = ''
+      // Garantir saudação condicional com identificação: apenas na 1ª mensagem da IA ou quando hoursSinceLastAiMsg >= 24
+      function ensureGreetingAtBeginning(txt, name, hour) {
+        if (!txt) return buildTemporalGreeting(name, hour, true)
+        var trimmed = txt.trim()
+        var targetGreeting = buildTemporalGreeting(name, hour, true)
+        var salutationWord = getTemporalGreetingWord(hour)
 
-    try {
-      const recentAiLogs = $app.findRecordsByFilter(
-        'system_logs',
-        `type = 'whatsapp_ai_send' && payload ~ '${customerId}'`,
-        '-created',
-        5,
-        0,
-      )
-
-      for (let lIdx = 0; lIdx < recentAiLogs.length; lIdx++) {
-        const logItem = recentAiLogs[lIdx]
-        const detailsStr = logItem.getString('details') || ''
-        let isRealMetaOk = false
-        try {
-          const det = JSON.parse(detailsStr)
-          if (det && det.statusCode >= 200 && det.statusCode < 300) {
-            isRealMetaOk = true
-          }
-        } catch (_) {}
-
-        if (!isRealMetaOk) {
-          const msgStr = logItem.getString('message') || ''
-          if (msgStr.includes('sucesso')) {
-            isRealMetaOk = true
-          }
+        // Se já começa exatamente ou de forma equivalente com a identificação da Bia
+        if (/^(?:Bia\s+da\s+BRF\s+Im[oó]veis\s*[-—–]\s*)/i.test(trimmed)) {
+          return trimmed
         }
 
-        if (isRealMetaOk) {
-          const payloadStr = logItem.getString('payload') || ''
-          let sentText = ''
-          try {
-            const pObj = JSON.parse(payloadStr)
-            sentText = pObj.preview || pObj.full_text || ''
-          } catch (_) {}
+        // Regex para identificar se já começa com saudação temporal comum ou genérica (com ou sem nome/pontuação)
+        var greetingStartRegex = new RegExp(
+          '^(?:\\*\\*)?(?:' + salutationWord + '|Olá|Ola|Oi)\\b[^\\n.!?]*[.!?,]?\\s*',
+          'i',
+        )
 
-          if (sentText) {
-            const normalizedSent = normalizeMsgContent(sentText)
-            lastSentPreviewLogged = sentText.substring(0, 60)
-            // Se o texto normalizado for idêntico ao já enviado ou prefixo exato caso o preview tenha sido truncado
-            if (
-              normalizedSent === normalizedCurrentResponse ||
-              (normalizedSent.length >= 80 && normalizedCurrentResponse.startsWith(normalizedSent))
-            ) {
-              isContentIdenticalToLastSent = true
-              break
-            }
-          }
+        if (greetingStartRegex.test(trimmed)) {
+          // Já tem alguma saudação no início: substituir pela saudação padrão com identificação
+          var rest = trimmed.replace(greetingStartRegex, '').trim()
+          return rest ? targetGreeting + ' ' + rest : targetGreeting
+        }
+
+        // Não tem saudação: prefixar
+        return targetGreeting + ' ' + trimmed
+      }
+
+      function removeLeadingGreeting(txt) {
+        if (!txt) return ''
+        var trimmed = txt.trim()
+        // Remove identificação repetida se houver no meio de diálogo contínuo
+        trimmed = trimmed.replace(/^(?:Bia\s+da\s+BRF\s+Im[oó]veis\s*[-—–]\s*)/i, '').trim()
+        var greetingRegex =
+          /^(?:\*\*)?(?:Bom dia|Boa tarde|Boa noite|Olá|Ola|Oi)\b[^\\n.!?]*[.!?,]?\s*/i
+        return trimmed.replace(greetingRegex, '').trim()
+      }
+
+      // Se o cliente enviou áudio/voz (WhatsApp, Messenger ou Instagram Direct), responder com áudio (voz)
+      const isCustomerVoice =
+        customerMessage.startsWith('[Áudio do cliente]') ||
+        customerMessage.startsWith('[Áudio transcrevido]') ||
+        customerMessage.startsWith('[Áudio Recebido') ||
+        incomingText.startsWith('[Áudio do cliente]') ||
+        incomingText.startsWith('[Áudio transcrevido]') ||
+        incomingText.startsWith('[Áudio Recebido')
+      const isAudioTranscriptionFailure =
+        customerMessage.includes('[Áudio Recebido - não foi possível transcrever]') ||
+        incomingText.includes('[Áudio Recebido - não foi possível transcrever]')
+
+      // Se a transcrição do áudio falhou, responder com pedido educado para escrever
+      if (isAudioTranscriptionFailure) {
+        const audioFallbackGreeting = isFirstAiMessageOrAfter24h
+          ? buildTemporalGreeting(displayName, brHour, true) + ' '
+          : ''
+        responseText = `${audioFallbackGreeting}Não consegui ouvir o seu áudio com clareza por aqui. Você poderia escrever por mensagem de texto ou mandar novamente? Assim consigo te atender perfeitamente!`
+      } else if (isFirstAiMessageOrAfter24h) {
+        // 1ª mensagem ou após 24h: assegurar saudação no início
+        responseText = ensureGreetingAtBeginning(responseText, displayName, brHour)
+      } else {
+        // Meio do diálogo contínuo (<24h): remover saudações redundantes do início
+        const cleanedGreeting = removeLeadingGreeting(responseText)
+        if (cleanedGreeting) {
+          responseText = cleanedGreeting
         }
       }
-    } catch (dedupErr) {
-      console.warn(`[AI_REPLY] Erro não fatal no check de dedup de conteúdo: ${String(dedupErr)}`)
-    }
 
-    if (isContentIdenticalToLastSent) {
-      console.log(
-        `[AI_REPLY] DEDUP DE CONTEÚDO ATIVADO: resposta idêntica à última já enviada via WhatsApp para lead ${customerId} (preview="${lastSentPreviewLogged}"). Bloqueando envio duplicado.`,
-      )
-      return e.next()
-    }
-
-    // Send WhatsApp reply via Meta Cloud API v21.0
-    // GARANTIA ABSOLUTA: O cliente NUNCA vê colchetes nem tags de máquina no texto final enviado
-    const finalCleanBody =
-      typeof stripAllMachineTags === 'function' ? stripAllMachineTags(responseText) : responseText
-
-    // ======================================================================
-    // LOOP DE APRENDIZADO DA BIA: REGISTRO AUTOMÁTICO PÓS-ATENDIMENTO
-    // ======================================================================
-    try {
-      const isSystemOrBotCustomer =
-        isSystemSenderNumber ||
-        isVerificationCodeMsg ||
-        checkCustPhone.replace(/\D/g, '') === '447710173736' ||
-        /^facebook\s+business$/i.test(checkCustName)
-
-      // Apenas registrar aprendizado se NÃO for robô/automação e houver interação real com texto
-      if (!isSystemOrBotCustomer && custIncomingMsg && finalCleanBody) {
-        let detectedLearningType = ''
-        let learningReason = ''
-
-        const lowIncoming = custIncomingMsg.toLowerCase()
-        const lowReply = finalCleanBody.toLowerCase()
-
-        // 1. Falha operacional / Dúvida que ela não soube responder
-        const indicatesUnknownInfo =
-          lowReply.includes('vou confirmar esse detalhe') ||
-          lowReply.includes('vou confirmar com o diretor') ||
-          lowReply.includes('não tenho essa informação') ||
-          lowReply.includes('vou verificar com o mauro') ||
-          lowReply.includes('vou consultar a diretoria') ||
-          claimsCatalogUnavailable
-
-        // 2. Erro / descompasso / recusa do cliente detectada
-        if (isCustomerExplicitRejection || isMismatchDetected) {
-          detectedLearningType = 'ERRO'
-          learningReason = `Desalinhamento com o cliente ou recusa explícita: cliente expressou insatisfação ("${custIncomingMsg.substring(0, 80)}") e a Bia readequou o foco.`
-        } else if (indicatesUnknownInfo) {
-          detectedLearningType = 'DUVIDA_SEM_RESPOSTA'
-          learningReason = `Informação técnica solicitada pelo lead não constava expressamente no dossiê: a Bia acolheu com transparência para checagem com Mauro.`
-        } else if (
-          lowIncoming.includes('caro') ||
-          lowIncoming.includes('muito caro') ||
-          lowIncoming.includes('fora do orçamento') ||
-          lowIncoming.includes('acima do que posso') ||
-          lowIncoming.includes('não tenho essa entrada') ||
-          lowIncoming.includes('juros altos')
-        ) {
-          detectedLearningType = 'OBJECOES'
-          learningReason = `Objeção de preço/condição financeira levantada pelo lead. Bia tratou apresentando fluxo facilitado e valorização do produto.`
-        } else if (
-          stageMoved ||
-          detectedHandover ||
-          lowIncoming.includes('visita') ||
-          lowIncoming.includes('agendar') ||
-          lowIncoming.includes('gostei') ||
-          lowIncoming.includes('proposta') ||
-          lowIncoming.includes('pode mandar')
-        ) {
-          detectedLearningType = 'ACERTO'
-          learningReason = `Avanço no funil ou acolhimento bem-sucedido com interesse do cliente no imóvel.`
-        }
-
-        if (detectedLearningType) {
-          // Extrair contexto do cliente e do imóvel em foco
-          const leadContextLabel = `${displayName || customer.getString('name') || 'Cliente'} (${customerPhone || 'WhatsApp'})`
-          const propertyContextLabel = matchedLaunch
-            ? matchedLaunch.getString('name') || matchedLaunch.getString('enterprise_name') || ''
-            : targetSpecificProp
-              ? `${targetSpecificProp.getString('code') || ''} - ${targetSpecificProp.getString('title') || ''}`
-              : lastMsgPropertyCodeOrNum || 'Catálogo Geral'
-
-          // Montar resumo curto de 1 a 3 frases
-          let shortSummary = learningReason
-          if (!shortSummary) {
-            shortSummary = `Interação tratada com o cliente no imóvel ${propertyContextLabel}. Resposta gerada consultivamente conforme as diretrizes da BRF Imóveis.`
-          }
-
-          // Anti-duplicação de registros automáticos recentes do mesmo cliente no mesmo dia
-          const existingRecentLearnings = $app.findRecordsByFilter(
-            'bia_learnings',
-            `context_customer ~ '${customerId}' && learning_type = '${detectedLearningType}'`,
-            '-created',
-            1,
-            0,
-          )
-
-          let shouldRecordLearning = true
-          if (existingRecentLearnings && existingRecentLearnings.length > 0) {
-            const lastLearnTime = new Date(
-              existingRecentLearnings[0].getString('created'),
-            ).getTime()
-            const nowTime = new Date().getTime()
-            // Se já gravou aprendizado igual para o mesmo cliente nas últimas 2 horas, não duplica
-            if (nowTime - lastLearnTime < 2 * 60 * 60 * 1000) {
-              shouldRecordLearning = false
-            }
-          }
-
-          if (shouldRecordLearning) {
-            const learningsCol = $app.findCollectionByNameOrId('bia_learnings')
-            const newLearnRec = new Record(learningsCol)
-            newLearnRec.set('user_id', userId || '')
-            newLearnRec.set(
-              'title',
-              `[${detectedLearningType}] ${propertyContextLabel.substring(0, 30)} - ${displayName || 'Lead'}`,
-            )
-            newLearnRec.set('rule_text', shortSummary)
-            newLearnRec.set('category', 'comportamento')
-            newLearnRec.set('learning_type', detectedLearningType)
-            newLearnRec.set('origin', 'auto')
-            // ERRO entra como aprovado para aplicação automática imediata (pedido Mauro), outros como pendente
-            newLearnRec.set('status', detectedLearningType === 'ERRO' ? 'aprovado' : 'pendente')
-            newLearnRec.set('is_active', true)
-            newLearnRec.set('priority', detectedLearningType === 'ERRO' ? 160 : 100)
-            newLearnRec.set('author', 'Bia (Loop Automático)')
-            newLearnRec.set('context_customer', `${leadContextLabel} [ID: ${customerId}]`)
-            newLearnRec.set('context_property', propertyContextLabel)
-            $app.saveNoValidate(newLearnRec)
-
-            console.log(
-              `[BIA_LEARNING_LOOP] Novo aprendizado pós-atendimento registrado com sucesso: tipo=${detectedLearningType}, cliente=${customerId}, resumo="${shortSummary.substring(0, 60)}..."`,
-            )
-          }
-        }
+      if (isCustomerVoice && !sendAudio) {
+        sendAudio = true
       }
-    } catch (autoLearnErr) {
-      console.warn(
-        `[BIA_LEARNING_LOOP] Erro não fatal no registro automático pós-atendimento: ${String(autoLearnErr)}`,
-      )
-    }
 
-    if ((conversationChannel === 'whatsapp' || !conversationChannel) && metaToken && metaPhoneId) {
-      console.log(
-        `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
-      )
-
-      const sendRes = callMetaWithRetry(
-        `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
-        'POST',
-        { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-        JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: cleanPhone,
-          type: 'text',
-          text: { body: finalCleanBody },
-        }),
-      )
-
-      const isOk = sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300
-      console.log(
-        `[AI_REPLY] Meta WhatsApp send result: status=${sendRes ? sendRes.statusCode : 'none'} ok=${isOk}`,
-      )
-
+      // Save reply to conversations table
       try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const logRec = new Record(logsCol)
-        logRec.set('user_id', userId || '')
-        logRec.set('type', 'whatsapp_ai_send')
-        logRec.set(
-          'message',
-          isOk
-            ? `Resposta da IA enviada com sucesso para ${cleanPhone}`
-            : `Falha ao enviar resposta da IA para ${cleanPhone} (status=${sendRes ? sendRes.statusCode : 'none'})`,
-        )
-        logRec.set(
-          'details',
-          JSON.stringify({
-            statusCode: sendRes ? sendRes.statusCode : 0,
-            response: sendRes ? sendRes.json || sendRes.body : null,
-            phone_id: metaPhoneId,
-            to: cleanPhone,
-          }),
-        )
-        logRec.set(
-          'payload',
-          JSON.stringify({
-            preview: finalCleanBody.substring(0, 120),
-            full_text: finalCleanBody,
-            customer_id: customerId,
-          }),
-        )
-        $app.saveNoValidate(logRec)
+        const reply = new Record($app.findCollectionByNameOrId('conversations'))
+        reply.set('user_id', userId || '')
+        reply.set('customer_id', customerId)
+        reply.set('sender', 'ai')
+        reply.set('content', responseText)
+        reply.set('channel', conversationChannel)
+        $app.save(reply)
+        console.log(`[AI_REPLY] Saved AI conversation record for customer=${customerId}`)
+      } catch (saveConvErr) {
+        console.error(`[AI_REPLY] Failed to save conversation record: ${String(saveConvErr)}`)
+      }
 
-        // FRENTE 1-e (vigia): falha de envio NUNCA pode ficar em silêncio no painel.
-        // Erro 190/401 (token expirado) marca meta_token_status='expired' e grava
-        // alerta de nível error com a resposta completa da Meta.
-        if (!isOk && sendRes) {
-          const waErrObj =
-            sendRes.json && sendRes.json.error
-              ? sendRes.json.error
-              : { message: String(sendRes.body || 'HTTP ' + sendRes.statusCode) }
-          const waCode = waErrObj.code !== undefined ? waErrObj.code : null
-          try {
-            const alertLog = new Record($app.findCollectionByNameOrId('system_logs'))
-            alertLog.set('user_id', userId || '')
-            alertLog.set('type', 'whatsapp_send_failed_alert')
-            alertLog.set(
-              'message',
-              `FALHA DE ENVIO WHATSAPP (status=${sendRes.statusCode} code=${waCode !== null ? waCode : 'n/a'}): leads podem não receber resposta da Bia. Resposta da Meta: ${waErrObj.message || JSON.stringify(waErrObj)}`,
+      // Update customer CRM status / stage — 10 Estágios Canônicos da Constituição v3.1
+      try {
+        const custToUpdate = safeFindRecordById('customers', customerId)
+        if (!custToUpdate) {
+          console.warn(`[AI_REPLY] Customer ${customerId} not found for CRM update.`)
+          return e.next()
+        }
+        const currentCustStatus = custToUpdate.getString('status') || ''
+
+        // Função canônica bidirecional para normalizar qualquer status / tag [STATUS: ...] emitida pela Bia ou legada
+        function normalizeCanonicalStatus(rawStatus) {
+          if (!rawStatus) return ''
+          const s = String(rawStatus).trim().toLowerCase()
+
+          // 1. Acolhimento
+          if (
+            s === '1. acolhimento' ||
+            s === 'acolhimento' ||
+            s === '1' ||
+            s.startsWith('1.') ||
+            s === 'captura + identificação' ||
+            s === 'captura + identificacao' ||
+            s === 'novo' ||
+            s === 'lead' ||
+            s === 'lead novo' ||
+            s === 'base de clientes/novo lyd' ||
+            s === 'd0 - contato imediato' ||
+            s === 'contato inicial' ||
+            s === 'contact'
+          ) {
+            return '1. Acolhimento'
+          }
+
+          // 2. Qualificação
+          if (
+            s === '2. qualificação' ||
+            s === '2. qualificacao' ||
+            s === 'qualificação' ||
+            s === 'qualificacao' ||
+            s === '2' ||
+            s.startsWith('2.') ||
+            s === 'validação no crm' ||
+            s === 'validacao no crm'
+          ) {
+            return '2. Qualificação'
+          }
+
+          // 3. Apresentação Consultiva
+          if (
+            s === '3. apresentação consultiva' ||
+            s === '3. apresentacao consultiva' ||
+            s === 'apresentação consultiva' ||
+            s === 'apresentacao consultiva' ||
+            s === '3' ||
+            s.startsWith('3.') ||
+            s === 'contato personalizado'
+          ) {
+            return '3. Apresentação Consultiva'
+          }
+
+          // 4. Sondagem Financeira
+          if (
+            s === '4. sondagem financeira' ||
+            s === 'sondagem financeira' ||
+            s === '4' ||
+            s.startsWith('4.') ||
+            s === 'mapeamento de perfil'
+          ) {
+            return '4. Sondagem Financeira'
+          }
+
+          // 5. Nutrição de Interesse
+          if (
+            s === '5. nutrição de interesse' ||
+            s === '5. nutricao de interesse' ||
+            s === 'nutrição de interesse' ||
+            s === 'nutricao de interesse' ||
+            s === '5' ||
+            s.startsWith('5.') ||
+            s === 'nutrição automática' ||
+            s === 'nutricao automatica' ||
+            s === 'engajamento' ||
+            /^d[1-4]\b/i.test(s)
+          ) {
+            return '5. Nutrição de Interesse'
+          }
+
+          // 6. Convite de Visita
+          if (
+            s === '6. convite de visita' ||
+            s === 'convite de visita' ||
+            s === '6' ||
+            s.startsWith('6.') ||
+            s === 'agendamento de visita' ||
+            s === 'demo realiz.' ||
+            /^d[5-9]\b/i.test(s)
+          ) {
+            return '6. Convite de Visita'
+          }
+
+          // 7. Confirmação e Rota
+          if (
+            s === '7. confirmação e rota' ||
+            s === '7. confirmacao e rota' ||
+            s === 'confirmação e rota' ||
+            s === 'confirmacao e rota' ||
+            s === '7' ||
+            s.startsWith('7.') ||
+            s === 'pré-visita' ||
+            s === 'pre-visita'
+          ) {
+            return '7. Confirmação e Rota'
+          }
+
+          // 8. Feedback da Visita
+          if (
+            s === '8. feedback da visita' ||
+            s === 'feedback da visita' ||
+            s === '8' ||
+            s.startsWith('8.') ||
+            s === 'pós-visita' ||
+            s === 'pos-visita' ||
+            s === 'visita'
+          ) {
+            return '8. Feedback da Visita'
+          }
+
+          // 9. Proposta e Condições
+          if (
+            s === '9. proposta e condições' ||
+            s === '9. proposta e condicoes' ||
+            s === 'proposta e condições' ||
+            s === 'proposta e condicoes' ||
+            s === '9' ||
+            s.startsWith('9.') ||
+            s === 'proposta e negociação' ||
+            s === 'proposta e negociacao' ||
+            s === 'proposta'
+          ) {
+            return '9. Proposta e Condições'
+          }
+
+          // 10. Pós-venda e Indicação
+          if (
+            s === '10. pós-venda e indicação' ||
+            s === '10. pos-venda e indicacao' ||
+            s === 'pós-venda e indicação' ||
+            s === 'pos-venda e indicacao' ||
+            s === '10' ||
+            s.startsWith('10.') ||
+            s === 'fechamento e pós-venda' ||
+            s === 'fechamento e pos-venda' ||
+            s === 'fechamento' ||
+            s === 'closed'
+          ) {
+            return '10. Pós-venda e Indicação'
+          }
+
+          return ''
+        }
+
+        let targetStatus = ''
+        if (detectedStatus) {
+          targetStatus = normalizeCanonicalStatus(detectedStatus)
+        }
+
+        // Se o cliente não tem status ou veio sem estágio definido, inicializa no canônico "1. Acolhimento"
+        if (
+          !targetStatus &&
+          (!currentCustStatus || normalizeCanonicalStatus(currentCustStatus) === '1. Acolhimento')
+        ) {
+          if (!currentCustStatus) {
+            targetStatus = '1. Acolhimento'
+          }
+        }
+
+        let crmUpdated = false
+        let stageMoved = false
+        const oldStatusBeforeMove = currentCustStatus
+
+        if (targetStatus && targetStatus !== currentCustStatus) {
+          custToUpdate.set('status', targetStatus)
+          crmUpdated = true
+          stageMoved = true
+        }
+
+        // Mapeamento canônico do status para as fases clássicas do pipeline ('Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento')
+        const effectiveStatus =
+          targetStatus || normalizeCanonicalStatus(currentCustStatus) || currentCustStatus
+        const validPhases = ['Lead', 'Atendimento', 'Visita', 'Proposta', 'Fechamento']
+        let targetPhase = ''
+
+        if (detectedPhase && validPhases.includes(detectedPhase)) {
+          targetPhase = detectedPhase
+        } else if (effectiveStatus === '10. Pós-venda e Indicação') {
+          targetPhase = 'Fechamento'
+        } else if (effectiveStatus === '9. Proposta e Condições') {
+          targetPhase = 'Proposta'
+        } else if (
+          effectiveStatus === '6. Convite de Visita' ||
+          effectiveStatus === '7. Confirmação e Rota' ||
+          effectiveStatus === '8. Feedback da Visita'
+        ) {
+          targetPhase = 'Visita'
+        } else if (
+          effectiveStatus === '3. Apresentação Consultiva' ||
+          effectiveStatus === '4. Sondagem Financeira' ||
+          effectiveStatus === '5. Nutrição de Interesse'
+        ) {
+          targetPhase = 'Atendimento'
+        } else if (effectiveStatus === '1. Acolhimento' || effectiveStatus === '2. Qualificação') {
+          targetPhase = 'Lead'
+        }
+
+        if (targetPhase && custToUpdate.getString('phase') !== targetPhase) {
+          custToUpdate.set('phase', targetPhase)
+          crmUpdated = true
+        }
+
+        if (detectedFollowUpStep) {
+          custToUpdate.set('follow_up_step', detectedFollowUpStep)
+          const curCount = custToUpdate.getInt('follow_up_count') || 0
+          custToUpdate.set('follow_up_count', curCount + 1)
+          crmUpdated = true
+        }
+
+        if (detectedPromisePending) {
+          custToUpdate.set('promise_pending', true)
+          if (detectedPromiseContext) {
+            custToUpdate.set('promise_context', detectedPromiseContext)
+          }
+          crmUpdated = true
+        } else if (detectedPromiseExplicitFalse) {
+          custToUpdate.set('promise_pending', false)
+          crmUpdated = true
+        }
+
+        if (detectedPermuta) {
+          const currentNotes = custToUpdate.getString('notes') || ''
+          if (!currentNotes.includes('[INTERESSE EM PERMUTA]')) {
+            custToUpdate.set('notes', `[INTERESSE EM PERMUTA] ${currentNotes}`.trim())
+            crmUpdated = true
+            detectedHandover = detectedHandover || 'Mauro'
+          }
+        }
+
+        if (detectedProfile) {
+          const validProfiles = ['Investidor', 'Morador', 'Primeiro Imóvel', 'Veranista']
+          if (validProfiles.includes(detectedProfile)) {
+            custToUpdate.set('lead_profile', detectedProfile)
+            crmUpdated = true
+          }
+        }
+
+        if (detectedPriceRange) {
+          custToUpdate.set('price_range', detectedPriceRange)
+          crmUpdated = true
+        }
+
+        if (detectedNeighborhood) {
+          custToUpdate.set('neighborhood', detectedNeighborhood)
+          crmUpdated = true
+        }
+
+        if (detectedUrgency > 0) {
+          custToUpdate.set('urgency', detectedUrgency)
+          crmUpdated = true
+        }
+
+        // CAPTURA E PERSISTÊNCIA DO E-MAIL DO CLIENTE (Pedido Mauro):
+        // Verifica tag [EMAIL: ...] da Bia ou extração direta por Regex da mensagem recebida do cliente
+        let capturedEmail = detectedEmail
+        if (!capturedEmail && custIncomingMsg) {
+          // Validação simples e robusta de formato de e-mail na mensagem do cliente
+          const directEmailMatch = custIncomingMsg.match(
+            /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/,
+          )
+          if (directEmailMatch) {
+            capturedEmail = directEmailMatch[0].trim().toLowerCase()
+          }
+        }
+
+        if (capturedEmail) {
+          // Sanitiza o formato
+          const cleanCapturedEmail = capturedEmail
+            .replace(/[,;]+$/, '')
+            .trim()
+            .toLowerCase()
+          const currentCustEmail = (custToUpdate.getString('email') || '').trim().toLowerCase()
+          if (cleanCapturedEmail && cleanCapturedEmail !== currentCustEmail) {
+            custToUpdate.set('email', cleanCapturedEmail)
+            if (!custToUpdate.getString('email_1_value')) {
+              custToUpdate.set('email_1_value', cleanCapturedEmail)
+            }
+            crmUpdated = true
+            console.log(
+              `[AI_REPLY] [EMAIL_CAPTURED] E-mail do cliente capturado e gravado no CRM: "${cleanCapturedEmail}" (customer=${customerId})`,
             )
-            alertLog.set(
+          }
+        }
+
+        if (detectedHandover) {
+          let custTags = custToUpdate.get('tags')
+          if (!Array.isArray(custTags)) custTags = []
+          if (!custTags.includes('ai_paused')) {
+            custTags.push('ai_paused')
+            custToUpdate.set('tags', custTags)
+            crmUpdated = true
+          }
+        }
+
+        if (crmUpdated) {
+          $app.saveNoValidate(custToUpdate)
+          console.log(
+            `[AI_REPLY] CRM updated for customer=${customerId} (status=${targetStatus || 'unchanged'})`,
+          )
+        }
+
+        // Registro obrigatório de movimentação de estágio em system_logs (tipo lead_stage_movement)
+        if (stageMoved && targetStatus) {
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const moveLog = new Record(logsCol)
+            moveLog.set('user_id', userId || '')
+            moveLog.set('type', 'lead_stage_movement')
+            moveLog.set(
+              'message',
+              `Lead movimentado pela Bia: "${oldStatusBeforeMove || 'Sem estágio'}" -> "${targetStatus}"`,
+            )
+            moveLog.set(
               'details',
               JSON.stringify({
-                statusCode: sendRes.statusCode,
-                code: waCode,
-                error_subcode: waErrObj.error_subcode !== undefined ? waErrObj.error_subcode : null,
-                error_type: waErrObj.type || null,
-                fbtrace_id: waErrObj.fbtrace_id || null,
-                meta_response: sendRes.json || sendRes.body || null,
-                phone_id: metaPhoneId,
-                to: cleanPhone,
+                moved_by: 'Bia',
+                from_status: oldStatusBeforeMove || '',
+                to_status: targetStatus,
+                phase: targetPhase || custToUpdate.getString('phase') || '',
+                follow_up_step:
+                  detectedFollowUpStep || custToUpdate.getString('follow_up_step') || '',
+                customer_id: customerId,
+                customer_name: displayName || custToUpdate.getString('name') || '',
+                customer_phone: customerPhone || custToUpdate.getString('phone') || '',
+              }),
+            )
+            moveLog.set(
+              'payload',
+              JSON.stringify({
+                moved_by: 'Bia',
+                from_status: oldStatusBeforeMove || '',
+                to_status: targetStatus,
                 customer_id: customerId,
               }),
             )
-            $app.saveNoValidate(alertLog)
-          } catch (_) {}
-
-          if (sendRes.statusCode === 401 || waCode === 190) {
-            try {
-              const failUser = userId ? $app.findRecordById('users', userId) : null
-              if (failUser) {
-                failUser.set('meta_token_status', 'expired')
-                $app.saveNoValidate(failUser)
-              }
-            } catch (_) {}
-          }
-        }
-      } catch (logErr) {
-        console.warn(`[AI_REPLY] Failed to log whatsapp_ai_send: ${String(logErr)}`)
-      }
-
-      // Audio (optional)
-      if (sendAudio) {
-        const openAiKey = $os.getenv('OPENAI_API_KEY')
-        if (openAiKey) {
-          try {
-            const ttsRes = callMetaWithRetry(
-              'https://api.openai.com/v1/audio/speech',
-              'POST',
-              { Authorization: `Bearer ${openAiKey}`, 'Content-Type': 'application/json' },
-              JSON.stringify({
-                model: 'tts-1',
-                input: finalCleanBody || 'Olá',
-                voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
-              }),
-            )
-
-            if (ttsRes && ttsRes.statusCode === 200 && ttsRes.body) {
-              const boundary = '----Boundary' + $security.randomString(16)
-              const headerStr = `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n`
-              const footerStr = `\r\n--${boundary}--\r\n`
-
-              const headerBytes = new Uint8Array(headerStr.length)
-              for (let i = 0; i < headerStr.length; i++) headerBytes[i] = headerStr.charCodeAt(i)
-              const footerBytes = new Uint8Array(footerStr.length)
-              for (let i = 0; i < footerStr.length; i++) footerBytes[i] = footerStr.charCodeAt(i)
-
-              const bodyBytes = new Uint8Array(
-                headerBytes.length + ttsRes.body.length + footerBytes.length,
-              )
-              bodyBytes.set(headerBytes, 0)
-              bodyBytes.set(ttsRes.body, headerBytes.length)
-              bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
-
-              const mediaRes = callMetaWithRetry(
-                `https://graph.facebook.com/v21.0/${metaPhoneId}/media${metaWhatsappProofParam(metaToken)}`,
-                'POST',
-                {
-                  Authorization: `Bearer ${metaToken}`,
-                  'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                },
-                bodyBytes.buffer,
-              )
-
-              if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json && mediaRes.json.id) {
-                callMetaWithRetry(
-                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
-                  'POST',
-                  { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-                  JSON.stringify({
-                    messaging_product: 'whatsapp',
-                    to: cleanPhone,
-                    type: 'audio',
-                    audio: { id: mediaRes.json.id },
-                  }),
-                )
-              }
-            }
-          } catch (audioErr) {
-            console.warn(`[AI_REPLY] Audio TTS/Upload failed (non-fatal): ${String(audioErr)}`)
-          }
-        }
-      }
-    } else if (conversationChannel === 'whatsapp' && (!metaToken || !metaPhoneId)) {
-      console.warn(
-        `[AI_REPLY] WhatsApp send skipped: missing metaToken or metaPhoneId (token=${!!metaToken}, phoneId=${metaPhoneId})`,
-      )
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const warnLog = new Record(logsCol)
-        warnLog.set('user_id', userId || '')
-        warnLog.set('type', 'whatsapp_ai_reply_error')
-        warnLog.set('message', 'Credenciais Meta WhatsApp ausentes no usuário')
-        warnLog.set('details', `metaToken=${!!metaToken}, metaPhoneId=${metaPhoneId}`)
-        $app.saveNoValidate(warnLog)
-      } catch (_) {}
-    }
-
-    // ===== RESPOSTA EM VOZ (Messenger / Instagram Direct) =====
-    // Mesma TTS do WhatsApp (OpenAI tts-1 com ai_voice_id do usuário), upload do
-    // .mp3 como anexo de áudio na Graph API (/PAGE_ID/assets, field type=audio) e
-    // envio via /me/messages com message.attachments[{type:'audio', payload:{attachment_id}}].
-    // Degradável: em qualquer falha devolve ok=false para o canal responder em texto.
-    function sendMetaChannelVoiceReply(opts) {
-      const out = { ok: false, error: '', stage: '' }
-      try {
-        const voiceToken = (opts.pageToken || '').trim()
-        const voicePageId = (opts.pageId || '').trim()
-        const voiceText = (opts.text || '').trim()
-        if (!voiceToken || !voicePageId || !voiceText) {
-          out.error = !voiceToken
-            ? 'Token de página ausente para resposta em voz'
-            : !voicePageId
-              ? 'ID da Página ausente para resposta em voz'
-              : 'Texto vazio para resposta em voz'
-          out.stage = 'params'
-          return out
-        }
-
-        const voiceOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
-        if (
-          !voiceOpenAiKey &&
-          typeof $secrets !== 'undefined' &&
-          $secrets.has &&
-          $secrets.has('OPENAI_API_KEY')
-        ) {
-          try {
-            voiceOpenAiKey = $secrets.get('OPENAI_API_KEY') || ''
-          } catch (_) {}
-        }
-        if (!voiceOpenAiKey) {
-          out.error = 'OPENAI_API_KEY ausente para gerar a voz'
-          out.stage = 'tts_key'
-          return out
-        }
-
-        // 1. TTS — mesma chamada do fluxo WhatsApp (voz configurada no usuário, padrão 'nova')
-        const ttsRes = callMetaWithRetry(
-          'https://api.openai.com/v1/audio/speech',
-          'POST',
-          { Authorization: `Bearer ${voiceOpenAiKey}`, 'Content-Type': 'application/json' },
-          JSON.stringify({
-            model: 'tts-1',
-            input: voiceText,
-            voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
-          }),
-        )
-        if (!ttsRes || ttsRes.statusCode !== 200 || !ttsRes.body) {
-          out.error = `TTS falhou (status=${ttsRes ? ttsRes.statusCode : 'none'})`
-          out.stage = 'tts'
-          return out
-        }
-
-        // 2. Upload do áudio na Página (assets do Messenger Platform) — multipart idêntico ao WhatsApp
-        const audioBoundary = '----BoundaryAudio' + $security.randomString(16)
-        const partTypeStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\naudio\r\n`
-        const partFileStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="file"; filename="bia_audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`
-        const audioFooterStr = `\r\n--${audioBoundary}--\r\n`
-        const partTypeBytes = new Uint8Array(partTypeStr.length)
-        for (let ai = 0; ai < partTypeStr.length; ai++)
-          partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
-        const partFileBytes = new Uint8Array(partFileStr.length)
-        for (let bi = 0; bi < partFileStr.length; bi++)
-          partFileBytes[bi] = partFileStr.charCodeAt(bi)
-        const audioFooterBytes = new Uint8Array(audioFooterStr.length)
-        for (let ci = 0; ci < audioFooterStr.length; ci++)
-          audioFooterBytes[ci] = audioFooterStr.charCodeAt(ci)
-        const audioBodyBytes = new Uint8Array(
-          partTypeBytes.length +
-            partFileBytes.length +
-            ttsRes.body.length +
-            audioFooterBytes.length,
-        )
-        let audioOffset = 0
-        audioBodyBytes.set(partTypeBytes, audioOffset)
-        audioOffset += partTypeBytes.length
-        audioBodyBytes.set(partFileBytes, audioOffset)
-        audioOffset += partFileBytes.length
-        audioBodyBytes.set(ttsRes.body, audioOffset)
-        audioOffset += ttsRes.body.length
-        audioBodyBytes.set(audioFooterBytes, audioOffset)
-
-        const uploadRes = callMetaWithRetry(
-          `https://graph.facebook.com/v22.0/${voicePageId}/assets`,
-          'POST',
-          {
-            Authorization: `Bearer ${voiceToken}`,
-            'Content-Type': `multipart/form-data; boundary=${audioBoundary}`,
-          },
-          audioBodyBytes.buffer,
-        )
-        if (!uploadRes || uploadRes.statusCode < 200 || uploadRes.statusCode >= 300) {
-          out.error = `Upload de áudio na Página falhou (status=${uploadRes ? uploadRes.statusCode : 'none'}) ${JSON.stringify((uploadRes && (uploadRes.json || uploadRes.body)) || '')}`
-          out.stage = 'upload'
-          return out
-        }
-
-        // Tenta attachment_id direto; sem ele, resolve pelo handle do upload
-        let audioAttachmentId = (uploadRes.json && uploadRes.json.attachment_id) || ''
-        if (!audioAttachmentId) {
-          const uploadHandle =
-            (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
-          if (uploadHandle) {
-            const assetMetaRes = callMetaWithRetry(
-              `https://graph.facebook.com/v22.0/${voicePageId}/assets?fields=attachment_id&handle=${encodeURIComponent(uploadHandle)}`,
-              'GET',
-              { Authorization: `Bearer ${voiceToken}` },
-              null,
-            )
-            if (
-              assetMetaRes &&
-              assetMetaRes.json &&
-              assetMetaRes.json[0] &&
-              assetMetaRes.json[0].attachment_id
-            ) {
-              audioAttachmentId = assetMetaRes.json[0].attachment_id
-            }
-          }
-        }
-        if (!audioAttachmentId) {
-          out.error = 'Upload ok, mas attachment_id do áudio não retornado pela Graph API'
-          out.stage = 'upload_meta'
-          return out
-        }
-
-        // 3. Envio da mensagem de voz
-        const voiceSendRes = callMetaWithRetry(
-          `https://graph.facebook.com/v22.0/me/messages`,
-          'POST',
-          { Authorization: `Bearer ${voiceToken}`, 'Content-Type': 'application/json' },
-          JSON.stringify({
-            recipient: { id: opts.recipientId },
-            message: {
-              attachment: {
-                type: 'audio',
-                payload: { attachment_id: audioAttachmentId, is_reusable: true },
-              },
-            },
-          }),
-        )
-        const voiceOk =
-          voiceSendRes && voiceSendRes.statusCode >= 200 && voiceSendRes.statusCode < 300
-        if (!voiceOk) {
-          out.error = `Envio da mensagem de voz falhou (status=${voiceSendRes ? voiceSendRes.statusCode : 'none'}) ${JSON.stringify((voiceSendRes && (voiceSendRes.json || voiceSendRes.body)) || '')}`
-          out.stage = 'send'
-          return out
-        }
-        out.ok = true
-        return out
-      } catch (voiceErr) {
-        out.error = String(voiceErr && voiceErr.message ? voiceErr.message : voiceErr)
-        out.stage = out.stage || 'exception'
-        return out
-      }
-    }
-
-    function logVoiceReplyResult(logTypePrefix, ok, stage, errorText, extraPayload) {
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const voiceLog = new Record(logsCol)
-        voiceLog.set('user_id', userId || '')
-        voiceLog.set('type', logTypePrefix + (ok ? '_audio_sent' : '_audio_failed'))
-        voiceLog.set(
-          'message',
-          ok
-            ? `Resposta da Bia enviada em VOZ (${stage === 'sent' ? 'áudio' : 'áudio'}) com sucesso`
-            : `Falha ao enviar resposta em voz (${stage}): ${String(errorText || '').substring(0, 180)}`,
-        )
-        voiceLog.set(
-          'details',
-          `stage=${stage} | ok=${ok} | erro=${String(errorText || '').substring(0, 200)}`,
-        )
-        voiceLog.set(
-          'payload',
-          JSON.stringify(
-            Object.assign(
-              { stage: stage, success: ok, error: errorText || null },
-              extraPayload || {},
-            ),
-          ),
-        )
-        $app.saveNoValidate(voiceLog)
-      } catch (_) {}
-    }
-
-    // ===== RESPOSTA EM VOZ (Messenger / Instagram Direct) =====
-    // Mesma TTS do WhatsApp (OpenAI tts-1 com ai_voice_id do usuário), upload do
-    // .mp3 como anexo de áudio na Graph API (/PAGE_ID/assets, field type=audio) e
-    // envio via /me/messages com message.attachments[{type:'audio', payload:{attachment_id}}].
-    // Degradável: em qualquer falha devolve ok=false para o canal responder em texto.
-    function sendMetaChannelVoiceReply(opts) {
-      const out = { ok: false, error: '', stage: '' }
-      try {
-        const voiceToken = (opts.pageToken || '').trim()
-        const voicePageId = (opts.pageId || '').trim()
-        const voiceText = (opts.text || '').trim()
-        if (!voiceToken || !voicePageId || !voiceText) {
-          out.error = !voiceToken
-            ? 'Token de página ausente para resposta em voz'
-            : !voicePageId
-              ? 'ID da Página ausente para resposta em voz'
-              : 'Texto vazio para resposta em voz'
-          out.stage = 'params'
-          return out
-        }
-
-        const voiceOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
-        if (!voiceOpenAiKey) {
-          out.error = 'OPENAI_API_KEY ausente para gerar a voz'
-          out.stage = 'tts_key'
-          return out
-        }
-
-        // 1. TTS — mesma chamada do fluxo WhatsApp (voz configurada no usuário, padrão 'nova')
-        const ttsRes = callMetaWithRetry(
-          'https://api.openai.com/v1/audio/speech',
-          'POST',
-          { Authorization: `Bearer ${voiceOpenAiKey}`, 'Content-Type': 'application/json' },
-          JSON.stringify({
-            model: 'tts-1',
-            input: voiceText,
-            voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
-          }),
-        )
-        if (!ttsRes || ttsRes.statusCode !== 200 || !ttsRes.body) {
-          out.error = `TTS falhou (status=${ttsRes ? ttsRes.statusCode : 'none'})`
-          out.stage = 'tts'
-          return out
-        }
-
-        // 2. Upload do áudio na Página (assets do Messenger Platform) — multipart idêntico ao WhatsApp
-        const audioBoundary = '----BoundaryAudio' + $security.randomString(16)
-        const partTypeStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\naudio\r\n`
-        const partFileStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="file"; filename="bia_audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`
-        const audioFooterStr = `\r\n--${audioBoundary}--\r\n`
-        const partTypeBytes = new Uint8Array(partTypeStr.length)
-        for (let ai = 0; ai < partTypeStr.length; ai++)
-          partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
-        const partFileBytes = new Uint8Array(partFileStr.length)
-        for (let bi = 0; bi < partFileStr.length; bi++)
-          partFileBytes[bi] = partFileStr.charCodeAt(bi)
-        const audioFooterBytes = new Uint8Array(audioFooterStr.length)
-        for (let ci = 0; ci < audioFooterStr.length; ci++)
-          audioFooterBytes[ci] = audioFooterStr.charCodeAt(ci)
-        const audioBodyBytes = new Uint8Array(
-          partTypeBytes.length +
-            partFileBytes.length +
-            ttsRes.body.length +
-            audioFooterBytes.length,
-        )
-        let audioOffset = 0
-        audioBodyBytes.set(partTypeBytes, audioOffset)
-        audioOffset += partTypeBytes.length
-        audioBodyBytes.set(partFileBytes, audioOffset)
-        audioOffset += partFileBytes.length
-        audioBodyBytes.set(ttsRes.body, audioOffset)
-        audioOffset += ttsRes.body.length
-        audioBodyBytes.set(audioFooterBytes, audioOffset)
-
-        const uploadRes = callMetaWithRetry(
-          `https://graph.facebook.com/v22.0/${voicePageId}/assets`,
-          'POST',
-          {
-            Authorization: `Bearer ${voiceToken}`,
-            'Content-Type': `multipart/form-data; boundary=${audioBoundary}`,
-          },
-          audioBodyBytes.buffer,
-        )
-        if (!uploadRes || uploadRes.statusCode < 200 || uploadRes.statusCode >= 300) {
-          out.error = `Upload de áudio na Página falhou (status=${uploadRes ? uploadRes.statusCode : 'none'}) ${JSON.stringify((uploadRes && (uploadRes.json || uploadRes.body)) || '')}`
-          out.stage = 'upload'
-          return out
-        }
-
-        // Tenta attachment_id direto; sem ele, resolve pelo handle/id retornado
-        let audioAttachmentId = (uploadRes.json && uploadRes.json.attachment_id) || ''
-        if (!audioAttachmentId) {
-          const uploadHandle =
-            (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
-          if (uploadHandle) {
-            const assetMetaRes = callMetaWithRetry(
-              `https://graph.facebook.com/v22.0/${voicePageId}/assets?fields=attachment_id&handle=${encodeURIComponent(uploadHandle)}`,
-              'GET',
-              { Authorization: `Bearer ${voiceToken}` },
-              null,
-            )
-            if (
-              assetMetaRes &&
-              assetMetaRes.json &&
-              assetMetaRes.json[0] &&
-              assetMetaRes.json[0].attachment_id
-            ) {
-              audioAttachmentId = assetMetaRes.json[0].attachment_id
-            }
-          }
-        }
-        if (!audioAttachmentId) {
-          out.error = 'Upload ok, mas attachment_id do áudio não retornado pela Graph API'
-          out.stage = 'upload_meta'
-          return out
-        }
-
-        // 3. Envio da mensagem de voz
-        const voiceSendRes = callMetaWithRetry(
-          'https://graph.facebook.com/v22.0/me/messages',
-          'POST',
-          { Authorization: `Bearer ${voiceToken}`, 'Content-Type': 'application/json' },
-          JSON.stringify({
-            recipient: { id: opts.recipientId },
-            message: {
-              attachment: {
-                type: 'audio',
-                payload: { attachment_id: audioAttachmentId, is_reusable: true },
-              },
-            },
-          }),
-        )
-        const voiceOk =
-          voiceSendRes && voiceSendRes.statusCode >= 200 && voiceSendRes.statusCode < 300
-        if (!voiceOk) {
-          out.error = `Envio da mensagem de voz falhou (status=${voiceSendRes ? voiceSendRes.statusCode : 'none'}) ${JSON.stringify((voiceSendRes && (voiceSendRes.json || voiceSendRes.body)) || '')}`
-          out.stage = 'send'
-          return out
-        }
-        out.ok = true
-        return out
-      } catch (voiceErr) {
-        out.error = String(voiceErr && voiceErr.message ? voiceErr.message : voiceErr)
-        out.stage = out.stage || 'exception'
-        return out
-      }
-    }
-
-    function logVoiceReplyResult(logTypePrefix, ok, stage, errorText, extraPayload) {
-      try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const voiceLog = new Record(logsCol)
-        voiceLog.set('user_id', userId || '')
-        voiceLog.set('type', logTypePrefix + (ok ? '_audio_sent' : '_audio_failed'))
-        voiceLog.set(
-          'message',
-          ok
-            ? `Resposta da Bia em VOZ enviada com sucesso (${logTypePrefix})`
-            : `Falha ao enviar resposta em voz (${stage}): ${String(errorText || '').substring(0, 180)}`,
-        )
-        voiceLog.set(
-          'details',
-          `stage=${stage} | ok=${ok} | erro=${String(errorText || '').substring(0, 200)}`,
-        )
-        voiceLog.set(
-          'payload',
-          JSON.stringify(
-            Object.assign(
-              { stage: stage, success: ok, error: errorText || null },
-              extraPayload || {},
-            ),
-          ),
-        )
-        $app.saveNoValidate(voiceLog)
-      } catch (_) {}
-    }
-
-    if (conversationChannel === 'messenger' && responseText) {
-      // Envio de texto da Bia via Messenger Graph API
-      try {
-        const messengerNotes = customer.getString('notes') || ''
-        let psidMatch = messengerNotes.match(/(?:Messenger PSID|Sender ID):\s*(\S+)/i)
-        let psid = psidMatch ? psidMatch[1].trim() : ''
-
-        if (!psid) {
-          const lastOriginStr =
-            (customer.getString('last_origin') || '') + ' ' + (customer.getString('name') || '')
-          const lastOriginMatch = lastOriginStr.match(/(\d{10,25})/)
-          if (lastOriginMatch) psid = lastOriginMatch[1]
-        }
-
-        // Busca o token de página mais recente nos registros de usuários (meta_page_access_token)
-        let freshUserForMessenger = userRecord
-        try {
-          if (userId) {
-            freshUserForMessenger = $app.findRecordById('users', userId)
-          }
-        } catch (_) {}
-        if (!freshUserForMessenger || !freshUserForMessenger.getString('meta_page_access_token')) {
-          try {
-            const pageUsers = $app.findRecordsByFilter(
-              'users',
-              "meta_page_access_token != ''",
-              '-updated',
-              1,
-              0,
-            )
-            if (pageUsers && pageUsers.length > 0) {
-              freshUserForMessenger = pageUsers[0]
-            }
-          } catch (_) {}
-        }
-
-        const pageToken = (
-          freshUserForMessenger
-            ? freshUserForMessenger.getString('meta_page_access_token') ||
-              freshUserForMessenger.getString('meta_instagram_page_token') ||
-              ''
-            : ''
-        ).trim()
-
-        const messengerPageId =
-          (freshUserForMessenger ? freshUserForMessenger.getString('meta_page_id') : '') ||
-          '1343797128806374'
-
-        const messengerEndpointUrl = 'https://graph.facebook.com/v18.0/me/messages'
-        const messengerPayloadObj = {
-          recipient: { id: psid },
-          message: { text: responseText },
-        }
-
-        if (psid && pageToken) {
-          console.log(
-            `[AI_REPLY] Sending Messenger reply to PSID=${psid} PageID=${messengerPageId} endpoint=${messengerEndpointUrl} (token_prefix=${pageToken.substring(0, 15)}... len=${pageToken.length})`,
-          )
-
-          const messengerSendRes = callMetaWithRetry(
-            messengerEndpointUrl,
-            'POST',
-            { Authorization: 'Bearer ' + pageToken, 'Content-Type': 'application/json' },
-            JSON.stringify(messengerPayloadObj),
-          )
-
-          const isSuccess =
-            messengerSendRes &&
-            messengerSendRes.statusCode >= 200 &&
-            messengerSendRes.statusCode < 300
-          const resErrorObj =
-            messengerSendRes && messengerSendRes.json && messengerSendRes.json.error
-              ? messengerSendRes.json.error
-              : null
-
-          // Registrar no system_logs: tipo messenger_ai_send com payload enviado, resposta da Graph API e resultado
-          try {
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const aiSendLog = new Record(logsCol)
-            aiSendLog.set(
-              'user_id',
-              (freshUserForMessenger ? freshUserForMessenger.id : userId) || '',
-            )
-            aiSendLog.set('type', 'messenger_ai_send')
-
-            if (isSuccess) {
-              aiSendLog.set(
-                'message',
-                `Resposta da Bia enviada com sucesso via Messenger Send API para PSID ${psid}`,
-              )
-              aiSendLog.set(
-                'details',
-                `Status HTTP ${messengerSendRes ? messengerSendRes.statusCode : 200}. PageID: ${messengerPageId}. Recipient: ${psid}.`,
-              )
-            } else {
-              const errCode =
-                resErrorObj && resErrorObj.code !== undefined ? resErrorObj.code : 'desconhecido'
-              const errSubcode =
-                resErrorObj && resErrorObj.error_subcode !== undefined
-                  ? resErrorObj.error_subcode
-                  : 'none'
-              const errMsg =
-                (resErrorObj && resErrorObj.message) ||
-                (messengerSendRes ? 'HTTP ' + messengerSendRes.statusCode : 'Sem resposta')
-
-              let humanDiagnostic = 'Falha no envio da resposta via Messenger.'
-              if (errCode === 10 || errCode === 200) {
-                humanDiagnostic =
-                  'Permissão pages_messaging pendente ou página não autorizada no app da Meta.'
-              } else if (errCode === 100) {
-                humanDiagnostic = 'Parâmetro inválido na chamada do Messenger Send API.'
-              } else if (errCode === 551) {
-                humanDiagnostic =
-                  'Esta pessoa não pode ser contatada pelo Messenger ou a conversa não foi iniciada pelo usuário.'
-              } else if (errCode === 230) {
-                humanDiagnostic = 'Página restrita para envio de mensagens pela Meta.'
-              } else if (
-                errMsg.toLowerCase().includes('window') ||
-                errMsg.toLowerCase().includes('24h') ||
-                errCode === 10900
-              ) {
-                humanDiagnostic = 'Janela de 24 horas da Meta expirada para este usuário.'
-              }
-
-              aiSendLog.set(
-                'message',
-                `Tentativa de envio Messenger Send API: ${humanDiagnostic} (Código Meta: ${errCode}, subcode: ${errSubcode})`,
-              )
-              aiSendLog.set(
-                'details',
-                `Endpoint: ${messengerEndpointUrl} | PageID: ${messengerPageId} | PSID: ${psid} | Status: ${messengerSendRes ? messengerSendRes.statusCode : 'null'} | Erro Meta: ${errMsg}`,
-              )
-            }
-
-            aiSendLog.set(
-              'payload',
-              JSON.stringify({
-                recipient_id: psid,
-                page_id: messengerPageId,
-                endpoint: messengerEndpointUrl,
-                request: {
-                  recipient: { id: psid },
-                  message: { text: responseText },
-                },
-                response_status: messengerSendRes ? messengerSendRes.statusCode : null,
-                response_body: messengerSendRes
-                  ? messengerSendRes.json || messengerSendRes.body
-                  : null,
-                error: resErrorObj,
-              }),
-            )
-            $app.saveNoValidate(aiSendLog)
-          } catch (logErr) {
-            console.warn(`[AI_REPLY] Error saving messenger_ai_send log: ${String(logErr)}`)
-          }
-
-          if (isSuccess) {
+            $app.saveNoValidate(moveLog)
             console.log(
-              `[AI_REPLY] Messenger DM sent successfully to PSID ${psid} for customer=${customerId}`,
+              `[AI_REPLY] [LEAD_STAGE_MOVEMENT] Log gravado: "${oldStatusBeforeMove}" -> "${targetStatus}" (customer=${customerId})`,
             )
-            // Fluxo de voz Bia (Messenger): cliente mandou áudio → responde também em voz via TTS
-            if (sendAudio) {
-              try {
-                const voiceOut = sendMetaChannelVoiceReply({
-                  pageToken: pageToken,
-                  pageId: messengerPageId,
-                  text: responseText,
-                  recipientId: psid,
-                })
-                logVoiceReplyResult(
-                  'messenger_voice_reply',
-                  voiceOut.ok,
-                  voiceOut.stage,
-                  voiceOut.error,
-                  { customer_id: customerId, psid: psid, page_id: messengerPageId },
-                )
-                if (voiceOut.ok) {
-                  console.log(`[AI_REPLY] Messenger voice reply sent to PSID ${psid}`)
-                } else {
-                  console.warn(
-                    `[AI_REPLY] Messenger voice reply failed (non-fatal): ${voiceOut.error}`,
-                  )
-                }
-              } catch (voiceExc) {
-                console.warn(
-                  `[AI_REPLY] Messenger voice reply exception (non-fatal): ${String(voiceExc)}`,
-                )
-              }
-            }
-          } else {
+          } catch (logMoveErr) {
             console.warn(
-              `[AI_REPLY] Messenger DM send failed for PSID ${psid}: ${resErrorObj ? resErrorObj.message : 'HTTP ' + (messengerSendRes ? messengerSendRes.statusCode : 'null')}`,
+              `[AI_REPLY] Falha ao registrar log lead_stage_movement: ${String(logMoveErr)}`,
             )
-            // FRENTE 1-e (vigia): falha de envio Messenger nunca pode ficar em silêncio
-            // no painel. Grava alerta de nível error com a resposta completa da Meta e,
-            // em erro 190/401 (token expirado), marca meta_token_status='expired'.
-            try {
-              const msFailLog = new Record($app.findCollectionByNameOrId('system_logs'))
-              const msErrCode =
-                resErrorObj && resErrorObj.code !== undefined ? resErrorObj.code : null
-              msFailLog.set(
-                'user_id',
-                (freshUserForMessenger ? freshUserForMessenger.id : userId) || '',
-              )
-              msFailLog.set('type', 'messenger_send_failed_alert')
-              msFailLog.set(
-                'message',
-                `FALHA DE ENVIO MESSENGER (code=${msErrCode !== null ? msErrCode : 'n/a'}): leads podem não receber resposta da Bia. Resposta da Meta: ${resErrorObj ? resErrorObj.message : 'HTTP ' + (messengerSendRes ? messengerSendRes.statusCode : 'null')}`,
-              )
-              msFailLog.set(
-                'details',
-                JSON.stringify({
-                  statusCode: messengerSendRes ? messengerSendRes.statusCode : null,
-                  code: msErrCode,
-                  error_subcode:
-                    resErrorObj && resErrorObj.error_subcode !== undefined
-                      ? resErrorObj.error_subcode
-                      : null,
-                  error_type: resErrorObj ? resErrorObj.type || null : null,
-                  fbtrace_id: resErrorObj ? resErrorObj.fbtrace_id || null : null,
-                  meta_response: messengerSendRes
-                    ? messengerSendRes.json || messengerSendRes.body
-                    : null,
-                  psid: psid,
-                  customer_id: customerId,
-                }),
-              )
-              $app.saveNoValidate(msFailLog)
-            } catch (_) {}
-
-            try {
-              const msCode = resErrorObj && resErrorObj.code !== undefined ? resErrorObj.code : null
-              const msStatus = messengerSendRes ? messengerSendRes.statusCode : 0
-              if (msStatus === 401 || msCode === 190) {
-                const msFailUser = (freshUserForMessenger ? freshUserForMessenger.id : userId)
-                  ? $app.findRecordById(
-                      'users',
-                      freshUserForMessenger ? freshUserForMessenger.id : userId,
-                    )
-                  : null
-                if (msFailUser) {
-                  msFailUser.set('meta_token_status', 'expired')
-                  $app.saveNoValidate(msFailUser)
-                }
-              }
-            } catch (_) {}
           }
-        } else {
-          // Token ou PSID ausente
-          try {
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const missingLog = new Record(logsCol)
-            missingLog.set(
-              'user_id',
-              (freshUserForMessenger ? freshUserForMessenger.id : userId) || '',
-            )
-            missingLog.set('type', 'messenger_ai_send')
-            missingLog.set(
-              'message',
-              `Envio Messenger não realizado: ${!psid ? 'PSID do destinatário não encontrado' : 'Token de acesso da página (meta_page_access_token) ausente'}`,
-            )
-            missingLog.set('details', `psid=${psid || 'vazio'}, pageTokenPresent=${!!pageToken}`)
-            missingLog.set('payload', JSON.stringify({ customer_id: customerId, psid: psid }))
-            $app.saveNoValidate(missingLog)
-          } catch (_) {}
         }
-      } catch (mErr) {
-        console.warn(`[AI_REPLY] Messenger send error (non-fatal): ${String(mErr)}`)
-        try {
-          const logsCol = $app.findCollectionByNameOrId('system_logs')
-          const excLog = new Record(logsCol)
-          excLog.set('user_id', userId || '')
-          excLog.set('type', 'messenger_ai_send')
-          excLog.set('message', `Exceção não-fatal durante envio via Messenger: ${String(mErr)}`)
-          excLog.set('details', String(mErr))
-          $app.saveNoValidate(excLog)
-        } catch (_) {}
+      } catch (crmErr) {
+        console.warn(`[AI_REPLY] CRM status update non-fatal error: ${String(crmErr)}`)
       }
-    }
 
-    // Instagram channel
-    if (conversationChannel === 'instagram' && responseText) {
-      try {
-        const igNotes = customer.getString('notes') || ''
-        let igSenderIdMatch = igNotes.match(/IG Sender ID:\s*(\S+)/i)
-        let igSenderId = igSenderIdMatch ? igSenderIdMatch[1] : ''
+      // Resolve WhatsApp Meta credentials
+      let metaToken = userRecord ? userRecord.getString('meta_whatsapp_access_token') : ''
+      let metaPhoneId = userRecord ? userRecord.getString('meta_whatsapp_phone_number_id') : ''
 
-        if (!igSenderId) {
-          const lastOriginStr = customer.getString('last_origin') || ''
-          const lastOriginMatch = lastOriginStr.match(/(\d{10,25})/)
-          if (lastOriginMatch) igSenderId = lastOriginMatch[1]
-        }
-
-        // Janela de 24h da Meta para Instagram Messaging (regra oficial da Meta)
-        let isWithin24h = true
+      if (!metaToken || !metaPhoneId) {
         try {
-          const lastCustMsg = $app.findRecordsByFilter(
-            'conversations',
-            `customer_id = '${customerId}' && sender = 'customer'`,
+          const usersWithMeta = $app.findRecordsByFilter(
+            'users',
+            "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
             '-created',
             1,
             0,
           )
-          if (lastCustMsg.length > 0) {
-            const lastCustTime = new Date(lastCustMsg[0].getString('created')).getTime()
-            const diffHours = (new Date().getTime() - lastCustTime) / (1000 * 60 * 60)
-            if (diffHours > 24) {
-              isWithin24h = false
-              console.warn(
-                `[AI_REPLY] Instagram reply skipped: outside 24h standard messaging window (${diffHours.toFixed(1)}h ago) for customer=${customerId}`,
-              )
-            }
+          if (usersWithMeta.length > 0) {
+            metaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
+            metaPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
           }
         } catch (_) {}
+      }
 
-        // Busca o token mais recente do usuário no CRM (priorizando conexão OAuth atualizada)
-        let freshUserRecord = userRecord
-        try {
-          if (userId) {
-            freshUserRecord = $app.findRecordById('users', userId)
-          }
-        } catch (_) {}
-        if (!freshUserRecord) {
+      let cleanPhone = customerPhone.replace(/\D/g, '')
+      if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+        cleanPhone = '55' + cleanPhone
+      }
+
+      // CORREÇÃO 1 — DEDUP POR CONTEÚDO NORMALIZADO (SUBSTITUINDO O DEDUP TEMPORAL DE 45s)
+      // Normalizar texto (trim + colapsar espaços/quebras repetidas) e comparar com a última mensagem 'ai'
+      // REALMENTE ENVIADA ao WhatsApp registrada nos logs da Meta (status=200/ok=true).
+      // Bloquear APENAS se o conteúdo for idêntico. Mensagens regeneradas ou corrigidas DEVEM SEMPRE ser enviadas!
+      function normalizeMsgContent(txt) {
+        if (!txt) return ''
+        return String(txt).replace(/\s+/g, ' ').trim().toLowerCase()
+      }
+
+      const normalizedCurrentResponse = normalizeMsgContent(responseText)
+      let isContentIdenticalToLastSent = false
+      let lastSentPreviewLogged = ''
+
+      try {
+        const recentAiLogs = $app.findRecordsByFilter(
+          'system_logs',
+          `type = 'whatsapp_ai_send' && payload ~ '${customerId}'`,
+          '-created',
+          5,
+          0,
+        )
+
+        for (let lIdx = 0; lIdx < recentAiLogs.length; lIdx++) {
+          const logItem = recentAiLogs[lIdx]
+          const detailsStr = logItem.getString('details') || ''
+          let isRealMetaOk = false
           try {
-            const latestUsers = $app.findRecordsByFilter(
-              'users',
-              "meta_instagram_page_token != '' || meta_instagram_user_token != '' || meta_page_access_token != ''",
-              '-updated',
-              1,
-              0,
-            )
-            if (latestUsers && latestUsers.length > 0) {
-              freshUserRecord = latestUsers[0]
+            const det = JSON.parse(detailsStr)
+            if (det && det.statusCode >= 200 && det.statusCode < 300) {
+              isRealMetaOk = true
             }
           } catch (_) {}
-        }
 
-        const igToken = (
-          freshUserRecord
-            ? freshUserRecord.getString('meta_instagram_page_token') ||
-              freshUserRecord.getString('meta_instagram_user_token') ||
-              freshUserRecord.getString('meta_page_access_token') ||
-              freshUserRecord.getString('meta_capi_token') ||
-              ''
-            : ''
-        ).trim()
-
-        // Resolução dinâmica do Instagram Business/User Account ID oficial para o endpoint {ig_user_id}/messages
-        let igRecipientTargetId = ''
-        if (igNotes) {
-          const recipMatch = igNotes.match(/IG Recipient ID:\s*(\S+)/i)
-          if (
-            recipMatch &&
-            recipMatch[1] &&
-            recipMatch[1] !== 'undefined' &&
-            recipMatch[1] !== 'null'
-          ) {
-            igRecipientTargetId = recipMatch[1].trim()
-          }
-        }
-        if (!igRecipientTargetId && freshUserRecord) {
-          igRecipientTargetId = (
-            freshUserRecord.getString('meta_instagram_business_id') || ''
-          ).trim()
-        }
-        if (!igRecipientTargetId) {
-          igRecipientTargetId = '17841418593400936' // ID oficial @brf_imoveis_ (fallback consistente)
-        }
-
-        if (igSenderId && igToken && isWithin24h) {
-          const igEndpointUrl = `https://graph.facebook.com/v22.0/${igRecipientTargetId}/messages`
-          console.log(
-            `[AI_REPLY] Sending Instagram DM to recipient=${igSenderId} via target=${igRecipientTargetId} url=${igEndpointUrl} (token_prefix=${igToken.substring(0, 15)}... len=${igToken.length})`,
-          )
-          const igPayloadObj = {
-            recipient: { id: igSenderId },
-            message: { text: responseText },
+          if (!isRealMetaOk) {
+            const msgStr = logItem.getString('message') || ''
+            if (msgStr.includes('sucesso')) {
+              isRealMetaOk = true
+            }
           }
 
-          // [IG_TOKEN_DEBUG] Log detalhado com payload anonimizado para validação estrita do formato
-          console.log(
-            `[IG_TOKEN_DEBUG] POST Dispatch Payload Target=${igRecipientTargetId} RecipientLength=${igSenderId.length} RecipientMasked=***${igSenderId.slice(-4)} PayloadObj=${JSON.stringify({ recipient: { id: `***${igSenderId.slice(-4)}` }, message: { text: responseText.substring(0, 80) + '...' } })}`,
-          )
+          if (isRealMetaOk) {
+            const payloadStr = logItem.getString('payload') || ''
+            let sentText = ''
+            try {
+              const pObj = JSON.parse(payloadStr)
+              sentText = pObj.preview || pObj.full_text || ''
+            } catch (_) {}
 
-          let igSendRes = callMetaWithRetry(
-            igEndpointUrl,
-            'POST',
-            { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
-            JSON.stringify(igPayloadObj),
-          )
-
-          // Fallback resiliente: se falhou com code=1 OAuthException no endpoint /{ig_user_id}/messages
-          // e o target difere da Página ou o token é um Page Access Token, testa endpoint /{page_id}/messages ou /me/messages
-          let usedFallback = false
-          let lastAttemptedUrl = igEndpointUrl
-          if (
-            (!igSendRes || igSendRes.statusCode < 200 || igSendRes.statusCode >= 300) &&
-            igSendRes &&
-            igSendRes.json &&
-            igSendRes.json.error &&
-            igSendRes.json.error.code === 1
-          ) {
-            const pageIdFallback =
-              (freshUserRecord ? freshUserRecord.getString('meta_page_id') : '') ||
-              '1219427617930954'
-            if (pageIdFallback && pageIdFallback !== igRecipientTargetId) {
-              const fallbackPageUrl = `https://graph.facebook.com/v22.0/${pageIdFallback}/messages`
-              console.log(
-                `[AI_REPLY] Retrying Instagram DM via page endpoint fallback: ${fallbackPageUrl}`,
-              )
-              const fallbackRes = callMetaWithRetry(
-                fallbackPageUrl,
-                'POST',
-                { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
-                JSON.stringify(igPayloadObj),
-              )
-              if (fallbackRes && fallbackRes.statusCode >= 200 && fallbackRes.statusCode < 300) {
-                igSendRes = fallbackRes
-                usedFallback = true
-                lastAttemptedUrl = fallbackPageUrl
-                console.log(
-                  `[AI_REPLY] Instagram DM fallback to page endpoint succeeded! url=${fallbackPageUrl}`,
-                )
+            if (sentText) {
+              const normalizedSent = normalizeMsgContent(sentText)
+              lastSentPreviewLogged = sentText.substring(0, 60)
+              // Se o texto normalizado for idêntico ao já enviado ou prefixo exato caso o preview tenha sido truncado
+              if (
+                normalizedSent === normalizedCurrentResponse ||
+                (normalizedSent.length >= 80 &&
+                  normalizedCurrentResponse.startsWith(normalizedSent))
+              ) {
+                isContentIdenticalToLastSent = true
+                break
               }
             }
           }
+        }
+      } catch (dedupErr) {
+        console.warn(`[AI_REPLY] Erro não fatal no check de dedup de conteúdo: ${String(dedupErr)}`)
+      }
 
-          // LOG COMPLETO DO GRAPH EM TODO ENVIO IG (sucesso ou falha) — nunca mais
-          // ficar cegos entre o aceite da Graph e a entrega no celular.
+      if (isContentIdenticalToLastSent) {
+        console.log(
+          `[AI_REPLY] DEDUP DE CONTEÚDO ATIVADO: resposta idêntica à última já enviada via WhatsApp para lead ${customerId} (preview="${lastSentPreviewLogged}"). Bloqueando envio duplicado.`,
+        )
+        return e.next()
+      }
+
+      // Send WhatsApp reply via Meta Cloud API v21.0
+      // GARANTIA ABSOLUTA: O cliente NUNCA vê colchetes nem tags de máquina no texto final enviado
+      const finalCleanBody =
+        typeof stripAllMachineTags === 'function' ? stripAllMachineTags(responseText) : responseText
+
+      // ======================================================================
+      // LOOP DE APRENDIZADO DA BIA: REGISTRO AUTOMÁTICO PÓS-ATENDIMENTO
+      // ======================================================================
+      try {
+        const isSystemOrBotCustomer =
+          isSystemSenderNumber ||
+          isVerificationCodeMsg ||
+          checkCustPhone.replace(/\D/g, '') === '447710173736' ||
+          /^facebook\s+business$/i.test(checkCustName)
+
+        // Apenas registrar aprendizado se NÃO for robô/automação e houver interação real com texto
+        if (!isSystemOrBotCustomer && custIncomingMsg && finalCleanBody) {
+          let detectedLearningType = ''
+          let learningReason = ''
+
+          const lowIncoming = custIncomingMsg.toLowerCase()
+          const lowReply = finalCleanBody.toLowerCase()
+
+          // 1. Falha operacional / Dúvida que ela não soube responder
+          const indicatesUnknownInfo =
+            lowReply.includes('vou confirmar esse detalhe') ||
+            lowReply.includes('vou confirmar com o diretor') ||
+            lowReply.includes('não tenho essa informação') ||
+            lowReply.includes('vou verificar com o mauro') ||
+            lowReply.includes('vou consultar a diretoria') ||
+            claimsCatalogUnavailable
+
+          // 2. Erro / descompasso / recusa do cliente detectada
+          if (isCustomerExplicitRejection || isMismatchDetected) {
+            detectedLearningType = 'ERRO'
+            learningReason = `Desalinhamento com o cliente ou recusa explícita: cliente expressou insatisfação ("${custIncomingMsg.substring(0, 80)}") e a Bia readequou o foco.`
+          } else if (indicatesUnknownInfo) {
+            detectedLearningType = 'DUVIDA_SEM_RESPOSTA'
+            learningReason = `Informação técnica solicitada pelo lead não constava expressamente no dossiê: a Bia acolheu com transparência para checagem com Mauro.`
+          } else if (
+            lowIncoming.includes('caro') ||
+            lowIncoming.includes('muito caro') ||
+            lowIncoming.includes('fora do orçamento') ||
+            lowIncoming.includes('acima do que posso') ||
+            lowIncoming.includes('não tenho essa entrada') ||
+            lowIncoming.includes('juros altos')
+          ) {
+            detectedLearningType = 'OBJECOES'
+            learningReason = `Objeção de preço/condição financeira levantada pelo lead. Bia tratou apresentando fluxo facilitado e valorização do produto.`
+          } else if (
+            stageMoved ||
+            detectedHandover ||
+            lowIncoming.includes('visita') ||
+            lowIncoming.includes('agendar') ||
+            lowIncoming.includes('gostei') ||
+            lowIncoming.includes('proposta') ||
+            lowIncoming.includes('pode mandar')
+          ) {
+            detectedLearningType = 'ACERTO'
+            learningReason = `Avanço no funil ou acolhimento bem-sucedido com interesse do cliente no imóvel.`
+          }
+
+          if (detectedLearningType) {
+            // Extrair contexto do cliente e do imóvel em foco
+            const leadContextLabel = `${displayName || customer.getString('name') || 'Cliente'} (${customerPhone || 'WhatsApp'})`
+            const propertyContextLabel = matchedLaunch
+              ? matchedLaunch.getString('name') || matchedLaunch.getString('enterprise_name') || ''
+              : targetSpecificProp
+                ? `${targetSpecificProp.getString('code') || ''} - ${targetSpecificProp.getString('title') || ''}`
+                : lastMsgPropertyCodeOrNum || 'Catálogo Geral'
+
+            // Montar resumo curto de 1 a 3 frases
+            let shortSummary = learningReason
+            if (!shortSummary) {
+              shortSummary = `Interação tratada com o cliente no imóvel ${propertyContextLabel}. Resposta gerada consultivamente conforme as diretrizes da BRF Imóveis.`
+            }
+
+            // Anti-duplicação de registros automáticos recentes do mesmo cliente no mesmo dia
+            const existingRecentLearnings = $app.findRecordsByFilter(
+              'bia_learnings',
+              `context_customer ~ '${customerId}' && learning_type = '${detectedLearningType}'`,
+              '-created',
+              1,
+              0,
+            )
+
+            let shouldRecordLearning = true
+            if (existingRecentLearnings && existingRecentLearnings.length > 0) {
+              const lastLearnTime = new Date(
+                existingRecentLearnings[0].getString('created'),
+              ).getTime()
+              const nowTime = new Date().getTime()
+              // Se já gravou aprendizado igual para o mesmo cliente nas últimas 2 horas, não duplica
+              if (nowTime - lastLearnTime < 2 * 60 * 60 * 1000) {
+                shouldRecordLearning = false
+              }
+            }
+
+            if (shouldRecordLearning) {
+              const learningsCol = $app.findCollectionByNameOrId('bia_learnings')
+              const newLearnRec = new Record(learningsCol)
+              newLearnRec.set('user_id', userId || '')
+              newLearnRec.set(
+                'title',
+                `[${detectedLearningType}] ${propertyContextLabel.substring(0, 30)} - ${displayName || 'Lead'}`,
+              )
+              newLearnRec.set('rule_text', shortSummary)
+              newLearnRec.set('category', 'comportamento')
+              newLearnRec.set('learning_type', detectedLearningType)
+              newLearnRec.set('origin', 'auto')
+              // ERRO entra como aprovado para aplicação automática imediata (pedido Mauro), outros como pendente
+              newLearnRec.set('status', detectedLearningType === 'ERRO' ? 'aprovado' : 'pendente')
+              newLearnRec.set('is_active', true)
+              newLearnRec.set('priority', detectedLearningType === 'ERRO' ? 160 : 100)
+              newLearnRec.set('author', 'Bia (Loop Automático)')
+              newLearnRec.set('context_customer', `${leadContextLabel} [ID: ${customerId}]`)
+              newLearnRec.set('context_property', propertyContextLabel)
+              $app.saveNoValidate(newLearnRec)
+
+              console.log(
+                `[BIA_LEARNING_LOOP] Novo aprendizado pós-atendimento registrado com sucesso: tipo=${detectedLearningType}, cliente=${customerId}, resumo="${shortSummary.substring(0, 60)}..."`,
+              )
+            }
+          }
+        }
+      } catch (autoLearnErr) {
+        console.warn(
+          `[BIA_LEARNING_LOOP] Erro não fatal no registro automático pós-atendimento: ${String(autoLearnErr)}`,
+        )
+      }
+
+      if (
+        (conversationChannel === 'whatsapp' || !conversationChannel) &&
+        metaToken &&
+        metaPhoneId
+      ) {
+        console.log(
+          `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
+        )
+
+        const sendRes = callMetaWithRetry(
+          `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
+          'POST',
+          { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+          JSON.stringify({
+            messaging_product: 'whatsapp',
+            to: cleanPhone,
+            type: 'text',
+            text: { body: finalCleanBody },
+          }),
+        )
+
+        const isOk = sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300
+        console.log(
+          `[AI_REPLY] Meta WhatsApp send result: status=${sendRes ? sendRes.statusCode : 'none'} ok=${isOk}`,
+        )
+
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const logRec = new Record(logsCol)
+          logRec.set('user_id', userId || '')
+          logRec.set('type', 'whatsapp_ai_send')
+          logRec.set(
+            'message',
+            isOk
+              ? `Resposta da IA enviada com sucesso para ${cleanPhone}`
+              : `Falha ao enviar resposta da IA para ${cleanPhone} (status=${sendRes ? sendRes.statusCode : 'none'})`,
+          )
+          logRec.set(
+            'details',
+            JSON.stringify({
+              statusCode: sendRes ? sendRes.statusCode : 0,
+              response: sendRes ? sendRes.json || sendRes.body : null,
+              phone_id: metaPhoneId,
+              to: cleanPhone,
+            }),
+          )
+          logRec.set(
+            'payload',
+            JSON.stringify({
+              preview: finalCleanBody.substring(0, 120),
+              full_text: finalCleanBody,
+              customer_id: customerId,
+            }),
+          )
+          $app.saveNoValidate(logRec)
+
+          // FRENTE 1-e (vigia): falha de envio NUNCA pode ficar em silêncio no painel.
+          // Erro 190/401 (token expirado) marca meta_token_status='expired' e grava
+          // alerta de nível error com a resposta completa da Meta.
+          if (!isOk && sendRes) {
+            const waErrObj =
+              sendRes.json && sendRes.json.error
+                ? sendRes.json.error
+                : { message: String(sendRes.body || 'HTTP ' + sendRes.statusCode) }
+            const waCode = waErrObj.code !== undefined ? waErrObj.code : null
+            try {
+              const alertLog = new Record($app.findCollectionByNameOrId('system_logs'))
+              alertLog.set('user_id', userId || '')
+              alertLog.set('type', 'whatsapp_send_failed_alert')
+              alertLog.set(
+                'message',
+                `FALHA DE ENVIO WHATSAPP (status=${sendRes.statusCode} code=${waCode !== null ? waCode : 'n/a'}): leads podem não receber resposta da Bia. Resposta da Meta: ${waErrObj.message || JSON.stringify(waErrObj)}`,
+              )
+              alertLog.set(
+                'details',
+                JSON.stringify({
+                  statusCode: sendRes.statusCode,
+                  code: waCode,
+                  error_subcode:
+                    waErrObj.error_subcode !== undefined ? waErrObj.error_subcode : null,
+                  error_type: waErrObj.type || null,
+                  fbtrace_id: waErrObj.fbtrace_id || null,
+                  meta_response: sendRes.json || sendRes.body || null,
+                  phone_id: metaPhoneId,
+                  to: cleanPhone,
+                  customer_id: customerId,
+                }),
+              )
+              $app.saveNoValidate(alertLog)
+            } catch (_) {}
+
+            if (sendRes.statusCode === 401 || waCode === 190) {
+              try {
+                const failUser = userId ? $app.findRecordById('users', userId) : null
+                if (failUser) {
+                  failUser.set('meta_token_status', 'expired')
+                  $app.saveNoValidate(failUser)
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (logErr) {
+          console.warn(`[AI_REPLY] Failed to log whatsapp_ai_send: ${String(logErr)}`)
+        }
+
+        // Audio (optional)
+        if (sendAudio) {
+          const openAiKey = $os.getenv('OPENAI_API_KEY')
+          if (openAiKey) {
+            try {
+              const ttsRes = callMetaWithRetry(
+                'https://api.openai.com/v1/audio/speech',
+                'POST',
+                { Authorization: `Bearer ${openAiKey}`, 'Content-Type': 'application/json' },
+                JSON.stringify({
+                  model: 'tts-1',
+                  input: finalCleanBody || 'Olá',
+                  voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
+                }),
+              )
+
+              if (ttsRes && ttsRes.statusCode === 200 && ttsRes.body) {
+                const boundary = '----Boundary' + $security.randomString(16)
+                const headerStr = `--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.ogg"\r\nContent-Type: audio/ogg\r\n\r\n`
+                const footerStr = `\r\n--${boundary}--\r\n`
+
+                const headerBytes = new Uint8Array(headerStr.length)
+                for (let i = 0; i < headerStr.length; i++) headerBytes[i] = headerStr.charCodeAt(i)
+                const footerBytes = new Uint8Array(footerStr.length)
+                for (let i = 0; i < footerStr.length; i++) footerBytes[i] = footerStr.charCodeAt(i)
+
+                const bodyBytes = new Uint8Array(
+                  headerBytes.length + ttsRes.body.length + footerBytes.length,
+                )
+                bodyBytes.set(headerBytes, 0)
+                bodyBytes.set(ttsRes.body, headerBytes.length)
+                bodyBytes.set(footerBytes, headerBytes.length + ttsRes.body.length)
+
+                const mediaRes = callMetaWithRetry(
+                  `https://graph.facebook.com/v21.0/${metaPhoneId}/media${metaWhatsappProofParam(metaToken)}`,
+                  'POST',
+                  {
+                    Authorization: `Bearer ${metaToken}`,
+                    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                  },
+                  bodyBytes.buffer,
+                )
+
+                if (mediaRes && mediaRes.statusCode === 200 && mediaRes.json && mediaRes.json.id) {
+                  callMetaWithRetry(
+                    `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
+                    'POST',
+                    { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                    JSON.stringify({
+                      messaging_product: 'whatsapp',
+                      to: cleanPhone,
+                      type: 'audio',
+                      audio: { id: mediaRes.json.id },
+                    }),
+                  )
+                }
+              }
+            } catch (audioErr) {
+              console.warn(`[AI_REPLY] Audio TTS/Upload failed (non-fatal): ${String(audioErr)}`)
+            }
+          }
+        }
+      } else if (conversationChannel === 'whatsapp' && (!metaToken || !metaPhoneId)) {
+        console.warn(
+          `[AI_REPLY] WhatsApp send skipped: missing metaToken or metaPhoneId (token=${!!metaToken}, phoneId=${metaPhoneId})`,
+        )
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const warnLog = new Record(logsCol)
+          warnLog.set('user_id', userId || '')
+          warnLog.set('type', 'whatsapp_ai_reply_error')
+          warnLog.set('message', 'Credenciais Meta WhatsApp ausentes no usuário')
+          warnLog.set('details', `metaToken=${!!metaToken}, metaPhoneId=${metaPhoneId}`)
+          $app.saveNoValidate(warnLog)
+        } catch (_) {}
+      }
+
+      // ===== RESPOSTA EM VOZ (Messenger / Instagram Direct) =====
+      // Mesma TTS do WhatsApp (OpenAI tts-1 com ai_voice_id do usuário), upload do
+      // .mp3 como anexo de áudio na Graph API (/PAGE_ID/assets, field type=audio) e
+      // envio via /me/messages com message.attachments[{type:'audio', payload:{attachment_id}}].
+      // Degradável: em qualquer falha devolve ok=false para o canal responder em texto.
+      function sendMetaChannelVoiceReply(opts) {
+        const out = { ok: false, error: '', stage: '' }
+        try {
+          const voiceToken = (opts.pageToken || '').trim()
+          const voicePageId = (opts.pageId || '').trim()
+          const voiceText = (opts.text || '').trim()
+          if (!voiceToken || !voicePageId || !voiceText) {
+            out.error = !voiceToken
+              ? 'Token de página ausente para resposta em voz'
+              : !voicePageId
+                ? 'ID da Página ausente para resposta em voz'
+                : 'Texto vazio para resposta em voz'
+            out.stage = 'params'
+            return out
+          }
+
+          const voiceOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
+          if (
+            !voiceOpenAiKey &&
+            typeof $secrets !== 'undefined' &&
+            $secrets.has &&
+            $secrets.has('OPENAI_API_KEY')
+          ) {
+            try {
+              voiceOpenAiKey = $secrets.get('OPENAI_API_KEY') || ''
+            } catch (_) {}
+          }
+          if (!voiceOpenAiKey) {
+            out.error = 'OPENAI_API_KEY ausente para gerar a voz'
+            out.stage = 'tts_key'
+            return out
+          }
+
+          // 1. TTS — mesma chamada do fluxo WhatsApp (voz configurada no usuário, padrão 'nova')
+          const ttsRes = callMetaWithRetry(
+            'https://api.openai.com/v1/audio/speech',
+            'POST',
+            { Authorization: `Bearer ${voiceOpenAiKey}`, 'Content-Type': 'application/json' },
+            JSON.stringify({
+              model: 'tts-1',
+              input: voiceText,
+              voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
+            }),
+          )
+          if (!ttsRes || ttsRes.statusCode !== 200 || !ttsRes.body) {
+            out.error = `TTS falhou (status=${ttsRes ? ttsRes.statusCode : 'none'})`
+            out.stage = 'tts'
+            return out
+          }
+
+          // 2. Upload do áudio na Página (assets do Messenger Platform) — multipart idêntico ao WhatsApp
+          const audioBoundary = '----BoundaryAudio' + $security.randomString(16)
+          const partTypeStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\naudio\r\n`
+          const partFileStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="file"; filename="bia_audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`
+          const audioFooterStr = `\r\n--${audioBoundary}--\r\n`
+          const partTypeBytes = new Uint8Array(partTypeStr.length)
+          for (let ai = 0; ai < partTypeStr.length; ai++)
+            partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
+          const partFileBytes = new Uint8Array(partFileStr.length)
+          for (let bi = 0; bi < partFileStr.length; bi++)
+            partFileBytes[bi] = partFileStr.charCodeAt(bi)
+          const audioFooterBytes = new Uint8Array(audioFooterStr.length)
+          for (let ci = 0; ci < audioFooterStr.length; ci++)
+            audioFooterBytes[ci] = audioFooterStr.charCodeAt(ci)
+          const audioBodyBytes = new Uint8Array(
+            partTypeBytes.length +
+              partFileBytes.length +
+              ttsRes.body.length +
+              audioFooterBytes.length,
+          )
+          let audioOffset = 0
+          audioBodyBytes.set(partTypeBytes, audioOffset)
+          audioOffset += partTypeBytes.length
+          audioBodyBytes.set(partFileBytes, audioOffset)
+          audioOffset += partFileBytes.length
+          audioBodyBytes.set(ttsRes.body, audioOffset)
+          audioOffset += ttsRes.body.length
+          audioBodyBytes.set(audioFooterBytes, audioOffset)
+
+          const uploadRes = callMetaWithRetry(
+            `https://graph.facebook.com/v22.0/${voicePageId}/assets`,
+            'POST',
+            {
+              Authorization: `Bearer ${voiceToken}`,
+              'Content-Type': `multipart/form-data; boundary=${audioBoundary}`,
+            },
+            audioBodyBytes.buffer,
+          )
+          if (!uploadRes || uploadRes.statusCode < 200 || uploadRes.statusCode >= 300) {
+            out.error = `Upload de áudio na Página falhou (status=${uploadRes ? uploadRes.statusCode : 'none'}) ${JSON.stringify((uploadRes && (uploadRes.json || uploadRes.body)) || '')}`
+            out.stage = 'upload'
+            return out
+          }
+
+          // Tenta attachment_id direto; sem ele, resolve pelo handle do upload
+          let audioAttachmentId = (uploadRes.json && uploadRes.json.attachment_id) || ''
+          if (!audioAttachmentId) {
+            const uploadHandle =
+              (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
+            if (uploadHandle) {
+              const assetMetaRes = callMetaWithRetry(
+                `https://graph.facebook.com/v22.0/${voicePageId}/assets?fields=attachment_id&handle=${encodeURIComponent(uploadHandle)}`,
+                'GET',
+                { Authorization: `Bearer ${voiceToken}` },
+                null,
+              )
+              if (
+                assetMetaRes &&
+                assetMetaRes.json &&
+                assetMetaRes.json[0] &&
+                assetMetaRes.json[0].attachment_id
+              ) {
+                audioAttachmentId = assetMetaRes.json[0].attachment_id
+              }
+            }
+          }
+          if (!audioAttachmentId) {
+            out.error = 'Upload ok, mas attachment_id do áudio não retornado pela Graph API'
+            out.stage = 'upload_meta'
+            return out
+          }
+
+          // 3. Envio da mensagem de voz
+          const voiceSendRes = callMetaWithRetry(
+            `https://graph.facebook.com/v22.0/me/messages`,
+            'POST',
+            { Authorization: `Bearer ${voiceToken}`, 'Content-Type': 'application/json' },
+            JSON.stringify({
+              recipient: { id: opts.recipientId },
+              message: {
+                attachment: {
+                  type: 'audio',
+                  payload: { attachment_id: audioAttachmentId, is_reusable: true },
+                },
+              },
+            }),
+          )
+          const voiceOk =
+            voiceSendRes && voiceSendRes.statusCode >= 200 && voiceSendRes.statusCode < 300
+          if (!voiceOk) {
+            out.error = `Envio da mensagem de voz falhou (status=${voiceSendRes ? voiceSendRes.statusCode : 'none'}) ${JSON.stringify((voiceSendRes && (voiceSendRes.json || voiceSendRes.body)) || '')}`
+            out.stage = 'send'
+            return out
+          }
+          out.ok = true
+          return out
+        } catch (voiceErr) {
+          out.error = String(voiceErr && voiceErr.message ? voiceErr.message : voiceErr)
+          out.stage = out.stage || 'exception'
+          return out
+        }
+      }
+
+      function logVoiceReplyResult(logTypePrefix, ok, stage, errorText, extraPayload) {
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const voiceLog = new Record(logsCol)
+          voiceLog.set('user_id', userId || '')
+          voiceLog.set('type', logTypePrefix + (ok ? '_audio_sent' : '_audio_failed'))
+          voiceLog.set(
+            'message',
+            ok
+              ? `Resposta da Bia enviada em VOZ (${stage === 'sent' ? 'áudio' : 'áudio'}) com sucesso`
+              : `Falha ao enviar resposta em voz (${stage}): ${String(errorText || '').substring(0, 180)}`,
+          )
+          voiceLog.set(
+            'details',
+            `stage=${stage} | ok=${ok} | erro=${String(errorText || '').substring(0, 200)}`,
+          )
+          voiceLog.set(
+            'payload',
+            JSON.stringify(
+              Object.assign(
+                { stage: stage, success: ok, error: errorText || null },
+                extraPayload || {},
+              ),
+            ),
+          )
+          $app.saveNoValidate(voiceLog)
+        } catch (_) {}
+      }
+
+      // ===== RESPOSTA EM VOZ (Messenger / Instagram Direct) =====
+      // Mesma TTS do WhatsApp (OpenAI tts-1 com ai_voice_id do usuário), upload do
+      // .mp3 como anexo de áudio na Graph API (/PAGE_ID/assets, field type=audio) e
+      // envio via /me/messages com message.attachments[{type:'audio', payload:{attachment_id}}].
+      // Degradável: em qualquer falha devolve ok=false para o canal responder em texto.
+      function sendMetaChannelVoiceReply(opts) {
+        const out = { ok: false, error: '', stage: '' }
+        try {
+          const voiceToken = (opts.pageToken || '').trim()
+          const voicePageId = (opts.pageId || '').trim()
+          const voiceText = (opts.text || '').trim()
+          if (!voiceToken || !voicePageId || !voiceText) {
+            out.error = !voiceToken
+              ? 'Token de página ausente para resposta em voz'
+              : !voicePageId
+                ? 'ID da Página ausente para resposta em voz'
+                : 'Texto vazio para resposta em voz'
+            out.stage = 'params'
+            return out
+          }
+
+          const voiceOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
+          if (!voiceOpenAiKey) {
+            out.error = 'OPENAI_API_KEY ausente para gerar a voz'
+            out.stage = 'tts_key'
+            return out
+          }
+
+          // 1. TTS — mesma chamada do fluxo WhatsApp (voz configurada no usuário, padrão 'nova')
+          const ttsRes = callMetaWithRetry(
+            'https://api.openai.com/v1/audio/speech',
+            'POST',
+            { Authorization: `Bearer ${voiceOpenAiKey}`, 'Content-Type': 'application/json' },
+            JSON.stringify({
+              model: 'tts-1',
+              input: voiceText,
+              voice: userRecord ? userRecord.getString('ai_voice_id') || 'nova' : 'nova',
+            }),
+          )
+          if (!ttsRes || ttsRes.statusCode !== 200 || !ttsRes.body) {
+            out.error = `TTS falhou (status=${ttsRes ? ttsRes.statusCode : 'none'})`
+            out.stage = 'tts'
+            return out
+          }
+
+          // 2. Upload do áudio na Página (assets do Messenger Platform) — multipart idêntico ao WhatsApp
+          const audioBoundary = '----BoundaryAudio' + $security.randomString(16)
+          const partTypeStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\naudio\r\n`
+          const partFileStr = `--${audioBoundary}\r\nContent-Disposition: form-data; name="file"; filename="bia_audio.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n`
+          const audioFooterStr = `\r\n--${audioBoundary}--\r\n`
+          const partTypeBytes = new Uint8Array(partTypeStr.length)
+          for (let ai = 0; ai < partTypeStr.length; ai++)
+            partTypeBytes[ai] = partTypeStr.charCodeAt(ai)
+          const partFileBytes = new Uint8Array(partFileStr.length)
+          for (let bi = 0; bi < partFileStr.length; bi++)
+            partFileBytes[bi] = partFileStr.charCodeAt(bi)
+          const audioFooterBytes = new Uint8Array(audioFooterStr.length)
+          for (let ci = 0; ci < audioFooterStr.length; ci++)
+            audioFooterBytes[ci] = audioFooterStr.charCodeAt(ci)
+          const audioBodyBytes = new Uint8Array(
+            partTypeBytes.length +
+              partFileBytes.length +
+              ttsRes.body.length +
+              audioFooterBytes.length,
+          )
+          let audioOffset = 0
+          audioBodyBytes.set(partTypeBytes, audioOffset)
+          audioOffset += partTypeBytes.length
+          audioBodyBytes.set(partFileBytes, audioOffset)
+          audioOffset += partFileBytes.length
+          audioBodyBytes.set(ttsRes.body, audioOffset)
+          audioOffset += ttsRes.body.length
+          audioBodyBytes.set(audioFooterBytes, audioOffset)
+
+          const uploadRes = callMetaWithRetry(
+            `https://graph.facebook.com/v22.0/${voicePageId}/assets`,
+            'POST',
+            {
+              Authorization: `Bearer ${voiceToken}`,
+              'Content-Type': `multipart/form-data; boundary=${audioBoundary}`,
+            },
+            audioBodyBytes.buffer,
+          )
+          if (!uploadRes || uploadRes.statusCode < 200 || uploadRes.statusCode >= 300) {
+            out.error = `Upload de áudio na Página falhou (status=${uploadRes ? uploadRes.statusCode : 'none'}) ${JSON.stringify((uploadRes && (uploadRes.json || uploadRes.body)) || '')}`
+            out.stage = 'upload'
+            return out
+          }
+
+          // Tenta attachment_id direto; sem ele, resolve pelo handle/id retornado
+          let audioAttachmentId = (uploadRes.json && uploadRes.json.attachment_id) || ''
+          if (!audioAttachmentId) {
+            const uploadHandle =
+              (uploadRes.json && (uploadRes.json.handle || uploadRes.json.id)) || ''
+            if (uploadHandle) {
+              const assetMetaRes = callMetaWithRetry(
+                `https://graph.facebook.com/v22.0/${voicePageId}/assets?fields=attachment_id&handle=${encodeURIComponent(uploadHandle)}`,
+                'GET',
+                { Authorization: `Bearer ${voiceToken}` },
+                null,
+              )
+              if (
+                assetMetaRes &&
+                assetMetaRes.json &&
+                assetMetaRes.json[0] &&
+                assetMetaRes.json[0].attachment_id
+              ) {
+                audioAttachmentId = assetMetaRes.json[0].attachment_id
+              }
+            }
+          }
+          if (!audioAttachmentId) {
+            out.error = 'Upload ok, mas attachment_id do áudio não retornado pela Graph API'
+            out.stage = 'upload_meta'
+            return out
+          }
+
+          // 3. Envio da mensagem de voz
+          const voiceSendRes = callMetaWithRetry(
+            'https://graph.facebook.com/v22.0/me/messages',
+            'POST',
+            { Authorization: `Bearer ${voiceToken}`, 'Content-Type': 'application/json' },
+            JSON.stringify({
+              recipient: { id: opts.recipientId },
+              message: {
+                attachment: {
+                  type: 'audio',
+                  payload: { attachment_id: audioAttachmentId, is_reusable: true },
+                },
+              },
+            }),
+          )
+          const voiceOk =
+            voiceSendRes && voiceSendRes.statusCode >= 200 && voiceSendRes.statusCode < 300
+          if (!voiceOk) {
+            out.error = `Envio da mensagem de voz falhou (status=${voiceSendRes ? voiceSendRes.statusCode : 'none'}) ${JSON.stringify((voiceSendRes && (voiceSendRes.json || voiceSendRes.body)) || '')}`
+            out.stage = 'send'
+            return out
+          }
+          out.ok = true
+          return out
+        } catch (voiceErr) {
+          out.error = String(voiceErr && voiceErr.message ? voiceErr.message : voiceErr)
+          out.stage = out.stage || 'exception'
+          return out
+        }
+      }
+
+      function logVoiceReplyResult(logTypePrefix, ok, stage, errorText, extraPayload) {
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const voiceLog = new Record(logsCol)
+          voiceLog.set('user_id', userId || '')
+          voiceLog.set('type', logTypePrefix + (ok ? '_audio_sent' : '_audio_failed'))
+          voiceLog.set(
+            'message',
+            ok
+              ? `Resposta da Bia em VOZ enviada com sucesso (${logTypePrefix})`
+              : `Falha ao enviar resposta em voz (${stage}): ${String(errorText || '').substring(0, 180)}`,
+          )
+          voiceLog.set(
+            'details',
+            `stage=${stage} | ok=${ok} | erro=${String(errorText || '').substring(0, 200)}`,
+          )
+          voiceLog.set(
+            'payload',
+            JSON.stringify(
+              Object.assign(
+                { stage: stage, success: ok, error: errorText || null },
+                extraPayload || {},
+              ),
+            ),
+          )
+          $app.saveNoValidate(voiceLog)
+        } catch (_) {}
+      }
+
+      if (conversationChannel === 'messenger' && responseText) {
+        // Envio de texto da Bia via Messenger Graph API
+        try {
+          const messengerNotes = customer.getString('notes') || ''
+          let psidMatch = messengerNotes.match(/(?:Messenger PSID|Sender ID):\s*(\S+)/i)
+          let psid = psidMatch ? psidMatch[1].trim() : ''
+
+          if (!psid) {
+            const lastOriginStr =
+              (customer.getString('last_origin') || '') + ' ' + (customer.getString('name') || '')
+            const lastOriginMatch = lastOriginStr.match(/(\d{10,25})/)
+            if (lastOriginMatch) psid = lastOriginMatch[1]
+          }
+
+          // Busca o token de página mais recente nos registros de usuários (meta_page_access_token)
+          let freshUserForMessenger = userRecord
           try {
-            const igResBody = igSendRes ? igSendRes.json || igSendRes.body : null
-            const igResMid =
-              igResBody && igResBody.message_id
-                ? igResBody.message_id
-                : igResBody && igResBody.recipient && igResBody.recipient.message_id
-                  ? igResBody.recipient.message_id
-                  : null
-            const logsColOk = $app.findCollectionByNameOrId('system_logs')
-            const igOkLog = new Record(logsColOk)
-            igOkLog.set('user_id', (freshUserRecord ? freshUserRecord.id : userId) || '')
-            igOkLog.set('type', 'instagram_send_result')
-            igOkLog.set(
-              'message',
-              `[IG_SEND_RESULT] status=${igSendRes ? igSendRes.statusCode : 'null'} recipient=${igSenderId || 'n/a'} target=${igRecipientTargetId} message_id=${igResMid || 'n/a'} origin=ai_auto_reply fallback_used=${usedFallback}`,
-            )
-            igOkLog.set(
-              'details',
-              JSON.stringify({
-                url: lastAttemptedUrl,
-                original_url: igEndpointUrl,
-                statusCode: igSendRes ? igSendRes.statusCode : null,
-                recipient_id: igSenderId || null,
-                target_id: igRecipientTargetId,
-                message_id: igResMid,
-                token_prefix: igToken.substring(0, 15) + '...',
-                origin: 'ai_auto_reply',
-                fallback_used: usedFallback,
-              }),
-            )
-            igOkLog.set('payload', JSON.stringify({ request: igPayloadObj, response: igResBody }))
-            $app.saveNoValidate(igOkLog)
+            if (userId) {
+              freshUserForMessenger = $app.findRecordById('users', userId)
+            }
           } catch (_) {}
+          if (
+            !freshUserForMessenger ||
+            !freshUserForMessenger.getString('meta_page_access_token')
+          ) {
+            try {
+              const pageUsers = $app.findRecordsByFilter(
+                'users',
+                "meta_page_access_token != ''",
+                '-updated',
+                1,
+                0,
+              )
+              if (pageUsers && pageUsers.length > 0) {
+                freshUserForMessenger = pageUsers[0]
+              }
+            } catch (_) {}
+          }
 
-          if (igSendRes && igSendRes.statusCode >= 200 && igSendRes.statusCode < 300) {
+          const pageToken = (
+            freshUserForMessenger
+              ? freshUserForMessenger.getString('meta_page_access_token') ||
+                freshUserForMessenger.getString('meta_instagram_page_token') ||
+                ''
+              : ''
+          ).trim()
+
+          const messengerPageId =
+            (freshUserForMessenger ? freshUserForMessenger.getString('meta_page_id') : '') ||
+            '1343797128806374'
+
+          const messengerEndpointUrl = 'https://graph.facebook.com/v18.0/me/messages'
+          const messengerPayloadObj = {
+            recipient: { id: psid },
+            message: { text: responseText },
+          }
+
+          if (psid && pageToken) {
             console.log(
-              `[AI_REPLY] Instagram DM sent successfully to ${igSenderId} for customer=${customerId} (fallback_used=${usedFallback})`,
+              `[AI_REPLY] Sending Messenger reply to PSID=${psid} PageID=${messengerPageId} endpoint=${messengerEndpointUrl} (token_prefix=${pageToken.substring(0, 15)}... len=${pageToken.length})`,
             )
-          } else {
-            const igErrObj =
-              igSendRes && igSendRes.json && igSendRes.json.error ? igSendRes.json.error : {}
-            console.warn(
-              `[AI_REPLY] Instagram DM response status: ${igSendRes ? igSendRes.statusCode : 'null'} code=${igErrObj.code !== undefined ? igErrObj.code : 'none'} subcode=${igErrObj.error_subcode !== undefined ? igErrObj.error_subcode : 'none'} fbtrace_id="${igErrObj.fbtrace_id || 'none'}" msg="${igErrObj.message || ''}"`,
+
+            const messengerSendRes = callMetaWithRetry(
+              messengerEndpointUrl,
+              'POST',
+              { Authorization: 'Bearer ' + pageToken, 'Content-Type': 'application/json' },
+              JSON.stringify(messengerPayloadObj),
             )
+
+            const isSuccess =
+              messengerSendRes &&
+              messengerSendRes.statusCode >= 200 &&
+              messengerSendRes.statusCode < 300
+            const resErrorObj =
+              messengerSendRes && messengerSendRes.json && messengerSendRes.json.error
+                ? messengerSendRes.json.error
+                : null
+
+            // Registrar no system_logs: tipo messenger_ai_send com payload enviado, resposta da Graph API e resultado
             try {
               const logsCol = $app.findCollectionByNameOrId('system_logs')
-              const igFailLog = new Record(logsCol)
-              igFailLog.set('user_id', (freshUserRecord ? freshUserRecord.id : userId) || '')
-              igFailLog.set('type', 'instagram_dm_failure')
-              igFailLog.set(
-                'message',
-                `Falha ao enviar DM do Instagram: code=${igErrObj.code !== undefined ? igErrObj.code : 'none'} subcode=${igErrObj.error_subcode !== undefined ? igErrObj.error_subcode : 'none'} (${igErrObj.message || 'HTTP ' + (igSendRes ? igSendRes.statusCode : '')})`,
+              const aiSendLog = new Record(logsCol)
+              aiSendLog.set(
+                'user_id',
+                (freshUserForMessenger ? freshUserForMessenger.id : userId) || '',
               )
-              igFailLog.set(
+              aiSendLog.set('type', 'messenger_ai_send')
+
+              if (isSuccess) {
+                aiSendLog.set(
+                  'message',
+                  `Resposta da Bia enviada com sucesso via Messenger Send API para PSID ${psid}`,
+                )
+                aiSendLog.set(
+                  'details',
+                  `Status HTTP ${messengerSendRes ? messengerSendRes.statusCode : 200}. PageID: ${messengerPageId}. Recipient: ${psid}.`,
+                )
+              } else {
+                const errCode =
+                  resErrorObj && resErrorObj.code !== undefined ? resErrorObj.code : 'desconhecido'
+                const errSubcode =
+                  resErrorObj && resErrorObj.error_subcode !== undefined
+                    ? resErrorObj.error_subcode
+                    : 'none'
+                const errMsg =
+                  (resErrorObj && resErrorObj.message) ||
+                  (messengerSendRes ? 'HTTP ' + messengerSendRes.statusCode : 'Sem resposta')
+
+                let humanDiagnostic = 'Falha no envio da resposta via Messenger.'
+                if (errCode === 10 || errCode === 200) {
+                  humanDiagnostic =
+                    'Permissão pages_messaging pendente ou página não autorizada no app da Meta.'
+                } else if (errCode === 100) {
+                  humanDiagnostic = 'Parâmetro inválido na chamada do Messenger Send API.'
+                } else if (errCode === 551) {
+                  humanDiagnostic =
+                    'Esta pessoa não pode ser contatada pelo Messenger ou a conversa não foi iniciada pelo usuário.'
+                } else if (errCode === 230) {
+                  humanDiagnostic = 'Página restrita para envio de mensagens pela Meta.'
+                } else if (
+                  errMsg.toLowerCase().includes('window') ||
+                  errMsg.toLowerCase().includes('24h') ||
+                  errCode === 10900
+                ) {
+                  humanDiagnostic = 'Janela de 24 horas da Meta expirada para este usuário.'
+                }
+
+                aiSendLog.set(
+                  'message',
+                  `Tentativa de envio Messenger Send API: ${humanDiagnostic} (Código Meta: ${errCode}, subcode: ${errSubcode})`,
+                )
+                aiSendLog.set(
+                  'details',
+                  `Endpoint: ${messengerEndpointUrl} | PageID: ${messengerPageId} | PSID: ${psid} | Status: ${messengerSendRes ? messengerSendRes.statusCode : 'null'} | Erro Meta: ${errMsg}`,
+                )
+              }
+
+              aiSendLog.set(
+                'payload',
+                JSON.stringify({
+                  recipient_id: psid,
+                  page_id: messengerPageId,
+                  endpoint: messengerEndpointUrl,
+                  request: {
+                    recipient: { id: psid },
+                    message: { text: responseText },
+                  },
+                  response_status: messengerSendRes ? messengerSendRes.statusCode : null,
+                  response_body: messengerSendRes
+                    ? messengerSendRes.json || messengerSendRes.body
+                    : null,
+                  error: resErrorObj,
+                }),
+              )
+              $app.saveNoValidate(aiSendLog)
+            } catch (logErr) {
+              console.warn(`[AI_REPLY] Error saving messenger_ai_send log: ${String(logErr)}`)
+            }
+
+            if (isSuccess) {
+              console.log(
+                `[AI_REPLY] Messenger DM sent successfully to PSID ${psid} for customer=${customerId}`,
+              )
+              // Fluxo de voz Bia (Messenger): cliente mandou áudio → responde também em voz via TTS
+              if (sendAudio) {
+                try {
+                  const voiceOut = sendMetaChannelVoiceReply({
+                    pageToken: pageToken,
+                    pageId: messengerPageId,
+                    text: responseText,
+                    recipientId: psid,
+                  })
+                  logVoiceReplyResult(
+                    'messenger_voice_reply',
+                    voiceOut.ok,
+                    voiceOut.stage,
+                    voiceOut.error,
+                    { customer_id: customerId, psid: psid, page_id: messengerPageId },
+                  )
+                  if (voiceOut.ok) {
+                    console.log(`[AI_REPLY] Messenger voice reply sent to PSID ${psid}`)
+                  } else {
+                    console.warn(
+                      `[AI_REPLY] Messenger voice reply failed (non-fatal): ${voiceOut.error}`,
+                    )
+                  }
+                } catch (voiceExc) {
+                  console.warn(
+                    `[AI_REPLY] Messenger voice reply exception (non-fatal): ${String(voiceExc)}`,
+                  )
+                }
+              }
+            } else {
+              console.warn(
+                `[AI_REPLY] Messenger DM send failed for PSID ${psid}: ${resErrorObj ? resErrorObj.message : 'HTTP ' + (messengerSendRes ? messengerSendRes.statusCode : 'null')}`,
+              )
+              // FRENTE 1-e (vigia): falha de envio Messenger nunca pode ficar em silêncio
+              // no painel. Grava alerta de nível error com a resposta completa da Meta e,
+              // em erro 190/401 (token expirado), marca meta_token_status='expired'.
+              try {
+                const msFailLog = new Record($app.findCollectionByNameOrId('system_logs'))
+                const msErrCode =
+                  resErrorObj && resErrorObj.code !== undefined ? resErrorObj.code : null
+                msFailLog.set(
+                  'user_id',
+                  (freshUserForMessenger ? freshUserForMessenger.id : userId) || '',
+                )
+                msFailLog.set('type', 'messenger_send_failed_alert')
+                msFailLog.set(
+                  'message',
+                  `FALHA DE ENVIO MESSENGER (code=${msErrCode !== null ? msErrCode : 'n/a'}): leads podem não receber resposta da Bia. Resposta da Meta: ${resErrorObj ? resErrorObj.message : 'HTTP ' + (messengerSendRes ? messengerSendRes.statusCode : 'null')}`,
+                )
+                msFailLog.set(
+                  'details',
+                  JSON.stringify({
+                    statusCode: messengerSendRes ? messengerSendRes.statusCode : null,
+                    code: msErrCode,
+                    error_subcode:
+                      resErrorObj && resErrorObj.error_subcode !== undefined
+                        ? resErrorObj.error_subcode
+                        : null,
+                    error_type: resErrorObj ? resErrorObj.type || null : null,
+                    fbtrace_id: resErrorObj ? resErrorObj.fbtrace_id || null : null,
+                    meta_response: messengerSendRes
+                      ? messengerSendRes.json || messengerSendRes.body
+                      : null,
+                    psid: psid,
+                    customer_id: customerId,
+                  }),
+                )
+                $app.saveNoValidate(msFailLog)
+              } catch (_) {}
+
+              try {
+                const msCode =
+                  resErrorObj && resErrorObj.code !== undefined ? resErrorObj.code : null
+                const msStatus = messengerSendRes ? messengerSendRes.statusCode : 0
+                if (msStatus === 401 || msCode === 190) {
+                  const msFailUser = (freshUserForMessenger ? freshUserForMessenger.id : userId)
+                    ? $app.findRecordById(
+                        'users',
+                        freshUserForMessenger ? freshUserForMessenger.id : userId,
+                      )
+                    : null
+                  if (msFailUser) {
+                    msFailUser.set('meta_token_status', 'expired')
+                    $app.saveNoValidate(msFailUser)
+                  }
+                }
+              } catch (_) {}
+            }
+          } else {
+            // Token ou PSID ausente
+            try {
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const missingLog = new Record(logsCol)
+              missingLog.set(
+                'user_id',
+                (freshUserForMessenger ? freshUserForMessenger.id : userId) || '',
+              )
+              missingLog.set('type', 'messenger_ai_send')
+              missingLog.set(
+                'message',
+                `Envio Messenger não realizado: ${!psid ? 'PSID do destinatário não encontrado' : 'Token de acesso da página (meta_page_access_token) ausente'}`,
+              )
+              missingLog.set('details', `psid=${psid || 'vazio'}, pageTokenPresent=${!!pageToken}`)
+              missingLog.set('payload', JSON.stringify({ customer_id: customerId, psid: psid }))
+              $app.saveNoValidate(missingLog)
+            } catch (_) {}
+          }
+        } catch (mErr) {
+          console.warn(`[AI_REPLY] Messenger send error (non-fatal): ${String(mErr)}`)
+          try {
+            const logsCol = $app.findCollectionByNameOrId('system_logs')
+            const excLog = new Record(logsCol)
+            excLog.set('user_id', userId || '')
+            excLog.set('type', 'messenger_ai_send')
+            excLog.set('message', `Exceção não-fatal durante envio via Messenger: ${String(mErr)}`)
+            excLog.set('details', String(mErr))
+            $app.saveNoValidate(excLog)
+          } catch (_) {}
+        }
+      }
+
+      // Instagram channel
+      if (conversationChannel === 'instagram' && responseText) {
+        try {
+          const igNotes = customer.getString('notes') || ''
+          let igSenderIdMatch = igNotes.match(/IG Sender ID:\s*(\S+)/i)
+          let igSenderId = igSenderIdMatch ? igSenderIdMatch[1] : ''
+
+          if (!igSenderId) {
+            const lastOriginStr = customer.getString('last_origin') || ''
+            const lastOriginMatch = lastOriginStr.match(/(\d{10,25})/)
+            if (lastOriginMatch) igSenderId = lastOriginMatch[1]
+          }
+
+          // Janela de 24h da Meta para Instagram Messaging (regra oficial da Meta)
+          let isWithin24h = true
+          try {
+            const lastCustMsg = $app.findRecordsByFilter(
+              'conversations',
+              `customer_id = '${customerId}' && sender = 'customer'`,
+              '-created',
+              1,
+              0,
+            )
+            if (lastCustMsg.length > 0) {
+              const lastCustTime = new Date(lastCustMsg[0].getString('created')).getTime()
+              const diffHours = (new Date().getTime() - lastCustTime) / (1000 * 60 * 60)
+              if (diffHours > 24) {
+                isWithin24h = false
+                console.warn(
+                  `[AI_REPLY] Instagram reply skipped: outside 24h standard messaging window (${diffHours.toFixed(1)}h ago) for customer=${customerId}`,
+                )
+              }
+            }
+          } catch (_) {}
+
+          // Busca o token mais recente do usuário no CRM (priorizando conexão OAuth atualizada)
+          let freshUserRecord = userRecord
+          try {
+            if (userId) {
+              freshUserRecord = $app.findRecordById('users', userId)
+            }
+          } catch (_) {}
+          if (!freshUserRecord) {
+            try {
+              const latestUsers = $app.findRecordsByFilter(
+                'users',
+                "meta_instagram_page_token != '' || meta_instagram_user_token != '' || meta_page_access_token != ''",
+                '-updated',
+                1,
+                0,
+              )
+              if (latestUsers && latestUsers.length > 0) {
+                freshUserRecord = latestUsers[0]
+              }
+            } catch (_) {}
+          }
+
+          const igToken = (
+            freshUserRecord
+              ? freshUserRecord.getString('meta_instagram_page_token') ||
+                freshUserRecord.getString('meta_instagram_user_token') ||
+                freshUserRecord.getString('meta_page_access_token') ||
+                freshUserRecord.getString('meta_capi_token') ||
+                ''
+              : ''
+          ).trim()
+
+          // Resolução dinâmica do Instagram Business/User Account ID oficial para o endpoint {ig_user_id}/messages
+          let igRecipientTargetId = ''
+          if (igNotes) {
+            const recipMatch = igNotes.match(/IG Recipient ID:\s*(\S+)/i)
+            if (
+              recipMatch &&
+              recipMatch[1] &&
+              recipMatch[1] !== 'undefined' &&
+              recipMatch[1] !== 'null'
+            ) {
+              igRecipientTargetId = recipMatch[1].trim()
+            }
+          }
+          if (!igRecipientTargetId && freshUserRecord) {
+            igRecipientTargetId = (
+              freshUserRecord.getString('meta_instagram_business_id') || ''
+            ).trim()
+          }
+          if (!igRecipientTargetId) {
+            igRecipientTargetId = '17841418593400936' // ID oficial @brf_imoveis_ (fallback consistente)
+          }
+
+          if (igSenderId && igToken && isWithin24h) {
+            const igEndpointUrl = `https://graph.facebook.com/v22.0/${igRecipientTargetId}/messages`
+            console.log(
+              `[AI_REPLY] Sending Instagram DM to recipient=${igSenderId} via target=${igRecipientTargetId} url=${igEndpointUrl} (token_prefix=${igToken.substring(0, 15)}... len=${igToken.length})`,
+            )
+            const igPayloadObj = {
+              recipient: { id: igSenderId },
+              message: { text: responseText },
+            }
+
+            // [IG_TOKEN_DEBUG] Log detalhado com payload anonimizado para validação estrita do formato
+            console.log(
+              `[IG_TOKEN_DEBUG] POST Dispatch Payload Target=${igRecipientTargetId} RecipientLength=${igSenderId.length} RecipientMasked=***${igSenderId.slice(-4)} PayloadObj=${JSON.stringify({ recipient: { id: `***${igSenderId.slice(-4)}` }, message: { text: responseText.substring(0, 80) + '...' } })}`,
+            )
+
+            let igSendRes = callMetaWithRetry(
+              igEndpointUrl,
+              'POST',
+              { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
+              JSON.stringify(igPayloadObj),
+            )
+
+            // Fallback resiliente: se falhou com code=1 OAuthException no endpoint /{ig_user_id}/messages
+            // e o target difere da Página ou o token é um Page Access Token, testa endpoint /{page_id}/messages ou /me/messages
+            let usedFallback = false
+            let lastAttemptedUrl = igEndpointUrl
+            if (
+              (!igSendRes || igSendRes.statusCode < 200 || igSendRes.statusCode >= 300) &&
+              igSendRes &&
+              igSendRes.json &&
+              igSendRes.json.error &&
+              igSendRes.json.error.code === 1
+            ) {
+              const pageIdFallback =
+                (freshUserRecord ? freshUserRecord.getString('meta_page_id') : '') ||
+                '1219427617930954'
+              if (pageIdFallback && pageIdFallback !== igRecipientTargetId) {
+                const fallbackPageUrl = `https://graph.facebook.com/v22.0/${pageIdFallback}/messages`
+                console.log(
+                  `[AI_REPLY] Retrying Instagram DM via page endpoint fallback: ${fallbackPageUrl}`,
+                )
+                const fallbackRes = callMetaWithRetry(
+                  fallbackPageUrl,
+                  'POST',
+                  { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
+                  JSON.stringify(igPayloadObj),
+                )
+                if (fallbackRes && fallbackRes.statusCode >= 200 && fallbackRes.statusCode < 300) {
+                  igSendRes = fallbackRes
+                  usedFallback = true
+                  lastAttemptedUrl = fallbackPageUrl
+                  console.log(
+                    `[AI_REPLY] Instagram DM fallback to page endpoint succeeded! url=${fallbackPageUrl}`,
+                  )
+                }
+              }
+            }
+
+            // LOG COMPLETO DO GRAPH EM TODO ENVIO IG (sucesso ou falha) — nunca mais
+            // ficar cegos entre o aceite da Graph e a entrega no celular.
+            try {
+              const igResBody = igSendRes ? igSendRes.json || igSendRes.body : null
+              const igResMid =
+                igResBody && igResBody.message_id
+                  ? igResBody.message_id
+                  : igResBody && igResBody.recipient && igResBody.recipient.message_id
+                    ? igResBody.recipient.message_id
+                    : null
+              const logsColOk = $app.findCollectionByNameOrId('system_logs')
+              const igOkLog = new Record(logsColOk)
+              igOkLog.set('user_id', (freshUserRecord ? freshUserRecord.id : userId) || '')
+              igOkLog.set('type', 'instagram_send_result')
+              igOkLog.set(
+                'message',
+                `[IG_SEND_RESULT] status=${igSendRes ? igSendRes.statusCode : 'null'} recipient=${igSenderId || 'n/a'} target=${igRecipientTargetId} message_id=${igResMid || 'n/a'} origin=ai_auto_reply fallback_used=${usedFallback}`,
+              )
+              igOkLog.set(
                 'details',
                 JSON.stringify({
                   url: lastAttemptedUrl,
                   original_url: igEndpointUrl,
                   statusCode: igSendRes ? igSendRes.statusCode : null,
-                  code: igErrObj.code !== undefined ? igErrObj.code : null,
-                  error_subcode:
-                    igErrObj.error_subcode !== undefined ? igErrObj.error_subcode : null,
-                  error_user_title: igErrObj.error_user_title || null,
-                  error_user_message:
-                    igErrObj.error_user_msg || igErrObj.error_user_message || null,
-                  fbtrace_id: igErrObj.fbtrace_id || null,
-                  message: igErrObj.message || null,
-                  type: igErrObj.type || null,
-                  recipient_id: igSenderId,
+                  recipient_id: igSenderId || null,
                   target_id: igRecipientTargetId,
+                  message_id: igResMid,
                   token_prefix: igToken.substring(0, 15) + '...',
+                  origin: 'ai_auto_reply',
+                  fallback_used: usedFallback,
                 }),
               )
-              igFailLog.set(
-                'payload',
-                JSON.stringify({
-                  request: igPayloadObj,
-                  error: igErrObj,
-                  response: igSendRes ? igSendRes.json || igSendRes.body : null,
-                }),
-              )
-              $app.saveNoValidate(igFailLog)
-              // Token IG/Página expirado (401 code=190): torna a pendência visível
-              // no painel (/configuracoes), não só nos logs do servidor.
-              try {
-                if (
-                  igSendRes.statusCode === 401 &&
-                  igErrObj.code === 190 &&
-                  (freshUserRecord ? freshUserRecord.id : userId)
-                ) {
-                  const tokUser = $app.findRecordById(
-                    'users',
-                    freshUserRecord ? freshUserRecord.id : userId,
-                  )
-                  if (tokUser) {
-                    tokUser.set('meta_token_status', 'expired')
-                    $app.saveNoValidate(tokUser)
-                  }
-                }
-              } catch (_) {}
+              igOkLog.set('payload', JSON.stringify({ request: igPayloadObj, response: igResBody }))
+              $app.saveNoValidate(igOkLog)
             } catch (_) {}
-          }
-        } else if (!isWithin24h) {
-          try {
-            const logsCol = $app.findCollectionByNameOrId('system_logs')
-            const igLog = new Record(logsCol)
-            igLog.set('user_id', userId || '')
-            igLog.set('type', 'instagram_window_expired')
-            igLog.set(
-              'message',
-              'Resposta da IA no Instagram não enviada: janela de 24 horas da Meta expirou para o lead.',
-            )
-            igLog.set('payload', JSON.stringify({ customer_id: customerId, sender_id: igSenderId }))
-            $app.saveNoValidate(igLog)
-          } catch (_) {}
-        } else if (!igSenderId) {
-          console.warn(
-            `[AI_REPLY] Instagram send skipped: igSenderId não identificado para customer=${customerId}`,
-          )
-        } else if (!igToken) {
-          console.warn(
-            `[AI_REPLY] Instagram send skipped: igToken ausente para customer=${customerId}`,
-          )
-        }
-      } catch (igErr) {
-        console.warn(`[AI_REPLY] Instagram send error (non-fatal): ${String(igErr)}`)
-      }
-    }
 
-    // Handover notification
-    if (detectedHandover) {
-      try {
-        const summaryText = `*🚨 Transbordo de Lead 🚨*\n*Lead:* ${customer.getString('name')} (${customer.getString('phone')})\n*Destino:* ${detectedHandover}\n*Mensagem:* ${responseText.substring(0, 120)}`
-        const agentPhone = detectedHandover.toLowerCase().includes('mauro')
-          ? '554899728050'
-          : '5548991958012'
-
-        if (metaToken && metaPhoneId) {
-          callMetaWithRetry(
-            `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
-            'POST',
-            { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-            JSON.stringify({
-              messaging_product: 'whatsapp',
-              to: agentPhone,
-              type: 'text',
-              text: { body: summaryText },
-            }),
-          )
-        }
-      } catch (handoverErr) {
-        console.warn(`[AI_REPLY] Handover notification error (non-fatal): ${String(handoverErr)}`)
-      }
-    }
-
-    // ======================================================================
-    // CONSTITUIÇÃO DA BIA v2.0 - ART. 6: ANÁLISE DE CRÉDITO & CONSENTIMENTO
-    // ======================================================================
-    try {
-      const lowerCust = (customerMessage || '').toLowerCase()
-      const lowerResp = (responseText || '').toLowerCase()
-      let currentCreditStatus = customer.getString('credit_analysis_status') || 'nao_oferecido'
-
-      // Idempotência estrita: se já foi enviado, NUNCA disparar novamente nem regredir status
-      if (currentCreditStatus === 'enviado') {
-        console.log(
-          `[CREDIT_FLOW] Cliente ${customerId} já possui status 'enviado'. Idempotência mantida, nenhum reenvio.`,
-        )
-      } else {
-        // 1. Detectar se a Bia acabou de oferecer a análise para a Neuci nesta resposta
-        const respOffersCredit =
-          lowerResp.includes('neuci') ||
-          lowerResp.includes('posso encaminhar você para a minha agente neuci') ||
-          lowerResp.includes('encaminhar você para a minha agente neuci') ||
-          lowerResp.includes('encaminhar para a neuci') ||
-          (lowerResp.includes('análise de crédito') &&
-            (lowerResp.includes('neuci') ||
-              lowerResp.includes('agente') ||
-              lowerResp.includes('posso encaminhar') ||
-              lowerResp.includes('posso te encaminhar')))
-
-        if (respOffersCredit && currentCreditStatus !== 'oferecido') {
-          customer.set('credit_analysis_status', 'oferecido')
-          customer.set('credit_analysis_offered_at', new Date().toISOString())
-          $app.saveNoValidate(customer)
-          currentCreditStatus = 'oferecido'
-          console.log(
-            `[CREDIT_FLOW] Análise de crédito oferecida ao cliente ${customerId} (status -> oferecido)`,
-          )
-        }
-
-        // 2. Se o status é oferecido, verificar consentimento ou recusa expressa do cliente
-        if (currentCreditStatus === 'oferecido') {
-          // Consentimento explícito: sim, pode encaminhar, claro, por favor, quero, pode sim, etc.
-          const isConsent =
-            /\b(sim|com certeza|pode|pode sim|claro|por favor|quero|aceito|concordo|encaminha|manda|pode mandar|pode encaminhar|ok|perfeito|pode ser|gostaria|autorizo|faz favor)\b/i.test(
-              lowerCust,
-            )
-          // Recusa explícita: não, deixa pra lá, agora não, prefiro não, etc.
-          const isRefusal =
-            /\b(n[aã]o|depois|agora n[aã]o|ainda n[aã]o|n[aã]o precisa|deixa|deixa pra l[aá]|prefiro n[aã]o|dispens|n[aã]o quero)\b/i.test(
-              lowerCust,
-            )
-
-          if (isConsent && !isRefusal) {
-            console.log(
-              `[CREDIT_FLOW] Consentimento CONFIRMADO pelo cliente ${customerId}! Iniciando disparo SIMULTÂNEO Neuci + Mauro...`,
-            )
-
-            // Resolução de dados do imóvel em foco
-            let propCode = ''
-            let propUrl = ''
-            if (targetSpecificProp) {
-              propCode = (targetSpecificProp.getString('code') || '').trim()
-              propUrl = (targetSpecificProp.getString('url') || '').trim()
-            } else if (matchedLaunch) {
-              propCode = (
-                matchedLaunch.getString('enterprise_name') ||
-                matchedLaunch.getString('name') ||
-                ''
-              ).trim()
-              propUrl = (
-                matchedLaunch.getString('website_url') ||
-                matchedLaunch.getString('url') ||
-                ''
-              ).trim()
-            } else if (matchedProps && matchedProps.length > 0) {
-              propCode = (matchedProps[0].getString('code') || '').trim()
-              propUrl = (matchedProps[0].getString('url') || '').trim()
-            }
-
-            // Fallback de URL canônica do imóvel no portal oficial brfimoveis.com.br
-            if (!propUrl && propCode) {
-              const cleanCode = propCode.replace(/\s+/g, '').toLowerCase()
-              propUrl = `https://brfimoveis.com.br/imovel/${cleanCode}`
-            }
-            if (!propUrl) {
-              propUrl = 'https://brfimoveis.com.br'
-            }
-
-            // Resolução do nome do cliente
-            const clientCustName =
-              customer.getString('name') ||
-              customer.getString('first_name') ||
-              displayName ||
-              'Cliente'
-
-            // Resolução do telefone do cliente (formatado para fácil contato direto)
-            const clientPhoneRaw = customer.getString('phone') || ''
-
-            const msgNeuci = `cliente ${clientCustName} pretende uma análise de crédito para comprar o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
-            const msgMauro = `cliente ${clientCustName} foi solicitado análise de crédito para o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
-
-            // Números oficiais: Neuci (48) 99902-0349 -> 5548999020349 / Mauro (48) 99972-8050 -> 5548999728050
-            const phoneNeuci = '5548999020349'
-            const phoneMauro = '5548999728050'
-
-            let neuciSuccess = false
-            let mauroSuccess = false
-            let dispatchErrorDetails = []
-
-            if (metaToken && metaPhoneId) {
-              // 1. WhatsApp para Neuci
-              try {
-                const resNeuci = callMetaWithRetry(
-                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
-                  'POST',
-                  { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-                  JSON.stringify({
-                    messaging_product: 'whatsapp',
-                    to: phoneNeuci,
-                    type: 'text',
-                    text: { body: msgNeuci },
-                  }),
-                )
-                if (resNeuci && resNeuci.statusCode >= 200 && resNeuci.statusCode < 300) {
-                  neuciSuccess = true
-                  console.log(
-                    `[CREDIT_FLOW] WhatsApp enviado com sucesso para Neuci (${phoneNeuci}).`,
-                  )
-                } else {
-                  const bStr = resNeuci ? String.fromCharCode.apply(null, resNeuci.body || []) : ''
-                  dispatchErrorDetails.push(
-                    `Neuci status ${resNeuci ? resNeuci.statusCode : 'null'}: ${bStr}`,
-                  )
-                }
-              } catch (neuciErr) {
-                console.warn(`[CREDIT_FLOW] Exceção ao notificar Neuci: ${String(neuciErr)}`)
-                dispatchErrorDetails.push(`Neuci err: ${String(neuciErr)}`)
-              }
-
-              // 2. WhatsApp simultâneo para Mauro
-              try {
-                const resMauro = callMetaWithRetry(
-                  `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
-                  'POST',
-                  { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-                  JSON.stringify({
-                    messaging_product: 'whatsapp',
-                    to: phoneMauro,
-                    type: 'text',
-                    text: { body: msgMauro },
-                  }),
-                )
-                if (resMauro && resMauro.statusCode >= 200 && resMauro.statusCode < 300) {
-                  mauroSuccess = true
-                  console.log(
-                    `[CREDIT_FLOW] WhatsApp enviado com sucesso para Mauro (${phoneMauro}).`,
-                  )
-                } else {
-                  const bStr = resMauro ? String.fromCharCode.apply(null, resMauro.body || []) : ''
-                  dispatchErrorDetails.push(
-                    `Mauro status ${resMauro ? resMauro.statusCode : 'null'}: ${bStr}`,
-                  )
-                }
-              } catch (mauroErr) {
-                console.warn(`[CREDIT_FLOW] Exceção ao notificar Mauro: ${String(mauroErr)}`)
-                dispatchErrorDetails.push(`Mauro err: ${String(mauroErr)}`)
-              }
+            if (igSendRes && igSendRes.statusCode >= 200 && igSendRes.statusCode < 300) {
+              console.log(
+                `[AI_REPLY] Instagram DM sent successfully to ${igSenderId} for customer=${customerId} (fallback_used=${usedFallback})`,
+              )
             } else {
-              dispatchErrorDetails.push('Meta credentials ausentes no momento do envio.')
-            }
-
-            // Registrar tentativa / log do fluxo de análise de crédito
-            try {
-              const logsCol = $app.findCollectionByNameOrId('system_logs')
-              const creditLog = new Record(logsCol)
-              creditLog.set('user_id', userId || '')
-              creditLog.set(
-                'type',
-                neuciSuccess && mauroSuccess
-                  ? 'credit_analysis_sent'
-                  : 'credit_analysis_dispatch_attempt',
-              )
-              creditLog.set(
-                'message',
-                neuciSuccess && mauroSuccess
-                  ? `Consentimento confirmado: Análise de crédito encaminhada simultaneamente à Neuci (${phoneNeuci}) e Mauro (${phoneMauro}) para imóvel ${propCode || 'em foco'}`
-                  : `Consentimento confirmado para cliente ${clientCustName}, mas envio degradado/parcial: ${dispatchErrorDetails.join(' | ')}`,
-              )
-              creditLog.set(
-                'payload',
-                JSON.stringify({
-                  customer_id: customerId,
-                  customer_name: clientCustName,
-                  customer_phone: clientPhoneRaw,
-                  property_code: propCode,
-                  property_url: propUrl,
-                  neuci_success: neuciSuccess,
-                  mauro_success: mauroSuccess,
-                  errors: dispatchErrorDetails,
-                }),
-              )
-              $app.saveNoValidate(creditLog)
-            } catch (logErr) {
+              const igErrObj =
+                igSendRes && igSendRes.json && igSendRes.json.error ? igSendRes.json.error : {}
               console.warn(
-                `[CREDIT_FLOW] Falha ao registrar system_log de análise: ${String(logErr)}`,
+                `[AI_REPLY] Instagram DM response status: ${igSendRes ? igSendRes.statusCode : 'null'} code=${igErrObj.code !== undefined ? igErrObj.code : 'none'} subcode=${igErrObj.error_subcode !== undefined ? igErrObj.error_subcode : 'none'} fbtrace_id="${igErrObj.fbtrace_id || 'none'}" msg="${igErrObj.message || ''}"`,
               )
-            }
-
-            // Atualização coerente do status do cliente:
-            // O consentimento foi dado e registrado com timestamp
-            customer.set('credit_analysis_consented_at', new Date().toISOString())
-            customer.set('credit_analysis_status', 'enviado')
-            $app.saveNoValidate(customer)
-            console.log(
-              `[CREDIT_FLOW] Cliente ${customerId} atualizado com status='enviado' e credit_analysis_consented_at gravado.`,
-            )
-          } else if (isRefusal) {
-            customer.set('credit_analysis_status', 'recusado')
-            $app.saveNoValidate(customer)
-            console.log(
-              `[CREDIT_FLOW] Cliente ${customerId} recusou a análise de crédito expressamente. Nenhum disparo executado.`,
-            )
-          } else {
-            console.log(
-              `[CREDIT_FLOW] Cliente ${customerId} com análise oferecida não expressou consentimento explícito. Nenhum disparo efetuado.`,
-            )
-          }
-        }
-      }
-    } catch (creditFlowErr) {
-      console.warn(`[CREDIT_FLOW] Erro no fluxo de análise de crédito: ${String(creditFlowErr)}`)
-    }
-
-    console.log(`[AI_REPLY] Completed processing for customer=${customerId}`)
-  } catch (err) {
-    console.error(`[AI_REPLY] Top-level error for customer ${customerId}: ${String(err)}`)
-    let topLevelErrorDetails = String(err.stack || err)
-    let topLevelErrorMessage = err.message || String(err)
-    try {
-      const logsCol = $app.findCollectionByNameOrId('system_logs')
-      const errLog = new Record(logsCol)
-      errLog.set('user_id', userId || '')
-      errLog.set('type', 'whatsapp_ai_reply_error')
-      errLog.set(
-        'message',
-        `Erro geral no processamento de resposta da IA: ${topLevelErrorMessage}`,
-      )
-      errLog.set('details', topLevelErrorDetails)
-      errLog.set(
-        'payload',
-        JSON.stringify({ customer_id: customerId, error: topLevelErrorMessage }),
-      )
-      $app.saveNoValidate(errLog)
-    } catch (_) {}
-
-    // Resilient fallback: JAMAIS reiniciar a conversa nem trocar de imóvel
-    try {
-      if (customerId && (conversationChannel === 'whatsapp' || !conversationChannel)) {
-        console.log(
-          `[AI_REPLY] Top-level catch attempting resilient focus fallback for ${customerId}...`,
-        )
-        let emergencyReply = ''
-
-        try {
-          // Cálculo autônomo de horário e saudação (sem depender de variáveis/funções externas)
-          var fbHour = new Date(Date.now() - 3 * 3600 * 1000).getUTCHours()
-          var fbSalutation = fbHour < 12 ? 'Bom dia' : fbHour < 18 ? 'Boa tarde' : 'Boa noite'
-
-          var custDisplayName = ''
-          try {
-            var custRec = safeFindRecordById('customers', customerId)
-            if (custRec) {
-              var cName = (
-                custRec.getString('first_name') ||
-                custRec.getString('name') ||
-                ''
-              ).trim()
-              if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
-                custDisplayName = cName.split(' ')[0]
-              }
-            }
-          } catch (_) {}
-
-          var emGreeting = custDisplayName
-            ? fbSalutation + ', ' + custDisplayName + '! '
-            : fbSalutation + '! '
-
-          // Obter histórico de mensagens recentes da IA para não repetir a mesma mensagem em sequência
-          var recentAiTexts = []
-          try {
-            var lastAiConvs = $app.findRecordsByFilter(
-              'conversations',
-              "customer_id = '" + customerId + "' && sender = 'ai'",
-              '-created',
-              4,
-              0,
-            )
-            for (var aiIdx = 0; aiIdx < lastAiConvs.length; aiIdx++) {
-              var cTxt = (lastAiConvs[aiIdx].getString('content') || '').trim().toLowerCase()
-              if (cTxt) recentAiTexts.push(cTxt)
-            }
-          } catch (_) {}
-
-          // Determinar se já houve interação recente para não saudar repetidamente em diálogo contínuo
-          var isConversationOngoing = recentAiTexts.length > 0
-          var effectiveGreeting = isConversationOngoing ? '' : emGreeting
-
-          // REGRA CRÍTICA: Manter continuidade do imóvel em foco sem nunca reiniciar a conversa nem citar outro imóvel
-          // Não usar propInFocus se o lead não pediu imóvel específico e matchedProps foi preenchido por catálogo genérico
-          var realTargetProp = null
-          if (targetSpecificProp) {
-            realTargetProp = targetSpecificProp
-          } else if (
-            typeof detectedSpecificPropertyQuery !== 'undefined' &&
-            detectedSpecificPropertyQuery &&
-            matchedProps &&
-            matchedProps.length > 0
-          ) {
-            realTargetProp = matchedProps[0]
-          }
-
-          if (realTargetProp) {
-            var propInFocus = realTargetProp
-            var pCode = (propInFocus.getString('code') || '').trim()
-            var pTitle = (propInFocus.getString('title') || '').trim()
-            var pPrice = (propInFocus.getString('price_formatted') || '').trim()
-            var pUrl = (propInFocus.getString('url') || '').trim()
-            var propId = pCode ? '*' + pCode + '*' : pTitle ? '*' + pTitle + '*' : 'em foco'
-
-            var variations = [
-              effectiveGreeting +
-                'Com certeza! Em relação ao imóvel ' +
-                propId +
-                (pPrice ? ' (valor de ' + pPrice + ')' : '') +
-                ', estou separando o material completo e as plantas para você.\n\nVocê prefere receber por aqui no WhatsApp ou deseja agendar uma visita com o Mauro no local?' +
-                (pUrl ? '\nFicha detalhada: ' + pUrl : ''),
-
-              effectiveGreeting +
-                'Perfeito! Já estou levantando as informações atualizadas do imóvel ' +
-                propId +
-                (pPrice ? ' (anunciado por ' + pPrice + ')' : '') +
-                '.\n\nQuer que eu tire alguma dúvida específica sobre a planta ou localização?' +
-                (pUrl ? '\nLink oficial: ' + pUrl : ''),
-
-              effectiveGreeting +
-                'Excelente escolha! O imóvel ' +
-                propId +
-                (pPrice ? ' (' + pPrice + ')' : '') +
-                ' é uma excelente oportunidade. Estou organizando o espelho de disponibilidade e os diferenciais dele para te passar.\n\nVocê prefere tirar dúvidas por aqui ou deseja agendar uma visita no local?' +
-                (pUrl ? '\nConfira aqui: ' + pUrl : ''),
-
-              effectiveGreeting +
-                'Recebido! Estou conferindo os detalhes do imóvel ' +
-                propId +
-                ' para te atender da melhor forma.\n\nPosso te enviar o material completo por aqui?' +
-                (pUrl ? '\nDetalhes: ' + pUrl : ''),
-            ]
-
-            // Seleciona uma variação que ainda não foi enviada recentemente
-            emergencyReply = variations[0]
-            for (var vIdx = 0; vIdx < variations.length; vIdx++) {
-              var candNorm = variations[vIdx].trim().toLowerCase()
-              var alreadySent = false
-              for (var rIdx = 0; rIdx < recentAiTexts.length; rIdx++) {
-                if (
-                  recentAiTexts[rIdx] === candNorm ||
-                  recentAiTexts[rIdx].indexOf(candNorm.substring(0, 40)) !== -1
-                ) {
-                  alreadySent = true
-                  break
-                }
-              }
-              if (!alreadySent) {
-                emergencyReply = variations[vIdx]
-                break
-              }
-            }
-          } else if (
-            typeof detectedSpecificPropertyQuery !== 'undefined' &&
-            detectedSpecificPropertyQuery
-          ) {
-            var specVariations = [
-              effectiveGreeting +
-                'Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes atualizados junto ao Mauro e já te envio as informações completas por aqui.',
-              effectiveGreeting +
-                'Já estou localizando a ficha e disponibilidade desse imóvel junto à nossa equipe. Em instantes te passo tudo por aqui!',
-              effectiveGreeting +
-                'Perfeito! Estou consultando o espelho atualizado deste imóvel com o Mauro e retorno em seguida com os dados completos.',
-            ]
-            emergencyReply = specVariations[0]
-            for (var svIdx = 0; svIdx < specVariations.length; svIdx++) {
-              var sCandNorm = specVariations[svIdx].trim().toLowerCase()
-              var sAlreadySent = false
-              for (var srIdx = 0; srIdx < recentAiTexts.length; srIdx++) {
-                if (recentAiTexts[srIdx] === sCandNorm) {
-                  sAlreadySent = true
-                  break
-                }
-              }
-              if (!sAlreadySent) {
-                emergencyReply = specVariations[svIdx]
-                break
-              }
-            }
-          } else if (typeof hasFreeSearchIntent !== 'undefined' && hasFreeSearchIntent) {
-            var freeSearchVariations = [
-              effectiveGreeting +
-                'Recebi sua solicitação de busca! Estou consultando a carteira da BRF Imóveis e nossos parceiros para localizar opções nesse perfil. Em instantes te trago o retorno.',
-              effectiveGreeting +
-                'Já iniciei o levantamento das opções compatíveis na região solicitada junto ao Mauro. Assim que mapear as unidades disponíveis te envio por aqui.',
-            ]
-            emergencyReply = freeSearchVariations[0]
-          } else {
-            var genVariations = [
-              effectiveGreeting +
-                'Recebi sua mensagem! Estou organizando as informações detalhadas para você. Em instantes já te trago o retorno completo.',
-              effectiveGreeting +
-                'Tudo certo! Já registrei sua solicitação e estou separando as melhores opções para você. Um momento, por favor!',
-              effectiveGreeting +
-                'Obrigada pelo contato! Estou consultando os dados necessários para te responder com precisão. Já te envio o retorno!',
-            ]
-            emergencyReply = genVariations[0]
-            for (var gvIdx = 0; gvIdx < genVariations.length; gvIdx++) {
-              var gCandNorm = genVariations[gvIdx].trim().toLowerCase()
-              var gAlreadySent = false
-              for (var grIdx = 0; grIdx < recentAiTexts.length; grIdx++) {
-                if (recentAiTexts[grIdx] === gCandNorm) {
-                  gAlreadySent = true
-                  break
-                }
-              }
-              if (!gAlreadySent) {
-                emergencyReply = genVariations[gvIdx]
-                break
-              }
-            }
-          }
-
-          // Gravação da mensagem em conversations (try/catch interno)
-          try {
-            var convCol = $app.findCollectionByNameOrId('conversations')
-            var rec = new Record(convCol)
-            rec.set('user_id', userId || '')
-            rec.set('customer_id', customerId)
-            rec.set('sender', 'ai')
-            rec.set('content', emergencyReply)
-            rec.set('channel', conversationChannel || 'whatsapp')
-            $app.save(rec)
-          } catch (convSaveErr) {
-            console.warn(
-              '[AI_REPLY] Emergency fallback conversation save error: ' + String(convSaveErr),
-            )
-          }
-
-          // Resolução de credenciais WhatsApp e envio via WhatsApp (try/catch interno)
-          try {
-            var emMetaToken = ''
-            var emPhoneId = ''
-            try {
-              var usersWithMeta = $app.findRecordsByFilter(
-                'users',
-                "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
-                '-created',
-                1,
-                0,
-              )
-              if (usersWithMeta.length > 0) {
-                emMetaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
-                emPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
-              }
-            } catch (_) {}
-
-            var emCustomerPhone = ''
-            try {
-              var cRec = safeFindRecordById('customers', customerId)
-              emCustomerPhone = cRec ? cRec.getString('phone') || '' : ''
-            } catch (_) {}
-
-            var emCleanPhone = emCustomerPhone.replace(/\D/g, '')
-            if (emCleanPhone.length === 10 || emCleanPhone.length === 11) {
-              emCleanPhone = '55' + emCleanPhone
-            }
-
-            if (emMetaToken && emPhoneId && emCleanPhone) {
-              // CORREÇÃO 1 (FALLBACK): Dedup por conteúdo normalizado também no fallback de emergência
-              var normEmReply = (emergencyReply || '').replace(/\s+/g, ' ').trim().toLowerCase()
-              var isEmIdentical = false
-              var lastEmSentPreview = ''
               try {
-                var recentEmLogs = $app.findRecordsByFilter(
-                  'system_logs',
-                  "type = 'whatsapp_ai_send' && payload ~ '" + customerId + "'",
-                  '-created',
-                  3,
-                  0,
+                const logsCol = $app.findCollectionByNameOrId('system_logs')
+                const igFailLog = new Record(logsCol)
+                igFailLog.set('user_id', (freshUserRecord ? freshUserRecord.id : userId) || '')
+                igFailLog.set('type', 'instagram_dm_failure')
+                igFailLog.set(
+                  'message',
+                  `Falha ao enviar DM do Instagram: code=${igErrObj.code !== undefined ? igErrObj.code : 'none'} subcode=${igErrObj.error_subcode !== undefined ? igErrObj.error_subcode : 'none'} (${igErrObj.message || 'HTTP ' + (igSendRes ? igSendRes.statusCode : '')})`,
                 )
-                for (var emLIdx = 0; emLIdx < recentEmLogs.length; emLIdx++) {
-                  var emItem = recentEmLogs[emLIdx]
-                  var emPayStr = emItem.getString('payload') || ''
-                  var emSentTxt = ''
-                  try {
-                    var emPObj = JSON.parse(emPayStr)
-                    emSentTxt = emPObj.preview || emPObj.full_text || ''
-                  } catch (_) {}
-                  if (emSentTxt) {
-                    var normPrev = emSentTxt.replace(/\s+/g, ' ').trim().toLowerCase()
-                    if (
-                      normPrev === normEmReply ||
-                      (normPrev.length >= 80 && normEmReply.indexOf(normPrev) === 0)
-                    ) {
-                      isEmIdentical = true
-                      lastEmSentPreview = emSentTxt.substring(0, 60)
-                      break
+                igFailLog.set(
+                  'details',
+                  JSON.stringify({
+                    url: lastAttemptedUrl,
+                    original_url: igEndpointUrl,
+                    statusCode: igSendRes ? igSendRes.statusCode : null,
+                    code: igErrObj.code !== undefined ? igErrObj.code : null,
+                    error_subcode:
+                      igErrObj.error_subcode !== undefined ? igErrObj.error_subcode : null,
+                    error_user_title: igErrObj.error_user_title || null,
+                    error_user_message:
+                      igErrObj.error_user_msg || igErrObj.error_user_message || null,
+                    fbtrace_id: igErrObj.fbtrace_id || null,
+                    message: igErrObj.message || null,
+                    type: igErrObj.type || null,
+                    recipient_id: igSenderId,
+                    target_id: igRecipientTargetId,
+                    token_prefix: igToken.substring(0, 15) + '...',
+                  }),
+                )
+                igFailLog.set(
+                  'payload',
+                  JSON.stringify({
+                    request: igPayloadObj,
+                    error: igErrObj,
+                    response: igSendRes ? igSendRes.json || igSendRes.body : null,
+                  }),
+                )
+                $app.saveNoValidate(igFailLog)
+                // Token IG/Página expirado (401 code=190): torna a pendência visível
+                // no painel (/configuracoes), não só nos logs do servidor.
+                try {
+                  if (
+                    igSendRes.statusCode === 401 &&
+                    igErrObj.code === 190 &&
+                    (freshUserRecord ? freshUserRecord.id : userId)
+                  ) {
+                    const tokUser = $app.findRecordById(
+                      'users',
+                      freshUserRecord ? freshUserRecord.id : userId,
+                    )
+                    if (tokUser) {
+                      tokUser.set('meta_token_status', 'expired')
+                      $app.saveNoValidate(tokUser)
                     }
                   }
+                } catch (_) {}
+              } catch (_) {}
+            }
+          } else if (!isWithin24h) {
+            try {
+              const logsCol = $app.findCollectionByNameOrId('system_logs')
+              const igLog = new Record(logsCol)
+              igLog.set('user_id', userId || '')
+              igLog.set('type', 'instagram_window_expired')
+              igLog.set(
+                'message',
+                'Resposta da IA no Instagram não enviada: janela de 24 horas da Meta expirou para o lead.',
+              )
+              igLog.set(
+                'payload',
+                JSON.stringify({ customer_id: customerId, sender_id: igSenderId }),
+              )
+              $app.saveNoValidate(igLog)
+            } catch (_) {}
+          } else if (!igSenderId) {
+            console.warn(
+              `[AI_REPLY] Instagram send skipped: igSenderId não identificado para customer=${customerId}`,
+            )
+          } else if (!igToken) {
+            console.warn(
+              `[AI_REPLY] Instagram send skipped: igToken ausente para customer=${customerId}`,
+            )
+          }
+        } catch (igErr) {
+          console.warn(`[AI_REPLY] Instagram send error (non-fatal): ${String(igErr)}`)
+        }
+      }
+
+      // Handover notification
+      if (detectedHandover) {
+        try {
+          const summaryText = `*🚨 Transbordo de Lead 🚨*\n*Lead:* ${customer.getString('name')} (${customer.getString('phone')})\n*Destino:* ${detectedHandover}\n*Mensagem:* ${responseText.substring(0, 120)}`
+          const agentPhone = detectedHandover.toLowerCase().includes('mauro')
+            ? '554899728050'
+            : '5548991958012'
+
+          if (metaToken && metaPhoneId) {
+            callMetaWithRetry(
+              `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${metaWhatsappProofParam(metaToken)}`,
+              'POST',
+              { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+              JSON.stringify({
+                messaging_product: 'whatsapp',
+                to: agentPhone,
+                type: 'text',
+                text: { body: summaryText },
+              }),
+            )
+          }
+        } catch (handoverErr) {
+          console.warn(`[AI_REPLY] Handover notification error (non-fatal): ${String(handoverErr)}`)
+        }
+      }
+
+      // ======================================================================
+      // CONSTITUIÇÃO DA BIA v2.0 - ART. 6: ANÁLISE DE CRÉDITO & CONSENTIMENTO
+      // ======================================================================
+      try {
+        const lowerCust = (customerMessage || '').toLowerCase()
+        const lowerResp = (responseText || '').toLowerCase()
+        let currentCreditStatus = customer.getString('credit_analysis_status') || 'nao_oferecido'
+
+        // Idempotência estrita: se já foi enviado, NUNCA disparar novamente nem regredir status
+        if (currentCreditStatus === 'enviado') {
+          console.log(
+            `[CREDIT_FLOW] Cliente ${customerId} já possui status 'enviado'. Idempotência mantida, nenhum reenvio.`,
+          )
+        } else {
+          // 1. Detectar se a Bia acabou de oferecer a análise para a Neuci nesta resposta
+          const respOffersCredit =
+            lowerResp.includes('neuci') ||
+            lowerResp.includes('posso encaminhar você para a minha agente neuci') ||
+            lowerResp.includes('encaminhar você para a minha agente neuci') ||
+            lowerResp.includes('encaminhar para a neuci') ||
+            (lowerResp.includes('análise de crédito') &&
+              (lowerResp.includes('neuci') ||
+                lowerResp.includes('agente') ||
+                lowerResp.includes('posso encaminhar') ||
+                lowerResp.includes('posso te encaminhar')))
+
+          if (respOffersCredit && currentCreditStatus !== 'oferecido') {
+            customer.set('credit_analysis_status', 'oferecido')
+            customer.set('credit_analysis_offered_at', new Date().toISOString())
+            $app.saveNoValidate(customer)
+            currentCreditStatus = 'oferecido'
+            console.log(
+              `[CREDIT_FLOW] Análise de crédito oferecida ao cliente ${customerId} (status -> oferecido)`,
+            )
+          }
+
+          // 2. Se o status é oferecido, verificar consentimento ou recusa expressa do cliente
+          if (currentCreditStatus === 'oferecido') {
+            // Consentimento explícito: sim, pode encaminhar, claro, por favor, quero, pode sim, etc.
+            const isConsent =
+              /\b(sim|com certeza|pode|pode sim|claro|por favor|quero|aceito|concordo|encaminha|manda|pode mandar|pode encaminhar|ok|perfeito|pode ser|gostaria|autorizo|faz favor)\b/i.test(
+                lowerCust,
+              )
+            // Recusa explícita: não, deixa pra lá, agora não, prefiro não, etc.
+            const isRefusal =
+              /\b(n[aã]o|depois|agora n[aã]o|ainda n[aã]o|n[aã]o precisa|deixa|deixa pra l[aá]|prefiro n[aã]o|dispens|n[aã]o quero)\b/i.test(
+                lowerCust,
+              )
+
+            if (isConsent && !isRefusal) {
+              console.log(
+                `[CREDIT_FLOW] Consentimento CONFIRMADO pelo cliente ${customerId}! Iniciando disparo SIMULTÂNEO Neuci + Mauro...`,
+              )
+
+              // Resolução de dados do imóvel em foco
+              let propCode = ''
+              let propUrl = ''
+              if (targetSpecificProp) {
+                propCode = (targetSpecificProp.getString('code') || '').trim()
+                propUrl = (targetSpecificProp.getString('url') || '').trim()
+              } else if (matchedLaunch) {
+                propCode = (
+                  matchedLaunch.getString('enterprise_name') ||
+                  matchedLaunch.getString('name') ||
+                  ''
+                ).trim()
+                propUrl = (
+                  matchedLaunch.getString('website_url') ||
+                  matchedLaunch.getString('url') ||
+                  ''
+                ).trim()
+              } else if (matchedProps && matchedProps.length > 0) {
+                propCode = (matchedProps[0].getString('code') || '').trim()
+                propUrl = (matchedProps[0].getString('url') || '').trim()
+              }
+
+              // Fallback de URL canônica do imóvel no portal oficial brfimoveis.com.br
+              if (!propUrl && propCode) {
+                const cleanCode = propCode.replace(/\s+/g, '').toLowerCase()
+                propUrl = `https://brfimoveis.com.br/imovel/${cleanCode}`
+              }
+              if (!propUrl) {
+                propUrl = 'https://brfimoveis.com.br'
+              }
+
+              // Resolução do nome do cliente
+              const clientCustName =
+                customer.getString('name') ||
+                customer.getString('first_name') ||
+                displayName ||
+                'Cliente'
+
+              // Resolução do telefone do cliente (formatado para fácil contato direto)
+              const clientPhoneRaw = customer.getString('phone') || ''
+
+              const msgNeuci = `cliente ${clientCustName} pretende uma análise de crédito para comprar o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
+              const msgMauro = `cliente ${clientCustName} foi solicitado análise de crédito para o imóvel ${propCode || 'em foco'}\nLink: ${propUrl}\nTelefone do cliente: ${clientPhoneRaw}`
+
+              // Números oficiais: Neuci (48) 99902-0349 -> 5548999020349 / Mauro (48) 99972-8050 -> 5548999728050
+              const phoneNeuci = '5548999020349'
+              const phoneMauro = '5548999728050'
+
+              let neuciSuccess = false
+              let mauroSuccess = false
+              let dispatchErrorDetails = []
+
+              if (metaToken && metaPhoneId) {
+                // 1. WhatsApp para Neuci
+                try {
+                  const resNeuci = callMetaWithRetry(
+                    `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                    'POST',
+                    { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                    JSON.stringify({
+                      messaging_product: 'whatsapp',
+                      to: phoneNeuci,
+                      type: 'text',
+                      text: { body: msgNeuci },
+                    }),
+                  )
+                  if (resNeuci && resNeuci.statusCode >= 200 && resNeuci.statusCode < 300) {
+                    neuciSuccess = true
+                    console.log(
+                      `[CREDIT_FLOW] WhatsApp enviado com sucesso para Neuci (${phoneNeuci}).`,
+                    )
+                  } else {
+                    const bStr = resNeuci
+                      ? String.fromCharCode.apply(null, resNeuci.body || [])
+                      : ''
+                    dispatchErrorDetails.push(
+                      `Neuci status ${resNeuci ? resNeuci.statusCode : 'null'}: ${bStr}`,
+                    )
+                  }
+                } catch (neuciErr) {
+                  console.warn(`[CREDIT_FLOW] Exceção ao notificar Neuci: ${String(neuciErr)}`)
+                  dispatchErrorDetails.push(`Neuci err: ${String(neuciErr)}`)
+                }
+
+                // 2. WhatsApp simultâneo para Mauro
+                try {
+                  const resMauro = callMetaWithRetry(
+                    `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
+                    'POST',
+                    { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+                    JSON.stringify({
+                      messaging_product: 'whatsapp',
+                      to: phoneMauro,
+                      type: 'text',
+                      text: { body: msgMauro },
+                    }),
+                  )
+                  if (resMauro && resMauro.statusCode >= 200 && resMauro.statusCode < 300) {
+                    mauroSuccess = true
+                    console.log(
+                      `[CREDIT_FLOW] WhatsApp enviado com sucesso para Mauro (${phoneMauro}).`,
+                    )
+                  } else {
+                    const bStr = resMauro
+                      ? String.fromCharCode.apply(null, resMauro.body || [])
+                      : ''
+                    dispatchErrorDetails.push(
+                      `Mauro status ${resMauro ? resMauro.statusCode : 'null'}: ${bStr}`,
+                    )
+                  }
+                } catch (mauroErr) {
+                  console.warn(`[CREDIT_FLOW] Exceção ao notificar Mauro: ${String(mauroErr)}`)
+                  dispatchErrorDetails.push(`Mauro err: ${String(mauroErr)}`)
+                }
+              } else {
+                dispatchErrorDetails.push('Meta credentials ausentes no momento do envio.')
+              }
+
+              // Registrar tentativa / log do fluxo de análise de crédito
+              try {
+                const logsCol = $app.findCollectionByNameOrId('system_logs')
+                const creditLog = new Record(logsCol)
+                creditLog.set('user_id', userId || '')
+                creditLog.set(
+                  'type',
+                  neuciSuccess && mauroSuccess
+                    ? 'credit_analysis_sent'
+                    : 'credit_analysis_dispatch_attempt',
+                )
+                creditLog.set(
+                  'message',
+                  neuciSuccess && mauroSuccess
+                    ? `Consentimento confirmado: Análise de crédito encaminhada simultaneamente à Neuci (${phoneNeuci}) e Mauro (${phoneMauro}) para imóvel ${propCode || 'em foco'}`
+                    : `Consentimento confirmado para cliente ${clientCustName}, mas envio degradado/parcial: ${dispatchErrorDetails.join(' | ')}`,
+                )
+                creditLog.set(
+                  'payload',
+                  JSON.stringify({
+                    customer_id: customerId,
+                    customer_name: clientCustName,
+                    customer_phone: clientPhoneRaw,
+                    property_code: propCode,
+                    property_url: propUrl,
+                    neuci_success: neuciSuccess,
+                    mauro_success: mauroSuccess,
+                    errors: dispatchErrorDetails,
+                  }),
+                )
+                $app.saveNoValidate(creditLog)
+              } catch (logErr) {
+                console.warn(
+                  `[CREDIT_FLOW] Falha ao registrar system_log de análise: ${String(logErr)}`,
+                )
+              }
+
+              // Atualização coerente do status do cliente:
+              // O consentimento foi dado e registrado com timestamp
+              customer.set('credit_analysis_consented_at', new Date().toISOString())
+              customer.set('credit_analysis_status', 'enviado')
+              $app.saveNoValidate(customer)
+              console.log(
+                `[CREDIT_FLOW] Cliente ${customerId} atualizado com status='enviado' e credit_analysis_consented_at gravado.`,
+              )
+            } else if (isRefusal) {
+              customer.set('credit_analysis_status', 'recusado')
+              $app.saveNoValidate(customer)
+              console.log(
+                `[CREDIT_FLOW] Cliente ${customerId} recusou a análise de crédito expressamente. Nenhum disparo executado.`,
+              )
+            } else {
+              console.log(
+                `[CREDIT_FLOW] Cliente ${customerId} com análise oferecida não expressou consentimento explícito. Nenhum disparo efetuado.`,
+              )
+            }
+          }
+        }
+      } catch (creditFlowErr) {
+        console.warn(`[CREDIT_FLOW] Erro no fluxo de análise de crédito: ${String(creditFlowErr)}`)
+      }
+
+      console.log(`[AI_REPLY] Completed processing for customer=${customerId}`)
+    } catch (err) {
+      console.error(`[AI_REPLY] Top-level error for customer ${customerId}: ${String(err)}`)
+      let topLevelErrorDetails = String(err.stack || err)
+      let topLevelErrorMessage = err.message || String(err)
+      try {
+        const logsCol = $app.findCollectionByNameOrId('system_logs')
+        const errLog = new Record(logsCol)
+        errLog.set('user_id', userId || '')
+        errLog.set('type', 'whatsapp_ai_reply_error')
+        errLog.set(
+          'message',
+          `Erro geral no processamento de resposta da IA: ${topLevelErrorMessage}`,
+        )
+        errLog.set('details', topLevelErrorDetails)
+        errLog.set(
+          'payload',
+          JSON.stringify({ customer_id: customerId, error: topLevelErrorMessage }),
+        )
+        $app.saveNoValidate(errLog)
+      } catch (_) {}
+
+      // Resilient fallback: JAMAIS reiniciar a conversa nem trocar de imóvel
+      try {
+        if (customerId && (conversationChannel === 'whatsapp' || !conversationChannel)) {
+          console.log(
+            `[AI_REPLY] Top-level catch attempting resilient focus fallback for ${customerId}...`,
+          )
+          let emergencyReply = ''
+
+          try {
+            // Cálculo autônomo de horário e saudação (sem depender de variáveis/funções externas)
+            var fbHour = new Date(Date.now() - 3 * 3600 * 1000).getUTCHours()
+            var fbSalutation = fbHour < 12 ? 'Bom dia' : fbHour < 18 ? 'Boa tarde' : 'Boa noite'
+
+            var custDisplayName = ''
+            try {
+              var custRec = safeFindRecordById('customers', customerId)
+              if (custRec) {
+                var cName = (
+                  custRec.getString('first_name') ||
+                  custRec.getString('name') ||
+                  ''
+                ).trim()
+                if (cName && !cName.includes('+') && !/^\d+$/.test(cName)) {
+                  custDisplayName = cName.split(' ')[0]
+                }
+              }
+            } catch (_) {}
+
+            var emGreeting = custDisplayName
+              ? fbSalutation + ', ' + custDisplayName + '! '
+              : fbSalutation + '! '
+
+            // Obter histórico de mensagens recentes da IA para não repetir a mesma mensagem em sequência
+            var recentAiTexts = []
+            try {
+              var lastAiConvs = $app.findRecordsByFilter(
+                'conversations',
+                "customer_id = '" + customerId + "' && sender = 'ai'",
+                '-created',
+                4,
+                0,
+              )
+              for (var aiIdx = 0; aiIdx < lastAiConvs.length; aiIdx++) {
+                var cTxt = (lastAiConvs[aiIdx].getString('content') || '').trim().toLowerCase()
+                if (cTxt) recentAiTexts.push(cTxt)
+              }
+            } catch (_) {}
+
+            // Determinar se já houve interação recente para não saudar repetidamente em diálogo contínuo
+            var isConversationOngoing = recentAiTexts.length > 0
+            var effectiveGreeting = isConversationOngoing ? '' : emGreeting
+
+            // REGRA CRÍTICA: Manter continuidade do imóvel em foco sem nunca reiniciar a conversa nem citar outro imóvel
+            // Não usar propInFocus se o lead não pediu imóvel específico e matchedProps foi preenchido por catálogo genérico
+            var realTargetProp = null
+            if (targetSpecificProp) {
+              realTargetProp = targetSpecificProp
+            } else if (
+              typeof detectedSpecificPropertyQuery !== 'undefined' &&
+              detectedSpecificPropertyQuery &&
+              matchedProps &&
+              matchedProps.length > 0
+            ) {
+              realTargetProp = matchedProps[0]
+            }
+
+            if (realTargetProp) {
+              var propInFocus = realTargetProp
+              var pCode = (propInFocus.getString('code') || '').trim()
+              var pTitle = (propInFocus.getString('title') || '').trim()
+              var pPrice = (propInFocus.getString('price_formatted') || '').trim()
+              var pUrl = (propInFocus.getString('url') || '').trim()
+              var propId = pCode ? '*' + pCode + '*' : pTitle ? '*' + pTitle + '*' : 'em foco'
+
+              var variations = [
+                effectiveGreeting +
+                  'Com certeza! Em relação ao imóvel ' +
+                  propId +
+                  (pPrice ? ' (valor de ' + pPrice + ')' : '') +
+                  ', estou separando o material completo e as plantas para você.\n\nVocê prefere receber por aqui no WhatsApp ou deseja agendar uma visita com o Mauro no local?' +
+                  (pUrl ? '\nFicha detalhada: ' + pUrl : ''),
+
+                effectiveGreeting +
+                  'Perfeito! Já estou levantando as informações atualizadas do imóvel ' +
+                  propId +
+                  (pPrice ? ' (anunciado por ' + pPrice + ')' : '') +
+                  '.\n\nQuer que eu tire alguma dúvida específica sobre a planta ou localização?' +
+                  (pUrl ? '\nLink oficial: ' + pUrl : ''),
+
+                effectiveGreeting +
+                  'Excelente escolha! O imóvel ' +
+                  propId +
+                  (pPrice ? ' (' + pPrice + ')' : '') +
+                  ' é uma excelente oportunidade. Estou organizando o espelho de disponibilidade e os diferenciais dele para te passar.\n\nVocê prefere tirar dúvidas por aqui ou deseja agendar uma visita no local?' +
+                  (pUrl ? '\nConfira aqui: ' + pUrl : ''),
+
+                effectiveGreeting +
+                  'Recebido! Estou conferindo os detalhes do imóvel ' +
+                  propId +
+                  ' para te atender da melhor forma.\n\nPosso te enviar o material completo por aqui?' +
+                  (pUrl ? '\nDetalhes: ' + pUrl : ''),
+              ]
+
+              // Seleciona uma variação que ainda não foi enviada recentemente
+              emergencyReply = variations[0]
+              for (var vIdx = 0; vIdx < variations.length; vIdx++) {
+                var candNorm = variations[vIdx].trim().toLowerCase()
+                var alreadySent = false
+                for (var rIdx = 0; rIdx < recentAiTexts.length; rIdx++) {
+                  if (
+                    recentAiTexts[rIdx] === candNorm ||
+                    recentAiTexts[rIdx].indexOf(candNorm.substring(0, 40)) !== -1
+                  ) {
+                    alreadySent = true
+                    break
+                  }
+                }
+                if (!alreadySent) {
+                  emergencyReply = variations[vIdx]
+                  break
+                }
+              }
+            } else if (
+              typeof detectedSpecificPropertyQuery !== 'undefined' &&
+              detectedSpecificPropertyQuery
+            ) {
+              var specVariations = [
+                effectiveGreeting +
+                  'Recebi sua solicitação sobre esse imóvel! Estou verificando os detalhes atualizados junto ao Mauro e já te envio as informações completas por aqui.',
+                effectiveGreeting +
+                  'Já estou localizando a ficha e disponibilidade desse imóvel junto à nossa equipe. Em instantes te passo tudo por aqui!',
+                effectiveGreeting +
+                  'Perfeito! Estou consultando o espelho atualizado deste imóvel com o Mauro e retorno em seguida com os dados completos.',
+              ]
+              emergencyReply = specVariations[0]
+              for (var svIdx = 0; svIdx < specVariations.length; svIdx++) {
+                var sCandNorm = specVariations[svIdx].trim().toLowerCase()
+                var sAlreadySent = false
+                for (var srIdx = 0; srIdx < recentAiTexts.length; srIdx++) {
+                  if (recentAiTexts[srIdx] === sCandNorm) {
+                    sAlreadySent = true
+                    break
+                  }
+                }
+                if (!sAlreadySent) {
+                  emergencyReply = specVariations[svIdx]
+                  break
+                }
+              }
+            } else if (typeof hasFreeSearchIntent !== 'undefined' && hasFreeSearchIntent) {
+              var freeSearchVariations = [
+                effectiveGreeting +
+                  'Recebi sua solicitação de busca! Estou consultando a carteira da BRF Imóveis e nossos parceiros para localizar opções nesse perfil. Em instantes te trago o retorno.',
+                effectiveGreeting +
+                  'Já iniciei o levantamento das opções compatíveis na região solicitada junto ao Mauro. Assim que mapear as unidades disponíveis te envio por aqui.',
+              ]
+              emergencyReply = freeSearchVariations[0]
+            } else {
+              var genVariations = [
+                effectiveGreeting +
+                  'Recebi sua mensagem! Estou organizando as informações detalhadas para você. Em instantes já te trago o retorno completo.',
+                effectiveGreeting +
+                  'Tudo certo! Já registrei sua solicitação e estou separando as melhores opções para você. Um momento, por favor!',
+                effectiveGreeting +
+                  'Obrigada pelo contato! Estou consultando os dados necessários para te responder com precisão. Já te envio o retorno!',
+              ]
+              emergencyReply = genVariations[0]
+              for (var gvIdx = 0; gvIdx < genVariations.length; gvIdx++) {
+                var gCandNorm = genVariations[gvIdx].trim().toLowerCase()
+                var gAlreadySent = false
+                for (var grIdx = 0; grIdx < recentAiTexts.length; grIdx++) {
+                  if (recentAiTexts[grIdx] === gCandNorm) {
+                    gAlreadySent = true
+                    break
+                  }
+                }
+                if (!gAlreadySent) {
+                  emergencyReply = genVariations[gvIdx]
+                  break
+                }
+              }
+            }
+
+            // Gravação da mensagem em conversations (try/catch interno)
+            try {
+              var convCol = $app.findCollectionByNameOrId('conversations')
+              var rec = new Record(convCol)
+              rec.set('user_id', userId || '')
+              rec.set('customer_id', customerId)
+              rec.set('sender', 'ai')
+              rec.set('content', emergencyReply)
+              rec.set('channel', conversationChannel || 'whatsapp')
+              $app.save(rec)
+            } catch (convSaveErr) {
+              console.warn(
+                '[AI_REPLY] Emergency fallback conversation save error: ' + String(convSaveErr),
+              )
+            }
+
+            // Resolução de credenciais WhatsApp e envio via WhatsApp (try/catch interno)
+            try {
+              var emMetaToken = ''
+              var emPhoneId = ''
+              try {
+                var usersWithMeta = $app.findRecordsByFilter(
+                  'users',
+                  "meta_whatsapp_access_token != '' && meta_whatsapp_phone_number_id != ''",
+                  '-created',
+                  1,
+                  0,
+                )
+                if (usersWithMeta.length > 0) {
+                  emMetaToken = usersWithMeta[0].getString('meta_whatsapp_access_token')
+                  emPhoneId = usersWithMeta[0].getString('meta_whatsapp_phone_number_id')
                 }
               } catch (_) {}
 
-              if (isEmIdentical) {
-                console.log(
-                  '[AI_REPLY] Emergency fallback cancelado por DEDUP DE CONTEÚDO idêntico (preview="' +
-                    lastEmSentPreview +
-                    '").',
-                )
-              } else {
-                // CORREÇÃO 3 (v0.0.1441): fallback de emergência TAMBÉM passa pela
-                // barreira única de saída da Bia — nenhuma porta de envio escapa.
-                var emBarrier = biaOutputBarrier(emergencyReply, {
-                  channel: 'whatsapp',
-                  origin: 'ai_auto_reply_emergency_fallback',
-                  customerId: customerId,
-                })
-                emergencyReply = emBarrier.text
+              var emCustomerPhone = ''
+              try {
+                var cRec = safeFindRecordById('customers', customerId)
+                emCustomerPhone = cRec ? cRec.getString('phone') || '' : ''
+              } catch (_) {}
 
-                var emSendRes = callMetaWithRetry(
-                  'https://graph.facebook.com/v21.0/' + emPhoneId + '/messages',
-                  'POST',
-                  { Authorization: 'Bearer ' + emMetaToken, 'Content-Type': 'application/json' },
-                  JSON.stringify({
-                    messaging_product: 'whatsapp',
-                    to: emCleanPhone,
-                    type: 'text',
-                    text: { body: emergencyReply },
-                  }),
-                )
-                var emIsOk = emSendRes && emSendRes.statusCode >= 200 && emSendRes.statusCode < 300
-                console.log(
-                  '[AI_REPLY] Emergency fallback sent to ' + emCleanPhone + ' ok=' + emIsOk,
-                )
-
-                try {
-                  var logsColFb = $app.findCollectionByNameOrId('system_logs')
-                  var logRecFb = new Record(logsColFb)
-                  logRecFb.set('user_id', userId || '')
-                  logRecFb.set('type', 'whatsapp_ai_send')
-                  logRecFb.set(
-                    'message',
-                    emIsOk
-                      ? 'Resposta de fallback enviada com sucesso para ' + emCleanPhone
-                      : 'Falha ao enviar resposta de fallback para ' + emCleanPhone,
-                  )
-                  logRecFb.set(
-                    'details',
-                    JSON.stringify({
-                      statusCode: emSendRes ? emSendRes.statusCode : 0,
-                      response: emSendRes ? emSendRes.json || emSendRes.body : null,
-                      phone_id: emPhoneId,
-                      to: emCleanPhone,
-                    }),
-                  )
-                  logRecFb.set(
-                    'payload',
-                    JSON.stringify({
-                      preview: emergencyReply.substring(0, 120),
-                      full_text: emergencyReply,
-                      customer_id: customerId,
-                      is_emergency_fallback: true,
-                    }),
-                  )
-                  $app.saveNoValidate(logRecFb)
-                } catch (_) {}
+              var emCleanPhone = emCustomerPhone.replace(/\D/g, '')
+              if (emCleanPhone.length === 10 || emCleanPhone.length === 11) {
+                emCleanPhone = '55' + emCleanPhone
               }
+
+              if (emMetaToken && emPhoneId && emCleanPhone) {
+                // CORREÇÃO 1 (FALLBACK): Dedup por conteúdo normalizado também no fallback de emergência
+                var normEmReply = (emergencyReply || '').replace(/\s+/g, ' ').trim().toLowerCase()
+                var isEmIdentical = false
+                var lastEmSentPreview = ''
+                try {
+                  var recentEmLogs = $app.findRecordsByFilter(
+                    'system_logs',
+                    "type = 'whatsapp_ai_send' && payload ~ '" + customerId + "'",
+                    '-created',
+                    3,
+                    0,
+                  )
+                  for (var emLIdx = 0; emLIdx < recentEmLogs.length; emLIdx++) {
+                    var emItem = recentEmLogs[emLIdx]
+                    var emPayStr = emItem.getString('payload') || ''
+                    var emSentTxt = ''
+                    try {
+                      var emPObj = JSON.parse(emPayStr)
+                      emSentTxt = emPObj.preview || emPObj.full_text || ''
+                    } catch (_) {}
+                    if (emSentTxt) {
+                      var normPrev = emSentTxt.replace(/\s+/g, ' ').trim().toLowerCase()
+                      if (
+                        normPrev === normEmReply ||
+                        (normPrev.length >= 80 && normEmReply.indexOf(normPrev) === 0)
+                      ) {
+                        isEmIdentical = true
+                        lastEmSentPreview = emSentTxt.substring(0, 60)
+                        break
+                      }
+                    }
+                  }
+                } catch (_) {}
+
+                if (isEmIdentical) {
+                  console.log(
+                    '[AI_REPLY] Emergency fallback cancelado por DEDUP DE CONTEÚDO idêntico (preview="' +
+                      lastEmSentPreview +
+                      '").',
+                  )
+                } else {
+                  // CORREÇÃO 3 (v0.0.1441): fallback de emergência TAMBÉM passa pela
+                  // barreira única de saída da Bia — nenhuma porta de envio escapa.
+                  var emBarrier = biaOutputBarrier(emergencyReply, {
+                    channel: 'whatsapp',
+                    origin: 'ai_auto_reply_emergency_fallback',
+                    customerId: customerId,
+                  })
+                  emergencyReply = emBarrier.text
+
+                  var emSendRes = callMetaWithRetry(
+                    'https://graph.facebook.com/v21.0/' + emPhoneId + '/messages',
+                    'POST',
+                    { Authorization: 'Bearer ' + emMetaToken, 'Content-Type': 'application/json' },
+                    JSON.stringify({
+                      messaging_product: 'whatsapp',
+                      to: emCleanPhone,
+                      type: 'text',
+                      text: { body: emergencyReply },
+                    }),
+                  )
+                  var emIsOk =
+                    emSendRes && emSendRes.statusCode >= 200 && emSendRes.statusCode < 300
+                  console.log(
+                    '[AI_REPLY] Emergency fallback sent to ' + emCleanPhone + ' ok=' + emIsOk,
+                  )
+
+                  try {
+                    var logsColFb = $app.findCollectionByNameOrId('system_logs')
+                    var logRecFb = new Record(logsColFb)
+                    logRecFb.set('user_id', userId || '')
+                    logRecFb.set('type', 'whatsapp_ai_send')
+                    logRecFb.set(
+                      'message',
+                      emIsOk
+                        ? 'Resposta de fallback enviada com sucesso para ' + emCleanPhone
+                        : 'Falha ao enviar resposta de fallback para ' + emCleanPhone,
+                    )
+                    logRecFb.set(
+                      'details',
+                      JSON.stringify({
+                        statusCode: emSendRes ? emSendRes.statusCode : 0,
+                        response: emSendRes ? emSendRes.json || emSendRes.body : null,
+                        phone_id: emPhoneId,
+                        to: emCleanPhone,
+                      }),
+                    )
+                    logRecFb.set(
+                      'payload',
+                      JSON.stringify({
+                        preview: emergencyReply.substring(0, 120),
+                        full_text: emergencyReply,
+                        customer_id: customerId,
+                        is_emergency_fallback: true,
+                      }),
+                    )
+                    $app.saveNoValidate(logRecFb)
+                  } catch (_) {}
+                }
+              }
+            } catch (waSendErr) {
+              console.warn(
+                '[AI_REPLY] Emergency fallback WhatsApp send error: ' + String(waSendErr),
+              )
             }
-          } catch (waSendErr) {
-            console.warn('[AI_REPLY] Emergency fallback WhatsApp send error: ' + String(waSendErr))
+          } catch (innerFbErr) {
+            console.error('[AI_REPLY] Internal emergency fallback error: ' + String(innerFbErr))
           }
-        } catch (innerFbErr) {
-          console.error('[AI_REPLY] Internal emergency fallback error: ' + String(innerFbErr))
         }
+      } catch (emergencyErr) {
+        console.error(`[AI_REPLY] Fatal: emergency fallback failed too: ${String(emergencyErr)}`)
+        try {
+          const logsCol = $app.findCollectionByNameOrId('system_logs')
+          const failLog = new Record(logsCol)
+          failLog.set('user_id', userId || '')
+          failLog.set('type', 'whatsapp_ai_emergency_fail')
+          failLog.set(
+            'message',
+            `Falha crítica no fallback de emergência: ${emergencyErr.message || String(emergencyErr)}`,
+          )
+          failLog.set('details', String(emergencyErr.stack || emergencyErr))
+          failLog.set('payload', JSON.stringify({ customer_id: customerId }))
+          $app.saveNoValidate(failLog)
+        } catch (_) {}
       }
-    } catch (emergencyErr) {
-      console.error(`[AI_REPLY] Fatal: emergency fallback failed too: ${String(emergencyErr)}`)
+    } finally {
+      // Liberação tolerante e idempotente no finally:
+      // utiliza safeReleaseLock que verifica antes de tentar atualizar e tolera clientes inexistentes
       try {
-        const logsCol = $app.findCollectionByNameOrId('system_logs')
-        const failLog = new Record(logsCol)
-        failLog.set('user_id', userId || '')
-        failLog.set('type', 'whatsapp_ai_emergency_fail')
-        failLog.set(
-          'message',
-          `Falha crítica no fallback de emergência: ${emergencyErr.message || String(emergencyErr)}`,
+        safeReleaseLock(customerId, $app)
+      } catch (finalLockErr) {
+        console.warn(
+          `[AI_REPLY] Tolerant lock release completed with notice for customer ${customerId}: ${String(finalLockErr)}`,
         )
-        failLog.set('details', String(emergencyErr.stack || emergencyErr))
-        failLog.set('payload', JSON.stringify({ customer_id: customerId }))
-        $app.saveNoValidate(failLog)
-      } catch (_) {}
+      }
     }
-  } finally {
-    // Liberação tolerante e idempotente no finally:
-    // utiliza safeReleaseLock que verifica antes de tentar atualizar e tolera clientes inexistentes
-    try {
-      safeReleaseLock(customerId, $app)
-    } catch (finalLockErr) {
-      console.warn(
-        `[AI_REPLY] Tolerant lock release completed with notice for customer ${customerId}: ${String(finalLockErr)}`,
-      )
-    }
+  } catch (aiReplyFatalErr) {
+    console.error(
+      '[AI_REPLY][FATAL] Motor de resposta da Bia caiu com exceção — nenhuma resposta gerada/enviada. erro=' +
+        String(aiReplyFatalErr && aiReplyFatalErr.stack ? aiReplyFatalErr.stack : aiReplyFatalErr),
+    )
   }
 
   return e.next()
