@@ -1,4 +1,17 @@
 onRecordAfterCreateSuccess((e) => {
+  // AUDITORIA (correção "Bia não responde"): log no PRIMEIRO instante do handler,
+  // ANTES de qualquer guard — se este log não aparecer nos hooks, o handler não rodou
+  // (arquivo com erro de parse/compilação no JSVM). Se aparecer sem o próximo, o
+  // culpado é um guard específico — nunca mais morte 100% silenciosa.
+  try {
+    console.log(
+      `[AI_REPLY] Trigger fired: collection=${e.record.collection().name} id=${e.record.id}`,
+    )
+  } catch (entryErr) {
+    console.error('[AI_REPLY] Trigger fired but failed to log entry: ' + String(entryErr))
+    return e.next()
+  }
+
   const sender = e.record.getString('sender')
 
   if (sender !== 'customer' && sender !== 'user' && sender !== 'lead') {
