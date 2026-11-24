@@ -6536,7 +6536,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             return out
           }
 
-          const voiceOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
+          let voiceOpenAiKey = $os.getenv('OPENAI_API_KEY') || ''
           if (
             !voiceOpenAiKey &&
             typeof $secrets !== 'undefined' &&
