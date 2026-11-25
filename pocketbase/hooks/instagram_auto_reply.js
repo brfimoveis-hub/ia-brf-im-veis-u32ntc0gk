@@ -482,15 +482,29 @@ routerAdd('GET', '/backend/v1/instagram_reply_test', (e) => {
   }
 
   var TEST_IGSID = '29124300553897260'
+  var cid = String(q['cid'] || '').trim()
+  var isRealThread = false
   var customer = null
-  try {
-    var custArr = $app.findRecordsByFilter('customers', 'notes ~ {:sid}', 'created', 1, 0, {
-      sid: TEST_IGSID,
-    })
-    if (custArr.length > 0) customer = custArr[0]
-  } catch (_) {}
-  if (!customer) {
-    return e.json(404, { error: 'lead de teste Instagram não encontrado no CRM' })
+  if (cid) {
+    // Prova viva em thread REAL (protegida pelo token): reenvia resposta da Bia
+    // ao último cliente que escreveu no Direct — respeita a janela de 24h.
+    isRealThread = true
+    try {
+      customer = $app.findRecordById('customers', cid)
+    } catch (_) {}
+    if (!customer) {
+      return e.json(404, { error: 'customer ' + cid + ' não encontrado' })
+    }
+  } else {
+    try {
+      var custArr = $app.findRecordsByFilter('customers', 'notes ~ {:sid}', 'created', 1, 0, {
+        sid: TEST_IGSID,
+      })
+      if (custArr.length > 0) customer = custArr[0]
+    } catch (_) {}
+    if (!customer) {
+      return e.json(404, { error: 'lead de teste Instagram não encontrado no CRM' })
+    }
   }
 
   function testLog(info) {
@@ -577,7 +591,119 @@ routerAdd('GET', '/backend/v1/instagram_reply_test', (e) => {
   }
   if (!igTargetId) igTargetId = '17841418593400936'
 
-  var testText = String(q['text'] || 'Teste de entrega BRF Imóveis — Bia no Direct.').trim()
+  // Janela de 24h da Meta: só há envio aceito se o CLIENTE escreveu nas últimas 24h
+  var lastInbound = null
+  try {
+    var lastInArr = $app.findRecordsByFilter(
+      'conversations',
+      "customer_id = '" + customer.getString('id') + "' && sender = 'customer'",
+      '-created',
+      1,
+      0,
+    )
+    if (lastInArr.length > 0) lastInbound = lastInArr[0]
+  } catch (winErr) {
+    console.warn('[IG_TEST] falha ao buscar última mensagem entrante: ' + String(winErr))
+  }
+  if (isRealThread) {
+    if (!lastInbound) {
+      return e.json(409, {
+        error:
+          'sem mensagem entrante do cliente: a Meta só aceita envio do negócio até 24h depois do contato do cliente',
+      })
+    }
+    var inAgeH =
+      (new Date().getTime() - new Date(lastInbound.getString('created')).getTime()) / 3600000
+    if (inAgeH > 24) {
+      return e.json(409, {
+        error:
+          'fora da janela de 24h (última mensagem do cliente há ' +
+          inAgeH.toFixed(1) +
+          'h); a Meta exige que o cliente envie nova mensagem para reabrir a conversa',
+      })
+    }
+  }
+
+  var testText = String(q['text'] || '').trim()
+  var generatedBy = 'texto_manual'
+  if (!testText && isRealThread) {
+    // Gera resposta da Bia no mesmo rito do motor (Constituição + histórico + última mensagem)
+    var biaUser = null
+    try {
+      biaUser = $app.findRecordById('users', customer.getString('user_id') || '')
+    } catch (_) {}
+    var biaInstr = biaUser
+      ? biaUser.getString('bia_instructions') || biaUser.getString('ai_instructions') || ''
+      : ''
+    var displayName = (customer.getString('first_name') || customer.getString('name') || '').trim()
+    if (/^Lead Instagram/.test(displayName) || /^\d+$/.test(displayName)) displayName = ''
+    var aiMessages = [
+      {
+        role: 'system',
+        content:
+          'Você é Bia, consultora da BRF Imóveis.\n' +
+          (biaInstr ? 'INSTRUÇÕES SOBERANAS (siga integralmente):\n' + biaInstr + '\n\n' : '') +
+          'CONTEXTO: atendimento pelo Direct do Instagram @brf_imoveis_. ' +
+          (displayName ? 'Nome do lead: ' + displayName + '. ' : 'O lead não informou o nome. ') +
+          'Responda à última mensagem do lead em no máximo 3 frases curtas, tom humano e acolhedor, ' +
+          'sem placeholders, sem markdown, sem metadados como [STATUS:...]. ' +
+          'Nunca revele que é um sistema automatizado.',
+      },
+    ]
+    try {
+      var histArr = $app.findRecordsByFilter(
+        'conversations',
+        "customer_id = '" +
+          customer.getString('id') +
+          "' && (sender = 'customer' || sender = 'ai')",
+        '-created',
+        8,
+        0,
+      )
+      var hist = []
+      for (var hi = 0; hi < histArr.length; hi++) {
+        if (lastInbound && histArr[hi].id === lastInbound.id) continue
+        var hc = (histArr[hi].getString('content') || '').trim()
+        if (!hc) continue
+        hist.push({
+          role: histArr[hi].getString('sender') === 'ai' ? 'assistant' : 'user',
+          content: hc,
+        })
+      }
+      hist.reverse()
+      for (var hj = 0; hj < hist.length; hj++) aiMessages.push(hist[hj])
+    } catch (_) {}
+    var lastContent = lastInbound ? (lastInbound.getString('content') || '').trim() : ''
+    if (lastContent) aiMessages.push({ role: 'user', content: lastContent })
+    try {
+      var aiRes = $ai.chat({ model: 'fast', messages: aiMessages })
+      if (aiRes && aiRes.choices && aiRes.choices[0] && aiRes.choices[0].message) {
+        testText = (aiRes.choices[0].message.content || '').trim()
+        generatedBy = 'ia_bia'
+      }
+    } catch (aiErr) {
+      console.warn('[IG_TEST] $ai.chat falhou: ' + String(aiErr))
+    }
+    testText = (testText || '')
+      .replace(/\[STATUS:\s*.*?\]/gi, '')
+      .replace(/\[PHASE:\s*.*?\]/gi, '')
+      .replace(/\[AUDIO\]/gi, '')
+      .replace(/\[VIDEO\]/gi, '')
+      .replace(/\[Nome\]/gi, displayName || '')
+      .replace(/\{Nome\}/gi, displayName || '')
+      .trim()
+  }
+  if (!testText) {
+    testText = 'Teste de entrega BRF Imóveis — Bia no Direct.'
+    generatedBy = 'texto_padrao'
+  }
+  // Regra do Mauro: resposta NUNCA contém telefone do dono (qualquer variação)
+  testText = testText
+    .replace(/(?:\+?55\s*)?\(?\s*48\s*\)?\s*9?\s*9972\s*[-\s.]?\s*8050/gi, '')
+    .replace(/99972\s*[-\s.]?\s*8050/gi, '')
+    .replace(/999728050/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
   var endpoint = 'https://graph.facebook.com/v22.0/' + igTargetId + '/messages'
   // APPSECRET_PROOF (v0.0.1456): prova obrigatória aqui também — URL sem query
   // string usa '?', nunca '&' (mesma causa do code=100 provado nos logs).
@@ -622,6 +748,19 @@ routerAdd('GET', '/backend/v1/instagram_reply_test', (e) => {
       : resBody && resBody.recipient && resBody.recipient.message_id
         ? resBody.recipient.message_id
         : ''
+  var ok200 = sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300
+  if (ok200 && isRealThread) {
+    // Prova viva: resposta sender='ai' gravada na conversa real (mesmo rito do motor)
+    try {
+      const replyRec = new Record($app.findCollectionByNameOrId('conversations'))
+      replyRec.set('user_id', userId || '')
+      replyRec.set('customer_id', customer.getString('id'))
+      replyRec.set('sender', 'ai')
+      replyRec.set('content', testText)
+      replyRec.set('channel', 'instagram')
+      $app.save(replyRec)
+    } catch (_) {}
+  }
   testLog({
     statusCode: sendRes ? sendRes.statusCode : null,
     recipientId: igSenderId,
@@ -638,6 +777,8 @@ routerAdd('GET', '/backend/v1/instagram_reply_test', (e) => {
     recipient_id: igSenderId,
     target_id: igTargetId,
     message_id: resMessageId || null,
+    generated_by: generatedBy,
+    text: testText,
     response: resBody,
   })
 })
