@@ -2734,6 +2734,10 @@ ${
         ? `\n[DADOS DO CLIENTE]\nNome do cliente: ${displayName}\n(Importante: Chame o cliente pelo primeiro nome de forma natural. NUNCA mencione nem explique de onde veio o nome nem cite campos de cadastro/CRM se o cliente perguntar.)\n`
         : `\n[DADOS DO CLIENTE]\nCliente sem nome confiável definido. Cumprimente com simpatia de forma genérica (ex: "Olá! Tudo bem?") sem inventar nomes nem usar placeholders.\n`
 
+      // Primeira mensagem da IA da conversa ou retomada após 24h? (usado pela
+      // diretriz de abertura da Trilha A e pela regra de saudação mais abaixo)
+      const isFirstAiMessageOrAfter24h = hoursSinceLastAiMsg === null || hoursSinceLastAiMsg >= 24
+
       // Detect lead origin type (Trilha A: Lead de Anúncio vs Trilha B: Lead de Imóvel de Terceiros)
       const isMetaAdSource =
         isAdReferral ||
@@ -2867,7 +2871,11 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
       } else if (isMetaAdSource) {
         clientContext += `\n[ROTEAMENTO: TRILHA A — LEAD DE ANÚNCIO META / CLICK-TO-WHATSAPP]:\n`
         clientContext += `- Este lead veio de anúncio Meta: "${customerSource}".\n`
-        clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA: Ao iniciar a conversa ou recepcionar o lead, mencione cordialmente o empreendimento ou anúncio de origem de forma calorosa e concisa (exemplo: "Que ótimo que você viu o nosso lançamento!"). Faça apenas UMA pergunta por vez para mapear o perfil e qualificação financeira antes de enviar preços ou links.\n`
+        if (isFirstAiMessageOrAfter24h) {
+          clientContext += `- DIRETRIZ PRIORITÁRIA DE ABERTURA (VALE SÓ PARA A PRIMEIRA MENSAGEM DA IA NESTA CONVERSA OU RETOMADA APÓS 24H DE SILÊNCIO): Nesta primeira mensagem, mencione cordialmente o empreendimento ou anúncio de origem de forma calorosa e concisa (exemplo: "Que ótimo que você viu o nosso lançamento!"). Faça apenas UMA pergunta por vez para mapear o perfil e qualificação financeira antes de enviar preços ou links.\n`
+        } else {
+          clientContext += `- DIÁLOGO EM ANDAMENTO (Constituição 2-A): NÃO use diretriz de abertura, NÃO re-saudação ("Olá!", "Que ótimo que você viu..."), NÃO reapresente o anúncio de origem como se fosse o início da conversa. Entre direto no assunto em pauta, usando o histórico como memória. Faça apenas UMA pergunta por vez e NUNCA repita pergunta que o cliente já respondeu.\n`
+        }
       } else {
         clientContext += `\n[ROTEAMENTO: TRILHA B — LEAD DE IMÓVEL DE TERCEIROS / DEMANDA GERAL]:\n`
         clientContext += `- SEPARAÇÃO ESTRITA: Imóvel de terceiros (prefixos AP, CA, CS, TR, FA, COB, ARU ou qualquer outro sem LM). NUNCA misturar com lançamentos na planta nem usar tabela de pagamento de construtora.\n`
@@ -2878,7 +2886,6 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         clientContext += `- Se quer comprar imóvel de terceiros fora do catálogo: acolher com honestidade e apresentar alternativas de terceiros compatíveis.\n`
       }
 
-      const isFirstAiMessageOrAfter24h = hoursSinceLastAiMsg === null || hoursSinceLastAiMsg >= 24
       const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour, true)
       const timeGreetingRule = isFirstAiMessageOrAfter24h
         ? `REGRA DE SAUDAÇÃO COM IDENTIFICAÇÃO (PRIMEIRA MENSAGEM OU APÓS 24H DE SILÊNCIO):
