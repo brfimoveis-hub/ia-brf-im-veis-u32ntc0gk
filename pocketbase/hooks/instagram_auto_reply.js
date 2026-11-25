@@ -320,11 +320,27 @@ onRecordAfterCreateSuccess((e) => {
     } catch (_) {}
 
     var igEndpointUrl = 'https://graph.facebook.com/v22.0/' + igTargetId + '/messages'
+    // APPSECRET_PROOF (v0.0.1456): o app Meta "BRF Imóveis 2" exige a prova em toda
+    // chamada Graph (code=100 "API calls from the server require an appsecret_proof
+    // argument"). A URL base /messages NÃO tem query string — separador '?', nunca
+    // '&' (que gerava .../messages&appsecret_proof=..., URL malformada).
+    // Mesmo rito de secret do caminho principal (ai_auto_reply.js).
+    var igProofSecret = ''
+    try {
+      igProofSecret = ((userRecord ? userRecord.getString('meta_app_secret') : '') || '').trim()
+      if (!igProofSecret && userRecord) {
+        igProofSecret = (userRecord.getString('meta_instagram_app_secret') || '').trim()
+      }
+      if (!igProofSecret) igProofSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+    } catch (_) {}
+    var igProofSuffix = igProofSecret
+      ? '?appsecret_proof=' + $security.hs256(String(igToken), igProofSecret)
+      : ''
     var igPayloadObj = { recipient: { id: igSenderId }, message: { text: responseText } }
     var sendRes = null
     try {
       sendRes = $http.send({
-        url: igEndpointUrl,
+        url: igEndpointUrl + igProofSuffix,
         method: 'POST',
         headers: { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
         body: JSON.stringify(igPayloadObj),
@@ -563,11 +579,24 @@ routerAdd('GET', '/backend/v1/instagram_reply_test', (e) => {
 
   var testText = String(q['text'] || 'Teste de entrega BRF Imóveis — Bia no Direct.').trim()
   var endpoint = 'https://graph.facebook.com/v22.0/' + igTargetId + '/messages'
+  // APPSECRET_PROOF (v0.0.1456): prova obrigatória aqui também — URL sem query
+  // string usa '?', nunca '&' (mesma causa do code=100 provado nos logs).
+  var testProofSecret = ''
+  try {
+    testProofSecret = ((userRecord ? userRecord.getString('meta_app_secret') : '') || '').trim()
+    if (!testProofSecret && userRecord) {
+      testProofSecret = (userRecord.getString('meta_instagram_app_secret') || '').trim()
+    }
+    if (!testProofSecret) testProofSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+  } catch (_) {}
+  var proofSuffix = testProofSecret
+    ? '?appsecret_proof=' + $security.hs256(String(igToken), testProofSecret)
+    : ''
   var payloadObj = { recipient: { id: igSenderId }, message: { text: testText } }
   var sendRes = null
   try {
     sendRes = $http.send({
-      url: endpoint,
+      url: endpoint + proofSuffix,
       method: 'POST',
       headers: { Authorization: 'Bearer ' + igToken, 'Content-Type': 'application/json' },
       body: JSON.stringify(payloadObj),

@@ -7144,8 +7144,12 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             } catch (proofErr) {
               console.warn(`[AI_REPLY] appsecret_proof secret load failed: ${String(proofErr)}`)
             }
+            // FIX v0.0.1456: a URL base /messages NÃO tem query string — o separador
+            // correto é '?' (não '&'). Com '&', o Graph recebia
+            // .../messages&appsecret_proof=... e rejeitava com code=100
+            // ("API calls from the server require an appsecret_proof argument").
             const igProofSuffix = igProofSecret
-              ? '&appsecret_proof=' + $security.hs256(String(igToken), igProofSecret)
+              ? '?appsecret_proof=' + $security.hs256(String(igToken), igProofSecret)
               : ''
             const igEndpointUrl = `https://graph.facebook.com/v22.0/${igRecipientTargetId}/messages`
             console.log(
