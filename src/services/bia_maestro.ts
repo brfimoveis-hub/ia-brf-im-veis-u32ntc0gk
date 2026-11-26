@@ -79,16 +79,31 @@ export interface MaestroCrmNeed {
   status: string
 }
 
+export interface MaestroCrmTotais {
+  quente: number
+  morno: number
+  frio: number
+  classificados: number
+  needs_human: number
+}
+
 export interface MaestroCrmNeedsResponse {
   clientes: MaestroCrmNeed[]
+  totais?: MaestroCrmTotais
   error?: string
 }
 
-export const getMaestroCrmNeeds = async (): Promise<MaestroCrmNeed[]> => {
+export const getMaestroCrmNeeds = async (): Promise<{
+  clientes: MaestroCrmNeed[]
+  totais?: MaestroCrmTotais
+}> => {
   const res = await pb.send<MaestroCrmNeedsResponse>('/backend/v1/maestro_crm_needs', {
     method: 'GET',
   })
-  return Array.isArray(res?.clientes) ? res.clientes : []
+  return {
+    clientes: Array.isArray(res?.clientes) ? res.clientes : [],
+    totais: res?.totais,
+  }
 }
 
 export const TIPO_LABELS: Record<string, string> = {

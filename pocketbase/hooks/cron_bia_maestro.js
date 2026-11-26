@@ -11,7 +11,7 @@
 // JSVM: cada callback abaixo contém TODAS as suas funções auxiliares inline (duplicadas de propósito).
 
 // ============================ CICLO DIÁRIO (03:00) ============================
-cronAdd('bia_maestro_daily', '* * * * *', function () {
+cronAdd('bia_maestro_daily', '0 3 * * *', function () {
   function pad2Maestro(n) {
     return (n < 10 ? '0' : '') + n
   }
@@ -1441,7 +1441,35 @@ routerAdd(
           status: r.getString('status') || '',
         })
       }
-      return e.json(200, { clientes: out })
+      // Totais reais lidos da base (contagem SQL, funciona com ~6.356 clientes):
+      // distribuição de temperatura dos classificados + total needs_human.
+      var totais = { quente: 0, morno: 0, frio: 0, classificados: 0, needs_human: 0 }
+      try {
+        totais.quente = $app.countRecords('customers', "maestro_temperature = 'quente'")
+      } catch (tErrQ) {
+        console.warn('[MAESTRO][CRM] contagem quente falhou: ' + tErrQ.message)
+      }
+      try {
+        totais.morno = $app.countRecords('customers', "maestro_temperature = 'morno'")
+      } catch (tErrM) {
+        console.warn('[MAESTRO][CRM] contagem morno falhou: ' + tErrM.message)
+      }
+      try {
+        totais.frio = $app.countRecords('customers', "maestro_temperature = 'frio'")
+      } catch (tErrF) {
+        console.warn('[MAESTRO][CRM] contagem frio falhou: ' + tErrF.message)
+      }
+      try {
+        totais.classificados = $app.countRecords('customers', "maestro_temperature != ''")
+      } catch (tErrC) {
+        console.warn('[MAESTRO][CRM] contagem classificados falhou: ' + tErrC.message)
+      }
+      try {
+        totais.needs_human = $app.countRecords('customers', 'maestro_needs_human = true')
+      } catch (tErrN) {
+        console.warn('[MAESTRO][CRM] contagem needs_human falhou: ' + tErrN.message)
+      }
+      return e.json(200, { clientes: out, totais: totais })
     } catch (err) {
       return e.json(500, { clientes: [], error: String(err) })
     }

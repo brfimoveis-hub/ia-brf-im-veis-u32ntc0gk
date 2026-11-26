@@ -24,6 +24,7 @@ import {
   type MaestroInsight,
   type MaestroLearning,
   type MaestroCrmNeed,
+  type MaestroCrmTotais,
   getMaestroInsights,
   getMaestroCrmNeeds,
   runMaestroCycle,
@@ -126,6 +127,7 @@ export function MaestroPanel() {
   const { user } = useAuth()
   const [insights, setInsights] = useState<MaestroInsight[]>([])
   const [crmNeeds, setCrmNeeds] = useState<MaestroCrmNeed[]>([])
+  const [crmTotaisRota, setCrmTotaisRota] = useState<MaestroCrmTotais | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState(false)
@@ -138,10 +140,13 @@ export function MaestroPanel() {
       const list = await getMaestroInsights()
       setInsights(list)
       try {
-        setCrmNeeds(await getMaestroCrmNeeds())
+        const crm = await getMaestroCrmNeeds()
+        setCrmNeeds(crm.clientes)
+        setCrmTotaisRota(crm.totais)
       } catch (crmErr) {
         console.warn('Erro ao carregar CRM do Maestro:', crmErr)
         setCrmNeeds([])
+        setCrmTotaisRota(undefined)
       }
     } catch (err) {
       console.warn('Erro ao carregar insights do Maestro:', err)
@@ -168,6 +173,18 @@ export function MaestroPanel() {
   // Totais quente/morno/frio: do último ciclo gravado; se o último ciclo não
   // trouxer contagens, conta direto nos clientes já classificados no CRM.
   const crmTotais = useMemo(() => {
+    // Fonte principal: totais REAIS da base (rota maestro_crm_needs, contagem SQL
+    // na coleção customers — inclui tudo já classificado, não só o último ciclo).
+    if (crmTotaisRota) {
+      return {
+        quentes: crmTotaisRota.quente || 0,
+        mornos: crmTotaisRota.morno || 0,
+        frios: crmTotaisRota.frio || 0,
+        classificados: crmTotaisRota.classificados || 0,
+        fonte: 'rota' as const,
+      }
+    }
+    // Fallback: totais do último ciclo gravado.
     const last = insights.find((i) => i.status === 'ok' && i.metrics) || insights[0]
     const m = last?.metrics as Record<string, number | undefined> | undefined
     if (m && typeof m.crm_quentes === 'number') {
@@ -175,6 +192,7 @@ export function MaestroPanel() {
         quentes: m.crm_quentes || 0,
         mornos: m.crm_mornos || 0,
         frios: m.crm_frios || 0,
+        classificados: 0,
         fonte: 'ciclo' as const,
       }
     }
@@ -184,8 +202,8 @@ export function MaestroPanel() {
       else if (n.temperature === 'morno') counts.mornos++
       else counts.frios++
     }
-    return { ...counts, fonte: 'crm' as const }
-  }, [insights, crmNeeds])
+    return { ...counts, classificados: 0, fonte: 'crm' as const }
+  }, [insights, crmNeeds, crmTotaisRota])
 
   const handleRunCycle = async () => {
     setRunning(true)
@@ -289,9 +307,11 @@ export function MaestroPanel() {
                 </div>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                {crmTotais.fonte === 'ciclo'
-                  ? 'Fonte: último ciclo gravado (bia_maestro_insights). Clientes em campanha ativa (régua/convite) não são reclassificados.'
-                  : 'Fonte: contagem direta de clientes classificados no CRM. Clientes em campanha ativa (régua/convite) não são reclassificados.'}
+                {crmTotais.fonte === 'rota'
+                  ? `Fonte: contagem real da base de clientes (${crmTotais.classificados} classificados). Clientes em campanha ativa (régua/convite) não são reclassificados.`
+                  : crmTotais.fonte === 'ciclo'
+                    ? 'Fonte: último ciclo gravado (bia_maestro_insights). Clientes em campanha ativa (régua/convite) não são reclassificados.'
+                    : 'Fonte: contagem direta de clientes classificados no CRM. Clientes em campanha ativa (régua/convite) não são reclassificados.'}
               </p>
 
               {/* Clientes que precisam de ação humana */}
