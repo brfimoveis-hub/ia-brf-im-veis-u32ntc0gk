@@ -232,11 +232,43 @@ routerAdd('POST', '/backend/v1/bia/consolidate_weekly_regua', function (c) {
       )
     } catch (_) {}
 
+    // LIMPEZA DE DUPLICATAS (26/11/2026):
+    // Roda ANTES do check de envios, porque apagar cópias antigas nunca é "inventar
+    // desempenho" — é liberar o orçamento de 1.450 caracteres das lições vivas.
+    // Deixa ativa apenas a lição automática mais recente de cada título.
+    var seenTitles = {}
+    var removedDuplicates = 0
+    try {
+      var autoLessons = $app.findRecordsByFilter(
+        'bia_learnings',
+        "is_active = true && (origin = 'cron_semanal' || origin = 'loop_semanal' || author ~ 'Loop Semanal')",
+        '-created',
+        100,
+        0,
+      )
+      for (var ad = 0; ad < (autoLessons ? autoLessons.length : 0); ad++) {
+        var adRec = autoLessons[ad]
+        var adTitle = (adRec.getString('title') || '').trim().toLowerCase()
+        if (seenTitles[adTitle]) {
+          adRec.set('is_active', false)
+          adRec.set('status', 'substituido')
+          adRec.set('conflict_flag', 'Duplicata automática desativada em 26/11/2026')
+          $app.saveNoValidate(adRec)
+          removedDuplicates++
+        } else {
+          seenTitles[adTitle] = true
+        }
+      }
+    } catch (_) {}
+
     if (!reguaLogs2 || reguaLogs2.length === 0) {
       return c.json(200, {
-        success: false,
+        success: true,
         message:
-          'Sem envios de régua nos últimos 7 dias — nenhuma lição gravada para não registrar desempenho inventado.',
+          'Sem envios de régua nos últimos 7 dias — nenhuma lição gravada para não registrar desempenho inventado. Cópias automáticas duplicadas desativadas: ' +
+          removedDuplicates +
+          '.',
+        duplicates_disabled: removedDuplicates,
       })
     }
 
