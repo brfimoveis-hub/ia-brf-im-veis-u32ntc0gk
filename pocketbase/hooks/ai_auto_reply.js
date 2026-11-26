@@ -989,6 +989,43 @@ onRecordAfterCreateSuccess(function (e) {
       // jamais descartar com return e.next(). Buscar mensagens do lead dos últimos 30s,
       // concatenar o conteúdo e processar o conjunto priorizando a mensagem mais recente.
       let customerMessage = (e.record.getString('content') || '').trim()
+
+      // ÁUDIO NÃO TRANSCRITO (correção 26/11/2026):
+      // O webhook grava '[Áudio Recebido - não foi possível transcrever]' quando a
+      // transcrição falha. Antes, essa string entrava no prompt como se fosse a fala
+      // do cliente e a Bia respondia à toa (ou não respondia). Aqui o marcador é
+      // trocado por uma instrução interna e o contato é sinalizado para o humano.
+      const AUDIO_FAIL_MARKER_1 = '[Áudio Recebido - não foi possível transcrever]'
+      const AUDIO_FAIL_MARKER_2 = '[Áudio Recebido - nao foi possivel transcrever]'
+      const hasAudioFailMarker =
+        customerMessage.indexOf(AUDIO_FAIL_MARKER_1) !== -1 ||
+        customerMessage.indexOf(AUDIO_FAIL_MARKER_2) !== -1
+      if (hasAudioFailMarker) {
+        try {
+          const audioCust = safeFindRecordById('customers', customerId)
+          if (audioCust) {
+            let aTags = audioCust.get('tags')
+            if (Array.isArray(aTags) && aTags.indexOf('audio_sem_transcricao') === -1) {
+              aTags.push('audio_sem_transcricao')
+              audioCust.set('tags', aTags)
+              $app.saveNoValidate(audioCust)
+            }
+          }
+        } catch (_) {}
+        customerMessage = customerMessage
+          .split(AUDIO_FAIL_MARKER_1)
+          .join('')
+          .split(AUDIO_FAIL_MARKER_2)
+          .join('')
+          .trim()
+        customerMessage =
+          (customerMessage ? customerMessage + '\n\n' : '') +
+          '[NOTA INTERNA — O CLIENTE ENVIOU UM ÁUDIO E O SISTEMA NÃO CONSEGUIU TRANSCREVER. ' +
+          'NÃO invente o que ele disse e NUNCA diga que é um áudio transcrito. ' +
+          'Acolha com simpatia, diga em uma frase que não conseguiu ouvir o áudio e peça, com gentileza, ' +
+          'que ele escreva aqui o que precisa (imóvel, região ou dúvida). Termine com UMA pergunta.]'
+      }
+
       try {
         const thirtySecondsAgoIso = new Date(now.getTime() - 30000)
           .toISOString()
@@ -1004,7 +1041,14 @@ onRecordAfterCreateSuccess(function (e) {
         if (recentCustMsgs && recentCustMsgs.length > 1) {
           const aggregatedParts = []
           for (let i = 0; i < recentCustMsgs.length; i++) {
-            const mTxt = (recentCustMsgs[i].getString('content') || '').trim()
+            let mTxt = (recentCustMsgs[i].getString('content') || '').trim()
+            // Marcador de áudio não transcrito nunca entra como fala do cliente
+            mTxt = mTxt
+              .split(AUDIO_FAIL_MARKER_1)
+              .join('')
+              .split(AUDIO_FAIL_MARKER_2)
+              .join('')
+              .trim()
             if (mTxt && aggregatedParts.indexOf(mTxt) === -1) {
               aggregatedParts.push(mTxt)
             }
@@ -1057,7 +1101,14 @@ onRecordAfterCreateSuccess(function (e) {
           }
 
           // 2. Filtro e montagem do bloco "LIÇÕES VIVAS" (limite rígido <= 1500 caracteres, anti-contradição e dedup)
-          // Pedido Mauro: lições do tipo ERRO ou ACERTO/OBJECOES aprovadas entram na base viva
+          // SLOT ÚNICO PARA LIÇÕES AUTOMÁTICAS (correção 26/11/2026):
+          // A consolidação semanal da régua criava uma lição nova a cada domingo com o
+          // mesmo título. Três cópias ativas consumiam quase todo o orçamento de 1.450
+          // caracteres das lições vivas, empurrando para fora as lições de venda
+          // aprovadas à mão. O motor passa a aceitar apenas a lição automática MAIS
+          // RECENTE; as anteriores com o mesmo título ficam de fora do prompt.
+          const autoLessonSeenTitles = {}
+          // allActiveLearnings já vem ordenado por -priority,-created
           const candidateLessons = allActiveLearnings.filter((r) => {
             if (constitutionRec && r.id === constitutionRec.id) return false
             const lStatus = (r.getString('status') || 'aprovado').toLowerCase()
@@ -1065,26 +1116,45 @@ onRecordAfterCreateSuccess(function (e) {
             // Lições descartadas não entram
             if (lStatus === 'descartado') return false
             // Lições do tipo ERRO entram mesmo se pendentes ("aprende a não errar mais da próxima vez")
-            if (lType === 'ERRO') return true
-            // Demais categorias entram se aprovadas ou ativas sem rejeição
-            return lStatus === 'aprovado' || !lStatus
+            if (lType !== 'ERRO') {
+              if (lStatus !== 'aprovado' && lStatus) return false
+            }
+            // Dedup das automáticas por título: só a primeira (mais recente) passa
+            const lOrigin = (r.getString('origin') || '').toLowerCase()
+            const lTitleKey = (r.getString('title') || '').trim().toLowerCase()
+            if (
+              lOrigin === 'cron_semanal' ||
+              lOrigin === 'loop_semanal' ||
+              (r.getString('author') || '').toLowerCase().indexOf('loop semanal') !== -1
+            ) {
+              if (autoLessonSeenTitles[lTitleKey]) {
+                return false
+              }
+              autoLessonSeenTitles[lTitleKey] = true
+            }
+            return true
           })
 
-          // Verificador de contradição com a Constituição v4.0
-          // Regras pétreas da Constituição: 1 pergunta por mensagem, nunca dar preço cheio antes de valorizar,
-          // apenas vendas (nunca locação), transbordo pro Mauro 99972-8050, nunca negar imóvel do catálogo.
+          // Verificador de contradição — alinhado à CONSTITUIÇÃO v7 (revisão 26/11/2026).
+          // A versão anterior julgava pela v4.0 e por isso marcava como contraditória
+          // qualquer lição que mandasse consultar estoque de locação, bloqueando lições
+          // corretas pela constituição vigente. As regras pétreas válidas agora são:
+          // 1 pergunta por mensagem, sem preço cheio antes de valorizar, NENHUM telefone,
+          // transbordo só como "o corretor responsável", nunca negar imóvel do catálogo.
           const checkConflictWithConstitution = (text) => {
             if (!text) return false
             const low = text.toLowerCase()
             if (
               low.includes('pode fazer 2 perguntas') ||
               low.includes('faça várias perguntas') ||
-              low.includes('trabalhamos com aluguel') ||
-              low.includes('trabalhamos com locação') ||
-              low.includes('passar número da bia') ||
+              low.includes('faça 2 perguntas') ||
               low.includes('diga que não temos o imóvel') ||
               low.includes('tabela markdown') ||
-              low.includes('enviar link logo na primeira frase')
+              low.includes('enviar link logo na primeira frase') ||
+              low.includes('passe o telefone') ||
+              low.includes('informe o telefone') ||
+              low.includes('99972-8050') ||
+              low.includes('999728050')
             ) {
               return true
             }
@@ -4053,20 +4123,25 @@ DIRETRIZ OBRIGATÓRIA: Responda informando o valor "a partir de ${matchedTargetP
       }
 
       // (1.b) Limitação de blocos de contexto para evitar erro 413
+      // LIMITES DE CONTEXTO (revisão 26/11/2026):
+      // Os tetos antigos (1.500 RAG / 1.200 catálogo / 1.200 memos) deixavam a Bia
+      // com menos de meia página de dossiê e eram a causa principal da resposta
+      // genérica. Mantemos um teto de segurança contra 413 do gateway, mas alto o
+      // bastante para caber o imóvel em foco INTEIRO mais os blocos de apoio.
       const safeIndicesContextText =
-        (indicesContextText || '').length > 1200
-          ? (indicesContextText || '').substring(0, 1200) +
-            '\n... [memo truncado a 1200 caracteres]'
+        (indicesContextText || '').length > 6000
+          ? (indicesContextText || '').substring(0, 6000) +
+            '\n... [memo truncado a 6000 caracteres]'
           : indicesContextText || ''
       const safeCombinedContextText =
-        (combinedContextText || '').length > 1500
-          ? (combinedContextText || '').substring(0, 1500) +
-            '\n... [contexto RAG truncado a 1500 caracteres]'
+        (combinedContextText || '').length > 14000
+          ? (combinedContextText || '').substring(0, 14000) +
+            '\n... [contexto RAG truncado a 14000 caracteres]'
           : combinedContextText || ''
       const safePropertyContext =
-        (propertyContext || '').length > 1200
-          ? (propertyContext || '').substring(0, 1200) +
-            '\n... [catálogo truncado a 1200 caracteres]'
+        (propertyContext || '').length > 7000
+          ? (propertyContext || '').substring(0, 7000) +
+            '\n... [catálogo truncado a 7000 caracteres]'
           : propertyContext || ''
 
       // REGRA DE CADÊNCIA UNIVERSAL: As cadências de movimentação são ÚNICAS para todo e qualquer atendimento,
@@ -4074,6 +4149,19 @@ DIRETRIZ OBRIGATÓRIA: Responda informando o valor "a partir de ${matchedTargetP
       const universalCadenceInstruction = `[REGRA DE CADÊNCIA ÚNICA E UNIVERSAL]:
 A progressão de estágios é rigorosamente ÚNICA e idêntica para todo e qualquer lead (lançamentos na planta ou imóveis de terceiros).
 Emita sempre as tags canônicas de estágio [STATUS: 1. Acolhimento .. 10. Pós-venda e Indicação] conforme a evolução do contato, sem bifurcar ou criar trilhas alternativas de funil.`
+
+      // ESCOPO COMERCIAL (revisão 26/11/2026 — diretriz do proprietário Mauro):
+      // A BRF Imóveis atua EXCLUSIVAMENTE com VENDA: lançamentos na planta (LM) e
+      // imóveis de terceiros/prontos (AP, CS, CA, SO, TR, ARU). NÃO trabalha com
+      // locação/aluguel. A Bia nunca deve prometer buscar imóvel para alugar, nunca
+      // dizer "vou verificar disponibilidade de aluguel" e nunca inventar opção de
+      // locação: responde com cordialidade o foco em venda e mantém a porta aberta
+      // para compra ou investimento.
+      const commercialScopeInstruction = `[ESCOPO COMERCIAL — DIRETRIZ PERMANENTE DO PROPRIETÁRIO]:
+A BRF Imóveis trabalha EXCLUSIVAMENTE COM VENDA: lançamentos imobiliários (prefixo LM, na planta) e imóveis de terceiros/prontos (prefixos AP, CS, CA, SO, TR, ARU).
+A BRF Imóveis NÃO TRABALHA COM LOCAÇÃO OU ALUGUEL. Quando o cliente pedir aluguel/locação, NUNCA prometa consultar estoque de aluguel, NUNCA diga que vai verificar disponibilidade de locação e NUNCA invente imóvel para alugar. Responda com cordialidade que o foco da imobiliária é venda e investimento, e ofereça ajuda para comprar ou investir.
+Exceção única: se o estoque ativo do CRM comprovadamente tiver imóvel de locação cadastrado, ele pode ser apresentado; na ausência de dado confirmado, aplique a regra acima.
+NUNCA forneça número de telefone ou WhatsApp em nenhuma hipótese. Transbordo humano é sempre "o corretor responsável", que responde pelo próprio chat.`
 
       // O comportamento da Bia é regido EXCLUSIVAMENTE pela diretriz soberana ativa (TEXTO ÚNICO DA BIA - v3.0/v3.1)
       // Mantém no systemPrompt apenas: dados dos imóveis (propertyContext), resumo de dados coletados (collectedDataSummary),
@@ -4083,6 +4171,8 @@ Emita sempre as tags canônicas de estágio [STATUS: 1. Acolhimento .. 10. Pós-
 DIRETRIZ MESTRA E SOBERANA DE ATENDIMENTO:
 ${biaLearningsText}
 ${liveLessonsText ? `${liveLessonsText}\n` : ''}${personaInstructions}
+
+${commercialScopeInstruction}
 
 ${universalCadenceInstruction}
 
@@ -4117,14 +4207,20 @@ ${safeCombinedContextText || '(Nenhum contexto adicional na base)'}`
           }
         })
 
-        // Pegar no máximo 10 mensagens mais recentes do histórico
-        const maxHistoryCount = 10
+        // HISTÓRICO DA CONVERSA (revisão 26/11/2026):
+        // Antes eram 10 mensagens com todas menos as 2 últimas cortadas em 300
+        // caracteres — o detalhe que o cliente dava na 3ª mensagem desaparecia e a
+        // Bia voltava a perguntar o que já havia sido respondido. Agora as 8 últimas
+        // vão INTEGRAIS (é nelas que vive o perfil do lead e o imóvel em foco) e só
+        // as anteriores são resumidas, num limite bem mais generoso.
+        const maxHistoryCount = 16
+        const INTACT_TAIL = 8
         const recentSlice = sanitizedHistory.slice(-maxHistoryCount)
+        const intactFrom = Math.max(0, recentSlice.length - INTACT_TAIL)
         recentSlice.forEach((hItem, hIdx) => {
           let content = hItem.content
-          // Truncar mensagens antigas (todas exceto as 2 mais recentes) a ~300 caracteres
-          if (hIdx < recentSlice.length - 2 && content.length > 300) {
-            content = content.substring(0, 300) + '...'
+          if (hIdx < intactFrom && content.length > 900) {
+            content = content.substring(0, 900) + '...'
           }
           messages.push({ role: hItem.role, content: content })
         })

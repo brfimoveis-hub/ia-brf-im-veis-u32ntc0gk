@@ -869,7 +869,7 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
     'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de trazer mais esta oportunidade de investimento.\n\nSão José foi a cidade que mais valorizou imóveis residenciais em Santa Catarina em 2025: alta de 11,31% no ano e cerca de 50% de valorização acumulada nos últimos três anos.\n\nBarreiros concentra hoje o segundo metro quadrado mais valorizado da cidade: R$ 9.172/m².\n\nA AJ Coelho acaba de lançar o Vistage Residence neste endereço.\n\nPreparamos um ebook completo, com plantas, valores e condições de pagamento.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber oportunidades como esta, responda NÃO e você será excluído imediatamente do nosso cadastro.',
     'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de trazer mais esta oportunidade de investimento.\n\nSão José está entre as três melhores cidades do país para investimento em imóveis na planta: rentabilidade média de 19,7% ao ano e aluguel rendendo cerca de 5,5% ao ano, acima da média nacional.\n\nO Vistage Residence, novo lançamento da AJ Coelho em Barreiros, reúne essas condições em um único endereço.\n\nOrganizamos um ebook com todas as informações do empreendimento e das unidades disponíveis.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber oportunidades como esta, responda NÃO e você será excluído imediatamente do nosso cadastro.',
     'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de trazer mais esta oportunidade.\n\nBarreiros é um dos bairros mais completos de São José: acesso direto à BR-101, perto de Florianópolis, com comércio, escolas, universidades e serviços no dia a dia.\n\nÉ um endereço que une qualidade de vida e valorização constante.\n\nA AJ Coelho, com mais de 30 anos na Grande Florianópolis, lança aí o Vistage Residence: 79 apartamentos, plantas a partir de 63 m², rooftop com piscina e academia, mercado no condomínio e espaço pet.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber oportunidades como esta, responda NÃO e você será excluído imediatamente do nosso cadastro.',
-    'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de trazer mais esta oportunidade.\n\nO Vistage Residence é o mais novo lançamento da AJ Coelho em Barreiros: 79 unidades, com plantas de 2 e 3 dormitórios, apartamentos garden e cobertura de 296 m².\n\nA entrega está prevista para dezembro de 2030, com unidades a partir de R$ 608 mil — valor abaixo da média praticada no bairro.\n\nPor ser lançamento, as primeiras unidades são comercializadas em condições diferenciadas.\n\nReunimos todas as informações em um ebook exclusivo.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber oportunidades como esta, responda NÃO e você será excluído imediatamente do nosso cadastro.',
+    'Olá, [nome]. Sou a Bia, da BRF Imóveis.\n\nComo você já consta em nossos contatos, tomamos a liberdade de trazer mais esta oportunidade.\n\nO Vistage Residence é o mais novo lançamento da AJ Coelho em Barreiros: 79 unidades, com plantas de 2 e 3 dormitórios e cobertura linear de 296 m².\n\nA entrega está prevista para dezembro de 2030, com unidades a partir de R$ 607.880,00 — valor abaixo da média praticada no bairro.\n\nPor ser lançamento, as primeiras unidades são comercializadas em condições diferenciadas.\n\nReunimos todas as informações em um ebook exclusivo.\n\nPara receber em primeira mão e escolher a melhor planta, basta responder OK.\n\nSe não deseja mais receber oportunidades como esta, responda NÃO e você será excluído imediatamente do nosso cadastro.',
   ]
 
   function extractTemplatesFromConstitution(ruleText) {
@@ -1681,6 +1681,26 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
       // Injeta na variante 4 ou em qualquer variante que cite "a partir de R$ 608 mil" ou valores fixos legados
       textRem = textRem.replace(/a partir de R\$\s*608\s*mil/gi, 'a partir de ' + priceReplacement)
       textRem = textRem.replace(/a partir de R\$\s*596\s*mil/gi, 'a partir de ' + priceReplacement)
+
+      // CORREÇÃO 26/11/2026 — TABELA OFICIAL DO VISTAGE (set/2026):
+      // O texto canônico 4 dizia "apartamentos garden e cobertura" e "a partir de
+      // R$ 608 mil". NÃO existe garden no Vistage e o valor vigente de 2 dormitórios
+      // é R$ 607.880. A régua é a mensagem que mais chega ao cliente, então não pode
+      // carregar produto inexistente nem valor fora da tabela.
+      textRem = textRem.replace(
+        /com plantas de 2 e 3 dormitórios, apartamentos garden e cobertura de 296 m²/gi,
+        'com plantas de 2 e 3 dormitórios e cobertura linear de 296 m²',
+      )
+      textRem = textRem.replace(
+        /plantas de 2 e 3 dormitórios, apartamentos garden e cobertura/gi,
+        'plantas de 2 e 3 dormitórios e cobertura linear',
+      )
+      textRem = textRem.replace(/apartamentos garden e cobertura/gi, 'cobertura linear')
+      textRem = textRem.replace(/\bapartamentos garden\b/gi, 'apartamentos')
+      textRem = textRem.replace(/\bgarden\b/gi, 'cobertura linear')
+      // Qualquer resíduo de valor fixo legado é resolvido pelo valor dinâmico
+      textRem = textRem.replace(/R\$\s*608\s*mil/gi, priceReplacement)
+      textRem = textRem.replace(/R\$\s*596\s*mil/gi, priceReplacement)
 
       return textRem
     }

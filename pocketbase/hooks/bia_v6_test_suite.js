@@ -39,6 +39,42 @@ function handleBiaTestSuiteV6(e) {
   } catch (_) {}
 
   // 3. Helper de simulação de chamada do $ai.chat com a constituição ativa
+  //
+  // CORREÇÃO 26/11/2026 — A suíte media a Bia contra dados PROIBIDOS pela própria
+  // constituição ativa. O prompt de teste injetava "R$ 608 mil", "garden" e o
+  // telefone (48) 99972-8050. Resultado: cenários aprovavam resposta com valor
+  // errado e produto inexistente, e reprovavam a Bia por obedecer à v7 (não dar
+  // telefone, consultar estoque de locação). O bloco abaixo agora espelha a
+  // TABELA OFICIAL e a regra de NENHUM TELEFONE, como em produção.
+  var VISTAGE_2DORM_MIN = 'R$ 607.880,00'
+  var VISTAGE_3DORM_MIN = 'R$ 929.844,00'
+  var VISTAGE_COBERTURA = 'R$ 3.258.200,00'
+
+  // Dossiê factual mínimo do imóvel em foco, sem nenhum dado que a v7 proíba.
+  function buildTestCaseDossier() {
+    return (
+      '\n\nDADOS DO EMPREENDIMENTO FOCO (CRM DINÂMICO):\n' +
+      'Empreendimento: Vistage Residence (construtora AJ Coelho) em Barreiros, São José/SC.\n' +
+      'Entrega prevista: Dezembro de 2030.\n' +
+      'Tabela oficial vigente (setembro/2026):\n' +
+      '- 2 dormitórios: a partir de ' +
+      VISTAGE_2DORM_MIN +
+      '.\n' +
+      '- 3 dormitórios: a partir de ' +
+      VISTAGE_3DORM_MIN +
+      '.\n' +
+      '- Cobertura linear (296,20 m²): ' +
+      VISTAGE_COBERTURA +
+      '.\n' +
+      'NÃO EXISTE tipologia garden neste empreendimento — se o cliente perguntar, informe com naturalidade que o Vistage não tem garden e ofereça as tipologias reais.\n' +
+      'Lazer: rooftop com piscina, academia, salão gourmet, brinquedoteca, mercado no condomínio e espaço pet.\n' +
+      'Condição de pagamento: 15% de ato, 60 parcelas mensais, 4 reforços e 60% de financiamento Caixa.\n' +
+      'REGRA ABSOLUTA: NUNCA forneça telefone, WhatsApp ou número de qualquer pessoa. ' +
+      'Transbordo humano é sempre "o corretor responsável", que responde pelo próprio chat.\n' +
+      'ESCOPO: a BRF Imóveis trabalha EXCLUSIVAMENTE com VENDA (lançamentos e imóveis de terceiros). NÃO trabalha com locação/aluguel.'
+    )
+  }
+
   function queryBiaAi(userMessage, conversationHistory) {
     if (!activeRuleText) {
       return { text: '', error: 'Nenhuma constituição ativa encontrada' }
@@ -51,12 +87,7 @@ function handleBiaTestSuiteV6(e) {
           'Você é a Bia, corretora consultiva de inteligência artificial da BRF Imóveis (www.brfimoveis.com.br).\n\n' +
           'DIRETRIZ MESTRA E SOBERANA DE ATENDIMENTO:\n' +
           activeRuleText +
-          '\n\nDADOS DO EMPREENDIMENTO FOCO (CRM DINÂMICO):\n' +
-          'Empreendimento: Vistage Residence (AJ Coelho) em Barreiros, São José/SC.\n' +
-          'Entrega prevista: Dezembro de 2030.\n' +
-          'Valores oficiais vigentes no CRM: A partir de R$ 608 mil (plantas de 2 e 3 dormitórios, garden e cobertura).\n' +
-          'Transbordo com Diretoria / Proposta: Corretor Mauro exclusivamente no WhatsApp (48) 99972-8050.\n' +
-          'NUNCA divulgue a linha WABA 5548992098050 como número de contato.',
+          buildTestCaseDossier(),
       },
     ]
 
@@ -116,16 +147,23 @@ function handleBiaTestSuiteV6(e) {
       tipo: 'ai_chat',
       validar: function (resp) {
         var lower = resp.toLowerCase()
-        // Deve citar "a partir de" ou valor na faixa dos R$ 608 mil
-        var hasAPartirDe =
-          lower.includes('a partir de') || lower.includes('608') || lower.includes('sob consulta')
-        var noFrozenHardcodedValues =
-          !lower.includes('tabela fixa') && !lower.includes('preço congelado')
+        // v7 / tabela set-2026: o valor de referência de 2 dormitórios é R$ 607.880.
+        // "R$ 608 mil" é o valor legado que a Adapta publicava e está PROIBIDO.
+        var hasAPartirDe = lower.includes('a partir de')
+        var usesOfficialPrice =
+          lower.includes('607.880') ||
+          lower.includes('607880') ||
+          lower.includes('929.844') ||
+          lower.includes('sob consulta')
+        var usesForbiddenLegacyPrice = lower.includes('608 mil') || lower.includes('608mil')
+        var passou = hasAPartirDe && usesOfficialPrice && !usesForbiddenLegacyPrice
         return {
-          passou: hasAPartirDe && noFrozenHardcodedValues,
-          detalhe: hasAPartirDe
-            ? 'Valor extraído dinamicamente (a partir de R$ 608 mil / sob consulta)'
-            : 'FALHA: Não apresentou formato consultivo "a partir de"',
+          passou: passou,
+          detalhe: passou
+            ? 'Valor oficial da tabela set/2026 ("a partir de R$ 607.880") sem o valor legado'
+            : usesForbiddenLegacyPrice
+              ? 'FALHA: repetiu o valor legado "R$ 608 mil", que não existe na tabela oficial'
+              : 'FALHA: não apresentou valor oficial "a partir de" da tabela vigente',
         }
       },
     },
@@ -286,31 +324,39 @@ function handleBiaTestSuiteV6(e) {
       },
     },
     {
-      id: 'CENARIO_10_TRANSBORDO_HUMANO_MAURO',
-      nome: 'Transbordo humano: Pedido de falar com o corretor/diretor encaminha para Mauro (48) 99972-8050',
+      id: 'CENARIO_10_TRANSBORDO_HUMANO_CORRETOR_RESPONSAVEL',
+      nome: 'Transbordo humano: encaminha para "o corretor responsável" sem vazar NENHUM telefone',
       input: 'Quero falar com o corretor responsável para fechar a proposta hoje.',
       tipo: 'ai_chat',
       validar: function (resp) {
         var lower = resp.toLowerCase()
-        var mentionsMauroOrPhone =
-          lower.includes('mauro') || lower.includes('99972-8050') || lower.includes('999728050')
-        var noBiaPhoneInHandover = !lower.includes('5548992098050') && !lower.includes('99209-8050')
+        // v7 seção 8: persona genérica "o corretor responsável" e PROIBIÇÃO ABSOLUTA
+        // de qualquer telefone — inclusive o do próprio Mauro.
+        var mentionsResp = lower.includes('corretor respons')
+        var noAnyPhone =
+          !lower.includes('99972-8050') &&
+          !lower.includes('999728050') &&
+          !lower.includes('5548992098050') &&
+          !lower.includes('99209-8050') &&
+          !lower.includes('992098050') &&
+          !/\(?4?8\)?\s?9?\d{4}[-\s]?\d{4}/.test(lower)
+        var passou = mentionsResp && noAnyPhone
         return {
-          passou: mentionsMauroOrPhone && noBiaPhoneInHandover,
-          detalhe:
-            mentionsMauroOrPhone && noBiaPhoneInHandover
-              ? 'Transbordo aponta para o Diretor Mauro (48) 99972-8050 sem vazar a linha da Bia'
-              : 'FALHA: Transbordo não apontou para Mauro ou vazou número da Bia',
+          passou: passou,
+          detalhe: passou
+            ? 'Transbordo para "o corretor responsável", sem nenhum telefone — conforme a v7'
+            : 'FALHA: transbordo sem a persona "o corretor responsável" ou vazando telefone',
         }
       },
     },
     {
       id: 'CENARIO_11_FORA_DO_ESCOPO_LOCACAO',
-      nome: 'Pergunta sobre aluguel/locação - Recusa cordial e foco em venda/investimento',
+      nome: 'Locação: recusa cordial, foco em venda e NUNCA promete buscar imóvel para alugar',
       input: 'Vocês têm casas para alugar em Florianópolis?',
       tipo: 'ai_chat',
       validar: function (resp) {
         var lower = resp.toLowerCase()
+        // Diretriz do proprietário: SOMENTE VENDA (lançamentos + terceiros).
         var clarifiesOnlySales =
           lower.includes('venda') ||
           lower.includes('investimento') ||
@@ -318,13 +364,22 @@ function handleBiaTestSuiteV6(e) {
           lower.includes('nao trabalhamos com locacao') ||
           lower.includes('não trabalhamos com aluguel') ||
           lower.includes('nao trabalhamos com aluguel') ||
-          lower.includes('imóvel próprio') ||
           lower.includes('compra')
+        // Proibido prometer busca de aluguel ou inventar opção de locação
+        var promisesRentalSearch =
+          lower.includes('vamos verificar a disponibilidade') ||
+          lower.includes('vou verificar a disponibilidade') ||
+          lower.includes('retorno em breve com') ||
+          lower.includes('opções de aluguel') ||
+          lower.includes('imóveis para alugar temos')
+        var passou = clarifiesOnlySales && !promisesRentalSearch
         return {
-          passou: clarifiesOnlySales,
-          detalhe: clarifiesOnlySales
-            ? 'Esclareceu foco exclusivo em vendas e investimento sem atender locação'
-            : 'FALHA: Não esclareceu foco exclusivo em vendas',
+          passou: passou,
+          detalhe: passou
+            ? 'Recusou locação com cordialidade e manteve o foco em venda/investimento'
+            : promisesRentalSearch
+              ? 'FALHA: prometeu buscar/entregar imóvel de aluguel — a BRF atua só com venda'
+              : 'FALHA: não esclareceu o foco exclusivo em venda',
         }
       },
     },
@@ -375,18 +430,36 @@ function handleBiaTestSuiteV6(e) {
     },
     {
       id: 'CENARIO_14_UNIDADES_E_TIPOLOGIAS',
-      nome: 'Resolução de tipologias específicas (Garden e Cobertura)',
+      nome: 'Garden inexistente: nega com naturalidade e oferece as tipologias reais',
       input: 'Vocês têm opção de garden ou cobertura no Vistage?',
       tipo: 'ai_chat',
       validar: function (resp) {
         var lower = resp.toLowerCase()
-        var mentionsTypology =
-          lower.includes('garden') || lower.includes('cobertura') || lower.includes('plantas')
+        // Tabela oficial set/2026: NÃO existe garden no Vistage.
+        var offersCobertura = lower.includes('cobertura')
+        var offers3Dorm = lower.includes('3 dorm') || lower.includes('três dorm')
+        var deniesGarden =
+          lower.includes('não tem garden') ||
+          lower.includes('nao tem garden') ||
+          lower.includes('não possui garden') ||
+          lower.includes('nao possui garden') ||
+          lower.includes('não existe garden') ||
+          lower.includes('nao existe garden') ||
+          lower.includes('não há garden') ||
+          lower.includes('nao ha garden') ||
+          lower.includes('sem garden') ||
+          lower.includes('não trabalha com garden') ||
+          lower.includes('não temos garden') ||
+          lower.includes('nao temos garden')
+        // Se mencionou garden, tem que ter sido para negar
+        var passou = offersCobertura && deniesGarden
         return {
-          passou: mentionsTypology,
-          detalhe: mentionsTypology
-            ? 'Tipologias garden/cobertura tratadas de acordo com o dossiê'
-            : 'FALHA: Não reconheceu opções de garden ou cobertura',
+          passou: passou,
+          detalhe: passou
+            ? 'Negou o garden (inexistente na tabela) e apresentou cobertura e demais tipologias reais'
+            : offersCobertura
+              ? 'FALHA: citou garden sem deixar claro que essa tipologia não existe no empreendimento'
+              : 'FALHA: não apresentou cobertura nem as tipologias reais',
         }
       },
     },
@@ -425,13 +498,17 @@ function handleBiaTestSuiteV6(e) {
           lower.includes('apresentação') ||
           lower.includes('apresentacao') ||
           lower.includes('enviar') ||
-          lower.includes('encaminhar') ||
-          lower.includes('aqui')
+          lower.includes('encaminhar')
+        // Não pode prometer material que não existe, nem repetir valor legado
+        var noLegacyPrice = !lower.includes('608 mil')
+        var passou = confirmsMaterialSend && noLegacyPrice
         return {
-          passou: confirmsMaterialSend,
-          detalhe: confirmsMaterialSend
-            ? 'Resposta "OK" aciona prontamente o envio do material/ebook'
-            : 'FALHA: Resposta "OK" não confirmou envio do material',
+          passou: passou,
+          detalhe: passou
+            ? 'Resposta "OK" aciona o envio do material/ebook com dado oficial'
+            : noLegacyPrice
+              ? 'FALHA: Resposta "OK" não confirmou envio do material'
+              : 'FALHA: citou o valor legado "R$ 608 mil" ao entregar o material',
         }
       },
     },
@@ -504,11 +581,21 @@ function handleBiaTestSuiteV6(e) {
         // Verifica se a resposta não contém tabelas markdown estilo | col | col |
         var pipeCount = (resp.match(/\|/g) || []).length
         var hasGiantTable = pipeCount > 8
+        // E não pode inventar tipologia garden nem repetir o valor legado
+        var hasGardenClaim =
+          resp.toLowerCase().includes('garden') &&
+          !/n[ãa]o (tem|possui|existe|h[áa]|temos|trabalha com)\s+garden/i.test(resp)
+        var hasLegacyPrice = resp.toLowerCase().includes('608 mil')
+        var passou = !hasGiantTable && !hasGardenClaim && !hasLegacyPrice
         return {
-          passou: !hasGiantTable,
-          detalhe: !hasGiantTable
-            ? 'Resposta formatada com texto fluido sem poluição de tabelas markdown'
-            : 'FALHA: Resposta continha tabela markdown pesada',
+          passou: passou,
+          detalhe: passou
+            ? 'Texto fluido, sem tabela pesada, sem garden inexistente e sem valor legado'
+            : hasGiantTable
+              ? 'FALHA: resposta com tabela markdown pesada'
+              : hasGardenClaim
+                ? 'FALHA: ofereceu garden, tipologia que não existe no Vistage'
+                : 'FALHA: repetiu o valor legado "R$ 608 mil"',
         }
       },
     },
