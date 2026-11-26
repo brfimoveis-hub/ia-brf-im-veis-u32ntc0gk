@@ -306,10 +306,11 @@ DIRETRIZES MANDATÓRIAS DE RETOMADA E CONTINUIDADE:
                 let tplName = ''
                 let tplLang = 'pt_BR'
                 try {
-                  tplName = (userRecord.getString('meta_whatsapp_lead_template') || '').trim()
-                  tplLang =
-                    (userRecord.getString('meta_whatsapp_lead_template_lang') || '').trim() ||
-                    'pt_BR'
+                  // A coleção users não tem coluna para isso: fica em
+                  // project_data.lead_template (JSON já existente, sem migration).
+                  const pdCfg = userRecord.get('project_data') || {}
+                  tplName = String((pdCfg && pdCfg.lead_template) || '').trim()
+                  tplLang = String((pdCfg && pdCfg.lead_template_lang) || 'pt_BR').trim() || 'pt_BR'
                 } catch (_) {}
                 if (!tplName) {
                   try {

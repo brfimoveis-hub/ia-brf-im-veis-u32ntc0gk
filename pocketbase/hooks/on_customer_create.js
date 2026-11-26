@@ -212,10 +212,12 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se 
                 let tplName = ''
                 let tplLang = 'pt_BR'
                 try {
-                  tplName = (userRecord.getString('meta_whatsapp_lead_template') || '').trim()
+                  // A coleção users não tem coluna para isso: fica em
+                  // project_data.lead_template (JSON já existente, sem migration).
+                  const pdCfg2 = userRecord.get('project_data') || {}
+                  tplName = String((pdCfg2 && pdCfg2.lead_template) || '').trim()
                   tplLang =
-                    (userRecord.getString('meta_whatsapp_lead_template_lang') || '').trim() ||
-                    'pt_BR'
+                    String((pdCfg2 && pdCfg2.lead_template_lang) || 'pt_BR').trim() || 'pt_BR'
                 } catch (_) {}
                 if (!tplName) {
                   try {

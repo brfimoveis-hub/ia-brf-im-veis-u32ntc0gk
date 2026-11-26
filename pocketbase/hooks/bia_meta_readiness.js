@@ -196,8 +196,11 @@ function handleMetaReadiness(e) {
 
   // ---------------------------------------- template de abertura (janela 24h)
   var leadTpl = ''
+  var leadTplLang = 'pt_BR'
   try {
-    leadTpl = (user.getString('meta_whatsapp_lead_template') || '').trim()
+    const pdReady = user.get('project_data') || {}
+    leadTpl = String((pdReady && pdReady.lead_template) || '').trim()
+    leadTplLang = String((pdReady && pdReady.lead_template_lang) || 'pt_BR').trim() || 'pt_BR'
   } catch (_) {}
   var approvedTemplates = []
   try {
