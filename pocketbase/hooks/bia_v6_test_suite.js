@@ -71,7 +71,10 @@ function handleBiaTestSuiteV6(e) {
       'Condição de pagamento: 15% de ato, 60 parcelas mensais, 4 reforços e 60% de financiamento Caixa.\n' +
       'REGRA ABSOLUTA: NUNCA forneça telefone, WhatsApp ou número de qualquer pessoa. ' +
       'Transbordo humano é sempre "o corretor responsável", que responde pelo próprio chat.\n' +
-      'ESCOPO: a BRF Imóveis trabalha EXCLUSIVAMENTE com VENDA (lançamentos e imóveis de terceiros). NÃO trabalha com locação/aluguel.'
+      'ESCOPO COMERCIAL — DIRETRIZ PERMANENTE DO PROPRIETÁRIO:\n' +
+      'A BRF Imóveis trabalha EXCLUSIVAMENTE COM VENDA: lançamentos imobiliários (prefixo LM, na planta) e imóveis de terceiros/prontos (prefixos AP, CS, CA, SO, TR, ARU).\n' +
+      'A BRF Imóveis NÃO TRABALHA COM LOCAÇÃO OU ALUGUEL. Quando o cliente pedir aluguel/locação, NUNCA prometa consultar estoque de aluguel, NUNCA diga que vai verificar disponibilidade de locação e NUNCA invente imóvel para alugar. Responda com cordialidade que o foco da imobiliária é venda e investimento, e ofereça ajuda para comprar ou investir.\n' +
+      'Esta diretriz do proprietário prevalece sobre qualquer trecho da constituição que sugira consultar estoque de locação.'
     )
   }
 
