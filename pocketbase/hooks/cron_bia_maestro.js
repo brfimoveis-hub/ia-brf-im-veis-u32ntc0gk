@@ -2,7 +2,9 @@
 // MAESTRO — CICLO DE VALOR DA BIA (cron diário 03:00 + rota manual + rota de leitura)
 // Ciclo: lê o trabalho real (conversas, clientes, imóveis, base de conhecimento),
 // pede à IA ($ai.chat) learnings estruturados e grava em bia_maestro_insights.
-// NUNCA mexe no atendimento: toda falha é registrada e engolida (não-fatal).
+// FASE CRM (nova): enriquece perfis de clientes (maestro_temperature, maestro_interest,
+// maestro_needs_human, maestro_updated_at) com base nas conversas reais — 100% inline,
+// sem IA, nunca toca no atendimento (nenhum envio, nenhum hook de atendimento).
 // REGRA JSVM (não negociável): callbacks 100% inline — nada de referências externas.
 // Por isso o ciclo é DUPLICADO no callback do cron e no da rota manual (padrão do projeto).
 
@@ -68,6 +70,250 @@ cronAdd('bia_maestro_daily', '0 3 * * *', function () {
       out.push({ tipo: tipo, texto: texto })
     }
     return out
+  }
+  // ---------- FASE CRM: helpers de enriquecimento (inline, sem IA) ----------
+  function maestroNormTxt(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+  }
+  // Cliente está em campanha/régua ativa? (next_follow_up_at futuro OU follow_up_step em curso)
+  function maestroEmCampanhaAtiva(appRef, custRec, nowMs) {
+    try {
+      var nfa = custRec.getString('next_follow_up_at') || ''
+      if (nfa) {
+        var msNfa = new Date(nfa.replace(' ', 'T') + 'Z').getTime()
+        if (!isNaN(msNfa) && msNfa > nowMs) return true
+      }
+      var step = custRec.getString('follow_up_step') || ''
+      var ps = custRec.getString('persistence_status') || ''
+      if (step && step !== 'finalizado' && ps === 'ativo') return true
+    } catch (_) {}
+    return false
+  }
+  // Temperatura: frequência de msgs do cliente (7 dias) + intenção detectada nas msgs
+  function maestroDerivaTemperatura(freqSeteDias, intencoes) {
+    if (freqSeteDias >= 4 || intencoes.forte) return 'quente'
+    if (freqSeteDias >= 1 || intencoes.media) return 'morno'
+    return 'frio'
+  }
+  function maestroExtraiInteresse(convs) {
+    var termosRegiao = [
+      'vistage',
+      'litoral',
+      'florianopolis',
+      'fpolis',
+      'sao jose',
+      'palhoca',
+      'biguacu',
+      'centro',
+      'campeche',
+      'kobrasol',
+      'colinas',
+      'capoeiras',
+      'pedra branca',
+      'ingleses',
+      'canasvieiras',
+      'jurerê',
+      'jurerê internacional',
+      'villa dos acores',
+      'opus',
+      'barra sul',
+    ]
+    var intent = { forte: false, media: false, termos: [] }
+    var interesse = ''
+    var val = ''
+    for (var i = 0; i < convs.length; i++) {
+      var raw = String(convs[i].getString('content') || '')
+      var t = maestroNormTxt(raw)
+      if (!t) continue
+      // valor: "até 450000" / "450 mil" / "r$ 450.000"
+      var mVal = t.match(/(r\$\s*)?(\d{1,3}(?:\.\d{3})+|\d{4,8})/g)
+      if (!val && mVal) {
+        for (var v = 0; v < mVal.length; v++) {
+          var num = parseInt(String(mVal[v]).replace(/[^\d]/g, ''), 10)
+          if (num >= 50000 && num <= 20000000) {
+            val = 'faixa de valor citada: até R$ ' + num.toLocaleString('pt-BR')
+            break
+          }
+        }
+      }
+      for (var r = 0; r < termosRegiao.length; r++) {
+        if (t.indexOf(termosRegiao[r]) !== -1 && interesse.indexOf(termosRegiao[r]) === -1) {
+          var termo = termosRegiao[r]
+          // capitaliza 1ª letra
+          interesse += (interesse ? ' · ' : '') + termo.charAt(0).toUpperCase() + termo.slice(1)
+          break
+        }
+      }
+      if (
+        /quero|procuro|gostaria|interesse|quanto custa|valor|preco|tabela|planta|visita|agendar|unidade/.test(
+          t,
+        )
+      )
+        intent.media = true
+      if (/urgente|hoje|agora|posso ir|quando posso|fechar|proposta|entrada|financ/.test(t))
+        intent.forte = true
+    }
+    if (val) interesse = (interesse ? interesse + ' · ' : '') + val
+    intent.termos = interesse ? interesse.split(' · ') : []
+    return { interesse: interesse || 'não detectado', intencoes: intent }
+  }
+  function maestroMotivoHumano(convs, semRespostaMs) {
+    var motivos = []
+    var tudo = ''
+    for (var i = 0; i < convs.length; i++) {
+      var t = maestroNormTxt(convs[i].getString('content'))
+      if (t) tudo += '\n' + t
+    }
+    if (/corretor|atendente humano|falar com alguem|mauro|encaminh|transbord/.test(tudo))
+      motivos.push('pediu transbordo para corretor/humano')
+    if (/cancelar|parem|nao quero mais|absurdo|reclamacao|reclamando|incompeten|engan/.test(tudo))
+      motivos.push('frustração demonstrada')
+    if (semRespostaMs > 2 * 3600 * 1000) motivos.push('sem resposta da Bia há +2h')
+    return motivos
+  }
+  function maestroRunCrmPhase(appRef, cicloRef, sinceIso) {
+    var res = {
+      analisados: 0,
+      enriquecidos: 0,
+      quentes: 0,
+      mornos: 0,
+      frios: 0,
+      needs_human: 0,
+      skips_campanha: 0,
+      erros: [],
+    }
+    try {
+      // Clientes com conversa ativa no período: agrupa msgs inbound por customer_id
+      var msgs = appRef.findRecordsByFilter(
+        'conversations',
+        "created >= '" + sinceIso + "' && (sender = 'customer' || sender = 'user')",
+        '-created',
+        400,
+        0,
+      )
+      var porCliente = {}
+      var ordemIds = []
+      for (var i = 0; i < msgs.length; i++) {
+        var cid = String(msgs[i].getString('customer_id') || '')
+        if (!cid) continue
+        if (!porCliente[cid]) {
+          porCliente[cid] = []
+          ordemIds.push(cid)
+        }
+        porCliente[cid].push(msgs[i])
+      }
+      var nowMs = Date.now()
+      for (var c = 0; c < ordemIds.length; c++) {
+        var cidC = ordemIds[c]
+        var convsC = porCliente[cidC]
+        res.analisados++
+        try {
+          var cust = appRef.findRecordById('customers', cidC)
+          if (!cust) continue
+          if (maestroEmCampanhaAtiva(appRef, cust, nowMs)) {
+            res.skips_campanha++
+            console.log(
+              '[MAESTRO][CRM] skip (campanha/régua ativa): cliente ' +
+                cidC +
+                ' (' +
+                (cust.getString('name') || '?') +
+                ')',
+            )
+            continue
+          }
+          // frequência de msgs nos últimos 7 dias
+          var freq7 = 0
+          try {
+            freq7 = appRef.countRecords(
+              'conversations',
+              "customer_id = '" +
+                cidC +
+                "' && sender = 'customer' && created >= '" +
+                maestroDateOffset(-7) +
+                "'",
+            )
+          } catch (_) {}
+          var ex = maestroExtraiInteresse(convsC)
+          var temperatura = maestroDerivaTemperatura(freq7, ex.intencoes)
+          // sem resposta? última msg do cliente é mais recente que a última da Bia
+          var semRespMs = 0
+          try {
+            var lastUser = appRef.findFirstRecordByFilter(
+              'conversations',
+              "customer_id = '" + cidC + "' && (sender = 'customer' || sender = 'user')",
+              '-created',
+            )
+            var lastAi = appRef.findFirstRecordByFilter(
+              'conversations',
+              "customer_id = '" + cidC + "' && sender = 'ai'",
+              '-created',
+            )
+            if (lastUser) {
+              var msU = new Date(lastUser.getString('created')).getTime()
+              var msA = lastAi ? new Date(lastAi.getString('created')).getTime() : 0
+              if (msU > msA) semRespMs = nowMs - msU
+            }
+          } catch (_) {}
+          var motivos = maestroMotivoHumano(convsC, semRespMs)
+          var needsHuman = motivos.length > 0
+          try {
+            cust.set('maestro_temperature', temperatura)
+            cust.set('maestro_interest', ex.interesse.substring(0, 395))
+            cust.set('maestro_needs_human', needsHuman)
+            cust.set('maestro_updated_at', new Date().toISOString())
+            appRef.saveNoValidate(cust)
+            res.enriquecidos++
+            if (temperatura === 'quente') res.quentes++
+            else if (temperatura === 'morno') res.mornos++
+            else res.frios++
+            if (needsHuman) {
+              res.needs_human++
+              console.log(
+                '[MAESTRO][CRM] needs_human: cliente ' +
+                  cidC +
+                  ' (' +
+                  (cust.getString('name') || '?') +
+                  ') — ' +
+                  motivos.join('; '),
+              )
+            }
+          } catch (sErr) {
+            res.erros.push(String(cidC) + ': ' + (sErr && sErr.message ? sErr.message : sErr))
+          }
+        } catch (custErr) {
+          res.erros.push(
+            String(cidC) + ': ' + (custErr && custErr.message ? custErr.message : custErr),
+          )
+        }
+      }
+      console.log(
+        '[MAESTRO][CRM] fase concluída — analisados=' +
+          res.analisados +
+          ', enriquecidos=' +
+          res.enriquecidos +
+          ' (Q=' +
+          res.quentes +
+          '/M=' +
+          res.mornos +
+          '/F=' +
+          res.frios +
+          ')' +
+          ', needs_human=' +
+          res.needs_human +
+          ', skips_campanha=' +
+          res.skips_campanha,
+      )
+    } catch (crmErr) {
+      console.warn(
+        '[MAESTRO][CRM] fase falhou (não-fatal): ' +
+          (crmErr && crmErr.message ? crmErr.message : crmErr),
+      )
+      Id
+    }
+    return res
   }
   var trigger = 'cron'
   var outcome = { ok: false, ciclo: '', insightId: '', status: '', error: '', trigger: trigger }
@@ -178,6 +424,33 @@ cronAdd('bia_maestro_daily', '0 3 * * *', function () {
       metrics.arquivos_conhecimento =
         app.countRecords('ai_knowledge_files', 'is_active = true') || 0
     } catch (_) {}
+
+    // 2-B. FASE CRM: enriquecimento de perfis (antes da IA, nunca bloqueia o ciclo)
+    var crmPhase = {
+      analisados: 0,
+      enriquecidos: 0,
+      quentes: 0,
+      mornos: 0,
+      frios: 0,
+      needs_human: 0,
+      skips_campanha: 0,
+      erros: [],
+    }
+    try {
+      crmPhase = maestroRunCrmPhase(app, ciclo, sinceIso)
+    } catch (crmOuter) {
+      console.warn(
+        '[MAESTRO][CRM] fase falhou (não-fatal): ' +
+          (crmOuter && crmOuter.message ? crmOuter.message : crmOuter),
+      )
+    }
+    metrics.crm_clientes_analisados = crmPhase.analisados
+    metrics.crm_clientes_enriquecidos = crmPhase.enriquecidos
+    metrics.crm_quentes = crmPhase.quentes
+    metrics.crm_mornos = crmPhase.mornos
+    metrics.crm_frios = crmPhase.frios
+    metrics.crm_needs_human = crmPhase.needs_human
+    metrics.crm_skips_campanha = crmPhase.skips_campanha
 
     // 3. RESUMO DO TRABALHO PARA A IA
     var workSummary = []
@@ -353,7 +626,11 @@ cronAdd('bia_maestro_daily', '0 3 * * *', function () {
           rec.id +
           ', ' +
           learnings.length +
-          ' learnings).',
+          ' learnings, CRM: ' +
+          crmPhase.enriquecidos +
+          ' enriquecidos/' +
+          crmPhase.needs_human +
+          ' needs_human).',
       )
     } catch (pErr) {
       maestroLogError(app, ciclo, 'Falha ao gravar bia_maestro_insights: ' + pErr.message)
@@ -436,6 +713,242 @@ routerAdd(
         out.push({ tipo: tipo, texto: texto })
       }
       return out
+    }
+    // ---------- FASE CRM: helpers de enriquecimento (inline, sem IA) ----------
+    function maestroNormTxt(s) {
+      return String(s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+    }
+    function maestroEmCampanhaAtiva(appRef, custRec, nowMs) {
+      try {
+        var nfa = custRec.getString('next_follow_up_at') || ''
+        if (nfa) {
+          var msNfa = new Date(nfa.replace(' ', 'T') + 'Z').getTime()
+          if (!isNaN(msNfa) && msNfa > nowMs) return true
+        }
+        var step = custRec.getString('follow_up_step') || ''
+        var ps = custRec.getString('persistence_status') || ''
+        if (step && step !== 'finalizado' && ps === 'ativo') return true
+      } catch (_) {}
+      return false
+    }
+    function maestroDerivaTemperatura(freqSeteDias, intencoes) {
+      if (freqSeteDias >= 4 || intencoes.forte) return 'quente'
+      if (freqSeteDias >= 1 || intencoes.media) return 'morno'
+      return 'frio'
+    }
+    function maestroExtraiInteresse(convs) {
+      var termosRegiao = [
+        'vistage',
+        'litoral',
+        'florianopolis',
+        'fpolis',
+        'sao jose',
+        'palhoca',
+        'biguacu',
+        'centro',
+        'campeche',
+        'kobrasol',
+        'colinas',
+        'capoeiras',
+        'pedra branca',
+        'ingleses',
+        'canasvieiras',
+        'jurerê',
+        'jurerê internacional',
+        'villa dos acores',
+        'opus',
+        'barra sul',
+      ]
+      var intent = { forte: false, media: false, termos: [] }
+      var interesse = ''
+      var val = ''
+      for (var i = 0; i < convs.length; i++) {
+        var raw = String(convs[i].getString('content') || '')
+        var t = maestroNormTxt(raw)
+        if (!t) continue
+        var mVal = t.match(/(r\$\s*)?(\d{1,3}(?:\.\d{3})+|\d{4,8})/g)
+        if (!val && mVal) {
+          for (var v = 0; v < mVal.length; v++) {
+            var num = parseInt(String(mVal[v]).replace(/[^\d]/g, ''), 10)
+            if (num >= 50000 && num <= 20000000) {
+              val = 'faixa de valor citada: até R$ ' + num.toLocaleString('pt-BR')
+              break
+            }
+          }
+        }
+        for (var r = 0; r < termosRegiao.length; r++) {
+          if (t.indexOf(termosRegiao[r]) !== -1 && interesse.indexOf(termosRegiao[r]) === -1) {
+            var termo = termosRegiao[r]
+            interesse += (interesse ? ' · ' : '') + termo.charAt(0).toUpperCase() + termo.slice(1)
+            break
+          }
+        }
+        if (
+          /quero|procuro|gostaria|interesse|quanto custa|valor|preco|tabela|planta|visita|agendar|unidade/.test(
+            t,
+          )
+        )
+          intent.media = true
+        if (/urgente|hoje|agora|posso ir|quando posso|fechar|proposta|entrada|financ/.test(t))
+          intent.forte = true
+      }
+      if (val) interesse = (interesse ? interesse + ' · ' : '') + val
+      intent.termos = interesse ? interesse.split(' · ') : []
+      return { interesse: interesse || 'não detectado', intencoes: intent }
+    }
+    function maestroMotivoHumano(convs, semRespostaMs) {
+      var motivos = []
+      var tudo = ''
+      for (var i = 0; i < convs.length; i++) {
+        var t = maestroNormTxt(convs[i].getString('content'))
+        if (t) tudo += '\n' + t
+      }
+      if (/corretor|atendente humano|falar com alguem|mauro|encaminh|transbord/.test(tudo))
+        motivos.push('pediu transbordo para corretor/humano')
+      if (/cancelar|parem|nao quero mais|absurdo|reclamacao|reclamando|incompeten|engan/.test(tudo))
+        motivos.push('frustração demonstrada')
+      if (semRespostaMs > 2 * 3600 * 1000) motivos.push('sem resposta da Bia há +2h')
+      return motivos
+    }
+    function maestroRunCrmPhase(appRef, cicloRef, sinceIso) {
+      var res = {
+        analisados: 0,
+        enriquecidos: 0,
+        quentes: 0,
+        mornos: 0,
+        frios: 0,
+        needs_human: 0,
+        skips_campanha: 0,
+        erros: [],
+      }
+      try {
+        var msgs = appRef.findRecordsByFilter(
+          'conversations',
+          "created >= '" + sinceIso + "' && (sender = 'customer' || sender = 'user')",
+          '-created',
+          400,
+          0,
+        )
+        var porCliente = {}
+        var ordemIds = []
+        for (var i = 0; i < msgs.length; i++) {
+          var cid = String(msgs[i].getString('customer_id') || '')
+          if (!cid) continue
+          if (!porCliente[cid]) {
+            porCliente[cid] = []
+            ordemIds.push(cid)
+          }
+          porCliente[cid].push(msgs[i])
+        }
+        var nowMs = Date.now()
+        for (var c = 0; c < ordemIds.length; c++) {
+          var cidC = ordemIds[c]
+          var convsC = porCliente[cidC]
+          res.analisados++
+          try {
+            var cust = appRef.findRecordById('customers', cidC)
+            if (!cust) continue
+            if (maestroEmCampanhaAtiva(appRef, cust, nowMs)) {
+              res.skips_campanha++
+              console.log(
+                '[MAESTRO][CRM] skip (campanha/régua ativa): cliente ' +
+                  cidC +
+                  ' (' +
+                  (cust.getString('name') || '?') +
+                  ')',
+              )
+              continue
+            }
+            var freq7 = 0
+            try {
+              freq7 = appRef.countRecords(
+                'conversations',
+                "customer_id = '" +
+                  cidC +
+                  "' && sender = 'customer' && created >= '" +
+                  maestroDateOffset(-7) +
+                  "'",
+              )
+            } catch (_) {}
+            var ex = maestroExtraiInteresse(convsC)
+            var temperatura = maestroDerivaTemperatura(freq7, ex.intencoes)
+            var semRespMs = 0
+            try {
+              var lastUser = appRef.findFirstRecordByFilter(
+                'conversations',
+                "customer_id = '" + cidC + "' && (sender = 'customer' || sender = 'user')",
+                '-created',
+              )
+              var lastAi = appRef.findFirstRecordByFilter(
+                'conversations',
+                "customer_id = '" + cidC + "' && sender = 'ai'",
+                '-created',
+              )
+              if (lastUser) {
+                var msU = new Date(lastUser.getString('created')).getTime()
+                var msA = lastAi ? new Date(lastAi.getString('created')).getTime() : 0
+                if (msU > msA) semRespMs = nowMs - msU
+              }
+            } catch (_) {}
+            var motivos = maestroMotivoHumano(convsC, semRespMs)
+            var needsHuman = motivos.length > 0
+            try {
+              cust.set('maestro_temperature', temperatura)
+              cust.set('maestro_interest', ex.interesse.substring(0, 395))
+              cust.set('maestro_needs_human', needsHuman)
+              cust.set('maestro_updated_at', new Date().toISOString())
+              appRef.saveNoValidate(cust)
+              res.enriquecidos++
+              if (temperatura === 'quente') res.quentes++
+              else if (temperatura === 'morno') res.mornos++
+              else res.frios++
+              if (needsHuman) {
+                res.needs_human++
+                console.log(
+                  '[MAESTRO][CRM] needs_human: cliente ' +
+                    cidC +
+                    ' (' +
+                    (cust.getString('name') || '?') +
+                    ') — ' +
+                    motivos.join('; '),
+                )
+              }
+            } catch (sErr) {
+              res.erros.push(String(cidC) + ': ' + (sErr && sErr.message ? sErr.message : sErr))
+            }
+          } catch (custErr) {
+            res.erros.push(
+              String(cidC) + ': ' + (custErr && custErr.message ? custErr.message : custErr),
+            )
+          }
+        }
+        console.log(
+          '[MAESTRO][CRM] fase concluída — analisados=' +
+            res.analisados +
+            ', enriquecidos=' +
+            res.enriquecidos +
+            ' (Q=' +
+            res.quentes +
+            '/M=' +
+            res.mornos +
+            '/F=' +
+            res.frios +
+            ')' +
+            ', needs_human=' +
+            res.needs_human +
+            ', skips_campanha=' +
+            res.skips_campanha,
+        )
+      } catch (crmErr) {
+        console.warn(
+          '[MAESTRO][CRM] fase falhou (não-fatal): ' +
+            (crmErr && crmErr.message ? crmErr.message : crmErr),
+        )
+      }
+      return res
     }
     var trigger = 'manual'
     var outcome = { ok: false, ciclo: '', insightId: '', status: '', error: '', trigger: trigger }
@@ -539,6 +1052,33 @@ routerAdd(
           app.countRecords('ai_knowledge_files', 'is_active = true') || 0
       } catch (_) {}
 
+      // 2-B. FASE CRM: enriquecimento de perfis (antes da IA, nunca bloqueia o ciclo)
+      var crmPhase2 = {
+        analisados: 0,
+        enriquecidos: 0,
+        quentes: 0,
+        mornos: 0,
+        frios: 0,
+        needs_human: 0,
+        skips_campanha: 0,
+        erros: [],
+      }
+      try {
+        crmPhase2 = maestroRunCrmPhase(app, ciclo, sinceIso)
+      } catch (crmOuter2) {
+        console.warn(
+          '[MAESTRO][CRM] fase falhou (não-fatal): ' +
+            (crmOuter2 && crmOuter2.message ? crmOuter2.message : crmOuter2),
+        )
+      }
+      metrics.crm_clientes_analisados = crmPhase2.analisados
+      metrics.crm_clientes_enriquecidos = crmPhase2.enriquecidos
+      metrics.crm_quentes = crmPhase2.quentes
+      metrics.crm_mornos = crmPhase2.mornos
+      metrics.crm_frios = crmPhase2.frios
+      metrics.crm_needs_human = crmPhase2.needs_human
+      metrics.crm_skips_campanha = crmPhase2.skips_campanha
+
       var workSummary2 = []
       workSummary2.push('=== TRABALHO REAL DA BIA (BRF Imóveis) — desde ' + sinceIso + ' ===')
       workSummary2.push(
@@ -556,7 +1096,7 @@ routerAdd(
           metrics.arquivos_conhecimento,
       )
 
-      workSummary2.push('\n=== ÚLTIMAS MENSAGENS DE CLIENTES (' + inboundMsgs.length + ') ===')
+      workSummary2.push('\n=== ÚLTIMAS MENSAGENS DE CLIENTES (' + inboundMsgs2Placeholder + ') ===')
       for (var u2 = 0; u2 < inboundMsgs.length; u2++) {
         var umTxt2 = (inboundMsgs[u2].getString('content') || '').replace(/\s+/g, ' ').trim()
         if (!umTxt2) continue
@@ -711,7 +1251,11 @@ routerAdd(
             rec2.id +
             ', ' +
             learnings2.length +
-            ' learnings).',
+            ' learnings, CRM: ' +
+            crmPhase2.enriquecidos +
+            ' enriquecidos/' +
+            crmPhase2.needs_human +
+            ' needs_human).',
         )
       } catch (pErr2) {
         maestroLogError(app, ciclo, 'Falha ao gravar bia_maestro_insights: ' + pErr2.message)
@@ -760,6 +1304,58 @@ routerAdd(
       return e.json(200, { insights: out })
     } catch (err) {
       return e.json(500, { insights: [], error: String(err) })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// ============================ ROTA CRM: clientes que precisam de humano (painel) ============================
+routerAdd(
+  'GET',
+  '/backend/v1/maestro_crm_needs',
+  function (e) {
+    try {
+      var rows = $app.findRecordsByFilter(
+        'customers',
+        'maestro_needs_human = true',
+        '-maestro_updated_at',
+        25,
+        0,
+      )
+      var out = []
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i]
+        var lastConv = null
+        try {
+          lastConv = $app.findFirstRecordByFilter(
+            'conversations',
+            "customer_id = '" + r.id + "' && (sender = 'customer' || sender = 'user')",
+            '-created',
+          )
+        } catch (_) {}
+        var motivo = ''
+        try {
+          // último motivo gravado vem da fase CRM do ciclo; aqui só expomos o que o CRM tem
+          motivo = r.getString('maestro_interest') || ''
+        } catch (_) {}
+        out.push({
+          id: r.id,
+          name: r.getString('name') || '(sem nome)',
+          phone: r.getString('phone') || '',
+          channel_hint: '',
+          interest: motivo,
+          temperature: r.getString('maestro_temperature') || '',
+          last_message: lastConv
+            ? String(lastConv.getString('content') || '').substring(0, 200)
+            : '',
+          last_message_at: lastConv ? lastConv.getString('created') : '',
+          maestro_updated_at: r.getString('maestro_updated_at'),
+          status: r.getString('status') || '',
+        })
+      }
+      return e.json(200, { clientes: out })
+    } catch (err) {
+      return e.json(500, { clientes: [], error: String(err) })
     }
   },
   $apis.requireAuth(),
