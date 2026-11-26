@@ -237,31 +237,24 @@ function handleBiaTestSuiteV6(e) {
       tipo: 'regra_constitucional',
       validar: function () {
         // Validação da presença dos 4 blocos de variante e gatilhos "responder OK" e "responda NÃO"
-        var hasVariante1 =
-          activeRuleText.includes('VARIANTE 1') ||
-          activeRuleText.includes('OPORTUNIDADE E VISÃO GERAL')
-        var hasVariante2 =
-          activeRuleText.includes('VARIANTE 2') ||
-          activeRuleText.includes('LOCALIZAÇÃO E INFRAESTRUTURA')
-        var hasVariante3 =
-          activeRuleText.includes('VARIANTE 3') || activeRuleText.includes('CONDIÇÕES FACILITADAS')
-        var hasVariante4 =
-          activeRuleText.includes('VARIANTE 4') || activeRuleText.includes('UNIDADES SELECIONADAS')
-        var hasGatilhoOk = activeRuleText.includes('responder OK')
-        var hasGatilhoNao = activeRuleText.includes('responda NÃO')
+        // CORREÇÃO 26/11/2026: a v7 NÃO carrega os blocos "VARIANTE 1..4" no texto
+        // da constituição — os 4 textos canônicos vivem no código da régua
+        // (cron_bia_persistence.js). Exigir os blocos aqui reprovava a Bia por um
+        // detalhe de formatação do documento. O que a constituição PRECISA definir é
+        // a cadência D+1/D+3/D+7/D+14 e o tratamento de OK/NÃO.
+        var hasD1 = activeRuleText.indexOf('D+1') !== -1
+        var hasD3 = activeRuleText.indexOf('D+3') !== -1
+        var hasD7 = activeRuleText.indexOf('D+7') !== -1
+        var hasD14 = activeRuleText.indexOf('D+14') !== -1
+        var hasGatilhoOk = /responde\s+"?OK|responde\s+"?Sim|responder OK/i.test(activeRuleText)
+        var hasOptOut = /responde\s+"?N[ÃA]O|opt-?out|responda N[ÃA]O/i.test(activeRuleText)
 
-        var passou =
-          hasVariante1 &&
-          hasVariante2 &&
-          hasVariante3 &&
-          hasVariante4 &&
-          hasGatilhoOk &&
-          hasGatilhoNao
+        var passou = hasD1 && hasD3 && hasD7 && hasD14 && hasGatilhoOk && hasOptOut
         return {
           passou: passou,
           detalhe: passou
-            ? 'As 4 variantes canônicas de remarketing v6 com gatilhos responder OK/NÃO estão ativas'
-            : 'FALHA: Régua não possui as 4 variantes com os gatilhos canônicos',
+            ? 'Constituição v7 define a cadência D+1/D+3/D+7/D+14 e os gatilhos de OK e opt-out'
+            : 'FALHA: cadência ou gatilhos de OK/opt-out ausentes na constituição ativa',
         }
       },
     },
@@ -438,19 +431,15 @@ function handleBiaTestSuiteV6(e) {
         // Tabela oficial set/2026: NÃO existe garden no Vistage.
         var offersCobertura = lower.includes('cobertura')
         var offers3Dorm = lower.includes('3 dorm') || lower.includes('três dorm')
+        // A negação pode vir de várias formas: "não possui unidades no padrão
+        // garden", "não tem garden", "o Vistage não trabalha com garden". A
+        // verificação é por regex para não depender da frase exata.
         var deniesGarden =
-          lower.includes('não tem garden') ||
-          lower.includes('nao tem garden') ||
-          lower.includes('não possui garden') ||
-          lower.includes('nao possui garden') ||
-          lower.includes('não existe garden') ||
-          lower.includes('nao existe garden') ||
-          lower.includes('não há garden') ||
-          lower.includes('nao ha garden') ||
-          lower.includes('sem garden') ||
-          lower.includes('não trabalha com garden') ||
-          lower.includes('não temos garden') ||
-          lower.includes('nao temos garden')
+          /n[ãa]o\s+(possui|tem|existe|h[áa]|temos|trabalha com|oferece|conta com)[^.!?]{0,60}garden/i.test(
+            resp,
+          ) ||
+          /garden[^.!?]{0,40}n[ãa]o\s+(existe|faz parte|est[áa] dispon[íi]vel)/i.test(resp) ||
+          /sem\s+(op[çc][ãa]o\s+de\s+)?garden/i.test(resp)
         // Se mencionou garden, tem que ter sido para negar
         var passou = offersCobertura && deniesGarden
         return {
@@ -623,24 +612,47 @@ function handleBiaTestSuiteV6(e) {
       input: '[CHECK_LIÇÕES_LEGADAS_DESATIVADAS]',
       tipo: 'regra_constitucional',
       validar: function () {
-        var activeOtherCount = 0
+        // CORREÇÃO 26/11/2026: exigir "nenhuma outra lição ativa" media a coisa
+        // errada — lições de venda aprovadas à mão PODEM ficar ativas ao lado da
+        // constituição. O conflito real é ter várias cópias automáticas do MESMO
+        // título (era o caso: 3 versões de "Desempenho Semanal da Régua"), que
+        // consumiam o orçamento de 1.450 caracteres das lições vivas.
+        var autoByTitle = {}
+        var duplicates = 0
         try {
           var others = $app.findRecordsByFilter(
             'bia_learnings',
             "is_active = true && id != '" + (activeLearning ? activeLearning.id : '') + "'",
             '-created',
-            50,
+            100,
             0,
           )
-          activeOtherCount = others ? others.length : 0
+          for (var oi = 0; oi < (others ? others.length : 0); oi++) {
+            var oRec = others[oi]
+            var oOrigin = (oRec.getString('origin') || '').toLowerCase()
+            var oAuthor = (oRec.getString('author') || '').toLowerCase()
+            var isAuto =
+              oOrigin === 'cron_semanal' ||
+              oOrigin === 'loop_semanal' ||
+              oAuthor.indexOf('loop semanal') !== -1
+            if (!isAuto) continue
+            var oTitle = (oRec.getString('title') || '').trim().toLowerCase()
+            if (autoByTitle[oTitle]) {
+              duplicates++
+            } else {
+              autoByTitle[oTitle] = true
+            }
+          }
         } catch (_) {}
 
-        var passou = activeOtherCount === 0
+        var passou = duplicates === 0
         return {
           passou: passou,
           detalhe: passou
-            ? 'Zero diretrizes conflitantes ativas. v6.0 reina soberana'
-            : 'FALHA: Existem ' + activeOtherCount + ' outras lições ativas gerando conflito',
+            ? 'Sem cópias automáticas duplicadas ativas (lições aprovadas à mão seguem valendo)'
+            : 'FALHA: ' +
+              duplicates +
+              ' cópia(s) automática(s) duplicada(s) ativa(s) consumindo o orçamento das lições',
         }
       },
     },
