@@ -992,7 +992,12 @@ function handleMetaWhatsAppWebhookPost(e) {
                 } catch (_) {}
               }
 
-              var openAiKey = $os.getenv('OPENAI_API_KEY') || ''
+              var openAiKey =
+                $os.getenv('OPENAI_API_KEY') ||
+                $os.getenv('SKIP_AI_BROKER_API_KEY') ||
+                $os.getenv('SKIP_AI_CHAT_API_KEY') ||
+                $os.getenv('SKIP_AI_GATEWAY_API_KEY') ||
+                ''
               if (
                 !openAiKey &&
                 typeof $secrets !== 'undefined' &&
@@ -1001,6 +1006,13 @@ function handleMetaWhatsAppWebhookPost(e) {
               ) {
                 openAiKey = $secrets.get('OPENAI_API_KEY') || ''
               }
+              console.log(
+                '[AI_TRANSCRIBE] Iniciando transcrição de áudio WhatsApp (mediaId=' +
+                  mediaId +
+                  ', chave=' +
+                  (openAiKey ? 'ok' : 'ausente') +
+                  ')',
+              )
 
               if (mediaId && waUserToken && openAiKey) {
                 // 1. Obter URL do arquivo de mídia na Graph API v21.0
@@ -1094,7 +1106,13 @@ function handleMetaWhatsAppWebhookPost(e) {
                     whisperPayloadBytes.set(footerBytes, curOffset)
 
                     var whisperRes = $http.send({
-                      url: 'https://api.openai.com/v1/audio/transcriptions',
+                      url:
+                        (
+                          $os.getenv('SKIP_AI_BROKER_URL') ||
+                          $os.getenv('SKIP_AI_CHAT_URL') ||
+                          $os.getenv('SKIP_AI_GATEWAY_URL') ||
+                          'https://api.openai.com'
+                        ).replace(/\/+$/, '') + '/v1/audio/transcriptions',
                       method: 'POST',
                       headers: {
                         Authorization: 'Bearer ' + openAiKey,
@@ -1122,6 +1140,11 @@ function handleMetaWhatsAppWebhookPost(e) {
                     }
 
                     if (transcriptionText) {
+                      console.log(
+                        '[AI_TRANSCRIBE] WhatsApp áudio transcrito: "' +
+                          transcriptionText.substring(0, 300) +
+                          '"',
+                      )
                       content = '[Áudio do cliente]: "' + transcriptionText + '"'
                       try {
                         var logColOk = $app.findCollectionByNameOrId('system_logs')
@@ -1330,6 +1353,22 @@ function handleMetaWhatsAppWebhookPost(e) {
           } catch (_) {}
 
           if (!isDuplicate) {
+            // Janela de envio WhatsApp: 8h–18h (horário de Brasília). Mensagem
+            // entrante FORA da janela é salva no CRM e AGENDADA para resposta na
+            // abertura da janela seguinte (8h do dia seguinte) — nunca morre
+            // sem resposta. O motor da Bia (ai_auto_reply) consulta
+            // conversations.next_follow_up_at para decidir o disparo.
+            var nowDate0 = new Date()
+            var brHour0 = new Date(nowDate0.getTime() - 3 * 3600 * 1000).getUTCHours()
+            var isOutsideSendWindow0 = brHour0 < 8 || brHour0 >= 18
+            var scheduleAt0 = ''
+            if (isOutsideSendWindow0) {
+              var open8 = new Date(nowDate0.getTime() - 3 * 3600 * 1000)
+              open8.setUTCHours(8, 0, 0, 0)
+              if (brHour0 >= 18) open8 = new Date(open8.getTime() + 24 * 3600 * 1000)
+              scheduleAt0 = open8.toISOString()
+            }
+
             try {
               var convCol = $app.findCollectionByNameOrId('conversations')
               var newMsg = new Record(convCol)
@@ -1348,7 +1387,39 @@ function handleMetaWhatsAppWebhookPost(e) {
               newMsg.set('sender', isSystemMsg ? 'system' : 'customer')
               newMsg.set('content', content)
               newMsg.set('channel', 'whatsapp')
+              if (scheduleAt0 && !isSystemMsg) newMsg.set('next_follow_up_at', scheduleAt0)
               $app.save(newMsg)
+              if (scheduleAt0 && !isSystemMsg) {
+                console.log(
+                  '[AI_QUEUE] Mensagem FORA da janela de envio agendada para ' +
+                    scheduleAt0 +
+                    ' (customer=' +
+                    customer.id +
+                    ', msgId=' +
+                    newMsg.id +
+                    ')',
+                )
+                try {
+                  var queueLogCol = $app.findCollectionByNameOrId('system_logs')
+                  var queueLog = new Record(queueLogCol)
+                  queueLog.set('user_id', userId || '')
+                  queueLog.set('type', 'ai_reply_scheduled')
+                  queueLog.set(
+                    'message',
+                    'Mensagem fora da janela de envio agendada para resposta na abertura da janela (8h)',
+                  )
+                  queueLog.set(
+                    'details',
+                    'customer=' + customer.id + ' | agendada para ' + scheduleAt0,
+                  )
+                  queueLog.set('payload', {
+                    customer_id: customer.id,
+                    scheduled_for: scheduleAt0,
+                    br_hour: brHour0,
+                  })
+                  $app.saveNoValidate(queueLog)
+                } catch (_) {}
+              }
             } catch (err) {
               $app
                 .logger()
@@ -1951,7 +2022,12 @@ function handleMetaWhatsAppWebhookPostWithPathUser(e) {
                 } catch (_) {}
               }
 
-              var openAiKeySecond = $os.getenv('OPENAI_API_KEY') || ''
+              var openAiKeySecond =
+                $os.getenv('OPENAI_API_KEY') ||
+                $os.getenv('SKIP_AI_BROKER_API_KEY') ||
+                $os.getenv('SKIP_AI_CHAT_API_KEY') ||
+                $os.getenv('SKIP_AI_GATEWAY_API_KEY') ||
+                ''
               if (
                 !openAiKeySecond &&
                 typeof $secrets !== 'undefined' &&
@@ -1960,6 +2036,13 @@ function handleMetaWhatsAppWebhookPostWithPathUser(e) {
               ) {
                 openAiKeySecond = $secrets.get('OPENAI_API_KEY') || ''
               }
+              console.log(
+                '[AI_TRANSCRIBE] Iniciando transcrição de áudio WhatsApp (mediaId=' +
+                  mediaIdSecond +
+                  ', chave=' +
+                  (openAiKeySecond ? 'ok' : 'ausente') +
+                  ')',
+              )
 
               if (mediaIdSecond && waUserTokenSecond && openAiKeySecond) {
                 var mediaMetaResSecond = $http.send({
@@ -2055,7 +2138,13 @@ function handleMetaWhatsAppWebhookPostWithPathUser(e) {
                     whisperPayloadBytesSecond.set(footerBytesSecond, curOffsetSecond)
 
                     var whisperResSecond = $http.send({
-                      url: 'https://api.openai.com/v1/audio/transcriptions',
+                      url:
+                        (
+                          $os.getenv('SKIP_AI_BROKER_URL') ||
+                          $os.getenv('SKIP_AI_CHAT_URL') ||
+                          $os.getenv('SKIP_AI_GATEWAY_URL') ||
+                          'https://api.openai.com'
+                        ).replace(/\/+$/, '') + '/v1/audio/transcriptions',
                       method: 'POST',
                       headers: {
                         Authorization: 'Bearer ' + openAiKeySecond,
@@ -2083,6 +2172,11 @@ function handleMetaWhatsAppWebhookPostWithPathUser(e) {
                     }
 
                     if (transcriptionTextSecond) {
+                      console.log(
+                        '[AI_TRANSCRIBE] WhatsApp áudio transcrito: "' +
+                          transcriptionTextSecond.substring(0, 300) +
+                          '"',
+                      )
                       content = '[Áudio do cliente]: "' + transcriptionTextSecond + '"'
                       try {
                         var logColOkSecond = $app.findCollectionByNameOrId('system_logs')
@@ -2307,7 +2401,54 @@ function handleMetaWhatsAppWebhookPostWithPathUser(e) {
               newMsg.set('sender', isSystemMsgSecond ? 'system' : 'customer')
               newMsg.set('content', content)
               newMsg.set('channel', 'whatsapp')
+              // Janela de envio WhatsApp: 8h–18h (horário de Brasília). Mensagem
+              // entrante FORA da janela é salva no CRM e AGENDADA para resposta na
+              // abertura da janela seguinte (8h do dia seguinte) — nunca morre
+              // sem resposta. O motor da Bia (ai_auto_reply) consulta
+              // conversations.next_follow_up_at para decidir o disparo.
+              var nowDate1 = new Date()
+              var brHour1 = new Date(nowDate1.getTime() - 3 * 3600 * 1000).getUTCHours()
+              var isOutsideSendWindow1 = brHour1 < 8 || brHour1 >= 18
+              var scheduleAt1 = ''
+              if (isOutsideSendWindow1 && !isSystemMsgSecond) {
+                var open8b = new Date(nowDate1.getTime() - 3 * 3600 * 1000)
+                open8b.setUTCHours(8, 0, 0, 0)
+                if (brHour1 >= 18) open8b = new Date(open8b.getTime() + 24 * 3600 * 1000)
+                scheduleAt1 = open8b.toISOString()
+              }
+              if (scheduleAt1) newMsg.set('next_follow_up_at', scheduleAt1)
               $app.save(newMsg)
+              if (scheduleAt1) {
+                console.log(
+                  '[AI_QUEUE] Mensagem FORA da janela de envio agendada para ' +
+                    scheduleAt1 +
+                    ' (customer=' +
+                    customer.id +
+                    ', msgId=' +
+                    newMsg.id +
+                    ')',
+                )
+                try {
+                  var queueLogColB = $app.findCollectionByNameOrId('system_logs')
+                  var queueLogB = new Record(queueLogColB)
+                  queueLogB.set('user_id', userId || '')
+                  queueLogB.set('type', 'ai_reply_scheduled')
+                  queueLogB.set(
+                    'message',
+                    'Mensagem fora da janela de envio agendada para resposta na abertura da janela (8h)',
+                  )
+                  queueLogB.set(
+                    'details',
+                    'customer=' + customer.id + ' | agendada para ' + scheduleAt1,
+                  )
+                  queueLogB.set('payload', {
+                    customer_id: customer.id,
+                    scheduled_for: scheduleAt1,
+                    br_hour: brHour1,
+                  })
+                  $app.saveNoValidate(queueLogB)
+                } catch (_) {}
+              }
             } catch (err) {
               $app
                 .logger()
