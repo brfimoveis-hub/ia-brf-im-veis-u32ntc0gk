@@ -51,9 +51,33 @@ onRecordAfterCreateSuccess((e) => {
     userData.ln = [$security.sha256(ln.trim().toLowerCase())]
   }
 
-  userData.client_ip_address = '192.168.1.1'
-  userData.client_user_agent =
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SkipCloud/1.0'
+  // CORREÇÃO 26/11/2026: este hook disparava para TODO cliente criado, inclusive
+  // os que chegam por WhatsApp — e o meta_capi_event.js também dispara 'Lead' na
+  // mudança de status. Resultado: dois eventos 'Lead' para o mesmo lead, o que
+  // infla resultado no gerenciador e atrapalha a otimização da campanha.
+  // Aqui o 'Lead' fica só para cadastro que NÃO veio de conversa (site, landing,
+  // formulário); quem chega pelo WhatsApp é contado pelo hook de status.
+  // Também não se envia mais IP privado nem user-agent inventado (ver meta_capi_event).
+  const sourceLower = (e.record.getString('source') || '').toLowerCase()
+  const cameFromWhatsApp =
+    sourceLower.indexOf('whatsapp') !== -1 ||
+    sourceLower.indexOf('waba') !== -1 ||
+    sourceLower.indexOf('ctwa') !== -1
+  let hasInboundMsg = false
+  try {
+    const inboundCheck2 = $app.findRecordsByFilter(
+      'conversations',
+      "customer_id = '" + e.record.id + "' && (sender = 'customer' || sender = 'lead')",
+      '-created',
+      1,
+      0,
+    )
+    hasInboundMsg = inboundCheck2 && inboundCheck2.length > 0
+  } catch (_) {}
+
+  if (cameFromWhatsApp || hasInboundMsg) {
+    return e.next()
+  }
 
   if (!userData.em && !userData.ph) {
     $app
@@ -68,7 +92,7 @@ onRecordAfterCreateSuccess((e) => {
         event_name: 'Lead',
         event_time: Math.floor(Date.now() / 1000),
         action_source: 'website',
-        event_source_url: 'https://brfiacrminteligente.goskip.app/dashboard',
+        event_source_url: 'https://www.brfimoveis.com.br',
         event_id: $security.randomString(32),
         user_data: userData,
         custom_data: {

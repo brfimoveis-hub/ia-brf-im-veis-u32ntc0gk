@@ -160,6 +160,22 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se 
                 cleanPhone = '55' + cleanPhone
               }
 
+              // Um lead criado pelo CRM ainda NÃO escreveu no WhatsApp, ou seja, está
+              // FORA da janela de 24h: texto livre seria rejeitado (erro 131047).
+              // Sempre que não houver mensagem do cliente, abre-se a conversa com
+              // TEMPLATE aprovado. Se não houver template, registra e não insiste.
+              let hasInbound = false
+              try {
+                const inboundCheck = $app.findRecordsByFilter(
+                  'conversations',
+                  "customer_id = '" + customerId + "' && (sender = 'customer' || sender = 'lead')",
+                  '-created',
+                  1,
+                  0,
+                )
+                hasInbound = inboundCheck && inboundCheck.length > 0
+              } catch (_) {}
+
               // APPSECRET_PROOF (v0.0.1425): "Require App Secret" ativo no app Meta
               // exige a assinatura em TODO POST de envio para a Cloud API.
               // Credenciais: meta_app_secret do usuário -> meta_instagram_app_secret
@@ -184,21 +200,107 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se 
                 }
               }
 
-              $http.send({
-                url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProof(metaToken)}`,
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${metaToken}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
+              let createPayload = null
+              if (hasInbound) {
+                createPayload = {
                   messaging_product: 'whatsapp',
                   to: cleanPhone,
                   type: 'text',
                   text: { body: responseText },
-                }),
-                timeout: 15,
-              })
+                }
+              } else {
+                let tplName = ''
+                let tplLang = 'pt_BR'
+                try {
+                  tplName = (userRecord.getString('meta_whatsapp_lead_template') || '').trim()
+                  tplLang =
+                    (userRecord.getString('meta_whatsapp_lead_template_lang') || '').trim() ||
+                    'pt_BR'
+                } catch (_) {}
+                if (!tplName) {
+                  try {
+                    const tpls = $app.findRecordsByFilter(
+                      'whatsapp_templates',
+                      "status = 'APPROVED'",
+                      '-created',
+                      1,
+                      0,
+                    )
+                    if (tpls && tpls.length > 0) {
+                      tplName = (tpls[0].getString('name') || '').trim()
+                      tplLang = (tpls[0].getString('language') || 'pt_BR').trim() || 'pt_BR'
+                    }
+                  } catch (_) {}
+                }
+                if (tplName) {
+                  createPayload = {
+                    messaging_product: 'whatsapp',
+                    to: cleanPhone,
+                    type: 'template',
+                    template: {
+                      name: tplName,
+                      language: { code: tplLang },
+                      components: [
+                        {
+                          type: 'body',
+                          parameters: [{ type: 'text', text: (displayName || 'tudo bem').trim() }],
+                        },
+                      ],
+                    },
+                  }
+                } else {
+                  try {
+                    const logsColNoTpl2 = $app.findCollectionByNameOrId('system_logs')
+                    const noTplLog2 = new Record(logsColNoTpl2)
+                    noTplLog2.set('user_id', userId)
+                    noTplLog2.set('type', 'whatsapp_outside_window_no_template')
+                    noTplLog2.set(
+                      'message',
+                      'Novo lead fora da janela de 24h e sem template aprovado — mensagem não enviada',
+                    )
+                    noTplLog2.set('payload', { customer_id: customerId, phone: cleanPhone })
+                    $app.saveNoValidate(noTplLog2)
+                  } catch (_) {}
+                }
+              }
+
+              if (createPayload) {
+                const createRes = $http.send({
+                  url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProof(metaToken)}`,
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${metaToken}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(createPayload),
+                  timeout: 15,
+                })
+                if (createRes && createRes.statusCode >= 400) {
+                  try {
+                    const errJson2 = createRes.json || {}
+                    const errObj2 = errJson2.error || {}
+                    const logsColFail2 = $app.findCollectionByNameOrId('system_logs')
+                    const failLog2 = new Record(logsColFail2)
+                    failLog2.set('user_id', userId)
+                    failLog2.set('type', 'whatsapp_send_failed')
+                    failLog2.set(
+                      'message',
+                      'Falha ao enviar primeira mensagem (status ' +
+                        createRes.statusCode +
+                        ', code ' +
+                        String(errObj2.code || 'none') +
+                        ')',
+                    )
+                    failLog2.set('details', String(errObj2.message || ''))
+                    failLog2.set('payload', {
+                      customer_id: customerId,
+                      phone: cleanPhone,
+                      type: createPayload.type,
+                    })
+                    $app.saveNoValidate(failLog2)
+                  } catch (_) {}
+                }
+              }
             }
           }
         } catch (_) {}

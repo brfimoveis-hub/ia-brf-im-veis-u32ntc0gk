@@ -188,6 +188,18 @@ DIRETRIZES MANDATÓRIAS DE RETOMADA E CONTINUIDADE:
     messages.push({ role: 'user', content: '(Nenhum histórico anterior)' })
   }
 
+  // ==========================================================================
+  // JANELA DE 24H DO WHATSAPP (correção 26/11/2026 — gargalo do 1º anúncio Meta)
+  // ==========================================================================
+  // A API oficial do WhatsApp só aceita mensagem de TEXTO LIVRE dentro de 24h
+  // contadas da última mensagem do CLIENTE. Um lead de formulário de anúncio
+  // (Lead Ads) chega sem ter mandado nada no WhatsApp: a tentativa de enviar texto
+  // livre falha com erro 131047 (re-engagement) e o lead se perde em silêncio.
+  // Para esse caso a única via é um TEMPLATE aprovado (type: 'template').
+  const hasInboundHistory = (historyRecords || []).some(
+    (m) => m.getString('sender') === 'customer' || m.getString('sender') === 'lead',
+  )
+
   try {
     const chatRes = $ai.chat({
       model: 'fast',
@@ -259,21 +271,137 @@ DIRETRIZES MANDATÓRIAS DE RETOMADA E CONTINUIDADE:
               if (cleanPhone.length === 10 || cleanPhone.length === 11) {
                 cleanPhone = '55' + cleanPhone
               }
-              $http.send({
-                url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages`,
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${metaToken}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
+
+              // appsecret_proof é obrigatório quando "Require App Secret" está ativo
+              let waSecret = ''
+              try {
+                waSecret = (userRecord.getString('meta_app_secret') || '').trim()
+                if (!waSecret)
+                  waSecret = (userRecord.getString('meta_instagram_app_secret') || '').trim()
+              } catch (_) {}
+              if (!waSecret) {
+                try {
+                  waSecret = String($os.getenv('META_APP_SECRET') || '').trim()
+                } catch (_) {}
+              }
+              let proofQuery = ''
+              if (waSecret && metaToken) {
+                try {
+                  proofQuery = '?appsecret_proof=' + $security.hs256(String(metaToken), waSecret)
+                } catch (_) {}
+              }
+
+              // DENTRO de 24h (houve mensagem do cliente) -> texto livre, como antes.
+              // FORA de 24h (lead de formulário/anúncio que nunca escreveu) -> template
+              // aprovado, porque texto livre é rejeitado pela Meta com o erro 131047.
+              let waPayload = null
+              if (hasInboundHistory) {
+                waPayload = {
                   messaging_product: 'whatsapp',
                   to: cleanPhone,
                   type: 'text',
                   text: { body: responseText },
-                }),
-                timeout: 15,
-              })
+                }
+              } else {
+                let tplName = ''
+                let tplLang = 'pt_BR'
+                try {
+                  tplName = (userRecord.getString('meta_whatsapp_lead_template') || '').trim()
+                  tplLang =
+                    (userRecord.getString('meta_whatsapp_lead_template_lang') || '').trim() ||
+                    'pt_BR'
+                } catch (_) {}
+                if (!tplName) {
+                  try {
+                    const tpls = $app.findRecordsByFilter(
+                      'whatsapp_templates',
+                      "status = 'APPROVED'",
+                      '-created',
+                      1,
+                      0,
+                    )
+                    if (tpls && tpls.length > 0) {
+                      tplName = (tpls[0].getString('name') || '').trim()
+                      tplLang = (tpls[0].getString('language') || 'pt_BR').trim() || 'pt_BR'
+                    }
+                  } catch (_) {}
+                }
+
+                if (tplName) {
+                  const firstName = (displayName || '').trim() || 'tudo bem'
+                  waPayload = {
+                    messaging_product: 'whatsapp',
+                    to: cleanPhone,
+                    type: 'template',
+                    template: {
+                      name: tplName,
+                      language: { code: tplLang },
+                      components: [
+                        {
+                          type: 'body',
+                          parameters: [{ type: 'text', text: firstName }],
+                        },
+                      ],
+                    },
+                  }
+                } else {
+                  // Sem template aprovado não há como abrir a conversa: registra e
+                  // deixa o lead para contato humano, em vez de falhar em silêncio.
+                  try {
+                    const logsColNoTpl = $app.findCollectionByNameOrId('system_logs')
+                    const noTplLog = new Record(logsColNoTpl)
+                    noTplLog.set('user_id', userId)
+                    noTplLog.set('type', 'whatsapp_outside_window_no_template')
+                    noTplLog.set(
+                      'message',
+                      'Lead fora da janela de 24h e sem template aprovado — mensagem não enviada',
+                    )
+                    noTplLog.set('payload', { customer_id: customerId, phone: cleanPhone })
+                    $app.saveNoValidate(noTplLog)
+                  } catch (_) {}
+                }
+              }
+
+              if (waPayload) {
+                const waRes = $http.send({
+                  url: `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${proofQuery}`,
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${metaToken}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(waPayload),
+                  timeout: 15,
+                })
+
+                // Falha de envio passa a ser VISÍVEL (antes era silenciosa).
+                if (waRes && waRes.statusCode >= 400) {
+                  try {
+                    const errJson = waRes.json || {}
+                    const errObj = errJson.error || {}
+                    const logsColFail = $app.findCollectionByNameOrId('system_logs')
+                    const failLog = new Record(logsColFail)
+                    failLog.set('user_id', userId)
+                    failLog.set('type', 'whatsapp_send_failed')
+                    failLog.set(
+                      'message',
+                      'Falha ao enviar mensagem (status ' +
+                        waRes.statusCode +
+                        ', code ' +
+                        String(errObj.code || 'none') +
+                        ')',
+                    )
+                    failLog.set('details', String(errObj.message || ''))
+                    failLog.set('payload', {
+                      customer_id: customerId,
+                      phone: cleanPhone,
+                      type: waPayload.type,
+                      template: waPayload.type === 'template' ? waPayload.template.name : null,
+                    })
+                    $app.saveNoValidate(failLog)
+                  } catch (_) {}
+                }
+              }
             }
           }
         } catch (_) {}

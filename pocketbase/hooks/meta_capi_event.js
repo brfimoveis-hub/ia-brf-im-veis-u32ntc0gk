@@ -123,24 +123,35 @@ onRecordAfterUpdateSuccess((e) => {
       if (match) userData.fbc = match[1]
     }
 
+    // CORREÇÃO 26/11/2026 — QUALIDADE DE SINAL PARA O META:
+    // Antes, sem IP real, o código enviava '192.168.1.1' e um user-agent
+    // inventado. IP privado e UA falso são dado ERRADO: sujam o match do evento
+    // e podem derrubar a nota de qualidade do pixel. A regra da Meta é clara:
+    // campo que não se tem, não se envia. Aqui só vai o que é real.
     const ipv4Regex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/
     const ipMatch = combinedData.match(ipv4Regex)
-    if (ipMatch) {
+    if (ipMatch && !/^192\.168\.|^10\.|^127\./.test(ipMatch[0])) {
       userData.client_ip_address = ipMatch[0]
-    } else {
-      userData.client_ip_address = userData.client_ip_address || '192.168.1.1'
     }
 
-    userData.client_user_agent =
-      userData.client_user_agent ||
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SkipCloud/1.0'
+    // fbc a partir do ctwa_clid/clique do anúncio, quando existir no cadastro
+    try {
+      const ctwaMatch = combinedData.match(/ctwa_clid[=:]\s*([A-Za-z0-9_-]+)/)
+      if (ctwaMatch && ctwaMatch[1]) {
+        userData.fbc = userData.fbc || 'fb.1.' + Date.now() + '.' + ctwaMatch[1]
+      }
+    } catch (_) {}
 
     const payload = {
       data: [
         {
           event_name: eventName,
           event_time: Math.floor(Date.now() / 1000),
-          action_source: 'website',
+          // O lead conversa pelo WhatsApp: 'business_messaging' é o action_source
+          // correto para eventos de conversa. 'website' com URL de site declara uma
+          // origem que não aconteceu e piora o match.
+          action_source: 'business_messaging',
+          messaging_channel: 'whatsapp',
           event_source_url: user
             ? user.getString('website_url') || 'https://www.brfimoveis.com.br'
             : 'https://www.brfimoveis.com.br',
