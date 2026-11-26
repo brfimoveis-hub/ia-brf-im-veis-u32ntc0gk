@@ -76,13 +76,37 @@ function handleMetaReadiness(e) {
   }
 
   // -------------------------------------------------- verificação do número
+  // Esta consulta TAMBÉM exige appsecret_proof: a Meta responde 400
+  // ("API calls from the server require an appsecret_proof argument") sem ele.
+  var secretForProof = ''
+  try {
+    secretForProof =
+      (user.getString('meta_app_secret') || '').trim() ||
+      (user.getString('meta_instagram_app_secret') || '').trim()
+  } catch (_) {}
+  if (!secretForProof) {
+    try {
+      secretForProof = String($os.getenv('META_APP_SECRET') || '').trim()
+    } catch (_) {}
+  }
+
+  function proofFor(tk) {
+    if (!secretForProof || !tk) return ''
+    try {
+      return '&appsecret_proof=' + $security.hs256(String(tk), secretForProof)
+    } catch (_) {
+      return ''
+    }
+  }
+
   if (waToken && waPhoneId) {
     try {
       var phoneRes = $http.send({
         url:
           'https://graph.facebook.com/v21.0/' +
           waPhoneId +
-          '?fields=display_phone_number,verified_name,quality_rating,status,name_status',
+          '?fields=display_phone_number,verified_name,quality_rating,status,name_status' +
+          proofFor(waToken),
         method: 'GET',
         headers: { Authorization: 'Bearer ' + waToken },
         timeout: 15,
