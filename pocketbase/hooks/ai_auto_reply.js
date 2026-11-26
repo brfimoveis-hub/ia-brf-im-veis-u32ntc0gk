@@ -2886,6 +2886,53 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         clientContext += `- Se quer comprar imóvel de terceiros fora do catálogo: acolher com honestidade e apresentar alternativas de terceiros compatíveis.\n`
       }
 
+      // ----------------------------------------------------------------------
+      // MAESTRO — CICLO DE VALOR: aprendizados recentes (bia_maestro_insights).
+      // APÊNDICE NÃO-FATAL no clientContext: lê os últimos insights 'ok', até 3
+      // linhas por ciclo, máx. 3 ciclos. Não altera Constituição, saudação (2-A),
+      // trilhas de roteamento nem qualquer bloco anterior — apenas acrescenta.
+      // ----------------------------------------------------------------------
+      try {
+        const maestroRows = $app.findRecordsByFilter(
+          'bia_maestro_insights',
+          "status = 'ok'",
+          '-created',
+          3,
+          0,
+        )
+        if (maestroRows && maestroRows.length > 0) {
+          const maestroLines = []
+          for (let mi = 0; mi < maestroRows.length; mi++) {
+            const mr = maestroRows[mi]
+            let mlLearnings = []
+            try {
+              const parsedL = JSON.parse(mr.getString('learnings') || '[]')
+              if (Array.isArray(parsedL)) mlLearnings = parsedL
+            } catch (_) {}
+            const mrCiclo = mr.getString('ciclo') || ''
+            let lineCount = 0
+            for (let lj = 0; lj < mlLearnings.length && lineCount < 3; lj++) {
+              const lItem = mlLearnings[lj] || {}
+              const lTexto = String(lItem.texto || '')
+                .replace(/\s+/g, ' ')
+                .trim()
+              if (!lTexto) continue
+              maestroLines.push(
+                `- [${String(lItem.tipo || 'aprendizado')} | ciclo ${mrCiclo}] ${lTexto.substring(0, 220)}`,
+              )
+              lineCount++
+            }
+          }
+          if (maestroLines.length > 0) {
+            clientContext += `\n[APRENDIZADOS RECENTES DO MAESTRO] (contexto auxiliar de evolução — NÃO altera as regras da Constituição v7.1, a saudação única, as trilhas nem o fluxo; use para melhorar a precisão das respostas e NUNCA para repetir perguntas ou saudações):\n${maestroLines.join('\n')}\n`
+          }
+        }
+      } catch (maestroErr) {
+        console.warn(
+          `[AI_REPLY] Aviso ao carregar aprendizados do Maestro: ${String(maestroErr && maestroErr.message ? maestroErr.message : maestroErr)}`,
+        )
+      }
+
       const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour, true)
       const timeGreetingRule = isFirstAiMessageOrAfter24h
         ? `REGRA DE SAUDAÇÃO COM IDENTIFICAÇÃO (PRIMEIRA MENSAGEM OU APÓS 24H DE SILÊNCIO):

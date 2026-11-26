@@ -378,6 +378,65 @@ routerAdd(
   'POST',
   '/backend/v1/maestro_run',
   function (e) {
+    function pad2Maestro(n) {
+      return (n < 10 ? '0' : '') + n
+    }
+    function maestroDateOffset(days) {
+      var d = new Date(Date.now() + days * 86400000)
+      return d.toISOString().replace('T', ' ').substring(0, 19)
+    }
+    function maestroSafeJsonTags(rec) {
+      try {
+        var raw = rec.getString('tags') || '[]'
+        var arr = JSON.parse(raw)
+        if (!Array.isArray(arr)) return '[]'
+        return raw.substring(0, 200)
+      } catch (_) {
+        return '[]'
+      }
+    }
+    function maestroLogError(appRef, cicloRef, msg) {
+      try {
+        var colE = appRef.findCollectionByNameOrId('bia_maestro_insights')
+        var recE = new Record(colE)
+        recE.set('ciclo', cicloRef)
+        recE.set('status', 'error')
+        recE.set('resumo', 'Ciclo com erro — não afetou o atendimento.')
+        recE.set('learnings', '[]')
+        recE.set('metrics', '{}')
+        recE.set('error', String(msg || 'erro desconhecido').substring(0, 500))
+        appRef.saveNoValidate(recE)
+      } catch (logErr) {
+        console.warn(
+          '[MAESTRO] Falha ao gravar erro: ' + (logErr && logErr.message ? logErr.message : logErr),
+        )
+      }
+      console.warn('[MAESTRO] ' + msg)
+    }
+    function maestroParseAiJson(raw) {
+      var s = String(raw || '').trim()
+      var m = s.match(/\{[\s\S]*\}/)
+      if (m) s = m[0]
+      try {
+        return JSON.parse(s)
+      } catch (_) {
+        return {}
+      }
+    }
+    function maestroSanitizeLearnings(arr) {
+      var out = []
+      for (var i = 0; i < arr.length && i < 12; i++) {
+        var l = arr[i] || {}
+        var tipo = String(l.tipo || 'demanda_nao_resolvida')
+        var texto = String(l.texto || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .substring(0, 400)
+        if (!texto) continue
+        out.push({ tipo: tipo, texto: texto })
+      }
+      return out
+    }
     var trigger = 'manual'
     var outcome = { ok: false, ciclo: '', insightId: '', status: '', error: '', trigger: trigger }
     var app = $app

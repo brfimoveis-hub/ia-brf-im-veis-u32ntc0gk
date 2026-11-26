@@ -91,6 +91,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { MaestroPanel } from '@/components/configuracoes/MaestroPanel'
 import {
   Select,
   SelectContent,
@@ -2342,6 +2343,8 @@ FORMATO DE RESPOSTA ADAPTATIVO: A Bia deve SEMPRE responder no mesmo formato em 
           </Button>
         </CardFooter>
       </Card>
+
+      <MaestroPanel />
     </div>
   )
 }
