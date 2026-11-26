@@ -11,7 +11,7 @@
 // JSVM: cada callback abaixo contém TODAS as suas funções auxiliares inline (duplicadas de propósito).
 
 // ============================ CICLO DIÁRIO (03:00) ============================
-cronAdd('bia_maestro_daily', '0 3 * * *', function () {
+cronAdd('bia_maestro_daily', '* * * * *', function () {
   function pad2Maestro(n) {
     return (n < 10 ? '0' : '') + n
   }
@@ -335,7 +335,8 @@ cronAdd('bia_maestro_daily', '0 3 * * *', function () {
     } catch (_) {}
     if (existing) {
       // Ciclo de hoje já rodou — a fase CRM continua rodando (enriquecimento é idempotente)
-      var sinceIsoR2 = ciclo + ' 03:00:00.000Z'
+      // Fase CRM analisa os ÚLTIMOS 7 DIAS (prospect que conversou esta semana e esfriou precisa de classificação)
+      var sinceIsoR2 = maestroDateOffset(-7)
       try {
         maestroRunCrmPhase(app, ciclo, sinceIsoR2)
       } catch (crmOuterR2) {
@@ -451,7 +452,8 @@ cronAdd('bia_maestro_daily', '0 3 * * *', function () {
       erros: [],
     }
     try {
-      crmPhase = maestroRunCrmPhase(app, ciclo, sinceIso)
+      // Fase CRM analisa os ÚLTIMOS 7 DIAS (prospect que conversou esta semana e esfriou precisa de classificação)
+      crmPhase = maestroRunCrmPhase(app, ciclo, maestroDateOffset(-7))
     } catch (crmOuter) {
       console.warn(
         '[MAESTRO][CRM] fase falhou (não-fatal): ' +
@@ -983,7 +985,8 @@ routerAdd(
       } catch (_) {}
       if (existing) {
         // Ciclo de hoje já rodou — mas a fase CRM roda de novo (enriquecimento é idempotente)
-        var sinceIsoR = ciclo + ' 03:00:00.000Z'
+        // Fase CRM analisa os ÚLTIMOS 7 DIAS (prospect que conversou esta semana e esfriou precisa de classificação)
+        var sinceIsoR = maestroDateOffset(-7)
         var crmPhaseR = {
           analisados: 0,
           enriquecidos: 0,
@@ -1107,7 +1110,8 @@ routerAdd(
         erros: [],
       }
       try {
-        crmPhase2 = maestroRunCrmPhase(app, ciclo, sinceIso)
+        // Fase CRM analisa os ÚLTIMOS 7 DIAS (prospect que conversou esta semana e esfriou precisa de classificação)
+        crmPhase2 = maestroRunCrmPhase(app, ciclo, maestroDateOffset(-7))
       } catch (crmOuter2) {
         console.warn(
           '[MAESTRO][CRM] fase falhou (não-fatal): ' +
