@@ -2,43 +2,18 @@
 // eslint-disable-next-line no-unused-vars
 migrate(
   (app) => {
-    // PROVA VIVA v0.0.1455 — segunda mensagem de teste (idempotente: no-op se já existir).
-    // Grava mensagem ENTRANTE (sender='customer', texto "Bom dia, quero mais detalhes do empreendimento")
-    // na conversa de teste w2by9dou6agtz6l (Instagram), disparando o motor da Bia com o
-    // appsecret_proof corrigido. Não altera nenhum outro registro.
-    const existing = app.findRecordsByFilter(
-      'conversations',
-      "customer_id = 'w2by9dou6agtz6l' && content ~ 'quero mais detalhes do empreendimento'",
-      '-created',
-      1,
-      0,
-    )
-    if (existing && existing.length > 0) {
-      return // idempotente — já rodou
-    }
-    const cust = app.findRecordById('customers', 'w2by9dou6agtz6l')
-    const col = app.findCollectionByNameOrId('conversations')
-    const rec = new Record(col)
-    rec.set('user_id', cust.getString('user_id') || '')
-    rec.set('customer_id', 'w2by9dou6agtz6l')
-    rec.set('sender', 'customer')
-    rec.set('channel', 'instagram')
-    rec.set('content', 'Bom dia, quero mais detalhes do empreendimento')
-    app.save(rec)
+    // NEUTRALIZADA em 26/11/2026.
+    // Esta migration era uma "prova viva" de um deploy antigo: gravava uma mensagem
+    // de teste (sender=customer) na conversa do cliente w2by9dou6agtz6l para forçar
+    // o motor da Bia. Dois problemas:
+    //  1. findRecordById fora de try/catch: numa cópia do projeto com banco vazio o
+    //     registro não existe, a chamada lança "sql: no rows in result set" e a
+    //     migration quebra — era o que reprovava o pipeline de QA.
+    //  2. Inserir dado de teste em cliente real não é migration: em produção já rodou
+    //     e o efeito ficou gravado; repetir essa escrita a cada deploy não é desejável.
+    // Não há nada a fazer aqui: a prova já cumpriu o papel dela naquela versão.
   },
   (app) => {
-    // rollback: remove apenas a mensagem de teste desta prova (se existir)
-    try {
-      const recs = app.findRecordsByFilter(
-        'conversations',
-        "customer_id = 'w2by9dou6agtz6l' && content ~ 'quero mais detalhes do empreendimento'",
-        '-created',
-        10,
-        0,
-      )
-      for (const r of recs) {
-        app.delete(r)
-      }
-    } catch (_) {}
+    // rollback: nada a reverter — a migration não escreve mais nada.
   },
 )
