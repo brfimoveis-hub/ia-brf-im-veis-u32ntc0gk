@@ -210,24 +210,39 @@ function handleMetaReadiness(e) {
     )
   } catch (_) {}
 
+  var templateList = []
+  for (var ti = 0; ti < (approvedTemplates ? approvedTemplates.length : 0); ti++) {
+    var tr = approvedTemplates[ti]
+    templateList.push({
+      name: tr.getString('name') || '',
+      language: tr.getString('language') || 'pt_BR',
+      category: tr.getString('category') || '',
+      body: (tr.getString('body_text') || '').substring(0, 400),
+    })
+  }
+
   if (leadTpl) {
     add(
       'lead_template',
       'Template de abertura (fora da janela 24h)',
       'ok',
-      'Template configurado: ' + leadTpl + '.',
+      'Template fixado: ' + leadTpl + '.',
       '',
     )
-  } else if (approvedTemplates && approvedTemplates.length > 0) {
+  } else if (templateList.length > 0) {
     add(
       'lead_template',
       'Template de abertura (fora da janela 24h)',
       'warn',
-      approvedTemplates.length +
-        ' template(s) aprovado(s) na base; será usado o mais recente por padrão (' +
-        (approvedTemplates[0].getString('name') || '?') +
-        ').',
-      'Fixar o template certo em meta_whatsapp_lead_template para não depender do mais recente.',
+      templateList.length +
+        ' template(s) aprovado(s): ' +
+        templateList
+          .map(function (x) {
+            return x.name
+          })
+          .join(', ') +
+        '. Sem um fixado, o sistema usa o mais recente — que pode ser de outro lançamento.',
+      'Escolher qual template abre a conversa do primeiro anúncio e fixá-lo.',
     )
   } else {
     add(
@@ -405,6 +420,7 @@ function handleMetaReadiness(e) {
     },
     duracao_ms: Date.now() - startedAt,
     checks: checks,
+    templates_aprovados: templateList,
   })
 }
 
