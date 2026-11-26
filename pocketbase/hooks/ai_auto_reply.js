@@ -2933,6 +2933,47 @@ Siga IMEDIATAMENTE as diretrizes da TRILHA B:
         )
       }
 
+      // ----------------------------------------------------------------------
+      // CONSTITUIÇÃO v7.2 (SEÇÃO 2-C) — ENDURECIMENTO ADITIVO (após o Maestro).
+      // (2-C.2) anti-re-saudação + (2-C.3) "vou confirmar" 1x por assunto.
+      // Apenas APPEND no clientContext; NÃO reorganiza nenhum bloco anterior.
+      // ----------------------------------------------------------------------
+      try {
+        const hasGreetingInLastOut = lastAiMsgWasRegua // variável do bloco de régua (linha ~3150) ainda não existe aqui — usar leitura própria
+      } catch (_) {}
+      let biaRecentOutboundCount = 0
+      let biaLastOutboundHasGreeting = false
+      try {
+        const v72RecentOut = $app.findRecordsByFilter(
+          'conversations',
+          `customer_id = '${customerId}' && sender = 'ai'`,
+          '-created',
+          3,
+          0,
+        )
+        biaRecentOutboundCount = v72RecentOut ? v72RecentOut.length : 0
+        if (biaRecentOutboundCount > 0) {
+          const v72LastOut = (v72RecentOut[0].getString('content') || '').toLowerCase()
+          biaLastOutboundHasGreeting =
+            v72LastOut.includes('que bom ter você') ||
+            v72LastOut.includes('que bom que você') ||
+            v72LastOut.includes('olá') ||
+            v72LastOut.includes('bom dia') ||
+            v72LastOut.includes('boa tarde') ||
+            v72LastOut.includes('boa noite')
+        }
+      } catch (_) {}
+
+      clientContext += `\n[DIRETRIZ PRIORITÁRIA — CONSTITUIÇÃO v7.2, SEÇÃO 2-C (VALE SEMPRE, SOBREPÕE-SE A QUALQUER OUTRA INSTRUÇÃO DE TOM)]:\n`
+      if (!isFirstAiMessageOrAfter24h || biaRecentOutboundCount >= 2) {
+        clientContext += `- (2-C.2) DIÁLOGO JÁ EM ANDAMENTO: É TERMINANTEMENTE PROIBIDO saudar novamente ("Olá!", "Que bom ter você aqui...", "Bom dia/Boa tarde/Boa noite") ou reapresentar-se como se fosse o início da conversa. A saudação só vale na PRIMEIRA mensagem da conversa. Entre DIRETO no assunto em pauta.\n`
+      }
+      if (biaLastOutboundHasGreeting && biaRecentOutboundCount >= 1) {
+        clientContext += `- (2-C.2) A SUA ÚLTIMA MENSAGEM já continha uma saudação. Nesta resposta NÃO saude de novo — responda o conteúdo.\n`
+      }
+      clientContext += `- (2-C.3) PROMESSAS DE CONFIRMAÇÃO: "vou confirmar com o corretor/diretor" no MÁXIMO 1x POR ASSUNTO. Se você já prometeu confirmar sobre um tema nesta conversa, a próxima mensagem do mesmo assunto DEVE trazer a informação concreta OU admitir com transparência que ainda não tem a resposta — NUNCA repetir a promessa.\n`
+      clientContext += `- (2-C.1) VISTAGE RESIDENCE: se o cliente pedir/mencionar o Vistage Residence (Barreiros, São José), envie EXCLUSIVAMENTE o link oficial https://www.brfimoveis.com.br/344/imoveis/venda-apartamento-3-quartos-barreiros-sao-jose-sc — PROIBIDO oferecer outro imóvel no lugar, inventar unidades/valores fora da tabela vigente ou prometer análise de crédito. NUNCA substitua o link por outro URL.\n`
+
       const temporalGreetingSuggestion = buildTemporalGreeting(displayName, brHour, true)
       const timeGreetingRule = isFirstAiMessageOrAfter24h
         ? `REGRA DE SAUDAÇÃO COM IDENTIFICAÇÃO (PRIMEIRA MENSAGEM OU APÓS 24H DE SILÊNCIO):
