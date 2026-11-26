@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,11 +6,26 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
-import { Crown, Play, RefreshCw, Loader2, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import {
+  Crown,
+  Play,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Sparkles,
+  Flame,
+  Thermometer,
+  Snowflake,
+  UserCog,
+} from 'lucide-react'
 import {
   type MaestroInsight,
   type MaestroLearning,
+  type MaestroCrmNeed,
   getMaestroInsights,
+  getMaestroCrmNeeds,
   runMaestroCycle,
   TIPO_LABELS,
 } from '@/services/bia_maestro'
@@ -110,6 +125,7 @@ function InsightCard({ insight }: { insight: MaestroInsight }) {
 export function MaestroPanel() {
   const { user } = useAuth()
   const [insights, setInsights] = useState<MaestroInsight[]>([])
+  const [crmNeeds, setCrmNeeds] = useState<MaestroCrmNeed[]>([])
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState(false)
@@ -121,6 +137,12 @@ export function MaestroPanel() {
     try {
       const list = await getMaestroInsights()
       setInsights(list)
+      try {
+        setCrmNeeds(await getMaestroCrmNeeds())
+      } catch (crmErr) {
+        console.warn('Erro ao carregar CRM do Maestro:', crmErr)
+        setCrmNeeds([])
+      }
     } catch (err) {
       console.warn('Erro ao carregar insights do Maestro:', err)
       setError(true)
@@ -143,6 +165,28 @@ export function MaestroPanel() {
     loadInsights()
   }, [loadInsights])
 
+  // Totais quente/morno/frio: do último ciclo gravado; se o último ciclo não
+  // trouxer contagens, conta direto nos clientes já classificados no CRM.
+  const crmTotais = useMemo(() => {
+    const last = insights.find((i) => i.status === 'ok' && i.metrics) || insights[0]
+    const m = last?.metrics as Record<string, number | undefined> | undefined
+    if (m && typeof m.crm_quentes === 'number') {
+      return {
+        quentes: m.crm_quentes || 0,
+        mornos: m.crm_mornos || 0,
+        frios: m.crm_frios || 0,
+        fonte: 'ciclo' as const,
+      }
+    }
+    const counts = { quentes: 0, mornos: 0, frios: 0 }
+    for (const n of crmNeeds) {
+      if (n.temperature === 'quente') counts.quentes++
+      else if (n.temperature === 'morno') counts.mornos++
+      else counts.frios++
+    }
+    return { ...counts, fonte: 'crm' as const }
+  }, [insights, crmNeeds])
+
   const handleRunCycle = async () => {
     setRunning(true)
     try {
@@ -154,6 +198,8 @@ export function MaestroPanel() {
         toast.warning('Ciclo rodou, mas com erro registrado — veja o card do ciclo no painel.')
       } else if (st === 'ok') {
         toast.success('Ciclo rodado com sucesso: aprendizados gravados.')
+      } else if (st === 'already_ran_today_crm') {
+        toast.info('Ciclo de hoje já tinha rodado — a fase CRM do Maestro foi atualizada.')
       } else {
         toast.info('Ciclo concluído.')
       }
@@ -211,7 +257,93 @@ export function MaestroPanel() {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="pt-0 px-4 pb-4">
+      <CardContent className="pt-0 px-4 pb-4 space-y-4">
+        {/* ---- Seção CRM: temperatura dos leads + quem precisa de ação humana ---- */}
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <Thermometer className="w-4 h-4 text-orange-500 shrink-0" />
+            <p className="text-sm font-semibold">CRM — temperatura dos leads (último ciclo)</p>
+          </div>
+          {loading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-md border bg-rose-500/5 p-2 text-center">
+                  <p className="text-lg font-bold text-rose-600 flex items-center justify-center gap-1">
+                    <Flame className="w-4 h-4" /> {crmTotais.quentes}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Quentes</p>
+                </div>
+                <div className="rounded-md border bg-amber-500/5 p-2 text-center">
+                  <p className="text-lg font-bold text-amber-600 flex items-center justify-center gap-1">
+                    <Thermometer className="w-4 h-4" /> {crmTotais.mornos}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Mornos</p>
+                </div>
+                <div className="rounded-md border bg-sky-500/5 p-2 text-center">
+                  <p className="text-lg font-bold text-sky-600 flex items-center justify-center gap-1">
+                    <Snowflake className="w-4 h-4" /> {crmTotais.frios}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Frios</p>
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {crmTotais.fonte === 'ciclo'
+                  ? 'Fonte: último ciclo gravado (bia_maestro_insights). Clientes em campanha ativa (régua/convite) não são reclassificados.'
+                  : 'Fonte: contagem direta de clientes classificados no CRM. Clientes em campanha ativa (régua/convite) não são reclassificados.'}
+              </p>
+
+              {/* Clientes que precisam de ação humana */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <UserCog className="w-4 h-4 text-rose-500 shrink-0" />
+                  <p className="text-sm font-semibold">
+                    Precisam de ação humana ({crmNeeds.length})
+                  </p>
+                </div>
+                {crmNeeds.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Nenhum cliente precisa de ação humana agora.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {crmNeeds.map((n) => (
+                      <li
+                        key={n.id}
+                        className="rounded-md border bg-background p-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{n.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {n.motivo || 'sinalizado pelo último ciclo'}
+                            {n.interest && n.interest !== 'não detectado'
+                              ? ' · interesse: ' + n.interest
+                              : ''}
+                          </p>
+                        </div>
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 text-xs h-7"
+                        >
+                          <a
+                            href={`/atendimentos/clientes?cliente=${n.id}`}
+                            aria-label={'Abrir atendimento de ' + n.name}
+                          >
+                            Abrir
+                          </a>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
         {loading ? (
           <div className="space-y-3">
             <Skeleton className="h-20 w-full" />

@@ -64,6 +64,33 @@ export const runMaestroCycle = async (): Promise<MaestroRunResponse> => {
   })
 }
 
+// ---------- CRM do Maestro: clientes que precisam de ação humana ----------
+
+export interface MaestroCrmNeed {
+  id: string
+  name: string
+  phone: string
+  interest: string
+  motivo: string
+  temperature: string
+  last_message: string
+  last_message_at: string
+  maestro_updated_at: string
+  status: string
+}
+
+export interface MaestroCrmNeedsResponse {
+  clientes: MaestroCrmNeed[]
+  error?: string
+}
+
+export const getMaestroCrmNeeds = async (): Promise<MaestroCrmNeed[]> => {
+  const res = await pb.send<MaestroCrmNeedsResponse>('/backend/v1/maestro_crm_needs', {
+    method: 'GET',
+  })
+  return Array.isArray(res?.clientes) ? res.clientes : []
+}
+
 export const TIPO_LABELS: Record<string, string> = {
   demanda_nao_resolvida: 'Demanda não resolvida',
   pergunta_repetida: 'Pergunta repetida',

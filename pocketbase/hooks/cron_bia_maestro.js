@@ -311,7 +311,7 @@ cronAdd('bia_maestro_daily', '0 3 * * *', function () {
         '[MAESTRO][CRM] fase falhou (não-fatal): ' +
           (crmErr && crmErr.message ? crmErr.message : crmErr),
       )
-      Id
+      res.erros.push('fase: ' + (crmErr && crmErr.message ? crmErr.message : crmErr))
     }
     return res
   }
@@ -334,11 +334,25 @@ cronAdd('bia_maestro_daily', '0 3 * * *', function () {
       existing = app.findFirstRecordByFilter('bia_maestro_insights', "ciclo = '" + ciclo + "'")
     } catch (_) {}
     if (existing) {
+      // Ciclo de hoje já rodou — a fase CRM continua rodando (enriquecimento é idempotente)
+      var sinceIsoR2 = ciclo + ' 03:00:00.000Z'
+      try {
+        maestroRunCrmPhase(app, ciclo, sinceIsoR2)
+      } catch (crmOuterR2) {
+        console.warn(
+          '[MAESTRO][CRM] fase (re-run cron) falhou (não-fatal): ' +
+            (crmOuterR2 && crmOuterR2.message ? crmOuterR2.message : crmOuterR2),
+        )
+      }
       outcome.ok = true
       outcome.insightId = existing.id
       outcome.status = 'already_ran_today'
       console.log(
-        '[MAESTRO] Ciclo ' + ciclo + ' já rodou hoje (id ' + existing.id + '). Ignorando.',
+        '[MAESTRO] Ciclo ' +
+          ciclo +
+          ' já rodou hoje (id ' +
+          existing.id +
+          ') — fase CRM re-executada.',
       )
       return
     }
@@ -968,9 +982,38 @@ routerAdd(
         existing = app.findFirstRecordByFilter('bia_maestro_insights', "ciclo = '" + ciclo + "'")
       } catch (_) {}
       if (existing) {
+        // Ciclo de hoje já rodou — mas a fase CRM roda de novo (enriquecimento é idempotente)
+        var sinceIsoR = ciclo + ' 03:00:00.000Z'
+        var crmPhaseR = {
+          analisados: 0,
+          enriquecidos: 0,
+          quentes: 0,
+          mornos: 0,
+          frios: 0,
+          needs_human: 0,
+          skips_campanha: 0,
+          erros: [],
+        }
+        try {
+          crmPhaseR = maestroRunCrmPhase(app, ciclo, sinceIsoR)
+        } catch (crmOuterR) {
+          console.warn(
+            '[MAESTRO][CRM] fase (re-run manual) falhou (não-fatal): ' +
+              (crmOuterR && crmOuterR.message ? crmOuterR.message : crmOuterR),
+          )
+        }
         outcome.ok = true
         outcome.insightId = existing.id
-        outcome.status = 'already_ran_today'
+        outcome.status = 'already_ran_today_crm'
+        console.log(
+          '[MAESTRO] Ciclo ' +
+            ciclo +
+            ' já tinha rodado — fase CRM re-executada: ' +
+            crmPhaseR.enriquecidos +
+            ' enriquecidos/' +
+            crmPhaseR.needs_human +
+            ' needs_human.',
+        )
         return e.json(200, { success: true, outcome: outcome })
       }
 
@@ -1096,7 +1139,7 @@ routerAdd(
           metrics.arquivos_conhecimento,
       )
 
-      workSummary2.push('\n=== ÚLTIMAS MENSAGENS DE CLIENTES (' + inboundMsgs2Placeholder + ') ===')
+      workSummary2.push('\n=== ÚLTIMAS MENSAGENS DE CLIENTES (' + inboundMsgs.length + ') ===')
       for (var u2 = 0; u2 < inboundMsgs.length; u2++) {
         var umTxt2 = (inboundMsgs[u2].getString('content') || '').replace(/\s+/g, ' ').trim()
         if (!umTxt2) continue
@@ -1314,6 +1357,12 @@ routerAdd(
   'GET',
   '/backend/v1/maestro_crm_needs',
   function (e) {
+    function crmNormTxt(s) {
+      return String(s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+    }
     try {
       var rows = $app.findRecordsByFilter(
         'customers',
@@ -1333,17 +1382,52 @@ routerAdd(
             '-created',
           )
         } catch (_) {}
-        var motivo = ''
+        // Motivo real: recalcula dos sinais das últimas conversas (mesmos gatilhos da fase CRM)
+        var motivos = []
         try {
-          // último motivo gravado vem da fase CRM do ciclo; aqui só expomos o que o CRM tem
-          motivo = r.getString('maestro_interest') || ''
+          var convsR = $app.findRecordsByFilter(
+            'conversations',
+            "customer_id = '" + r.id + "' && (sender = 'customer' || sender = 'user')",
+            '-created',
+            20,
+            0,
+          )
+          var tudo = ''
+          for (var m = 0; m < convsR.length; m++) {
+            var tR = crmNormTxt(convsR[m].getString('content'))
+            if (tR) tudo += '\n' + tR
+          }
+          if (/corretor|atendente humano|falar com alguem|mauro|encaminh|transbord/.test(tudo))
+            motivos.push('pediu transbordo para corretor/humano')
+          if (
+            /cancelar|parem|nao quero mais|absurdo|reclamacao|reclamando|incompeten|engan/.test(
+              tudo,
+            )
+          )
+            motivos.push('frustração demonstrada')
+          // sem resposta: última msg do cliente mais recente que a última da Bia
+          try {
+            var lastAiR = $app.findFirstRecordByFilter(
+              'conversations',
+              "customer_id = '" + r.id + "' && sender = 'ai'",
+              '-created',
+            )
+            if (lastConv) {
+              var msU2 = new Date(lastConv.getString('created')).getTime()
+              var msA2 = lastAiR ? new Date(lastAiR.getString('created')).getTime() : 0
+              if (msU2 > msA2 && Date.now() - msU2 > 2 * 3600 * 1000)
+                motivos.push('sem resposta da Bia há +2h')
+            }
+          } catch (_) {}
         } catch (_) {}
+        if (motivos.length === 0) motivos.push('sinalizado pelo último ciclo do Maestro')
         out.push({
           id: r.id,
           name: r.getString('name') || '(sem nome)',
           phone: r.getString('phone') || '',
           channel_hint: '',
-          interest: motivo,
+          interest: r.getString('maestro_interest') || '',
+          motivo: motivos.join('; '),
           temperature: r.getString('maestro_temperature') || '',
           last_message: lastConv
             ? String(lastConv.getString('content') || '').substring(0, 200)
