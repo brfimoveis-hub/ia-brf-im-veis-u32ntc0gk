@@ -4,34 +4,27 @@
 // Perfil pedido pelo Mauro: aveludada, executiva, agradável ao ouvido.
 //
 // PROVEDOR: Google Cloud Text-to-Speech (Chirp 3: HD)
-//   - 1 milhão de caracteres/mês grátis  -> na prática custo zero no volume atual
+//   - 1 milhão de caracteres/mês grátis -> custo zero no volume atual
 //   - Vozes pt-BR Chirp3-HD: Aoede, Kore, Leda, Zephyr, Callirrhoe, Despina, ...
-//   - Saída OGG_OPUS nativa, que é exatamente o formato de nota de voz do WhatsApp
+//   - Saída OGG_OPUS nativa = exatamente o formato de nota de voz do WhatsApp
 //
-// AUTENTICAÇÃO: conta de serviço do Google (JSON).
-//   A API do Google TTS NÃO aceita chave simples (API key) de forma confiável:
-//   a documentação de autenticação exige credencial de serviço. Por isso o
-//   segredo é o JSON inteiro da conta de serviço, e o token é obtido aqui
-//   assinando um JWT RS256 com a chave privada dela (fluxo OAuth2 padrão).
+// AUTENTICAÇÃO (em ordem de preferência):
+//   1) GOOGLE_TTS_API_KEY  -> chave simples do Google Cloud (caminho fácil)
+//   2) GOOGLE_TTS_SA_JSON  -> JSON da conta de serviço (JWT RS256 -> OAuth2)
 //
 // ROTAS:
-//   GET  /backend/v1/bia/voice/status   -> está pronta? (não gasta nada)
-//   GET  /backend/v1/bia/voice/voices   -> lista as vozes pt-BR disponíveis
-//   GET/POST /backend/v1/bia/voice/sample?voice=...&text=...
-//                                       -> devolve o ÁUDIO para o Mauro ouvir
-//   POST /backend/v1/bia/voice/say      -> sintetiza e envia NOTA DE VOZ no WhatsApp
+//   GET  /backend/v1/bia/voice/status  -> está pronta? (não gasta nada)
+//   GET  /backend/v1/bia/voice/voices  -> lista as vozes pt-BR
+//   GET  /backend/v1/bia/voice/sample?voice=...&format=mp3&text=...
+//                                      -> devolve o ÁUDIO para o Mauro ouvir
+//   POST /backend/v1/bia/voice/say     -> sintetiza e envia NOTA DE VOZ no WhatsApp
 //
-// Segredos (nunca no código):
-//   GOOGLE_TTS_SA_JSON  -> conteúdo do JSON da conta de serviço
-//   GOOGLE_TTS_VOICE    -> ex.: pt-BR-Chirp3-HD-Aoede
+// Segredos: GOOGLE_TTS_API_KEY | GOOGLE_TTS_SA_JSON | GOOGLE_TTS_VOICE
 //
-// IMPORTANTE: no Skip Cloud cada handler é extraído sem o escopo do arquivo,
-// então cada handler é autossuficiente (nenhuma função auxiliar no topo).
+// IMPORTANTE: no Skip Cloud cada handler é extraído sem o escopo do arquivo.
+// Cada handler é autossuficiente e faz require() dentro do próprio corpo.
 // ============================================================================
 
-// ---------------------------------------------------------------------------
-// STATUS
-// ---------------------------------------------------------------------------
 routerAdd('GET', '/backend/v1/bia/voice/status', (e) => {
   function sec(k) {
     try {
@@ -45,23 +38,40 @@ routerAdd('GET', '/backend/v1/bia/voice/status', (e) => {
     return ''
   }
 
-  var raw = sec('GOOGLE_TTS_SA_JSON')
-  var voice = sec('GOOGLE_TTS_VOICE') || 'pt-BR-Chirp3-HD-Aoede'
+  var apiKey = sec('GOOGLE_TTS_API_KEY')
+  var saRaw = sec('GOOGLE_TTS_SA_JSON')
+  var voz = sec('GOOGLE_TTS_VOICE') || 'pt-BR-Chirp3-HD-Aoede'
 
-  var saOk = false
   var saEmail = ''
-  var problema = ''
-  if (!raw) {
-    problema = 'GOOGLE_TTS_SA_JSON não configurado'
-  } else {
+  var saProjeto = ''
+  var saOk = false
+  var saErro = ''
+  if (saRaw) {
     try {
-      var sa = JSON.parse(raw)
+      var sa = JSON.parse(saRaw)
       saEmail = String(sa.client_email || '')
-      saOk = !!(sa.client_email && sa.private_key && sa.project_id)
-      if (!saOk) problema = 'JSON sem client_email/private_key/project_id'
+      saProjeto = String(sa.project_id || '')
+      saOk = !!(saEmail && sa.private_key)
+      if (!saOk) saErro = 'JSON sem client_email/private_key'
     } catch (err) {
-      problema = 'JSON inválido: ' + String(err).substring(0, 120)
+      saErro = 'JSON inválido'
     }
+  }
+
+  // auto-teste do runtime: base64 e require funcionam neste pod?
+  var b64Ok = false
+  var cryptoOk = false
+  var runtimeErro = ''
+  try {
+    b64Ok = Buffer.from('bia', 'base64').length === 2
+  } catch (err) {
+    runtimeErro += 'Buffer: ' + String(err).substring(0, 80) + ' '
+  }
+  try {
+    var c = require('crypto')
+    cryptoOk = typeof c.createSign === 'function'
+  } catch (err) {
+    runtimeErro += 'crypto: ' + String(err).substring(0, 80)
   }
 
   var ativo = false
@@ -70,134 +80,133 @@ routerAdd('GET', '/backend/v1/bia/voice/status', (e) => {
     ativo = rc.getBool('is_active')
   } catch (_) {}
 
+  var modo = apiKey ? 'chave_api' : saOk ? 'conta_servico' : 'nenhuma'
+
   return e.json(200, {
-    credencial_ok: saOk,
-    conta_servico: saEmail ? saEmail.substring(0, 40) : '',
-    projeto: (function () {
-      try {
-        return JSON.parse(raw).project_id || ''
-      } catch (_) {
-        return ''
-      }
-    })(),
-    voz: voice,
+    credencial_ok: !!apiKey || saOk,
+    modo_credencial: modo,
+    conta_servico: saEmail,
+    projeto: saProjeto,
+    erro_conta_servico: saErro,
+    voz: voz,
+    runtime: { buffer_base64: b64Ok, crypto: cryptoOk, erro: runtimeErro },
     resposta_em_voz_ativa: ativo,
-    pronto: saOk && ativo,
-    problema: problema,
-    nota: ativo
-      ? 'Bia responde em voz quando o cliente manda áudio.'
-      : 'Desligado: Bia responde por texto até o Mauro aprovar a voz.',
+    pronto: (!!apiKey || saOk) && ativo,
+    nota:
+      !!apiKey || saOk
+        ? ativo
+          ? 'Bia responde em voz quando o cliente manda áudio.'
+          : 'Credencial OK. Responder em voz está DESLIGADO até o Mauro aprovar o timbre.'
+        : 'Falta a credencial do Google (GOOGLE_TTS_API_KEY).',
   })
 })
 
-// ---------------------------------------------------------------------------
-// VOICES — lista as vozes pt-BR disponíveis (precisa da credencial)
-// ---------------------------------------------------------------------------
 routerAdd('GET', '/backend/v1/bia/voice/voices', (e) => {
-  var raw = ''
+  var apiKey = ''
   try {
-    raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
+    apiKey = String($secrets.get('GOOGLE_TTS_API_KEY') || '').trim()
   } catch (_) {}
-  if (!raw) return e.json(400, { ok: false, erro: 'GOOGLE_TTS_SA_JSON não configurado' })
 
-  var sa = null
-  try {
-    sa = JSON.parse(raw)
-  } catch (err) {
-    return e.json(400, { ok: false, erro: 'JSON da conta de serviço inválido' })
-  }
-
-  // --- token OAuth2 a partir do JWT RS256
-  var crypto = null
-  try {
-    crypto = require('crypto')
-  } catch (err) {
-    return e.json(500, { ok: false, erro: 'módulo crypto indisponível: ' + String(err) })
-  }
-
-  function b64url(buf) {
-    return Buffer.from(buf)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '')
-  }
-
-  var now = Math.floor(Date.now() / 1000)
-  var header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
-  var claim = b64url(
-    JSON.stringify({
-      iss: sa.client_email,
-      scope: 'https://www.googleapis.com/auth/cloud-platform',
-      aud: 'https://oauth2.googleapis.com/token',
-      exp: now + 3600,
-      iat: now,
-    }),
-  )
-  var signingInput = header + '.' + claim
-  var signature = ''
-  try {
-    var signer = crypto.createSign('RSA-SHA256')
-    signer.update(signingInput)
-    signature = b64url(signer.sign(String(sa.private_key)))
-  } catch (err) {
-    return e.json(500, {
-      ok: false,
-      erro: 'falha ao assinar JWT: ' + String(err).substring(0, 150),
-    })
-  }
-  var assertion = signingInput + '.' + signature
-
-  var tokRes = null
-  try {
-    tokRes = $http.send({
-      url: 'https://oauth2.googleapis.com/token',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:
-        'grant_type=' +
-        encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
-        '&assertion=' +
-        encodeURIComponent(assertion),
-      timeout: 30,
-    })
-  } catch (err) {
-    return e.json(502, { ok: false, erro: 'falha de rede no token: ' + String(err) })
-  }
-  if (!tokRes || tokRes.statusCode !== 200 || !tokRes.json || !tokRes.json.access_token) {
-    var e1 = ''
+  var token = ''
+  if (apiKey) {
+    token = apiKey
+  } else {
+    var raw = ''
     try {
-      if (tokRes && tokRes.json && tokRes.json.error_description)
-        e1 = String(tokRes.json.error_description).substring(0, 200)
+      raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
     } catch (_) {}
-    return e.json(502, {
-      ok: false,
-      status: tokRes ? tokRes.statusCode : 0,
-      erro: 'Google recusou o token: ' + e1,
-    })
+    if (!raw) return e.json(400, { ok: false, erro: 'configure GOOGLE_TTS_API_KEY' })
+    var sa = null
+    try {
+      sa = JSON.parse(raw)
+    } catch (_) {
+      return e.json(400, { ok: false, erro: 'JSON da conta de serviço inválido' })
+    }
+    var crypto = null
+    try {
+      crypto = require('crypto')
+    } catch (err) {
+      return e.json(500, { ok: false, erro: 'crypto indisponível' })
+    }
+    function b64u(x) {
+      return Buffer.from(x)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '')
+    }
+    var now = Math.floor(Date.now() / 1000)
+    var si =
+      b64u(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) +
+      '.' +
+      b64u(
+        JSON.stringify({
+          iss: sa.client_email,
+          scope: 'https://www.googleapis.com/auth/cloud-platform',
+          aud: 'https://oauth2.googleapis.com/token',
+          exp: now + 3600,
+          iat: now,
+        }),
+      )
+    var sg = ''
+    try {
+      var sr = crypto.createSign('RSA-SHA256')
+      sr.update(si)
+      sg = b64u(sr.sign(String(sa.private_key)))
+    } catch (_) {
+      return e.json(500, { ok: false, erro: 'falha ao assinar JWT' })
+    }
+    var tk = null
+    try {
+      tk = $http.send({
+        url: 'https://oauth2.googleapis.com/token',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:
+          'grant_type=' +
+          encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
+          '&assertion=' +
+          encodeURIComponent(si + '.' + sg),
+        timeout: 30,
+      })
+    } catch (err) {
+      return e.json(502, { ok: false, erro: String(err) })
+    }
+    if (!tk || tk.statusCode !== 200 || !tk.json || !tk.json.access_token) {
+      return e.json(502, {
+        ok: false,
+        status: tk ? tk.statusCode : 0,
+        erro: 'Google recusou o token',
+      })
+    }
+    token = tk.json.access_token
   }
-  var token = tokRes.json.access_token
 
-  var listRes = null
+  var res = null
   try {
-    listRes = $http.send({
+    res = $http.send({
       url: 'https://texttospeech.googleapis.com/v1/voices?languageCode=pt-BR',
       method: 'GET',
-      headers: { Authorization: 'Bearer ' + token },
+      headers: apiKey ? { 'X-Goog-Api-Key': apiKey } : { Authorization: 'Bearer ' + token },
       timeout: 30,
     })
   } catch (err) {
     return e.json(502, { ok: false, erro: String(err) })
   }
-  if (!listRes || listRes.statusCode !== 200 || !listRes.json) {
+  if (!res || res.statusCode !== 200 || !res.json) {
+    var m = ''
+    try {
+      if (res && res.json && res.json.error && res.json.error.message)
+        m = String(res.json.error.message).substring(0, 220)
+    } catch (_) {}
     return e.json(502, {
       ok: false,
-      status: listRes ? listRes.statusCode : 0,
-      erro: 'falha ao listar vozes',
+      status: res ? res.statusCode : 0,
+      erro: m || 'falha ao listar vozes',
     })
   }
 
-  var vs = (listRes.json && listRes.json.voices) || []
+  var vs = (res.json && res.json.voices) || []
   var out = []
   for (var i = 0; i < vs.length; i++) {
     var v = vs[i] || {}
@@ -205,8 +214,8 @@ routerAdd('GET', '/backend/v1/bia/voice/voices', (e) => {
     out.push({
       voz: n,
       genero: v.ssmlGender || '',
-      taxa_natural: v.naturalSampleRateHertz || 0,
       chirp: n.indexOf('Chirp3-HD') !== -1,
+      taxa: v.naturalSampleRateHertz || 0,
     })
   }
   out.sort(function (a, b) {
@@ -216,35 +225,24 @@ routerAdd('GET', '/backend/v1/bia/voice/voices', (e) => {
   return e.json(200, { ok: true, total: out.length, vozes: out })
 })
 
-// ---------------------------------------------------------------------------
-// SAMPLE — devolve o áudio para o Mauro ESCUTAR e aprovar
-// ---------------------------------------------------------------------------
 routerAdd('GET', '/backend/v1/bia/voice/sample', (e) => {
   var q = {}
   try {
     q = e.requestInfo().query || {}
   } catch (_) {}
 
-  var raw = ''
-  var defaultVoice = ''
+  var apiKey = ''
+  var vozSalva = ''
   try {
-    raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
+    apiKey = String($secrets.get('GOOGLE_TTS_API_KEY') || '').trim()
   } catch (_) {}
   try {
-    defaultVoice = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
+    vozSalva = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
   } catch (_) {}
-  if (!raw) return e.json(400, { ok: false, erro: 'GOOGLE_TTS_SA_JSON não configurado' })
 
-  var sa = null
-  try {
-    sa = JSON.parse(raw)
-  } catch (_) {
-    return e.json(400, { ok: false, erro: 'JSON da conta de serviço inválido' })
-  }
-
-  var voice = String(q.voice || defaultVoice || 'pt-BR-Chirp3-HD-Aoede').trim()
-  if (!/^pt-BR-[A-Za-z0-9-]+$/.test(voice)) {
-    return e.json(400, { ok: false, erro: 'voz inválida (use pt-BR-...)' })
+  var voz = String(q.voice || vozSalva || 'pt-BR-Chirp3-HD-Aoede').trim()
+  if (!/^pt-BR-[A-Za-z0-9-]+$/.test(voz)) {
+    return e.json(400, { ok: false, erro: 'voz inválida: use algo como pt-BR-Chirp3-HD-Aoede' })
   }
 
   var texto =
@@ -252,93 +250,101 @@ routerAdd('GET', '/backend/v1/bia/voice/sample', (e) => {
     'Oi! Aqui é a Bia, da BRF Imóveis. Que bom te encontrar. ' +
       'Eu cuido dos lançamentos e dos imóveis de terceiros aqui em Florianópolis e região. ' +
       'Me conta o que você procura, que eu te mostro as opções que realmente combinam com você.'
-
-  var crypto = null
-  try {
-    crypto = require('crypto')
-  } catch (err) {
-    return e.json(500, { ok: false, erro: 'crypto indisponível' })
-  }
-  function b64(b) {
-    return Buffer.from(b)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '')
-  }
-  var now = Math.floor(Date.now() / 1000)
-  var si =
-    b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) +
-    '.' +
-    b64(
-      JSON.stringify({
-        iss: sa.client_email,
-        scope: 'https://www.googleapis.com/auth/cloud-platform',
-        aud: 'https://oauth2.googleapis.com/token',
-        exp: now + 3600,
-        iat: now,
-      }),
-    )
-  var sig = ''
-  try {
-    var s = crypto.createSign('RSA-SHA256')
-    s.update(si)
-    sig = b64(s.sign(String(sa.private_key)))
-  } catch (err) {
-    return e.json(500, { ok: false, erro: 'falha ao assinar JWT' })
-  }
-
-  var tok = null
-  try {
-    tok = $http.send({
-      url: 'https://oauth2.googleapis.com/token',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:
-        'grant_type=' +
-        encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
-        '&assertion=' +
-        encodeURIComponent(si + '.' + sig),
-      timeout: 30,
-    })
-  } catch (err) {
-    return e.json(502, { ok: false, erro: String(err) })
-  }
-  if (!tok || tok.statusCode !== 200 || !tok.json || !tok.json.access_token) {
-    var d = ''
-    try {
-      if (tok && tok.json && tok.json.error_description)
-        d = String(tok.json.error_description).substring(0, 200)
-    } catch (_) {}
-    return e.json(502, {
-      ok: false,
-      status: tok ? tok.statusCode : 0,
-      erro: 'token recusado: ' + d,
-    })
-  }
+  if (texto.length > 4000) texto = texto.substring(0, 4000)
 
   var enc = q.format === 'mp3' ? 'MP3' : 'OGG_OPUS'
-  var bodyReq = {
-    input: { text: texto.substring(0, 4000) },
-    voice: { languageCode: 'pt-BR', name: voice },
-    audioConfig: {
-      audioEncoding: enc,
-      sampleRateHertz: enc === 'OGG_OPUS' ? 48000 : 24000,
-      speakingRate: Number(q.rate || 0.95),
-      pitch: Number(q.pitch || 0),
-    },
+
+  // ---- cabeçalho de autenticação
+  var authHeader = null
+  var token = ''
+  if (apiKey) {
+    authHeader = { 'X-Goog-Api-Key': apiKey }
+  } else {
+    var raw = ''
+    try {
+      raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
+    } catch (_) {}
+    if (!raw) return e.json(400, { ok: false, erro: 'configure GOOGLE_TTS_API_KEY' })
+    var sa = null
+    try {
+      sa = JSON.parse(raw)
+    } catch (_) {
+      return e.json(400, { ok: false, erro: 'JSON inválido' })
+    }
+    var crypto = null
+    try {
+      crypto = require('crypto')
+    } catch (_) {
+      return e.json(500, { ok: false, erro: 'crypto indisponível' })
+    }
+    function b64s(x) {
+      return Buffer.from(x)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '')
+    }
+    var n0 = Math.floor(Date.now() / 1000)
+    var s0 =
+      b64s(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) +
+      '.' +
+      b64s(
+        JSON.stringify({
+          iss: sa.client_email,
+          scope: 'https://www.googleapis.com/auth/cloud-platform',
+          aud: 'https://oauth2.googleapis.com/token',
+          exp: n0 + 3600,
+          iat: n0,
+        }),
+      )
+    var g0 = ''
+    try {
+      var sgn = crypto.createSign('RSA-SHA256')
+      sgn.update(s0)
+      g0 = b64s(sgn.sign(String(sa.private_key)))
+    } catch (_) {
+      return e.json(500, { ok: false, erro: 'falha ao assinar JWT' })
+    }
+    var tk0 = null
+    try {
+      tk0 = $http.send({
+        url: 'https://oauth2.googleapis.com/token',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:
+          'grant_type=' +
+          encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
+          '&assertion=' +
+          encodeURIComponent(s0 + '.' + g0),
+        timeout: 30,
+      })
+    } catch (err) {
+      return e.json(502, { ok: false, erro: String(err) })
+    }
+    if (!tk0 || tk0.statusCode !== 200 || !tk0.json || !tk0.json.access_token) {
+      return e.json(502, { ok: false, status: tk0 ? tk0.statusCode : 0, erro: 'token recusado' })
+    }
+    token = tk0.json.access_token
+    authHeader = { Authorization: 'Bearer ' + token }
   }
+  authHeader['Content-Type'] = 'application/json'
 
   var syn = null
   try {
     syn = $http.send({
       url: 'https://texttospeech.googleapis.com/v1/text:synthesize',
       method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + tok.json.access_token,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(bodyReq),
+      headers: authHeader,
+      body: JSON.stringify({
+        input: { text: texto },
+        voice: { languageCode: 'pt-BR', name: voz },
+        audioConfig: {
+          audioEncoding: enc,
+          sampleRateHertz: enc === 'OGG_OPUS' ? 48000 : 24000,
+          speakingRate: Number(q.rate || 0.95),
+          pitch: Number(q.pitch || 0),
+        },
+      }),
       timeout: 90,
     })
   } catch (err) {
@@ -354,8 +360,8 @@ routerAdd('GET', '/backend/v1/bia/voice/sample', (e) => {
     return e.json(502, {
       ok: false,
       status: syn ? syn.statusCode : 0,
-      erro: em || 'Google recusou a síntese',
-      voz: voice,
+      erro: em || 'síntese recusada',
+      voz: voz,
     })
   }
 
@@ -370,141 +376,6 @@ routerAdd('GET', '/backend/v1/bia/voice/sample', (e) => {
   return e.blob(200, enc === 'MP3' ? 'audio/mpeg' : 'audio/ogg', bytes)
 })
 
-routerAdd('POST', '/backend/v1/bia/voice/sample', (e) => {
-  var b = {}
-  try {
-    b = e.requestInfo().body || {}
-  } catch (_) {}
-
-  var raw = ''
-  var defaultVoice = ''
-  try {
-    raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
-  } catch (_) {}
-  try {
-    defaultVoice = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
-  } catch (_) {}
-  if (!raw) return e.json(400, { ok: false, erro: 'GOOGLE_TTS_SA_JSON não configurado' })
-
-  var sa = null
-  try {
-    sa = JSON.parse(raw)
-  } catch (_) {
-    return e.json(400, { ok: false, erro: 'JSON inválido' })
-  }
-
-  var voice = String(b.voice || defaultVoice || 'pt-BR-Chirp3-HD-Aoede').trim()
-  if (!/^pt-BR-[A-Za-z0-9-]+$/.test(voice)) return e.json(400, { ok: false, erro: 'voz inválida' })
-
-  var texto =
-    String(b.text || '').trim() ||
-    'Oi! Aqui é a Bia, da BRF Imóveis. Que bom te encontrar. Me conta o que você procura.'
-
-  var crypto = null
-  try {
-    crypto = require('crypto')
-  } catch (_) {
-    return e.json(500, { ok: false, erro: 'crypto indisponível' })
-  }
-  function b64(x) {
-    return Buffer.from(x)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '')
-  }
-  var now = Math.floor(Date.now() / 1000)
-  var si =
-    b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) +
-    '.' +
-    b64(
-      JSON.stringify({
-        iss: sa.client_email,
-        scope: 'https://www.googleapis.com/auth/cloud-platform',
-        aud: 'https://oauth2.googleapis.com/token',
-        exp: now + 3600,
-        iat: now,
-      }),
-    )
-  var sg = ''
-  try {
-    var sr = crypto.createSign('RSA-SHA256')
-    sr.update(si)
-    sg = b64(sr.sign(String(sa.private_key)))
-  } catch (_) {
-    return e.json(500, { ok: false, erro: 'falha ao assinar JWT' })
-  }
-
-  var tk = null
-  try {
-    tk = $http.send({
-      url: 'https://oauth2.googleapis.com/token',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:
-        'grant_type=' +
-        encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
-        '&assertion=' +
-        encodeURIComponent(si + '.' + sg),
-      timeout: 30,
-    })
-  } catch (err) {
-    return e.json(502, { ok: false, erro: String(err) })
-  }
-  if (!tk || tk.statusCode !== 200 || !tk.json || !tk.json.access_token) {
-    return e.json(502, { ok: false, status: tk ? tk.statusCode : 0, erro: 'token recusado' })
-  }
-
-  var enc = b.format === 'mp3' ? 'MP3' : 'OGG_OPUS'
-  var syn = null
-  try {
-    syn = $http.send({
-      url: 'https://texttospeech.googleapis.com/v1/text:synthesize',
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + tk.json.access_token,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        input: { text: texto.substring(0, 4000) },
-        voice: { languageCode: 'pt-BR', name: voice },
-        audioConfig: {
-          audioEncoding: enc,
-          sampleRateHertz: enc === 'OGG_OPUS' ? 48000 : 24000,
-          speakingRate: Number(b.rate || 0.95),
-        },
-      }),
-      timeout: 90,
-    })
-  } catch (err) {
-    return e.json(502, { ok: false, erro: String(err) })
-  }
-  if (!syn || syn.statusCode !== 200 || !syn.json || !syn.json.audioContent) {
-    var m = ''
-    try {
-      if (syn && syn.json && syn.json.error && syn.json.error.message)
-        m = String(syn.json.error.message)
-    } catch (_) {}
-    return e.json(502, {
-      ok: false,
-      status: syn ? syn.statusCode : 0,
-      erro: m || 'síntese recusada',
-    })
-  }
-
-  var by = null
-  try {
-    by = new Uint8Array(Buffer.from(String(syn.json.audioContent), 'base64'))
-  } catch (_) {
-    return e.json(500, { ok: false, erro: 'falha ao decodificar' })
-  }
-  return e.blob(200, enc === 'MP3' ? 'audio/mpeg' : 'audio/ogg', by)
-})
-
-// ---------------------------------------------------------------------------
-// SAY — sintetiza e envia NOTA DE VOZ no WhatsApp
-// Body: { to: "5548999999999", text: "...", voice?: "pt-BR-Chirp3-HD-Aoede" }
-// ---------------------------------------------------------------------------
 routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   var b = {}
   try {
@@ -516,25 +387,19 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   var texto = String(b.text || '').trim()
   if (!to) return e.json(400, { ok: false, erro: 'informe o destino (to)' })
   if (!texto) return e.json(400, { ok: false, erro: 'informe o texto' })
+  if (texto.length > 4000) texto = texto.substring(0, 4000)
 
-  var raw = ''
-  var voice = ''
+  var apiKey = ''
+  var voz = ''
   try {
-    raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
+    apiKey = String($secrets.get('GOOGLE_TTS_API_KEY') || '').trim()
   } catch (_) {}
   try {
-    voice = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
+    voz = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
   } catch (_) {}
-  if (String(b.voice || '').trim()) voice = String(b.voice).trim()
-  if (!voice) voice = 'pt-BR-Chirp3-HD-Aoede'
-  if (!raw) return e.json(400, { ok: false, erro: 'GOOGLE_TTS_SA_JSON não configurado' })
-
-  var sa = null
-  try {
-    sa = JSON.parse(raw)
-  } catch (_) {
-    return e.json(400, { ok: false, erro: 'JSON da conta de serviço inválido' })
-  }
+  if (String(b.voice || '').trim()) voz = String(b.voice).trim()
+  if (!voz) voz = 'pt-BR-Chirp3-HD-Aoede'
+  if (!/^pt-BR-[A-Za-z0-9-]+$/.test(voz)) return e.json(400, { ok: false, erro: 'voz inválida' })
 
   // credenciais do WhatsApp
   var user = null
@@ -548,80 +413,94 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   if (!waToken || !phoneId)
     return e.json(400, { ok: false, erro: 'credenciais do WhatsApp ausentes' })
 
-  // 1) token Google
-  var crypto = null
-  try {
-    crypto = require('crypto')
-  } catch (_) {
-    return e.json(500, { ok: false, erro: 'crypto indisponível' })
+  // autenticação Google
+  var authHeader = null
+  if (apiKey) {
+    authHeader = { 'X-Goog-Api-Key': apiKey }
+  } else {
+    var raw = ''
+    try {
+      raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
+    } catch (_) {}
+    if (!raw) return e.json(400, { ok: false, erro: 'configure GOOGLE_TTS_API_KEY' })
+    var sa = null
+    try {
+      sa = JSON.parse(raw)
+    } catch (_) {
+      return e.json(400, { ok: false, erro: 'JSON inválido' })
+    }
+    var crypto = null
+    try {
+      crypto = require('crypto')
+    } catch (_) {
+      return e.json(500, { ok: false, erro: 'crypto indisponível' })
+    }
+    function b64v(x) {
+      return Buffer.from(x)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '')
+    }
+    var n1 = Math.floor(Date.now() / 1000)
+    var s1 =
+      b64v(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) +
+      '.' +
+      b64v(
+        JSON.stringify({
+          iss: sa.client_email,
+          scope: 'https://www.googleapis.com/auth/cloud-platform',
+          aud: 'https://oauth2.googleapis.com/token',
+          exp: n1 + 3600,
+          iat: n1,
+        }),
+      )
+    var g1 = ''
+    try {
+      var sgn2 = crypto.createSign('RSA-SHA256')
+      sgn2.update(s1)
+      g1 = b64v(sgn2.sign(String(sa.private_key)))
+    } catch (_) {
+      return e.json(500, { ok: false, erro: 'falha ao assinar JWT' })
+    }
+    var tk1 = null
+    try {
+      tk1 = $http.send({
+        url: 'https://oauth2.googleapis.com/token',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:
+          'grant_type=' +
+          encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
+          '&assertion=' +
+          encodeURIComponent(s1 + '.' + g1),
+        timeout: 30,
+      })
+    } catch (err) {
+      return e.json(502, { ok: false, etapa: 'token', erro: String(err) })
+    }
+    if (!tk1 || tk1.statusCode !== 200 || !tk1.json || !tk1.json.access_token) {
+      return e.json(502, {
+        ok: false,
+        etapa: 'token',
+        status: tk1 ? tk1.statusCode : 0,
+        erro: 'Google recusou o token',
+      })
+    }
+    authHeader = { Authorization: 'Bearer ' + tk1.json.access_token }
   }
-  function b64z(x) {
-    return Buffer.from(x)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '')
-  }
-  var now = Math.floor(Date.now() / 1000)
-  var si =
-    b64z(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) +
-    '.' +
-    b64z(
-      JSON.stringify({
-        iss: sa.client_email,
-        scope: 'https://www.googleapis.com/auth/cloud-platform',
-        aud: 'https://oauth2.googleapis.com/token',
-        exp: now + 3600,
-        iat: now,
-      }),
-    )
-  var sg = ''
-  try {
-    var sr = crypto.createSign('RSA-SHA256')
-    sr.update(si)
-    sg = b64z(sr.sign(String(sa.private_key)))
-  } catch (_) {
-    return e.json(500, { ok: false, erro: 'falha ao assinar JWT' })
-  }
+  authHeader['Content-Type'] = 'application/json'
 
-  var tk = null
-  try {
-    tk = $http.send({
-      url: 'https://oauth2.googleapis.com/token',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:
-        'grant_type=' +
-        encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
-        '&assertion=' +
-        encodeURIComponent(si + '.' + sg),
-      timeout: 30,
-    })
-  } catch (err) {
-    return e.json(502, { ok: false, etapa: 'token', erro: String(err) })
-  }
-  if (!tk || tk.statusCode !== 200 || !tk.json || !tk.json.access_token) {
-    return e.json(502, {
-      ok: false,
-      etapa: 'token',
-      status: tk ? tk.statusCode : 0,
-      erro: 'Google recusou o token',
-    })
-  }
-
-  // 2) síntese em OGG_OPUS
+  // 1) síntese em OGG_OPUS (formato de nota de voz)
   var syn = null
   try {
     syn = $http.send({
       url: 'https://texttospeech.googleapis.com/v1/text:synthesize',
       method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + tk.json.access_token,
-        'Content-Type': 'application/json',
-      },
+      headers: authHeader,
       body: JSON.stringify({
-        input: { text: texto.substring(0, 4000) },
-        voice: { languageCode: 'pt-BR', name: voice },
+        input: { text: texto },
+        voice: { languageCode: 'pt-BR', name: voz },
         audioConfig: { audioEncoding: 'OGG_OPUS', sampleRateHertz: 48000, speakingRate: 0.95 },
       }),
       timeout: 90,
@@ -647,14 +526,14 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   try {
     audio = new Uint8Array(Buffer.from(String(syn.json.audioContent), 'base64'))
   } catch (_) {
-    return e.json(500, { ok: false, etapa: 'decode', erro: 'falha ao decodificar o áudio' })
+    return e.json(500, { ok: false, etapa: 'decode', erro: 'falha ao decodificar' })
   }
   if (!audio || !audio.length)
     return e.json(502, { ok: false, etapa: 'decode', erro: 'áudio vazio' })
   if (audio.length > 900000)
     return e.json(500, { ok: false, erro: 'áudio grande demais para nota de voz' })
 
-  // 3) upload para a Meta (multipart montado byte a byte)
+  // 2) upload para a Meta (multipart byte a byte)
   var boundary = '----BiaVoice' + $security.randomString(24)
   function toBytes(str) {
     var arr = []
@@ -712,7 +591,7 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
     })
   }
 
-  // 4) enviar como nota de voz
+  // 3) enviar como nota de voz
   var sendRes = null
   try {
     sendRes = $http.send({
@@ -752,7 +631,7 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
         media_id: mediaId,
         status: wamid ? 'sent' : 'failed',
         task_type: 'voice_reply',
-        voz: voice,
+        voz: voz,
         chars: texto.length,
         audio_bytes: audio.length,
       }),
@@ -764,7 +643,7 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
     ok: !!wamid,
     media_id: mediaId,
     wamid: wamid,
-    voz: voice,
+    voz: voz,
     audio_bytes: audio.length,
     status_meta: sendRes ? sendRes.statusCode : 0,
   })
