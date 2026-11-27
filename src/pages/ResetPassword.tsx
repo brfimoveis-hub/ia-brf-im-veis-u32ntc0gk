@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Lock, Loader2, ArrowLeft } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
+import { PasswordInput } from '@/components/common/PasswordInput'
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('')
@@ -23,7 +24,10 @@ export default function ResetPassword() {
   const { toast } = useToast()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const token = searchParams.get('token')
+  // O token pode chegar como ?token=... (link do app) ou #token=... / #/reset-password?token=...
+  // (variações de link de email ou de navegação com hash)
+  const token =
+    searchParams.get('token') || window.location.hash.match(/token=([A-Za-z0-9_\-.]+)/)?.[1] || ''
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,6 +35,15 @@ export default function ResetPassword() {
       toast({
         title: 'Token inválido',
         description: 'O link de redefinição de senha é inválido ou expirou.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (password.length < 8) {
+      toast({
+        title: 'Senha muito curta',
+        description: 'A nova senha deve ter pelo menos 8 caracteres.',
         variant: 'destructive',
       })
       return
@@ -99,25 +112,35 @@ export default function ResetPassword() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="password">Nova Senha</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
+                autoComplete="new-password"
+                showLabel="Mostrar nova senha"
+                hideLabel="Ocultar nova senha"
               />
+              {password && password.length < 8 && (
+                <p className="text-xs text-muted-foreground">Mínimo de 8 caracteres.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="passwordConfirm">Confirmar Nova Senha</Label>
-              <Input
+              <PasswordInput
                 id="passwordConfirm"
-                type="password"
                 value={passwordConfirm}
                 onChange={(e) => setPasswordConfirm(e.target.value)}
                 required
                 minLength={8}
+                autoComplete="new-password"
+                showLabel="Mostrar confirmação"
+                hideLabel="Ocultar confirmação"
               />
+              {passwordConfirm && password !== passwordConfirm && (
+                <p className="text-xs text-destructive">As senhas não conferem.</p>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

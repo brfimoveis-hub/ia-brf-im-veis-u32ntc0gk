@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast'
 import { Users, Loader2 } from 'lucide-react'
 import { APP_VERSION } from '@/lib/version'
+import { PasswordInput } from '@/components/common/PasswordInput'
 
 export default function Login() {
   const [email, setEmail] = useState('brfimoveis@gmail.com')
@@ -104,12 +105,12 @@ export default function Login() {
                   Esqueceu a senha?
                 </Link>
               </div>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
