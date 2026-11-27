@@ -312,22 +312,30 @@ DIRETRIZES MANDATÓRIAS DE RETOMADA E CONTINUIDADE:
                   tplName = String((pdCfg && pdCfg.lead_template) || '').trim()
                   tplLang = String((pdCfg && pdCfg.lead_template_lang) || 'pt_BR').trim() || 'pt_BR'
                 } catch (_) {}
+                // Fallback SEGURO: só o template genérico de abertura (prefixo brf_)
+                // em pt_BR. Nunca um template de outro empreendimento, que faria a
+                // primeira mensagem falar do imóvel errado.
                 if (!tplName) {
                   try {
                     const tpls = $app.findRecordsByFilter(
                       'whatsapp_templates',
                       "status = 'APPROVED'",
                       '-created',
-                      1,
+                      20,
                       0,
                     )
-                    if (tpls && tpls.length > 0) {
-                      tplName = (tpls[0].getString('name') || '').trim()
-                      tplLang = (tpls[0].getString('language') || 'pt_BR').trim() || 'pt_BR'
+                    for (let ti3 = 0; ti3 < (tpls ? tpls.length : 0); ti3++) {
+                      const cand2 = tpls[ti3]
+                      const cName2 = (cand2.getString('name') || '').trim()
+                      const cLang2 = (cand2.getString('language') || '').trim()
+                      if (/^brf_abertura/i.test(cName2) && cLang2 === 'pt_BR') {
+                        tplName = cName2
+                        tplLang = cLang2
+                        break
+                      }
                     }
                   } catch (_) {}
                 }
-
                 if (tplName) {
                   const firstName = (displayName || '').trim() || 'tudo bem'
                   waPayload = {

@@ -163,8 +163,10 @@ function handleLeadTemplateSetup(e) {
       ],
     }
     try {
+      // A Meta exige appsecret_proof também neste POST ("API calls from the
+      // server require an appsecret_proof argument" sem ele).
       var createRes = $http.send({
-        url: 'https://graph.facebook.com/v21.0/' + wabaId + '/message_templates',
+        url: 'https://graph.facebook.com/v21.0/' + wabaId + '/message_templates' + proof('?'),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
