@@ -219,18 +219,31 @@ Se as suas instruções não prevêem o envio de nenhuma mensagem inicial ou se 
                   tplLang =
                     String((pdCfg2 && pdCfg2.lead_template_lang) || 'pt_BR').trim() || 'pt_BR'
                 } catch (_) {}
+                // Fallback SEGURO (correção 26/11/2026): antes pegava o template
+                // aprovado mais recente, que era o villa_dos_acores — abrindo a
+                // conversa falando de outro lançamento. Agora só aceita o template
+                // genérico de abertura (prefixo brf_) ou um de idioma pt_BR cujo
+                // nome não cite empreendimento. Sem template adequado, NÃO envia e
+                // registra para contato humano — melhor não abrir do que abrir errado.
                 if (!tplName) {
                   try {
                     const tpls = $app.findRecordsByFilter(
                       'whatsapp_templates',
                       "status = 'APPROVED'",
                       '-created',
-                      1,
+                      20,
                       0,
                     )
-                    if (tpls && tpls.length > 0) {
-                      tplName = (tpls[0].getString('name') || '').trim()
-                      tplLang = (tpls[0].getString('language') || 'pt_BR').trim() || 'pt_BR'
+                    for (let ti2 = 0; ti2 < (tpls ? tpls.length : 0); ti2++) {
+                      const cand = tpls[ti2]
+                      const cName = (cand.getString('name') || '').trim()
+                      const cLang = (cand.getString('language') || '').trim()
+                      const isGeneric = /^brf_abertura/i.test(cName)
+                      if (isGeneric && cLang === 'pt_BR') {
+                        tplName = cName
+                        tplLang = cLang
+                        break
+                      }
                     }
                   } catch (_) {}
                 }
