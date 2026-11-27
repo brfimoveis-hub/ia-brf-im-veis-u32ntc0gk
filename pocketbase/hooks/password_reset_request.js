@@ -1,17 +1,17 @@
 /**
- * REDEFINIÇÃO DE SENHA — ROTA PRÓPRIA DE SOLICITAÇÃO (v0.0.1497)
+ * REDEFINIÇÃO DE SENHA — ROTA PRÓPRIA DE SOLICITAÇÃO (v0.0.1500)
  *
- * Problema provado pelos logs (27/11/2026): a rota NATIVA
- * POST /api/collections/users/request-password-reset nunca apareceu no log de
- * requests, o stream de emails ficou vazio e nenhum erro de hook foi registrado —
- * a tentativa do usuário morria antes de qualquer envio observável.
+ * Causa raiz provada nos logs (27/11/2026 21:10 UTC):
+ *  1. O envio usava `from: noreply@brfimoveis.com.br` (endereço SEM permissão
+ *     no relay SMTP da plataforma) — a tentativa de envio falhava no servidor
+ *     SMTP e o catch devolvia 500 com o motivo REAL, que o frontend descartava
+ *     e mostrava o erro genérico.
+ *  2. `$app.logger()` NÃO aparece no stream "hooks" dos logs (só console.*).
+ *     Trocado por console.warn/console.error para diagnóstico imediato.
  *
- * Solução: rota própria que (1) localiza o usuário, (2) gera o token de reset
- * nativo (record.newPasswordResetToken()), (3) envia o email direto via
- * $app.newMailClient() (mesmo caminho já provado em bulk_send_email.js,
- * process_email_campaign.js e send_email.js) e (4) LOGA cada etapa.
- * O link aponta para {SITE_URL}/reset-password?token=... (página do app).
- *
+ * Correção: envia com o sender NATIVO da plataforma ($app.settings().meta.*,
+ * mesmo remetente do email nativo de reset do PocketBase) + 1 retry após 1s
+ * + resposta com motivo específico. O link aponta para {SITE_URL}/reset-password.
  * Não altera nada do motor da Bia/régua/Maestro (REGRA DE OURO).
  */
 routerAdd('POST', '/backend/v1/request-password-reset', (e) => {
@@ -23,25 +23,25 @@ routerAdd('POST', '/backend/v1/request-password-reset', (e) => {
     return e.badRequestError('O campo email é obrigatório')
   }
 
-  $app.logger().warn('[PWD_RESET] Solicitação recebida', 'email', email)
+  console.log('[PWD_RESET] Solicitação recebida para ' + email)
 
   let user
   try {
     user = $app.findAuthRecordByEmail('users', email)
   } catch (_) {
-    $app.logger().warn('[PWD_RESET] Usuário não encontrado', 'email', email)
-    return e.notFoundError('Usuário não encontrado.')
+    console.warn('[PWD_RESET] Usuário não encontrado: ' + email)
+    return e.notFoundError('Usuário não encontrado. Verifique o email digitado.')
   }
 
   let token = ''
   try {
     token = user.newPasswordResetToken()
   } catch (err) {
-    $app.logger().error('[PWD_RESET] Falha ao gerar token', 'error', String(err && err.message))
+    console.error('[PWD_RESET] Falha ao gerar token: ' + String(err && err.message))
     return e.json(500, { sent: false, error: 'Falha ao gerar token de redefinição.' })
   }
   if (!token) {
-    $app.logger().error('[PWD_RESET] Token vazio', 'user', user.id)
+    console.error('[PWD_RESET] Token vazio para user=' + user.id)
     return e.json(500, { sent: false, error: 'Falha ao gerar token de redefinição.' })
   }
 
@@ -82,34 +82,52 @@ routerAdd('POST', '/backend/v1/request-password-reset', (e) => {
     '<p style="color:#888;font-size:12px;margin-top:24px;">Se você não solicitou esta alteração, ignore este email. O link expira em 30 minutos.</p>' +
     '</div>'
 
+  // Sender nativo da plataforma (mesmo remetente do email de reset nativo do PB)
+  let fromAddress = 'noreply@brfimoveis.com.br'
+  let fromName = 'BRF Imóveis'
   try {
-    const mailClient = $app.newMailClient()
-    const message = new MailMessage({
-      from: { name: 'BRF Imóveis', address: 'noreply@brfimoveis.com.br' },
+    const meta = $app.settings().meta
+    if (meta && meta.senderAddress) {
+      fromAddress = meta.senderAddress
+      if (meta.senderName) fromName = meta.senderName
+    }
+  } catch (settingsErr) {
+    console.warn('[PWD_RESET] settings().meta indisponível: ' + String(settingsErr))
+  }
+
+  const buildMessage = () =>
+    new MailerMessage({
+      from: { name: fromName, address: fromAddress },
       to: [{ name: userName, address: userEmail }],
       subject: 'Redefinição de senha — BRF Imóveis',
       html: htmlBody,
     })
-    mailClient.send(message)
+
+  let lastErr = ''
+  try {
+    try {
+      $app.newMailClient().send(buildMessage())
+    } catch (firstErr) {
+      lastErr = String((firstErr && firstErr.message) || firstErr)
+      console.error('[PWD_RESET] 1a tentativa falhou: ' + lastErr + ' — retry em 1s')
+      // retry único após 1s (instabilidade pontual do SMTP)
+      const until = Date.now() + 1000
+      while (Date.now() < until) {}
+      $app.newMailClient().send(buildMessage())
+    }
   } catch (err) {
-    $app
-      .logger()
-      .error(
-        '[PWD_RESET] FALHA no envio do email',
-        'error',
-        String(err && err.message),
-        'to',
-        userEmail,
-      )
+    const motivo = String((err && err.message) || err)
+    console.error('[PWD_RESET] FALHA DEFINITIVA no envio (sender=' + fromAddress + '): ' + motivo)
     return e.json(500, {
       sent: false,
       error:
-        'Falha ao enviar o email de redefinição: ' +
-        (err && err.message ? err.message : 'erro desconhecido'),
+        'Servidor de email indisponível (' +
+        motivo.slice(0, 120) +
+        '). Tente novamente em alguns minutos.',
     })
   }
 
-  $app.logger().warn('[PWD_RESET] Email de redefinição ENVIADO', 'to', userEmail, 'link', resetLink)
+  console.log('[PWD_RESET] Email ENVIADO para ' + userEmail + ' (sender=' + fromAddress + ')')
 
   return e.json(200, { sent: true })
 })
