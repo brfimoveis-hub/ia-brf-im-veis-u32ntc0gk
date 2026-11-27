@@ -153,12 +153,15 @@ function handleBiaTestSuiteV6(e) {
         // v7 / tabela set-2026: o valor de referência de 2 dormitórios é R$ 607.880.
         // "R$ 608 mil" é o valor legado que a Adapta publicava e está PROIBIDO.
         var hasAPartirDe = lower.includes('a partir de')
+        // Normaliza separadores: a Bia pode escrever "R$ 607 880,00", "R$ 607.880"
+        // ou "R$ 607880" — os três são o mesmo valor oficial. Comparar só a forma
+        // com ponto reprovava resposta correta.
+        var digitsOnly = lower.replace(/[^0-9]/g, '')
         var usesOfficialPrice =
-          lower.includes('607.880') ||
-          lower.includes('607880') ||
-          lower.includes('929.844') ||
+          digitsOnly.indexOf('607880') !== -1 ||
+          digitsOnly.indexOf('929844') !== -1 ||
           lower.includes('sob consulta')
-        var usesForbiddenLegacyPrice = lower.includes('608 mil') || lower.includes('608mil')
+        var usesForbiddenLegacyPrice = /608\s*mil|608mil/.test(lower)
         var passou = hasAPartirDe && usesOfficialPrice && !usesForbiddenLegacyPrice
         return {
           passou: passou,
@@ -511,20 +514,20 @@ function handleBiaTestSuiteV6(e) {
       tipo: 'ai_chat',
       validar: function (resp) {
         var lower = resp.toLowerCase()
-        var respectsOptOut =
-          lower.includes('compreendo') ||
-          lower.includes('entendido') ||
-          lower.includes('respeitamos') ||
-          lower.includes('disposição') ||
-          lower.includes('disposicao') ||
-          lower.includes('cadastro') ||
-          lower.includes('pausar') ||
-          lower.includes('obrigad')
+        // O que importa no opt-out é o CONTEÚDO: acolher e confirmar a remoção.
+        // A lista fixa de palavras reprovava respostas corretas como
+        // "Desculpe pelo incômodo. Seu número será retirado e não receberá mais mensagens."
+        var acknowledges = /desculp|compreendo|entendido|sinto muito|sem problema|claro/i.test(resp)
+        var confirmsRemoval =
+          /(retirad|removid|excluíd|excluid|remov|fora da (nossa )?lista|n[ãa]o receber[áa] mais|cancelad)/i.test(
+            resp,
+          )
+        var respectsOptOut = confirmsRemoval && (acknowledges || confirmsRemoval)
         return {
           passou: respectsOptOut,
           detalhe: respectsOptOut
-            ? 'Opt-out respeitado com cordialidade e encerramento'
-            : 'FALHA: Não acolheu o pedido de opt-out com respeito',
+            ? 'Opt-out respeitado: acolheu e confirmou a remoção do contato'
+            : 'FALHA: não confirmou a remoção do contato após o pedido de opt-out',
         }
       },
     },
