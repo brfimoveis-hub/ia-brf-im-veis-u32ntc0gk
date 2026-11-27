@@ -5,7 +5,12 @@
 //
 // PROVEDOR: Google Cloud Text-to-Speech (Chirp 3: HD)
 //   - 1 milhão de caracteres/mês grátis -> custo zero no volume atual
-//   - Vozes pt-BR Chirp3-HD: Aoede, Kore, Leda, Zephyr, Callirrhoe, Despina, ...
+//   - Voz escolhida (alta renda): pt-BR-Chirp3-HD-Kore
+//     Descritor oficial Google: "Firm" / "Clear & Professional" /
+//     "Precise, Authoritative, Trustworthy" — é a voz de marca confiante,
+//     que é o registro que comprador de alto padrão espera. Alternativas
+//     guardadas para comparação: Despina (smooth/aveludada),
+//     Sulafat (warm/trustworthy), Gacrux (mature/gravitas).
 //   - Saída OGG_OPUS nativa = exatamente o formato de nota de voz do WhatsApp
 //
 // AUTENTICAÇÃO (em ordem de preferência):
@@ -40,7 +45,7 @@ routerAdd('GET', '/backend/v1/bia/voice/status', (e) => {
 
   var apiKey = sec('GOOGLE_TTS_API_KEY')
   var saRaw = sec('GOOGLE_TTS_SA_JSON')
-  var voz = sec('GOOGLE_TTS_VOICE') || 'pt-BR-Chirp3-HD-Aoede'
+  var voz = sec('GOOGLE_TTS_VOICE') || 'pt-BR-Chirp3-HD-Kore'
 
   var saEmail = ''
   var saProjeto = ''
@@ -240,9 +245,9 @@ routerAdd('GET', '/backend/v1/bia/voice/sample', (e) => {
     vozSalva = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
   } catch (_) {}
 
-  var voz = String(q.voice || vozSalva || 'pt-BR-Chirp3-HD-Aoede').trim()
+  var voz = String(q.voice || vozSalva || 'pt-BR-Chirp3-HD-Kore').trim()
   if (!/^pt-BR-[A-Za-z0-9-]+$/.test(voz)) {
-    return e.json(400, { ok: false, erro: 'voz inválida: use algo como pt-BR-Chirp3-HD-Aoede' })
+    return e.json(400, { ok: false, erro: 'voz inválida: use algo como pt-BR-Chirp3-HD-Kore' })
   }
 
   var texto =
@@ -398,7 +403,7 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
     voz = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
   } catch (_) {}
   if (String(b.voice || '').trim()) voz = String(b.voice).trim()
-  if (!voz) voz = 'pt-BR-Chirp3-HD-Aoede'
+  if (!voz) voz = 'pt-BR-Chirp3-HD-Kore'
   if (!/^pt-BR-[A-Za-z0-9-]+$/.test(voz)) return e.json(400, { ok: false, erro: 'voz inválida' })
 
   // credenciais do WhatsApp
