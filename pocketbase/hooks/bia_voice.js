@@ -588,11 +588,20 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   }
   var mediaId = up && up.json && up.json.id ? String(up.json.id) : ''
   if (!mediaId) {
+    var upBody = ''
+    try {
+      if (up && up.json) upBody = JSON.stringify(up.json).substring(0, 600)
+      else if (up && typeof up.body === 'string') upBody = up.body.substring(0, 600)
+      else if (up && up.body && up.body.length) {
+        upBody = String.fromCharCode.apply(null, Array.prototype.slice.call(up.body, 0, 600))
+      }
+    } catch (_) {}
     return e.json(502, {
       ok: false,
       etapa: 'upload',
       status: up ? up.statusCode : 0,
       erro: 'Meta não devolveu media id',
+      resposta_meta: upBody,
     })
   }
 
