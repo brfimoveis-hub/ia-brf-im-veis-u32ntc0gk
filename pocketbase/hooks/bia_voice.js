@@ -571,10 +571,22 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   off += audio.length
   buf.set(tb, off)
 
+  // appsecret_proof: a Meta recusa chamadas de servidor sem assinatura.
+  // O projeto já usa $security.hs256 para isso no readiness.
+  var proof = ''
+  try {
+    var appSecret = user.getString('meta_app_secret') || ''
+    if (!appSecret) appSecret = user.getString('meta_instagram_app_secret') || ''
+    if (!appSecret) appSecret = String($os.getenv('META_APP_SECRET') || '')
+    if (appSecret && waToken) {
+      proof = '?appsecret_proof=' + $security.hs256(String(waToken), String(appSecret))
+    }
+  } catch (_) {}
+
   var up = null
   try {
     up = $http.send({
-      url: 'https://graph.facebook.com/v21.0/' + phoneId + '/media',
+      url: 'https://graph.facebook.com/v21.0/' + phoneId + '/media' + proof,
       method: 'POST',
       headers: {
         Authorization: 'Bearer ' + waToken,
@@ -609,7 +621,7 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   var sendRes = null
   try {
     sendRes = $http.send({
-      url: 'https://graph.facebook.com/v21.0/' + phoneId + '/messages',
+      url: 'https://graph.facebook.com/v21.0/' + phoneId + '/messages' + proof,
       method: 'POST',
       headers: { Authorization: 'Bearer ' + waToken, 'Content-Type': 'application/json' },
       body: JSON.stringify({
