@@ -2,27 +2,35 @@
 // VOZ DA BIA — BRF IMÓVEIS
 //
 // Perfil pedido pelo Mauro: aveludada, executiva, agradável ao ouvido.
-// Provedor: ElevenLabs (único com timbre "aveludado/executivo" e saída
-// Opus 48 kHz, que é o que o WhatsApp exige para virar NOTA DE VOZ de verdade).
 //
-// Rotas:
-//   GET  /backend/v1/bia/voice/status   -> está configurada? qual voz? (não gasta)
-//   GET  /backend/v1/bia/voice/voices   -> lista as vozes disponíveis na conta
-//   GET/POST /backend/v1/bia/voice/sample?voice_id=...&text=...
-//                                        -> devolve o ÁUDIO (para o Mauro ouvir)
-//   POST /backend/v1/bia/voice/say      -> sintetiza e envia nota de voz no WhatsApp
+// PROVEDOR: Google Cloud Text-to-Speech (Chirp 3: HD)
+//   - 1 milhão de caracteres/mês grátis  -> na prática custo zero no volume atual
+//   - Vozes pt-BR Chirp3-HD: Aoede, Kore, Leda, Zephyr, Callirrhoe, Despina, ...
+//   - Saída OGG_OPUS nativa, que é exatamente o formato de nota de voz do WhatsApp
+//
+// AUTENTICAÇÃO: conta de serviço do Google (JSON).
+//   A API do Google TTS NÃO aceita chave simples (API key) de forma confiável:
+//   a documentação de autenticação exige credencial de serviço. Por isso o
+//   segredo é o JSON inteiro da conta de serviço, e o token é obtido aqui
+//   assinando um JWT RS256 com a chave privada dela (fluxo OAuth2 padrão).
+//
+// ROTAS:
+//   GET  /backend/v1/bia/voice/status   -> está pronta? (não gasta nada)
+//   GET  /backend/v1/bia/voice/voices   -> lista as vozes pt-BR disponíveis
+//   GET/POST /backend/v1/bia/voice/sample?voice=...&text=...
+//                                       -> devolve o ÁUDIO para o Mauro ouvir
+//   POST /backend/v1/bia/voice/say      -> sintetiza e envia NOTA DE VOZ no WhatsApp
+//
+// Segredos (nunca no código):
+//   GOOGLE_TTS_SA_JSON  -> conteúdo do JSON da conta de serviço
+//   GOOGLE_TTS_VOICE    -> ex.: pt-BR-Chirp3-HD-Aoede
 //
 // IMPORTANTE: no Skip Cloud cada handler é extraído sem o escopo do arquivo,
 // então cada handler é autossuficiente (nenhuma função auxiliar no topo).
-//
-// Segredos usados (nunca ficam no código):
-//   ELEVENLABS_API_KEY   -> chave da conta de voz
-//   ELEVENLABS_VOICE_ID  -> a voz aprovada pelo Mauro
-//   ELEVENLABS_MODEL     -> opcional; padrão eleven_multilingual_v2
 // ============================================================================
 
 // ---------------------------------------------------------------------------
-// STATUS — diz se a voz está pronta, sem gastar crédito nenhum
+// STATUS
 // ---------------------------------------------------------------------------
 routerAdd('GET', '/backend/v1/bia/voice/status', (e) => {
   function sec(k) {
@@ -37,81 +45,179 @@ routerAdd('GET', '/backend/v1/bia/voice/status', (e) => {
     return ''
   }
 
-  var key = sec('ELEVENLABS_API_KEY')
-  var voiceId = sec('ELEVENLABS_VOICE_ID')
-  var model = sec('ELEVENLABS_MODEL') || 'eleven_multilingual_v2'
+  var raw = sec('GOOGLE_TTS_SA_JSON')
+  var voice = sec('GOOGLE_TTS_VOICE') || 'pt-BR-Chirp3-HD-Aoede'
+
+  var saOk = false
+  var saEmail = ''
+  var problema = ''
+  if (!raw) {
+    problema = 'GOOGLE_TTS_SA_JSON não configurado'
+  } else {
+    try {
+      var sa = JSON.parse(raw)
+      saEmail = String(sa.client_email || '')
+      saOk = !!(sa.client_email && sa.private_key && sa.project_id)
+      if (!saOk) problema = 'JSON sem client_email/private_key/project_id'
+    } catch (err) {
+      problema = 'JSON inválido: ' + String(err).substring(0, 120)
+    }
+  }
 
   var ativo = false
-  var motivo = ''
   try {
     var rc = $app.findFirstRecordByFilter('app_controls', "key = 'bia_voice_reply_active'")
     ativo = rc.getBool('is_active')
-  } catch (_) {
-    motivo = 'controle bia_voice_reply_active ainda não existe (padrão: desligado)'
-  }
+  } catch (_) {}
 
   return e.json(200, {
-    chave_configurada: key.length > 0,
-    voz_definida: voiceId.length > 0,
-    voz_id: voiceId ? voiceId.substring(0, 12) + '…' : '',
-    modelo: model,
+    credencial_ok: saOk,
+    conta_servico: saEmail ? saEmail.substring(0, 40) : '',
+    projeto: (function () {
+      try {
+        return JSON.parse(raw).project_id || ''
+      } catch (_) {
+        return ''
+      }
+    })(),
+    voz: voice,
     resposta_em_voz_ativa: ativo,
-    usa_controle: 'app_controls.bia_voice_reply_active',
-    nota:
-      motivo ||
-      (ativo
-        ? 'Bia responde em voz quando o cliente manda áudio.'
-        : 'Desligado: Bia só responde por texto até o Mauro aprovar a voz.'),
-    pronto: key.length > 0 && voiceId.length > 0,
+    pronto: saOk && ativo,
+    problema: problema,
+    nota: ativo
+      ? 'Bia responde em voz quando o cliente manda áudio.'
+      : 'Desligado: Bia responde por texto até o Mauro aprovar a voz.',
   })
 })
 
 // ---------------------------------------------------------------------------
-// VOICES — lista as vozes da conta para o Mauro escolher o timbre
+// VOICES — lista as vozes pt-BR disponíveis (precisa da credencial)
 // ---------------------------------------------------------------------------
 routerAdd('GET', '/backend/v1/bia/voice/voices', (e) => {
-  var key = ''
+  var raw = ''
   try {
-    key = String($secrets.get('ELEVENLABS_API_KEY') || '').trim()
+    raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
   } catch (_) {}
-  if (!key) return e.json(400, { ok: false, erro: 'ELEVENLABS_API_KEY não configurada' })
+  if (!raw) return e.json(400, { ok: false, erro: 'GOOGLE_TTS_SA_JSON não configurado' })
 
-  var res = null
+  var sa = null
   try {
-    res = $http.send({
-      url: 'https://api.elevenlabs.io/v1/voices',
+    sa = JSON.parse(raw)
+  } catch (err) {
+    return e.json(400, { ok: false, erro: 'JSON da conta de serviço inválido' })
+  }
+
+  // --- token OAuth2 a partir do JWT RS256
+  var crypto = null
+  try {
+    crypto = require('crypto')
+  } catch (err) {
+    return e.json(500, { ok: false, erro: 'módulo crypto indisponível: ' + String(err) })
+  }
+
+  function b64url(buf) {
+    return Buffer.from(buf)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+  }
+
+  var now = Math.floor(Date.now() / 1000)
+  var header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+  var claim = b64url(
+    JSON.stringify({
+      iss: sa.client_email,
+      scope: 'https://www.googleapis.com/auth/cloud-platform',
+      aud: 'https://oauth2.googleapis.com/token',
+      exp: now + 3600,
+      iat: now,
+    }),
+  )
+  var signingInput = header + '.' + claim
+  var signature = ''
+  try {
+    var signer = crypto.createSign('RSA-SHA256')
+    signer.update(signingInput)
+    signature = b64url(signer.sign(String(sa.private_key)))
+  } catch (err) {
+    return e.json(500, {
+      ok: false,
+      erro: 'falha ao assinar JWT: ' + String(err).substring(0, 150),
+    })
+  }
+  var assertion = signingInput + '.' + signature
+
+  var tokRes = null
+  try {
+    tokRes = $http.send({
+      url: 'https://oauth2.googleapis.com/token',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:
+        'grant_type=' +
+        encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
+        '&assertion=' +
+        encodeURIComponent(assertion),
+      timeout: 30,
+    })
+  } catch (err) {
+    return e.json(502, { ok: false, erro: 'falha de rede no token: ' + String(err) })
+  }
+  if (!tokRes || tokRes.statusCode !== 200 || !tokRes.json || !tokRes.json.access_token) {
+    var e1 = ''
+    try {
+      if (tokRes && tokRes.json && tokRes.json.error_description)
+        e1 = String(tokRes.json.error_description).substring(0, 200)
+    } catch (_) {}
+    return e.json(502, {
+      ok: false,
+      status: tokRes ? tokRes.statusCode : 0,
+      erro: 'Google recusou o token: ' + e1,
+    })
+  }
+  var token = tokRes.json.access_token
+
+  var listRes = null
+  try {
+    listRes = $http.send({
+      url: 'https://texttospeech.googleapis.com/v1/voices?languageCode=pt-BR',
       method: 'GET',
-      headers: { 'xi-api-key': key },
+      headers: { Authorization: 'Bearer ' + token },
       timeout: 30,
     })
   } catch (err) {
     return e.json(502, { ok: false, erro: String(err) })
   }
-  if (!res || res.statusCode !== 200 || !res.json) {
+  if (!listRes || listRes.statusCode !== 200 || !listRes.json) {
     return e.json(502, {
       ok: false,
-      status: res ? res.statusCode : 0,
-      erro: 'a ElevenLabs recusou a listagem de vozes',
+      status: listRes ? listRes.statusCode : 0,
+      erro: 'falha ao listar vozes',
     })
   }
 
-  var list = (res.json && res.json.voices) || []
+  var vs = (listRes.json && listRes.json.voices) || []
   var out = []
-  for (var i = 0; i < list.length; i++) {
-    var v = list[i] || {}
+  for (var i = 0; i < vs.length; i++) {
+    var v = vs[i] || {}
+    var n = String(v.name || '')
     out.push({
-      voice_id: v.voice_id || '',
-      name: v.name || '',
-      categoria: v.category || '',
-      descricao: v.description || '',
-      rotulos: v.labels || {},
+      voz: n,
+      genero: v.ssmlGender || '',
+      taxa_natural: v.naturalSampleRateHertz || 0,
+      chirp: n.indexOf('Chirp3-HD') !== -1,
     })
   }
+  out.sort(function (a, b) {
+    if (a.chirp !== b.chirp) return a.chirp ? -1 : 1
+    return a.voz < b.voz ? -1 : 1
+  })
   return e.json(200, { ok: true, total: out.length, vozes: out })
 })
 
 // ---------------------------------------------------------------------------
-// SAMPLE — devolve o áudio cru para o Mauro ESCUTAR e aprovar
+// SAMPLE — devolve o áudio para o Mauro ESCUTAR e aprovar
 // ---------------------------------------------------------------------------
 routerAdd('GET', '/backend/v1/bia/voice/sample', (e) => {
   var q = {}
@@ -119,21 +225,27 @@ routerAdd('GET', '/backend/v1/bia/voice/sample', (e) => {
     q = e.requestInfo().query || {}
   } catch (_) {}
 
-  var key = ''
+  var raw = ''
   var defaultVoice = ''
   try {
-    key = String($secrets.get('ELEVENLABS_API_KEY') || '').trim()
+    raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
   } catch (_) {}
   try {
-    defaultVoice = String($secrets.get('ELEVENLABS_VOICE_ID') || '').trim()
+    defaultVoice = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
   } catch (_) {}
+  if (!raw) return e.json(400, { ok: false, erro: 'GOOGLE_TTS_SA_JSON não configurado' })
 
-  if (!key) return e.json(400, { ok: false, erro: 'ELEVENLABS_API_KEY não configurada' })
+  var sa = null
+  try {
+    sa = JSON.parse(raw)
+  } catch (_) {
+    return e.json(400, { ok: false, erro: 'JSON da conta de serviço inválido' })
+  }
 
-  var voiceId = String(q.voice_id || defaultVoice || '').trim()
-  if (!voiceId) return e.json(400, { ok: false, erro: 'informe voice_id' })
-  if (!/^[A-Za-z0-9_-]{6,40}$/.test(voiceId))
-    return e.json(400, { ok: false, erro: 'voice_id inválido' })
+  var voice = String(q.voice || defaultVoice || 'pt-BR-Chirp3-HD-Aoede').trim()
+  if (!/^pt-BR-[A-Za-z0-9-]+$/.test(voice)) {
+    return e.json(400, { ok: false, erro: 'voz inválida (use pt-BR-...)' })
+  }
 
   var texto =
     String(q.text || '').trim() ||
@@ -141,49 +253,121 @@ routerAdd('GET', '/backend/v1/bia/voice/sample', (e) => {
       'Eu cuido dos lançamentos e dos imóveis de terceiros aqui em Florianópolis e região. ' +
       'Me conta o que você procura, que eu te mostro as opções que realmente combinam com você.'
 
-  // Ajustes de timbre para soar aveludada e executiva, sem pressa de vendedora.
-  var payload = {
-    text: texto.substring(0, 2500),
-    model_id: 'eleven_multilingual_v2',
-    voice_settings: {
-      stability: 0.45,
-      similarity_boost: 0.8,
-      style: 0.3,
-      use_speaker_boost: true,
+  var crypto = null
+  try {
+    crypto = require('crypto')
+  } catch (err) {
+    return e.json(500, { ok: false, erro: 'crypto indisponível' })
+  }
+  function b64(b) {
+    return Buffer.from(b)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+  }
+  var now = Math.floor(Date.now() / 1000)
+  var si =
+    b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) +
+    '.' +
+    b64(
+      JSON.stringify({
+        iss: sa.client_email,
+        scope: 'https://www.googleapis.com/auth/cloud-platform',
+        aud: 'https://oauth2.googleapis.com/token',
+        exp: now + 3600,
+        iat: now,
+      }),
+    )
+  var sig = ''
+  try {
+    var s = crypto.createSign('RSA-SHA256')
+    s.update(si)
+    sig = b64(s.sign(String(sa.private_key)))
+  } catch (err) {
+    return e.json(500, { ok: false, erro: 'falha ao assinar JWT' })
+  }
+
+  var tok = null
+  try {
+    tok = $http.send({
+      url: 'https://oauth2.googleapis.com/token',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:
+        'grant_type=' +
+        encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
+        '&assertion=' +
+        encodeURIComponent(si + '.' + sig),
+      timeout: 30,
+    })
+  } catch (err) {
+    return e.json(502, { ok: false, erro: String(err) })
+  }
+  if (!tok || tok.statusCode !== 200 || !tok.json || !tok.json.access_token) {
+    var d = ''
+    try {
+      if (tok && tok.json && tok.json.error_description)
+        d = String(tok.json.error_description).substring(0, 200)
+    } catch (_) {}
+    return e.json(502, {
+      ok: false,
+      status: tok ? tok.statusCode : 0,
+      erro: 'token recusado: ' + d,
+    })
+  }
+
+  var enc = q.format === 'mp3' ? 'MP3' : 'OGG_OPUS'
+  var bodyReq = {
+    input: { text: texto.substring(0, 4000) },
+    voice: { languageCode: 'pt-BR', name: voice },
+    audioConfig: {
+      audioEncoding: enc,
+      sampleRateHertz: enc === 'OGG_OPUS' ? 48000 : 24000,
+      speakingRate: Number(q.rate || 0.95),
+      pitch: Number(q.pitch || 0),
     },
   }
 
-  var fmt = q.format === 'mp3' ? 'mp3_44100_128' : 'opus_48000_64'
-  var res = null
+  var syn = null
   try {
-    res = $http.send({
-      url: 'https://api.elevenlabs.io/v1/text-to-speech/' + voiceId + '?output_format=' + fmt,
+    syn = $http.send({
+      url: 'https://texttospeech.googleapis.com/v1/text:synthesize',
       method: 'POST',
-      headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: {
+        Authorization: 'Bearer ' + tok.json.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(bodyReq),
       timeout: 90,
     })
   } catch (err) {
     return e.json(502, { ok: false, erro: String(err) })
   }
 
-  if (!res || res.statusCode !== 200) {
+  if (!syn || syn.statusCode !== 200 || !syn.json || !syn.json.audioContent) {
     var em = ''
     try {
-      if (res && res.json && res.json.detail) em = JSON.stringify(res.json.detail).substring(0, 300)
+      if (syn && syn.json && syn.json.error && syn.json.error.message)
+        em = String(syn.json.error.message).substring(0, 250)
     } catch (_) {}
     return e.json(502, {
       ok: false,
-      status: res ? res.statusCode : 0,
-      erro: em || 'a ElevenLabs recusou a síntese',
-      voice_id: voiceId,
+      status: syn ? syn.statusCode : 0,
+      erro: em || 'Google recusou a síntese',
+      voz: voice,
     })
   }
 
-  var bytes = res.body
+  var bytes = null
+  try {
+    bytes = new Uint8Array(Buffer.from(String(syn.json.audioContent), 'base64'))
+  } catch (err) {
+    return e.json(500, { ok: false, erro: 'falha ao decodificar o áudio' })
+  }
   if (!bytes || !bytes.length) return e.json(502, { ok: false, erro: 'áudio vazio' })
 
-  return e.blob(200, q.format === 'mp3' ? 'audio/mpeg' : 'audio/ogg', bytes)
+  return e.blob(200, enc === 'MP3' ? 'audio/mpeg' : 'audio/ogg', bytes)
 })
 
 routerAdd('POST', '/backend/v1/bia/voice/sample', (e) => {
@@ -192,61 +376,134 @@ routerAdd('POST', '/backend/v1/bia/voice/sample', (e) => {
     b = e.requestInfo().body || {}
   } catch (_) {}
 
-  var key = ''
+  var raw = ''
   var defaultVoice = ''
   try {
-    key = String($secrets.get('ELEVENLABS_API_KEY') || '').trim()
+    raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
   } catch (_) {}
   try {
-    defaultVoice = String($secrets.get('ELEVENLABS_VOICE_ID') || '').trim()
+    defaultVoice = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
   } catch (_) {}
-  if (!key) return e.json(400, { ok: false, erro: 'ELEVENLABS_API_KEY não configurada' })
+  if (!raw) return e.json(400, { ok: false, erro: 'GOOGLE_TTS_SA_JSON não configurado' })
 
-  var voiceId = String(b.voice_id || defaultVoice || '').trim()
-  if (!voiceId || !/^[A-Za-z0-9_-]{6,40}$/.test(voiceId)) {
-    return e.json(400, { ok: false, erro: 'voice_id inválido' })
+  var sa = null
+  try {
+    sa = JSON.parse(raw)
+  } catch (_) {
+    return e.json(400, { ok: false, erro: 'JSON inválido' })
   }
+
+  var voice = String(b.voice || defaultVoice || 'pt-BR-Chirp3-HD-Aoede').trim()
+  if (!/^pt-BR-[A-Za-z0-9-]+$/.test(voice)) return e.json(400, { ok: false, erro: 'voz inválida' })
 
   var texto =
     String(b.text || '').trim() ||
-    'Oi! Aqui é a Bia, da BRF Imóveis. Que bom te encontrar. ' +
-      'Me conta o que você procura, que eu te mostro as opções que combinam com você.'
+    'Oi! Aqui é a Bia, da BRF Imóveis. Que bom te encontrar. Me conta o que você procura.'
 
-  var payload = {
-    text: texto.substring(0, 2500),
-    model_id: 'eleven_multilingual_v2',
-    voice_settings: {
-      stability: Number(b.stability || 0.45),
-      similarity_boost: Number(b.similarity_boost || 0.8),
-      style: Number(b.style || 0.3),
-      use_speaker_boost: true,
-    },
+  var crypto = null
+  try {
+    crypto = require('crypto')
+  } catch (_) {
+    return e.json(500, { ok: false, erro: 'crypto indisponível' })
+  }
+  function b64(x) {
+    return Buffer.from(x)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+  }
+  var now = Math.floor(Date.now() / 1000)
+  var si =
+    b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) +
+    '.' +
+    b64(
+      JSON.stringify({
+        iss: sa.client_email,
+        scope: 'https://www.googleapis.com/auth/cloud-platform',
+        aud: 'https://oauth2.googleapis.com/token',
+        exp: now + 3600,
+        iat: now,
+      }),
+    )
+  var sg = ''
+  try {
+    var sr = crypto.createSign('RSA-SHA256')
+    sr.update(si)
+    sg = b64(sr.sign(String(sa.private_key)))
+  } catch (_) {
+    return e.json(500, { ok: false, erro: 'falha ao assinar JWT' })
   }
 
-  var fmt = b.format === 'mp3' ? 'mp3_44100_128' : 'opus_48000_64'
-  var res = null
+  var tk = null
   try {
-    res = $http.send({
-      url: 'https://api.elevenlabs.io/v1/text-to-speech/' + voiceId + '?output_format=' + fmt,
+    tk = $http.send({
+      url: 'https://oauth2.googleapis.com/token',
       method: 'POST',
-      headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:
+        'grant_type=' +
+        encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
+        '&assertion=' +
+        encodeURIComponent(si + '.' + sg),
+      timeout: 30,
+    })
+  } catch (err) {
+    return e.json(502, { ok: false, erro: String(err) })
+  }
+  if (!tk || tk.statusCode !== 200 || !tk.json || !tk.json.access_token) {
+    return e.json(502, { ok: false, status: tk ? tk.statusCode : 0, erro: 'token recusado' })
+  }
+
+  var enc = b.format === 'mp3' ? 'MP3' : 'OGG_OPUS'
+  var syn = null
+  try {
+    syn = $http.send({
+      url: 'https://texttospeech.googleapis.com/v1/text:synthesize',
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + tk.json.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        input: { text: texto.substring(0, 4000) },
+        voice: { languageCode: 'pt-BR', name: voice },
+        audioConfig: {
+          audioEncoding: enc,
+          sampleRateHertz: enc === 'OGG_OPUS' ? 48000 : 24000,
+          speakingRate: Number(b.rate || 0.95),
+        },
+      }),
       timeout: 90,
     })
   } catch (err) {
     return e.json(502, { ok: false, erro: String(err) })
   }
-  if (!res || res.statusCode !== 200) {
-    return e.json(502, { ok: false, status: res ? res.statusCode : 0, erro: 'síntese recusada' })
+  if (!syn || syn.statusCode !== 200 || !syn.json || !syn.json.audioContent) {
+    var m = ''
+    try {
+      if (syn && syn.json && syn.json.error && syn.json.error.message)
+        m = String(syn.json.error.message)
+    } catch (_) {}
+    return e.json(502, {
+      ok: false,
+      status: syn ? syn.statusCode : 0,
+      erro: m || 'síntese recusada',
+    })
   }
-  var bytes = res.body
-  if (!bytes || !bytes.length) return e.json(502, { ok: false, erro: 'áudio vazio' })
-  return e.blob(200, b.format === 'mp3' ? 'audio/mpeg' : 'audio/ogg', bytes)
+
+  var by = null
+  try {
+    by = new Uint8Array(Buffer.from(String(syn.json.audioContent), 'base64'))
+  } catch (_) {
+    return e.json(500, { ok: false, erro: 'falha ao decodificar' })
+  }
+  return e.blob(200, enc === 'MP3' ? 'audio/mpeg' : 'audio/ogg', by)
 })
 
 // ---------------------------------------------------------------------------
 // SAY — sintetiza e envia NOTA DE VOZ no WhatsApp
-// Body: { to: "5548999999999", text: "...", voice_id?: "..." }
+// Body: { to: "5548999999999", text: "...", voice?: "pt-BR-Chirp3-HD-Aoede" }
 // ---------------------------------------------------------------------------
 routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   var b = {}
@@ -260,73 +517,149 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   if (!to) return e.json(400, { ok: false, erro: 'informe o destino (to)' })
   if (!texto) return e.json(400, { ok: false, erro: 'informe o texto' })
 
-  var key = ''
-  var voiceId = ''
+  var raw = ''
+  var voice = ''
   try {
-    key = String($secrets.get('ELEVENLABS_API_KEY') || '').trim()
+    raw = String($secrets.get('GOOGLE_TTS_SA_JSON') || '').trim()
   } catch (_) {}
   try {
-    voiceId = String($secrets.get('ELEVENLABS_VOICE_ID') || '').trim()
+    voice = String($secrets.get('GOOGLE_TTS_VOICE') || '').trim()
   } catch (_) {}
-  if (String(b.voice_id || '').trim()) voiceId = String(b.voice_id).trim()
-  if (!key) return e.json(400, { ok: false, erro: 'ELEVENLABS_API_KEY não configurada' })
-  if (!voiceId) return e.json(400, { ok: false, erro: 'ELEVENLABS_VOICE_ID não configurada' })
+  if (String(b.voice || '').trim()) voice = String(b.voice).trim()
+  if (!voice) voice = 'pt-BR-Chirp3-HD-Aoede'
+  if (!raw) return e.json(400, { ok: false, erro: 'GOOGLE_TTS_SA_JSON não configurado' })
 
-  // Credenciais do WhatsApp (as mesmas que a Bia já usa)
-  var user = null
+  var sa = null
   try {
-    var users = $app.findRecordsByFilter('users', "email != ''", '-created', 1, 0)
-    if (users && users.length) user = users[0]
-  } catch (_) {}
-  if (!user) return e.json(500, { ok: false, erro: 'usuário do CRM não encontrado' })
-
-  var waToken = user.getString('meta_whatsapp_access_token') || ''
-  var phoneId = user.getString('meta_whatsapp_phone_number_id') || ''
-  if (!waToken || !phoneId) {
-    return e.json(400, { ok: false, erro: 'credenciais do WhatsApp ausentes' })
+    sa = JSON.parse(raw)
+  } catch (_) {
+    return e.json(400, { ok: false, erro: 'JSON da conta de serviço inválido' })
   }
 
-  // 1) Sintetizar em Opus 48 kHz (formato que vira nota de voz no WhatsApp)
-  var ttsRes = null
+  // credenciais do WhatsApp
+  var user = null
   try {
-    ttsRes = $http.send({
-      url:
-        'https://api.elevenlabs.io/v1/text-to-speech/' + voiceId + '?output_format=opus_48000_64',
+    var us = $app.findRecordsByFilter('users', "email != ''", '-created', 1, 0)
+    if (us && us.length) user = us[0]
+  } catch (_) {}
+  if (!user) return e.json(500, { ok: false, erro: 'usuário do CRM não encontrado' })
+  var waToken = user.getString('meta_whatsapp_access_token') || ''
+  var phoneId = user.getString('meta_whatsapp_phone_number_id') || ''
+  if (!waToken || !phoneId)
+    return e.json(400, { ok: false, erro: 'credenciais do WhatsApp ausentes' })
+
+  // 1) token Google
+  var crypto = null
+  try {
+    crypto = require('crypto')
+  } catch (_) {
+    return e.json(500, { ok: false, erro: 'crypto indisponível' })
+  }
+  function b64z(x) {
+    return Buffer.from(x)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+  }
+  var now = Math.floor(Date.now() / 1000)
+  var si =
+    b64z(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) +
+    '.' +
+    b64z(
+      JSON.stringify({
+        iss: sa.client_email,
+        scope: 'https://www.googleapis.com/auth/cloud-platform',
+        aud: 'https://oauth2.googleapis.com/token',
+        exp: now + 3600,
+        iat: now,
+      }),
+    )
+  var sg = ''
+  try {
+    var sr = crypto.createSign('RSA-SHA256')
+    sr.update(si)
+    sg = b64z(sr.sign(String(sa.private_key)))
+  } catch (_) {
+    return e.json(500, { ok: false, erro: 'falha ao assinar JWT' })
+  }
+
+  var tk = null
+  try {
+    tk = $http.send({
+      url: 'https://oauth2.googleapis.com/token',
       method: 'POST',
-      headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:
+        'grant_type=' +
+        encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
+        '&assertion=' +
+        encodeURIComponent(si + '.' + sg),
+      timeout: 30,
+    })
+  } catch (err) {
+    return e.json(502, { ok: false, etapa: 'token', erro: String(err) })
+  }
+  if (!tk || tk.statusCode !== 200 || !tk.json || !tk.json.access_token) {
+    return e.json(502, {
+      ok: false,
+      etapa: 'token',
+      status: tk ? tk.statusCode : 0,
+      erro: 'Google recusou o token',
+    })
+  }
+
+  // 2) síntese em OGG_OPUS
+  var syn = null
+  try {
+    syn = $http.send({
+      url: 'https://texttospeech.googleapis.com/v1/text:synthesize',
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + tk.json.access_token,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        text: texto.substring(0, 2500),
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: 0.45,
-          similarity_boost: 0.8,
-          style: 0.3,
-          use_speaker_boost: true,
-        },
+        input: { text: texto.substring(0, 4000) },
+        voice: { languageCode: 'pt-BR', name: voice },
+        audioConfig: { audioEncoding: 'OGG_OPUS', sampleRateHertz: 48000, speakingRate: 0.95 },
       }),
       timeout: 90,
     })
   } catch (err) {
     return e.json(502, { ok: false, etapa: 'tts', erro: String(err) })
   }
-  if (!ttsRes || ttsRes.statusCode !== 200 || !ttsRes.body || !ttsRes.body.length) {
+  if (!syn || syn.statusCode !== 200 || !syn.json || !syn.json.audioContent) {
+    var em2 = ''
+    try {
+      if (syn && syn.json && syn.json.error && syn.json.error.message)
+        em2 = String(syn.json.error.message).substring(0, 200)
+    } catch (_) {}
     return e.json(502, {
       ok: false,
       etapa: 'tts',
-      status: ttsRes ? ttsRes.statusCode : 0,
-      erro: 'síntese recusada',
+      status: syn ? syn.statusCode : 0,
+      erro: em2 || 'síntese recusada',
     })
   }
-  var audio = ttsRes.body
+
+  var audio = null
+  try {
+    audio = new Uint8Array(Buffer.from(String(syn.json.audioContent), 'base64'))
+  } catch (_) {
+    return e.json(500, { ok: false, etapa: 'decode', erro: 'falha ao decodificar o áudio' })
+  }
+  if (!audio || !audio.length)
+    return e.json(502, { ok: false, etapa: 'decode', erro: 'áudio vazio' })
   if (audio.length > 900000)
     return e.json(500, { ok: false, erro: 'áudio grande demais para nota de voz' })
 
-  // 2) Subir o áudio para a Meta (multipart montado byte a byte)
+  // 3) upload para a Meta (multipart montado byte a byte)
   var boundary = '----BiaVoice' + $security.randomString(24)
-  function bs(s) {
-    var out = []
-    for (var i = 0; i < s.length; i++) out.push(s.charCodeAt(i) & 0xff)
-    return out
+  function toBytes(str) {
+    var arr = []
+    for (var i = 0; i < str.length; i++) arr.push(str.charCodeAt(i) & 0xff)
+    return new Uint8Array(arr)
   }
   var head =
     '--' +
@@ -344,20 +677,19 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
     'Content-Type: audio/ogg\r\n\r\n'
   var tail = '\r\n--' + boundary + '--\r\n'
 
-  var headBytes = bs(head)
-  var tailBytes = bs(tail)
-  var total = headBytes.length + audio.length + tailBytes.length
-  var buf = new Uint8Array(total)
+  var hb = toBytes(head)
+  var tb = toBytes(tail)
+  var buf = new Uint8Array(hb.length + audio.length + tb.length)
   var off = 0
-  buf.set(new Uint8Array(headBytes), off)
-  off += headBytes.length
-  buf.set(audio instanceof Uint8Array ? audio : new Uint8Array(audio), off)
+  buf.set(hb, off)
+  off += hb.length
+  buf.set(audio, off)
   off += audio.length
-  buf.set(new Uint8Array(tailBytes), off)
+  buf.set(tb, off)
 
-  var upRes = null
+  var up = null
   try {
-    upRes = $http.send({
+    up = $http.send({
       url: 'https://graph.facebook.com/v21.0/' + phoneId + '/media',
       method: 'POST',
       headers: {
@@ -370,17 +702,17 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
   } catch (err) {
     return e.json(502, { ok: false, etapa: 'upload', erro: String(err) })
   }
-  var mediaId = upRes && upRes.json && upRes.json.id ? String(upRes.json.id) : ''
+  var mediaId = up && up.json && up.json.id ? String(up.json.id) : ''
   if (!mediaId) {
     return e.json(502, {
       ok: false,
       etapa: 'upload',
-      status: upRes ? upRes.statusCode : 0,
-      erro: 'a Meta não devolveu media id',
+      status: up ? up.statusCode : 0,
+      erro: 'Meta não devolveu media id',
     })
   }
 
-  // 3) Enviar como nota de voz (voice: true)
+  // 4) enviar como nota de voz
   var sendRes = null
   try {
     sendRes = $http.send({
@@ -420,6 +752,7 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
         media_id: mediaId,
         status: wamid ? 'sent' : 'failed',
         task_type: 'voice_reply',
+        voz: voice,
         chars: texto.length,
         audio_bytes: audio.length,
       }),
@@ -431,6 +764,7 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
     ok: !!wamid,
     media_id: mediaId,
     wamid: wamid,
+    voz: voice,
     audio_bytes: audio.length,
     status_meta: sendRes ? sendRes.statusCode : 0,
   })
