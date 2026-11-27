@@ -34,13 +34,18 @@ export default function ForgotPassword() {
     const sanitizedEmail = email.trim()
     setErrorMsg('')
     try {
-      await pb.send('/backend/v1/check-email', {
+      // Rota própria (prova em logs: a nativa request-password-reset nunca chegava
+      // a produzir email observável). O backend localiza o usuário, gera o token
+      // nativo e envia o email — 404 se o email não existe, 500 com motivo se falhar.
+      const res = (await pb.send('/backend/v1/request-password-reset', {
         method: 'POST',
         body: JSON.stringify({ email: sanitizedEmail }),
         headers: { 'Content-Type': 'application/json' },
-      })
-
-      await pb.collection('users').requestPasswordReset(sanitizedEmail)
+      })) as { sent?: boolean; error?: string }
+      console.log('[ForgotPassword] reset solicitado:', res)
+      if (res && res.sent === false) {
+        throw new Error(res.error || 'Falha no envio do email de redefinição.')
+      }
 
       toast({
         title: 'Email enviado',
