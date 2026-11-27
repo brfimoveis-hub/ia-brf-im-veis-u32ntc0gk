@@ -224,6 +224,35 @@ function handleMetaReadiness(e) {
     })
   }
 
+  // AUTO-CONFIGURAÇÃO: se o template genérico de abertura (brf_abertura_*) já
+  // estiver APROVADO e ainda não houver um fixado, fixa agora. Assim o sistema se
+  // ajusta sozinho quando a Meta aprova, sem ninguém precisar mexer.
+  var pendingOpening = null
+  if (!leadTpl) {
+    try {
+      var allTpls = $app.findRecordsByFilter('whatsapp_templates', '', '-created', 50, 0)
+      for (var ai = 0; ai < (allTpls ? allTpls.length : 0); ai++) {
+        var at = allTpls[ai]
+        var atName = (at.getString('name') || '').trim()
+        if (!/^brf_abertura/i.test(atName)) continue
+        var atStatus = (at.getString('status') || '').toUpperCase()
+        if (atStatus === 'APPROVED') {
+          if (!leadTpl) {
+            const pdFix = user.get('project_data') || {}
+            const pdObj = typeof pdFix === 'object' && pdFix !== null ? pdFix : {}
+            pdObj.lead_template = atName
+            pdObj.lead_template_lang = (at.getString('language') || 'pt_BR').trim() || 'pt_BR'
+            user.set('project_data', pdObj)
+            $app.saveNoValidate(user)
+            leadTpl = atName
+          }
+        } else if (!pendingOpening) {
+          pendingOpening = { name: atName, status: atStatus }
+        }
+      }
+    } catch (_) {}
+  }
+
   if (leadTpl) {
     add(
       'lead_template',
@@ -231,6 +260,18 @@ function handleMetaReadiness(e) {
       'ok',
       'Template fixado: ' + leadTpl + '.',
       '',
+    )
+  } else if (pendingOpening) {
+    add(
+      'lead_template',
+      'Template de abertura (fora da janela 24h)',
+      'warn',
+      'O template de abertura "' +
+        pendingOpening.name +
+        '" foi criado e está em análise pela Meta (status ' +
+        pendingOpening.status +
+        '). Enquanto não for aprovado, lead de formulário não recebe a primeira mensagem automática.',
+      'Aguardar a aprovação (costuma levar de minutos a algumas horas). Nada a fazer: o sistema fixa sozinho quando aprovar.',
     )
   } else if (templateList.length > 0) {
     add(
