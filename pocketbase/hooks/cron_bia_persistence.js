@@ -1940,6 +1940,60 @@ cronAdd('bia_persistence_followup', '*/15 * * * *', function () {
   // REGRA DO MAURO: Leads da campanha Vistage só rodam se a campanha estiver aprovada/ativa.
   // Leads da base geral rodam a régua normal de remarketing da base.
   // Base geral (sem tags de campanha) NUNCA entra na campanha Vistage.
+  // TETO DIÁRIO DE DISPAROS (26/11/2026):
+  // A régua processa 15 contatos por ciclo de 15 min: até ~60 ciclos numa janela
+  // de 10h úteis, ou seja ~600 mensagens/dia. Foi esse volume de mensagens quase
+  // idênticas que colocou a qualidade do número em risco. Aqui entra um teto
+  // configurável (padrão 120/dia), contado pelos envios REAIS do dia. Nada é
+  // desligado — o excedente apenas aguarda o dia seguinte.
+  var DAILY_SEND_CAP = 120
+  try {
+    var capCfg = app.findFirstRecordByFilter('app_controls', "key = 'regua_daily_cap'")
+    if (capCfg) {
+      var capVal = capCfg.getInt('is_active')
+      if (capVal > 0) DAILY_SEND_CAP = capVal
+    }
+  } catch (_) {}
+
+  var sentToday = 0
+  try {
+    var brNow = new Date(nowMsGlobal - 3 * 3600 * 1000)
+    var brDayIso = brNow.toISOString().substring(0, 10) + ' 00:00:00'
+    var attemptsToday = app.findRecordsByFilter(
+      'cadence_attempts',
+      "status = 'sent' && created >= '" + brDayIso + "'",
+      '',
+      1000,
+      0,
+    )
+    sentToday = attemptsToday ? attemptsToday.length : 0
+  } catch (_) {}
+  try {
+    var brNow2 = new Date(nowMsGlobal - 3 * 3600 * 1000)
+    var brDayIso2 = brNow2.toISOString().substring(0, 10) + ' 00:00:00'
+    var sendLogsToday = app.findRecordsByFilter(
+      'system_logs',
+      "type = 'whatsapp_ai_send' && created >= '" + brDayIso2 + "'",
+      '',
+      2000,
+      0,
+    )
+    if (sendLogsToday && sendLogsToday.length > sentToday) {
+      sentToday = sendLogsToday.length
+    }
+  } catch (_) {}
+
+  if (sentToday >= DAILY_SEND_CAP) {
+    console.log(
+      '[BIA_PERSISTENCE] Teto diário atingido (' +
+        sentToday +
+        '/' +
+        DAILY_SEND_CAP +
+        '). Régua pausa até amanhã — proteção da qualidade do número.',
+    )
+    return
+  }
+
   try {
     var scheduledBatchLimit = 15
     var scheduledCustomers = app.findRecordsByFilter(
