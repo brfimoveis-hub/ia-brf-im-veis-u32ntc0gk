@@ -1,5 +1,5 @@
 // TEMPORÁRIO — sonda de diagnóstico (remover depois)
-routerAdd('GET', '/backend/v1/bia/voice/probe', (e) => {
+routerAdd('POST', '/backend/v1/bia/voice/probe', (e) => {
   var q = {}
   try {
     q = e.requestInfo().query || {}
@@ -34,6 +34,22 @@ routerAdd('GET', '/backend/v1/bia/voice/probe', (e) => {
   if (String(q.t || '') === 'whisper') {
     try {
       var b64 = String(q.b64 || '')
+      if (!b64) {
+        try {
+          var raw = e.requestInfo().body
+          if (raw && raw.length) {
+            b64 = ''
+            var CH = 8192
+            var parts = []
+            for (var bi = 0; bi < raw.length; bi += CH) {
+              var end = Math.min(bi + CH, raw.length)
+              var sub = raw.subarray ? raw.subarray(bi, end) : raw.slice(bi, end)
+              parts.push(String.fromCharCode.apply(null, sub))
+            }
+            b64 = btoa(parts.join(''))
+          }
+        } catch (rbErr) {}
+      }
       if (!b64) return e.json(200, { ok: false, erro: 'sem b64' })
       var bin = ''
       try {
