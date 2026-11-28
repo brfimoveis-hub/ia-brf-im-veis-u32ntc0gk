@@ -6724,7 +6724,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         console.warn(
           '[AI_REPLY] WhatsApp channel but meta credentials missing — skip send',
         )
-        ZZZ        try {
+        try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const warnLog = new Record(logsCol)
           warnLog.set('user_id', userId || '')
