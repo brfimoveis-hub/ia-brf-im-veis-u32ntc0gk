@@ -6581,26 +6581,22 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
         )
 
-        try {
-          const sendRes = callMetaWithRetry(
-            `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
-            'POST',
-            { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-            JSON.stringify({
-              messaging_product: 'whatsapp',
-              to: cleanPhone,
-              type: 'text',
-              text: { body: finalCleanBody },
-            }),
-          )
+        const sendRes = callMetaWithRetry(
+          `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
+          'POST',
+          { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+          JSON.stringify({
+            messaging_product: 'whatsapp',
+            to: cleanPhone,
+            type: 'text',
+            text: { body: finalCleanBody },
+          }),
+        )
 
-          const isOk = sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300
-          console.log(
-            `[AI_REPLY] Meta WhatsApp send result: status=${sendRes ? sendRes.statusCode : 'none'} ok=${isOk}`,
-          )
-        } catch (sendErr) {
-          console.error(`[AI_REPLY] Erro no envio WhatsApp: ${String(sendErr)}`)
-        }
+        const isOk = sendRes && sendRes.statusCode >= 200 && sendRes.statusCode < 300
+        console.log(
+          `[AI_REPLY] Meta WhatsApp send result: status=${sendRes ? sendRes.statusCode : 'none'} ok=${isOk}`,
+        )
 
         try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
