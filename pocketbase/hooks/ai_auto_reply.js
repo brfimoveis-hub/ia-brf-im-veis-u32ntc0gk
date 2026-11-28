@@ -6560,11 +6560,12 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
         )
 
+        try {
         const sendRes = callMetaWithRetry(
-            `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
-            'POST',
-            { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-            JSON.stringify({
+          `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
+          'POST',
+          { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+          JSON.stringify({
               messaging_product: 'whatsapp',
               to: cleanPhone,
               type: 'text',
