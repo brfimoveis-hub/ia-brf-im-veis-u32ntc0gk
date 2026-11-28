@@ -6560,7 +6560,6 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
           `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
         )
 
-        try {
         const sendRes = callMetaWithRetry(
           `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
           'POST',
@@ -6720,7 +6719,6 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
               console.warn(`[AI_REPLY] Audio TTS/Upload failed (non-fatal): ${String(audioErr)}`)
             }
           }
-        }
         }
       } else if (conversationChannel === 'whatsapp' && (!metaToken || !metaPhoneId)) {
         console.warn(
