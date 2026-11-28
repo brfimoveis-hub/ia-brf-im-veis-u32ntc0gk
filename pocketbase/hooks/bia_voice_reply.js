@@ -32,10 +32,11 @@ onRecordAfterCreateSuccess((e) => {
     } catch (_) {}
     if (sender !== 'ai') return e.next()
 
-    // já respondido em voz?
-    var jaFalado = ''
+    // já respondido em voz? (marca gravada no próprio texto da mensagem)
+    var jaFalado = false
     try {
-      jaFalado = rec.getString('voice_reply_at') || ''
+      var conteudoMsg = String(rec.getString('content') || '')
+      if (conteudoMsg.indexOf('[voz-enviada') !== -1) jaFalado = true
     } catch (_) {}
     if (jaFalado) return e.next()
 
@@ -282,13 +283,19 @@ onRecordAfterCreateSuccess((e) => {
       }
     } catch (_) {}
 
-    // 4) marca o registro (para nunca responder duas vezes)
+    // 4) marca no próprio registro que a voz já foi enviada (campo de texto
+    // existente na coleção conversations; evita migration). Se não existir,
+    // a deduplicação fica só pelo log, que já é suficiente na prática.
     try {
       var atual = $app.findRecordById('conversations', rec.id)
-      atual.set('voice_reply_at', new Date().toISOString().replace('T', ' ').substring(0, 19))
-      $app.saveNoValidate(atual)
+      var marca = '[voz-enviada ' + new Date().toISOString().substring(0, 19) + ']'
+      var conteudoAtual = String(atual.getString('content') || '')
+      if (conteudoAtual.indexOf('[voz-enviada') === -1) {
+        atual.set('content', conteudoAtual + ' ' + marca)
+        $app.saveNoValidate(atual)
+      }
     } catch (err) {
-      console.log('[BIA_VOICE] não consegui marcar voice_reply_at: ' + String(err))
+      console.log('[BIA_VOICE] não consegui marcar a mensagem: ' + String(err))
     }
 
     // 5) log
