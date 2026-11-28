@@ -6556,42 +6556,9 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         metaToken &&
         metaPhoneId
       ) {
-        // >>> BIA_VOICE_SUPPRESS_START (v0.0.1519)
-        // Se a resposta também vai por voz, o texto é suprimido: o cliente
-        // recebe só a nota de voz, sem duplicidade.
-        var vozVaiFalar = false
-        try {
-          var vc = $app.findFirstRecordByFilter('app_controls', "key = 'bia_voice_reply_active'")
-          if (vc.getBool('is_active')) {
-            var ultC = $app.findRecordsByFilter(
-              'conversations',
-              "customer_id = {:cid} && sender = 'customer'",
-              '-created',
-              1,
-              0,
-              { cid: customerId },
-            )
-            if (ultC && ultC.length > 0) {
-              var ctUlt = String(ultC[0].getString('content') || '')
-              if (ctUlt.indexOf('[Áudio do cliente]') !== -1) vozVaiFalar = true
-            }
-          }
-        } catch (_) {}
-        if (vozVaiFalar) {
-          console.log('[AI_REPLY] Resposta sera enviada em VOZ — texto suprimido para o cliente.')
-          try {
-            var lcV = $app.findCollectionByNameOrId('system_logs')
-            var lgV = new Record(lcV)
-            lgV.set('type', 'voice_reply_text_suppressed')
-            lgV.set('message', 'Texto suprimido: resposta vai só em nota de voz')
-            lgV.set('details', JSON.stringify({ customer_id: customerId, phone: cleanPhone }))
-            $app.saveNoValidate(lgV)
-          } catch (_) {}
-        } else {
-          // >>> BIA_VOICE_SUPPRESS_END
-          console.log(
-            `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
-          )
+        console.log(
+          `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
+        )
 
           const sendRes = callMetaWithRetry(
             `https://graph.facebook.com/v21.0/${metaPhoneId}/messages${waProofSuffix(metaToken)}`,
@@ -6610,7 +6577,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             `[AI_REPLY] Meta WhatsApp send result: status=${sendRes ? sendRes.statusCode : 'none'} ok=${isOk}`,
           )
         }
-        } // >>> FIM DO BLOCO DE SUPRESSAO DE TEXTO (quando a resposta vai em voz)
+
 
         try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
