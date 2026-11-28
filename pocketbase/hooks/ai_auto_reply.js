@@ -6554,7 +6554,28 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
       if (
         (conversationChannel === 'whatsapp' || !conversationChannel) &&
         metaToken &&
-        metaPhoneId
+        metaPhoneId &&
+        !(function () {
+          // Suprime o texto quando a resposta vai sair em nota de voz.
+          // Autocontido de proposito: o handler do Skip nao compartilha escopo.
+          try {
+            var vc = $app.findFirstRecordByFilter('app_controls', "key = 'bia_voice_reply_active'")
+            if (!vc.getBool('is_active')) return false
+            var ult = $app.findRecordsByFilter(
+              'conversations',
+              "customer_id = {:cid} && sender = 'customer'",
+              '-created',
+              1,
+              0,
+              { cid: customerId },
+            )
+            if (!ult || !ult.length) return false
+            var ct = String(ult[0].getString('content') || '')
+            return ct.indexOf('[Áudio do cliente]') !== -1
+          } catch (_) {
+            return false
+          }
+        })()
       ) {
         console.log(
           `[AI_REPLY] Sending WhatsApp to Meta Graph API v21.0 (phone_id=${metaPhoneId}, to=${cleanPhone})...`,
