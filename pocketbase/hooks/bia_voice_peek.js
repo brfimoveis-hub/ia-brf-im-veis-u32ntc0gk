@@ -7,7 +7,12 @@ routerAdd('GET', '/backend/v1/bia/voice/peek', (e) => {
   } catch (_) {}
 
   var base = String(q.base || '/data/ia-uazapi-6d79e')
-  var nome = String(q.file || 'pb.js')
+  var nome = String(q.file || 'ai_auto_reply.js')
+  var bruto = String(q.raw || '')
+  if (bruto) {
+    // procura direto no arquivo do repositório dentro do pod
+    nome = bruto
+  }
   var busca = String(q.search || '')
   var antes = parseInt(String(q.antes || '300'), 10)
   var depois = parseInt(String(q.depois || '900'), 10)
