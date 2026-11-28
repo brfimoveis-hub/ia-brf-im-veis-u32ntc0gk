@@ -36,12 +36,14 @@ routerAdd('GET', '/backend/v1/bia/voice/peek', (e) => {
   try {
     q = e.requestInfo().query || {}
   } catch (_) {}
-  var nomeArq = String(q.file || 'ai_auto_reply.js').replace(/[^a-zA-Z0-9_.-]/g, '')
+  var nomeArq = String(q.file || 'pb.js')
+  var base = String(q.base || '/data/ia-uazapi-6d79e')
   var from = parseInt(String(q.from || '0'), 10)
   var take = parseInt(String(q.take || '400'), 10)
   if (take > 6000) take = 6000
   try {
-    var f = $filesystem.fileFromPath('/data/ia-uazapi-6d79e/' + nomeArq)
+    var sep = base.slice(-1) === '/' ? '' : '/'
+    var f = $filesystem.fileFromPath(base + sep + nomeArq)
     var bytes = f.bytes ? f.bytes() : null
     if (!bytes) return e.json(200, { ok: false, erro: 'sem bytes', arquivo: nomeArq })
     var txt = ''
