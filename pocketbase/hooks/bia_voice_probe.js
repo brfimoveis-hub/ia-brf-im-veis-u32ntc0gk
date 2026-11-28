@@ -29,6 +29,8 @@ routerAdd('POST', '/backend/v1/bia/voice/probe', (e) => {
       typeof $secrets !== 'undefined' && $secrets.has && $secrets.has('OPENAI_API_KEY')
   } catch (_) {}
   out.chaves = keys
+  out.query = q
+  out.tem_body = !!(e.requestInfo().body && e.requestInfo().body.length)
 
   // testa o gateway de transcrição com um arquivo pequeno real
   if (String(q.t || '') === 'whisper') {

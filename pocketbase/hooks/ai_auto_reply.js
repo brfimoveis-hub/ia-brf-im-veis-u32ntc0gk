@@ -2481,6 +2481,21 @@ ${
           const leadTextForRelevance =
             `${customerMessage} ${customerSource} ${customerNotes} ${effectiveOrigin}`.toLowerCase()
 
+          // Relevância por TOKEN: o lead costuma citar só parte do nome (ex.: "Vistage"
+          // em vez de "Vistage Residence") — a pasta do imóvel conta como relevante se
+          // qualquer token do nome do empreendimento (>= 5 letras) aparecer na conversa.
+          const leadTokensForRelevance = (enterpriseName) => {
+            try {
+              const entWords = String(enterpriseName || '')
+                .toLowerCase()
+                .split(/[^a-z0-9à-ú]+/i)
+                .filter((w) => w.length >= 5)
+              return entWords.some((w) => leadTextForRelevance.includes(w))
+            } catch (_) {
+              return false
+            }
+          }
+
           // Filtrar para usar SEMPRE a tabela mais recente por empreendimento (ignorando tabelas antigas)
           const enterpriseLatestTable = {}
           for (const kf of activeKnowledgeRecords) {
@@ -2563,7 +2578,8 @@ ${
               // Outros documentos recebem até 12.000 caracteres ou resumo dos primeiros parágrafos.
               const isRelevantEnterprise =
                 enterpriseName !== 'Geral / Institucional' &&
-                leadTextForRelevance.includes(enterpriseName.toLowerCase())
+                (leadTextForRelevance.includes(enterpriseName.toLowerCase()) ||
+                  leadTokensForRelevance(enterpriseName))
 
               const maxChars = isRelevantEnterprise ? 25000 : 12000
               let safeText = extracted
