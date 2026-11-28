@@ -592,7 +592,9 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
         Authorization: 'Bearer ' + waToken,
         'Content-Type': 'multipart/form-data; boundary=' + boundary,
       },
-      body: buf.buffer,
+      // ATENÇÃO: enviar o Uint8Array, NÃO buf.buffer. Com .buffer a Meta
+      // responde "(#100) The parameter file is required" — testado 27/11.
+      body: buf,
       timeout: 90,
     })
   } catch (err) {
