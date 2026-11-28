@@ -6722,9 +6722,9 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         }
       } else if (conversationChannel === 'whatsapp' && (!metaToken || !metaPhoneId)) {
         console.warn(
-          `[AI_REPLY] WhatsApp send skipped: missing metaToken or metaPhoneId (token=${!!metaToken}, phoneId=${metaPhoneId})`,
+          '[AI_REPLY] WhatsApp channel but meta credentials missing — skip send',
         )
-        try {
+        ZZZ        try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
           const warnLog = new Record(logsCol)
           warnLog.set('user_id', userId || '')
