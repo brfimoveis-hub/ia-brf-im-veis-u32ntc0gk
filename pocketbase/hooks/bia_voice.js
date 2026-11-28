@@ -614,6 +614,17 @@ routerAdd('POST', '/backend/v1/bia/voice/say', (e) => {
       status: up ? up.statusCode : 0,
       erro: 'Meta não devolveu media id',
       resposta_meta: upBody,
+      diag: {
+        boundary_len: boundary.length,
+        head_len: hb.length,
+        audio_len: audio.length,
+        tail_len: tb.length,
+        buf_len: buf.length,
+        buf_buffer_bytes: buf.buffer ? buf.buffer.byteLength : -1,
+        head_preview: head.substring(0, 180),
+        tem_proof: proof.length > 0,
+        url_usada: 'https://graph.facebook.com/v21.0/' + phoneId + '/media' + proof,
+      },
     })
   }
 
