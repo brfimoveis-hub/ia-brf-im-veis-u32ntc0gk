@@ -6720,6 +6720,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             }
           }
         }
+        }
       } else if (conversationChannel === 'whatsapp' && (!metaToken || !metaPhoneId)) {
         console.warn(
           '[AI_REPLY] WhatsApp channel but meta credentials missing — skip send',
