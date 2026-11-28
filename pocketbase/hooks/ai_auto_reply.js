@@ -6556,7 +6556,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
         metaToken &&
         metaPhoneId
       ) {
-        // >>> BIA_VOICE_SUPPRESS_START
+        // >>> BIA_VOICE_SUPPRESS_START (v0.0.1519)
         // Se a resposta também vai por voz, o texto é suprimido: o cliente
         // recebe só a nota de voz, sem duplicidade.
         var vozVaiFalar = false
@@ -6610,7 +6610,7 @@ IMPORTANTE: envie EXCLUSIVAMENTE a mensagem para o cliente (em tom caloroso, con
             `[AI_REPLY] Meta WhatsApp send result: status=${sendRes ? sendRes.statusCode : 'none'} ok=${isOk}`,
           )
         }
-        // >>> FIM DO BLOCO DE SUPRESSAO DE TEXTO (quando a resposta vai em voz)
+        } // >>> FIM DO BLOCO DE SUPRESSAO DE TEXTO (quando a resposta vai em voz)
 
         try {
           const logsCol = $app.findCollectionByNameOrId('system_logs')
