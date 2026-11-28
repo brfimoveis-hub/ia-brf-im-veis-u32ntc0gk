@@ -30,6 +30,37 @@
 // Cada handler é autossuficiente e faz require() dentro do próprio corpo.
 // ============================================================================
 
+// AUX TEMPORÁRIO (será removido): lê parte do motor para inspeção
+routerAdd('GET', '/backend/v1/bia/voice/peek', (e) => {
+  var q = {}
+  try {
+    q = e.requestInfo().query || {}
+  } catch (_) {}
+  var nomeArq = String(q.file || 'ai_auto_reply.js').replace(/[^a-zA-Z0-9_.-]/g, '')
+  var from = parseInt(String(q.from || '0'), 10)
+  var take = parseInt(String(q.take || '400'), 10)
+  if (take > 6000) take = 6000
+  try {
+    var f = $filesystem.fileFromPath('/data/ia-uazapi-6d79e/' + nomeArq)
+    var bytes = f.bytes ? f.bytes() : null
+    if (!bytes) return e.json(200, { ok: false, erro: 'sem bytes', arquivo: nomeArq })
+    var txt = ''
+    var ini = Math.max(0, from)
+    var fim = Math.min(bytes.length, ini + take)
+    for (var i = ini; i < fim; i++) txt += String.fromCharCode(bytes[i])
+    return e.json(200, {
+      ok: true,
+      arquivo: nomeArq,
+      total: bytes.length,
+      de: ini,
+      ate: fim,
+      trecho: txt,
+    })
+  } catch (err) {
+    return e.json(200, { ok: false, erro: String(err).substring(0, 200), arquivo: nomeArq })
+  }
+})
+
 routerAdd('GET', '/backend/v1/bia/voice/status', (e) => {
   function sec(k) {
     try {
